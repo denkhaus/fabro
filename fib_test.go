@@ -1379,3 +1379,243 @@ func TestOutputToFile(t *testing.T) {
 		})
 	}
 }
+
+// lastOpts clones an opts-built value with -last set, keeping the
+// existing call sites untouched.
+func lastOpts(o options, last int) options {
+	o.last = last
+	return o
+}
+
+// TestRunLast pins the -last semantics across every output mode: with
+// -last k only the last k numbers of the (already stepped) selection
+// print, in every mode; a selection shorter than k clamps to the whole
+// selection instead of erroring. gofib -n 10 -last 3 prints exactly
+// indices 8, 9, 10.
+func TestRunLast(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		opts options
+		last int
+		want string
+	}{
+		{"text n=10 last=3 prints indices 8,9,10", opts(0, 10, 0, 0, "", false, false, false, false), 3,
+			"8: 21\n9: 34\n10: 55\n"},
+		{"text last=1 prints only the final index", opts(0, 10, 0, 0, "", false, false, false, false), 1,
+			"10: 55\n"},
+		{"text last larger than the selection clamps", opts(0, 2, 0, 0, "", false, false, false, false), 5,
+			"1: 1\n2: 1\n"},
+		{"text last equal to the selection size prints all", opts(0, 3, 0, 0, "", false, false, false, false), 3,
+			"1: 1\n2: 1\n3: 2\n"},
+		{"text with -start tails the window", opts(5, 4, 0, 0, "", false, false, false, false), 2,
+			"7: 13\n8: 21\n"},
+		{"text with -limit tails the capped range", opts(1, 100, 5, 0, "", false, false, false, false), 2,
+			"4: 3\n5: 5\n"},
+		{"json n=10 last=3 emits exactly the tailed indices", opts(0, 10, 0, 0, "", true, false, false, false), 3,
+			wantJSONLine(8) + "\n" + wantJSONLine(9) + "\n" + wantJSONLine(10) + "\n"},
+		{"csv n=10 last=3 emits the tailed records", opts(0, 10, 0, 0, "csv", false, false, false, false), 3,
+			csvRecord(8) + "\n" + csvRecord(9) + "\n" + csvRecord(10) + "\n"},
+		// Pretty widths keep coming from the largest index and value
+		// actually printed — tailing keeps the range's final index, so
+		// widths track the unchanged steppedLast (= 6 here).
+		{"pretty sizes columns from the tailed last index", opts(0, 6, 0, 0, "", false, true, false, false), 2,
+			prettyLine(6, 5, "5") + "\n" + prettyLine(6, 6, "8") + "\n"},
+		{"table sizes the value column from the tailed last index", opts(0, 6, 0, 0, "table", false, false, false, false), 2,
+			tableLine(6, "5") + "\n" + tableLine(6, "8") + "\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := run(&buf, lastOpts(tt.opts, tt.last)); err != nil {
+				t.Fatalf("run(last=%d) returned error: %v", tt.last, err)
+			}
+			if buf.String() != tt.want {
+				t.Errorf("run(last=%d) = %q, want exactly %q", tt.last, buf.String(), tt.want)
+			}
+		})
+	}
+}
+
+// TestRunLastZeroEquivalence pins that -last 0 (and unset) behaves
+// exactly as before, byte for byte, in every output mode.
+func TestRunLastZeroEquivalence(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		opts options
+	}{
+		{"text", opts(0, 5, 0, 0, "", false, false, false, false)},
+		{"json", opts(0, 5, 0, 0, "", true, false, false, false)},
+		{"pretty", opts(8, 5, 0, 0, "", false, true, false, false)},
+		{"table", opts(8, 5, 0, 0, "table", false, false, false, false)},
+		{"csv", opts(8, 5, 10, 0, "csv", false, false, false, false)},
+		{"sum text", opts(0, 10, 0, 0, "", false, false, false, true)},
+		{"sum json", opts(0, 10, 0, 0, "json", false, false, false, true)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var unset, zero bytes.Buffer
+			if err := run(&unset, tt.opts); err != nil {
+				t.Fatalf("run(unset last) returned error: %v", err)
+			}
+			if err := run(&zero, lastOpts(tt.opts, 0)); err != nil {
+				t.Fatalf("run(last=0) returned error: %v", err)
+			}
+			if zero.String() != unset.String() {
+				t.Errorf("run(last=0) = %q, want identical to unset: %q", zero.String(), unset.String())
+			}
+		})
+	}
+}
+
+// TestRunLastStepOrdering pins the pipeline order: -step strides the
+// selection first, then -last tails the STEPPED selection. gofib
+// -n 6 -step 2 -last 2 prints exactly indices 3 and 5.
+func TestRunLastStepOrdering(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		opts options
+		step int
+		last int
+		want string
+	}{
+		{"last 2 of the stepped selection", opts(0, 6, 0, 0, "", false, false, false, false), 2, 2,
+			"3: 2\n5: 5\n"},
+		{"last 3 of the stepped selection", opts(0, 6, 0, 0, "", false, false, false, false), 2, 3,
+			"1: 1\n3: 2\n5: 5\n"},
+		{"last clamps to the stepped selection", opts(0, 6, 0, 0, "", false, false, false, false), 2, 5,
+			"1: 1\n3: 2\n5: 5\n"},
+		{"json last 2 of the stepped selection", opts(0, 6, 0, 0, "", true, false, false, false), 2, 2,
+			wantJSONLine(3) + "\n" + wantJSONLine(5) + "\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := run(&buf, lastOpts(stepOpts(tt.opts, tt.step), tt.last)); err != nil {
+				t.Fatalf("run(step=%d, last=%d) returned error: %v", tt.step, tt.last, err)
+			}
+			if buf.String() != tt.want {
+				t.Errorf("run(step=%d, last=%d) = %q, want exactly %q", tt.step, tt.last, buf.String(), tt.want)
+			}
+		})
+	}
+}
+
+// TestRunLastSum pins that -sum sums the numbers remaining AFTER
+// tailing, while the reported range bounds stay the full effective
+// range [start, last]: -n 6 -last 3 sums F(4)+F(5)+F(6) = 3+5+8 = 16
+// but still reports the range 1..6.
+func TestRunLastSum(t *testing.T) {
+	tailedSum := func(first, last, step, k int) string {
+		steppedLast := last
+		if step > 1 && last >= first {
+			steppedLast = first + ((last-first)/step)*step
+		}
+		iter := first
+		if k > 0 && last >= first {
+			count := (steppedLast-first)/step + 1
+			if k < count {
+				iter = steppedLast - (k-1)*step
+			}
+		}
+		total := new(big.Int)
+		for i := iter; i <= last; i += step {
+			total.Add(total, Fib(i))
+		}
+		b, err := json.Marshal(sumLine{IndexRange: []int{first, last}, Sum: total.String()})
+		if err != nil {
+			panic("marshal sumLine: " + err.Error())
+		}
+		return string(b)
+	}
+	for _, tt := range []struct {
+		name string
+		opts options
+		last int
+		want string
+	}{
+		{"sum after tailing in text mode", opts(0, 6, 0, 0, "", false, false, false, true), 3, "sum: 16\n"},
+		{"sum after tailing in json keeps full bounds", opts(0, 6, 0, 0, "json", false, false, false, true), 3, tailedSum(1, 6, 1, 3) + "\n"},
+		{"sum after tailing in csv keeps full bounds", opts(0, 6, 0, 0, "csv", false, false, false, true), 3, "sum,1,6,16\n"},
+		{"sum after stepping and tailing keeps full bounds", opts(0, 6, 0, 0, "json", false, false, false, true), 1, tailedSum(1, 6, 2, 1) + "\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			step := 1
+			if tt.name == "sum after stepping and tailing keeps full bounds" {
+				step = 2
+			}
+			if err := run(&buf, lastOpts(stepOpts(tt.opts, step), tt.last)); err != nil {
+				t.Fatalf("run(sum, last=%d) returned error: %v", tt.last, err)
+			}
+			if buf.String() != tt.want {
+				t.Errorf("run(sum, last=%d) = %q, want exactly %q", tt.last, buf.String(), tt.want)
+			}
+		})
+	}
+}
+
+// TestRunRejectsInvalidLast pins the -last validation contract: a
+// negative k exits non-zero with the exact -n-style error message
+// naming the flag (parseOptions is the rejection point).
+func TestRunRejectsInvalidLast(t *testing.T) {
+	for _, mode := range []struct {
+		name   string
+		asJSON bool
+	}{{"text", false}, {"json", true}} {
+		for _, last := range []int{-1, -5} {
+			args := []string{"-last", strconv.Itoa(last)}
+			if mode.asJSON {
+				args = append(args, "-json")
+			}
+			_, err := parseOptions(args)
+			if err == nil {
+				t.Fatalf("parseOptions(last=%d, %s) succeeded, want error", last, mode.name)
+			}
+			want := fmt.Sprintf("invalid value %d for flag -last: must be >= 1 or 0 to unset", last)
+			if err.Error() != want {
+				t.Errorf("parseOptions(last=%d, %s) error = %q, want exactly %q", last, mode.name, err.Error(), want)
+			}
+		}
+	}
+}
+
+// TestRunLastSeedConflict pins that a positive -last is a HARD conflict
+// with a positive -seed (mirroring -sum, unlike -step which is merely
+// ignored under -seed): parseOptions rejects it naming both flags,
+// while -seed 0 with -last combines freely and -version outranks both.
+func TestRunLastSeedConflict(t *testing.T) {
+	for _, seed := range []int{1, 5, 100} {
+		_, err := parseOptions([]string{"-seed", strconv.Itoa(seed), "-last", "2"})
+		if err == nil {
+			t.Fatalf("parseOptions(seed=%d, last) succeeded, want error", seed)
+		}
+		want := "flags -seed and -last conflict: -seed prints a single index but -last tails the range"
+		if err.Error() != want {
+			t.Errorf("parseOptions(seed=%d, last) error = %q, want exactly %q", seed, err.Error(), want)
+		}
+	}
+	t.Run("seed 0 with -last is legal", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := run(&buf, lastOpts(opts(0, 5, 0, 0, "", false, false, false, false), 2)); err != nil {
+			t.Fatalf("run(seed=0, last=2) returned error: %v", err)
+		}
+		if buf.String() != "4: 3\n5: 5\n" {
+			t.Errorf("run(seed=0, last=2) = %q, want %q", buf.String(), "4: 3\n5: 5\n")
+		}
+	})
+	t.Run("version short-circuits the seed/last conflict", func(t *testing.T) {
+		opts, err := parseOptions([]string{"-version", "-seed", "5", "-last", "2"})
+		if err != nil {
+			t.Fatalf("parseOptions(version, seed, last) returned error: %v", err)
+		}
+		if !opts.version {
+			t.Errorf("parseOptions(version, seed, last) version = false, want true")
+		}
+	})
+	t.Run("version short-circuits -last validation", func(t *testing.T) {
+		opts, err := parseOptions([]string{"-version", "-last", "-1"})
+		if err != nil {
+			t.Fatalf("parseOptions(version, last=-1) returned error: %v", err)
+		}
+		if !opts.version {
+			t.Errorf("parseOptions(version, last=-1) version = false, want true")
+		}
+	})
+}
