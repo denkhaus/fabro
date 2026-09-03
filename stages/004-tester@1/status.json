@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Script failed with exit code: 1\n\n## output\nnu scripts/qualitygate.nu\n== workflow sync (product <-> meta) ==\nsync-check: no world pairing — skip\n== run scope (workflow assets untouchable from runs) ==\nno workflow assets in run diff — base 9a313194\n== nu-check (all nu scripts) ==\nsyntax-clean 8 scripts\n== tracked large files ==\n== gofmt check ==\nunformatted files:\nfib_test.go\nerror: recipe `qualitygate` failed on line 12 with exit code 1\n",
+  "timestamp": "2026-09-03T21:11:27.815250738Z"
+}
