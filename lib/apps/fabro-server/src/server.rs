@@ -3060,18 +3060,31 @@ struct LiveWorkerProcess {
     worker_ref: WorkerRef,
 }
 
-fn failure_for_incomplete_run(
+/// Pick the terminal failure for a run that never produced its own terminal
+/// event. A pending cancel wins over whatever failure the caller observed, so a
+/// run that was cancelled while its worker was launching or dying is recorded
+/// as cancelled rather than as broken.
+fn failure_honoring_pending_cancel(
     pending_control: Option<RunControlAction>,
-    terminated_message: String,
+    otherwise: impl FnOnce() -> (WorkflowError, FailureReason),
 ) -> (WorkflowError, FailureReason) {
     if pending_control == Some(RunControlAction::Cancel) {
         (WorkflowError::Cancelled, FailureReason::Cancelled)
     } else {
+        otherwise()
+    }
+}
+
+fn failure_for_incomplete_run(
+    pending_control: Option<RunControlAction>,
+    terminated_message: String,
+) -> (WorkflowError, FailureReason) {
+    failure_honoring_pending_cancel(pending_control, || {
         (
             WorkflowError::engine(terminated_message),
             FailureReason::Terminated,
         )
-    }
+    })
 }
 
 pub(crate) async fn reconcile_incomplete_runs_on_startup(
@@ -3585,18 +3598,40 @@ async fn fail_worker_launch(
     err: anyhow::Error,
 ) {
     tracing::error!(run_id = %run_id, error = %err, "Failed to spawn worker");
-    let message = format!("Failed to spawn worker: {err}");
+    let pending_control = match run_store.state().await {
+        Ok(run_state) => run_state.pending_control,
+        Err(state_err) => {
+            tracing::warn!(
+                run_id = %run_id,
+                error = %state_err,
+                "Failed to load run state after worker launch failure"
+            );
+            None
+        }
+    };
+    let launch_message = format!("Failed to spawn worker: {err}");
+    let (error, reason) = failure_honoring_pending_cancel(pending_control, || {
+        (
+            WorkflowError::engine_with_anyhow("Failed to spawn worker", err),
+            FailureReason::LaunchFailed,
+        )
+    });
+    let message = if reason == FailureReason::Cancelled {
+        "Run cancelled before worker launch completed".to_string()
+    } else {
+        launch_message
+    };
     let failure_event = workflow_event::Event::workflow_run_failed_from_error(
-        &WorkflowError::engine_with_anyhow("Failed to spawn worker", err),
+        &error,
         fabro_types::RunTiming::default(),
-        FailureReason::LaunchFailed,
+        reason,
         None,
         None,
         None,
         None,
     );
     let _ = workflow_event::append_event(run_store, &run_id, &failure_event).await;
-    fail_managed_run(state, run_id, FailureReason::LaunchFailed, message);
+    fail_managed_run(state, run_id, reason, message);
     state.scheduler_notify.notify_one();
 }
 

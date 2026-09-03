@@ -599,16 +599,16 @@ mod tests {
         .unwrap();
     }
 
-    fn workflow_failure_payload(label: &str) -> EventPayload {
+    fn failure_payload(label: &str, reason: FailureReason, message: &str) -> EventPayload {
         event_payload(
             label,
             "2026-03-27T12:00:04Z",
             "run.failed",
             &serde_json::json!({
                 "failure": {
-                    "reason": "workflow_error",
+                    "reason": reason.to_string(),
                     "detail": {
-                        "message": "workflow failed",
+                        "message": message,
                         "category": "deterministic"
                     }
                 },
@@ -619,6 +619,21 @@ mod tests {
                     "active_time_ms": 0
                 },
             }),
+        )
+    }
+
+    fn workflow_failure_payload(label: &str) -> EventPayload {
+        failure_payload(label, FailureReason::WorkflowError, "workflow failed")
+    }
+
+    /// A failure that can only occur after `Starting`, so a `Runnable` run must
+    /// reject it.
+    fn sandbox_init_failure_payload(label: &str) -> EventPayload {
+        assert!(!FailureReason::SandboxInitFailed.can_occur_before_start());
+        failure_payload(
+            label,
+            FailureReason::SandboxInitFailed,
+            "sandbox initialization failed",
         )
     }
 
@@ -980,7 +995,7 @@ mod tests {
         let events_before = run.list_events().await.unwrap();
 
         let err = run
-            .append_event(&workflow_failure_payload("run-1"))
+            .append_event(&sandbox_init_failure_payload("run-1"))
             .await
             .unwrap_err();
 
@@ -992,7 +1007,7 @@ mod tests {
             Error::InvalidTransition(fabro_types::InvalidTransition {
                 from: RunStatus::Runnable,
                 to:   RunStatus::Failed {
-                    reason: FailureReason::WorkflowError,
+                    reason: FailureReason::SandboxInitFailed,
                 },
             })
         ));
@@ -1012,7 +1027,7 @@ mod tests {
         append_runnable(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
 
         let err = run
-            .append_event(&workflow_failure_payload("run-1"))
+            .append_event(&sandbox_init_failure_payload("run-1"))
             .await
             .unwrap_err();
         assert!(matches!(err, Error::EventRejected { .. }));
