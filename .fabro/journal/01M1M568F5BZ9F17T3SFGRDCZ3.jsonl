@@ -1,0 +1,2 @@
+{"$schema":"fabro-journal-v1","run_id":"01M1M568F5BZ9F17T3SFGRDCZ3","node":"start","visit":1,"status":"succeeded","ts":"2026-09-03T17:31:20Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M1M568F5BZ9F17T3SFGRDCZ3","node":"select","visit":1,"status":"succeeded","ts":"2026-09-03T17:31:31Z","data":{"painpoints":[],"observations":["32 runs listed; 10 revised, 1 non-terminal (submitted), ~19 unrevised but blocked with sandbox_available false — backlog stays visible until fresh analyst sandboxes are provisioned; oldest selectable unrevised run picked"]}}
