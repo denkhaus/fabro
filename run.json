@@ -514,7 +514,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-03T06:01:07.327837426Z",
-  "last_event_at": "2026-09-03T06:01:25.693256500Z",
+  "last_event_at": "2026-09-03T06:01:32.957759174Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -15560,9 +15560,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 271,
       "checkpoint": {
-        "timestamp": "2026-09-03T06:01:25.908373088Z",
+        "timestamp": "2026-09-03T06:01:32.957474309Z",
         "current_node": "select",
         "completed_nodes": [
           "start",
@@ -15610,29 +15610,7 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.thread_id": null,
-          "graph.rankdir": "LR",
-          "outcome": "succeeded",
-          "seed_cycles": {
-            "select": 1
-          },
-          "human.gate.label": "[A] Approved",
-          "human.gate.selected": "A",
-          "graph.goal": "Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
-          "failure_signature": "",
-          "current_node": "select",
-          "internal.seed_cycle_anchor": "01M11P68SHFS165HP9ATK6094V",
-          "internal.retry_count.start": 0,
-          "thread.approve.current_node": "select",
-          "response.analyze": {
-            "chars": 6688,
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "preview": "Dedupe complete. Dropped rec 8 (duplicate of open `fabro-2c81`) and rec 3 (substance already in open `fabro-a67f`); kept the rest with overlap notes for the filer. Review written to `.fabro/reviews/de"
-          },
-          "internal.node_visit_count": 11,
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "revisor_target_wall": "18.7 min",
+          "human.gate.approve.answer": "A",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -15640,10 +15618,36 @@
               "10 runs already revised per markers in `.fabro/revisions/`; oldest unrevised with a live sandbox is `01M11P68SHFS165HP9ATK6094V`; one more (01M1EGK6J8CNP9APJ7PWE6WE74) remains in the selectable backlog."
             ]
           },
-          "thread.start.current_node": "select",
-          "internal.fidelity": "compact",
-          "thread.analyze.current_node": "file",
           "preferred_label": "Run selected",
+          "response.analyze": {
+            "chars": 6688,
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "preview": "Dedupe complete. Dropped rec 8 (duplicate of open `fabro-2c81`) and rec 3 (substance already in open `fabro-a67f`); kept the rest with overlap notes for the filer. Review written to `.fabro/reviews/de"
+          },
+          "filed_seed_ids": [
+            "fabro-6a5a",
+            "fabro-e702",
+            "fabro-8d2c",
+            "fabro-a23f",
+            "fabro-f4cd",
+            "fabro-f8f8"
+          ],
+          "response.file": {
+            "chars": 889,
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Staged\", \"context_updates\": {\"filed_seed_ids\": [\"fabro-6a5a\", \"fabro-e702\", \"fabro-8d2c\", \"fabro-a23f\", \"fabro-f4cd\", \"fabro-f8f8\"], \"journal\": {\"pain"
+          },
+          "seed_cycles": {
+            "select": 1
+          },
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "human.gate.approve.label": "[A] Approved",
+          "internal.retry_count.start": 0,
+          "internal.seed_cycle_anchor": "01M11P68SHFS165HP9ATK6094V",
+          "thread.analyze.current_node": "file",
+          "internal.retry_count.analyze": 0,
           "revision_findings": [
             {
               "description": "In the run-spec pull_request block (see `.fabro/project.toml` [run.pull_request]) set `auto_merge=false` — this run's worker log shows the auto-merge GraphQL call deterministically failing ('Auto merge is not allowed for this repository') despite `auto_merge=true` — and fix or disable the PR-body LLM call, which failed ('No object generated: Failed to parse response as JSON', worker log 16:44:33) and fell back to a skeleton. The postlude burned ~53s after the exit node finished (16:43:46 to 16:44:39), 18% of the 293s wall, and emits two warn-level failures every run. Expected effect: run completes ~50s sooner with two fewer recurring warnings. Partial overlap with open fabro-9f97 (journal-only-diff case); this covers real-diff runs.",
@@ -15676,48 +15680,59 @@
               "title": "Derive files_touched from the stage git diff, not write-tool calls"
             }
           ],
-          "failure_class": "",
-          "graph.inspects": "develop",
-          "human.gate.approve.answer": "A",
-          "filed_seed_ids": [
-            "fabro-6a5a",
-            "fabro-e702",
-            "fabro-8d2c",
-            "fabro-a23f",
-            "fabro-f4cd",
-            "fabro-f8f8"
-          ],
-          "revisor_target_title": "Implement product seeds fabro-44b6 (-format csv), fabro-28e8 (options refactor), fabro-c295 (-o flag)",
-          "thread.select.current_node": "analyze",
-          "internal.run_id": "01M1JXPAABBQ3TM3DJ2DQ1VZDW",
-          "human.gate.approve.label": "[A] Approved",
+          "outcome": "succeeded",
+          "human.gate.selected": "A",
+          "graph.max_node_visits": "30",
+          "internal.node_visit_count": 11,
+          "internal.thread_id": null,
           "human.gate.approve.question": "Approve filing + merge",
-          "internal.retry_count.analyze": 0,
-          "internal.retry_count.approve": 0,
-          "internal.retry_count.select": 0,
           "revisor_target_status": "succeeded",
+          "last_stage": "select",
+          "revisor_target_title": "Implement product seeds fabro-44b6 (-format csv), fabro-28e8 (options refactor), fabro-c295 (-o flag)",
+          "current_node": "select",
+          "thread.file.current_node": "approve",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
+          "graph.preamble_budget_kb": "24",
+          "failure_class": "",
+          "graph.rankdir": "LR",
+          "internal.retry_count.file": 0,
+          "internal.run_id": "01M1JXPAABBQ3TM3DJ2DQ1VZDW",
+          "thread.select.current_node": "analyze",
+          "internal.fidelity": "compact",
+          "thread.approve.current_node": "select",
+          "last_response": "Run selected: 32 runs listed; 10 already revised (markers in `.fabro/revisions/`), 1 non-terminal (`01M0QTMF0NZNFH72VEVZNB8XFY`, submitted), and ~20 terminal runs disqualified for `sandbox_available =",
+          "revisor_target_run_id": "01M11P68SHFS165HP9ATK6094V",
+          "revisor_target_wall": "18.7 min",
+          "human.gate.label": "[A] Approved",
           "response.select": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.select",
             "chars": 1229,
             "preview": "Run selected: 32 runs listed; 10 already revised (markers in `.fabro/revisions/`), 1 non-terminal (`01M0QTMF0NZNFH72VEVZNB8XFY`, submitted), and ~20 terminal runs disqualified for `sandbox_available ="
           },
-          "last_stage": "select",
-          "thread.file.current_node": "approve",
-          "graph.preamble_budget_kb": "24",
-          "graph.max_node_visits": "30",
-          "revisor_target_run_id": "01M11P68SHFS165HP9ATK6094V",
-          "internal.retry_count.file": 0,
-          "response.file": {
-            "chars": 889,
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.file",
-            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Staged\", \"context_updates\": {\"filed_seed_ids\": [\"fabro-6a5a\", \"fabro-e702\", \"fabro-8d2c\", \"fabro-a23f\", \"fabro-f4cd\", \"fabro-f8f8\"], \"journal\": {\"pain"
-          },
-          "last_response": "Run selected: 32 runs listed; 10 already revised (markers in `.fabro/revisions/`), 1 non-terminal (`01M0QTMF0NZNFH72VEVZNB8XFY`, submitted), and ~20 terminal runs disqualified for `sandbox_available =",
-          "internal.work_dir": "/workspace/fabro"
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.approve": 0,
+          "failure_signature": "",
+          "graph.inspects": "develop",
+          "internal.retry_count.select": 0,
+          "thread.start.current_node": "select"
         },
         "node_outcomes": {
+          "approve": {
+            "status": "succeeded",
+            "preferred_label": "[A] Approved",
+            "suggested_next_ids": [
+              "select"
+            ],
+            "context_updates": {
+              "human.gate.approve.answer": "A",
+              "human.gate.label": "[A] Approved",
+              "human.gate.selected": "A",
+              "human.gate.approve.label": "[A] Approved",
+              "human.gate.approve.question": "Approve filing + merge"
+            },
+            "usage": null
+          },
           "file": {
             "status": "succeeded",
             "preferred_label": "Staged",
@@ -15782,10 +15797,6 @@
               "active_time_ms": 52459
             }
           },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "select": {
             "status": "succeeded",
             "preferred_label": "Run selected",
@@ -15838,21 +15849,6 @@
               "tool_time_ms": 535,
               "active_time_ms": 14405
             }
-          },
-          "approve": {
-            "status": "succeeded",
-            "preferred_label": "[A] Approved",
-            "suggested_next_ids": [
-              "select"
-            ],
-            "context_updates": {
-              "human.gate.approve.answer": "A",
-              "human.gate.label": "[A] Approved",
-              "human.gate.selected": "A",
-              "human.gate.approve.label": "[A] Approved",
-              "human.gate.approve.question": "Approve filing + merge"
-            },
-            "usage": null
           },
           "analyze": {
             "status": "succeeded",
@@ -15940,21 +15936,129 @@
               "tool_time_ms": 299321,
               "active_time_ms": 425929
             }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
           }
         },
         "next_node_id": "analyze",
+        "git_commit_sha": "ad3cd51b5ecd1618ccbb57f2a0776198f8c9f15d",
         "node_visits": {
-          "analyze": 10,
+          "approve": 10,
+          "file": 10,
           "start": 1,
           "select": 11,
-          "file": 10,
-          "approve": 10
+          "analyze": 10
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1JXPAABBQ3TM3DJ2DQ1VZDW.jsonl b/.fabro/journal/01M1JXPAABBQ3TM3DJ2DQ1VZDW.jsonl\nnew file mode 100644\nindex 0000000..0940d8e\n--- /dev/null\n+++ b/.fabro/journal/01M1JXPAABBQ3TM3DJ2DQ1VZDW.jsonl\n@@ -0,0 +1 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1JXPAABBQ3TM3DJ2DQ1VZDW\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-03T06:01:25Z\",\"data\":{\"painpoints\":[],\"observations\":[\"20 terminal runs blocked, no live sandbox (sandbox_available false); they stay unrevised until fresh analyst sandboxes are provisioned. 1 run (01M0QTMF0NZNFH72VEVZNB8XFY) still non-terminal (submitted), skipped.\",\"10 runs already revised per markers in `.fabro/revisions/`; oldest unrevised with a live sandbox is `01M11P68SHFS165HP9ATK6094V`; one more (01M1EGK6J8CNP9APJ7PWE6WE74) remains in the selectable backlog.\"]}}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 1,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-03T06:01:33.121507174Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 23453,
+      "inference_time_ms": 1373853,
+      "tool_time_ms": 1549993,
+      "active_time_ms": 2923846
+    },
+    "failure": {
+      "reason": "workflow_error",
+      "detail": {
+        "message": "node \"analyze\" visited 10 times (node limit 10); run is stuck in a cycle",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "ad3cd51b5ecd1618ccbb57f2a0776198f8c9f15d",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 154176,
+          "inference_time_ms": 133073,
+          "tool_time_ms": 6913,
+          "active_time_ms": 139986
+        },
+        "billing_usd_micros": 283952,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 2334533,
+          "inference_time_ms": 799251,
+          "tool_time_ms": 1522783,
+          "active_time_ms": 2322034
+        },
+        "billing_usd_micros": 666073,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 474949,
+          "inference_time_ms": 441529,
+          "tool_time_ms": 20297,
+          "active_time_ms": 461826
+        },
+        "billing_usd_micros": 546173,
+        "retries": 0
+      },
+      {
+        "stage_id": "approve",
+        "stage_label": "approve",
+        "timing": {
+          "wall_time_ms": 5146451,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 455022,
+      "output_tokens": 63650,
+      "total_tokens": 2112794,
+      "reasoning_tokens": 39818,
+      "cache_read_tokens": 1554304,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 1496198
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1JXPAABBQ3TM3DJ2DQ1VZDW.jsonl b/.fabro/journal/01M1JXPAABBQ3TM3DJ2DQ1VZDW.jsonl\nnew file mode 100644\nindex 0000000..0940d8e\n--- /dev/null\n+++ b/.fabro/journal/01M1JXPAABBQ3TM3DJ2DQ1VZDW.jsonl\n@@ -0,0 +1 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1JXPAABBQ3TM3DJ2DQ1VZDW\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-03T06:01:25Z\",\"data\":{\"painpoints\":[],\"observations\":[\"20 terminal runs blocked, no live sandbox (sandbox_available false); they stay unrevised until fresh analyst sandboxes are provisioned. 1 run (01M0QTMF0NZNFH72VEVZNB8XFY) still non-terminal (submitted), skipped.\",\"10 runs already revised per markers in `.fabro/revisions/`; oldest unrevised with a live sandbox is `01M11P68SHFS165HP9ATK6094V`; one more (01M1EGK6J8CNP9APJ7PWE6WE74) remains in the selectable backlog.\"]}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 1,
+        "deletions": 0
+      }
+    },
+    "exit_kind": ""
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
