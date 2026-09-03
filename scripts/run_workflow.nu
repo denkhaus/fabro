@@ -57,6 +57,10 @@ def main [
     --branch (-b): string         # world/base branch; default: current
     --adopt (-a): string          # adopt an existing run id (skip create/start)
     --timeout-min (-t): int = 90  # minutes to wait for the run
+    --environment (-e): string = 'mise'  # server-managed environment (fabro-03ef:
+                                         # v0.345 intent runs drop project-level
+                                         # [run] settings; the intent environment
+                                         # override outranks the workflow.toml pin)
 ]: nothing -> nothing {
     let fabro_bin = ($env.FABRO_BIN? | default $"($env.HOME)/.fabro/bin/fabro")
     let server = ($env.FABRO_SERVER? | default $SERVER_DEFAULT)
@@ -82,9 +86,9 @@ def main [
         $adopt
     } else {
         let created = (if ($goal | is-empty) {
-            do { ^$fabro_bin create $workflow --json --server $server } | complete
+            do { ^$fabro_bin create $workflow --environment $environment --json --server $server } | complete
         } else {
-            do { ^$fabro_bin create $workflow --goal $goal --json --server $server } | complete
+            do { ^$fabro_bin create $workflow --goal $goal --environment $environment --json --server $server } | complete
         })
         ok $created 'fabro create'
         let id = ($created.stdout | from json | get -o run_id | default '')

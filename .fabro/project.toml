@@ -2,85 +2,13 @@ _version = 1
 
 # Lab branch: workflows only, no repo code, no AGENTS.md — clean conditions
 # for exercising the run -> push -> pull dev cycle.
-
-# Runner image as config: fabro builds .fabro/Dockerfile.mise on demand,
-# tags it fabro-runner-<sha12>, and rebuilds only when the file changes.
-# Toolchain is baked in (fabro-meta-a7c3): per-run mise install becomes
-# a no-op version check instead of ~24.5s setup.
-[run.environment]
-id = "mise"
-
-[environments.mise]
-provider = "docker"
-
-[environments.mise.image]
-dockerfile = { path = "Dockerfile.mise" }
-
-[environments.mise.resources]
-cpu = 8
-memory = "16GB"
-
-[environments.mise.network]
-mode = "allow_all"
-
-[environments.mise.lifecycle]
-stop_on_terminal = true
-
-# Bootstrap workspace tooling BEFORE any stage runs: mise reads .mise.toml,
-# bun -g installs the npm CLIs into BUN_INSTALL (already on the image PATH).
-[run.prepare]
-timeout = "5m"
-
-[[run.prepare.steps]]
-script = "mise install"
-
-# Tooling beyond mise (npm CLIs via bun, toolchain checks) lives in
-# scripts/bootstrap.nu — no inline shell in config files.
-[[run.prepare.steps]]
-script = "just bootstrap"
-
-# Default model for all project runs.
-[run.model]
-provider = "zai"
-name = "glm-5.3"
-
-# Dev-cycle test: push checkpoint branches to the fork.
-[run.run_branch]
-push = true
-
-[run.meta_branch]
-push = true
-
-# Autonomous merge-back (run -> PR -> base branch): every successful run
-# with a non-empty diff opens a PR against the base branch; auto-merge
-# lands it once required checks pass. Without this, hourly automations
-# would re-implement the same seed every run (observed: three parallel
-# -pretty implementations on orphaned run branches).
-# Requires the GitHub App integration (github credentials) for PR creation.
-[run.pull_request]
-enabled = true
-draft = false
-auto_merge = true
-merge_strategy = "squash"
-# glm-4.7: non-reasoning (catalog features.reasoning = false) — cheap, clean
-# JSON for PR titling; no reasoning_effort needed (and "off" is not a valid
-# value: the enum is low|medium|high|xhigh|max).
-model = "zai:glm-4.7"
-
-[run.integrations.github.permissions]
-contents = "write"
-pull_requests = "write"
-
-# Terminal-failure visibility (run 01M0T9B7T6 review, rec 5): the 403
-# publish failure was silent (notifications: {}). One Slack route for
-# terminal lifecycle events is enough to notice credential rot.
-# Channel fix (fabro-1ddb phase 1, 2026-08-27): #fabro-reviews never
-# existed in the workspace — every notification failed with
-# channel_not_found. #dev-fabro exists (user).
-[run.notifications.terminal]
-enabled = true
-provider = "slack"
-events = ["run.completed", "run.failed"]
-
-[run.notifications.terminal.slack]
-channel = "#dev-fabro"
+#
+# Run behavior (model, prepare, branch pushes, pull requests, integrations,
+# notifications) lives in each workflow's own workflow.toml since upstream
+# v0.345 (fabro-03ef): `fabro run`/`fabro create` build runs from immutable
+# workflow intents and no longer transmit project-level [run]/[environments]
+# settings — keeping them here only produces the untransmitted-settings
+# warning. Placement is server-managed: environment `mise`
+# (image fabro-runner:mise, 8 CPU/16 GB). The image source stays
+# .fabro/Dockerfile.mise; image updates go through the server environment
+# (dockerfile inline), not this file.
