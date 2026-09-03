@@ -144,3 +144,24 @@ Upstream directions that may supersede our work — re-evaluate per merge:
   Merge with `--no-commit`, finish fixes + message, then commit and push
   once. If raced anyway: `--force-with-lease` over the default-message
   merge is safe when nothing built on it (check origin/denkhaus parents).
+
+## 2026-09-03 (v0.345.0-nightly.0, merge 6530c724f)
+
+- Run-read touchpoint RENAMED again: any fork read path builds on
+  `AppState::load_run_projection` / `Database::load_run_projection` (on-demand:
+  active snapshot OR SQLite replay; PR #835). `cached_run_projection` and
+  `get_cached_projection` no longer exist.
+- CLI runs are now intent-created from immutable workflow versions (PR #831):
+  project/CLI-machine `[run]`+`[environments]` settings are NO LONGER
+  transmitted by `fabro run`/`fabro create`. Workflow behavior (incl.
+  `[run.pull_request]`, environment pinning) must live in workflow.toml or
+  server-managed environments. Watch: manual `fabro run` of workflows relying
+  on `.fabro/project.toml` defaults (implement-issue uses project toolchain env).
+- fabro-b440 crash-loop half FIXED upstream (PR #838 pre-start failure
+  persistence); seed updated with merge note — resume-mode UX still open.
+- fabro-696c: upstream PR #837 now rejects auto-PRs for Local environments at
+  admission (`pull_request_environment_unsupported`) — complements, not
+  supersedes (Docker runs still need PR-capable credentials).
+- Automations: scheduler run creation rides `create_run_from_intent`, so the
+  Local+auto-PR rejection applies to automations uniformly; our Docker
+  environments unaffected.

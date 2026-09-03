@@ -126,3 +126,23 @@ upstream's new signatures; never revert upstream, never drop our features.
 - (false-alarm class, recurrence): nextest --no-run can warn unused import
   (`tokio_stream::StreamExt as _` in server/tests.rs) that clippy
   --all-targets -D warnings does NOT flag; upstream pre-existing, don't chase.
+
+## 2026-09-03 (v0.345.0-nightly.0, merge 6530c724f)
+
+- Doc-comment stranding (new class): our insertion of `active_run_for_automation`
+  had stranded the OLD doc comment of `list_pull_request_creation_candidate_run_ids`
+  above our new fn; upstream rewrote that comment + body (064074233). Resolution:
+  keep our fn with its own comment, take upstream's new comment, drop the stranded
+  lines. Verify the auto-merged body below the markers equals `git show
+  upstream/main` before editing (hash the slices).
+- Enum-predicate extension (new class): upstream added an exhaustive match over
+  an enum OUR fork extended (FailureReason::can_occur_before_start vs our
+  Deadlock/SoftStop, fabro-b907). Resolution: add our variants to the new
+  predicate with semantics from OUR taxonomy docs (both mid-execution -> false).
+- API-removal class, second rename in a row: `AppState::cached_run_projection`
+  and `Database::get_cached_projection` -> `load_run_projection` (both levels,
+  PR #835 lazy projections; AppState helper owns Option-unwrap + 404). Handler
+  call sites and tests adapt.
+- (false-alarm recurrence, see 2026-09-02): the tokio_stream unused-import
+  warning reappeared on stable nextest --no-run; nightly clippy gate stayed
+  clean — confirmed pre-existing upstream, not chased.
