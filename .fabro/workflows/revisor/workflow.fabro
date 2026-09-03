@@ -33,9 +33,12 @@ digraph Revisor {
         prompt="@prompts/select.md",
         output_schema="routing",
         output_retries=2,
-        max_visits=15,
         retry_policy="standard",
         reasoning_effort="low",
+        // 2026-09-03 grilling: per-node cap removed — graph max_node_visits=30
+        // bounds every node; node caps only bind earlier and killed the fork at
+        // cycle 11 (fabro-8fb5). AGENTS.md is product-world noise here.
+        project_memory=false,
         preamble_stages_ignore="select,analyze,file",
         fs_hide="src/**,docs/**,.seeds/**",
         fs_write="",
@@ -61,9 +64,11 @@ digraph Revisor {
         prompt="@prompts/analyze.md",
         output_schema="routing",
         output_retries=2,
-        max_visits=10,
         retry_policy="standard",
         reasoning_effort="high",
+        // 2026-09-03 grilling: cap removed (see select), AGENTS.md hidden —
+        // the analyst prompt is self-contained.
+        project_memory=false,
         preamble_stages_ignore="select,analyze,file",
         fs_hide="src/**,docs/**,.seeds/**",
         fs_write=".fabro/reviews/**",
@@ -89,9 +94,11 @@ digraph Revisor {
         prompt="@prompts/file.md",
         output_schema="routing",
         output_retries=2,
-        max_visits=10,
         retry_policy="standard",
         reasoning_effort="low",
+        // 2026-09-03 grilling: cap removed (see select), AGENTS.md hidden —
+        // bookkeeping needs no repo memory.
+        project_memory=false,
         preamble_stages_ignore="select,analyze,file",
         // .seeds hidden from FILE tools too: sd create/list and the git
         // commit run via shell (the documented escape hatch), so the
