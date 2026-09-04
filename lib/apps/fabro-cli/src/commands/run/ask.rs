@@ -1,3 +1,6 @@
+// The `ask` renderer streams deltas to the terminal as they arrive;
+// deliberate sync I/O, not a Tokio path.
+#[expect(clippy::disallowed_types, reason = "intentional sync stdout streaming")]
 use std::io::Write;
 
 use anyhow::{Result, bail};
@@ -24,6 +27,8 @@ pub(crate) async fn run(args: AskArgs, base_ctx: &CommandContext) -> Result<()> 
 
     let mut terminal_error = None;
     let mut saw_terminal = false;
+    // Deliberate blocking stdout: deltas are printed as they stream in.
+    #[expect(clippy::disallowed_methods, reason = "intentional sync stdout streaming")]
     let stdout = std::io::stdout();
     let mut renderer = TextStreamRenderer::new(stdout.lock());
     while let Some(event) = stream.next_event().await? {
@@ -73,11 +78,13 @@ fn session_title(prompt: &str) -> String {
 /// In text mode, streamed assistant deltas own the answer output: once any
 /// delta has been rendered, the final `assistant_message` only terminates the
 /// line instead of printing the full text again.
+#[expect(clippy::disallowed_types, reason = "intentional sync stdout streaming")]
 struct TextStreamRenderer<W: Write> {
     out:       W,
     saw_delta: bool,
 }
 
+#[expect(clippy::disallowed_types, reason = "intentional sync stdout streaming")]
 impl<W: Write> TextStreamRenderer<W> {
     fn new(out: W) -> Self {
         Self {
@@ -115,6 +122,7 @@ impl<W: Write> TextStreamRenderer<W> {
     }
 }
 
+#[expect(clippy::disallowed_types, reason = "intentional sync stdout streaming")]
 fn render_event<W: Write>(
     event: &EventEnvelope,
     json_output: bool,
