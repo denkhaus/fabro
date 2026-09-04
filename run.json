@@ -668,7 +668,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-04T06:34:48.189639159Z",
-  "last_event_at": "2026-09-04T06:48:25.044881641Z",
+  "last_event_at": "2026-09-04T06:48:38.009145867Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1709,9 +1709,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 271,
       "checkpoint": {
-        "timestamp": "2026-09-04T06:48:25.235369946Z",
+        "timestamp": "2026-09-04T06:48:29.694378715Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -1724,15 +1724,245 @@
         ],
         "node_retries": {},
         "context_values": {
+          "command.output": "blob://sha256/0785c1d762ed2b84351bdd0347de5dd7b8a8aedc33e8503d371fd83621dadad3",
+          "graph.goal": "Implement product seed fabro-f677: engine preamble context table breaks markdown with multi-line values",
+          "internal.run_id": "01M1NHZVTXRC1AVW28D3FG0XYP",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.planner.current_node": "implementer",
+          "thread.implementer.current_node": "tester",
+          "outcome": "succeeded",
+          "last_stage": "implementer",
+          "failure_signature": "",
+          "graph.rankdir": "LR",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3558,
+            "preview": "All seed work is already complete in the worktree (prior implementer pass, commit 2f0b6c80); the tester failure was a bug in the qualitygate script, not the code. I verified:\n\n- `format_value_table_ce"
+          },
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 3,
+            "tester": 2
+          },
+          "internal.node_visit_count": 3,
+          "thread.start.current_node": "planner",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "scripts/qualitygate.nu builds the touched-crates list without trimming: `cargo clippy fabro-workflow -D warnings` receives package name ` fabro-workflow` with a leading space and cargo rejects it (runs 01M1NHZVTXRC1AVW28D3FG0XYP tester failed twice on this, exit code 1, while the code itself passes all tests). The nu code that assembles the clippy package argument likely does something like `[$\" ($crate)\"]` or splits on a delimiter leaving whitespace; fix by `str trim`-ing each crate name before interpolation. This is blocking the tester stage from ever going green on a touching-single-crate change."
+              }
+            ],
+            "observations": [
+              "The seed implementation landed in the prior implementer commit (2f0b6c80) and passes; both tester failures in this run were purely the qualitygate script bug, so any further implementer passes on this seed should verify-only unless the reviewer requests changes."
+            ]
+          },
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "current_seed_title": "engine: preamble context table breaks markdown with multi-line values",
+          "current_seed_brief": "Bug: in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`, `append_filtered_context_table` (~line 344, the `## Current context` table emitted at summary:high fidelity) renders non-large context values via `format_value`, which returns raw strings; a multi-line value (e.g. a bulleted `current_seed_brief`) embeds newlines inside a `| Key | Value |` row and shatters the table so later rows like `current_seed_id`/`current_seed_title` visually detach (user report 2026-09-03, run 01M1MMK5C6B313SY70Y2EPKE82). The seed offers three fix directions; chosen reading: direction 1 (render cells single-line) because it is the smallest change satisfying every acceptance criterion and mirrors the single-lining already done by `format_large_value_table_cell`. Acceptance criteria:\n- every context value renders as exactly one single-line table row: newlines collapse to a visible single-line separator (e.g. slash-joined lines); no raw newline character appears inside any `| ... |` row\n- plain (non-large) table cells escape `|` as `\\|`, matching the existing large-value cell path — a raw pipe breaks a row the same way a newline does, so this is required for criterion 1's \"valid single table row in every markdown viewer\"\n- fix scoped to the table-cell renderer only: `format_value` stays unchanged because the bullet-list path (`append_filtered_context`, compact/medium fidelity) legally keeps multi-line values\n- with a multi-line `current_seed_brief` in context, `current_seed_id` and `current_seed_title` still render as intact readable rows adjacent to it (keys sort adjacently)\n- no information loss: only prompt rendering changes; context values are unmodified and `context_read` still serves the full multi-line value\n- unit tests in the `preamble.rs` test module: a new test sets a multi-line value plus `current_seed_id` and asserts exactly one table row per key (count lines starting with `| ` in the `## Current context` section) with no newline inside a row; existing `summary_high_context_as_table` and `summary_high_table_compacts_large_value_preview` keep passing\n- verify with `cargo nextest run -p fabro-workflow` and `cargo +nightly-2026-04-14 clippy -p fabro-workflow --all-targets -- -D warnings`",
+          "internal.retry_count.implementer": 0,
+          "internal.thread_id": "tester",
+          "preferred_label": "Implemented",
+          "internal.fidelity": "summary:high",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3777,
+            "preview": "Seed `fabro-f677` claimed. I inspected the code: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` renders non-large values via `format_value`, which retur"
+          },
+          "graph.max_node_visits": "40",
+          "graph.preamble_budget_kb": "24",
+          "internal.seed_cycle_anchor": "fabro-f677",
+          "failure_class": "",
+          "internal.retry_count.planner": 0,
+          "current_seed_id": "fabro-f677",
+          "current_node": "implementer",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.tester": 0,
+          "last_response": "All seed work is already complete in the worktree (prior implementer pass, commit 2f0b6c80); the tester failure was a bug in the qualitygate script, not the code. I verified:\n\n- `format_value_table_ce",
+          "implementation_summary": "No code changes this pass: the seed was already fully implemented in commit 2f0b6c80 (`lib/components/fabro-workflow/src/handler/llm/preamble.rs` — `format_value_table_cell` single-lines and pipe-escapes non-large table cells, plus test `summary_high_table_single_lines_multi_line_values`); the two tester failures were caused by a `scripts/qualitygate.nu` bug passing ` fabro-workflow` (leading space) to cargo clippy, reported via journal. Verified with `cargo nextest run -p fabro-workflow preamble` (86 passed) and `-p fabro-workflow summary_high` (19 passed). Lesson capture: nothing durable — skipped. Per-criterion: PASS single-line rows with newline collapse — preamble.rs `format_value_table_cell` + `summary_high_table_single_lines_multi_line_values`; PASS pipe escaping in plain cells — `format_value_table_cell` `.replace('|', \"\\\\|\")` matching `format_large_value_table_cell`; PASS fix scoped to table-cell renderer, `format_value` unchanged; PASS id/title render intact adjacent rows — test asserts exact 4-row vector in sorted order; PASS no information loss — only rendering changed, `context_read` untouched; PASS new unit test plus existing `summary_high_context_as_table` and `summary_high_table_compacts_large_value_preview` all passing; PASS verified via focused nextest runs (full gate intentionally left to the tester stage).",
+          "thread.tester.current_node": "implementer",
+          "lesson_capture": "nothing durable — skipped"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "failed",
+            "context_updates": {
+              "command.output": "blob://sha256/0785c1d762ed2b84351bdd0347de5dd7b8a8aedc33e8503d371fd83621dadad3"
+            },
+            "failure": {
+              "message": "Script failed with exit code: 1\n\n## output\nnu scripts/qualitygate.nu\ntouched crates: fabro-workflow\n== cargo fmt --check --all ==\nformat clean\n== cargo clippy fabro-workflow -D warnings ==\n╭────────────╮\n│ empty list │\n╰────────────╯\nerror: invalid character ` ` in package name: ` fabro-workflow`, the first character must be a Unicode XID start character (most letters or `_`)\nGATE RED\nerror: recipe `qualitygate` failed on line 128 with exit code 1\n",
+              "category": "deterministic"
+            },
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 4834,
+              "active_time_ms": 4834
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-f677 is Low priority among 42 ready seeds but was claimed because the goal names it explicitly; nothing else in progress for this effort.",
+                  "Seed description lists three alternative fix directions without picking one; brief resolves this to direction 1 (single-line table cells) and adds pipe-escaping for plain cells, which the spec's 'valid single table row' criterion implies but never states.",
+                  "Pitfall flagged in brief: `format_value` is shared by the table path and the bullet-list path (`append_filtered_context`); a global fix there would regress the bullet-list rendering where newlines are legal markdown."
+                ]
+              },
+              "current_seed_title": "engine: preamble context table breaks markdown with multi-line values",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3777,
+                "preview": "Seed `fabro-f677` claimed. I inspected the code: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` renders non-large values via `format_value`, which retur"
+              },
+              "current_seed_id": "fabro-f677",
+              "current_seed_brief": "Bug: in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`, `append_filtered_context_table` (~line 344, the `## Current context` table emitted at summary:high fidelity) renders non-large context values via `format_value`, which returns raw strings; a multi-line value (e.g. a bulleted `current_seed_brief`) embeds newlines inside a `| Key | Value |` row and shatters the table so later rows like `current_seed_id`/`current_seed_title` visually detach (user report 2026-09-03, run 01M1MMK5C6B313SY70Y2EPKE82). The seed offers three fix directions; chosen reading: direction 1 (render cells single-line) because it is the smallest change satisfying every acceptance criterion and mirrors the single-lining already done by `format_large_value_table_cell`. Acceptance criteria:\n- every context value renders as exactly one single-line table row: newlines collapse to a visible single-line separator (e.g. slash-joined lines); no raw newline character appears inside any `| ... |` row\n- plain (non-large) table cells escape `|` as `\\|`, matching the existing large-value cell path — a raw pipe breaks a row the same way a newline does, so this is required for criterion 1's \"valid single table row in every markdown viewer\"\n- fix scoped to the table-cell renderer only: `format_value` stays unchanged because the bullet-list path (`append_filtered_context`, compact/medium fidelity) legally keeps multi-line values\n- with a multi-line `current_seed_brief` in context, `current_seed_id` and `current_seed_title` still render as intact readable rows adjacent to it (keys sort adjacently)\n- no information loss: only prompt rendering changes; context values are unmodified and `context_read` still serves the full multi-line value\n- unit tests in the `preamble.rs` test module: a new test sets a multi-line value plus `current_seed_id` and asserts exactly one table row per key (count lines starting with `| ` in the `## Current context` section) with no newline inside a row; existing `summary_high_context_as_table` and `summary_high_table_compacts_large_value_preview` keep passing\n- verify with `cargo nextest run -p fabro-workflow` and `cargo +nightly-2026-04-14 clippy -p fabro-workflow --all-targets -- -D warnings`",
+              "last_response": "Seed `fabro-f677` claimed. I inspected the code: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` renders non-large values via `format_value`, which retur",
+              "last_stage": "planner"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 18832,
+                    "output_tokens": 1314,
+                    "reasoning_tokens": 3273,
+                    "cache_read_tokens": 100544,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 72679
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 103436,
+              "tool_time_ms": 1117,
+              "active_time_ms": 104553
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_stage": "implementer",
+              "implementation_summary": "No code changes this pass: the seed was already fully implemented in commit 2f0b6c80 (`lib/components/fabro-workflow/src/handler/llm/preamble.rs` — `format_value_table_cell` single-lines and pipe-escapes non-large table cells, plus test `summary_high_table_single_lines_multi_line_values`); the two tester failures were caused by a `scripts/qualitygate.nu` bug passing ` fabro-workflow` (leading space) to cargo clippy, reported via journal. Verified with `cargo nextest run -p fabro-workflow preamble` (86 passed) and `-p fabro-workflow summary_high` (19 passed). Lesson capture: nothing durable — skipped. Per-criterion: PASS single-line rows with newline collapse — preamble.rs `format_value_table_cell` + `summary_high_table_single_lines_multi_line_values`; PASS pipe escaping in plain cells — `format_value_table_cell` `.replace('|', \"\\\\|\")` matching `format_large_value_table_cell`; PASS fix scoped to table-cell renderer, `format_value` unchanged; PASS id/title render intact adjacent rows — test asserts exact 4-row vector in sorted order; PASS no information loss — only rendering changed, `context_read` untouched; PASS new unit test plus existing `summary_high_context_as_table` and `summary_high_table_compacts_large_value_preview` all passing; PASS verified via focused nextest runs (full gate intentionally left to the tester stage).",
+              "last_response": "All seed work is already complete in the worktree (prior implementer pass, commit 2f0b6c80); the tester failure was a bug in the qualitygate script, not the code. I verified:\n\n- `format_value_table_ce",
+              "lesson_capture": "nothing durable — skipped",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "scripts/qualitygate.nu builds the touched-crates list without trimming: `cargo clippy fabro-workflow -D warnings` receives package name ` fabro-workflow` with a leading space and cargo rejects it (runs 01M1NHZVTXRC1AVW28D3FG0XYP tester failed twice on this, exit code 1, while the code itself passes all tests). The nu code that assembles the clippy package argument likely does something like `[$\" ($crate)\"]` or splits on a delimiter leaving whitespace; fix by `str trim`-ing each crate name before interpolation. This is blocking the tester stage from ever going green on a touching-single-crate change."
+                  }
+                ],
+                "observations": [
+                  "The seed implementation landed in the prior implementer commit (2f0b6c80) and passes; both tester failures in this run were purely the qualitygate script bug, so any further implementer passes on this seed should verify-only unless the reviewer requests changes."
+                ]
+              },
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3558,
+                "preview": "All seed work is already complete in the worktree (prior implementer pass, commit 2f0b6c80); the tester failure was a bug in the qualitygate script, not the code. I verified:\n\n- `format_value_table_ce"
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16638,
+                    "output_tokens": 1192,
+                    "reasoning_tokens": 300,
+                    "cache_read_tokens": 98880,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 55557
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 79419,
+              "tool_time_ms": 4213,
+              "active_time_ms": 83632
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "7839b8ff7b49988b09802fb3deec70dc5fd008a4",
+        "loop_failure_signatures": {
+          "tester|deterministic|script failed with exit code: <n> ## output nu scripts/qualitygate.nu touched crates: fabro-workflow == cargo fmt --check --all == diff in /repos/denkhaus/fabro/lib/components/fabro-workflow/src/handler/llm/preamble.rs:<n>: parts.push(\"|---": 1,
+          "tester|deterministic|script failed with exit code: <n> ## output nu scripts/qualitygate.nu touched crates: fabro-workflow == cargo fmt --check --all == format clean == cargo clippy fabro-workflow -d warnings == ╭────────────╮ │ emp": 1
+        },
+        "node_visits": {
+          "implementer": 3,
+          "start": 1,
+          "tester": 2,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl b/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl\nindex 4e4000eb..74ea3e58 100644\n--- a/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl\n+++ b/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl\n@@ -2,3 +2,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NHZVTXRC1AVW28D3FG0XYP\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T06:36:45Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-f677 is Low priority among 42 ready seeds but was claimed because the goal names it explicitly; nothing else in progress for this effort.\",\"Seed description lists three alternative fix directions without picking one; brief resolves this to direction 1 (single-line table cells) and adds pipe-escaping for plain cells, which the spec's 'valid single table row' criterion implies but never states.\",\"Pitfall flagged in brief: `format_value` is shared by the table path and the bullet-list path (`append_filtered_context`); a global fix there would regress the bullet-list rendering where newlines are legal markdown.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NHZVTXRC1AVW28D3FG0XYP\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T06:45:27Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The large-value table-cell path already single-lined and pipe-escaped (`format_large_value_table_cell`, preamble.rs ~133), so the fix mirrored it for plain values; any future table-cell additions should reuse these helpers rather than raw format_value.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NHZVTXRC1AVW28D3FG0XYP\",\"node\":\"implementer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-04T06:46:37Z\",\"data\":{\"painpoints\":[{\"text\":\"Run 01M1NHZVTXRC1AVW28D3FG0XYP: the tester failed the tree on a pure rustfmt wrapping diff (preamble.rs:372), i.e. the implementer wrote correct code but a formatting nit cost a full gate cycle. Suggestion: have the implementer stage run `cargo +nightly-2026-04-14 fmt -- <touched files>` (seconds, not the full gate) before finishing, or make the tester auto-apply fmt for whitespace-only diffs; this is the cheapest possible way to save a whole pipeline retry.\"}],\"observations\":[\"The prior implementer's fix and tests were complete and correct; only line wrapping was red — worth remembering that a failed tester output can be a one-line format fix rather than a logic problem.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NHZVTXRC1AVW28D3FG0XYP\",\"node\":\"implementer\",\"visit\":3,\"status\":\"succeeded\",\"ts\":\"2026-09-04T06:48:25Z\",\"data\":{\"painpoints\":[{\"text\":\"scripts/qualitygate.nu builds the touched-crates list without trimming: `cargo clippy fabro-workflow -D warnings` receives package name ` fabro-workflow` with a leading space and cargo rejects it (runs 01M1NHZVTXRC1AVW28D3FG0XYP tester failed twice on this, exit code 1, while the code itself passes all tests). The nu code that assembles the clippy package argument likely does something like `[$\\\" ($crate)\\\"]` or splits on a delimiter leaving whitespace; fix by `str trim`-ing each crate name before interpolation. This is blocking the tester stage from ever going green on a touching-single-crate change.\"}],\"observations\":[\"The seed implementation landed in the prior implementer commit (2f0b6c80) and passes; both tester failures in this run were purely the qualitygate script bug, so any further implementer passes on this seed should verify-only unless the reviewer requests changes.\"]}}\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 53,
+          "deletions": 3
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-04T06:48:38.021779285Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "implementer",
+          "tester",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
           "current_seed_brief": "Bug: in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`, `append_filtered_context_table` (~line 344, the `## Current context` table emitted at summary:high fidelity) renders non-large context values via `format_value`, which returns raw strings; a multi-line value (e.g. a bulleted `current_seed_brief`) embeds newlines inside a `| Key | Value |` row and shatters the table so later rows like `current_seed_id`/`current_seed_title` visually detach (user report 2026-09-03, run 01M1MMK5C6B313SY70Y2EPKE82). The seed offers three fix directions; chosen reading: direction 1 (render cells single-line) because it is the smallest change satisfying every acceptance criterion and mirrors the single-lining already done by `format_large_value_table_cell`. Acceptance criteria:\n- every context value renders as exactly one single-line table row: newlines collapse to a visible single-line separator (e.g. slash-joined lines); no raw newline character appears inside any `| ... |` row\n- plain (non-large) table cells escape `|` as `\\|`, matching the existing large-value cell path — a raw pipe breaks a row the same way a newline does, so this is required for criterion 1's \"valid single table row in every markdown viewer\"\n- fix scoped to the table-cell renderer only: `format_value` stays unchanged because the bullet-list path (`append_filtered_context`, compact/medium fidelity) legally keeps multi-line values\n- with a multi-line `current_seed_brief` in context, `current_seed_id` and `current_seed_title` still render as intact readable rows adjacent to it (keys sort adjacently)\n- no information loss: only prompt rendering changes; context values are unmodified and `context_read` still serves the full multi-line value\n- unit tests in the `preamble.rs` test module: a new test sets a multi-line value plus `current_seed_id` and asserts exactly one table row per key (count lines starting with `| ` in the `## Current context` section) with no newline inside a row; existing `summary_high_context_as_table` and `summary_high_table_compacts_large_value_preview` keep passing\n- verify with `cargo nextest run -p fabro-workflow` and `cargo +nightly-2026-04-14 clippy -p fabro-workflow --all-targets -- -D warnings`",
           "internal.work_dir": "/workspace/fabro",
           "internal.seed_cycle_anchor": "fabro-f677",
-          "internal.fidelity": "summary:high",
+          "internal.fidelity": "compact",
           "last_stage": "implementer",
           "internal.retry_count.implementer": 0,
           "lesson_capture": "nothing durable — skipped",
-          "current_node": "implementer",
+          "current_node": "tester",
           "thread.start.current_node": "planner",
+          "internal.exit_kind": "deadlock",
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.implementer",
@@ -1740,7 +1970,7 @@
             "preview": "All seed work is already complete in the worktree (prior implementer pass, commit 2f0b6c80); the tester failure was a bug in the qualitygate script, not the code. I verified:\n\n- `format_value_table_ce"
           },
           "graph.preamble_budget_kb": "24",
-          "failure_class": "",
+          "failure_class": "deterministic",
           "current_seed_title": "engine: preamble context table breaks markdown with multi-line values",
           "last_response": "All seed work is already complete in the worktree (prior implementer pass, commit 2f0b6c80); the tester failure was a bug in the qualitygate script, not the code. I verified:\n\n- `format_value_table_ce",
           "graph.max_node_visits": "40",
@@ -1762,17 +1992,17 @@
           "graph.goal": "Implement product seed fabro-f677: engine preamble context table breaks markdown with multi-line values",
           "command.output": "blob://sha256/0785c1d762ed2b84351bdd0347de5dd7b8a8aedc33e8503d371fd83621dadad3",
           "thread.tester.current_node": "implementer",
-          "failure_signature": "",
+          "failure_signature": "tester|deterministic|script failed with exit code: <n> ## output nu scripts/qualitygate.nu touched crates: fabro-workflow == cargo fmt --check --all == format clean == cargo clippy fabro-workflow -d warnings == ╭────────────╮ │ emp",
           "seed_cycles": {
             "planner": 1,
             "implementer": 3,
-            "tester": 2
+            "tester": 3
           },
           "implementation_summary": "No code changes this pass: the seed was already fully implemented in commit 2f0b6c80 (`lib/components/fabro-workflow/src/handler/llm/preamble.rs` — `format_value_table_cell` single-lines and pipe-escapes non-large table cells, plus test `summary_high_table_single_lines_multi_line_values`); the two tester failures were caused by a `scripts/qualitygate.nu` bug passing ` fabro-workflow` (leading space) to cargo clippy, reported via journal. Verified with `cargo nextest run -p fabro-workflow preamble` (86 passed) and `-p fabro-workflow summary_high` (19 passed). Lesson capture: nothing durable — skipped. Per-criterion: PASS single-line rows with newline collapse — preamble.rs `format_value_table_cell` + `summary_high_table_single_lines_multi_line_values`; PASS pipe escaping in plain cells — `format_value_table_cell` `.replace('|', \"\\\\|\")` matching `format_large_value_table_cell`; PASS fix scoped to table-cell renderer, `format_value` unchanged; PASS id/title render intact adjacent rows — test asserts exact 4-row vector in sorted order; PASS no information loss — only rendering changed, `context_read` untouched; PASS new unit test plus existing `summary_high_context_as_table` and `summary_high_table_compacts_large_value_preview` all passing; PASS verified via focused nextest runs (full gate intentionally left to the tester stage).",
           "graph.rankdir": "LR",
-          "internal.thread_id": "tester",
+          "internal.thread_id": "implementer",
           "internal.node_visit_count": 3,
-          "outcome": "succeeded",
+          "outcome": "failed",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
@@ -1909,16 +2139,16 @@
             "timing": {
               "wall_time_ms": 0,
               "inference_time_ms": 0,
-              "tool_time_ms": 4834,
-              "active_time_ms": 4834
+              "tool_time_ms": 4954,
+              "active_time_ms": 4954
             }
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "exit",
         "node_visits": {
           "start": 1,
           "planner": 1,
-          "tester": 2,
+          "tester": 3,
           "implementer": 3
         }
       },
@@ -1952,6 +2182,347 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "tester@3": {
+      "first_event_seq": 274,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/0785c1d762ed2b84351bdd0347de5dd7b8a8aedc33e8503d371fd83621dadad3",
+        "exit_code": 1,
+        "duration_ms": 4954,
+        "termination": "exited",
+        "output_bytes": 469,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 469,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-04T06:48:29.713669764Z",
+      "handler": "command",
+      "graph_visit": 3,
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "running"
+    },
+    "implementer@3": {
+      "first_event_seq": 216,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-09-04T06:48:25.044881641Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-04T06:46:54.240680116Z",
+      "handler": "agent",
+      "graph_visit": 3,
+      "timing": {
+        "wall_time_ms": 84122,
+        "inference_time_ms": 79419,
+        "tool_time_ms": 4213,
+        "active_time_ms": 83632
+      },
+      "usage": {
+        "input_tokens": 16638,
+        "output_tokens": 1192,
+        "total_tokens": 117010,
+        "reasoning_tokens": 300,
+        "cache_read_tokens": 98880,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 55557
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 16752,
+        "usage_percent": 1.59759521484375,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-04T06:48:25.028346802Z",
+        "event_seq": 264,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1133,
+            "usage_percent": 0.10805130004882812
+          },
+          {
+            "category": "tools",
+            "tokens": 1617,
+            "usage_percent": 0.15420913696289062
+          },
+          {
+            "category": "memory",
+            "tokens": 5559,
+            "usage_percent": 0.5301475524902344
+          },
+          {
+            "category": "conversation",
+            "tokens": 8436,
+            "usage_percent": 0.8045196533203125
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@1": {
+      "first_event_seq": 153,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "failed",
+        "notes": null,
+        "failure_reason": "Script failed with exit code: 1\n\n## output\nnu scripts/qualitygate.nu\ntouched crates: fabro-workflow\n== cargo fmt --check --all ==\nDiff in /repos/denkhaus/fabro/lib/components/fabro-workflow/src/handler/llm/preamble.rs:369:\n         parts.push(\"|-----|-------|\".to_string());\n         for key in context_keys {\n             if let Some(val) = snapshot.get(key) {\n-                let rendered = artifact::prompt_large_value(val)\n-                    .map_or_else(|| format_value_table_cell(val), format_large_value_table_cell);\n+                let rendered = artifact::prompt_large_value(val).map_or_else(\n+                    || format_value_table_cell(val),\n+                    format_large_value_table_cell,\n+                );\n                 parts.push(format!(\"| {key} | {rendered} |\"));\n             }\n         }\n\nGATE RED\nerror: recipe `qualitygate` failed on line 128 with exit code 1\n",
+        "timestamp": "2026-09-04T06:45:36.396581546Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/c8032c0d3c89e2684959d9c849995467da539387f1236621ba73ced5ace71234",
+        "exit_code": 1,
+        "duration_ms": 4732,
+        "termination": "exited",
+        "output_bytes": 853,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 853,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-04T06:45:31.648122807Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 4737,
+        "inference_time_ms": 0,
+        "tool_time_ms": 4732,
+        "active_time_ms": 4732
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "failed"
+    },
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-04T06:34:50.510231471Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-04T06:34:50.497720613Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "planner@1": {
       "first_event_seq": 21,
       "prompt": null,
@@ -2217,220 +2788,6 @@
       "agent_control": "running",
       "state": "failed"
     },
-    "implementer@3": {
-      "first_event_seq": 216,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Stage completed: implementer",
-        "failure_reason": null,
-        "timestamp": "2026-09-04T06:48:25.044881641Z"
-      },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "low"
-      },
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-04T06:46:54.240680116Z",
-      "handler": "agent",
-      "graph_visit": 3,
-      "timing": {
-        "wall_time_ms": 84122,
-        "inference_time_ms": 79419,
-        "tool_time_ms": 4213,
-        "active_time_ms": 83632
-      },
-      "usage": {
-        "input_tokens": 16638,
-        "output_tokens": 1192,
-        "total_tokens": 117010,
-        "reasoning_tokens": 300,
-        "cache_read_tokens": 98880,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 55557
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": true
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": true
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": true
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 16752,
-        "usage_percent": 1.59759521484375,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-04T06:48:25.028346802Z",
-        "event_seq": 264,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1133,
-            "usage_percent": 0.10805130004882812
-          },
-          {
-            "category": "tools",
-            "tokens": 1617,
-            "usage_percent": 0.15420913696289062
-          },
-          {
-            "category": "memory",
-            "tokens": 5559,
-            "usage_percent": 0.5301475524902344
-          },
-          {
-            "category": "conversation",
-            "tokens": 8436,
-            "usage_percent": 0.8045196533203125
-          },
-          {
-            "category": "other",
-            "tokens": 7,
-            "usage_percent": 0.000667572021484375
-          }
-        ],
-        "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "implementer@1": {
       "first_event_seq": 86,
       "prompt": null,
@@ -2641,93 +2998,6 @@
           }
         ],
         "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "tester@1": {
-      "first_event_seq": 153,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "failed",
-        "notes": null,
-        "failure_reason": "Script failed with exit code: 1\n\n## output\nnu scripts/qualitygate.nu\ntouched crates: fabro-workflow\n== cargo fmt --check --all ==\nDiff in /repos/denkhaus/fabro/lib/components/fabro-workflow/src/handler/llm/preamble.rs:369:\n         parts.push(\"|-----|-------|\".to_string());\n         for key in context_keys {\n             if let Some(val) = snapshot.get(key) {\n-                let rendered = artifact::prompt_large_value(val)\n-                    .map_or_else(|| format_value_table_cell(val), format_large_value_table_cell);\n+                let rendered = artifact::prompt_large_value(val).map_or_else(\n+                    || format_value_table_cell(val),\n+                    format_large_value_table_cell,\n+                );\n                 parts.push(format!(\"| {key} | {rendered} |\"));\n             }\n         }\n\nGATE RED\nerror: recipe `qualitygate` failed on line 128 with exit code 1\n",
-        "timestamp": "2026-09-04T06:45:36.396581546Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": {
-        "script": "just qualitygate",
-        "command": "exec 2>&1\njust qualitygate",
-        "language": "shell",
-        "timeout_ms": 1200000
-      },
-      "script_timing": {
-        "output": "blob://sha256/c8032c0d3c89e2684959d9c849995467da539387f1236621ba73ced5ace71234",
-        "exit_code": 1,
-        "duration_ms": 4732,
-        "termination": "exited",
-        "output_bytes": 853,
-        "live_streaming": true
-      },
-      "parallel_results": null,
-      "output": null,
-      "output_bytes": 853,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-04T06:45:31.648122807Z",
-      "handler": "command",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 4737,
-        "inference_time_ms": 0,
-        "tool_time_ms": 4732,
-        "active_time_ms": 4732
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "failed"
-    },
-    "start@1": {
-      "first_event_seq": 17,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": null,
-        "failure_reason": null,
-        "timestamp": "2026-09-04T06:34:50.510231471Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-04T06:34:50.497720613Z",
-      "handler": "start",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 0,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
