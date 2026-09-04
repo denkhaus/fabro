@@ -1,0 +1,88 @@
+diff --git a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
+index 7a608b9..8638a1c 100644
+--- a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
++++ b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
+@@ -6,3 +6,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"file","visit":2,"status":"succeeded","ts":"2026-09-04T22:18:48Z","data":{"painpoints":[{"text":"sd search returned empty for 'diff context' and 'sd list planner' but 'checkpoint' surfaced many hits — multi-keyword searches are needed to avoid false no-duplicate conclusions; fix idea: search at least two distinct theme keywords per finding."}],"observations":["fabro-c2ca covers non-agent-stage snapshot skipping only; fabro-cf03 complements it rather than superseding — no closure done.","Next bookkeeper: fabro-b382 conflicts with fabro-aa3d's routing change; whoever implements aa3d should reconcile b382's wording too."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"approve","visit":2,"status":"succeeded","ts":"2026-09-04T22:19:04Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"select","visit":2,"status":"succeeded","ts":"2026-09-04T22:19:30Z","data":{"painpoints":[],"observations":["Selected oldest unrevised terminal run with live sandbox; ~13 older unrevised runs blocked, no live sandbox, including 01M0QDMSDRZQ3RT9YMMQJRWVMH, 01M0QFC53P6D22JZAR10SR45VF, 01M0QFX511V5MH84DZKQFJS5E4, 01M0SFCYVQ4CV1T8JS5SW1DFQZ and eight runs from 2026-08-22 — backlog stays visible until fresh analyst sandboxes are provisioned."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"analyze","visit":3,"status":"succeeded","ts":"2026-09-04T22:24:18Z","data":{"painpoints":[{"text":"sd search misses existing seeds on plausible keywords: 'reviewer agent' and 'reviewer tools' returned zero hits while fabro-d97b ('Convert reviewer to agent node with read-only tools') exists; each theme needed 3-4 query variants to prove/disprove duplication (evidence: four search batches this pass). Fix idea: rank title-token matches first in sd search results."}],"observations":["Review persisted at `.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md`. 7 of 8 analyst recommendations withheld as duplicates of open seeds: rec1 reviewer-blind diff → fabro-d97b (+ fabro-9467 closed; capture variants fabro-3c9d, fabro-meta-c9f2), rec2 planner Blocked edge → fabro-53d3, rec3 evidence-retry verdict → fabro-886e, rec4 fabro-d810 prerequisite blocking → fabro-a285, rec5 reviewer prompt tool contradiction → fabro-a67c, rec6 smoke-level verification briefs → fabro-578a, rec7 painpoint mirror → fabro-46a4. This run's $0.41-of-$0.66 retry spend restates root causes already filed; the revision backlog is diagnosed repeatedly but unimplemented — burning it down in develop would make future revisor passes near-empty."]}}
+diff --git a/.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md b/.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md
+new file mode 100644
+index 0000000..3718c39
+--- /dev/null
++++ b/.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md
+@@ -0,0 +1,73 @@
++# Improve review — run 01M0QJ5FNE9XZJ72YN31K3X451
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: failed (21.2 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-04 22:19+0000 by revisor `fabro_ask`
++
++---
++
++All facts below are from run events (stage transcripts, usage/timing, painpoint journal) and workspace files in this run (`01M0QJ5FNE9XZJ72YN31K3X451`, billed **$0.658**, 19.5 min wall, 936.8k tokens, 14 stage completions for **one** seed closed). Where the money went: the one productive cycle (planner@1 + implementer@1 + tester@1 + evidence@1 + reviewer@1) cost ~$0.25; the remaining **~$0.41 (62%)** went to retry/hold machinery (planner@2/@3/@4, implementer@2/@3, reviewer@2). Recommendations ordered by expected impact:
++
++---
++
++**1. The reviewer never saw the diff — not once in three review cycles.**
++Evidence: the 6,378-byte evidence capture (blob `379477…`) reached the tool-less reviewer as a ~400-char preview cut at the *identical* point ("New bool flag 'v…") in cycles 1 and 2; reviewer@2's total input was **2,184 tokens**. Cycle-3 "Approved" was granted on "convergent secondary signals" — i.e., the seed was closed without diff-grounded review. The pipe assumption in `.fabro/workflows/develop/scripts/evidence.nu:23-31` (`OUTPUT_BUDGET=6800`, "under the engine's 8KB demote threshold") is empirically wrong: every large value (capture 6.4KB, brief 1.1–2.0KB, feedback 1.3KB, painpoints 1.6–2.7KB) was demoted to preview in reviewer prompts, while the same 1.1KB brief rendered inline in the implementer's preamble.
++**Change:** in `.fabro/workflows/develop/workflow.fabro`, convert `reviewer` from a tool-less `shape=tab` prompt node to a read-capable node (or platform-side: honor `fidelity="summary:high"` for command-output sections / fix the demotion accounting). Interim: shrink the capture to the *observed* inline window (~1KB: integrity line + file list + diff, drop the 2,200-char spec section at `evidence.nu:32/134` — it duplicates `current_seed_brief`).
++**Expected effect:** approvals grounded in the actual diff; in this run it would have saved both retry cycles (~$0.26, ~8 min) and prevented an approval-by-inference.
++
++**2. No `planner → Blocked` edge: a correct deadlock hold is recorded as a planner failure.**
++Evidence: planner@4 deliberately routed `preferred_next_label="Blocked"` for the fabro-d810 acceptance deadlock; the graph only wires Blocked on `implementer -> planner` (`workflow.fabro:132`; planner exits at 127–129), so the hold rode `outcome=failed` and the run concluded `failed(workflow_error)` "goal gate unsatisfied for node planner."
++**Change:** add `planner -> refiner [label="Blocked", condition="preferred_label=\"Blocked\""]` to `workflow.fabro` and a Blocked outcome to `prompts/planner.md`'s outcome contract.
++**Expected effect:** "no executable work" becomes a first-class terminal state distinguishable from genuine planner errors in the run ledger.
++
++**3. A truncation hold re-ran four stages on an unchanged worktree.**
++Evidence: reviewer@1's hold explicitly said "No code change is implied," yet the only return path was planner@2 → implementer@2 (aborted) → planner@3 → implementer@3 ($0.075, 105s) → tester@2 → evidence@2 → reviewer@2 — a full re-implementation cycle with zero code delta.
++**Change:** add `reviewer -> evidence [label="Evidence retry"]` in `workflow.fabro` (or an `evidence_retry` verdict in `prompts/reviewer.md`) for holds whose feedback states no code change is implied.
++**Expected effect:** delivery retries cost one evidence+review pass instead of four stage executions (~$0.19 and ~5 min per occurrence in this run).
++
++**4. fabro-d810's cross-world prerequisite isn't modeled as a blocker — every planner pass re-derives it.**
++Evidence: planner@1 spent most of its 165s/$0.112 establishing "no fabro CLI, no run-event store under `.fabro/`, no meta world"; planner@4's entire pass ($0.148, 261s inference — **the single most expensive call of the run**) re-established the same facts before holding. The seed still shows `sd ready` as unblocked priority-1.
++**Change:** on the tracker (`.seeds/issues.jsonl`, seed `fabro-d810`): add an sd dependency on the denkhaus-side sequence (fabro-29f7 rebuild), or re-scope the seed to a lab-side checklist whose inputs (run-event exports) are staged into the repo.
++**Expected effect:** planner stops re-litigating a dead seed each pass — ~$0.25/run of pure re-derivation in this run.
++
++**5. The reviewer prompt claims tools it doesn't have.**
++Evidence: `prompts/reviewer.md` opens with "a single LLM call without tools… You cannot run commands" and then says "or re-run `just qualitygate` yourself — you have tools." Reviewer@2's painpoint flags exactly this contradiction.
++**Change:** delete the "you have tools" clause in `.fabro/workflows/develop/prompts/reviewer.md` (Input section, gate bullet).
++**Expected effect:** no risk of the reviewer deferring verification to capabilities it lacks; consistent with the node's read-only design.
++
++**6. Verification-only briefs mandate a command the implementer is forbidden to run.**
++Evidence: planner@3's brief listed `just qualitygate` under "Required verification commands," while `prompts/implementer.md` says "Do NOT run the full quality gate yourself." Implementer@3 had to explicitly deviate and justify (its painpoint #4).
++**Change:** in `prompts/planner.md`, restrict the verification-only brief recipe to smoke-level commands and defer the gate to the tester stage.
++**Expected effect:** no unsatisfiable acceptance bullets; implementer responses stop carrying deviation justifications.
++
++**7. The painpoint "restate the full list, last-writer-wins" mirror is lossy and bloats context.**
++Evidence: the accumulated list (4 entries, ~3.5KB) was itself truncated in the reviewer's context — reviewer@2 saw only entry 1 ("accumulation may be lossy here too") — and planner@4 burned much of its 2,941 output tokens re-mirroring all four entries.
++**Change:** in the painpoint-channel sections of `prompts/planner.md`, `prompts/implementer.md`, `prompts/reviewer.md`: drop the context mirror requirement; `.fabro/run-painpoints.jsonl` (append-only, already delivered by `refiner.nu`) is the single source of truth; cap entries at ~200 chars.
++**Expected effect:** smaller preambles, no lossy relay through a stage that can't read blobs, no duplicated delivery work.
++
++**8. User-initiated aborts are classified as deterministic failures.**
++Evidence: implementer@2's termination on user request ("beende den run") plus Docker 409 (container not running) was recorded with `category: deterministic` and entered `loop_failure_signatures` — polluting the failure ledger for what was an interruption, not a defect.
++**Change:** platform-side, classify user-abort/sandbox-death as a distinct cancellation class (not `deterministic`); until then, `prompts/implementer.md` should route user-stop as "interrupted," not Blocked.
++**Expected effect:** failure signatures stay meaningful; retries/health metrics don't count operator stops as reproducible failures.
++
++---
++
++**What I could not inspect:** the engine's actual demotion logic (whether the ~1–2KB effective inline window vs. the assumed 8KB is a bug in threshold accounting or in `summary:high` handling of stage-output sections) — that lives in the fabro server binary, not this worktree; recommendation 1's platform-side fix therefore rests on the observed render behavior, not source. The reviewer blob itself is also unreadable from here (`.fabro/blobs/` path exists but the capture content is only available via the 400-char previews in stage prompts).
++
++---
++
++## Revisor distillation (tracker-checked 2026-09-04)
++
++Duplicates withheld (same concrete change as existing seeds):
++
++1. Reviewer blind to diff → `fabro-d97b` (open, agent node conversion) + `fabro-9467` (closed, demotion/inline budget) + capture variants `fabro-3c9d` / `fabro-meta-c9f2`
++2. planner→Blocked edge → `fabro-53d3` (open)
++3. Evidence-retry verdict for no-code-change holds → `fabro-886e` (open)
++4. fabro-d810 prerequisite blocking → `fabro-a285` (open, blocked-external with infeasibility facts)
++5. Reviewer prompt tool contradiction → `fabro-a67c` (open)
++6. Smoke-level verification-only briefs → `fabro-578a` (open)
++7. Painpoint list mirroring → `fabro-46a4` (open)
++
++Survives as new: recommendation 8 (user-abort/sandbox-death classified as `deterministic` failure — no matching seed found under `deterministic failure`, `cancellation`, `failure signature`, `user abort`).
++
