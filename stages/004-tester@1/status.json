@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Script failed with exit code: 1\n\n## output\nnu scripts/qualitygate.nu\ntouched crates: fabro-workflow\n== cargo fmt --check --all ==\nDiff in /repos/denkhaus/fabro/lib/components/fabro-workflow/src/handler/llm/preamble.rs:369:\n         parts.push(\"|-----|-------|\".to_string());\n         for key in context_keys {\n             if let Some(val) = snapshot.get(key) {\n-                let rendered = artifact::prompt_large_value(val)\n-                    .map_or_else(|| format_value_table_cell(val), format_large_value_table_cell);\n+                let rendered = artifact::prompt_large_value(val).map_or_else(\n+                    || format_value_table_cell(val),\n+                    format_large_value_table_cell,\n+                );\n                 parts.push(format!(\"| {key} | {rendered} |\"));\n             }\n         }\n\nGATE RED\nerror: recipe `qualitygate` failed on line 128 with exit code 1\n",
+  "timestamp": "2026-09-04T06:45:36.396581546Z"
+}
