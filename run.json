@@ -504,8 +504,8 @@
   "status": {
     "kind": "running"
   },
-  "status_updated_at": "2026-09-04T22:07:53.832741977Z",
-  "last_event_at": "2026-09-04T22:12:02.795260841Z",
+  "status_updated_at": "2026-09-04T22:12:14.741787544Z",
+  "last_event_at": "2026-09-04T22:12:14.758083661Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -913,15 +913,299 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 157,
       "checkpoint": {
-        "timestamp": "2026-09-04T22:12:02.995669714Z",
+        "timestamp": "2026-09-04T22:12:06.975254388Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
           "select",
           "analyze",
           "file"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.max_node_visits": "30",
+          "failure_signature": "",
+          "filed_seed_ids": [
+            "fabro-7bea"
+          ],
+          "failure_class": "",
+          "graph.preamble_budget_kb": "24",
+          "last_response": "Revision complete: no duplicates found, filed seed `fabro-7bea` (cross-referencing `fabro-b440` as complementary, closing nothing), wrote the marker at `/workspace/fabro/.fabro/revisions/01M0QJ01P9E6E",
+          "current_node": "file",
+          "internal.work_dir": "/workspace/fabro",
+          "revision_findings": [
+            {
+              "title": "Add repair-and-resume from checkpoint for deterministic config failures",
+              "description": "In this run the planner died on its first LLM call (invalid reasoning_effort pin — root cause already tracked as fabro-b158) and the run went terminal with 'goal gate unsatisfied for node planner and no retry target', even though event seq 43 checkpointed the failed-planner state. Engine/graph change: allow a terminally failed run to resume from its checkpoint after the underlying config is fixed (or add a hold node before terminal exit). Expected effect: a 10-second human fix continues the run at node cost instead of forcing a fresh run with another ~33s sandbox/clone/mise/bootstrap setup. Distinct from closed fabro-18a5 (terminal classification fix) and open fabro-53d3 (Blocked edge): different mechanism — checkpoint-based repair.",
+              "priority": 2
+            }
+          ],
+          "preferred_label": "Staged",
+          "graph.inspects": "develop",
+          "outcome": "succeeded",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "internal.retry_count.select": 0,
+          "graph.rankdir": "LR",
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 1421,
+            "preview": "No marker files exist in `.fabro/revisions/` — the directory is absent, so all terminal runs are unrevised. Of the terminal runs with `sandbox_available == true`, the oldest by creation is `01M0QJ01"
+          },
+          "revisor_target_status": "failed",
+          "internal.retry_count.analyze": 0,
+          "internal.retry_count.start": 0,
+          "internal.run_id": "01M1Q7D2XXMS39J1GQTGF22446",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 2492,
+            "preview": "Done: asked once (answer captured), persisted it verbatim to `.fabro/reviews/develop/01M0QJ01P9E6EKX8S6TQN91G8E.md`, then checked the tracker. Seven of the analyst's eight recommendations duplicate ex"
+          },
+          "revisor_target_wall": "17 sec",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "internal.node_visit_count": 1,
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "fabro-7bea overlaps thematically with open fabro-b440 but differs in mechanism; cross-referenced, nothing closed"
+            ]
+          },
+          "revisor_target_title": "Develop seed-by-seed (generic tracker loop)",
+          "revisor_target_run_id": "01M0QJ01P9E6EKX8S6TQN91G8E",
+          "internal.fidelity": "compact",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 933,
+            "preview": "Revision complete: no duplicates found, filed seed `fabro-7bea` (cross-referencing `fabro-b440` as complementary, closing nothing), wrote the marker at `/workspace/fabro/.fabro/revisions/01M0QJ01P9E6E"
+          },
+          "graph.goal": "Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
+          "internal.thread_id": "analyze",
+          "last_stage": "file",
+          "thread.start.current_node": "select",
+          "thread.analyze.current_node": "file",
+          "internal.retry_count.file": 0,
+          "internal.seed_cycle_anchor": "01M0QJ01P9E6EKX8S6TQN91G8E",
+          "thread.select.current_node": "analyze"
+        },
+        "node_outcomes": {
+          "select": {
+            "status": "succeeded",
+            "preferred_label": "Run selected",
+            "context_updates": {
+              "revisor_target_status": "failed",
+              "revisor_target_wall": "17 sec",
+              "response.select": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.select",
+                "chars": 1421,
+                "preview": "No marker files exist in `.fabro/revisions/` — the directory is absent, so all terminal runs are unrevised. Of the terminal runs with `sandbox_available == true`, the oldest by creation is `01M0QJ01"
+              },
+              "revisor_target_title": "Develop seed-by-seed (generic tracker loop)",
+              "last_stage": "select",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "16 terminal runs lack a live sandbox (sandbox_available false or absent), including 12 archived ones; they stay unrevised until the engine provisions fresh analyst sandboxes — fabro-8d30a blocks roughly a third of the backlog."
+                  },
+                  {
+                    "text": "`.fabro/revisions/` directory does not exist yet; revision markers from prior passes have never merged, so the marker-check step relies on directory absence as 'no revisions'."
+                  }
+                ],
+                "observations": [
+                  "42 runs listed; no revision markers exist, so every terminal run is unrevised; 16 terminal runs are sandbox-disqualified (no live sandbox); oldest selectable run chosen: `01M0QJ01P9E6EKX8S6TQN91G8E` (2026-08-23, failed, ~17s wall); no active develop run present in the list."
+                ]
+              },
+              "last_response": "No marker files exist in `.fabro/revisions/` — the directory is absent, so all terminal runs are unrevised. Of the terminal runs with `sandbox_available == true`, the oldest by creation is `01M0QJ01",
+              "revisor_target_run_id": "01M0QJ01P9E6EKX8S6TQN91G8E"
+            },
+            "notes": "Stage completed: select",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 20561,
+                    "output_tokens": 451,
+                    "reasoning_tokens": 314,
+                    "cache_read_tokens": 30208,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 40001
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 18420,
+              "tool_time_ms": 854,
+              "active_time_ms": 19274
+            }
+          },
+          "file": {
+            "status": "succeeded",
+            "preferred_label": "Staged",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-7bea overlaps thematically with open fabro-b440 but differs in mechanism; cross-referenced, nothing closed"
+                ]
+              },
+              "last_stage": "file",
+              "filed_seed_ids": [
+                "fabro-7bea"
+              ],
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 933,
+                "preview": "Revision complete: no duplicates found, filed seed `fabro-7bea` (cross-referencing `fabro-b440` as complementary, closing nothing), wrote the marker at `/workspace/fabro/.fabro/revisions/01M0QJ01P9E6E"
+              },
+              "last_response": "Revision complete: no duplicates found, filed seed `fabro-7bea` (cross-referencing `fabro-b440` as complementary, closing nothing), wrote the marker at `/workspace/fabro/.fabro/revisions/01M0QJ01P9E6E"
+            },
+            "notes": "Stage completed: file",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14990,
+                    "output_tokens": 1059,
+                    "reasoning_tokens": 139,
+                    "cache_read_tokens": 69056,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 44205
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 33484,
+              "tool_time_ms": 1156,
+              "active_time_ms": 34640
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "analyze": {
+            "status": "succeeded",
+            "preferred_label": "Findings ready",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "First `sd list` in this revisor sandbox failed: mise refused the repo config at `/repos/denkhaus/fabro/.mise.toml` as untrusted until a manual `mise trust` was run — same class as open fabro-66db (pre-trust mise config in run containers); fixing it would remove a manual step from every analyst/revisor pass."
+                  }
+                ],
+                "observations": [
+                  "7 of 8 analyst recommendations were duplicates and withheld: rec1 duplicate_of fabro-b158, rec2 duplicate_of fabro-cbca, rec3 duplicate_of fabro-80ec, rec4 duplicate_of fabro-0230, rec6 duplicate_of fabro-5632, rec7 duplicate_of fabro-9588, rec8 duplicate_of fabro-e7e5; only rec5 (repair-and-resume) is genuinely new and filed.",
+                  "Run root cause is the already-tracked invalid reasoning_effort pin on the planner node — once fabro-b158 lands, this run class survives visit 1 and most of the run's 50.7s wall waste (33s setup for zero work) becomes the next bottleneck via fabro-80ec."
+                ]
+              },
+              "last_stage": "analyze",
+              "last_response": "Done: asked once (answer captured), persisted it verbatim to `.fabro/reviews/develop/01M0QJ01P9E6EKX8S6TQN91G8E.md`, then checked the tracker. Seven of the analyst's eight recommendations duplicate ex",
+              "revision_findings": [
+                {
+                  "title": "Add repair-and-resume from checkpoint for deterministic config failures",
+                  "description": "In this run the planner died on its first LLM call (invalid reasoning_effort pin — root cause already tracked as fabro-b158) and the run went terminal with 'goal gate unsatisfied for node planner and no retry target', even though event seq 43 checkpointed the failed-planner state. Engine/graph change: allow a terminally failed run to resume from its checkpoint after the underlying config is fixed (or add a hold node before terminal exit). Expected effect: a 10-second human fix continues the run at node cost instead of forcing a fresh run with another ~33s sandbox/clone/mise/bootstrap setup. Distinct from closed fabro-18a5 (terminal classification fix) and open fabro-53d3 (Blocked edge): different mechanism — checkpoint-based repair.",
+                  "priority": 2
+                }
+              ],
+              "response.analyze": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.analyze",
+                "chars": 2492,
+                "preview": "Done: asked once (answer captured), persisted it verbatim to `.fabro/reviews/develop/01M0QJ01P9E6EKX8S6TQN91G8E.md`, then checked the tracker. Seven of the analyst's eight recommendations duplicate ex"
+              }
+            },
+            "notes": "Stage completed: analyze",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 18370,
+                    "output_tokens": 2629,
+                    "reasoning_tokens": 3783,
+                    "cache_read_tokens": 68992,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 71864
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reviews/develop/01M0QJ01P9E6EKX8S6TQN91G8E.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 75501,
+              "tool_time_ms": 83424,
+              "active_time_ms": 158925
+            }
+          }
+        },
+        "next_node_id": "approve",
+        "git_commit_sha": "402aa399b4465d8c4c301e171162fbf069a3176c",
+        "node_visits": {
+          "start": 1,
+          "select": 1,
+          "file": 1,
+          "analyze": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl\nindex 0771554..1b7d44b 100644\n--- a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl\n+++ b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl\n@@ -1 +1,2 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q7D2XXMS39J1GQTGF22446\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T22:11:20Z\",\"data\":{\"painpoints\":[{\"text\":\"First `sd list` in this revisor sandbox failed: mise refused the repo config at `/repos/denkhaus/fabro/.mise.toml` as untrusted until a manual `mise trust` was run — same class as open fabro-66db (pre-trust mise config in run containers); fixing it would remove a manual step from every analyst/revisor pass.\"}],\"observations\":[\"7 of 8 analyst recommendations were duplicates and withheld: rec1 duplicate_of fabro-b158, rec2 duplicate_of fabro-cbca, rec3 duplicate_of fabro-80ec, rec4 duplicate_of fabro-0230, rec6 duplicate_of fabro-5632, rec7 duplicate_of fabro-9588, rec8 duplicate_of fabro-e7e5; only rec5 (repair-and-resume) is genuinely new and filed.\",\"Run root cause is the already-tracked invalid reasoning_effort pin on the planner node — once fabro-b158 lands, this run class survives visit 1 and most of the run's 50.7s wall waste (33s setup for zero work) becomes the next bottleneck via fabro-80ec.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q7D2XXMS39J1GQTGF22446\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T22:12:02Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-7bea overlaps thematically with open fabro-b440 but differs in mechanism; cross-referenced, nothing closed\"]}}\ndiff --git a/.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md b/.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md\nnew file mode 100644\nindex 0000000..1d880d7\n--- /dev/null\n+++ b/.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md\n@@ -0,0 +1,11 @@\n+# Revision — run 01M0QJ01P9E6EKX8S6TQN91G8E\n+\n+- status reviewed: failed\n+- review: .fabro/reviews/develop/01M0QJ01P9E6EKX8S6TQN91G8E.md\n+- seeds filed: fabro-7bea — Add repair-and-resume from checkpoint for deterministic config failures\n+\n+## Findings\n+\n+### Add repair-and-resume from checkpoint for deterministic config failures\n+- filed id: fabro-7bea\n+- The planner stage died on its first LLM call (invalid `reasoning_effort` pin, root cause already tracked as `fabro-b158`) and the run went terminal with \"goal gate unsatisfied for node planner and no retry target\" despite event seq 43 checkpointing the failed state. Proposed engine/graph change: allow a terminally failed run to resume from its checkpoint after the underlying config is fixed, or add a hold node before terminal exit. Expected effect: a 10-second human fix continues the run at node cost instead of forcing a fresh run with another ~33s sandbox/clone/mise/bootstrap setup. Distinct from closed `fabro-18a5` (terminal classification) and open `fabro-53d3` (Blocked edge); cross-referenced with `fabro-b440` (fork-from-checkpoint ends terminal failed) as a complementary case, not a duplicate or supersession.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 32359f4..967ab41 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -166,3 +166,4 @@\n {\"id\":\"fabro-66db\",\"title\":\"sandbox: pre-trust the repo mise config in run containers (planner burns turns on `mise trust`)\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-04T21:19:45.120Z\",\"updatedAt\":\"2026-09-04T21:19:45.120Z\",\"description\":\"Adopted from run 01M1PVMS7B6N39MG0041C5F7P6 planner painpoint.\\n\\n## Failure\\n\\nAt pass start `sd` was unusable: the mise shim refused every command because /repos/denkhaus/fabro/.mise.toml was untrusted (\\\"Config files ... are not trusted\\\"). The planner burned LLM turns discovering and running `mise trust /repos/denkhaus/fabro/.mise.toml`.\\n\\n## Fix directions\\n\\n- toolchain image (fabro-toolchain, .fabro/Dockerfile.toolchain): bake the mise trust state for the canonical clone path, or set MISE_YES/trust-related env so tool shims work without interaction (coordinate with fabro-a54d/fabro-80ec toolchain baking).\\n- or sandbox init: run `mise trust` for the repo config as part of workspace setup.\\n\\n## Acceptance\\n\\nA fresh develop run's first `sd` invocation works with zero planner-side bootstrap actions.\",\"labels\":[\"sandbox\",\"workflows\",\"painpoint-adopted\"]}\n {\"id\":\"fabro-c16d\",\"title\":\"sd CLI default --limit 50 silently hides goal-mandated seeds from the planner\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-04T21:19:45.207Z\",\"updatedAt\":\"2026-09-04T21:19:45.207Z\",\"description\":\"Adopted from run 01M1PVMS7B6N39MG0041C5F7P6 planner painpoint.\\n\\n## Failure\\n\\n`sd ready` and `sd list` both default to `--limit 50`. After the tracker consolidation (109 open seeds, ~50 High), the goal-mandated seed fabro-8822 (priority 2) was truncated out of BOTH listings — the seed looked absent until the planner retried with `--limit 200`.\\n\\n## Fix directions\\n\\n- develop planner prompt (this repo, .fabro/workflows/develop/prompts/planner.md sd reference): pin `--limit 200` on tracker listings — partially adopted 2026-09-04.\\n- upstream seeds CLI: warn when output is truncated by the limit (external repo, @os-eco/seeds-cli).\\n- tracker hygiene: keep open-seed count under the limit (priority discipline).\\n\\n## Acceptance\\n\\nA goal naming a priority-2 seed resolves via `sd` listings without manual limit guessing.\",\"labels\":[\"workflows\",\"painpoint-adopted\"]}\n {\"id\":\"fabro-27f9\",\"title\":\"unexplained: .fabro/project.toml truncated to 0 bytes at 2026-09-04 23:08 (no identified writer)\",\"status\":\"open\",\"type\":\"bug\",\"priority\":3,\"createdAt\":\"2026-09-04T21:38:06.823Z\",\"updatedAt\":\"2026-09-04T21:38:06.823Z\",\"description\":\"## Failure (observed 2026-09-04)\\n\\nDuring the closeout-stdin diagnosis window, .fabro/project.toml was truncated to 0 bytes on the denkhaus working tree (mtime 2026-09-04 23:08:02 +0200, between commits cef7c2497 20:19 and f7db7d05a 23:10 — the slimmed 505-byte content was committed and intact before, gone after). No recurrence after restore (checked again ~23:37 and later); the file holds the slim project-root content.\\n\\nRuled out by reproduction (file stayed 505 bytes): `nu closeout.nu` (with sd shim), `fabro ps`, `fabro validate develop`, `fabro preflight develop`. Ruled out by timing: `fabro run` create (23:20) and `just up` rebuild window. Candidates not yet excluded: an interrupted IPython cell in that window, the edit skill, mise activation side effects.\\n\\n## Impact if it recurs\\n\\nA zero-byte project.toml still parses (empty layer) but silently breaks project discovery semantics; a run create from such a tree warns about the dirty worktree.\\n\\n## Fix\\n\\nIf it recurs: run the watcher (`stat` poll loop) or inotify on the file, capture the writing PID (fanotify/auditd), and check whether any fabro-config write path can open project.toml O_TRUNC (grep for `File::create` near project config). Watcher was prepared but not running when last checked.\",\"labels\":[\"platform\",\"painpoint-adopted\"]}\n+{\"id\":\"fabro-7bea\",\"title\":\"Add repair-and-resume from checkpoint for deterministic config failures\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-04T22:11:45.538Z\",\"updatedAt\":\"2026-09-04T22:11:45.538Z\",\"description\":\"Run 01M0QJ01P9E6EKX8S6TQN91G8E: planner died on its first LLM call (invalid reasoning_effort pin — root cause tracked as fabro-b158) and the run went terminal with 'goal gate unsatisfied for node planner and no retry target', even though event seq 43 checkpointed the failed-planner state. Engine/graph change: allow a terminally failed run to resume from its checkpoint after the underlying config is fixed (or add a hold node before terminal exit). Expected effect: a 10-second human fix continues the run at node cost instead of forcing a fresh run with another ~33s sandbox/clone/mise/bootstrap setup. Distinct from closed fabro-18a5 (terminal classification) and open fabro-53d3 (Blocked edge): different mechanism — checkpoint-based repair. Cross-reference fabro-b440 (fork-from-checkpoint ends terminal failed) — complementary cases, same checkpoint machinery.\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 66,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-04T22:12:14.979293929Z",
+        "current_node": "approve",
+        "completed_nodes": [
+          "start",
+          "select",
+          "analyze",
+          "file",
+          "approve"
         ],
         "node_retries": {},
         "context_values": {
@@ -940,7 +1224,8 @@
           "seed_cycles": {
             "select": 1,
             "analyze": 1,
-            "file": 1
+            "file": 1,
+            "approve": 1
           },
           "response.analyze": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -948,6 +1233,7 @@
             "chars": 2492,
             "preview": "Done: asked once (answer captured), persisted it verbatim to `.fabro/reviews/develop/01M0QJ01P9E6EKX8S6TQN91G8E.md`, then checked the tracker. Seven of the analyst's eight recommendations duplicate ex"
           },
+          "human.gate.approve.question": "Approve filing + merge",
           "revisor_target_wall": "17 sec",
           "internal.retry_count.start": 0,
           "internal.seed_cycle_anchor": "01M0QJ01P9E6EKX8S6TQN91G8E",
@@ -963,12 +1249,14 @@
           "revisor_target_status": "failed",
           "revisor_target_run_id": "01M0QJ01P9E6EKX8S6TQN91G8E",
           "failure_signature": "",
-          "preferred_label": "Staged",
+          "preferred_label": "[A] Approved",
           "last_stage": "file",
-          "internal.thread_id": "analyze",
-          "current_node": "file",
+          "internal.thread_id": "file",
+          "human.gate.label": "[A] Approved",
+          "current_node": "approve",
           "internal.fidelity": "compact",
           "graph.max_node_visits": "30",
+          "human.gate.approve.answer": "A",
           "filed_seed_ids": [
             "fabro-7bea"
           ],
@@ -977,6 +1265,8 @@
           "graph.rankdir": "LR",
           "last_response": "Revision complete: no duplicates found, filed seed `fabro-7bea` (cross-referencing `fabro-b440` as complementary, closing nothing), wrote the marker at `/workspace/fabro/.fabro/revisions/01M0QJ01P9E6E",
           "internal.retry_count.analyze": 0,
+          "human.gate.approve.label": "[A] Approved",
+          "internal.retry_count.approve": 0,
           "graph.goal": "Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
           "outcome": "succeeded",
           "response.file": {
@@ -985,6 +1275,8 @@
             "chars": 933,
             "preview": "Revision complete: no duplicates found, filed seed `fabro-7bea` (cross-referencing `fabro-b440` as complementary, closing nothing), wrote the marker at `/workspace/fabro/.fabro/revisions/01M0QJ01P9E6E"
           },
+          "thread.file.current_node": "approve",
+          "human.gate.selected": "A",
           "internal.retry_count.select": 0,
           "thread.select.current_node": "analyze",
           "thread.analyze.current_node": "file",
@@ -1117,6 +1409,21 @@
               "active_time_ms": 158925
             }
           },
+          "approve": {
+            "status": "succeeded",
+            "preferred_label": "[A] Approved",
+            "suggested_next_ids": [
+              "select"
+            ],
+            "context_updates": {
+              "human.gate.approve.question": "Approve filing + merge",
+              "human.gate.label": "[A] Approved",
+              "human.gate.approve.label": "[A] Approved",
+              "human.gate.selected": "A",
+              "human.gate.approve.answer": "A"
+            },
+            "usage": null
+          },
           "select": {
             "status": "succeeded",
             "preferred_label": "Run selected",
@@ -1177,12 +1484,13 @@
             }
           }
         },
-        "next_node_id": "approve",
+        "next_node_id": "select",
         "node_visits": {
           "analyze": 1,
           "start": 1,
           "file": 1,
-          "select": 1
+          "select": 1,
+          "approve": 1
         }
       },
       "diff": {}
@@ -1574,6 +1882,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "approve@1": {
+      "first_event_seq": 160,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-04T22:12:14.758083661Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-04T22:12:06.993134310Z",
+      "handler": "human",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 4414,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
