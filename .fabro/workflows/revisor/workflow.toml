@@ -1,0 +1,80 @@
+_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+# fabro-7461 (ADR-0011): the revisor's agents hold the inspection tool
+# catalog. fabro_runs_list (select) and fabro_ask (analyze) additionally
+# require the graph's inspects attribute; node-level fabro_tools keeps
+# the grant least-privilege per stage.
+[run.agent]
+fabro_tools = true
+
+# Stage journal (same contract as develop, seed fabro-176b): one durable
+# JSON line per stage execution, engine provenance, checkpointed with the
+# run. Non-blocking; failures must never affect the run.
+[[run.hooks]]
+name = "stage-journal"
+event = "stage_complete"
+script = "nu .fabro/workflows/revisor/scripts/stage-journal.nu"
+blocking = false
+timeout = "10s"
+sandbox = true
+
+# ── Runtime contract (fabro-03ef) ──────────────────────────────────────
+# Since upstream v0.345, `fabro run`/`fabro create` build runs from
+# immutable workflow intents and no longer transmit project-level
+# [run]/[environments] settings: workflow behavior lives HERE, placement
+# is server-managed. Starts go through `just run develop` which passes
+# --environment mise (the intent's environment override outranks any pin
+# here, and a local `fabro preflight` cannot resolve server-managed
+# environment ids — placement is therefore NOT pinned in this file; the
+# wrapper flag is the single source).
+#
+# Default model (moved from project.toml).
+[run.model]
+provider = "zai"
+name = "glm-5.3"
+
+# NO prepare steps on the merged world: the toolchain environment bakes
+# everything (rust nightly pin, clippy/rustfmt, nextest, just, nu, rg, bun,
+# sd/ml, pytest — .fabro/Dockerfile.toolchain). Runs start instantly; a
+# prepare no-op check would only burn tester time.
+
+# Dev-cycle: push checkpoint/metadata branches to the fork (local feature
+# testing keeps them pushable so the PR cycle can engage).
+[run.run_branch]
+push = true
+
+[run.meta_branch]
+push = true
+
+# Autonomous merge-back (run -> PR -> base branch): every successful run
+# with a non-empty diff opens a PR against the base branch; auto-merge
+# lands it once required checks pass. Without this, scheduled runs would
+# re-implement the same seed every run (observed: three parallel
+# -pretty implementations on orphaned run branches).
+[run.pull_request]
+enabled = true
+draft = false
+auto_merge = true
+merge_strategy = "squash"
+# glm-4.7: non-reasoning (catalog features.reasoning = false) — cheap,
+# clean JSON for PR titling; no reasoning_effort needed (and "off" is not
+# a valid value: the enum is low|medium|high|xhigh|max).
+model = "zai:glm-4.7"
+
+[run.integrations.github.permissions]
+contents = "write"
+pull_requests = "write"
+
+# Terminal-failure visibility (run 01M0T9B7T review, rec 5): one Slack
+# route for terminal lifecycle events is enough to notice credential rot.
+# Channel: #dev-fabro exists (fabro-1ddb phase 1, 2026-08-27).
+[run.notifications.terminal]
+enabled = true
+provider = "slack"
+events = ["run.completed", "run.failed"]
+
+[run.notifications.terminal.slack]
+channel = "#dev-fabro"

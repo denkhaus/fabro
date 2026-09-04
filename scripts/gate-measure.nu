@@ -30,7 +30,7 @@ def main []: nothing -> nothing {
     cd /src
 
     timed "build --workspace (kalt)" { ^cargo build --workspace }
-    timed "clippy -p fabro-workflow (inkrementell)" { ^cargo clippy -p fabro-workflow --all-targets -- --diagnostic-format short }
+    timed "clippy -p fabro-workflow (inkrementell)" { ^cargo clippy -p fabro-workflow --all-targets -- -D warnings }
     timed "nextest -p fabro-workflow (inkrementell)" { ^cargo nextest run -p fabro-workflow }
     timed "fmt --check --all" { ^cargo fmt --check --all }
     print "=== Messung fertig ==="
