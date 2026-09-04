@@ -83,6 +83,50 @@ fn apply_boundary_upgrade(
     }
 }
 
+/// Downgrade a success-shaped terminal routed through a `kind="deadlock"`
+/// or `kind="soft"` exit into a failed terminal (fabro-18a5).
+///
+/// The exit stage itself usually succeeds — the guard noticed the deadlock
+/// and routed the graph to the exit node — so the outcome alone reads green.
+/// That misclassification let publish run (a pull request opened for code
+/// whose gates never passed) and blocked resume in the CLI and web UI,
+/// because a succeeded run has nothing to resume. The downgrade restores the
+/// intended semantics before both decisions: the run fails with
+/// [`FailureReason::Deadlock`] (work preserved, a human decides) or
+/// [`FailureReason::SoftStop`] (infrastructure could not finish, the next
+/// run re-enters). Work preservation does not depend on the terminal publish
+/// push: checkpoint pushes during execution already carried the run branch.
+fn apply_soft_exit_downgrade(
+    outcome: Result<Outcome, Error>,
+    exit_kind: &str,
+) -> (Result<Outcome, Error>, Option<RunFailure>) {
+    let reason = match exit_kind {
+        "deadlock" => Some(FailureReason::Deadlock),
+        "soft" => Some(FailureReason::SoftStop),
+        _ => None,
+    };
+    match (outcome, reason) {
+        (Ok(outcome), Some(reason))
+            if matches!(
+                outcome.status,
+                StageOutcome::Succeeded | StageOutcome::PartiallySucceeded
+            ) =>
+        {
+            let message = if reason == FailureReason::Deadlock {
+                "run parked at a deadlock exit (kind=\"deadlock\") — work is preserved in \
+                 checkpoints and the pushed run branch; a human decides next"
+            } else {
+                "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; \
+                 the next run re-enters autonomously"
+            };
+            let error = Error::engine(message);
+            let failure = run_failure_from_error(&error, reason);
+            (Err(error), Some(failure))
+        }
+        (outcome, _) => (outcome, None),
+    }
+}
+
 /// Convert a publish error into the terminal failure detail for a
 /// publish-blocked run (fabro-67e5).
 ///
@@ -714,13 +758,19 @@ pub async fn finalize(published: Published, options: &FinalizeOptions) -> Result
     let (outcome, boundary_failure) =
         apply_boundary_upgrade(outcome, conclusion.exit_kind.as_str());
 
+    // Soft-exit downgrade (fabro-18a5): a green exit stage reached through
+    // a kind="deadlock"/"soft" edge is a failed terminal, not a success.
+    let (outcome, soft_exit_failure) =
+        apply_soft_exit_downgrade(outcome, conclusion.exit_kind.as_str());
+
     let (final_status, failure, _run_status) = classify_engine_result(&outcome);
     conclusion.status = final_status;
-    // A publish or boundary failure is the actionable detail; an
+    // A soft-exit, publish, or boundary failure is the actionable detail; an
     // execution-level failure detail (partial success) stays visible
     // through the stage summaries and the outcome status string.
-    conclusion.failure = boundary_failure
+    conclusion.failure = soft_exit_failure
         .clone()
+        .or(boundary_failure.clone())
         .or(publish_failure.clone())
         .or(failure);
 
@@ -1123,6 +1173,129 @@ mod tests {
             apply_boundary_upgrade(Ok(Outcome::success()), "boundary");
         assert!(outcome.is_ok());
         assert!(boundary_failure.is_none());
+    }
+
+    /// fabro-18a5: a green exit stage routed through a soft exit is a
+    /// failed terminal — deadlock parks for a human, soft re-enters next
+    /// run — while natural and boundary exits keep green terminals green.
+    #[test]
+    fn soft_exit_downgrade_converts_green_terminal_to_failed() {
+        for (exit_kind, expected) in [
+            ("deadlock", FailureReason::Deadlock),
+            ("soft", FailureReason::SoftStop),
+        ] {
+            let (outcome, soft_exit_failure) =
+                apply_soft_exit_downgrade(Ok(Outcome::success()), exit_kind);
+            let error = outcome.expect_err("a green terminal must downgrade to a failure");
+            let failure = soft_exit_failure.expect("downgrade carries the failure detail");
+            assert_eq!(failure.reason, expected, "kind={exit_kind}");
+            assert!(
+                failure.detail.message.contains("kind="),
+                "the remediation must name the exit kind: {}",
+                failure.detail.message
+            );
+            assert!(error.to_string().contains(exit_kind));
+        }
+
+        // Natural and boundary exits keep green terminals green, and an
+        // already-failed terminal passes through untouched (the exit-kind
+        // reclassification in build_terminal_event owns that path).
+        for kind in ["natural", "boundary", ""] {
+            let (outcome, soft_exit_failure) =
+                apply_soft_exit_downgrade(Ok(Outcome::success()), kind);
+            assert!(outcome.is_ok(), "kind={kind:?} must stay green");
+            assert!(soft_exit_failure.is_none());
+        }
+        let (outcome, soft_exit_failure) =
+            apply_soft_exit_downgrade(Err(Error::engine("boom")), "deadlock");
+        assert!(outcome.is_err());
+        assert!(soft_exit_failure.is_none());
+    }
+
+    /// fabro-18a5 end to end: a green exit stage reached through a
+    /// kind="deadlock" edge must terminate failed(Deadlock) with no publish
+    /// side effects — the live incident opened a pull request for code whose
+    /// gates never passed and left the run unresumable.
+    #[tokio::test]
+    async fn deadlock_exit_with_green_outcome_fails_instead_of_publishing() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let emitter = Arc::new(Emitter::new(test_run_id()));
+        let events = record_events(&emitter);
+        let services = test_services(
+            RunStoreHandle::local(seeded_run_store().await),
+            emitter,
+            Arc::new(MockSandbox::linux()),
+            Arc::new(RunMetadataRuntime::new()),
+            None,
+        );
+        let mut run_options = test_run_options(repo_dir.path());
+        run_options.git = Some(GitCheckpointOptions {
+            base_sha:    None,
+            run_branch:  Some("fabro/run/deadlock".to_string()),
+            meta_branch: None,
+        });
+
+        // The gate guard fired: the last stage succeeded (the red verdict is
+        // stage output, not a stage failure) and the graph routed to the
+        // exit node through a kind="deadlock" edge.
+        let final_context = Context::new();
+        final_context.set(keys::INTERNAL_EXIT_KIND, serde_json::json!("deadlock"));
+        let mut engine = EngineServices::test_default();
+        engine.run = services;
+        let executed = Executed {
+            graph: Graph::new("test"),
+            outcome: Ok(Outcome::success()),
+            run_options,
+            wall_time_ms: 5,
+            final_context,
+            engine: Arc::new(engine),
+            model: "test-model".to_string(),
+        };
+
+        let options = FinalizeOptions {
+            run_dir:          repo_dir.path().to_path_buf(),
+            run_id:           test_run_id(),
+            workflow_name:    "test".to_string(),
+            preserve_sandbox: false,
+            stop_on_terminal: true,
+            last_git_sha:     Some("final-sha".to_string()),
+        };
+        let concluded = conclude(executed, &options).await.unwrap();
+        let published = crate::pipeline::publish(concluded, &crate::pipeline::PublishOptions {
+            pr_config:           None,
+            github_app:          None,
+            origin_url:          None,
+            pr_model:            "test-model".to_string(),
+            pr_resolved_model:   "test-model".to_string(),
+            pr_reasoning_effort: None,
+        })
+        .await;
+
+        assert_eq!(
+            published.publish_outcome,
+            PublishOutcome::default(),
+            "publish must not run for a soft-exit terminal"
+        );
+        assert!(published.publish_error.is_none());
+
+        let finalized = finalize(published, &options).await.unwrap();
+        assert!(
+            finalized.outcome.is_err(),
+            "the deadlock exit must downgrade the green terminal"
+        );
+        assert_eq!(finalized.pushed_branch, None);
+        assert_eq!(
+            finalized.conclusion.failure.as_ref().map(|f| f.reason),
+            Some(FailureReason::Deadlock)
+        );
+
+        let events = events.lock().unwrap();
+        let names = events.iter().map(RunEvent::event_name).collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec!["run.failed"],
+            "the terminal event must be run.failed, not run.completed"
+        );
     }
 
     /// The terminal event on a boundary exit reads

@@ -129,6 +129,17 @@ impl Concluded {
             return Ok(());
         }
 
+        // Soft-exit downgrade (fabro-18a5): a run routed through a
+        // kind="deadlock" or kind="soft" exit is heading to a
+        // failed(Deadlock|SoftStop) terminal — publish is not eligible, so
+        // neither the final push nor a pull request runs. The exit stage
+        // itself usually succeeded, which is exactly what let publish run
+        // before. Work preservation does not need the terminal push:
+        // checkpoint pushes during execution already carried the run branch.
+        if matches!(self.conclusion.exit_kind.as_str(), "deadlock" | "soft") {
+            return Ok(());
+        }
+
         let pull_request_requested = options.pr_config.is_some();
         let (origin_url, run_branch) = match self.publish_target(options) {
             Ok(target) => target,
