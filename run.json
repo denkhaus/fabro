@@ -659,14 +659,190 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M1NK4V3YG3AQAMEKDJ6V471F",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-09-04T06:54:58.515383539Z",
+    "run_branch": "fabro/run/01M1NK4V3YG3AQAMEKDJ6V471F",
+    "base_sha": "1cd63852863226999d47f01852bae59c1ca790d3"
   },
-  "status_updated_at": "2026-09-04T06:54:21.990540669Z",
-  "last_event_at": "2026-09-04T06:54:57.886658415Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-09-04T06:54:58.515451884Z",
+  "last_event_at": "2026-09-04T06:56:45.448169515Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 20,
+      "checkpoint": {
+        "timestamp": "2026-09-04T06:55:01.189966023Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_class": "",
+          "seed_cycles": {
+            "start": 1
+          },
+          "outcome": "succeeded",
+          "graph.rankdir": "LR",
+          "failure_signature": "",
+          "internal.run_id": "01M1NK4V3YG3AQAMEKDJ6V471F",
+          "internal.fidelity": "compact",
+          "internal.retry_count.start": 0,
+          "current_node": "start",
+          "graph.goal": "Implement product seed fabro-f677: engine preamble context table breaks markdown with multi-line values",
+          "graph.max_node_visits": "40",
+          "graph.preamble_budget_kb": "24",
+          "internal.seed_cycle_anchor": "",
+          "internal.node_visit_count": 1,
+          "internal.work_dir": "/workspace/fabro",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.thread_id": null
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "planner",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-04T06:56:45.635984596Z",
+        "current_node": "planner",
+        "completed_nodes": [
+          "start",
+          "planner"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "seed_cycles": {
+            "planner": 1
+          },
+          "current_seed_brief": "Bug: the `## Current context` markdown table (summary:high preamble) inlines multi-line values raw, so embedded newlines shatter the table in every markdown renderer (run 01M1MMK5C6B313SY70Y2EPKE82: multi-line `current_seed_brief` made `current_seed_id`/`current_seed_title` look missing). Root cause: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` (around lines 344-371) renders plain values via `format_value(val)` into `| key | value |` rows with no newline/pipe sanitization; only the large-value path (`format_large_value_table_cell`) is single-line. Fix direction chosen (spec offered 3; direction 2 contradicts acceptance criterion 1, so it is ruled out): sanitize EVERY table cell in `append_filtered_context_table` — replace newlines with \" / \" (collapse other whitespace, e.g. blank lines/indent runs) and escape `|` as `\\|` — for both plain and large-value renderings. Do NOT change `format_value` globally or the bullet-list path `append_filtered_context`: multi-line output is intentional and correct there (e.g. `append_large_value` previews). Acceptance criteria: - every value containing newlines renders as exactly one single-line markdown table row per key (no raw `\\n` between `| key |` and the closing `|`) - cell sanitization also escapes literal `|` characters in values so pipes cannot split columns - `current_seed_id` and `current_seed_title` rows stay visually adjacent to a multi-line `current_seed_brief` row (all three are ordinary rows of one intact table) - no information loss: full multi-line value remains retrievable via the context_read tool (store path untouched — verify no demote/store changes are needed) - existing `## Current context` behavior otherwise unchanged (key filtering, sorting, hidden/blank/rendered-key exclusion, large-value marker cells) - unit test in the existing `mod tests` of `preamble.rs` (see test near line 1685 for harness patterns): build a summary:high preamble with a context value containing newlines (plus a `|` char) and assert the rendered `## Current context` section contains one row per key and zero newlines inside any row - run `cargo nextest run -p fabro-workflow` and, if any insta snapshots of preambles shift, inspect `cargo insta pending-snapshots` before accepting; format with `cargo +nightly-2026-04-14 fmt --all` and pass clippy",
+          "internal.fidelity": "compact",
+          "internal.run_id": "01M1NK4V3YG3AQAMEKDJ6V471F",
+          "current_node": "planner",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.preamble_budget_kb": "24",
+          "failure_class": "",
+          "outcome": "succeeded",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "Seed fabro-f677 description lists fix direction 2 (bullet list below the table) that directly contradicts its own acceptance criterion 1 (single table row per key). Ambiguous specs invite reviewer ping-pong; seed descriptions with multiple fix directions should mark which directions are compatible with the acceptance criteria (evidence: sd show fabro-f677, run 01M1MMK5C6B313SY70Y2EPKE82 report)."
+              }
+            ],
+            "observations": [
+              "fabro-f677 is Low priority but explicitly named by the goal, so it was claimed ahead of higher-priority unrelated seeds.",
+              "Bug is narrow and local: only `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` needs changes; `format_value` and `append_filtered_context` must stay multi-line-capable.",
+              "Existing test coverage for this table exists at `preamble.rs` line ~1685 (`## Current context` assertion) — a good anchor for the new unit test."
+            ]
+          },
+          "preferred_label": "Seed claimed",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3976,
+            "preview": "Seed `fabro-f677` claimed. One spec contradiction resolved in the brief: fix direction 2 (bullet list below the table) conflicts with acceptance criterion 1 (\"valid single table row per key\"), so the "
+          },
+          "graph.rankdir": "LR",
+          "current_seed_id": "fabro-f677",
+          "last_response": "Seed `fabro-f677` claimed. One spec contradiction resolved in the brief: fix direction 2 (bullet list below the table) conflicts with acceptance criterion 1 (\"valid single table row per key\"), so the ",
+          "graph.max_node_visits": "40",
+          "failure_signature": "",
+          "internal.seed_cycle_anchor": "fabro-f677",
+          "internal.thread_id": "start",
+          "internal.retry_count.planner": 0,
+          "graph.goal": "Implement product seed fabro-f677: engine preamble context table breaks markdown with multi-line values",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.start": 0,
+          "thread.start.current_node": "planner",
+          "internal.node_visit_count": 1,
+          "last_stage": "planner",
+          "current_seed_title": "engine: preamble context table breaks markdown with multi-line values"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_title": "engine: preamble context table breaks markdown with multi-line values",
+              "current_seed_id": "fabro-f677",
+              "last_response": "Seed `fabro-f677` claimed. One spec contradiction resolved in the brief: fix direction 2 (bullet list below the table) conflicts with acceptance criterion 1 (\"valid single table row per key\"), so the ",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Seed fabro-f677 description lists fix direction 2 (bullet list below the table) that directly contradicts its own acceptance criterion 1 (single table row per key). Ambiguous specs invite reviewer ping-pong; seed descriptions with multiple fix directions should mark which directions are compatible with the acceptance criteria (evidence: sd show fabro-f677, run 01M1MMK5C6B313SY70Y2EPKE82 report)."
+                  }
+                ],
+                "observations": [
+                  "fabro-f677 is Low priority but explicitly named by the goal, so it was claimed ahead of higher-priority unrelated seeds.",
+                  "Bug is narrow and local: only `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` needs changes; `format_value` and `append_filtered_context` must stay multi-line-capable.",
+                  "Existing test coverage for this table exists at `preamble.rs` line ~1685 (`## Current context` assertion) — a good anchor for the new unit test."
+                ]
+              },
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3976,
+                "preview": "Seed `fabro-f677` claimed. One spec contradiction resolved in the brief: fix direction 2 (bullet list below the table) conflicts with acceptance criterion 1 (\"valid single table row per key\"), so the "
+              },
+              "last_stage": "planner",
+              "current_seed_brief": "Bug: the `## Current context` markdown table (summary:high preamble) inlines multi-line values raw, so embedded newlines shatter the table in every markdown renderer (run 01M1MMK5C6B313SY70Y2EPKE82: multi-line `current_seed_brief` made `current_seed_id`/`current_seed_title` look missing). Root cause: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` (around lines 344-371) renders plain values via `format_value(val)` into `| key | value |` rows with no newline/pipe sanitization; only the large-value path (`format_large_value_table_cell`) is single-line. Fix direction chosen (spec offered 3; direction 2 contradicts acceptance criterion 1, so it is ruled out): sanitize EVERY table cell in `append_filtered_context_table` — replace newlines with \" / \" (collapse other whitespace, e.g. blank lines/indent runs) and escape `|` as `\\|` — for both plain and large-value renderings. Do NOT change `format_value` globally or the bullet-list path `append_filtered_context`: multi-line output is intentional and correct there (e.g. `append_large_value` previews). Acceptance criteria: - every value containing newlines renders as exactly one single-line markdown table row per key (no raw `\\n` between `| key |` and the closing `|`) - cell sanitization also escapes literal `|` characters in values so pipes cannot split columns - `current_seed_id` and `current_seed_title` rows stay visually adjacent to a multi-line `current_seed_brief` row (all three are ordinary rows of one intact table) - no information loss: full multi-line value remains retrievable via the context_read tool (store path untouched — verify no demote/store changes are needed) - existing `## Current context` behavior otherwise unchanged (key filtering, sorting, hidden/blank/rendered-key exclusion, large-value marker cells) - unit test in the existing `mod tests` of `preamble.rs` (see test near line 1685 for harness patterns): build a summary:high preamble with a context value containing newlines (plus a `|` char) and assert the rendered `## Current context` section contains one row per key and zero newlines inside any row - run `cargo nextest run -p fabro-workflow` and, if any insta snapshots of preambles shift, inspect `cargo insta pending-snapshots` before accepting; format with `cargo +nightly-2026-04-14 fmt --all` and pass clippy"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19261,
+                    "output_tokens": 1490,
+                    "reasoning_tokens": 1222,
+                    "cache_read_tokens": 116608,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 69204
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 92245,
+              "tool_time_ms": 1471,
+              "active_time_ms": 93716
+            }
+          }
+        },
+        "next_node_id": "implementer",
+        "node_visits": {
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -693,5 +869,256 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "planner@1": {
+      "first_event_seq": 21,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-04T06:56:45.448169515Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "high"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-04T06:55:01.202712043Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 94191,
+        "inference_time_ms": 92245,
+        "tool_time_ms": 1471,
+        "active_time_ms": 93716
+      },
+      "usage": {
+        "input_tokens": 19261,
+        "output_tokens": 1490,
+        "total_tokens": 138581,
+        "reasoning_tokens": 1222,
+        "cache_read_tokens": 116608,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 69204
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 19047,
+        "usage_percent": 1.8164634704589844,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-04T06:56:45.433000417Z",
+        "event_seq": 84,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1116,
+            "usage_percent": 0.1064300537109375
+          },
+          {
+            "category": "tools",
+            "tokens": 1597,
+            "usage_percent": 0.15230178833007812
+          },
+          {
+            "category": "memory",
+            "tokens": 5491,
+            "usage_percent": 0.5236625671386719
+          },
+          {
+            "category": "conversation",
+            "tokens": 10837,
+            "usage_percent": 1.0334968566894531
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-04T06:55:00.997441810Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-04T06:55:00.986754769Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
