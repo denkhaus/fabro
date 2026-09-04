@@ -1,0 +1,26 @@
+diff --git a/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl b/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl
+index 2eadd022..4e4000eb 100644
+--- a/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl
++++ b/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl
+@@ -1,3 +1,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1NHZVTXRC1AVW28D3FG0XYP","node":"start","visit":1,"status":"succeeded","ts":"2026-09-04T06:34:50Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1NHZVTXRC1AVW28D3FG0XYP","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-04T06:36:45Z","data":{"painpoints":[],"observations":["fabro-f677 is Low priority among 42 ready seeds but was claimed because the goal names it explicitly; nothing else in progress for this effort.","Seed description lists three alternative fix directions without picking one; brief resolves this to direction 1 (single-line table cells) and adds pipe-escaping for plain cells, which the spec's 'valid single table row' criterion implies but never states.","Pitfall flagged in brief: `format_value` is shared by the table path and the bullet-list path (`append_filtered_context`); a global fix there would regress the bullet-list rendering where newlines are legal markdown."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1NHZVTXRC1AVW28D3FG0XYP","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-04T06:45:27Z","data":{"painpoints":[],"observations":["The large-value table-cell path already single-lined and pipe-escaped (`format_large_value_table_cell`, preamble.rs ~133), so the fix mirrored it for plain values; any future table-cell additions should reuse these helpers rather than raw format_value."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1NHZVTXRC1AVW28D3FG0XYP","node":"implementer","visit":2,"status":"succeeded","ts":"2026-09-04T06:46:37Z","data":{"painpoints":[{"text":"Run 01M1NHZVTXRC1AVW28D3FG0XYP: the tester failed the tree on a pure rustfmt wrapping diff (preamble.rs:372), i.e. the implementer wrote correct code but a formatting nit cost a full gate cycle. Suggestion: have the implementer stage run `cargo +nightly-2026-04-14 fmt -- <touched files>` (seconds, not the full gate) before finishing, or make the tester auto-apply fmt for whitespace-only diffs; this is the cheapest possible way to save a whole pipeline retry."}],"observations":["The prior implementer's fix and tests were complete and correct; only line wrapping was red — worth remembering that a failed tester output can be a one-line format fix rather than a logic problem."]}}
+diff --git a/lib/components/fabro-workflow/src/handler/llm/preamble.rs b/lib/components/fabro-workflow/src/handler/llm/preamble.rs
+index d1ef7e69..01c5b7e5 100644
+--- a/lib/components/fabro-workflow/src/handler/llm/preamble.rs
++++ b/lib/components/fabro-workflow/src/handler/llm/preamble.rs
+@@ -369,8 +369,10 @@ fn append_filtered_context_table(
+         parts.push("|-----|-------|".to_string());
+         for key in context_keys {
+             if let Some(val) = snapshot.get(key) {
+-                let rendered = artifact::prompt_large_value(val)
+-                    .map_or_else(|| format_value_table_cell(val), format_large_value_table_cell);
++                let rendered = artifact::prompt_large_value(val).map_or_else(
++                    || format_value_table_cell(val),
++                    format_large_value_table_cell,
++                );
+                 parts.push(format!("| {key} | {rendered} |"));
+             }
+         }
