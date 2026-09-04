@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M1Q4P92K5RX8XX990BEB130Y.jsonl b/.fabro/journal/01M1Q4P92K5RX8XX990BEB130Y.jsonl
+index ea4eb7a..56177ef 100644
+--- a/.fabro/journal/01M1Q4P92K5RX8XX990BEB130Y.jsonl
++++ b/.fabro/journal/01M1Q4P92K5RX8XX990BEB130Y.jsonl
+@@ -1,3 +1,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q4P92K5RX8XX990BEB130Y","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-04T21:32:24Z","data":{"painpoints":[{"text":"Fresh sandbox blocked all `sd`/`ml` commands: mise refused the untrusted config at `/repos/denkhaus/fabro/.mise.toml` (run 01M1Q4P92K5RX8XX990BEB130Y, this attempt 2). Fixed ad hoc with `mise trust`. Suggest the workflow image pre-trust the repo mise config or set MISE_TRUSTED_CONFIG_PATHS so planner stages don't fail before touching the tracker."}],"observations":["fabro-8822 looks verification-only/stale: both named tests exist (`lib/apps/fabro-cli/src/main.rs` lines 703 and 1578) and prior run 01M1PVMS7B6N39MG0041C5F7P6 verified they pass on clean HEAD; the seed's flaky-timeout note (cmd::create/acp/artifacts) is a separate concern and was deliberately excluded from the brief."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q4P92K5RX8XX990BEB130Y","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-04T21:33:27Z","data":{"painpoints":[],"observations":["Seed fabro-8822 reports failures on denkhaus HEAD 84fcd1f, but both tests pass on clean fabro HEAD 38e9685 — the failure is upstream-branch-specific (likely the v0.337.0-nightly.1 merge), worth confirming before any fix is attempted downstream."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q4P92K5RX8XX990BEB130Y","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-04T21:33:37Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Q4P92K5RX8XX990BEB130Y","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-04T21:33:42Z","data":{}}

@@ -656,7 +656,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-04T21:20:26.711767247Z",
-  "last_event_at": "2026-09-04T21:33:42.509752679Z",
+  "last_event_at": "2026-09-04T21:34:37.215986878Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1237,9 +1237,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 203,
       "checkpoint": {
-        "timestamp": "2026-09-04T21:33:42.714394111Z",
+        "timestamp": "2026-09-04T21:33:46.616880314Z",
         "current_node": "evidence",
         "completed_nodes": [
           "start",
@@ -1250,41 +1250,19 @@
         ],
         "node_retries": {},
         "context_values": {
-          "failure_class": "",
-          "preferred_label": "Implemented",
-          "thread.tester.current_node": "evidence",
-          "journal": {
-            "painpoints": [],
-            "observations": [
-              "Seed fabro-8822 reports failures on denkhaus HEAD 84fcd1f, but both tests pass on clean fabro HEAD 38e9685 — the failure is upstream-branch-specific (likely the v0.337.0-nightly.1 merge), worth confirming before any fix is attempted downstream."
-            ]
-          },
-          "thread.start.current_node": "planner",
+          "internal.thread_id": "tester",
+          "last_response": "All acceptance criteria verified against the clean worktree — the seed is indeed verification-only on this HEAD (fabro HEAD `38e9685`; the failures were on denkhaus HEAD `84fcd1f`). No code changes ",
           "outcome": "succeeded",
+          "thread.tester.current_node": "evidence",
+          "implementation_summary": "No files touched — pure verification. Lesson capture: nothing durable — skipped (the verification-only nature is already recorded in the seed itself). Per-criterion report: - PASS - `tests::parse_auth_logout_all` exists at `lib/apps/fabro-cli/src/main.rs:703` and passes (asserts `args.all` true and `args.server.server.is_none()`); nextest PASS 0.018s. - PASS - `tests::parse_settings_command` exists at `lib/apps/fabro-cli/src/main.rs:1578` and passes (asserts `args.target.server.is_none()`); nextest PASS 0.018s. - PASS - Root-cause check: the shared server flag in `lib/apps/fabro-cli/src/args.rs:150-155` (`ServerTargetArgs.server`) is an `Option<String>` with only `long = \"server\"` + `env = FABRO_SERVER`, no clap `default_value`, so the Option stays None when omitted (and `FABRO_SERVER` is unset in this environment). - PASS - `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` exited 0: 2 tests run, 2 passed, 0 failed. - PASS (n/a) - No criterion failed, so no fix was required.",
+          "current_node": "evidence",
+          "lesson_capture": "nothing durable — skipped",
+          "internal.run_id": "01M1Q4P92K5RX8XX990BEB130Y",
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.implementer",
             "chars": 1729,
             "preview": "All acceptance criteria verified against the clean worktree — the seed is indeed verification-only on this HEAD (fabro HEAD `38e9685`; the failures were on denkhaus HEAD `84fcd1f`). No code changes "
-          },
-          "graph.goal": "Qualification run (attempt 2, after the closeout stdin fix f7db7d05a): claim exactly one seed: fabro-8822 (CLI parse tests fail — logout --all carries a default server value; parse_settings_command fails the same way). Note from run 01M1PVMS7B6N39MG0041C5F7P6: on a clean HEAD both parse tests pass — the seed may be verification-only; if so verify every acceptance criterion and drive it to approval. Do not claim any other seed.",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.fidelity": "compact",
-          "implementation_summary": "No files touched — pure verification. Lesson capture: nothing durable — skipped (the verification-only nature is already recorded in the seed itself). Per-criterion report: - PASS - `tests::parse_auth_logout_all` exists at `lib/apps/fabro-cli/src/main.rs:703` and passes (asserts `args.all` true and `args.server.server.is_none()`); nextest PASS 0.018s. - PASS - `tests::parse_settings_command` exists at `lib/apps/fabro-cli/src/main.rs:1578` and passes (asserts `args.target.server.is_none()`); nextest PASS 0.018s. - PASS - Root-cause check: the shared server flag in `lib/apps/fabro-cli/src/args.rs:150-155` (`ServerTargetArgs.server`) is an `Option<String>` with only `long = \"server\"` + `env = FABRO_SERVER`, no clap `default_value`, so the Option stays None when omitted (and `FABRO_SERVER` is unset in this environment). - PASS - `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` exited 0: 2 tests run, 2 passed, 0 failed. - PASS (n/a) - No criterion failed, so no fix was required.",
-          "internal.thread_id": "tester",
-          "current_seed_id": "fabro-8822",
-          "internal.retry_count.planner": 0,
-          "current_seed_brief": "VERIFICATION-ONLY: The acceptance criteria appear already satisfied on clean HEAD 38e9685 (prior run 01M1PVMS7B6N39MG0041C5F7P6 observed both parse tests passing; this pass confirmed the tests exist and assert the described invariants). Verify each one against the worktree; make NO changes if all hold. Seed fabro-8822 acceptance criteria: - `tests::parse_auth_logout_all` in `lib/apps/fabro-cli/src/main.rs` (~line 703) passes: `fabro auth logout --all` parses, `args.all` is true, `args.server.server.is_none()` holds. - `tests::parse_settings_command` in `lib/apps/fabro-cli/src/main.rs` (~line 1578) passes: `fabro settings` parses with `args.target.server.is_none()`. - Root-cause check: the shared server flag carries no clap `default_value` that populates the Option when the flag is omitted (Option stays None). - `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` exits 0 on a clean worktree (expect long first compile; use a generous timeout). - If ANY criterion fails, fix at the root (flag default vs intended test semantics) and report PASS/FAIL per bullet; do not touch unrelated code. - Out of scope for this claim: flaky cmd::create/acp/artifacts integration-test timeouts mentioned in the seed description (follow-up seed material if they recur).",
-          "internal.node_visit_count": 1,
-          "internal.seed_cycle_anchor": "fabro-8822",
-          "last_stage": "implementer",
-          "graph.preamble_budget_kb": "24",
-          "graph.rankdir": "LR",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 2835,
-            "preview": "Seed fabro-8822 ist geclaimt und als verification-only geplant — auf Basis der Code-Lage (beide Tests existieren und asserten `.is_none()`; kein sichtbarer `default_value`-Regressionstand) plus dem "
           },
           "seed_cycles": {
             "planner": 1,
@@ -1292,21 +1270,43 @@
             "tester": 1,
             "evidence": 1
           },
-          "thread.planner.current_node": "implementer",
+          "current_seed_id": "fabro-8822",
+          "preferred_label": "Implemented",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Seed fabro-8822 reports failures on denkhaus HEAD 84fcd1f, but both tests pass on clean fabro HEAD 38e9685 — the failure is upstream-branch-specific (likely the v0.337.0-nightly.1 merge), worth confirming before any fix is attempted downstream."
+            ]
+          },
           "thread.implementer.current_node": "tester",
-          "internal.retry_count.tester": 0,
-          "graph.max_node_visits": "40",
-          "failure_signature": "",
-          "command.output": "blob://sha256/959c48828bb0ed9da61fba8c67593b4f68c4e2e02e6b6628891968ff5a974077",
-          "internal.retry_count.start": 0,
-          "current_seed_title": "CLI: parse_auth_logout_all fails — logout --all carries a default server value",
-          "internal.work_dir": "/workspace/fabro",
           "internal.retry_count.implementer": 0,
-          "internal.run_id": "01M1Q4P92K5RX8XX990BEB130Y",
-          "lesson_capture": "nothing durable — skipped",
-          "current_node": "evidence",
+          "graph.goal": "Qualification run (attempt 2, after the closeout stdin fix f7db7d05a): claim exactly one seed: fabro-8822 (CLI parse tests fail — logout --all carries a default server value; parse_settings_command fails the same way). Note from run 01M1PVMS7B6N39MG0041C5F7P6: on a clean HEAD both parse tests pass — the seed may be verification-only; if so verify every acceptance criterion and drive it to approval. Do not claim any other seed.",
+          "last_stage": "implementer",
+          "graph.max_node_visits": "40",
+          "graph.rankdir": "LR",
+          "internal.retry_count.tester": 0,
+          "thread.start.current_node": "planner",
+          "internal.node_visit_count": 1,
+          "current_seed_title": "CLI: parse_auth_logout_all fails — logout --all carries a default server value",
+          "failure_class": "",
+          "internal.retry_count.planner": 0,
+          "internal.seed_cycle_anchor": "fabro-8822",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2835,
+            "preview": "Seed fabro-8822 ist geclaimt und als verification-only geplant — auf Basis der Code-Lage (beide Tests existieren und asserten `.is_none()`; kein sichtbarer `default_value`-Regressionstand) plus dem "
+          },
+          "thread.planner.current_node": "implementer",
+          "internal.fidelity": "compact",
+          "current_seed_brief": "VERIFICATION-ONLY: The acceptance criteria appear already satisfied on clean HEAD 38e9685 (prior run 01M1PVMS7B6N39MG0041C5F7P6 observed both parse tests passing; this pass confirmed the tests exist and assert the described invariants). Verify each one against the worktree; make NO changes if all hold. Seed fabro-8822 acceptance criteria: - `tests::parse_auth_logout_all` in `lib/apps/fabro-cli/src/main.rs` (~line 703) passes: `fabro auth logout --all` parses, `args.all` is true, `args.server.server.is_none()` holds. - `tests::parse_settings_command` in `lib/apps/fabro-cli/src/main.rs` (~line 1578) passes: `fabro settings` parses with `args.target.server.is_none()`. - Root-cause check: the shared server flag carries no clap `default_value` that populates the Option when the flag is omitted (Option stays None). - `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` exits 0 on a clean worktree (expect long first compile; use a generous timeout). - If ANY criterion fails, fix at the root (flag default vs intended test semantics) and report PASS/FAIL per bullet; do not touch unrelated code. - Out of scope for this claim: flaky cmd::create/acp/artifacts integration-test timeouts mentioned in the seed description (follow-up seed material if they recur).",
           "internal.retry_count.evidence": 0,
-          "last_response": "All acceptance criteria verified against the clean worktree — the seed is indeed verification-only on this HEAD (fabro HEAD `38e9685`; the failures were on denkhaus HEAD `84fcd1f`). No code changes "
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.start": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "failure_signature": "",
+          "command.output": "blob://sha256/959c48828bb0ed9da61fba8c67593b4f68c4e2e02e6b6628891968ff5a974077"
         },
         "node_outcomes": {
           "evidence": {
@@ -1321,6 +1321,296 @@
               "inference_time_ms": 0,
               "tool_time_ms": 377,
               "active_time_ms": 377
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Seed fabro-8822 reports failures on denkhaus HEAD 84fcd1f, but both tests pass on clean fabro HEAD 38e9685 — the failure is upstream-branch-specific (likely the v0.337.0-nightly.1 merge), worth confirming before any fix is attempted downstream."
+                ]
+              },
+              "last_response": "All acceptance criteria verified against the clean worktree — the seed is indeed verification-only on this HEAD (fabro HEAD `38e9685`; the failures were on denkhaus HEAD `84fcd1f`). No code changes ",
+              "lesson_capture": "nothing durable — skipped",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 1729,
+                "preview": "All acceptance criteria verified against the clean worktree — the seed is indeed verification-only on this HEAD (fabro HEAD `38e9685`; the failures were on denkhaus HEAD `84fcd1f`). No code changes "
+              },
+              "last_stage": "implementer",
+              "implementation_summary": "No files touched — pure verification. Lesson capture: nothing durable — skipped (the verification-only nature is already recorded in the seed itself). Per-criterion report: - PASS - `tests::parse_auth_logout_all` exists at `lib/apps/fabro-cli/src/main.rs:703` and passes (asserts `args.all` true and `args.server.server.is_none()`); nextest PASS 0.018s. - PASS - `tests::parse_settings_command` exists at `lib/apps/fabro-cli/src/main.rs:1578` and passes (asserts `args.target.server.is_none()`); nextest PASS 0.018s. - PASS - Root-cause check: the shared server flag in `lib/apps/fabro-cli/src/args.rs:150-155` (`ServerTargetArgs.server`) is an `Option<String>` with only `long = \"server\"` + `env = FABRO_SERVER`, no clap `default_value`, so the Option stays None when omitted (and `FABRO_SERVER` is unset in this environment). - PASS - `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` exited 0: 2 tests run, 2 passed, 0 failed. - PASS (n/a) - No criterion failed, so no fix was required."
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 13739,
+                    "output_tokens": 839,
+                    "reasoning_tokens": 113,
+                    "cache_read_tokens": 73088,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 42418
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 31923,
+              "tool_time_ms": 18319,
+              "active_time_ms": 50242
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Fresh sandbox blocked all `sd`/`ml` commands: mise refused the untrusted config at `/repos/denkhaus/fabro/.mise.toml` (run 01M1Q4P92K5RX8XX990BEB130Y, this attempt 2). Fixed ad hoc with `mise trust`. Suggest the workflow image pre-trust the repo mise config or set MISE_TRUSTED_CONFIG_PATHS so planner stages don't fail before touching the tracker."
+                  }
+                ],
+                "observations": [
+                  "fabro-8822 looks verification-only/stale: both named tests exist (`lib/apps/fabro-cli/src/main.rs` lines 703 and 1578) and prior run 01M1PVMS7B6N39MG0041C5F7P6 verified they pass on clean HEAD; the seed's flaky-timeout note (cmd::create/acp/artifacts) is a separate concern and was deliberately excluded from the brief."
+                ]
+              },
+              "last_response": "Seed fabro-8822 ist geclaimt und als verification-only geplant — auf Basis der Code-Lage (beide Tests existieren und asserten `.is_none()`; kein sichtbarer `default_value`-Regressionstand) plus dem ",
+              "current_seed_brief": "VERIFICATION-ONLY: The acceptance criteria appear already satisfied on clean HEAD 38e9685 (prior run 01M1PVMS7B6N39MG0041C5F7P6 observed both parse tests passing; this pass confirmed the tests exist and assert the described invariants). Verify each one against the worktree; make NO changes if all hold. Seed fabro-8822 acceptance criteria: - `tests::parse_auth_logout_all` in `lib/apps/fabro-cli/src/main.rs` (~line 703) passes: `fabro auth logout --all` parses, `args.all` is true, `args.server.server.is_none()` holds. - `tests::parse_settings_command` in `lib/apps/fabro-cli/src/main.rs` (~line 1578) passes: `fabro settings` parses with `args.target.server.is_none()`. - Root-cause check: the shared server flag carries no clap `default_value` that populates the Option when the flag is omitted (Option stays None). - `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` exits 0 on a clean worktree (expect long first compile; use a generous timeout). - If ANY criterion fails, fix at the root (flag default vs intended test semantics) and report PASS/FAIL per bullet; do not touch unrelated code. - Out of scope for this claim: flaky cmd::create/acp/artifacts integration-test timeouts mentioned in the seed description (follow-up seed material if they recur).",
+              "current_seed_id": "fabro-8822",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2835,
+                "preview": "Seed fabro-8822 ist geclaimt und als verification-only geplant — auf Basis der Code-Lage (beide Tests existieren und asserten `.is_none()`; kein sichtbarer `default_value`-Regressionstand) plus dem "
+              },
+              "last_stage": "planner",
+              "current_seed_title": "CLI: parse_auth_logout_all fails — logout --all carries a default server value"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 18446,
+                    "output_tokens": 1817,
+                    "reasoning_tokens": 2697,
+                    "cache_read_tokens": 190080,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 95092
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 96763,
+              "tool_time_ms": 544720,
+              "active_time_ms": 641483
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5366,
+              "active_time_ms": 5366
+            }
+          }
+        },
+        "next_node_id": "reviewer",
+        "git_commit_sha": "e9389a3fa046570d3f2646fb2a6152a9db984916",
+        "node_visits": {
+          "implementer": 1,
+          "planner": 1,
+          "start": 1,
+          "evidence": 1,
+          "tester": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1Q4P92K5RX8XX990BEB130Y.jsonl b/.fabro/journal/01M1Q4P92K5RX8XX990BEB130Y.jsonl\nindex ea4eb7a..56177ef 100644\n--- a/.fabro/journal/01M1Q4P92K5RX8XX990BEB130Y.jsonl\n+++ b/.fabro/journal/01M1Q4P92K5RX8XX990BEB130Y.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q4P92K5RX8XX990BEB130Y\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T21:32:24Z\",\"data\":{\"painpoints\":[{\"text\":\"Fresh sandbox blocked all `sd`/`ml` commands: mise refused the untrusted config at `/repos/denkhaus/fabro/.mise.toml` (run 01M1Q4P92K5RX8XX990BEB130Y, this attempt 2). Fixed ad hoc with `mise trust`. Suggest the workflow image pre-trust the repo mise config or set MISE_TRUSTED_CONFIG_PATHS so planner stages don't fail before touching the tracker.\"}],\"observations\":[\"fabro-8822 looks verification-only/stale: both named tests exist (`lib/apps/fabro-cli/src/main.rs` lines 703 and 1578) and prior run 01M1PVMS7B6N39MG0041C5F7P6 verified they pass on clean HEAD; the seed's flaky-timeout note (cmd::create/acp/artifacts) is a separate concern and was deliberately excluded from the brief.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q4P92K5RX8XX990BEB130Y\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T21:33:27Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Seed fabro-8822 reports failures on denkhaus HEAD 84fcd1f, but both tests pass on clean fabro HEAD 38e9685 — the failure is upstream-branch-specific (likely the v0.337.0-nightly.1 merge), worth confirming before any fix is attempted downstream.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q4P92K5RX8XX990BEB130Y\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T21:33:37Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q4P92K5RX8XX990BEB130Y\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T21:33:42Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 64,
+          "deletions": 60
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-04T21:34:37.443069662Z",
+        "current_node": "reviewer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_class": "",
+          "preferred_label": "Approved",
+          "thread.tester.current_node": "evidence",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Independently re-ran both parse tests (2/2 PASS, exit 0) and confirmed ServerTargetArgs.server has no clap default_value (args.rs:150-155) — implementer's verification-only claims all reproduced. Likely original failure cause was FABRO_SERVER env leakage in the failing environment, worth noting if the test ever flakes again (a env= unset guard in the test would harden it, but that's out of scope for this seed)."
+            ]
+          },
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 1651,
+            "preview": "All acceptance criteria independently verified:\n\n1. **PASS** — `tests::parse_auth_logout_all` at `main.rs:703` exists and passes (nextest PASS 0.016s).\n2. **PASS** — `tests::parse_settings_command"
+          },
+          "thread.start.current_node": "planner",
+          "outcome": "succeeded",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 1729,
+            "preview": "All acceptance criteria verified against the clean worktree — the seed is indeed verification-only on this HEAD (fabro HEAD `38e9685`; the failures were on denkhaus HEAD `84fcd1f`). No code changes "
+          },
+          "graph.goal": "Qualification run (attempt 2, after the closeout stdin fix f7db7d05a): claim exactly one seed: fabro-8822 (CLI parse tests fail — logout --all carries a default server value; parse_settings_command fails the same way). Note from run 01M1PVMS7B6N39MG0041C5F7P6: on a clean HEAD both parse tests pass — the seed may be verification-only; if so verify every acceptance criterion and drive it to approval. Do not claim any other seed.",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.fidelity": "summary:high",
+          "review_verdict": "approved",
+          "implementation_summary": "No files touched — pure verification. Lesson capture: nothing durable — skipped (the verification-only nature is already recorded in the seed itself). Per-criterion report: - PASS - `tests::parse_auth_logout_all` exists at `lib/apps/fabro-cli/src/main.rs:703` and passes (asserts `args.all` true and `args.server.server.is_none()`); nextest PASS 0.018s. - PASS - `tests::parse_settings_command` exists at `lib/apps/fabro-cli/src/main.rs:1578` and passes (asserts `args.target.server.is_none()`); nextest PASS 0.018s. - PASS - Root-cause check: the shared server flag in `lib/apps/fabro-cli/src/args.rs:150-155` (`ServerTargetArgs.server`) is an `Option<String>` with only `long = \"server\"` + `env = FABRO_SERVER`, no clap `default_value`, so the Option stays None when omitted (and `FABRO_SERVER` is unset in this environment). - PASS - `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` exited 0: 2 tests run, 2 passed, 0 failed. - PASS (n/a) - No criterion failed, so no fix was required.",
+          "internal.thread_id": "evidence",
+          "current_seed_id": "fabro-8822",
+          "internal.retry_count.planner": 0,
+          "current_seed_brief": "VERIFICATION-ONLY: The acceptance criteria appear already satisfied on clean HEAD 38e9685 (prior run 01M1PVMS7B6N39MG0041C5F7P6 observed both parse tests passing; this pass confirmed the tests exist and assert the described invariants). Verify each one against the worktree; make NO changes if all hold. Seed fabro-8822 acceptance criteria: - `tests::parse_auth_logout_all` in `lib/apps/fabro-cli/src/main.rs` (~line 703) passes: `fabro auth logout --all` parses, `args.all` is true, `args.server.server.is_none()` holds. - `tests::parse_settings_command` in `lib/apps/fabro-cli/src/main.rs` (~line 1578) passes: `fabro settings` parses with `args.target.server.is_none()`. - Root-cause check: the shared server flag carries no clap `default_value` that populates the Option when the flag is omitted (Option stays None). - `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` exits 0 on a clean worktree (expect long first compile; use a generous timeout). - If ANY criterion fails, fix at the root (flag default vs intended test semantics) and report PASS/FAIL per bullet; do not touch unrelated code. - Out of scope for this claim: flaky cmd::create/acp/artifacts integration-test timeouts mentioned in the seed description (follow-up seed material if they recur).",
+          "internal.node_visit_count": 1,
+          "internal.seed_cycle_anchor": "fabro-8822",
+          "last_stage": "reviewer",
+          "graph.preamble_budget_kb": "24",
+          "graph.rankdir": "LR",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2835,
+            "preview": "Seed fabro-8822 ist geclaimt und als verification-only geplant — auf Basis der Code-Lage (beide Tests existieren und asserten `.is_none()`; kein sichtbarer `default_value`-Regressionstand) plus dem "
+          },
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1
+          },
+          "thread.planner.current_node": "implementer",
+          "thread.implementer.current_node": "tester",
+          "internal.retry_count.tester": 0,
+          "graph.max_node_visits": "40",
+          "failure_signature": "",
+          "command.output": "blob://sha256/959c48828bb0ed9da61fba8c67593b4f68c4e2e02e6b6628891968ff5a974077",
+          "internal.retry_count.start": 0,
+          "current_seed_title": "CLI: parse_auth_logout_all fails — logout --all carries a default server value",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.implementer": 0,
+          "thread.evidence.current_node": "reviewer",
+          "internal.run_id": "01M1Q4P92K5RX8XX990BEB130Y",
+          "lesson_capture": "nothing durable — skipped",
+          "current_node": "reviewer",
+          "internal.retry_count.evidence": 0,
+          "internal.retry_count.reviewer": 0,
+          "last_response": "All acceptance criteria independently verified:\n\n1. **PASS** — `tests::parse_auth_logout_all` at `main.rs:703` exists and passes (nextest PASS 0.016s).\n2. **PASS** — `tests::parse_settings_command"
+        },
+        "node_outcomes": {
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/959c48828bb0ed9da61fba8c67593b4f68c4e2e02e6b6628891968ff5a974077"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 377,
+              "active_time_ms": 377
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "last_response": "All acceptance criteria independently verified:\n\n1. **PASS** — `tests::parse_auth_logout_all` at `main.rs:703` exists and passes (nextest PASS 0.016s).\n2. **PASS** — `tests::parse_settings_command",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 1651,
+                "preview": "All acceptance criteria independently verified:\n\n1. **PASS** — `tests::parse_auth_logout_all` at `main.rs:703` exists and passes (nextest PASS 0.016s).\n2. **PASS** — `tests::parse_settings_command"
+              },
+              "review_verdict": "approved",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Independently re-ran both parse tests (2/2 PASS, exit 0) and confirmed ServerTargetArgs.server has no clap default_value (args.rs:150-155) — implementer's verification-only claims all reproduced. Likely original failure cause was FABRO_SERVER env leakage in the failing environment, worth noting if the test ever flakes again (a env= unset guard in the test would harden it, but that's out of scope for this seed)."
+                ]
+              },
+              "last_stage": "reviewer"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 13878,
+                    "output_tokens": 625,
+                    "reasoning_tokens": 109,
+                    "cache_read_tokens": 39488,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 32921
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 25555,
+              "tool_time_ms": 17715,
+              "active_time_ms": 43270
             }
           },
           "implementer": {
@@ -1447,9 +1737,10 @@
             }
           }
         },
-        "next_node_id": "reviewer",
+        "next_node_id": "closeout",
         "node_visits": {
           "start": 1,
+          "reviewer": 1,
           "tester": 1,
           "implementer": 1,
           "planner": 1,
@@ -1533,6 +1824,243 @@
         "reasoning_tokens": 0,
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "reviewer@1": {
+      "first_event_seq": 206,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: reviewer",
+        "failure_reason": null,
+        "timestamp": "2026-09-04T21:34:37.215986878Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-04T21:33:46.645561462Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 43879,
+        "inference_time_ms": 25555,
+        "tool_time_ms": 17715,
+        "active_time_ms": 43270
+      },
+      "usage": {
+        "input_tokens": 13878,
+        "output_tokens": 625,
+        "total_tokens": 54100,
+        "reasoning_tokens": 109,
+        "cache_read_tokens": 39488,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 32921
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 13791,
+        "usage_percent": 1.3152122497558594,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-04T21:34:37.197167785Z",
+        "event_seq": 236,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1161,
+            "usage_percent": 0.11072158813476562
+          },
+          {
+            "category": "tools",
+            "tokens": 1642,
+            "usage_percent": 0.15659332275390625
+          },
+          {
+            "category": "skills",
+            "tokens": 222,
+            "usage_percent": 0.02117156982421875
+          },
+          {
+            "category": "memory",
+            "tokens": 5645,
+            "usage_percent": 0.5383491516113281
+          },
+          {
+            "category": "conversation",
+            "tokens": 5114,
+            "usage_percent": 0.48770904541015625
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
       },
       "agent_control": "running",
       "state": "succeeded"
