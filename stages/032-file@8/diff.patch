@@ -1,0 +1,40 @@
+diff --git a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
+index b618c7f..9921c32 100644
+--- a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
++++ b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
+@@ -27,3 +27,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"approve","visit":7,"status":"succeeded","ts":"2026-09-04T22:49:49Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"select","visit":7,"status":"succeeded","ts":"2026-09-04T22:50:11Z","data":{"painpoints":[],"observations":["12+ unrevised terminal runs lack a live sandbox (e.g. 01M0QTMF0NZNFH72VEVZNB8XFY, 01M0MGAPV45NNRBZK3WTKCJ5H9) and stay blocked until fresh analyst sandboxes are provisioned; no active develop run at selection time."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"analyze","visit":8,"status":"succeeded","ts":"2026-09-04T22:54:04Z","data":{"painpoints":[{"text":"The PR-publish 403 tail terminated yet another fully-green develop run (01M0T9B7T6XNM1D7JNY35Y6H8K: 7/7 visits green, $0.353, 6m57s, then failed(publish_failed)); the fix exists as open seeds fabro-6a77 and fabro-696c plus the closed preflight fabro-67e5, but the succeeded_with_publish_failure taxonomy evidently has not landed — landing it would end this recurring review-and-drop cycle."}],"observations":["Dropped as duplicates: publish non-terminal+preflight -> fabro-6a77, fabro-696c, closed fabro-67e5; budget 12->20KB -> fabro-35ab, fabro-83f9; sd syntax pinning -> fabro-1399; implementer report dedupe -> fabro-4cd8; same-file batch edits -> fabro-4601; double tracker query -> fabro-1399/fabro-e4fa/fabro-b382; unique-node progress -> fabro-45bf/fabro-38f4; PR model honoring -> closed fabro-46f3.","This run's evidence was already partially distilled by an earlier pass (fabro-4cd8, fabro-35ab, fabro-1399 all cite run 01M0T9B7T6XNM1D7JNY35Y6H8K); only the context-key blanking and seeds-cli exit-code findings are new this pass.","Review answer persisted verbatim at .fabro/reviews/develop/01M0T9B7T6XNM1D7JNY35Y6H8K.md."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"file","visit":8,"status":"succeeded","ts":"2026-09-04T22:54:43Z","data":{"painpoints":[],"observations":["sd search returned no output for both dedupe themes, confirming no duplicates; commit bc5708e includes marker plus `.seeds/issues.jsonl`."]}}
+diff --git a/.fabro/revisions/01M0T9B7T6XNM1D7JNY35Y6H8K.md b/.fabro/revisions/01M0T9B7T6XNM1D7JNY35Y6H8K.md
+new file mode 100644
+index 0000000..e5de61c
+--- /dev/null
++++ b/.fabro/revisions/01M0T9B7T6XNM1D7JNY35Y6H8K.md
+@@ -0,0 +1,15 @@
++# Revision — run 01M0T9B7T6XNM1D7JNY35Y6H8K
++
++- status reviewed: failed
++- review: .fabro/reviews/develop/01M0T9B7T6XNM1D7JNY35Y6H8K.md
++- seeds filed: fabro-b065 — Blank stale seed context keys when routing Tracker empty; fabro-d936 — Make seeds-cli exit non-zero on errors
++
++## Findings
++
++### Blank stale seed context keys when routing Tracker empty
++- filed: fabro-b065
++- Change: extend the `Tracker empty` JSON contract in `.fabro/workflows/develop/prompts/planner.md` to also blank `current_seed_id`/`title`/`brief` and `implementation_summary`. Expected effect: the closing planner pass stops hauling stale seed context as blob refs — fewer blob round-trips, smaller preambles, lower evidence-starvation risk.
++
++### Make seeds-cli exit non-zero on errors (exit 0 masks failed tracker writes)
++- filed: fabro-d936
++- Change: `seeds-cli` should exit non-zero and print errors to stderr instead of stdout with exit 0. Expected effect: removes a silent-corruption path for tracker writes and eliminates exit-code-checking gates reading failure as success. Complements prompt-side fabro-1399.
+diff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl
+index 7f3f3b6..3454b75 100644
+--- a/.seeds/issues.jsonl
++++ b/.seeds/issues.jsonl
+@@ -177,3 +177,5 @@
+ {"id":"fabro-ff7a","title":"Route no-change verification resubmits straight to reviewer","status":"open","type":"task","priority":2,"createdAt":"2026-09-04T22:43:44.366Z","updatedAt":"2026-09-04T22:43:44.366Z","description":"In .fabro/workflows/develop/workflow.fabro, add an 'Implemented (no changes)' label edge from implementer directly to reviewer, or condition the tester edge on a dirty worktree. In run 01M0SS23MJM8972CBJD0SP7T4Q, tester@2 (922ms) and evidence@2 (384ms) re-ran on a byte-identical worktree because implementer@2 was verification-only by design; the unconditional edge from implementer to tester wastes one gate plus evidence pair per procedural resubmit, and the waste scales with gate weight.","labels":["revision"]}
+ {"id":"fabro-6bbe","title":"Clear review_feedback in the reviewer Approved JSON template","status":"open","type":"task","priority":2,"createdAt":"2026-09-04T22:43:44.372Z","updatedAt":"2026-09-04T22:43:44.372Z","description":"In .fabro/workflows/develop/prompts/reviewer.md, add \"review_feedback\": \"\" to the Approved JSON template so the verdict flip resets stale rejection text. In run 01M0SS23MJM8972CBJD0SP7T4Q, planner@3 still carried the full 1.6KB cycle-1 'changes requested' feedback alongside review_verdict=approved, letting dead instructions leak into the next seed's re-plan. Complements fabro-5870 (closeout clearing): this triggers at verdict flip, mid-loop.","labels":["revision"]}
+ {"id":"fabro-8d61","title":"Document glob_filter glob syntax in the planner prompt","status":"open","type":"task","priority":2,"createdAt":"2026-09-04T22:43:44.521Z","updatedAt":"2026-09-04T22:43:44.521Z","description":"In .fabro/workflows/develop/prompts/planner.md, note that the grep tool's glob_filter expects a glob (e.g. *.go), not a bare filename like main.go. In run 01M0SS23MJM8972CBJD0SP7T4Q, planner@1 burned two empty grep calls (seq 58-59 with glob_filter: \"main.go\") plus a recovery find/head call; the prompt note prevents those wasted turns independently of fabro-8354 landing ripgrep in the image.","labels":["revision"]}
++{"id":"fabro-b065","title":"Blank stale seed context keys when routing Tracker empty","status":"open","type":"task","priority":2,"createdAt":"2026-09-04T22:54:20.701Z","updatedAt":"2026-09-04T22:54:20.701Z","description":"In .fabro/workflows/develop/prompts/planner.md, extend the 'Tracker empty' JSON contract to also blank current_seed_id/title/brief and implementation_summary (it already clears review_verdict). In run 01M0T9B7T6XNM1D7JNY35Y6H8K the final planner pass closed seed fabro-8208, routed 'Tracker empty', yet its prompt still carried the dead seed's brief (1.6 KB) and implementation_summary (1.7 KB) as blob refs after budget demotion. Expected effect: the closing planner pass stops hauling stale seed context — fewer blob round-trips, smaller preambles, lower risk of the evidence-starvation pathology noted in the graph comments. Not a duplicate of fabro-b382, which covers prose duplication and sd call rules, not the context_updates key contract.","labels":["revision"]}
++{"id":"fabro-d936","title":"Make seeds-cli exit non-zero on errors (exit 0 masks failed tracker writes)","status":"open","type":"task","priority":2,"createdAt":"2026-09-04T22:54:20.848Z","updatedAt":"2026-09-04T22:54:20.848Z","description":"@os-eco/seeds-cli v0.5.15 prints errors like 'error: unknown option --format' to stdout with exit_code 0 — observed at events seq 62-63 of run 01M0T9B7T6XNM1D7JNY35Y6H8K when planner@1 ran sd update with --format json; only the model's text inspection caught the failed write. Change: seeds-cli exits non-zero and prints errors to stderr. Expected effect: removes a silent-corruption path for tracker writes (any exit-code-checking consumer or gate currently reads failure as success) and eliminates the observed wasted retry. Prompt-side syntax pinning is already covered by fabro-1399; this is the orthogonal CLI-side fix.","labels":["revision"]}
