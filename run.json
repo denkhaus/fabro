@@ -668,7 +668,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-04T06:54:58.515451884Z",
-  "last_event_at": "2026-09-04T07:10:59.087868147Z",
+  "last_event_at": "2026-09-04T07:12:09.235648459Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1263,9 +1263,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 257,
       "checkpoint": {
-        "timestamp": "2026-09-04T07:10:59.270926154Z",
+        "timestamp": "2026-09-04T07:11:03.696127984Z",
         "current_node": "evidence",
         "completed_nodes": [
           "start",
@@ -1276,16 +1276,259 @@
         ],
         "node_retries": {},
         "context_values": {
+          "preferred_label": "Implemented",
+          "current_node": "evidence",
+          "internal.seed_cycle_anchor": "fabro-f677",
+          "internal.work_dir": "/workspace/fabro",
+          "failure_class": "",
+          "command.output": "blob://sha256/0182c8da6cac9e349ab184c87f5b86f16ae4b1437f8cdab3cfec130f6a9159cf",
+          "implementation_summary": "Added sanitize_table_cell() in lib/components/fabro-workflow/src/handler/llm/preamble.rs and routed the plain-value path of append_filtered_context_table through it (newlines -> ' / ', whitespace collapsed, '|' escaped); large-value cells were already single-line/escaped and are unchanged, as are format_value, the bullet-list path, and the context store. Added unit test summary_high_table_renders_multiline_value_as_single_row; 86/86 preamble tests pass, no insta shifts. Lesson captured as mx-26cd4f. Per-criterion: PASS single-line rows per key (sanitize_table_cell + new test); PASS pipe escaping (same test asserts '\\|'); PASS id/title adjacency (rows[3]/rows[4] assertions); PASS no info loss (store path untouched); PASS existing table behavior unchanged (86 preamble tests incl. large-value marker test); PASS unit test in existing mod tests (preamble.rs:1714); PASS verification run (nextest preamble filter, fmt/clippy left to gate).",
+          "outcome": "succeeded",
+          "internal.retry_count.planner": 0,
+          "graph.max_node_visits": "40",
+          "current_seed_id": "fabro-f677",
+          "internal.node_visit_count": 1,
+          "internal.run_id": "01M1NK4V3YG3AQAMEKDJ6V471F",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3683,
+            "preview": "Implementation complete. Summary of the change in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`:\n\n- Added `sanitize_table_cell()` (lines ~343-353): trims/collapses lines, drops blank lin"
+          },
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "First two test reruns after a passing-source edit ran a stale binary and failed with the old assertion message; `touch` on preamble.rs forced a rebuild and the test passed. Anyone seeing a nextest failure whose panic text doesn't match current source should force a rebuild before debugging."
+            ]
+          },
+          "graph.goal": "Implement product seed fabro-f677: engine preamble context table breaks markdown with multi-line values",
+          "last_response": "Implementation complete. Summary of the change in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`:\n\n- Added `sanitize_table_cell()` (lines ~343-353): trims/collapses lines, drops blank lin",
+          "thread.implementer.current_node": "tester",
+          "failure_signature": "",
+          "current_seed_title": "engine: preamble context table breaks markdown with multi-line values",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.implementer": 0,
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "current_seed_brief": "Bug: the `## Current context` markdown table (summary:high preamble) inlines multi-line values raw, so embedded newlines shatter the table in every markdown renderer (run 01M1MMK5C6B313SY70Y2EPKE82: multi-line `current_seed_brief` made `current_seed_id`/`current_seed_title` look missing). Root cause: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` (around lines 344-371) renders plain values via `format_value(val)` into `| key | value |` rows with no newline/pipe sanitization; only the large-value path (`format_large_value_table_cell`) is single-line. Fix direction chosen (spec offered 3; direction 2 contradicts acceptance criterion 1, so it is ruled out): sanitize EVERY table cell in `append_filtered_context_table` — replace newlines with \" / \" (collapse other whitespace, e.g. blank lines/indent runs) and escape `|` as `\\|` — for both plain and large-value renderings. Do NOT change `format_value` globally or the bullet-list path `append_filtered_context`: multi-line output is intentional and correct there (e.g. `append_large_value` previews). Acceptance criteria: - every value containing newlines renders as exactly one single-line markdown table row per key (no raw `\\n` between `| key |` and the closing `|`) - cell sanitization also escapes literal `|` characters in values so pipes cannot split columns - `current_seed_id` and `current_seed_title` rows stay visually adjacent to a multi-line `current_seed_brief` row (all three are ordinary rows of one intact table) - no information loss: full multi-line value remains retrievable via the context_read tool (store path untouched — verify no demote/store changes are needed) - existing `## Current context` behavior otherwise unchanged (key filtering, sorting, hidden/blank/rendered-key exclusion, large-value marker cells) - unit test in the existing `mod tests` of `preamble.rs` (see test near line 1685 for harness patterns): build a summary:high preamble with a context value containing newlines (plus a `|` char) and assert the rendered `## Current context` section contains one row per key and zero newlines inside any row - run `cargo nextest run -p fabro-workflow` and, if any insta snapshots of preambles shift, inspect `cargo insta pending-snapshots` before accepting; format with `cargo +nightly-2026-04-14 fmt --all` and pass clippy",
+          "internal.fidelity": "compact",
+          "internal.retry_count.start": 0,
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
             "tester": 1,
             "evidence": 1
           },
+          "internal.thread_id": "tester",
+          "internal.retry_count.tester": 0,
+          "lesson_capture": "mx-26cd4f",
+          "thread.planner.current_node": "implementer",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3976,
+            "preview": "Seed `fabro-f677` claimed. One spec contradiction resolved in the brief: fix direction 2 (bullet list below the table) conflicts with acceptance criterion 1 (\"valid single table row per key\"), so the "
+          },
+          "thread.tester.current_node": "evidence",
+          "thread.start.current_node": "planner",
+          "internal.retry_count.evidence": 0,
+          "graph.rankdir": "LR",
+          "last_stage": "implementer"
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_title": "engine: preamble context table breaks markdown with multi-line values",
+              "current_seed_id": "fabro-f677",
+              "last_response": "Seed `fabro-f677` claimed. One spec contradiction resolved in the brief: fix direction 2 (bullet list below the table) conflicts with acceptance criterion 1 (\"valid single table row per key\"), so the ",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Seed fabro-f677 description lists fix direction 2 (bullet list below the table) that directly contradicts its own acceptance criterion 1 (single table row per key). Ambiguous specs invite reviewer ping-pong; seed descriptions with multiple fix directions should mark which directions are compatible with the acceptance criteria (evidence: sd show fabro-f677, run 01M1MMK5C6B313SY70Y2EPKE82 report)."
+                  }
+                ],
+                "observations": [
+                  "fabro-f677 is Low priority but explicitly named by the goal, so it was claimed ahead of higher-priority unrelated seeds.",
+                  "Bug is narrow and local: only `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` needs changes; `format_value` and `append_filtered_context` must stay multi-line-capable.",
+                  "Existing test coverage for this table exists at `preamble.rs` line ~1685 (`## Current context` assertion) — a good anchor for the new unit test."
+                ]
+              },
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3976,
+                "preview": "Seed `fabro-f677` claimed. One spec contradiction resolved in the brief: fix direction 2 (bullet list below the table) conflicts with acceptance criterion 1 (\"valid single table row per key\"), so the "
+              },
+              "last_stage": "planner",
+              "current_seed_brief": "Bug: the `## Current context` markdown table (summary:high preamble) inlines multi-line values raw, so embedded newlines shatter the table in every markdown renderer (run 01M1MMK5C6B313SY70Y2EPKE82: multi-line `current_seed_brief` made `current_seed_id`/`current_seed_title` look missing). Root cause: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` (around lines 344-371) renders plain values via `format_value(val)` into `| key | value |` rows with no newline/pipe sanitization; only the large-value path (`format_large_value_table_cell`) is single-line. Fix direction chosen (spec offered 3; direction 2 contradicts acceptance criterion 1, so it is ruled out): sanitize EVERY table cell in `append_filtered_context_table` — replace newlines with \" / \" (collapse other whitespace, e.g. blank lines/indent runs) and escape `|` as `\\|` — for both plain and large-value renderings. Do NOT change `format_value` globally or the bullet-list path `append_filtered_context`: multi-line output is intentional and correct there (e.g. `append_large_value` previews). Acceptance criteria: - every value containing newlines renders as exactly one single-line markdown table row per key (no raw `\\n` between `| key |` and the closing `|`) - cell sanitization also escapes literal `|` characters in values so pipes cannot split columns - `current_seed_id` and `current_seed_title` rows stay visually adjacent to a multi-line `current_seed_brief` row (all three are ordinary rows of one intact table) - no information loss: full multi-line value remains retrievable via the context_read tool (store path untouched — verify no demote/store changes are needed) - existing `## Current context` behavior otherwise unchanged (key filtering, sorting, hidden/blank/rendered-key exclusion, large-value marker cells) - unit test in the existing `mod tests` of `preamble.rs` (see test near line 1685 for harness patterns): build a summary:high preamble with a context value containing newlines (plus a `|` char) and assert the rendered `## Current context` section contains one row per key and zero newlines inside any row - run `cargo nextest run -p fabro-workflow` and, if any insta snapshots of preambles shift, inspect `cargo insta pending-snapshots` before accepting; format with `cargo +nightly-2026-04-14 fmt --all` and pass clippy"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19261,
+                    "output_tokens": 1490,
+                    "reasoning_tokens": 1222,
+                    "cache_read_tokens": 116608,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 69204
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 92245,
+              "tool_time_ms": 1471,
+              "active_time_ms": 93716
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/0182c8da6cac9e349ab184c87f5b86f16ae4b1437f8cdab3cfec130f6a9159cf"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 364,
+              "active_time_ms": 364
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_stage": "implementer",
+              "lesson_capture": "mx-26cd4f",
+              "implementation_summary": "Added sanitize_table_cell() in lib/components/fabro-workflow/src/handler/llm/preamble.rs and routed the plain-value path of append_filtered_context_table through it (newlines -> ' / ', whitespace collapsed, '|' escaped); large-value cells were already single-line/escaped and are unchanged, as are format_value, the bullet-list path, and the context store. Added unit test summary_high_table_renders_multiline_value_as_single_row; 86/86 preamble tests pass, no insta shifts. Lesson captured as mx-26cd4f. Per-criterion: PASS single-line rows per key (sanitize_table_cell + new test); PASS pipe escaping (same test asserts '\\|'); PASS id/title adjacency (rows[3]/rows[4] assertions); PASS no info loss (store path untouched); PASS existing table behavior unchanged (86 preamble tests incl. large-value marker test); PASS unit test in existing mod tests (preamble.rs:1714); PASS verification run (nextest preamble filter, fmt/clippy left to gate).",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "First two test reruns after a passing-source edit ran a stale binary and failed with the old assertion message; `touch` on preamble.rs forced a rebuild and the test passed. Anyone seeing a nextest failure whose panic text doesn't match current source should force a rebuild before debugging."
+                ]
+              },
+              "last_response": "Implementation complete. Summary of the change in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`:\n\n- Added `sanitize_table_cell()` (lines ~343-353): trims/collapses lines, drops blank lin",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3683,
+                "preview": "Implementation complete. Summary of the change in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`:\n\n- Added `sanitize_table_cell()` (lines ~343-353): trims/collapses lines, drops blank lin"
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 23521,
+                    "output_tokens": 3338,
+                    "reasoning_tokens": 2147,
+                    "cache_read_tokens": 401536,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 161434
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/components/fabro-workflow/src/handler/llm/preamble.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 201187,
+              "tool_time_ms": 416165,
+              "active_time_ms": 617352
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/1005ea9ab40b1ed2e25c0d841e5c47ab5e933622f6175c4a9cf5e5475d1945d3"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 134997,
+              "active_time_ms": 134997
+            }
+          }
+        },
+        "next_node_id": "reviewer",
+        "git_commit_sha": "249738879fe8753ceefd841a92358b996660070f",
+        "node_visits": {
+          "tester": 1,
+          "evidence": 1,
+          "implementer": 1,
+          "planner": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1NK4V3YG3AQAMEKDJ6V471F.jsonl b/.fabro/journal/01M1NK4V3YG3AQAMEKDJ6V471F.jsonl\nindex dc7bbe87..9e090b45 100644\n--- a/.fabro/journal/01M1NK4V3YG3AQAMEKDJ6V471F.jsonl\n+++ b/.fabro/journal/01M1NK4V3YG3AQAMEKDJ6V471F.jsonl\n@@ -2,3 +2,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NK4V3YG3AQAMEKDJ6V471F\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T06:56:45Z\",\"data\":{\"painpoints\":[{\"text\":\"Seed fabro-f677 description lists fix direction 2 (bullet list below the table) that directly contradicts its own acceptance criterion 1 (single table row per key). Ambiguous specs invite reviewer ping-pong; seed descriptions with multiple fix directions should mark which directions are compatible with the acceptance criteria (evidence: sd show fabro-f677, run 01M1MMK5C6B313SY70Y2EPKE82 report).\"}],\"observations\":[\"fabro-f677 is Low priority but explicitly named by the goal, so it was claimed ahead of higher-priority unrelated seeds.\",\"Bug is narrow and local: only `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` needs changes; `format_value` and `append_filtered_context` must stay multi-line-capable.\",\"Existing test coverage for this table exists at `preamble.rs` line ~1685 (`## Current context` assertion) — a good anchor for the new unit test.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NK4V3YG3AQAMEKDJ6V471F\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T07:08:17Z\",\"data\":{\"painpoints\":[],\"observations\":[\"First two test reruns after a passing-source edit ran a stale binary and failed with the old assertion message; `touch` on preamble.rs forced a rebuild and the test passed. Anyone seeing a nextest failure whose panic text doesn't match current source should force a rebuild before debugging.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NK4V3YG3AQAMEKDJ6V471F\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T07:10:54Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NK4V3YG3AQAMEKDJ6V471F\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T07:10:59Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 76,
+          "deletions": 3
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-04T07:12:09.454380040Z",
+        "current_node": "reviewer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1
+          },
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 3280,
+            "preview": "Verification complete. Findings against the f677 spec:\n\n1. **Single-line rows** — `sanitize_table_cell` splits on lines, trims, drops blanks, joins with `\" / \"`; the plain-value path of `append_filt"
+          },
           "current_seed_brief": "Bug: the `## Current context` markdown table (summary:high preamble) inlines multi-line values raw, so embedded newlines shatter the table in every markdown renderer (run 01M1MMK5C6B313SY70Y2EPKE82: multi-line `current_seed_brief` made `current_seed_id`/`current_seed_title` look missing). Root cause: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` (around lines 344-371) renders plain values via `format_value(val)` into `| key | value |` rows with no newline/pipe sanitization; only the large-value path (`format_large_value_table_cell`) is single-line. Fix direction chosen (spec offered 3; direction 2 contradicts acceptance criterion 1, so it is ruled out): sanitize EVERY table cell in `append_filtered_context_table` — replace newlines with \" / \" (collapse other whitespace, e.g. blank lines/indent runs) and escape `|` as `\\|` — for both plain and large-value renderings. Do NOT change `format_value` globally or the bullet-list path `append_filtered_context`: multi-line output is intentional and correct there (e.g. `append_large_value` previews). Acceptance criteria: - every value containing newlines renders as exactly one single-line markdown table row per key (no raw `\\n` between `| key |` and the closing `|`) - cell sanitization also escapes literal `|` characters in values so pipes cannot split columns - `current_seed_id` and `current_seed_title` rows stay visually adjacent to a multi-line `current_seed_brief` row (all three are ordinary rows of one intact table) - no information loss: full multi-line value remains retrievable via the context_read tool (store path untouched — verify no demote/store changes are needed) - existing `## Current context` behavior otherwise unchanged (key filtering, sorting, hidden/blank/rendered-key exclusion, large-value marker cells) - unit test in the existing `mod tests` of `preamble.rs` (see test near line 1685 for harness patterns): build a summary:high preamble with a context value containing newlines (plus a `|` char) and assert the rendered `## Current context` section contains one row per key and zero newlines inside any row - run `cargo nextest run -p fabro-workflow` and, if any insta snapshots of preambles shift, inspect `cargo insta pending-snapshots` before accepting; format with `cargo +nightly-2026-04-14 fmt --all` and pass clippy",
-          "internal.fidelity": "compact",
+          "internal.fidelity": "summary:high",
           "internal.run_id": "01M1NK4V3YG3AQAMEKDJ6V471F",
-          "current_node": "evidence",
+          "current_node": "reviewer",
           "internal.work_dir": "/workspace/fabro",
           "thread.planner.current_node": "implementer",
           "internal.retry_count.evidence": 0,
@@ -1295,12 +1538,17 @@
           "outcome": "succeeded",
           "implementation_summary": "Added sanitize_table_cell() in lib/components/fabro-workflow/src/handler/llm/preamble.rs and routed the plain-value path of append_filtered_context_table through it (newlines -> ' / ', whitespace collapsed, '|' escaped); large-value cells were already single-line/escaped and are unchanged, as are format_value, the bullet-list path, and the context store. Added unit test summary_high_table_renders_multiline_value_as_single_row; 86/86 preamble tests pass, no insta shifts. Lesson captured as mx-26cd4f. Per-criterion: PASS single-line rows per key (sanitize_table_cell + new test); PASS pipe escaping (same test asserts '\\|'); PASS id/title adjacency (rows[3]/rows[4] assertions); PASS no info loss (store path untouched); PASS existing table behavior unchanged (86 preamble tests incl. large-value marker test); PASS unit test in existing mod tests (preamble.rs:1714); PASS verification run (nextest preamble filter, fmt/clippy left to gate).",
           "journal": {
-            "painpoints": [],
+            "painpoints": [
+              {
+                "text": "Evidence capture for run 01M1NK4V3YG3AQAMEKDJ6V471F embedded the WRONG seed spec: the 'in-progress seed spec (authoritative)' section and the header's claim-base seed both named fabro-3224 (the HANDOFF seed) instead of fabro-f677, the seed actually under review. I had to fall back to the preamble brief plus direct tool verification of preamble.rs and a focused test run. Fix idea: the evidence.nu capture should resolve the seed spec from the run's current in-progress seed, not from whatever seed the claim-base commit last touched."
+              }
+            ],
             "observations": [
-              "First two test reruns after a passing-source edit ran a stale binary and failed with the old assertion message; `touch` on preamble.rs forced a rebuild and the test passed. Anyone seeing a nextest failure whose panic text doesn't match current source should force a rebuild before debugging."
+              "Verified the full +69/-2 diff in the blob against the f677 spec: sanitize_table_cell (newlines→' / ', blanks collapsed, '|' escaped post-join so order is safe) wired only into the plain-value path of append_filtered_context_table; large-value path, format_value, bullet-list path, and context store untouched — all acceptance criteria met.",
+              "Re-ran the focused test summary_high_table_renders_multiline_value_as_single_row (PASS 1/1) and read preamble.rs on disk to confirm it matches the captured diff; gate treated as green per tester stage."
             ]
           },
-          "preferred_label": "Implemented",
+          "preferred_label": "Approved",
           "thread.implementer.current_node": "tester",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -1311,12 +1559,14 @@
           "graph.rankdir": "LR",
           "lesson_capture": "mx-26cd4f",
           "command.output": "blob://sha256/0182c8da6cac9e349ab184c87f5b86f16ae4b1437f8cdab3cfec130f6a9159cf",
+          "thread.evidence.current_node": "reviewer",
           "current_seed_id": "fabro-f677",
-          "last_response": "Implementation complete. Summary of the change in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`:\n\n- Added `sanitize_table_cell()` (lines ~343-353): trims/collapses lines, drops blank lin",
+          "last_response": "Verification complete. Findings against the f677 spec:\n\n1. **Single-line rows** — `sanitize_table_cell` splits on lines, trims, drops blanks, joins with `\" / \"`; the plain-value path of `append_filt",
+          "internal.retry_count.reviewer": 0,
           "graph.max_node_visits": "40",
           "failure_signature": "",
           "internal.seed_cycle_anchor": "fabro-f677",
-          "internal.thread_id": "tester",
+          "internal.thread_id": "evidence",
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.implementer",
@@ -1330,8 +1580,9 @@
           "internal.retry_count.start": 0,
           "thread.start.current_node": "planner",
           "internal.node_visit_count": 1,
-          "last_stage": "implementer",
+          "last_stage": "reviewer",
           "internal.retry_count.tester": 0,
+          "review_verdict": "approved",
           "current_seed_title": "engine: preamble context table breaks markdown with multi-line values"
         },
         "node_outcomes": {
@@ -1347,6 +1598,60 @@
               "inference_time_ms": 0,
               "tool_time_ms": 134997,
               "active_time_ms": 134997
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "last_stage": "reviewer",
+              "review_verdict": "approved",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 3280,
+                "preview": "Verification complete. Findings against the f677 spec:\n\n1. **Single-line rows** — `sanitize_table_cell` splits on lines, trims, drops blanks, joins with `\" / \"`; the plain-value path of `append_filt"
+              },
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Evidence capture for run 01M1NK4V3YG3AQAMEKDJ6V471F embedded the WRONG seed spec: the 'in-progress seed spec (authoritative)' section and the header's claim-base seed both named fabro-3224 (the HANDOFF seed) instead of fabro-f677, the seed actually under review. I had to fall back to the preamble brief plus direct tool verification of preamble.rs and a focused test run. Fix idea: the evidence.nu capture should resolve the seed spec from the run's current in-progress seed, not from whatever seed the claim-base commit last touched."
+                  }
+                ],
+                "observations": [
+                  "Verified the full +69/-2 diff in the blob against the f677 spec: sanitize_table_cell (newlines→' / ', blanks collapsed, '|' escaped post-join so order is safe) wired only into the plain-value path of append_filtered_context_table; large-value path, format_value, bullet-list path, and context store untouched — all acceptance criteria met.",
+                  "Re-ran the focused test summary_high_table_renders_multiline_value_as_single_row (PASS 1/1) and read preamble.rs on disk to confirm it matches the captured diff; gate treated as green per tester stage."
+                ]
+              },
+              "last_response": "Verification complete. Findings against the f677 spec:\n\n1. **Single-line rows** — `sanitize_table_cell` splits on lines, trims, drops blanks, joins with `\" / \"`; the plain-value path of `append_filt"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16413,
+                    "output_tokens": 1059,
+                    "reasoning_tokens": 1042,
+                    "cache_read_tokens": 26432,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 39092
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 56657,
+              "tool_time_ms": 1412,
+              "active_time_ms": 58069
             }
           },
           "evidence": {
@@ -1478,8 +1783,9 @@
             }
           }
         },
-        "next_node_id": "reviewer",
+        "next_node_id": "closeout",
         "node_visits": {
+          "reviewer": 1,
           "tester": 1,
           "start": 1,
           "planner": 1,
@@ -1814,6 +2120,243 @@
         "reasoning_tokens": 0,
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "reviewer@1": {
+      "first_event_seq": 260,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: reviewer",
+        "failure_reason": null,
+        "timestamp": "2026-09-04T07:12:09.235648459Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-04T07:11:03.989744571Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 58561,
+        "inference_time_ms": 56657,
+        "tool_time_ms": 1412,
+        "active_time_ms": 58069
+      },
+      "usage": {
+        "input_tokens": 16413,
+        "output_tokens": 1059,
+        "total_tokens": 44946,
+        "reasoning_tokens": 1042,
+        "cache_read_tokens": 26432,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 39092
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 16300,
+        "usage_percent": 1.5544891357421875,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-04T07:12:09.220373858Z",
+        "event_seq": 284,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1161,
+            "usage_percent": 0.11072158813476562
+          },
+          {
+            "category": "tools",
+            "tokens": 1664,
+            "usage_percent": 0.15869140625
+          },
+          {
+            "category": "skills",
+            "tokens": 225,
+            "usage_percent": 0.021457672119140625
+          },
+          {
+            "category": "memory",
+            "tokens": 5720,
+            "usage_percent": 0.545501708984375
+          },
+          {
+            "category": "conversation",
+            "tokens": 7521,
+            "usage_percent": 0.7172584533691406
+          },
+          {
+            "category": "other",
+            "tokens": 9,
+            "usage_percent": 0.000858306884765625
+          }
+        ],
+        "warnings": []
       },
       "agent_control": "running",
       "state": "succeeded"
