@@ -52,8 +52,11 @@ def touched-crates [] {
     if ($crate_paths | is-empty) {
         return []
     }
+    # `parse` yields a table PER input string, so `each` would nest the
+    # result (list<list<record>> — the run-1 gate crash). flatten first.
     let crates = ($crate_paths
         | each {|p| $p | parse --regex '^lib/(?:apps|components|foundation)/(?P<crate>[^/]+)/' }
+        | flatten
         | get -o crate
         | uniq
         | compact)
@@ -62,7 +65,9 @@ def touched-crates [] {
     } | is-not-empty)
     if $root_touched {
         print "root manifest/lock changed -> workspace-wide gate (cargo check)"
-        return []
+        # Sentinel: main routes this to check-workspace-compiles. Returning
+        # [] here would silently degrade to fmt-only (run-1 lesson).
+        return ["__workspace__"]
     }
     $crates
 }
@@ -135,6 +140,12 @@ def main [] {
     if ($crates | is-empty) {
         print "no crates touched"
         if (check-fmt) { exit 0 } else { exit 1 }
+    }
+    if ($crates | any {|c| $c == '__workspace__' }) {
+        let green = ((check-fmt) and (check-workspace-compiles))
+        if $green { print "GATE GREEN"; exit 0 }
+        print "GATE RED"
+        exit 1
     }
     print $"touched crates: ($crates | str join ', ')"
     let green = ((check-fmt) and (check-clippy $crates) and (check-tests $crates))
