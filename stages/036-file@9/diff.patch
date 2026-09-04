@@ -1,0 +1,36 @@
+diff --git a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
+index 343d741..5b62e4d 100644
+--- a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
++++ b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
+@@ -31,3 +31,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"approve","visit":8,"status":"succeeded","ts":"2026-09-04T22:57:15Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"select","visit":8,"status":"succeeded","ts":"2026-09-04T22:57:32Z","data":{"painpoints":[],"observations":["Selected oldest unrevised terminal run with live sandbox (01M11P68SHFS165HP9ATK6094V, 2026-08-27); 16 older terminal runs are revised, ~18 older ones lack a live sandbox and remain blocked; no active develop run in the list."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"analyze","visit":9,"status":"succeeded","ts":"2026-09-04T23:01:22Z","data":{"painpoints":[{"text":"6 of 7 analyst recommendations duplicate seeds already in the tracker (fabro-1e9f, fabro-699f, fabro-83f9, fabro-a5de, fabro-cd27, fabro-45bf) because those high-priority revision seeds remain open — the distill dedup works, but develop keeps paying the same review cost until they are implemented; fix idea: develop should burn down open `revision`-labeled High seeds before taking new work."}],"observations":["Dropped duplicates from run 01M11P68SHFS165HP9ATK6094V: rec 1 (per-seed diff base) duplicate_of fabro-1e9f; rec 3 (raise reviewer inline budget 48/56KB) duplicate_of fabro-83f9 with calibration note — this run's 53–58KB captures support fabro-1e9f's ~48KB end over 83f9's 20–24KB; rec 4 (latest-section-per-stage-type preamble rendering) duplicate_of fabro-699f; rec 5 (drop prime ritual from planner) duplicate_of fabro-a5de (superset); rec 6 (PR-content JSON fallback) duplicate_of closed fabro-cd27, open fabro-6a5a covers the stop-calling variant; rec 7 (18-of-6 progress) duplicate_of fabro-45bf (also fabro-38f4). Only rec 2 survived as new."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"file","visit":9,"status":"succeeded","ts":"2026-09-04T23:02:06Z","data":{"painpoints":[],"observations":["sd search returned empty output (no stdout) for some queries while others printed matches — next bookkeeper should not treat a silent exit 0 as conclusive on its own; add a broader keyword search before concluding no duplicates"]}}
+diff --git a/.fabro/revisions/01M11P68SHFS165HP9ATK6094V.md b/.fabro/revisions/01M11P68SHFS165HP9ATK6094V.md
+new file mode 100644
+index 0000000..bf68a1a
+--- /dev/null
++++ b/.fabro/revisions/01M11P68SHFS165HP9ATK6094V.md
+@@ -0,0 +1,12 @@
++# Revision — run 01M11P68SHFS165HP9ATK6094V
++
++- status reviewed: succeeded
++- review: .fabro/reviews/develop/01M11P68SHFS165HP9ATK6094V.md
++- seeds filed: fabro-37a6 — Steer implementer to mechanical shell bulk edits for repetitive rewrites
++
++## Findings
++
++### Steer implementer to mechanical shell bulk edits for repetitive rewrites
++- filed: fabro-37a6
++- Change: add a paragraph to `.fabro/workflows/develop/prompts/implementer.md` instructing one mechanical shell pass (`sd`/`perl -pi -e`) plus one focused test for repetitive, pattern-shaped edits, instead of N hand `edit_file` calls.
++- Expected effect: refactor-class passes drop from ~$0.49/280s toward ~$0.12/112s; run cost −20–25%; removes the swallow-adjacent-code near-miss class. Distinct from fabro-4601 (sequential-edit discipline).
+diff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl
+index 3454b75..9e1f9b9 100644
+--- a/.seeds/issues.jsonl
++++ b/.seeds/issues.jsonl
+@@ -179,3 +179,4 @@
+ {"id":"fabro-8d61","title":"Document glob_filter glob syntax in the planner prompt","status":"open","type":"task","priority":2,"createdAt":"2026-09-04T22:43:44.521Z","updatedAt":"2026-09-04T22:43:44.521Z","description":"In .fabro/workflows/develop/prompts/planner.md, note that the grep tool's glob_filter expects a glob (e.g. *.go), not a bare filename like main.go. In run 01M0SS23MJM8972CBJD0SP7T4Q, planner@1 burned two empty grep calls (seq 58-59 with glob_filter: \"main.go\") plus a recovery find/head call; the prompt note prevents those wasted turns independently of fabro-8354 landing ripgrep in the image.","labels":["revision"]}
+ {"id":"fabro-b065","title":"Blank stale seed context keys when routing Tracker empty","status":"open","type":"task","priority":2,"createdAt":"2026-09-04T22:54:20.701Z","updatedAt":"2026-09-04T22:54:20.701Z","description":"In .fabro/workflows/develop/prompts/planner.md, extend the 'Tracker empty' JSON contract to also blank current_seed_id/title/brief and implementation_summary (it already clears review_verdict). In run 01M0T9B7T6XNM1D7JNY35Y6H8K the final planner pass closed seed fabro-8208, routed 'Tracker empty', yet its prompt still carried the dead seed's brief (1.6 KB) and implementation_summary (1.7 KB) as blob refs after budget demotion. Expected effect: the closing planner pass stops hauling stale seed context — fewer blob round-trips, smaller preambles, lower risk of the evidence-starvation pathology noted in the graph comments. Not a duplicate of fabro-b382, which covers prose duplication and sd call rules, not the context_updates key contract.","labels":["revision"]}
+ {"id":"fabro-d936","title":"Make seeds-cli exit non-zero on errors (exit 0 masks failed tracker writes)","status":"open","type":"task","priority":2,"createdAt":"2026-09-04T22:54:20.848Z","updatedAt":"2026-09-04T22:54:20.848Z","description":"@os-eco/seeds-cli v0.5.15 prints errors like 'error: unknown option --format' to stdout with exit_code 0 — observed at events seq 62-63 of run 01M0T9B7T6XNM1D7JNY35Y6H8K when planner@1 ran sd update with --format json; only the model's text inspection caught the failed write. Change: seeds-cli exits non-zero and prints errors to stderr. Expected effect: removes a silent-corruption path for tracker writes (any exit-code-checking consumer or gate currently reads failure as success) and eliminates the observed wasted retry. Prompt-side syntax pinning is already covered by fabro-1399; this is the orthogonal CLI-side fix.","labels":["revision"]}
++{"id":"fabro-37a6","title":"Steer implementer to mechanical shell bulk edits for repetitive rewrites","status":"open","type":"task","priority":1,"createdAt":"2026-09-04T23:01:45.209Z","updatedAt":"2026-09-04T23:01:45.209Z","description":"In .fabro/workflows/develop/prompts/implementer.md, add one paragraph: for repetitive, pattern-shaped changes (call-site adaptation, renames), do one mechanical pass via shell (sd/perl -pi -e, already pinned in the runner image) and verify with one focused test, instead of N hand edits. Evidence: implementer@2 (fabro-28e8) was 42% of run cost ($0.486, 278s, 51.8k tokens) rewriting ~24 identical call sites one edit_file at a time, with 19 concurrent-write serialization warnings across passes and one swallowed-loop-body near-miss. Expected effect: refactor-class pass drops from ~$0.49/280s toward ~$0.12/112s; run cost -20-25%; eliminates the swallow-adjacent-code near-miss class. Distinct from fabro-4601 (sequential-edit discipline, different mechanism).","labels":["revision"]}
