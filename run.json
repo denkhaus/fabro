@@ -656,7 +656,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-04T18:42:22.606703756Z",
-  "last_event_at": "2026-09-04T18:55:47.353795588Z",
+  "last_event_at": "2026-09-04T18:55:52.324385200Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1482,9 +1482,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 255,
       "checkpoint": {
-        "timestamp": "2026-09-04T18:55:47.589617739Z",
+        "timestamp": "2026-09-04T18:55:51.851822930Z",
         "current_node": "reviewer",
         "completed_nodes": [
           "start",
@@ -1496,11 +1496,308 @@
         ],
         "node_retries": {},
         "context_values": {
-          "thread.implementer.current_node": "tester",
+          "preferred_label": "Approved",
+          "thread.start.current_node": "planner",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.reviewer": 0,
+          "lesson_capture": "nothing durable — skipped",
+          "implementation_summary": "Verification-only pass for fabro-8822: no code changes needed. Ran `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` (2 passed) and inspected the worktree; HEAD already satisfies every criterion. Lesson capture: nothing durable — skipped. Per-criterion report: PASS both parse tests green (main.rs tests::parse_auth_logout_all, tests::parse_settings_command, nextest 8c514b95) • PASS ServerTargetArgs.server stays Option<String> with env-only attr, no default_value (args.rs:151-154) • PASS .is_none() assertions preserved (main.rs:710, main.rs:1583) • PASS resolve_server_target chain intact: flag → settings → default_server_target unix socket (user_config.rs:277-281) • PASS no unrelated changes, worktree clean; flaky cmd::create/acp/artifacts timeouts left for a follow-up seed • PASS naming drift confirmed: no ServerFlag type exists; verified against ServerTargetArgs.",
+          "current_seed_brief": "Verification-only: the acceptance criteria appear already satisfied on HEAD — both target tests pass in a fresh run and the parse layer no longer injects a server default. Verify each bullet against the worktree; make NO changes if all hold. Bullets: [fabro-8822 — CLI parse tests fail — logout --all carries a default server value] • `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` passes both tests (planner pre-verified: 2 passed). • `lib/apps/fabro-cli/src/args.rs` `ServerTargetArgs.server` stays `Option<String>` with `#[arg(long = \"server\", env = EnvVars::FABRO_SERVER)]` and NO `default_value`/`default_value_t` — the parse layer must not populate a server value. • `lib/apps/fabro-cli/src/main.rs` tests keep asserting `.is_none()` for unset `--server` (logout --all at ~line 710, settings at ~line 1583); do not weaken assertions to `is_some`. • Documented default-server UX preserved: `lib/apps/fabro-cli/src/user_config.rs` `resolve_server_target()` still resolves explicit flag → configured settings → `default_server_target()` (default unix socket); commands relying on the default server are unaffected. • No unrelated changes; the flaky cmd::create/acp/artifacts integration-test timeouts mentioned in the seed description are out of scope (possible follow-up seed, not this one). • Spec note: the seed names a `ServerFlag` type — no such type exists in the current tree; the real type is `ServerTargetArgs` (naming drift from the v0.337.0-nightly.1 merge), so verify against `ServerTargetArgs`.",
+          "internal.thread_id": "evidence",
+          "internal.retry_count.planner": 0,
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Verification-only seed: planner brief said code was already correct on HEAD; I independently re-ran the two parse tests (2 passed) and confirmed args.rs env-only Option<String>, is_none() assertions at main.rs:710/1583, and the resolve_server_target flag→settings→default chain in user_config.rs — all held, so no changes were warranted.",
+              "Qualification context: this run exercised the one-seed-per-run closeout graph; exactly one seed (fabro-8822) was claimed and evidence shows only tracker loop-churn (+60/-60 issues.jsonl), no parallel seed claims."
+            ]
+          },
+          "review_verdict": "approved",
+          "failure_signature": "",
+          "current_node": "reviewer",
           "command.output": "blob://sha256/df1f1073f1d9739e7f600ed3ca07c16a4b7c9015e16ddf2870c98f0af8a1835c",
+          "current_seed_title": "CLI: parse_auth_logout_all fails — logout --all carries a default server value",
+          "graph.goal": "Qualification run for the one-seed-per-run closeout graph. Claim exactly one seed: fabro-8822 (CLI parse tests fail — logout --all carries a default server value; parse_settings_command fails the same way). Root cause is the clap ServerFlag/ServerTargetArgs default populating a value where tests assert None. Make the failing parse tests in lib/apps/fabro-cli/src/main.rs green while keeping the documented default-server UX for commands that rely on it. Do not claim any other seed.",
+          "internal.fidelity": "summary:high",
+          "graph.preamble_budget_kb": "24",
+          "internal.seed_cycle_anchor": "fabro-8822",
+          "last_stage": "reviewer",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 1844,
+            "preview": "All criteria independently verified against the worktree:\n\n- **Tests green**: `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` — 2 passed (fresh run, not just planner cl"
+          },
+          "thread.implementer.current_node": "tester",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3538,
+            "preview": "Verified: both parse tests pass on HEAD, `ServerTargetArgs.server` is `Option<String>` with no clap default (`lib/apps/fabro-cli/src/args.rs:150`), and the documented default-server UX is preserved by"
+          },
+          "failure_class": "",
+          "internal.retry_count.evidence": 0,
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "last_response": "All criteria independently verified against the worktree:\n\n- **Tests green**: `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` — 2 passed (fresh run, not just planner cl",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1
+          },
+          "thread.evidence.current_node": "reviewer",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.implementer": 0,
+          "internal.retry_count.tester": 0,
+          "current_seed_id": "fabro-8822",
+          "graph.rankdir": "LR",
+          "internal.run_id": "01M1PVMS7B6N39MG0041C5F7P6",
+          "outcome": "succeeded",
+          "thread.planner.current_node": "implementer",
+          "thread.tester.current_node": "evidence",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2295,
+            "preview": "All verification criteria hold — no changes made (verification-only brief satisfied).\n\n- Both target tests pass fresh: `parse_auth_logout_all`, `parse_settings_command` (2/2 PASS, nextest run 8c514b"
+          },
+          "graph.max_node_visits": "40",
+          "internal.node_visit_count": 1
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_stage": "implementer",
+              "last_response": "All verification criteria hold — no changes made (verification-only brief satisfied).\n\n- Both target tests pass fresh: `parse_auth_logout_all`, `parse_settings_command` (2/2 PASS, nextest run 8c514b",
+              "lesson_capture": "nothing durable — skipped",
+              "implementation_summary": "Verification-only pass for fabro-8822: no code changes needed. Ran `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` (2 passed) and inspected the worktree; HEAD already satisfies every criterion. Lesson capture: nothing durable — skipped. Per-criterion report: PASS both parse tests green (main.rs tests::parse_auth_logout_all, tests::parse_settings_command, nextest 8c514b95) • PASS ServerTargetArgs.server stays Option<String> with env-only attr, no default_value (args.rs:151-154) • PASS .is_none() assertions preserved (main.rs:710, main.rs:1583) • PASS resolve_server_target chain intact: flag → settings → default_server_target unix socket (user_config.rs:277-281) • PASS no unrelated changes, worktree clean; flaky cmd::create/acp/artifacts timeouts left for a follow-up seed • PASS naming drift confirmed: no ServerFlag type exists; verified against ServerTargetArgs.",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Seed fabro-8822 names a `ServerFlag` clap type that does not exist in the tree — the real type is `ServerTargetArgs` (args.rs:151), likely naming drift from the v0.337.0-nightly.1 merge; seed descriptions referencing renamed types cost verification time until grep disambiguates."
+                ]
+              },
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2295,
+                "preview": "All verification criteria hold — no changes made (verification-only brief satisfied).\n\n- Both target tests pass fresh: `parse_auth_logout_all`, `parse_settings_command` (2/2 PASS, nextest run 8c514b"
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 13647,
+                    "output_tokens": 807,
+                    "reasoning_tokens": 150,
+                    "cache_read_tokens": 36352,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 32764
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 19818,
+              "tool_time_ms": 17973,
+              "active_time_ms": 37791
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 1844,
+                "preview": "All criteria independently verified against the worktree:\n\n- **Tests green**: `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` — 2 passed (fresh run, not just planner cl"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Verification-only seed: planner brief said code was already correct on HEAD; I independently re-ran the two parse tests (2 passed) and confirmed args.rs env-only Option<String>, is_none() assertions at main.rs:710/1583, and the resolve_server_target flag→settings→default chain in user_config.rs — all held, so no changes were warranted.",
+                  "Qualification context: this run exercised the one-seed-per-run closeout graph; exactly one seed (fabro-8822) was claimed and evidence shows only tracker loop-churn (+60/-60 issues.jsonl), no parallel seed claims."
+                ]
+              },
+              "last_response": "All criteria independently verified against the worktree:\n\n- **Tests green**: `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` — 2 passed (fresh run, not just planner cl",
+              "last_stage": "reviewer",
+              "review_verdict": "approved"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14248,
+                    "output_tokens": 620,
+                    "reasoning_tokens": 61,
+                    "cache_read_tokens": 26496,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 29829
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 15797,
+              "tool_time_ms": 16824,
+              "active_time_ms": 32621
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Verification-only: the acceptance criteria appear already satisfied on HEAD — both target tests pass in a fresh run and the parse layer no longer injects a server default. Verify each bullet against the worktree; make NO changes if all hold. Bullets: [fabro-8822 — CLI parse tests fail — logout --all carries a default server value] • `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` passes both tests (planner pre-verified: 2 passed). • `lib/apps/fabro-cli/src/args.rs` `ServerTargetArgs.server` stays `Option<String>` with `#[arg(long = \"server\", env = EnvVars::FABRO_SERVER)]` and NO `default_value`/`default_value_t` — the parse layer must not populate a server value. • `lib/apps/fabro-cli/src/main.rs` tests keep asserting `.is_none()` for unset `--server` (logout --all at ~line 710, settings at ~line 1583); do not weaken assertions to `is_some`. • Documented default-server UX preserved: `lib/apps/fabro-cli/src/user_config.rs` `resolve_server_target()` still resolves explicit flag → configured settings → `default_server_target()` (default unix socket); commands relying on the default server are unaffected. • No unrelated changes; the flaky cmd::create/acp/artifacts integration-test timeouts mentioned in the seed description are out of scope (possible follow-up seed, not this one). • Spec note: the seed names a `ServerFlag` type — no such type exists in the current tree; the real type is `ServerTargetArgs` (naming drift from the v0.337.0-nightly.1 merge), so verify against `ServerTargetArgs`.",
+              "last_response": "Verified: both parse tests pass on HEAD, `ServerTargetArgs.server` is `Option<String>` with no clap default (`lib/apps/fabro-cli/src/args.rs:150`), and the documented default-server UX is preserved by",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3538,
+                "preview": "Verified: both parse tests pass on HEAD, `ServerTargetArgs.server` is `Option<String>` with no clap default (`lib/apps/fabro-cli/src/args.rs:150`), and the documented default-server UX is preserved by"
+              },
+              "last_stage": "planner",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "sd was unusable at pass start: the mise shim refused every command because `/repos/denkhaus/fabro/.mise.toml` was untrusted (error: 'Config files ... are not trusted'). Running `mise trust /repos/denkhaus/fabro/.mise.toml` fixed it. Run sandboxes should pre-trust the repo's mise config or expose the real `@os-eco/seeds-cli` entrypoint directly so planner passes don't burn turns on tool bootstrap (run 01M1PVMS7B6N39MG0041C5F7P6)."
+                  },
+                  {
+                    "text": "`sd ready` and `sd list` both default to `--limit 50`, which silently truncated fabro-8822 (priority 2, sorted below ~50 High seeds) out of both listings — the goal-mandated seed looked absent from the tracker until `--limit 200` was passed. Suggest the seeds CLI warn when output is truncated by the limit, or planners should always match goal seed ids with `--limit 200`."
+                  }
+                ],
+                "observations": [
+                  "fabro-8822 appears already fixed on HEAD (planner run 01M1PVMS7B6N39MG0041C5F7P6): both parse tests pass, `ServerTargetArgs.server` carries no clap default, and the default-server fallback lives in `user_config.rs::resolve_server_target()` — brief is verification-only; only an approved review may close it."
+                ]
+              },
+              "current_seed_id": "fabro-8822",
+              "current_seed_title": "CLI: parse_auth_logout_all fails — logout --all carries a default server value"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 24410,
+                    "output_tokens": 2451,
+                    "reasoning_tokens": 3311,
+                    "cache_read_tokens": 257152,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 126362
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 104564,
+              "tool_time_ms": 521620,
+              "active_time_ms": 626184
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/df1f1073f1d9739e7f600ed3ca07c16a4b7c9015e16ddf2870c98f0af8a1835c"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 367,
+              "active_time_ms": 367
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5263,
+              "active_time_ms": 5263
+            }
+          }
+        },
+        "next_node_id": "closeout",
+        "git_commit_sha": "49e33c68756998f6321aaa546a6a8b872dbcfaea",
+        "node_visits": {
+          "implementer": 1,
+          "planner": 1,
+          "reviewer": 1,
+          "start": 1,
+          "tester": 1,
+          "evidence": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1PVMS7B6N39MG0041C5F7P6.jsonl b/.fabro/journal/01M1PVMS7B6N39MG0041C5F7P6.jsonl\nindex 5818004..6ffd1fc 100644\n--- a/.fabro/journal/01M1PVMS7B6N39MG0041C5F7P6.jsonl\n+++ b/.fabro/journal/01M1PVMS7B6N39MG0041C5F7P6.jsonl\n@@ -2,3 +2,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1PVMS7B6N39MG0041C5F7P6\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T18:54:48Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Seed fabro-8822 names a `ServerFlag` clap type that does not exist in the tree — the real type is `ServerTargetArgs` (args.rs:151), likely naming drift from the v0.337.0-nightly.1 merge; seed descriptions referencing renamed types cost verification time until grep disambiguates.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1PVMS7B6N39MG0041C5F7P6\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T18:55:01Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1PVMS7B6N39MG0041C5F7P6\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T18:55:06Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1PVMS7B6N39MG0041C5F7P6\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T18:55:47Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verification-only seed: planner brief said code was already correct on HEAD; I independently re-ran the two parse tests (2 passed) and confirmed args.rs env-only Option<String>, is_none() assertions at main.rs:710/1583, and the resolve_server_target flag→settings→default chain in user_config.rs — all held, so no changes were warranted.\",\"Qualification context: this run exercised the one-seed-per-run closeout graph; exactly one seed (fabro-8822) was claimed and evidence shows only tracker loop-churn (+60/-60 issues.jsonl), no parallel seed claims.\"]}}\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 65,
+          "deletions": 60
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-04T18:55:52.342931926Z",
+        "current_node": "closeout",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "thread.implementer.current_node": "tester",
+          "command.output": "blob://sha256/1705362de1d3bb9024e9971e552225c020f5c0424df110c2cd4632d3b71a5c38",
           "current_seed_brief": "Verification-only: the acceptance criteria appear already satisfied on HEAD — both target tests pass in a fresh run and the parse layer no longer injects a server default. Verify each bullet against the worktree; make NO changes if all hold. Bullets: [fabro-8822 — CLI parse tests fail — logout --all carries a default server value] • `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` passes both tests (planner pre-verified: 2 passed). • `lib/apps/fabro-cli/src/args.rs` `ServerTargetArgs.server` stays `Option<String>` with `#[arg(long = \"server\", env = EnvVars::FABRO_SERVER)]` and NO `default_value`/`default_value_t` — the parse layer must not populate a server value. • `lib/apps/fabro-cli/src/main.rs` tests keep asserting `.is_none()` for unset `--server` (logout --all at ~line 710, settings at ~line 1583); do not weaken assertions to `is_some`. • Documented default-server UX preserved: `lib/apps/fabro-cli/src/user_config.rs` `resolve_server_target()` still resolves explicit flag → configured settings → `default_server_target()` (default unix socket); commands relying on the default server are unaffected. • No unrelated changes; the flaky cmd::create/acp/artifacts integration-test timeouts mentioned in the seed description are out of scope (possible follow-up seed, not this one). • Spec note: the seed names a `ServerFlag` type — no such type exists in the current tree; the real type is `ServerTargetArgs` (naming drift from the v0.337.0-nightly.1 merge), so verify against `ServerTargetArgs`.",
           "internal.seed_cycle_anchor": "fabro-8822",
-          "failure_signature": "",
+          "failure_signature": "closeout|deterministic|script failed with exit code: <n> ## output error: nu::shell::io::uncategorized_error x i/o error ,-[/repos/denkhaus/fabro/.fabro/workflows/develop/scripts/closeout.nu:<n>:<n>] <n> | def main []: nothing -> nothing { <n> | let raw = (input)",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
@@ -1511,10 +1808,12 @@
           "current_seed_id": "fabro-8822",
           "internal.retry_count.planner": 0,
           "internal.retry_count.reviewer": 0,
+          "thread.reviewer.current_node": "closeout",
           "graph.max_node_visits": "40",
+          "internal.exit_kind": "soft",
           "internal.retry_count.tester": 0,
-          "internal.thread_id": "evidence",
-          "outcome": "succeeded",
+          "internal.thread_id": "reviewer",
+          "outcome": "failed",
           "preferred_label": "Approved",
           "current_seed_title": "CLI: parse_auth_logout_all fails — logout --all carries a default server value",
           "response.implementer": {
@@ -1523,15 +1822,16 @@
             "chars": 2295,
             "preview": "All verification criteria hold — no changes made (verification-only brief satisfied).\n\n- Both target tests pass fresh: `parse_auth_logout_all`, `parse_settings_command` (2/2 PASS, nextest run 8c514b"
           },
-          "internal.fidelity": "summary:high",
+          "internal.fidelity": "compact",
           "internal.retry_count.implementer": 0,
-          "failure_class": "",
+          "failure_class": "deterministic",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
             "tester": 1,
             "evidence": 1,
-            "reviewer": 1
+            "reviewer": 1,
+            "closeout": 1
           },
           "last_response": "All criteria independently verified against the worktree:\n\n- **Tests green**: `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` — 2 passed (fresh run, not just planner cl",
           "internal.retry_count.evidence": 0,
@@ -1547,7 +1847,7 @@
             "chars": 1844,
             "preview": "All criteria independently verified against the worktree:\n\n- **Tests green**: `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` — 2 passed (fresh run, not just planner cl"
           },
-          "current_node": "reviewer",
+          "current_node": "closeout",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -1563,9 +1863,60 @@
           "internal.work_dir": "/workspace/fabro",
           "implementation_summary": "Verification-only pass for fabro-8822: no code changes needed. Ran `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` (2 passed) and inspected the worktree; HEAD already satisfies every criterion. Lesson capture: nothing durable — skipped. Per-criterion report: PASS both parse tests green (main.rs tests::parse_auth_logout_all, tests::parse_settings_command, nextest 8c514b95) • PASS ServerTargetArgs.server stays Option<String> with env-only attr, no default_value (args.rs:151-154) • PASS .is_none() assertions preserved (main.rs:710, main.rs:1583) • PASS resolve_server_target chain intact: flag → settings → default_server_target unix socket (user_config.rs:277-281) • PASS no unrelated changes, worktree clean; flaky cmd::create/acp/artifacts timeouts left for a follow-up seed • PASS naming drift confirmed: no ServerFlag type exists; verified against ServerTargetArgs.",
           "thread.tester.current_node": "evidence",
-          "review_verdict": "approved"
+          "review_verdict": "approved",
+          "internal.retry_count.closeout": 0
         },
         "node_outcomes": {
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 1844,
+                "preview": "All criteria independently verified against the worktree:\n\n- **Tests green**: `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` — 2 passed (fresh run, not just planner cl"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Verification-only seed: planner brief said code was already correct on HEAD; I independently re-ran the two parse tests (2 passed) and confirmed args.rs env-only Option<String>, is_none() assertions at main.rs:710/1583, and the resolve_server_target flag→settings→default chain in user_config.rs — all held, so no changes were warranted.",
+                  "Qualification context: this run exercised the one-seed-per-run closeout graph; exactly one seed (fabro-8822) was claimed and evidence shows only tracker loop-churn (+60/-60 issues.jsonl), no parallel seed claims."
+                ]
+              },
+              "last_response": "All criteria independently verified against the worktree:\n\n- **Tests green**: `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` — 2 passed (fresh run, not just planner cl",
+              "last_stage": "reviewer",
+              "review_verdict": "approved"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14248,
+                    "output_tokens": 620,
+                    "reasoning_tokens": 61,
+                    "cache_read_tokens": 26496,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 29829
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 15797,
+              "tool_time_ms": 16824,
+              "active_time_ms": 32621
+            }
+          },
           "tester": {
             "status": "succeeded",
             "context_updates": {
@@ -1692,6 +2043,23 @@
               "active_time_ms": 626184
             }
           },
+          "closeout": {
+            "status": "failed",
+            "context_updates": {
+              "command.output": "blob://sha256/1705362de1d3bb9024e9971e552225c020f5c0424df110c2cd4632d3b71a5c38"
+            },
+            "failure": {
+              "message": "Script failed with exit code: 1\n\n## output\nError: nu::shell::io::uncategorized_error\n\n  x I/O error\n    ,-[/repos/denkhaus/fabro/.fabro/workflows/develop/scripts/closeout.nu:22:16]\n 21 | def main []: nothing -> nothing {\n 22 |     let raw = (input)\n    :                ^^|^^\n    :                  `-- Uncategorized error\n 23 |     let seed_id = ($raw | str trim)\n    `----\n\n",
+              "category": "deterministic"
+            },
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 168,
+              "active_time_ms": 168
+            }
+          },
           "evidence": {
             "status": "succeeded",
             "context_updates": {
@@ -1705,66 +2073,17 @@
               "tool_time_ms": 367,
               "active_time_ms": 367
             }
-          },
-          "reviewer": {
-            "status": "succeeded",
-            "preferred_label": "Approved",
-            "context_updates": {
-              "response.reviewer": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.reviewer",
-                "chars": 1844,
-                "preview": "All criteria independently verified against the worktree:\n\n- **Tests green**: `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` — 2 passed (fresh run, not just planner cl"
-              },
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "Verification-only seed: planner brief said code was already correct on HEAD; I independently re-ran the two parse tests (2 passed) and confirmed args.rs env-only Option<String>, is_none() assertions at main.rs:710/1583, and the resolve_server_target flag→settings→default chain in user_config.rs — all held, so no changes were warranted.",
-                  "Qualification context: this run exercised the one-seed-per-run closeout graph; exactly one seed (fabro-8822) was claimed and evidence shows only tracker loop-churn (+60/-60 issues.jsonl), no parallel seed claims."
-                ]
-              },
-              "last_response": "All criteria independently verified against the worktree:\n\n- **Tests green**: `cargo nextest run -p fabro-cli parse_auth_logout_all parse_settings_command` — 2 passed (fresh run, not just planner cl",
-              "last_stage": "reviewer",
-              "review_verdict": "approved"
-            },
-            "notes": "Stage completed: reviewer",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 14248,
-                    "output_tokens": 620,
-                    "reasoning_tokens": 61,
-                    "cache_read_tokens": 26496,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 29829
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 15797,
-              "tool_time_ms": 16824,
-              "active_time_ms": 32621
-            }
           }
         },
-        "next_node_id": "closeout",
+        "next_node_id": "exit",
         "node_visits": {
           "planner": 1,
           "evidence": 1,
           "implementer": 1,
           "tester": 1,
           "start": 1,
-          "reviewer": 1
+          "reviewer": 1,
+          "closeout": 1
         }
       },
       "diff": {}
@@ -2497,6 +2816,46 @@
       },
       "agent_control": "running",
       "state": "succeeded"
+    },
+    "closeout@1": {
+      "first_event_seq": 258,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/1705362de1d3bb9024e9971e552225c020f5c0424df110c2cd4632d3b71a5c38",
+        "exit_code": 1,
+        "duration_ms": 168,
+        "termination": "exited",
+        "output_bytes": 333,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 333,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-04T18:55:52.150248298Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "running"
     },
     "tester@1": {
       "first_event_seq": 203,
