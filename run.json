@@ -504,8 +504,8 @@
   "status": {
     "kind": "running"
   },
-  "status_updated_at": "2026-09-04T22:19:04.146167490Z",
-  "last_event_at": "2026-09-04T22:24:52.097412797Z",
+  "status_updated_at": "2026-09-04T22:25:06.313669239Z",
+  "last_event_at": "2026-09-04T22:25:06.329001867Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -3470,9 +3470,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 485,
       "checkpoint": {
-        "timestamp": "2026-09-04T22:24:52.319935108Z",
+        "timestamp": "2026-09-04T22:24:56.715250371Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -3487,6 +3487,314 @@
           "select",
           "analyze",
           "file"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Commit only included the marker and .seeds changes; review file already present from earlier stage. Next bookkeeper: fabro-d9f0 targets fabro-workflow failure classification plus an interim prompt fix in .fabro/workflows/develop/prompts/implementer.md."
+            ]
+          },
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 2653,
+            "preview": "Pass complete: one `fabro_ask` call made, answer persisted verbatim (plus a tracker-check appendix) at `.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md`, seven of eight recommendations dropped as"
+          },
+          "thread.approve.current_node": "select",
+          "failure_class": "",
+          "internal.node_visit_count": 3,
+          "graph.max_node_visits": "30",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 631,
+            "preview": "Filed seed `fabro-d9f0` (dedup search found no match), wrote the revision marker at `.fabro/revisions/01M0QJ5FNE9XZJ72YN31K3X451.md`, and committed exactly the scoped artifact paths (1 seed).\n\n{\n  \"ou"
+          },
+          "human.gate.approve.label": "[A] Approved",
+          "human.gate.selected": "A",
+          "graph.rankdir": "LR",
+          "thread.file.current_node": "approve",
+          "internal.thread_id": "analyze",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "internal.retry_count.file": 0,
+          "last_response": "Filed seed `fabro-d9f0` (dedup search found no match), wrote the revision marker at `.fabro/revisions/01M0QJ5FNE9XZJ72YN31K3X451.md`, and committed exactly the scoped artifact paths (1 seed).\n\n{\n  \"ou",
+          "graph.inspects": "develop",
+          "filed_seed_ids": [
+            "fabro-d9f0"
+          ],
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.start": 0,
+          "current_node": "file",
+          "internal.retry_count.approve": 0,
+          "last_stage": "file",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
+          "human.gate.label": "[A] Approved",
+          "internal.seed_cycle_anchor": "01M0QJ5FNE9XZJ72YN31K3X451",
+          "revisor_target_run_id": "01M0QJ5FNE9XZJ72YN31K3X451",
+          "revisor_target_title": "Develop seed-by-seed until no open seed remains",
+          "revisor_target_wall": "21.2 min",
+          "internal.fidelity": "compact",
+          "thread.select.current_node": "analyze",
+          "thread.start.current_node": "select",
+          "internal.run_id": "01M1Q7D2XXMS39J1GQTGF22446",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.analyze": 0,
+          "preferred_label": "Staged",
+          "thread.analyze.current_node": "file",
+          "failure_signature": "",
+          "human.gate.approve.answer": "A",
+          "outcome": "succeeded",
+          "revision_findings": [
+            {
+              "title": "Classify user aborts and sandbox deaths as cancellation, not deterministic failure",
+              "description": "In run 01M0QJ5FNE9XZJ72YN31K3X451, implementer@2's termination on user request ('beende den run') plus Docker 409 (container not running) was recorded with category: deterministic and entered loop_failure_signatures, polluting the failure ledger with an interruption that is not a defect. Change: in the workflow engine's failure classification (fabro-workflow), give user-abort/sandbox-death a distinct cancellation category; interim: in `.fabro/workflows/develop/prompts/implementer.md`, route user-stop as 'interrupted' rather than Blocked. Expected effect: failure signatures stay meaningful and retry/health metrics stop counting operator stops as reproducible failures. No existing seed matches (searched deterministic failure, cancellation, failure signature, user abort; fabro-ca74 covers CLI lifecycle commands, a different mechanism).",
+              "priority": 2
+            }
+          ],
+          "revisor_target_status": "failed",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "internal.retry_count.select": 0,
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 1141,
+            "preview": "Two revision markers exist (`.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md`, `.fabro/revisions/01M0WWKAQCWZC0Q0JK019H0ZC7.md`). Of unrevised terminal runs, four older ones (01M0QDMS, 01M0QFC5, 01M0QF"
+          },
+          "human.gate.approve.question": "Approve filing + merge"
+        },
+        "node_outcomes": {
+          "approve": {
+            "status": "succeeded",
+            "preferred_label": "[A] Approved",
+            "suggested_next_ids": [
+              "select"
+            ],
+            "context_updates": {
+              "human.gate.label": "[A] Approved",
+              "human.gate.approve.answer": "A",
+              "human.gate.approve.label": "[A] Approved",
+              "human.gate.selected": "A",
+              "human.gate.approve.question": "Approve filing + merge"
+            },
+            "usage": null
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "file": {
+            "status": "succeeded",
+            "preferred_label": "Staged",
+            "context_updates": {
+              "filed_seed_ids": [
+                "fabro-d9f0"
+              ],
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 631,
+                "preview": "Filed seed `fabro-d9f0` (dedup search found no match), wrote the revision marker at `.fabro/revisions/01M0QJ5FNE9XZJ72YN31K3X451.md`, and committed exactly the scoped artifact paths (1 seed).\n\n{\n  \"ou"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Commit only included the marker and .seeds changes; review file already present from earlier stage. Next bookkeeper: fabro-d9f0 targets fabro-workflow failure classification plus an interim prompt fix in .fabro/workflows/develop/prompts/implementer.md."
+                ]
+              },
+              "last_stage": "file",
+              "last_response": "Filed seed `fabro-d9f0` (dedup search found no match), wrote the revision marker at `.fabro/revisions/01M0QJ5FNE9XZJ72YN31K3X451.md`, and committed exactly the scoped artifact paths (1 seed).\n\n{\n  \"ou"
+            },
+            "notes": "Stage completed: file",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14379,
+                    "output_tokens": 870,
+                    "reasoning_tokens": 20,
+                    "cache_read_tokens": 54656,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 38250
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/revisions/01M0QJ5FNE9XZJ72YN31K3X451.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 24168,
+              "tool_time_ms": 1012,
+              "active_time_ms": 25180
+            }
+          },
+          "analyze": {
+            "status": "succeeded",
+            "preferred_label": "Findings ready",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "sd search misses existing seeds on plausible keywords: 'reviewer agent' and 'reviewer tools' returned zero hits while fabro-d97b ('Convert reviewer to agent node with read-only tools') exists; each theme needed 3-4 query variants to prove/disprove duplication (evidence: four search batches this pass). Fix idea: rank title-token matches first in sd search results."
+                  }
+                ],
+                "observations": [
+                  "Review persisted at `.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md`. 7 of 8 analyst recommendations withheld as duplicates of open seeds: rec1 reviewer-blind diff → fabro-d97b (+ fabro-9467 closed; capture variants fabro-3c9d, fabro-meta-c9f2), rec2 planner Blocked edge → fabro-53d3, rec3 evidence-retry verdict → fabro-886e, rec4 fabro-d810 prerequisite blocking → fabro-a285, rec5 reviewer prompt tool contradiction → fabro-a67c, rec6 smoke-level verification briefs → fabro-578a, rec7 painpoint mirror → fabro-46a4. This run's $0.41-of-$0.66 retry spend restates root causes already filed; the revision backlog is diagnosed repeatedly but unimplemented — burning it down in develop would make future revisor passes near-empty."
+                ]
+              },
+              "revision_findings": [
+                {
+                  "title": "Classify user aborts and sandbox deaths as cancellation, not deterministic failure",
+                  "description": "In run 01M0QJ5FNE9XZJ72YN31K3X451, implementer@2's termination on user request ('beende den run') plus Docker 409 (container not running) was recorded with category: deterministic and entered loop_failure_signatures, polluting the failure ledger with an interruption that is not a defect. Change: in the workflow engine's failure classification (fabro-workflow), give user-abort/sandbox-death a distinct cancellation category; interim: in `.fabro/workflows/develop/prompts/implementer.md`, route user-stop as 'interrupted' rather than Blocked. Expected effect: failure signatures stay meaningful and retry/health metrics stop counting operator stops as reproducible failures. No existing seed matches (searched deterministic failure, cancellation, failure signature, user abort; fabro-ca74 covers CLI lifecycle commands, a different mechanism).",
+                  "priority": 2
+                }
+              ],
+              "response.analyze": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.analyze",
+                "chars": 2653,
+                "preview": "Pass complete: one `fabro_ask` call made, answer persisted verbatim (plus a tracker-check appendix) at `.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md`, seven of eight recommendations dropped as"
+              },
+              "last_stage": "analyze",
+              "last_response": "Pass complete: one `fabro_ask` call made, answer persisted verbatim (plus a tracker-check appendix) at `.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md`, seven of eight recommendations dropped as"
+            },
+            "notes": "Stage completed: analyze",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 25889,
+                    "output_tokens": 3999,
+                    "reasoning_tokens": 6922,
+                    "cache_read_tokens": 70592,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 102644
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 111386,
+              "tool_time_ms": 145508,
+              "active_time_ms": 256894
+            }
+          },
+          "select": {
+            "status": "succeeded",
+            "preferred_label": "Run selected",
+            "context_updates": {
+              "last_stage": "select",
+              "last_response": "Two revision markers exist (`.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md`, `.fabro/revisions/01M0WWKAQCWZC0Q0JK019H0ZC7.md`). Of unrevised terminal runs, four older ones (01M0QDMS, 01M0QFC5, 01M0QF",
+              "revisor_target_status": "failed",
+              "revisor_target_title": "Develop seed-by-seed until no open seed remains",
+              "revisor_target_wall": "21.2 min",
+              "revisor_target_run_id": "01M0QJ5FNE9XZJ72YN31K3X451",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Selected oldest unrevised terminal run with live sandbox; ~13 older unrevised runs blocked, no live sandbox, including 01M0QDMSDRZQ3RT9YMMQJRWVMH, 01M0QFC53P6D22JZAR10SR45VF, 01M0QFX511V5MH84DZKQFJS5E4, 01M0SFCYVQ4CV1T8JS5SW1DFQZ and eight runs from 2026-08-22 — backlog stays visible until fresh analyst sandboxes are provisioned."
+                ]
+              },
+              "response.select": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.select",
+                "chars": 1141,
+                "preview": "Two revision markers exist (`.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md`, `.fabro/revisions/01M0WWKAQCWZC0Q0JK019H0ZC7.md`). Of unrevised terminal runs, four older ones (01M0QDMS, 01M0QFC5, 01M0QF"
+              }
+            },
+            "notes": "Stage completed: select",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 20711,
+                    "output_tokens": 454,
+                    "reasoning_tokens": 192,
+                    "cache_read_tokens": 30656,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 39804
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 17566,
+              "tool_time_ms": 571,
+              "active_time_ms": 18137
+            }
+          }
+        },
+        "next_node_id": "approve",
+        "git_commit_sha": "312ddc33e2aaed0e784d5090551eb493e210edd2",
+        "node_visits": {
+          "approve": 2,
+          "analyze": 3,
+          "start": 1,
+          "select": 3,
+          "file": 3
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl\nindex 8638a1c..135034a 100644\n--- a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl\n+++ b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl\n@@ -7,3 +7,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q7D2XXMS39J1GQTGF22446\",\"node\":\"approve\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-04T22:19:04Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q7D2XXMS39J1GQTGF22446\",\"node\":\"select\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-04T22:19:30Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected oldest unrevised terminal run with live sandbox; ~13 older unrevised runs blocked, no live sandbox, including 01M0QDMSDRZQ3RT9YMMQJRWVMH, 01M0QFC53P6D22JZAR10SR45VF, 01M0QFX511V5MH84DZKQFJS5E4, 01M0SFCYVQ4CV1T8JS5SW1DFQZ and eight runs from 2026-08-22 — backlog stays visible until fresh analyst sandboxes are provisioned.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q7D2XXMS39J1GQTGF22446\",\"node\":\"analyze\",\"visit\":3,\"status\":\"succeeded\",\"ts\":\"2026-09-04T22:24:18Z\",\"data\":{\"painpoints\":[{\"text\":\"sd search misses existing seeds on plausible keywords: 'reviewer agent' and 'reviewer tools' returned zero hits while fabro-d97b ('Convert reviewer to agent node with read-only tools') exists; each theme needed 3-4 query variants to prove/disprove duplication (evidence: four search batches this pass). Fix idea: rank title-token matches first in sd search results.\"}],\"observations\":[\"Review persisted at `.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md`. 7 of 8 analyst recommendations withheld as duplicates of open seeds: rec1 reviewer-blind diff → fabro-d97b (+ fabro-9467 closed; capture variants fabro-3c9d, fabro-meta-c9f2), rec2 planner Blocked edge → fabro-53d3, rec3 evidence-retry verdict → fabro-886e, rec4 fabro-d810 prerequisite blocking → fabro-a285, rec5 reviewer prompt tool contradiction → fabro-a67c, rec6 smoke-level verification briefs → fabro-578a, rec7 painpoint mirror → fabro-46a4. This run's $0.41-of-$0.66 retry spend restates root causes already filed; the revision backlog is diagnosed repeatedly but unimplemented — burning it down in develop would make future revisor passes near-empty.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q7D2XXMS39J1GQTGF22446\",\"node\":\"file\",\"visit\":3,\"status\":\"succeeded\",\"ts\":\"2026-09-04T22:24:52Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Commit only included the marker and .seeds changes; review file already present from earlier stage. Next bookkeeper: fabro-d9f0 targets fabro-workflow failure classification plus an interim prompt fix in .fabro/workflows/develop/prompts/implementer.md.\"]}}\ndiff --git a/.fabro/revisions/01M0QJ5FNE9XZJ72YN31K3X451.md b/.fabro/revisions/01M0QJ5FNE9XZJ72YN31K3X451.md\nnew file mode 100644\nindex 0000000..eb3bad1\n--- /dev/null\n+++ b/.fabro/revisions/01M0QJ5FNE9XZJ72YN31K3X451.md\n@@ -0,0 +1,14 @@\n+# Revision — run 01M0QJ5FNE9XZJ72YN31K3X451\n+\n+- status reviewed: failed\n+- review: .fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md\n+- seeds filed: fabro-d9f0 — Classify user aborts and sandbox deaths as cancellation, not deterministic failure\n+\n+## Findings\n+\n+### Classify user aborts and sandbox deaths as cancellation, not deterministic failure\n+- filed: fabro-d9f0\n+- Concrete change: in the workflow engine's failure classification (`fabro-workflow`), give user-abort/sandbox-death a distinct cancellation category; interim fix in `.fabro/workflows/develop/prompts/implementer.md` routes user-stop as `interrupted` rather than `Blocked`.\n+- Expected effect: failure signatures stay meaningful; retry/health metrics stop counting operator stops as reproducible failures.\n+- Evidence: implementer@2 in run 01M0QJ5FNE9XZJ72YN31K3X451 terminated on user request plus Docker 409, recorded as category `deterministic` and entered `loop_failure_signatures`.\n+- Duplication check: searches for cancellation, failure classification, user abort found no matching seed.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex a547d6c..ca37b44 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -170,3 +170,4 @@\n {\"id\":\"fabro-cf03\",\"title\":\"Make engine checkpoint metadata snapshots async or branch-point-only\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-04T22:18:30.091Z\",\"updatedAt\":\"2026-09-04T22:18:30.091Z\",\"description\":\"Engine checkpoint pipeline: make the metadata snapshot fire-and-forget async, or run it only on branch/failure nodes (tester/evidence/reviewer exits), not the happy path. In run 01M0WWKAQCWZC0Q0JK019H0ZC7 every checkpoint paid a synchronous ~2.5s snapshot (2.30s init seq 22, 2.49s after planner seq 80, 2.63s after evidence seq 213; ~17s, 6% of the 293s wall) on a linear zero-retry path nothing ever resumes from. Complements open fabro-c2ca (config-level skip for non-agent stages only — the planner snapshot here is an agent stage and would remain). Expected effect: ~15-17s shaved per seed cycle, compounding on multi-seed runs.\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-aa3d\",\"title\":\"Legalize sd list for goal-condition open-seed verification in planner prompt\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-04T22:18:30.208Z\",\"updatedAt\":\"2026-09-04T22:18:30.208Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md, reword the sd table: sd list is expected when the goal requires confirming no other open seed remains (blocked-but-open seeds are invisible to sd ready, which lists unblocked only). In run 01M0WWKAQCWZC0Q0JK019H0ZC7 the planner correctly ran sd list --format json (seq 68) despite the prompt's do NOT also run sd list rule — the rule must be disobeyed to route closeout correctly. Reconcile with fabro-e4fa/fabro-b382: b382's sd ready empty → route Tracker empty, do not run sd list would misroute while blocked-but-open seeds remain. Expected effect: no must-be-disobeyed instruction; wrongful Tracker empty closeout routing guarded.\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-08dd\",\"title\":\"Bump evidence diff context from -U1 to -U3\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-04T22:18:30.266Z\",\"updatedAt\":\"2026-09-04T22:18:30.266Z\",\"description\":\"In .fabro/workflows/develop/scripts/evidence.nu, change the single git diff -U1 to -U3. In run 01M0WWKAQCWZC0Q0JK019H0ZC7 the reviewer journal admits it trusted the green gate plus pinning tests rather than re-deriving the range math because -U1 omitted where start/last are computed in run() — the exact code the seed was about. Not covered by open seeds: fabro-3c9d is sort+budget, fabro-1e9f is diff base, fabro-4b57 is loop-work diff. Expected effect: range/validation logic verifiable in-diff; approvals-by-trust at the core seam eliminated.\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-d9f0\",\"title\":\"Classify user aborts and sandbox deaths as cancellation, not deterministic failure\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-04T22:24:37.527Z\",\"updatedAt\":\"2026-09-04T22:24:37.527Z\",\"description\":\"In run 01M0QJ5FNE9XZJ72YN31K3X451, implementer@2's termination on user request ('beende den run') plus Docker 409 (container not running) was recorded with category: deterministic and entered loop_failure_signatures, polluting the failure ledger with an interruption that is not a defect. Change: in the workflow engine's failure classification (fabro-workflow), give user-abort/sandbox-death a distinct cancellation category; interim: in .fabro/workflows/develop/prompts/implementer.md, route user-stop as 'interrupted' rather than Blocked. Expected effect: failure signatures stay meaningful and retry/health metrics stop counting operator stops as reproducible failures. No existing seed matches (searched deterministic failure, cancellation, failure signature, user abort; fabro-ca74 covers CLI lifecycle commands, a different mechanism).\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 8,
+          "additions": 236,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-04T22:25:06.542993446Z",
+        "current_node": "approve",
+        "completed_nodes": [
+          "start",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve"
         ],
         "node_retries": {},
         "context_values": {
@@ -3505,7 +3813,8 @@
           "seed_cycles": {
             "select": 1,
             "analyze": 1,
-            "file": 1
+            "file": 1,
+            "approve": 1
           },
           "response.analyze": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -3529,11 +3838,11 @@
           "revisor_target_status": "failed",
           "revisor_target_run_id": "01M0QJ5FNE9XZJ72YN31K3X451",
           "failure_signature": "",
-          "preferred_label": "Staged",
+          "preferred_label": "[A] Approved",
           "last_stage": "file",
-          "internal.thread_id": "analyze",
+          "internal.thread_id": "file",
           "human.gate.label": "[A] Approved",
-          "current_node": "file",
+          "current_node": "approve",
           "internal.fidelity": "compact",
           "graph.max_node_visits": "30",
           "human.gate.approve.answer": "A",
@@ -3696,11 +4005,11 @@
               "select"
             ],
             "context_updates": {
-              "human.gate.label": "[A] Approved",
               "human.gate.approve.answer": "A",
-              "human.gate.approve.label": "[A] Approved",
+              "human.gate.approve.question": "Approve filing + merge",
               "human.gate.selected": "A",
-              "human.gate.approve.question": "Approve filing + merge"
+              "human.gate.approve.label": "[A] Approved",
+              "human.gate.label": "[A] Approved"
             },
             "usage": null
           },
@@ -3757,13 +4066,13 @@
             }
           }
         },
-        "next_node_id": "approve",
+        "next_node_id": "select",
         "node_visits": {
           "analyze": 3,
           "start": 1,
           "file": 3,
           "select": 3,
-          "approve": 2
+          "approve": 3
         }
       },
       "diff": {}
@@ -4038,6 +4347,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "approve@3": {
+      "first_event_seq": 488,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-04T22:25:06.329001867Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-04T22:24:56.734928122Z",
+      "handler": "human",
+      "graph_visit": 3,
+      "timing": {
+        "wall_time_ms": 6241,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
