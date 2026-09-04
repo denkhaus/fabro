@@ -1,0 +1,62 @@
+diff --git a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
+index 37bd593..343d741 100644
+--- a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
++++ b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
+@@ -30,3 +30,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"file","visit":8,"status":"succeeded","ts":"2026-09-04T22:54:43Z","data":{"painpoints":[],"observations":["sd search returned no output for both dedupe themes, confirming no duplicates; commit bc5708e includes marker plus `.seeds/issues.jsonl`."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"approve","visit":8,"status":"succeeded","ts":"2026-09-04T22:57:15Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"select","visit":8,"status":"succeeded","ts":"2026-09-04T22:57:32Z","data":{"painpoints":[],"observations":["Selected oldest unrevised terminal run with live sandbox (01M11P68SHFS165HP9ATK6094V, 2026-08-27); 16 older terminal runs are revised, ~18 older ones lack a live sandbox and remain blocked; no active develop run in the list."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"analyze","visit":9,"status":"succeeded","ts":"2026-09-04T23:01:22Z","data":{"painpoints":[{"text":"6 of 7 analyst recommendations duplicate seeds already in the tracker (fabro-1e9f, fabro-699f, fabro-83f9, fabro-a5de, fabro-cd27, fabro-45bf) because those high-priority revision seeds remain open — the distill dedup works, but develop keeps paying the same review cost until they are implemented; fix idea: develop should burn down open `revision`-labeled High seeds before taking new work."}],"observations":["Dropped duplicates from run 01M11P68SHFS165HP9ATK6094V: rec 1 (per-seed diff base) duplicate_of fabro-1e9f; rec 3 (raise reviewer inline budget 48/56KB) duplicate_of fabro-83f9 with calibration note — this run's 53–58KB captures support fabro-1e9f's ~48KB end over 83f9's 20–24KB; rec 4 (latest-section-per-stage-type preamble rendering) duplicate_of fabro-699f; rec 5 (drop prime ritual from planner) duplicate_of fabro-a5de (superset); rec 6 (PR-content JSON fallback) duplicate_of closed fabro-cd27, open fabro-6a5a covers the stop-calling variant; rec 7 (18-of-6 progress) duplicate_of fabro-45bf (also fabro-38f4). Only rec 2 survived as new."]}}
+diff --git a/.fabro/reviews/develop/01M11P68SHFS165HP9ATK6094V.md b/.fabro/reviews/develop/01M11P68SHFS165HP9ATK6094V.md
+new file mode 100644
+index 0000000..b202841
+--- /dev/null
++++ b/.fabro/reviews/develop/01M11P68SHFS165HP9ATK6094V.md
+@@ -0,0 +1,47 @@
++# Improve review — run 01M11P68SHFS165HP9ATK6094V
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: succeeded (18.7 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-04 22:59+0000 by revisor `fabro_ask`
++
++---
++
++All evidence below is from this run's events (stage transcripts, usage/timing, journal entries) and worker logs for run `01M11P68SHFS165HP9ATK6094V`. Context: 3 seeds, all first-pass approvals, gate green 3/3, ~17.8 min loop, ~$1.14 agent spend (planner $0.144, implementer $0.817, reviewer $0.183 — from stage billing events). Recommendations ordered by expected impact.
++
++## 1. Diff evidence against the per-seed base, not the run base
++**What happened:** Every evidence capture diffs from the run base (`c47fe53`). Captures grew 21.8 KB → 53.4 KB → 58.1 KB across the three seeds because each re-includes the prior seeds' already-closed hunks. Reviewer@2's journal says it verbatim: *"distinguishing per-seed scope required cross-checking the closed 44b6 spec — a per-seed base (previous seed's commit) would make scope attribution mechanical."* A mis-attributed hunk there would have burned a full ~$0.35/3.5-min review cycle.
++**Change:** In `.fabro/workflows/develop/scripts/evidence.nu`, `run-base` (line ~96) resolves the run's oldest checkpoint. Add a second anchor: the last checkpoint commit before `current_seed_id` changed (the previous seed's closeout commit), and use it for `diff-section`/`numstat-rows`. Keep the run base only in the integrity header.
++**Effect:** Seed-2/3 captures shrink to that seed's own work (~15–35 KB instead of 53–58 KB); scope attribution becomes mechanical; the mis-review risk the reviewer flagged is gone.
++
++## 2. Steer the implementer to mechanical bulk edits for repetitive call-site rewrites
++**What happened:** implementer@2 (fabro-28e8) was 42% of total run cost — $0.486, 278 s inference, 51.8k conversation tokens — mostly rewriting ~24 identical `run(&buf, 0, tt.n, ...)` call sites in `fib_test.go` one `edit_file` at a time. Worker logs show 19 `concurrent write to the same file … serializing` warnings across the three implementer passes, all from batches of tiny edits to `main.go`/`fib_test.go`/`README.md`. The implementer@1 journal also logged a near-miss where an edit's `old_string` swallowed an entire loop body.
++**Change:** Add one paragraph to `.fabro/workflows/develop/prompts/implementer.md`: for repetitive, pattern-shaped changes (call-site adaptation, renames), do one mechanical pass via shell (`sd`/`perl -pi -e` — `sd` is already pinned in the runner image) and verify with one focused test, instead of N hand edits.
++**Effect:** A refactor-class pass drops from ~$0.49/280 s toward the ~$0.12/112 s the comparable -o-flag pass cost; run cost −20–25%, wall time −15%; eliminates the swallow-adjacent-code near-miss class.
++
++## 3. Raise the reviewer's `preamble_inline_max_kb` — 16 KB is below every capture this run
++**What happened:** `workflow.fabro` sets `preamble_inline_max_kb=16` on the reviewer (comment cites "~14KB captures" from an earlier run). This run's captures were 21.8/53.4/58.1 KB — **every** review took the blob-ref detour; reviewer@2 also found the blob preview "truncated mid-diff (~8KB omitted)" and fell back to direct repo reads. Meanwhile reviewer context usage peaked at 2.7% of the 1M window — the ceiling is protecting nothing.
++**Change:** In `.fabro/workflows/develop/workflow.fabro`, reviewer node: `preamble_inline_max_kb=48` (and `preamble_budget_kb=56` to match). After fix #1, typical captures land well under it.
++**Effect:** Zero blob round-trips per review (saves the 0.9–1.5 s tool detour plus the improvisation reviewer@3 journaled — *"python3/node unavailable — used nu str substring to read the blob"*); reviews judge from inline context, which is what the prompt already assumes.
++
++## 4. Deduplicate repeated preamble stage sections (or scope them to the current seed)
++**What happened:** The preamble renders **every** completed section of non-ignored types. Reviewer@3's prompt contains the identical 288-byte gate output three times, the same evidence blob marker three times, and `closeout: closed fabro-28e8` twice (stale — closeout@3 closed fabro-c295). implementer@2 carried 51.8k conversation tokens vs implementer@3's 16.1k, inflated by the seed-1 cycle's tester/evidence sections plus its own edit loop.
++**Change:** Engine-level: when rendering preamble history for `preamble_stages_ignore`-filtered nodes, keep only the **latest section per stage type per current seed** (the `seed_cycles` reset key `current_seed_id` already gives the boundary).
++**Effect:** ~30–50% input-token cut for reviewer and implementer on multi-seed runs; removes the stale closeout line that could mislead the next planner pass.
++
++## 5. Drop the `sd prime` / `ml prime` ritual from planner passes
++**What happened:** planner@1 opens with two shell calls (`sd prime`, `ml prime`, ~3.6 KB of output — from agent tool events) on every planner visit, yet the planner prompt already embeds the full `sd` command reference table and the engine separately loads `AGENTS.md` into memory (agent.memory.loaded, 5.3 KB). The prime output is redundant on visit 1 and triply redundant by visit 3.
++**Change:** In `.fabro/workflows/develop/prompts/planner.md`, delete the priming instruction (or restrict it to the first visit of a run).
++**Effect:** −2 tool calls and ~3.6 KB context per planner visit — small (~$0.01, ~2 s each), but free and reduces prompt noise around the routing JSON.
++
++## 6. Fix or surface the PR-content generation failure
++**What happened:** Worker log at 13:41:29: `PR content generation failed; using deterministic fallback title and skeleton body … Failed to parse response as JSON`. The run's PR (#8) shipped with a fallback body despite the run being fully successful; the only signal is a WARN line.
++**Change:** In run settings, `pull_request.model` (`zai:glm-4.7`) diverges from the main model and its JSON output isn't parsed reliably — either add a schema/retry for the PR-content call or intentionally pin the deterministic title format and stop calling the LLM.
++**Effect:** Consistent PR descriptions on every successful run instead of silent degradation.
++
++## 7. Fix the "18 of 6 stages" progress projection
++**What happened:** The run snapshot reports "Progress: 18 of 6 non-meta stages completed" — completions counted across loop visits against a 6-node graph denominator. It reads as a bug in every snapshot/notification for cyclic graphs.
++**Change:** Engine projection: count distinct completed nodes (6 of 6) plus a separate visits counter, or show `seeds closed 3/3`.
++**Effect:** Trustworthy progress in snapshots and Slack notifications; zero runtime cost.
++
++**What I would *not* change:** the graph topology itself earned its keep this run — deterministic closeout (~0.4 s vs the 21 s/$0.021 LLM variant its comment documents), structural cycle guards that cost nothing when unused, and the journal contract produced a painpoint/observation report on all 9 agent passes, which is exactly the evidence base the fixes above come from.
