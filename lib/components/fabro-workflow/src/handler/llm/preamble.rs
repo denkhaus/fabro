@@ -369,8 +369,10 @@ fn append_filtered_context_table(
         parts.push("|-----|-------|".to_string());
         for key in context_keys {
             if let Some(val) = snapshot.get(key) {
-                let rendered = artifact::prompt_large_value(val)
-                    .map_or_else(|| format_value_table_cell(val), format_large_value_table_cell);
+                let rendered = artifact::prompt_large_value(val).map_or_else(
+                    || format_value_table_cell(val),
+                    format_large_value_table_cell,
+                );
                 parts.push(format!("| {key} | {rendered} |"));
             }
         }
