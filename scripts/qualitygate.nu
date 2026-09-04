@@ -92,7 +92,10 @@ def check-fmt [] {
 
 def check-clippy [crates: list<string>] {
     if ($crates | is-empty) { return true }
-    let pkgs = ($crates | each {|c| $"-p ($c)" })
+    # '-p' and the crate name MUST be separate argv elements: a single
+    # "-p crate" string gets word-split by nu's external spread, handing
+    # cargo a package name with a leading space (run-2 gate crash).
+    let pkgs = ($crates | each {|c| ['-p' $c] } | flatten)
     print $"== cargo clippy ($crates | str join ', ') -D warnings =="
     let res = (do { ^cargo $'+($PINNED_TOOLCHAIN)' clippy ...$pkgs --all-targets -- -D warnings } | complete)
     if $res.exit_code != 0 {
@@ -106,7 +109,7 @@ def check-clippy [crates: list<string>] {
 
 def check-tests [crates: list<string>] {
     if ($crates | is-empty) { return true }
-    let pkgs = ($crates | each {|c| $"-p ($c)" })
+    let pkgs = ($crates | each {|c| ['-p' $c] } | flatten)
     print $"== cargo nextest ($crates | str join ', ') — retries ($NEXTEST_RETRIES) =="
     let res = (do { ^cargo nextest run ...$pkgs --no-fail-fast --retries $NEXTEST_RETRIES } | complete)
     if $res.exit_code != 0 {
