@@ -19,7 +19,11 @@
 # re-approvable harmlessly.
 
 def main []: nothing -> nothing {
-    let raw = (input)
+    # Non-tty stdin: nu 0.115's `input` only works on a tty and raises an
+    # I/O error on pipes (run 01M1PVMS7B6N39MG0041C5F7P6) — the engine pipes
+    # the context value, so read it through an external `cat`, which inherits
+    # the piped stdin.
+    let raw = (cat | str join)
     let seed_id = ($raw | str trim)
     if ($seed_id | is-empty) {
         print -e "closeout: stdin carried no seed id (stdin_source misconfigured?)"
