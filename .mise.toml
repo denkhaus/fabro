@@ -19,3 +19,11 @@ bun = "1.4.0"
 # logic (clean-target, install-cli, wait-healthy) lives in nushell.
 # Keep aligned with the lab branch pin.
 "aqua:nushell/nushell" = "0.115.0"
+# Issue tracker + expertise CLIs (git-native, see AGENTS.md); bins: sd, ml/mulch.
+"npm:@os-eco/seeds-cli" = "0.5.15"
+"npm:@os-eco/mulch-cli" = "0.10.7"
+
+[settings.npm]
+# Default aube backend aborts on its interactive `mise add` approval prompt
+# in non-TTY installs; bun -g is the verified path for these script-less CLIs.
+package_manager = "bun"
