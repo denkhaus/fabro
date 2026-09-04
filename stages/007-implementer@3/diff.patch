@@ -1,0 +1,60 @@
+diff --git a/.fabro/journal/01M1Q5XE2E1NVB9FPTY22N3JPQ.jsonl b/.fabro/journal/01M1Q5XE2E1NVB9FPTY22N3JPQ.jsonl
+index ba5ff4c..f9779d2 100644
+--- a/.fabro/journal/01M1Q5XE2E1NVB9FPTY22N3JPQ.jsonl
++++ b/.fabro/journal/01M1Q5XE2E1NVB9FPTY22N3JPQ.jsonl
+@@ -1,3 +1,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q5XE2E1NVB9FPTY22N3JPQ","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-04T21:43:39Z","data":{"painpoints":[],"observations":["Seed fabro-bd6c's fix sketch says 'compare attach.rs which gates its final render' but attach.rs in the current worktree has no such gating — it delegates to run_progress::ProgressUI. Brief annotates this so the implementer builds the flag directly in ask.rs instead of hunting for a pattern to copy.","sd/mise failed until `mise trust /repos/denkhaus/fabro/.mise.toml` was run (host-side friction; run-container variant already tracked as fabro-66db).","No ask.rs unit tests and no tests/it/cmd/ask.rs integration file exist today; render_event prints via macros with no stdout-capture helper anywhere in the workspace, so testability refactor is part of the fix."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q5XE2E1NVB9FPTY22N3JPQ","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-04T21:59:01Z","data":{"painpoints":[],"observations":["fabro_types EventEnvelope JSON fixtures require ULID-shaped run_id and turn_id (missing turn_id surfaced as a confusing ulid 'invalid length' error, not 'missing field'), and serde_json's json! macro spread (...props) is not available in this workspace — documented in mx-ad07d9, hit in lib/apps/fabro-cli/src/commands/run/ask.rs tests"]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q5XE2E1NVB9FPTY22N3JPQ","node":"implementer","visit":2,"status":"succeeded","ts":"2026-09-04T22:00:05Z","data":{"painpoints":[{"text":"The implementer stage is forbidden from running formatters while the tester gate rejects on formatting (run 01M1Q5XE2E1NVB9FPTY22N3JPQ, fabro-bd6c): the first pass shipped test arrays that rustfmt wanted collapsed, wasting a full tester cycle on whitespace. Suggestion: either let the implementer run `cargo +nightly-2026-04-14 fmt --all` as a fix action (it is edit-like, not a gate), or have the tester auto-format-and-retry before failing."}],"observations":["The tester's failure output included the exact rustfmt diff, which made the fix a byte-for-byte manual edit — no formatter run was needed on my side."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Q5XE2E1NVB9FPTY22N3JPQ","node":"implementer","visit":3,"status":"succeeded","ts":"2026-09-04T22:04:36Z","data":{"painpoints":[{"text":"Run 01M1Q5XE2E1NVB9FPTY22N3JPQ burned two full tester cycles on clippy disallowed_types/disallowed_methods (std::io::Write/stdout in fabro-cli) that the implementer is barred from catching because its instructions forbid running any lint. Suggestion: either let the implementer run targeted clippy on touched crates, or surface the workspace's disallowed-types list in the planner brief when a fix will touch stdout rendering."}],"observations":["The clippy disallowed_types lint fires per occurrence of the generic bound (use, struct, impl, fn), so #[expect] must be repeated at each site; a single annotation on the use item is not enough and unfulfilled expects would themselves fail -D warnings."]}}
+diff --git a/.mulch/expertise/cli.jsonl b/.mulch/expertise/cli.jsonl
+index 360c5b3..facb12d 100644
+--- a/.mulch/expertise/cli.jsonl
++++ b/.mulch/expertise/cli.jsonl
+@@ -3,3 +3,4 @@
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-08-24T21:46:02.761Z","evidence":{"commit":"35c8d485153ee03b71666e3d8ab800b821133942"},"name":"server-image-skew-debugging","description":"docker-compose.yaml defaulted FABRO_VERSION to public 'nightly' while just build-image tags ghcr.io/fabro-sh/fabro:local — a fresh just up recreated the container from a CACHED public nightly (0.331) instead of the local build (0.335); the CLI/server skew surfaced as 'Failed to parse run config TOML' on newer config keys ([run.pull_request] model). Always verify BOTH sides with fabro version (Client + Server Build Date) after just up; compose default is now 'local' (34faf268a).","files":[".mulch/expertise/workflows.jsonl",".seeds/issues.jsonl","lib/apps/fabro-server/src/install.rs","lib/apps/fabro-server/src/run_manifest.rs"],"id":"mx-7b4396"}
+ {"type":"failure","classification":"tactical","recorded_at":"2026-08-24T21:47:14.254Z","evidence":{"commit":"35c8d485153ee03b71666e3d8ab800b821133942"},"dir_anchors":[".mulch/expertise"],"description":"Two cargo-test hang classes this session: (1) first full build of fabro-server after a 36-commit upstream merge while disk at 91% and load ~6 — tool-call timeout aborts but cargo keeps running in background; check ps aux for leftover rustc before retrying, re-run is fast (warm cache). (2) NEVER conclude a hang without solo-vs-suite comparison: env-leak failures (FABRO_TEST_IN_MEMORY_STORE) and missing-helper failures (SVG tests needing target/debug/fabro binary) pass solo and fail in suite — that signature points at test pollution, not your diff.","resolution":"Before green-suite gates: cargo build -p fabro-cli --bin fabro (SVG render tests spawn it); treat solo-pass/suite-fail as pollution and hunt process-wide env; on tool timeout check leftover compilers before assuming deadlock.","id":"mx-f22317"}
+ {"type":"failure","classification":"tactical","recorded_at":"2026-08-25T18:19:52.344Z","evidence":{"seeds":"fabro-bd6c","commit":"a61077ead9a23eb833c0f51271b036024334266b"},"description":"fabro ask prints the answer twice in text mode: render_event (commands/run/ask.rs) prints every assistant_delta AND afterwards the full assistant_message again. Reproduced: ask with 'reply exactly ECHO9T' outputs ECHO9TECHO9T regardless of --quiet/tty. Workaround until fixed: parse the JSONL run.session.turn.succeeded event (--json) — scripts/run_workflow.nu does this. Fix direction: track whether deltas were rendered; skip the assistant_message println then (attach.rs already gates correctly). Seed: fabro-bd6c.","resolution":"open (fabro-bd6c); JSONL workaround in run_workflow.nu","id":"mx-f81046"}
++{"type":"failure","classification":"tactical","recorded_at":"2026-09-04T22:04:10.006Z","evidence":{"commit":"f2415b9c4f0597d317019ccbd310929d335ad026"},"description":"fabro-bd6c: gate rejects std::io::Write/std::io::stdout in fabro-cli via clippy disallowed_types/disallowed_methods; sync stdout streaming needs #[expect(clippy::disallowed_types/methods, reason=...)] on the use item, the let stmt, and every generic bound site (struct/impl/fn) — the lint fires per occurrence","resolution":"annotate every occurrence with #[expect(..., reason)] as the lint note itself documents","id":"mx-f66fbd"}
+diff --git a/lib/apps/fabro-cli/src/commands/run/ask.rs b/lib/apps/fabro-cli/src/commands/run/ask.rs
+index c665797..5d45c4c 100644
+--- a/lib/apps/fabro-cli/src/commands/run/ask.rs
++++ b/lib/apps/fabro-cli/src/commands/run/ask.rs
+@@ -1,3 +1,6 @@
++// The `ask` renderer streams deltas to the terminal as they arrive;
++// deliberate sync I/O, not a Tokio path.
++#[expect(clippy::disallowed_types, reason = "intentional sync stdout streaming")]
+ use std::io::Write;
+ 
+ use anyhow::{Result, bail};
+@@ -24,6 +27,8 @@ pub(crate) async fn run(args: AskArgs, base_ctx: &CommandContext) -> Result<()>
+ 
+     let mut terminal_error = None;
+     let mut saw_terminal = false;
++    // Deliberate blocking stdout: deltas are printed as they stream in.
++    #[expect(clippy::disallowed_methods, reason = "intentional sync stdout streaming")]
+     let stdout = std::io::stdout();
+     let mut renderer = TextStreamRenderer::new(stdout.lock());
+     while let Some(event) = stream.next_event().await? {
+@@ -73,11 +78,13 @@ fn session_title(prompt: &str) -> String {
+ /// In text mode, streamed assistant deltas own the answer output: once any
+ /// delta has been rendered, the final `assistant_message` only terminates the
+ /// line instead of printing the full text again.
++#[expect(clippy::disallowed_types, reason = "intentional sync stdout streaming")]
+ struct TextStreamRenderer<W: Write> {
+     out:       W,
+     saw_delta: bool,
+ }
+ 
++#[expect(clippy::disallowed_types, reason = "intentional sync stdout streaming")]
+ impl<W: Write> TextStreamRenderer<W> {
+     fn new(out: W) -> Self {
+         Self {
+@@ -115,6 +122,7 @@ impl<W: Write> TextStreamRenderer<W> {
+     }
+ }
+ 
++#[expect(clippy::disallowed_types, reason = "intentional sync stdout streaming")]
+ fn render_event<W: Write>(
+     event: &EventEnvelope,
+     json_output: bool,
