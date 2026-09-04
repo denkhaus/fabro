@@ -166,18 +166,9 @@ mod tests {
     #[test]
     fn text_mode_delta_stream_prints_answer_exactly_once() {
         let events = [
-            envelope(
-                "run.session.assistant_delta",
-                json!({"delta": "ECHO"}),
-            ),
-            envelope(
-                "run.session.assistant_delta",
-                json!({"delta": "9T"}),
-            ),
-            envelope(
-                "run.session.assistant_message",
-                json!({"text": "ECHO9T"}),
-            ),
+            envelope("run.session.assistant_delta", json!({"delta": "ECHO"})),
+            envelope("run.session.assistant_delta", json!({"delta": "9T"})),
+            envelope("run.session.assistant_message", json!({"text": "ECHO9T"})),
         ];
         assert_eq!(render_all(&events), "ECHO9T\n");
     }
@@ -194,18 +185,9 @@ mod tests {
     #[test]
     fn json_mode_emits_every_event_once_as_json() {
         let events = [
-            envelope(
-                "run.session.assistant_delta",
-                json!({"delta": "ECHO"}),
-            ),
-            envelope(
-                "run.session.assistant_delta",
-                json!({"delta": "9T"}),
-            ),
-            envelope(
-                "run.session.assistant_message",
-                json!({"text": "ECHO9T"}),
-            ),
+            envelope("run.session.assistant_delta", json!({"delta": "ECHO"})),
+            envelope("run.session.assistant_delta", json!({"delta": "9T"})),
+            envelope("run.session.assistant_message", json!({"text": "ECHO9T"})),
         ];
         let mut out = Vec::new();
         let mut renderer = TextStreamRenderer::new(&mut out);
