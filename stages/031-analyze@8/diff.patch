@@ -1,0 +1,70 @@
+diff --git a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
+index d6d62a3..b618c7f 100644
+--- a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
++++ b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
+@@ -26,3 +26,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"file","visit":7,"status":"succeeded","ts":"2026-09-04T22:49:36Z","data":{"painpoints":[],"observations":["Target run 01M0T2GW0PTNF3CHNQKHER1271 failed but yielded zero analyst findings; marker-only revision committed at `.fabro/revisions/01M0T2GW0PTNF3CHNQKHER1271.md` — it is now marked revised and should not be re-inspected."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"approve","visit":7,"status":"succeeded","ts":"2026-09-04T22:49:49Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"select","visit":7,"status":"succeeded","ts":"2026-09-04T22:50:11Z","data":{"painpoints":[],"observations":["12+ unrevised terminal runs lack a live sandbox (e.g. 01M0QTMF0NZNFH72VEVZNB8XFY, 01M0MGAPV45NNRBZK3WTKCJ5H9) and stay blocked until fresh analyst sandboxes are provisioned; no active develop run at selection time."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"analyze","visit":8,"status":"succeeded","ts":"2026-09-04T22:54:04Z","data":{"painpoints":[{"text":"The PR-publish 403 tail terminated yet another fully-green develop run (01M0T9B7T6XNM1D7JNY35Y6H8K: 7/7 visits green, $0.353, 6m57s, then failed(publish_failed)); the fix exists as open seeds fabro-6a77 and fabro-696c plus the closed preflight fabro-67e5, but the succeeded_with_publish_failure taxonomy evidently has not landed — landing it would end this recurring review-and-drop cycle."}],"observations":["Dropped as duplicates: publish non-terminal+preflight -> fabro-6a77, fabro-696c, closed fabro-67e5; budget 12->20KB -> fabro-35ab, fabro-83f9; sd syntax pinning -> fabro-1399; implementer report dedupe -> fabro-4cd8; same-file batch edits -> fabro-4601; double tracker query -> fabro-1399/fabro-e4fa/fabro-b382; unique-node progress -> fabro-45bf/fabro-38f4; PR model honoring -> closed fabro-46f3.","This run's evidence was already partially distilled by an earlier pass (fabro-4cd8, fabro-35ab, fabro-1399 all cite run 01M0T9B7T6XNM1D7JNY35Y6H8K); only the context-key blanking and seeds-cli exit-code findings are new this pass.","Review answer persisted verbatim at .fabro/reviews/develop/01M0T9B7T6XNM1D7JNY35Y6H8K.md."]}}
+diff --git a/.fabro/reviews/develop/01M0T9B7T6XNM1D7JNY35Y6H8K.md b/.fabro/reviews/develop/01M0T9B7T6XNM1D7JNY35Y6H8K.md
+new file mode 100644
+index 0000000..1adc9f3
+--- /dev/null
++++ b/.fabro/reviews/develop/01M0T9B7T6XNM1D7JNY35Y6H8K.md
+@@ -0,0 +1,55 @@
++# Improve review — run 01M0T9B7T6XNM1D7JNY35Y6H8K
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: failed (8.1 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-04 22:50+0000 by revisor `fabro_ask`
++
++---
++
++## What this run actually did (basis for everything below)
++
++From run events and the worker log: all 7 graph visits succeeded (planner@1 → implementer@1 → tester green in 1.2 s → evidence in 0.4 s → reviewer Approved → planner@2 closed seed `fabro-8208`, "Tracker empty" → exit). Total: 6 m 57 s wall, $0.353, 636k tokens (84 % cache-read). The run's **only** failure was post-exit publishing: `Pull request creation failed … (403)` → status `failed(publish_failed)`. Worker log also shows 4 preamble-budget overruns and 9 same-file write-lock warnings.
++
++Recommendations, ordered by expected impact:
++
++---
++
++**1. Make PR-publish failure non-terminal and preflight the credential.**
++- **What happened:** every stage and the seed closure succeeded; `git.push` of the run branch succeeded (event seq 82, static token), then PR creation got 403 (log 16:31:43) and the whole run is labeled `failed`. The 403 fired *after* 7 minutes of paid work; the user's real state is "work done and pushed, PR missing."
++- **Change:** engine publish step (platform-side, `fabro_workflow::pipeline::pull_request`) — (a) probe PR-create permission at run start (one cheap API call) and fail fast with "token lacks pull_requests scope / `scm.provider` unset" instead of after the work; (b) on publish error, mark the run `succeeded_with_publish_failure` with a resume-publish action rather than `failed`. Also fill in the empty `scm` block in the run settings (`spec.settings.run.scm`: provider/owner/repository are all `null` while `pull_request.enabled=true`).
++- **Expected effect:** successful dev loops stop being reported as failures; a bad token costs seconds, not $0.35 and 7 minutes.
++
++**2. Raise `preamble_budget_kb` and clear stale seed keys.**
++- **What happened:** worker log shows the 12 KB budget exceeded at **four consecutive stages** — tester (12 989 B), evidence (12 983 B), reviewer (14 196 B), planner@2 (18 053 B) — "even after demotion." The reviewer had to spend tool calls reading the blob-ref'd 17.6 KB evidence; planner@2's prompt carried `current_seed_brief` (1.6 KB) and `implementation_summary` (1.7 KB) of the *already-closed* seed as blob refs. This loop's own context keys (brief + summary + verdict + tester output) no longer fit in 12 KB.
++- **Change:** in `/workspace/fabro/.fabro/workflows/develop/workflow.fabro` line 6, `preamble_budget_kb=12` → `20`–`24`; and in `prompts/planner.md`, extend the "Tracker empty" JSON contract to also blank `current_seed_id/title/brief` and `implementation_summary` (it already clears `review_verdict`).
++- **Expected effect:** no demotion warnings, no blob round-trips for values the next stage needs anyway, and the final planner pass stops hauling a dead seed's brief around — fewer tool calls and lower risk of re-triggering the evidence-starvation pathology the graph comments say run 01M0SS23MJ hit.
++
++**3. Fix `sd`'s silent failures (exit 0 on error) and pin exact syntax in the planner prompt.**
++- **What happened:** planner@1 ran `sd update fabro-8208 --status in_progress --format json` → stdout `error: unknown option '--format'` but **exit_code 0** (events seq 62–63). The model recovered by retrying without the flag, but any exit-code-checking consumer would read a failed tracker write as success.
++- **Change:** seeds-cli (`@os-eco/seeds-cli@0.5.15`): exit non-zero on errors, print to stderr. Meanwhile in `prompts/planner.md`, give the literal commands (`sd update <id> --status in_progress` — no `--format`; `sd close <id>`) and add "sd may print `error:` on stdout with exit 0 — verify the output text."
++- **Expected effect:** eliminates the wasted retry observed here (~5 s + one LLM round-trip per planner visit) and removes a silent-corruption path for tracker writes.
++
++**4. Deduplicate the implementer's report (prose copy + JSON copy).**
++- **What happened:** implementer@1's response contains the full per-criterion PASS/FAIL report as markdown *and* a near-duplicate inside `implementation_summary` — both then flow into the reviewer's and planner@2's preambles. The implementer was 93 % of loop cost ($0.213 of $0.353; 203 s inference of 218 s wall) and its output is the largest context item downstream.
++- **Change:** `prompts/implementer.md` outcome contract — pre-JSON prose capped at ≤2 sentences; the PASS/FAIL report lives *only* in `implementation_summary`.
++- **Expected effect:** ~1.5–2 KB less preamble per downstream stage per cycle; compounds across the review loops this graph is designed for.
++
++**5. Forbid same-file parallel edits in the implementer prompt.**
++- **What happened:** 9 WARN lines at 16:26:34 and 16:26:42 — `concurrent write to the same file in one batch; serializing path="/workspace/fabro/fib_test.go"`. The engine saved correctness by serializing; ordering was luck.
++- **Change:** add a hard rule to `prompts/implementer.md` (artifact-hygiene section): batch `edit_file` calls only across *distinct* files; edits to the same file go in sequence.
++- **Expected effect:** no reliance on engine serialization ordering; cleaner write phase, no lock warnings.
++
++**6. Stop the defensive double tracker query.**
++- **What happened:** planner@1 fired `sd ready --format json` and `sd list --format json` in parallel (events seq 38–43); both returned the identical single seed — one call was pure waste.
++- **Change:** in `prompts/planner.md`, reword step 1 to: "Run `sd ready` alone; run `sd list` only if `sd ready` is empty or blocked seeds are suspected."
++- **Expected effect:** one fewer LLM round-trip + tool call per planner visit (~5–8 s each).
++
++**7. Report progress and PR-body generation honestly.**
++- **What happened:** snapshot shows "Progress: **6 of 5** non-meta stages completed" (planner visited twice); and the PR-content LLM call failed JSON parsing (log 16:31:42, `model=glm-5.3` even though `pull_request.model="zai:glm-4.7"` is configured) — masked only by the deterministic fallback, which was then moot because creation 403'd.
++- **Change:** engine UI — count unique nodes, not visits; honor `pull_request.model` or drop the LLM call (the run already has `implementation_summary` rich enough for a PR body).
++- **Expected effect:** non-confusing progress numbers; PR bodies that don't depend on a flaky JSON generation path.
++
++---
++
++**What worked and should stay (for contrast):** the baked Docker runner (setup 0.77 s vs the ~24.5 s the Dockerfile header says it replaced), the seeded cycle-guard edges, `fidelity="summary:high"` on the reviewer (approved in one pass with live binary verification), and the 84 % cache-read rate. The loop itself is healthy — the run was killed entirely by its publishing tail.
