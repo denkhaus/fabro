@@ -668,7 +668,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-04T06:34:48.189639159Z",
-  "last_event_at": "2026-09-04T06:48:38.009145867Z",
+  "last_event_at": "2026-09-04T06:48:43.076623822Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1937,9 +1937,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 281,
       "checkpoint": {
-        "timestamp": "2026-09-04T06:48:38.021779285Z",
+        "timestamp": "2026-09-04T06:48:42.047564283Z",
         "current_node": "tester",
         "completed_nodes": [
           "start",
@@ -1953,16 +1953,13 @@
         ],
         "node_retries": {},
         "context_values": {
-          "current_seed_brief": "Bug: in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`, `append_filtered_context_table` (~line 344, the `## Current context` table emitted at summary:high fidelity) renders non-large context values via `format_value`, which returns raw strings; a multi-line value (e.g. a bulleted `current_seed_brief`) embeds newlines inside a `| Key | Value |` row and shatters the table so later rows like `current_seed_id`/`current_seed_title` visually detach (user report 2026-09-03, run 01M1MMK5C6B313SY70Y2EPKE82). The seed offers three fix directions; chosen reading: direction 1 (render cells single-line) because it is the smallest change satisfying every acceptance criterion and mirrors the single-lining already done by `format_large_value_table_cell`. Acceptance criteria:\n- every context value renders as exactly one single-line table row: newlines collapse to a visible single-line separator (e.g. slash-joined lines); no raw newline character appears inside any `| ... |` row\n- plain (non-large) table cells escape `|` as `\\|`, matching the existing large-value cell path — a raw pipe breaks a row the same way a newline does, so this is required for criterion 1's \"valid single table row in every markdown viewer\"\n- fix scoped to the table-cell renderer only: `format_value` stays unchanged because the bullet-list path (`append_filtered_context`, compact/medium fidelity) legally keeps multi-line values\n- with a multi-line `current_seed_brief` in context, `current_seed_id` and `current_seed_title` still render as intact readable rows adjacent to it (keys sort adjacently)\n- no information loss: only prompt rendering changes; context values are unmodified and `context_read` still serves the full multi-line value\n- unit tests in the `preamble.rs` test module: a new test sets a multi-line value plus `current_seed_id` and asserts exactly one table row per key (count lines starting with `| ` in the `## Current context` section) with no newline inside a row; existing `summary_high_context_as_table` and `summary_high_table_compacts_large_value_preview` keep passing\n- verify with `cargo nextest run -p fabro-workflow` and `cargo +nightly-2026-04-14 clippy -p fabro-workflow --all-targets -- -D warnings`",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.seed_cycle_anchor": "fabro-f677",
-          "internal.fidelity": "compact",
-          "last_stage": "implementer",
-          "internal.retry_count.implementer": 0,
-          "lesson_capture": "nothing durable — skipped",
-          "current_node": "tester",
-          "thread.start.current_node": "planner",
-          "internal.exit_kind": "deadlock",
+          "failure_signature": "tester|deterministic|script failed with exit code: <n> ## output nu scripts/qualitygate.nu touched crates: fabro-workflow == cargo fmt --check --all == format clean == cargo clippy fabro-workflow -d warnings == ╭────────────╮ │ emp",
+          "internal.run_id": "01M1NHZVTXRC1AVW28D3FG0XYP",
+          "failure_class": "deterministic",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.tester": 0,
+          "thread.tester.current_node": "implementer",
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.implementer",
@@ -1970,15 +1967,24 @@
             "preview": "All seed work is already complete in the worktree (prior implementer pass, commit 2f0b6c80); the tester failure was a bug in the qualitygate script, not the code. I verified:\n\n- `format_value_table_ce"
           },
           "graph.preamble_budget_kb": "24",
-          "failure_class": "deterministic",
+          "outcome": "failed",
+          "internal.retry_count.implementer": 0,
           "current_seed_title": "engine: preamble context table breaks markdown with multi-line values",
-          "last_response": "All seed work is already complete in the worktree (prior implementer pass, commit 2f0b6c80); the tester failure was a bug in the qualitygate script, not the code. I verified:\n\n- `format_value_table_ce",
-          "graph.max_node_visits": "40",
-          "internal.run_id": "01M1NHZVTXRC1AVW28D3FG0XYP",
-          "preferred_label": "Implemented",
-          "internal.retry_count.planner": 0,
-          "internal.retry_count.tester": 0,
+          "last_stage": "implementer",
+          "lesson_capture": "nothing durable — skipped",
           "thread.planner.current_node": "implementer",
+          "internal.seed_cycle_anchor": "fabro-f677",
+          "internal.node_visit_count": 3,
+          "thread.start.current_node": "planner",
+          "command.output": "blob://sha256/0785c1d762ed2b84351bdd0347de5dd7b8a8aedc33e8503d371fd83621dadad3",
+          "thread.implementer.current_node": "tester",
+          "last_response": "All seed work is already complete in the worktree (prior implementer pass, commit 2f0b6c80); the tester failure was a bug in the qualitygate script, not the code. I verified:\n\n- `format_value_table_ce",
+          "internal.exit_kind": "deadlock",
+          "graph.goal": "Implement product seed fabro-f677: engine preamble context table breaks markdown with multi-line values",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.rankdir": "LR",
+          "implementation_summary": "No code changes this pass: the seed was already fully implemented in commit 2f0b6c80 (`lib/components/fabro-workflow/src/handler/llm/preamble.rs` — `format_value_table_cell` single-lines and pipe-escapes non-large table cells, plus test `summary_high_table_single_lines_multi_line_values`); the two tester failures were caused by a `scripts/qualitygate.nu` bug passing ` fabro-workflow` (leading space) to cargo clippy, reported via journal. Verified with `cargo nextest run -p fabro-workflow preamble` (86 passed) and `-p fabro-workflow summary_high` (19 passed). Lesson capture: nothing durable — skipped. Per-criterion: PASS single-line rows with newline collapse — preamble.rs `format_value_table_cell` + `summary_high_table_single_lines_multi_line_values`; PASS pipe escaping in plain cells — `format_value_table_cell` `.replace('|', \"\\\\|\")` matching `format_large_value_table_cell`; PASS fix scoped to table-cell renderer, `format_value` unchanged; PASS id/title render intact adjacent rows — test asserts exact 4-row vector in sorted order; PASS no information loss — only rendering changed, `context_read` untouched; PASS new unit test plus existing `summary_high_context_as_table` and `summary_high_table_compacts_large_value_preview` all passing; PASS verified via focused nextest runs (full gate intentionally left to the tester stage).",
+          "internal.retry_count.planner": 0,
           "journal": {
             "painpoints": [
               {
@@ -1989,20 +1995,7 @@
               "The seed implementation landed in the prior implementer commit (2f0b6c80) and passes; both tester failures in this run were purely the qualitygate script bug, so any further implementer passes on this seed should verify-only unless the reviewer requests changes."
             ]
           },
-          "graph.goal": "Implement product seed fabro-f677: engine preamble context table breaks markdown with multi-line values",
-          "command.output": "blob://sha256/0785c1d762ed2b84351bdd0347de5dd7b8a8aedc33e8503d371fd83621dadad3",
-          "thread.tester.current_node": "implementer",
-          "failure_signature": "tester|deterministic|script failed with exit code: <n> ## output nu scripts/qualitygate.nu touched crates: fabro-workflow == cargo fmt --check --all == format clean == cargo clippy fabro-workflow -d warnings == ╭────────────╮ │ emp",
-          "seed_cycles": {
-            "planner": 1,
-            "implementer": 3,
-            "tester": 3
-          },
-          "implementation_summary": "No code changes this pass: the seed was already fully implemented in commit 2f0b6c80 (`lib/components/fabro-workflow/src/handler/llm/preamble.rs` — `format_value_table_cell` single-lines and pipe-escapes non-large table cells, plus test `summary_high_table_single_lines_multi_line_values`); the two tester failures were caused by a `scripts/qualitygate.nu` bug passing ` fabro-workflow` (leading space) to cargo clippy, reported via journal. Verified with `cargo nextest run -p fabro-workflow preamble` (86 passed) and `-p fabro-workflow summary_high` (19 passed). Lesson capture: nothing durable — skipped. Per-criterion: PASS single-line rows with newline collapse — preamble.rs `format_value_table_cell` + `summary_high_table_single_lines_multi_line_values`; PASS pipe escaping in plain cells — `format_value_table_cell` `.replace('|', \"\\\\|\")` matching `format_large_value_table_cell`; PASS fix scoped to table-cell renderer, `format_value` unchanged; PASS id/title render intact adjacent rows — test asserts exact 4-row vector in sorted order; PASS no information loss — only rendering changed, `context_read` untouched; PASS new unit test plus existing `summary_high_context_as_table` and `summary_high_table_compacts_large_value_preview` all passing; PASS verified via focused nextest runs (full gate intentionally left to the tester stage).",
-          "graph.rankdir": "LR",
           "internal.thread_id": "implementer",
-          "internal.node_visit_count": 3,
-          "outcome": "failed",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
@@ -2010,9 +2003,16 @@
             "preview": "Seed `fabro-f677` claimed. I inspected the code: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` renders non-large values via `format_value`, which retur"
           },
           "current_seed_id": "fabro-f677",
-          "thread.implementer.current_node": "tester",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.retry_count.start": 0
+          "current_node": "tester",
+          "current_seed_brief": "Bug: in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`, `append_filtered_context_table` (~line 344, the `## Current context` table emitted at summary:high fidelity) renders non-large context values via `format_value`, which returns raw strings; a multi-line value (e.g. a bulleted `current_seed_brief`) embeds newlines inside a `| Key | Value |` row and shatters the table so later rows like `current_seed_id`/`current_seed_title` visually detach (user report 2026-09-03, run 01M1MMK5C6B313SY70Y2EPKE82). The seed offers three fix directions; chosen reading: direction 1 (render cells single-line) because it is the smallest change satisfying every acceptance criterion and mirrors the single-lining already done by `format_large_value_table_cell`. Acceptance criteria:\n- every context value renders as exactly one single-line table row: newlines collapse to a visible single-line separator (e.g. slash-joined lines); no raw newline character appears inside any `| ... |` row\n- plain (non-large) table cells escape `|` as `\\|`, matching the existing large-value cell path — a raw pipe breaks a row the same way a newline does, so this is required for criterion 1's \"valid single table row in every markdown viewer\"\n- fix scoped to the table-cell renderer only: `format_value` stays unchanged because the bullet-list path (`append_filtered_context`, compact/medium fidelity) legally keeps multi-line values\n- with a multi-line `current_seed_brief` in context, `current_seed_id` and `current_seed_title` still render as intact readable rows adjacent to it (keys sort adjacently)\n- no information loss: only prompt rendering changes; context values are unmodified and `context_read` still serves the full multi-line value\n- unit tests in the `preamble.rs` test module: a new test sets a multi-line value plus `current_seed_id` and asserts exactly one table row per key (count lines starting with `| ` in the `## Current context` section) with no newline inside a row; existing `summary_high_context_as_table` and `summary_high_table_compacts_large_value_preview` keep passing\n- verify with `cargo nextest run -p fabro-workflow` and `cargo +nightly-2026-04-14 clippy -p fabro-workflow --all-targets -- -D warnings`",
+          "internal.work_dir": "/workspace/fabro",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 3,
+            "tester": 3
+          },
+          "preferred_label": "Implemented",
+          "internal.fidelity": "compact"
         },
         "node_outcomes": {
           "implementer": {
@@ -2069,10 +2069,6 @@
               "active_time_ms": 83632
             }
           },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "planner": {
             "status": "succeeded",
             "preferred_label": "Seed claimed",
@@ -2126,6 +2122,10 @@
               "active_time_ms": 104553
             }
           },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "tester": {
             "status": "failed",
             "context_updates": {
@@ -2145,17 +2145,105 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "8e9dcb69e2b0535821588bd37db06d91cdd4083c",
+        "loop_failure_signatures": {
+          "tester|deterministic|script failed with exit code: <n> ## output nu scripts/qualitygate.nu touched crates: fabro-workflow == cargo fmt --check --all == format clean == cargo clippy fabro-workflow -d warnings == ╭────────────╮ │ emp": 2,
+          "tester|deterministic|script failed with exit code: <n> ## output nu scripts/qualitygate.nu touched crates: fabro-workflow == cargo fmt --check --all == diff in /repos/denkhaus/fabro/lib/components/fabro-workflow/src/handler/llm/preamble.rs:<n>: parts.push(\"|---": 1
+        },
         "node_visits": {
-          "start": 1,
           "planner": 1,
           "tester": 3,
-          "implementer": 3
+          "implementer": 3,
+          "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 3,
+          "additions": 53,
+          "deletions": 3
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-04T06:48:42.119660856Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 750442,
+      "inference_time_ms": 286498,
+      "tool_time_ms": 428285,
+      "active_time_ms": 714783
+    },
+    "final_git_commit_sha": "8e9dcb69e2b0535821588bd37db06d91cdd4083c",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 105048,
+          "inference_time_ms": 103436,
+          "tool_time_ms": 1117,
+          "active_time_ms": 104553
+        },
+        "billing_usd_micros": 72679,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 597222,
+          "inference_time_ms": 183062,
+          "tool_time_ms": 412648,
+          "active_time_ms": 595710
+        },
+        "billing_usd_micros": 155894,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 14537,
+          "inference_time_ms": 0,
+          "tool_time_ms": 14520,
+          "active_time_ms": 14520
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 65622,
+      "output_tokens": 5007,
+      "total_tokens": 449818,
+      "reasoning_tokens": 3893,
+      "cache_read_tokens": 375296,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 228573
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl b/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl\nnew file mode 100644\nindex 00000000..74ea3e58\n--- /dev/null\n+++ b/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl\n@@ -0,0 +1,5 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NHZVTXRC1AVW28D3FG0XYP\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T06:34:50Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NHZVTXRC1AVW28D3FG0XYP\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T06:36:45Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-f677 is Low priority among 42 ready seeds but was claimed because the goal names it explicitly; nothing else in progress for this effort.\",\"Seed description lists three alternative fix directions without picking one; brief resolves this to direction 1 (single-line table cells) and adds pipe-escaping for plain cells, which the spec's 'valid single table row' criterion implies but never states.\",\"Pitfall flagged in brief: `format_value` is shared by the table path and the bullet-list path (`append_filtered_context`); a global fix there would regress the bullet-list rendering where newlines are legal markdown.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NHZVTXRC1AVW28D3FG0XYP\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T06:45:27Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The large-value table-cell path already single-lined and pipe-escaped (`format_large_value_table_cell`, preamble.rs ~133), so the fix mirrored it for plain values; any future table-cell additions should reuse these helpers rather than raw format_value.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NHZVTXRC1AVW28D3FG0XYP\",\"node\":\"implementer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-04T06:46:37Z\",\"data\":{\"painpoints\":[{\"text\":\"Run 01M1NHZVTXRC1AVW28D3FG0XYP: the tester failed the tree on a pure rustfmt wrapping diff (preamble.rs:372), i.e. the implementer wrote correct code but a formatting nit cost a full gate cycle. Suggestion: have the implementer stage run `cargo +nightly-2026-04-14 fmt -- <touched files>` (seconds, not the full gate) before finishing, or make the tester auto-apply fmt for whitespace-only diffs; this is the cheapest possible way to save a whole pipeline retry.\"}],\"observations\":[\"The prior implementer's fix and tests were complete and correct; only line wrapping was red — worth remembering that a failed tester output can be a one-line format fix rather than a logic problem.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NHZVTXRC1AVW28D3FG0XYP\",\"node\":\"implementer\",\"visit\":3,\"status\":\"succeeded\",\"ts\":\"2026-09-04T06:48:25Z\",\"data\":{\"painpoints\":[{\"text\":\"scripts/qualitygate.nu builds the touched-crates list without trimming: `cargo clippy fabro-workflow -D warnings` receives package name ` fabro-workflow` with a leading space and cargo rejects it (runs 01M1NHZVTXRC1AVW28D3FG0XYP tester failed twice on this, exit code 1, while the code itself passes all tests). The nu code that assembles the clippy package argument likely does something like `[$\\\" ($crate)\\\"]` or splits on a delimiter leaving whitespace; fix by `str trim`-ing each crate name before interpolation. This is blocking the tester stage from ever going green on a touching-single-crate change.\"}],\"observations\":[\"The seed implementation landed in the prior implementer commit (2f0b6c80) and passes; both tester failures in this run were purely the qualitygate script bug, so any further implementer passes on this seed should verify-only unless the reviewer requests changes.\"]}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex d00b54a8..68a1185c 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -96,5 +96,5 @@\n {\"id\":\"fabro-03ef\",\"title\":\"lab: migrate develop+revisor run behavior from project.toml to workflow.toml (v0.345 intent runs stop transmitting project settings)\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-03T20:31:01.034Z\",\"updatedAt\":\"2026-09-03T21:31:27.428Z\",\"description\":\"Migrate develop + revisor run behavior from denkhaus-lab project.toml into each workflow's own workflow.toml, required by upstream v0.345.0-nightly.0 (merge 6530c724f): `fabro run`/`fabro create` create runs from immutable workflow intents and no longer transmit project-level `[run]`+`[environments]` settings (warning only). Until this lands, every manual develop/revisor start silently runs on the server `default` environment (buildpack-deps:noble, 2 CPU/4 GB, no toolchain), skips mise/bootstrap prepare, falls back to a non-glm-5.3 default model, skips branch pushes, opens NO pull request (breaks the autonomous merge-back dev cycle), and posts no Slack terminal notifications.\\n\\nChange set (on branch denkhaus-lab):\\n1. develop + revisor workflow.toml: add `[run.environment] id=\\\"mise\\\"`, `[run.prepare]` (mise install, just bootstrap), `[run.model]` (zai glm-5.3), `[run.run_branch]`/`[run.meta_branch]` push=true, `[run.pull_request]` (enabled, auto_merge, squash, titler zai:glm-4.7), `[run.integrations.github.permissions]` (contents/pull_requests write), `[run.notifications.terminal]` (slack #dev-fabro). All keys verified workflow-transmissible in RunLayer (lib/foundation/fabro-config/src/layers/run.rs); admission applies the workflow layer at intent compilation.\\n2. Start wrapper: manual starts MUST pass `--environment mise` — the intent's environment override sits above the workflow layer, so a workflow-level pin alone does not select it (run_intent.rs admission + create.rs default to DEFAULT_ENVIRONMENT_ID). Pin it in the lab start script/just recipe so it cannot be forgotten.\\n3. Slim project.toml run keys on denkhaus-lab afterwards (they are inert for CLI runs now; only produce the warning).\\n4. Placement stays server-managed: the deployed server already carries the `mise` environment (fabro-runner:mise, 8 CPU/16 GB) — no environment creation needed.\\n\\nOrdering: do this BEFORE the two revisor qualification cycles of ADR-0013/fabro-5453 — broken merge-back would pollute the loop measurement.\\n\\nVerification: one manual `fabro run develop --environment mise` from a lab checkout that (a) shows the untransmitted-settings warning ONLY for remaining project keys (ideally none), (b) runs with the mise image and glm-5.3, (c) executes prepare steps, (d) opens and auto-merges its PR, (e) posts the terminal Slack notification.\",\"blocks\":[\"fabro-5453\"],\"closedAt\":\"2026-09-03T21:31:27.428Z\",\"closeReason\":\"Qualified green on run 01M1MHGS7PH26EP20B2RTAPN4G (2026-09-03): mise environment (sandbox 1s, prepare 2 cmds/16s), glm-5.3 from workflow.toml, no untransmitted-settings warning, PR #12 created and auto-merged (squash, wrapper ff-pull), notifications settings proven in spec with zero failure/skip logs. Two full cycles, BOTH fib seeds (fabro-93f2 -step, fabro-87cf -last) implemented, gated, approved first-pass, closed; lab tracker 0 open. 10.3 min, $0.68. Non-blocker: PR content fell back deterministically (fabro-cd27).\"}\n {\"id\":\"fabro-2e73\",\"title\":\"fabro checkout: manual `fabro run implement-issue` needs --environment toolchain since v0.345 intent runs\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-03T20:31:07.317Z\",\"updatedAt\":\"2026-09-03T20:31:23.727Z\",\"description\":\"Since upstream v0.345.0-nightly.0 (merge 6530c724f), manual `fabro run`/`fabro create` no longer transmit project-level [run]/[environments] settings. In the fabro checkout, .fabro/project.toml pins [run.environment] id=\\\"toolchain\\\" (rust/bun/sd/ml toolchain image fabro-toolchain:noble) — a manual `fabro run implement-issue` (whose workflow.toml carries no environment) now silently falls back to the server `default` environment (buildpack-deps:noble, no toolchain) with only a warning. Fix: either add [run.environment] id=\\\"toolchain\\\" to implement-issue/workflow.toml for documentation + workflow-owned fields AND pass --environment toolchain at start (intent override outranks the workflow pin), or wrap the manual start in a just recipe that passes the flag. Server already exposes the toolchain environment (8 CPU/16 GB). Low priority: implement-issue is currently triggered manually only.\"}\n {\"id\":\"fabro-4398\",\"title\":\"gofib tests: replace per-flag opts() wrappers with one options-literal builder\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-03T21:49:30.902Z\",\"updatedAt\":\"2026-09-03T21:49:36.429Z\",\"description\":\"From run 01M1MHGS7PH26EP20B2RTAPN4G (implementer@3 observation): fib_test.go predates the newer flags (-step, -last); every flag combination needed its own opts wrapper (stepOpts, lastOpts, ...), and each future flag would add another. Composing flags in tests drifts toward wrapper soup.\\n\\nRefactor: ONE test helper that takes an options literal (or builder) defaulting to the current defaults (n=100, start=0, limit=0, seed=0, step=1, last=0, format unset, json/pretty/sum/version false, output empty) and overrides only what a test exercises. All existing tests migrate to it; the per-flag wrappers are deleted.\\n\\nAcceptance: (1) exactly ONE options-construction helper remains in fib_test.go; (2) no test constructs options{} literals inline except through the helper; (3) behavior-neutral — the full test suite passes unchanged assertions; (4) just qualitygate stays green.\",\"closedAt\":\"2026-09-03T21:49:36.429Z\",\"closeReason\":\"Filed on the wrong tracker (platform); fib product seeds live on the lab branch — recreated there.\"}\n-{\"id\":\"fabro-f677\",\"title\":\"engine: preamble context table breaks markdown with multi-line values\",\"status\":\"open\",\"type\":\"bug\",\"priority\":3,\"createdAt\":\"2026-09-03T22:16:01.052Z\",\"updatedAt\":\"2026-09-03T22:16:01.052Z\",\"description\":\"The `## Current context` table (append_filtered_context_table, summary:high fidelity) inlines multi-line values raw into markdown table cells. Markdown tables cannot contain newlines, so every renderer breaks: rows after a multi-line value visually detach from the table. User report 2026-09-03, run 01M1MMK5C6B313SY70Y2EPKE82 implementer@1: current_seed_id and current_seed_title appeared \\\"missing\\\" because the multi-line current_seed_brief (acceptance bullet list) shattered the table around them.\\n\\nFix directions (pick one or combine):\\n1. Render multi-line values single-line (newlines -> \\\" / \\\") in table cells; full value stays available via the context_read tool.\\n2. Emit long/multi-line values as a bullet list BELOW the table (compact-fidelity style) with a short first-line cell + pointer.\\n3. Extend the existing large-value demote path to also trigger on newline count, not just byte size, so blob-ref handling applies.\\n\\nAcceptance: (1) a context value containing newlines renders as a valid single table row per key in every markdown viewer (web UI prompt view included); (2) current_seed_id/title stay visually adjacent to a multi-line brief; (3) no information loss for agents (full value still served by context_read); (4) unit test with a multi-line context value asserting one rendered row per key.\"}\n+{\"id\":\"fabro-f677\",\"title\":\"engine: preamble context table breaks markdown with multi-line values\",\"status\":\"in_progress\",\"type\":\"bug\",\"priority\":3,\"createdAt\":\"2026-09-03T22:16:01.052Z\",\"updatedAt\":\"2026-09-04T06:35:08.811Z\",\"description\":\"The `## Current context` table (append_filtered_context_table, summary:high fidelity) inlines multi-line values raw into markdown table cells. Markdown tables cannot contain newlines, so every renderer breaks: rows after a multi-line value visually detach from the table. User report 2026-09-03, run 01M1MMK5C6B313SY70Y2EPKE82 implementer@1: current_seed_id and current_seed_title appeared \\\"missing\\\" because the multi-line current_seed_brief (acceptance bullet list) shattered the table around them.\\n\\nFix directions (pick one or combine):\\n1. Render multi-line values single-line (newlines -> \\\" / \\\") in table cells; full value stays available via the context_read tool.\\n2. Emit long/multi-line values as a bullet list BELOW the table (compact-fidelity style) with a short first-line cell + pointer.\\n3. Extend the existing large-value demote path to also trigger on newline count, not just byte size, so blob-ref handling applies.\\n\\nAcceptance: (1) a context value containing newlines renders as a valid single table row per key in every markdown viewer (web UI prompt view included); (2) current_seed_id/title stay visually adjacent to a multi-line brief; (3) no information loss for agents (full value still served by context_read); (4) unit test with a multi-line context value asserting one rendered row per key.\"}\n {\"id\":\"fabro-3224\",\"title\":\"HANDOFF: resume world-merger phase 1 — toolchain image bun fix, gate numbers, qualitygate recipe, migration commit\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-03T22:47:08.989Z\",\"updatedAt\":\"2026-09-03T22:49:37.988Z\",\"description\":\"HANDOFF SEED (session end 2026-09-03 ~23:00). Resume the fabro world-merger work here. Context: upstream merge v0.345 (deployed, smoke 7/7), fabro-03ef config migration CLOSED (qualified green, run 01M1MHGS7P), fabro-cd27 PR-content fix CLOSED (live proof: PR #13 LLM body via glm-4.7, commit 989038c48), 59 workflow seeds relocated lab->meta (meta/denkhaus-lab @ 137278ac8), workflows synced to meta (1c231a039), fib loop proven 3x with auto-merge (PRs #12, #13). Lab tracker: 0 open. Platform tracker: 2e66/e7e5/f677/b440-rest open.\\n\\nCURRENT WORK — world merger phase 1 (fabro-5453), interrupted mid-flight:\\n\\n1. TOOLCHAIN IMAGE (commit 8b8bdeba5, WIP): .fabro/Dockerfile.toolchain rebased buildpack-deps:noble -> ubuntu:24.04 (user directive: buildpack carries 5 critical/112 high CVEs; lab mise image already made this switch) + mise toolset (nushell 0.115.0, just 1.58.0, ripgrep 15.2.0; sd/ml/pytest kept). KNOWN BROKEN: bun.sh/install fails on ubuntu base (\\\"unzip is required\\\"). FIX: move bun into the mise toolset (mise use -g bun@1.4.0) exactly like the lab image (.fabro/Dockerfile.mise on denkhaus-lab), delete the script-install step. Then: docker build -t fabro-toolchain:noble -f .fabro/Dockerfile.toolchain . and verify just/nu/rg/cargo-nextest/bun/sd/ml/pytest all resolve. Local tag currently still points at the last buildpack-based build (which WORKS and has the mise toolset).\\n\\n2. GATE MEASUREMENT: /tmp/gate-measure.nu (nu script, lab-exemplar style) runs cold+incremental timings inside the toolchain image constrained --cpus 8 --memory 16g (CFS quota; nproc MISREPORTS host CPUs, 24 — timings still representative). Run was in flight at session end; results land in /tmp/gate-measure-nu.log (survives until reboot; rerun command: docker run --rm --name gate-measure-nu --cpus 8 --memory 16g -v ~/dev/fabro:/src-ro:ro -v /tmp/gate-measure.nu:/measure.nu:ro -e CARGO_TARGET_DIR=/tmp/target-fresh --entrypoint nu fabro-toolchain:noble /measure.nu). Reference numbers at 24 CPUs: cold build --workspace 394s; clippy -p fabro-workflow incremental 152s; nextest -p fabro-workflow hit the KNOWN FLAKE fabro-80b3 (for_each_accepts_an_array_at_the_item_limit timeout) and aborted — gate design must tolerate that flake.\\n\\n3. GATE DESIGN DECISION (pending numbers): 10-min tester timeout is dead for cold builds (394s at 24 CPUs; expect 15-25min at 8). Recommended: touched-crates gate = fmt --check --all + clippy -p <touched> -D warnings + nextest -p <touched>; needs a just qualitygate recipe on the fabro repo (does not exist yet) + flake strategy for fabro-80b3.\\n\\n4. NEXT ACTIONS IN ORDER: (a) fix bun in Dockerfile.toolchain, rebuild, verify; (b) collect 8-CPU numbers; (c) draft just qualitygate recipe (touched-crates) + present to user for approval; (d) migration commit: develop+revisor workflows onto denkhaus (runtime blocks migrate as-is — workflow-owned since 03ef; prompts tuned for Rust diffs, lib/ module paths; runs target denkhaus with --environment toolchain, PRs against denkhaus); (e) tracker consolidation: platform tracker becomes THE product tracker, meta workflow seeds move in; (f) Phase 2: revisor qualification cycles on merged world (first engine seed candidate: fabro-f677 table rendering); (g) Phase 3: revisor cron (on_overlap feature fabro-09ea pays off), freeze denkhaus-lab + meta/denkhaus-lab.\\n\\nGOTCHAS FROM THIS SESSION: (1) NEVER switch branches in the shared checkout while a just-run wrapper is in flight — run_workflow integrate then mutates the wrong branch and escalated into a 4742-commit rebase (repaired same day; review file moved to denkhaus-lab b2e570a4b). (2) sd create/update with backticked text ALWAYS via Python subprocess list form, never bash double quotes (global memory exists). (3) just run --goal needs double quoting: just run develop --goal \\\"'...'\\\" (args interpolate unquoted; no angle brackets). (4) Slack terminal notifications post SILENTLY on success (only failures log) — presence proven via spec + absence of failure logs. (5) fabro run/create stop transmitting project [run] settings (v0.345): everything workflow-owned or server-env; manual starts MUST pass --environment (wrapper run_workflow.nu does, default mise). (6) Auth token for API probing: ~/.fabro/auth.json servers[...].token; vault secrets read-only via docker cp + sqlite (mx-d43be5 flow).\\n\\nSHUTDOWN NOTE 2026-09-03 ~00:55: machine powered down before session end. The 8-CPU measurement was interrupted mid cold-build (only the clone elapsed) — results NOT captured; rerun after reboot. The measurement script and the 24-CPU reference log are now COMMITTED at scripts/gate-measure.nu and scripts/gate-measure-24cpu-reference.log (commit d4d805f76) — /tmp is wiped by reboot, so ignore the old /tmp paths above and use the repo paths. Rerun: docker run --rm --name gate-measure-nu --cpus 8 --memory 16g -v ~/dev/fabro:/src-ro:ro -v ~/dev/fabro/scripts/gate-measure.nu:/measure.nu:ro -e CARGO_TARGET_DIR=/tmp/target-fresh --entrypoint nu fabro-toolchain:noble /measure.nu (needs the toolchain image bun fix FIRST, or use the currently-tagged buildpack-based local image which has the mise toolset). AFTER REBOOT the fabro server (localhost:32276) is down — restart with just up (from the denkhaus branch checkout) before any run/API work.\"}\ndiff --git a/lib/components/fabro-workflow/src/handler/llm/preamble.rs b/lib/components/fabro-workflow/src/handler/llm/preamble.rs\nindex 57c83e44..01c5b7e5 100644\n--- a/lib/components/fabro-workflow/src/handler/llm/preamble.rs\n+++ b/lib/components/fabro-workflow/src/handler/llm/preamble.rs\n@@ -130,6 +130,13 @@ fn append_large_value(\n     ));\n }\n \n+/// Render a non-large context value as a single-line Markdown table cell:\n+/// newlines collapse to ` / ` and `|` is escaped so the row stays intact.\n+fn format_value_table_cell(val: &serde_json::Value) -> String {\n+    let single_line = format_value(val).lines().collect::<Vec<_>>().join(\" / \");\n+    single_line.replace('|', \"\\\\|\")\n+}\n+\n fn format_large_value_table_cell(large: PromptLargeValue<'_>) -> String {\n     let summary = large.location_summary().replace('|', \"\\\\|\");\n     let preview = large\n@@ -362,8 +369,10 @@ fn append_filtered_context_table(\n         parts.push(\"|-----|-------|\".to_string());\n         for key in context_keys {\n             if let Some(val) = snapshot.get(key) {\n-                let rendered = artifact::prompt_large_value(val)\n-                    .map_or_else(|| format_value(val), format_large_value_table_cell);\n+                let rendered = artifact::prompt_large_value(val).map_or_else(\n+                    || format_value_table_cell(val),\n+                    format_large_value_table_cell,\n+                );\n                 parts.push(format!(\"| {key} | {rendered} |\"));\n             }\n         }\n@@ -1695,6 +1704,42 @@ mod tests {\n         );\n     }\n \n+    #[test]\n+    fn summary_high_table_single_lines_multi_line_values() {\n+        let graph = Graph::new(\"test\");\n+        let context = Context::new();\n+        context.set(\n+            \"current_seed_brief\",\n+            serde_json::json!(\"Bug: table breaks.\\n- bullet one\\n- bullet two\"),\n+        );\n+        context.set(\"current_seed_id\", serde_json::json!(\"fabro-f677\"));\n+        context.set(\"current_seed_title\", serde_json::json!(\"a | b\"));\n+        let preamble = build_preamble(\n+            keys::Fidelity::SummaryHigh,\n+            &context,\n+            &graph,\n+            &[],\n+            &HashMap::new(),\n+        );\n+\n+        let section = preamble\n+            .split(\"## Current context\")\n+            .nth(1)\n+            .expect(\"context table section\");\n+        let rows: Vec<&str> = section.lines().filter(|l| l.starts_with(\"| \")).collect();\n+        assert_eq!(\n+            rows,\n+            vec![\n+                \"| Key | Value |\",\n+                \"| current_seed_brief | Bug: table breaks. / - bullet one / - bullet two |\",\n+                \"| current_seed_id | fabro-f677 |\",\n+                \"| current_seed_title | a \\\\| b |\",\n+            ],\n+            \"each key must render as exactly one single-line row, adjacent in sorted order\"\n+        );\n+        assert!(rows.iter().all(|r| !r.contains('\\n')));\n+    }\n+\n     #[test]\n     fn summary_high_table_compacts_large_value_preview() {\n         let graph = Graph::new(\"test\");\n",
+      "summary": {
+        "files_changed": 3,
+        "additions": 53,
+        "deletions": 3
+      }
+    },
+    "exit_kind": "deadlock"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2186,7 +2274,12 @@
       "first_event_seq": 274,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "failed",
+        "notes": null,
+        "failure_reason": "Script failed with exit code: 1\n\n## output\nnu scripts/qualitygate.nu\ntouched crates: fabro-workflow\n== cargo fmt --check --all ==\nformat clean\n== cargo clippy fabro-workflow -D warnings ==\n╭────────────╮\n│ empty list │\n╰────────────╯\nerror: invalid character ` ` in package name: ` fabro-workflow`, the first character must be a Unicode XID start character (most letters or `_`)\nGATE RED\nerror: recipe `qualitygate` failed on line 128 with exit code 1\n",
+        "timestamp": "2026-09-04T06:48:38.019730432Z"
+      },
       "provider_used": null,
       "diff": null,
       "script_invocation": {
@@ -2211,6 +2304,12 @@
       "started_at": "2026-09-04T06:48:29.713669764Z",
       "handler": "command",
       "graph_visit": 3,
+      "timing": {
+        "wall_time_ms": 4960,
+        "inference_time_ms": 0,
+        "tool_time_ms": 4954,
+        "active_time_ms": 4954
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -2220,7 +2319,43 @@
         "cache_write_tokens": 0
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "failed"
+    },
+    "exit@1": {
+      "first_event_seq": 284,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-04T06:48:42.047775986Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-04T06:48:42.047756537Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
     },
     "implementer@3": {
       "first_event_seq": 216,
