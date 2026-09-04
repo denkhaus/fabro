@@ -130,14 +130,33 @@ fn append_large_value(
     ));
 }
 
-fn format_large_value_table_cell(large: PromptLargeValue<'_>) -> String {
-    let summary = large.location_summary().replace('|', "\\|");
-    let preview = large
-        .preview
-        .split_whitespace()
+fn escape_table_cell_pipes(cell: String) -> String {
+    cell.replace('|', "\\|")
+}
+
+/// Format a plain context value for a Markdown table cell: collapse any
+/// newlines to a single-line `" / "` separator and escape pipes so the row
+/// stays intact in every renderer. The full value remains available via
+/// `context_read`.
+fn format_value_table_cell(val: &serde_json::Value) -> String {
+    let collapsed = format_value(val)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
-        .join(" ")
-        .replace('|', "\\|");
+        .join("\" / \"");
+    escape_table_cell_pipes(collapsed)
+}
+
+fn format_large_value_table_cell(large: PromptLargeValue<'_>) -> String {
+    let summary = escape_table_cell_pipes(large.location_summary());
+    let preview = escape_table_cell_pipes(
+        large
+            .preview
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" "),
+    );
     format!("{summary}; Preview: {preview}…")
 }
 
@@ -363,7 +382,7 @@ fn append_filtered_context_table(
         for key in context_keys {
             if let Some(val) = snapshot.get(key) {
                 let rendered = artifact::prompt_large_value(val)
-                    .map_or_else(|| format_value(val), format_large_value_table_cell);
+                    .map_or_else(|| format_value_table_cell(val), format_large_value_table_cell);
                 parts.push(format!("| {key} | {rendered} |"));
             }
         }
@@ -1692,6 +1711,64 @@ mod tests {
         assert!(
             preamble.contains("| user.name | alice |"),
             "should have context row"
+        );
+    }
+
+    #[test]
+    fn summary_high_context_table_multi_line_value_single_row() {
+        let graph = Graph::new("test");
+        let context = Context::new();
+        context.set(
+            "current_seed_brief",
+            serde_json::json!("- first line with a | pipe\n- second line\n- third line"),
+        );
+        context.set("current_seed_id", serde_json::json!("fabro-f677"));
+        context.set(
+            "current_seed_title",
+            serde_json::json!("engine: preamble context table breaks markdown"),
+        );
+
+        let preamble = build_preamble(
+            keys::Fidelity::SummaryHigh,
+            &context,
+            &graph,
+            &[],
+            &HashMap::new(),
+        );
+
+        let section = preamble
+            .split("## Current context")
+            .nth(1)
+            .expect("context table section should exist");
+        let rows: Vec<&str> = section
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
+        assert!(
+            rows.iter().all(|line| line.starts_with('|')),
+            "every line of the context section must be a table row, got:\n{section}"
+        );
+        assert!(
+            rows.iter().all(|line| !line[1..].contains('\n')),
+            "no raw newline inside any table row"
+        );
+        // Exactly one row per key (plus header + separator).
+        assert_eq!(rows.len(), 5, "header + separator + 3 keys, got:\n{rows:?}");
+        let brief_row = rows
+            .iter()
+            .find(|line| line.starts_with("| current_seed_brief |"))
+            .expect("brief row");
+        assert_eq!(
+            *brief_row,
+            "| current_seed_brief | - first line with a \\| pipe\" / \"- second line\" / \"- third line |",
+            "multi-line value should collapse to one row with quoted \" / \" separators and escaped pipes"
+        );
+        let brief_pos = preamble.find("| current_seed_brief |").expect("brief row");
+        let id_pos = preamble.find("| current_seed_id |").expect("id row");
+        let title_pos = preamble.find("| current_seed_title |").expect("title row");
+        assert!(
+            brief_pos < id_pos && id_pos < title_pos,
+            "id/title rows must stay adjacent after the multi-line brief row"
         );
     }
 
