@@ -1,0 +1,59 @@
+diff --git a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
+index a0cd8e3..0ad305b 100644
+--- a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
++++ b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl
+@@ -14,3 +14,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"file","visit":4,"status":"succeeded","ts":"2026-09-04T22:30:39Z","data":{"painpoints":[],"observations":["sd search returned empty output (exit 0) for a no-match query — ambiguous vs error; used sd list as a secondary guard before creating fabro-4601."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"approve","visit":4,"status":"succeeded","ts":"2026-09-04T22:30:48Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"select","visit":4,"status":"succeeded","ts":"2026-09-04T22:31:11Z","data":{"painpoints":[],"observations":["42 runs listed, all terminal; 4 revised; ~20 runs blocked, no live sandbox (mostly archived Aug 22-23 and sandbox false); selected oldest unrevised run with live sandbox 01M0SFEYVC9TD6MP816RHEBFQY."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Q7D2XXMS39J1GQTGF22446","node":"analyze","visit":5,"status":"succeeded","ts":"2026-09-04T22:35:21Z","data":{"painpoints":[],"observations":["Run 01M0SFEYVC9TD6MP816RHEBFQY (2m41s wall) spent 98.1s on setup (`mise install` 95.5s) and reached its goal (tracker drained, correct exit routing) yet is marked failed(publish_failed) after a 403 on PR create — both already tracked, so develop cannot clear this run's failure until fabro-696c/fabro-6a77 land.","Dropped as duplicates of open seeds: PR credential fix + pre-flight (duplicate_of: fabro-696c; pre-flight part already closed fabro-67e5), publish-failure status classification (duplicate_of: fabro-6a77), remove/no-op `mise install` prepare step (duplicate_of: fabro-a54d, which cites this exact run's 95.5s), skip journal-only PRs (duplicate_of: fabro-9f97), stop requesting JSON for PR-body generation (duplicate_of: fabro-6a5a, which names the same JSON-parse failure).","5 of 7 analyst recommendations were already in the tracker — the recurring publish-path failure mode dominates unrevised develop runs; future passes on similar runs should expect the same duplicates until those seeds are implemented."]}}
+diff --git a/.fabro/reviews/develop/01M0SFEYVC9TD6MP816RHEBFQY.md b/.fabro/reviews/develop/01M0SFEYVC9TD6MP816RHEBFQY.md
+new file mode 100644
+index 0000000..9d127fb
+--- /dev/null
++++ b/.fabro/reviews/develop/01M0SFEYVC9TD6MP816RHEBFQY.md
+@@ -0,0 +1,44 @@
++# Improve review — run 01M0SFEYVC9TD6MP816RHEBFQY
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: failed (0.9 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-04 00:00+0000 by revisor `fabro_ask`
++
++---
++
++All evidence gathered — from run events (seq 1–78), the worker log, and workspace files. Here is what actually happened, then the recommendations.
++
++**Run facts (grounding):** Total wall 2m41s (created 08:51:14 → failed 08:53:55). Of that, **98.1s was setup** — `mise install` alone took **95.5s** (event seq 15), `just bootstrap` 2.6s. The graph itself ran 51.8s: planner@1 was the only agent stage (27.7s wall, 25.4s inference, $0.0186, 7.7k input / 21.7k cache-read tokens), correctly routed "Tracker empty" after 4 `sd` calls. Then: branch pushed OK (static token, seq 68), an LLM call to generate the PR body **failed JSON parsing** (worker WARN), PR creation **403'd** (seq 72), and the run was marked `failed(publish_failed)` — despite the goal being achieved. The final diff was only 2 journal files, +18 lines.
++
++## Recommendations, by expected impact
++
++**1. Fix the publish path — the loop is hard-down until credentials work.**
++- Change: In `.fabro/project.toml` `[run.pull_request]` / `[run.integrations.github]`: the push succeeded with the same static token (seq 68), so the token has `contents:write` but not working PR-create scope. Fix the credential, and add a PR-scope pre-flight at run start when `pull_request.enabled=true`.
++- Expected effect: runs stop failing deterministically at the last step; a bad credential fails at t≈0 instead of after a full sandbox + agent run.
++
++**2. Don't let a publish failure retroactively fail a successful run.**
++- Change: Engine publish pipeline (`fabro_workflow::pipeline::pull_request`): when the graph exits successfully and the run branch is pushed, classify PR-creation failure as `publish_pending` (warning + retry-publish control action), not `run.failed`.
++- Expected effect: this run achieved its goal (tracker drained, exit reached) yet reads as "failed" in the UI and history — misleading status is what an operator sees first. Correct status + a retry action turns a dead-end into a one-click fix.
++
++**3. Delete or no-op the `mise install` prepare step.**
++- Change: `.fabro/project.toml` `[[run.prepare.steps]]` — remove `mise install` (or make it offline/frozen). The toolchain is baked into the image precisely so this is "a no-op version check" (Dockerfile.mise header, project.toml line 8) — it took **95.5s**, ~60% of end-to-end wall, 4× the ~24.5s it was meant to eliminate. `just bootstrap` (2.6s) already verifies the toolchain.
++- Expected effect: every run gets ~95s faster; this run's 2m41s drops to ~65s.
++
++**4. Skip PR creation (and its LLM body generation) when the diff is journal-only or the exit reason is "Tracker empty".**
++- Change: `.fabro/project.toml` `[run.pull_request]` gating — exclude `.fabro/journal/`-only diffs. This run attempted a PR for 2 journal files, burning a glm-5.3 call that failed to parse as JSON (worker WARN) before the 403.
++- Expected effect: no-op runs complete green in ~55s with zero publish-phase LLM calls; no junk PRs for journal churn.
++
++**5. Add a deterministic tracker guard node before the planner.**
++- Change: `workflow.fabro` — new script node after `start` running `sd ready` + `sd list --status in_progress`; edge `Tracker empty → exit`, else → planner. The agent's entire 27.7s/$0.019 pass existed to discover what 1.3s of shell proved: tracker empty (events seq 40–55; 6 closed seeds, 0 open).
++- Expected effect: the common terminal case costs no agent tokens at all; the planner agent only runs when there's something to plan.
++
++**6. Tell the planner what `sd list` returns — it wasted a turn finding out.**
++- Change: `.fabro/workflows/develop/prompts/planner.md`, add to the tracker mechanics: "`sd list` without `--status` returns OPEN issues only; valid values are `open|in_progress|closed`; `sd list --status closed` confirms the tracker is readable and drained." The reasoning trace (seq 46) shows the model doubting whether count=0 meant "open only", then probing `sd list --status all` → CLI error (seq 48) → one wasted LLM round-trip (~7s).
++- Expected effect: one fewer inference turn per planner invocation; faster correct Tracker-empty routing.
++
++**7. If PR-body generation stays, stop requesting JSON.**
++- Change: Engine `pull_request` pipeline — request plain-text title/body (or skip generation for trivial diffs). The worker WARN shows the model's response failed JSON parsing and fell back to a deterministic skeleton anyway.
++- Expected effect: eliminates a doomed LLM call per published run; the fallback becomes the primary path for small diffs.
++
++Not worth changing based on this run: prompt lengths (cache-read 21.6k vs 7.7k input shows caching is absorbing them cheaply), the stage-journal hook (wrote both files correctly), and reviewer/implementer prompts (never invoked — 4 of 5 stages skipped by design, correctly).
