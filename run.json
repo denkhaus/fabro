@@ -504,8 +504,8 @@
   "status": {
     "kind": "running"
   },
-  "status_updated_at": "2026-09-04T23:02:16.156426055Z",
-  "last_event_at": "2026-09-04T23:07:58.015073575Z",
+  "status_updated_at": "2026-09-04T23:09:51.948527699Z",
+  "last_event_at": "2026-09-04T23:09:51.964280252Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -12636,9 +12636,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 1617,
       "checkpoint": {
-        "timestamp": "2026-09-04T23:07:58.244365137Z",
+        "timestamp": "2026-09-04T23:08:02.397859159Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -12684,6 +12684,366 @@
         ],
         "node_retries": {},
         "context_values": {
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "seed 3 (seed_cycles key filtering) is complementary to closed fabro-45d0, not a duplicate — cross-referenced in description rather than superseding"
+            ]
+          },
+          "last_stage": "file",
+          "outcome": "succeeded",
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
+          "filed_seed_ids": [
+            "fabro-5bd9",
+            "fabro-797d",
+            "fabro-ffea"
+          ],
+          "graph.max_node_visits": "30",
+          "internal.retry_count.approve": 0,
+          "graph.inspects": "develop",
+          "internal.thread_id": "analyze",
+          "graph.rankdir": "LR",
+          "last_response": "Filed three seeds (fabro-5bd9, fabro-797d, fabro-ffea) after dedup searches, wrote the revision marker at `.fabro/revisions/01M0TKB7H7DCWCR8TZY6SZPXD2.md`, and committed exactly the allowed paths as `",
+          "internal.run_id": "01M1Q7D2XXMS39J1GQTGF22446",
+          "preferred_label": "Staged",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 4089,
+            "preview": "Review persisted. Distillation complete: 3 of 7 recommendations survive as new (reviewer `reasoning_effort` cap, gate-bullet removal from planner brief template, `seed_cycles` key filtering); 4 were d"
+          },
+          "revision_findings": [
+            {
+              "title": "Add a reasoning_effort cap to the develop reviewer node",
+              "description": "In `.fabro/workflows/develop/workflow.fabro`, set `reasoning_effort` (low or medium) on the `reviewer` node attrs. In run 01M0TKB7H7DCWCR8TZY6SZPXD2, reviewer@1 burned 61 s inference and 3,424 reasoning tokens — 26% of run inference ($0.0587 of $0.226) — to approve a green, fully-evidenced 3-file diff. The effort lever is proven in the same graph: implementer at `reasoning_effort=\"low\"` cost $0.109 vs $0.213 in the prior run. Expected effect: reviewer cost/time roughly halved (~30 s, ~$0.03 per review) on every seed cycle. Complements open fabro-50c9 (behavioral cap); get the pin format right per fabro-b158.",
+              "priority": 1
+            },
+            {
+              "title": "Remove the gate acceptance bullet from the planner brief template",
+              "description": "In `.fabro/workflows/develop/prompts/planner.md`, delete the trailing \"Gate: `just qualitygate` green\" bullet from the brief format (it is the tester node's invariant, not the implementer's criterion), and in `prompts/implementer.md` step 4 make the rule absolute: never run `just qualitygate`; a smoke check is `go build` or one `go test -run`. In this run the implementer ran the full gate (PASS report: \"just qualitygate green (ran as smoke check: passed)\") because the planner's brief bullet read as an acceptance criterion. Expected effect: no gate double-run per seed; value grows with gate duration. Root-cause fix upstream of open fabro-a67f's smoke whitelist.",
+              "priority": 2
+            },
+            {
+              "title": "Filter seed_cycles context to the four cycle keys",
+              "description": "Wherever the per-seed cycle counter is emitted or consumed (engine context key from closed fabro-45d0, or the guard-object contract in `.fabro/workflows/develop/prompts/planner.md`), restrict `seed_cycles` to {planner, implementer, tester, reviewer}. In this run the guard object carried unused `start` and `evidence` noise keys, making the tracker-empty/loop guard harder for the planner to read. Expected effect: self-explanatory guard object, fewer misreads at loop-boundary decisions.",
+              "priority": 2
+            }
+          ],
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "human.gate.selected": "A",
+          "current_node": "file",
+          "failure_signature": "",
+          "thread.approve.current_node": "select",
+          "thread.file.current_node": "approve",
+          "thread.select.current_node": "analyze",
+          "internal.retry_count.analyze": 0,
+          "human.gate.approve.answer": "A",
+          "thread.analyze.current_node": "file",
+          "human.gate.label": "[A] Approved",
+          "internal.retry_count.select": 0,
+          "graph.preamble_budget_kb": "24",
+          "internal.seed_cycle_anchor": "01M0TKB7H7DCWCR8TZY6SZPXD2",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 554,
+            "preview": "Filed three seeds (fabro-5bd9, fabro-797d, fabro-ffea) after dedup searches, wrote the revision marker at `.fabro/revisions/01M0TKB7H7DCWCR8TZY6SZPXD2.md`, and committed exactly the allowed paths as `"
+          },
+          "failure_class": "",
+          "internal.retry_count.file": 0,
+          "thread.start.current_node": "select",
+          "revisor_target_status": "succeeded",
+          "human.gate.approve.label": "[A] Approved",
+          "human.gate.approve.question": "Approve filing + merge",
+          "revisor_target_run_id": "01M0TKB7H7DCWCR8TZY6SZPXD2",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 919,
+            "preview": "Oldest unrevised terminal run with a live sandbox is `01M0TKB7H7DCWCR8TZY6SZPXD2` (all older sandbox-live runs already have markers under `.fabro/revisions/`). One run (`01M1MGAPV45...`, `01M0QTMF0NZ."
+          },
+          "revisor_target_title": "Develop seed-by-seed: plan, implement, gate, review",
+          "internal.node_visit_count": 10,
+          "revisor_target_wall": "5.8 min",
+          "internal.retry_count.start": 0
+        },
+        "node_outcomes": {
+          "file": {
+            "status": "succeeded",
+            "preferred_label": "Staged",
+            "context_updates": {
+              "last_stage": "file",
+              "last_response": "Filed three seeds (fabro-5bd9, fabro-797d, fabro-ffea) after dedup searches, wrote the revision marker at `.fabro/revisions/01M0TKB7H7DCWCR8TZY6SZPXD2.md`, and committed exactly the allowed paths as `",
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 554,
+                "preview": "Filed three seeds (fabro-5bd9, fabro-797d, fabro-ffea) after dedup searches, wrote the revision marker at `.fabro/revisions/01M0TKB7H7DCWCR8TZY6SZPXD2.md`, and committed exactly the allowed paths as `"
+              },
+              "filed_seed_ids": [
+                "fabro-5bd9",
+                "fabro-797d",
+                "fabro-ffea"
+              ],
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "seed 3 (seed_cycles key filtering) is complementary to closed fabro-45d0, not a duplicate — cross-referenced in description rather than superseding"
+                ]
+              }
+            },
+            "notes": "Stage completed: file",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 15183,
+                    "output_tokens": 1460,
+                    "reasoning_tokens": 112,
+                    "cache_read_tokens": 57856,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 43209
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/revisions/01M0TKB7H7DCWCR8TZY6SZPXD2.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 34843,
+              "tool_time_ms": 1227,
+              "active_time_ms": 36070
+            }
+          },
+          "analyze": {
+            "status": "succeeded",
+            "preferred_label": "Findings ready",
+            "context_updates": {
+              "last_stage": "analyze",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "`sd search` full-text matching missed obvious title matches this pass: query \"auto-merge\" did not return seed fabro-6a5a (\"disable auto-merge\"), and \"checkpoint snapshot\" returned neither fabro-cf03 nor fabro-c2ca; hyphenation/word-splitting brittleness forced keyword-guessing retries before duplicates could be ruled out. Fix idea: tokenize queries (strip hyphens/underscores) or document search semantics in the revisor prompt so duplicate detection does not silently miss."
+                  }
+                ],
+                "observations": [
+                  "Run 01M0TKB7H7DCWCR8TZY6SZPXD2 was a healthy single-seed cycle ($0.226, 0 retries); review written to `.fabro/reviews/develop/01M0TKB7H7DCWCR8TZY6SZPXD2.md`. Dropped as duplicates: preamble budget raise → duplicate_of fabro-83f9 + fabro-35ab; PR finalize retries/auto-merge/model-override → duplicate_of fabro-6a5a (override+retry halves already closed in fabro-890b and fabro-cd27); reviewer 'do not re-run gate' prompt line → duplicate_of fabro-50c9 (only the reasoning_effort node-attr half survived as new); skip non-mutating stage snapshots → duplicate_of fabro-c2ca + fabro-cf03; sd-ready-sufficient tracker-empty rule → duplicate_of fabro-b382; '6 of 5' progress display → duplicate_of fabro-38f4."
+                ]
+              },
+              "revision_findings": [
+                {
+                  "title": "Add a reasoning_effort cap to the develop reviewer node",
+                  "description": "In `.fabro/workflows/develop/workflow.fabro`, set `reasoning_effort` (low or medium) on the `reviewer` node attrs. In run 01M0TKB7H7DCWCR8TZY6SZPXD2, reviewer@1 burned 61 s inference and 3,424 reasoning tokens — 26% of run inference ($0.0587 of $0.226) — to approve a green, fully-evidenced 3-file diff. The effort lever is proven in the same graph: implementer at `reasoning_effort=\"low\"` cost $0.109 vs $0.213 in the prior run. Expected effect: reviewer cost/time roughly halved (~30 s, ~$0.03 per review) on every seed cycle. Complements open fabro-50c9 (behavioral cap); get the pin format right per fabro-b158.",
+                  "priority": 1
+                },
+                {
+                  "title": "Remove the gate acceptance bullet from the planner brief template",
+                  "description": "In `.fabro/workflows/develop/prompts/planner.md`, delete the trailing \"Gate: `just qualitygate` green\" bullet from the brief format (it is the tester node's invariant, not the implementer's criterion), and in `prompts/implementer.md` step 4 make the rule absolute: never run `just qualitygate`; a smoke check is `go build` or one `go test -run`. In this run the implementer ran the full gate (PASS report: \"just qualitygate green (ran as smoke check: passed)\") because the planner's brief bullet read as an acceptance criterion. Expected effect: no gate double-run per seed; value grows with gate duration. Root-cause fix upstream of open fabro-a67f's smoke whitelist.",
+                  "priority": 2
+                },
+                {
+                  "title": "Filter seed_cycles context to the four cycle keys",
+                  "description": "Wherever the per-seed cycle counter is emitted or consumed (engine context key from closed fabro-45d0, or the guard-object contract in `.fabro/workflows/develop/prompts/planner.md`), restrict `seed_cycles` to {planner, implementer, tester, reviewer}. In this run the guard object carried unused `start` and `evidence` noise keys, making the tracker-empty/loop guard harder for the planner to read. Expected effect: self-explanatory guard object, fewer misreads at loop-boundary decisions.",
+                  "priority": 2
+                }
+              ],
+              "last_response": "Review persisted. Distillation complete: 3 of 7 recommendations survive as new (reviewer `reasoning_effort` cap, gate-bullet removal from planner brief template, `seed_cycles` key filtering); 4 were d",
+              "response.analyze": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.analyze",
+                "chars": 4089,
+                "preview": "Review persisted. Distillation complete: 3 of 7 recommendations survive as new (reviewer `reasoning_effort` cap, gate-bullet removal from planner brief template, `seed_cycles` key filtering); 4 were d"
+              }
+            },
+            "notes": "Stage completed: analyze",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 24375,
+                    "output_tokens": 3763,
+                    "reasoning_tokens": 6526,
+                    "cache_read_tokens": 91776,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 103250
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reviews/develop/01M0TKB7H7DCWCR8TZY6SZPXD2.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 115893,
+              "tool_time_ms": 125603,
+              "active_time_ms": 241496
+            }
+          },
+          "approve": {
+            "status": "succeeded",
+            "preferred_label": "[A] Approved",
+            "suggested_next_ids": [
+              "select"
+            ],
+            "context_updates": {
+              "human.gate.label": "[A] Approved",
+              "human.gate.approve.label": "[A] Approved",
+              "human.gate.approve.question": "Approve filing + merge",
+              "human.gate.selected": "A",
+              "human.gate.approve.answer": "A"
+            },
+            "usage": null
+          },
+          "select": {
+            "status": "succeeded",
+            "preferred_label": "Run selected",
+            "context_updates": {
+              "last_response": "Oldest unrevised terminal run with a live sandbox is `01M0TKB7H7DCWCR8TZY6SZPXD2` (all older sandbox-live runs already have markers under `.fabro/revisions/`). One run (`01M1MGAPV45...`, `01M0QTMF0NZ.",
+              "revisor_target_title": "Develop seed-by-seed: plan, implement, gate, review",
+              "last_stage": "select",
+              "revisor_target_run_id": "01M0TKB7H7DCWCR8TZY6SZPXD2",
+              "revisor_target_status": "succeeded",
+              "response.select": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.select",
+                "chars": 919,
+                "preview": "Oldest unrevised terminal run with a live sandbox is `01M0TKB7H7DCWCR8TZY6SZPXD2` (all older sandbox-live runs already have markers under `.fabro/revisions/`). One run (`01M1MGAPV45...`, `01M0QTMF0NZ."
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "42 runs listed; 9 have revision markers in `.fabro/revisions/`; 2 unrevised runs (01M1MGAPV45NNRBZK3WTKCJ5H9, 01M0QTMF0NZNFH72VEVZNB8XFY) are blocked with no live sandbox plus ~14 older archived runs also lack sandboxes; selected oldest sandbox-live unrevised run 01M0TKB7H7DCWCR8TZY6SZPXD2"
+                ]
+              },
+              "revisor_target_wall": "5.8 min"
+            },
+            "notes": "Stage completed: select",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 20818,
+                    "output_tokens": 350,
+                    "reasoning_tokens": 564,
+                    "cache_read_tokens": 10112,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 35794
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 15255,
+              "tool_time_ms": 573,
+              "active_time_ms": 15828
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "approve",
+        "git_commit_sha": "3f393f13bcd16f1e5122910951e2594d533bfdd7",
+        "node_visits": {
+          "file": 10,
+          "start": 1,
+          "analyze": 10,
+          "approve": 9,
+          "select": 10
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl\nindex e47bf6b..5340463 100644\n--- a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl\n+++ b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl\n@@ -35,3 +35,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q7D2XXMS39J1GQTGF22446\",\"node\":\"approve\",\"visit\":9,\"status\":\"succeeded\",\"ts\":\"2026-09-04T23:02:16Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q7D2XXMS39J1GQTGF22446\",\"node\":\"select\",\"visit\":9,\"status\":\"succeeded\",\"ts\":\"2026-09-04T23:02:37Z\",\"data\":{\"painpoints\":[],\"observations\":[\"42 runs listed; 9 have revision markers in `.fabro/revisions/`; 2 unrevised runs (01M1MGAPV45NNRBZK3WTKCJ5H9, 01M0QTMF0NZNFH72VEVZNB8XFY) are blocked with no live sandbox plus ~14 older archived runs also lack sandboxes; selected oldest sandbox-live unrevised run 01M0TKB7H7DCWCR8TZY6SZPXD2\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q7D2XXMS39J1GQTGF22446\",\"node\":\"analyze\",\"visit\":10,\"status\":\"succeeded\",\"ts\":\"2026-09-04T23:07:10Z\",\"data\":{\"painpoints\":[{\"text\":\"`sd search` full-text matching missed obvious title matches this pass: query \\\"auto-merge\\\" did not return seed fabro-6a5a (\\\"disable auto-merge\\\"), and \\\"checkpoint snapshot\\\" returned neither fabro-cf03 nor fabro-c2ca; hyphenation/word-splitting brittleness forced keyword-guessing retries before duplicates could be ruled out. Fix idea: tokenize queries (strip hyphens/underscores) or document search semantics in the revisor prompt so duplicate detection does not silently miss.\"}],\"observations\":[\"Run 01M0TKB7H7DCWCR8TZY6SZPXD2 was a healthy single-seed cycle ($0.226, 0 retries); review written to `.fabro/reviews/develop/01M0TKB7H7DCWCR8TZY6SZPXD2.md`. Dropped as duplicates: preamble budget raise → duplicate_of fabro-83f9 + fabro-35ab; PR finalize retries/auto-merge/model-override → duplicate_of fabro-6a5a (override+retry halves already closed in fabro-890b and fabro-cd27); reviewer 'do not re-run gate' prompt line → duplicate_of fabro-50c9 (only the reasoning_effort node-attr half survived as new); skip non-mutating stage snapshots → duplicate_of fabro-c2ca + fabro-cf03; sd-ready-sufficient tracker-empty rule → duplicate_of fabro-b382; '6 of 5' progress display → duplicate_of fabro-38f4.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q7D2XXMS39J1GQTGF22446\",\"node\":\"file\",\"visit\":10,\"status\":\"succeeded\",\"ts\":\"2026-09-04T23:07:58Z\",\"data\":{\"painpoints\":[],\"observations\":[\"seed 3 (seed_cycles key filtering) is complementary to closed fabro-45d0, not a duplicate — cross-referenced in description rather than superseding\"]}}\ndiff --git a/.fabro/revisions/01M0TKB7H7DCWCR8TZY6SZPXD2.md b/.fabro/revisions/01M0TKB7H7DCWCR8TZY6SZPXD2.md\nnew file mode 100644\nindex 0000000..400accb\n--- /dev/null\n+++ b/.fabro/revisions/01M0TKB7H7DCWCR8TZY6SZPXD2.md\n@@ -0,0 +1,19 @@\n+# Revision — run 01M0TKB7H7DCWCR8TZY6SZPXD2\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M0TKB7H7DCWCR8TZY6SZPXD2.md\n+- seeds filed: fabro-5bd9 (reasoning_effort cap on reviewer node), fabro-797d (remove gate bullet from planner brief), fabro-ffea (filter seed_cycles to four cycle keys)\n+\n+## Findings\n+\n+### Add a reasoning_effort cap to the develop reviewer node\n+- filed: fabro-5bd9\n+- Set `reasoning_effort` (low/medium) on the `reviewer` node in `.fabro/workflows/develop/workflow.fabro`. Reviewer@1 cost 26% of run inference ($0.0587 of $0.226) to approve a green diff; the lever is proven on the implementer node. Expected: reviewer cost/time roughly halved per seed cycle. Complements fabro-50c9; pin format per fabro-b158.\n+\n+### Remove the gate acceptance bullet from the planner brief template\n+- filed: fabro-797d\n+- Delete the \"Gate: `just qualitygate` green\" bullet from `.fabro/workflows/develop/prompts/planner.md` and make the never-run-gate rule absolute in `prompts/implementer.md` step 4. Expected: no gate double-run per seed. Root-cause fix upstream of fabro-a67f.\n+\n+### Filter seed_cycles context to the four cycle keys\n+- filed: fabro-ffea\n+- Restrict `seed_cycles` to {planner, implementer, tester, reviewer} at emit/consume sites; the guard object carried unused `start`/`evidence` keys. Complementary to closed fabro-45d0 (counter introduction); this narrows its shape. Expected: self-explanatory guard object, fewer misreads at loop boundaries.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 9e1f9b9..4f679f9 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -180,3 +180,6 @@\n {\"id\":\"fabro-b065\",\"title\":\"Blank stale seed context keys when routing Tracker empty\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-04T22:54:20.701Z\",\"updatedAt\":\"2026-09-04T22:54:20.701Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md, extend the 'Tracker empty' JSON contract to also blank current_seed_id/title/brief and implementation_summary (it already clears review_verdict). In run 01M0T9B7T6XNM1D7JNY35Y6H8K the final planner pass closed seed fabro-8208, routed 'Tracker empty', yet its prompt still carried the dead seed's brief (1.6 KB) and implementation_summary (1.7 KB) as blob refs after budget demotion. Expected effect: the closing planner pass stops hauling stale seed context — fewer blob round-trips, smaller preambles, lower risk of the evidence-starvation pathology noted in the graph comments. Not a duplicate of fabro-b382, which covers prose duplication and sd call rules, not the context_updates key contract.\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-d936\",\"title\":\"Make seeds-cli exit non-zero on errors (exit 0 masks failed tracker writes)\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-04T22:54:20.848Z\",\"updatedAt\":\"2026-09-04T22:54:20.848Z\",\"description\":\"@os-eco/seeds-cli v0.5.15 prints errors like 'error: unknown option --format' to stdout with exit_code 0 — observed at events seq 62-63 of run 01M0T9B7T6XNM1D7JNY35Y6H8K when planner@1 ran sd update with --format json; only the model's text inspection caught the failed write. Change: seeds-cli exits non-zero and prints errors to stderr. Expected effect: removes a silent-corruption path for tracker writes (any exit-code-checking consumer or gate currently reads failure as success) and eliminates the observed wasted retry. Prompt-side syntax pinning is already covered by fabro-1399; this is the orthogonal CLI-side fix.\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-37a6\",\"title\":\"Steer implementer to mechanical shell bulk edits for repetitive rewrites\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-04T23:01:45.209Z\",\"updatedAt\":\"2026-09-04T23:01:45.209Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md, add one paragraph: for repetitive, pattern-shaped changes (call-site adaptation, renames), do one mechanical pass via shell (sd/perl -pi -e, already pinned in the runner image) and verify with one focused test, instead of N hand edits. Evidence: implementer@2 (fabro-28e8) was 42% of run cost ($0.486, 278s, 51.8k tokens) rewriting ~24 identical call sites one edit_file at a time, with 19 concurrent-write serialization warnings across passes and one swallowed-loop-body near-miss. Expected effect: refactor-class pass drops from ~$0.49/280s toward ~$0.12/112s; run cost -20-25%; eliminates the swallow-adjacent-code near-miss class. Distinct from fabro-4601 (sequential-edit discipline, different mechanism).\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-5bd9\",\"title\":\"Add a reasoning_effort cap to the develop reviewer node\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-04T23:07:38.921Z\",\"updatedAt\":\"2026-09-04T23:07:38.921Z\",\"description\":\"In `.fabro/workflows/develop/workflow.fabro`, set `reasoning_effort` (low or medium) on the `reviewer` node attrs. In run 01M0TKB7H7DCWCR8TZY6SZPXD2, reviewer@1 burned 61 s inference and 3,424 reasoning tokens — 26% of run inference (/bin/bash.0587 of /bin/bash.226) — to approve a green, fully-evidenced 3-file diff. The effort lever is proven in the same graph: implementer at `reasoning_effort=\\\"low\\\"` cost /bin/bash.109 vs /bin/bash.213 in the prior run. Expected effect: reviewer cost/time roughly halved (~30 s, ~/bin/bash.03 per review) on every seed cycle. Complements open fabro-50c9 (behavioral cap); get the pin format right per fabro-b158.\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-797d\",\"title\":\"Remove the gate acceptance bullet from the planner brief template\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-04T23:07:39.067Z\",\"updatedAt\":\"2026-09-04T23:07:39.067Z\",\"description\":\"In `.fabro/workflows/develop/prompts/planner.md`, delete the trailing \\\"Gate: `just qualitygate` green\\\" bullet from the brief format (it is the tester node's invariant, not the implementer's criterion), and in `prompts/implementer.md` step 4 make the rule absolute: never run `just qualitygate`; a smoke check is `go build` or one `go test -run`. In run 01M0TKB7H7DCWCR8TZY6SZPXD2 the implementer ran the full gate because the planner's brief bullet read as an acceptance criterion. Expected effect: no gate double-run per seed; value grows with gate duration. Root-cause fix upstream of open fabro-a67f's smoke whitelist.\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-ffea\",\"title\":\"Filter seed_cycles context to the four cycle keys\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-04T23:07:39.103Z\",\"updatedAt\":\"2026-09-04T23:07:39.103Z\",\"description\":\"Wherever the per-seed cycle counter is emitted or consumed (engine context key from closed fabro-45d0, or the guard-object contract in `.fabro/workflows/develop/prompts/planner.md`), restrict `seed_cycles` to {planner, implementer, tester, reviewer}. In run 01M0TKB7H7DCWCR8TZY6SZPXD2 the guard object carried unused `start` and `evidence` noise keys, making the tracker-empty/loop guard harder for the planner to read. Complementary to closed fabro-45d0 (which introduced the counter); this narrows its shape. Expected effect: self-explanatory guard object, fewer misreads at loop-boundary decisions.\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 22,
+          "additions": 720,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-04T23:09:52.182592078Z",
+        "current_node": "approve",
+        "completed_nodes": [
+          "start",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve"
+        ],
+        "node_retries": {},
+        "context_values": {
           "graph.cycle_counter_reset_key": "revisor_target_run_id",
           "internal.node_visit_count": 10,
           "internal.work_dir": "/workspace/fabro",
@@ -12699,7 +13059,8 @@
           "seed_cycles": {
             "select": 1,
             "analyze": 1,
-            "file": 1
+            "file": 1,
+            "approve": 1
           },
           "response.analyze": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -12709,6 +13070,7 @@
           },
           "human.gate.approve.question": "Approve filing + merge",
           "revisor_target_wall": "5.8 min",
+          "internal.exit_kind": "deadlock",
           "internal.retry_count.start": 0,
           "internal.seed_cycle_anchor": "01M0TKB7H7DCWCR8TZY6SZPXD2",
           "revision_findings": [
@@ -12733,14 +13095,14 @@
           "revisor_target_status": "succeeded",
           "revisor_target_run_id": "01M0TKB7H7DCWCR8TZY6SZPXD2",
           "failure_signature": "",
-          "preferred_label": "Staged",
+          "preferred_label": "[R] Rejected (run stays unmerged, human decides)",
           "last_stage": "file",
-          "internal.thread_id": "analyze",
-          "human.gate.label": "[A] Approved",
-          "current_node": "file",
+          "internal.thread_id": "file",
+          "human.gate.label": "[R] Rejected (run stays unmerged, human decides)",
+          "current_node": "approve",
           "internal.fidelity": "compact",
           "graph.max_node_visits": "30",
-          "human.gate.approve.answer": "A",
+          "human.gate.approve.answer": "R",
           "filed_seed_ids": [
             "fabro-5bd9",
             "fabro-797d",
@@ -12751,7 +13113,7 @@
           "graph.rankdir": "LR",
           "last_response": "Filed three seeds (fabro-5bd9, fabro-797d, fabro-ffea) after dedup searches, wrote the revision marker at `.fabro/revisions/01M0TKB7H7DCWCR8TZY6SZPXD2.md`, and committed exactly the allowed paths as `",
           "internal.retry_count.analyze": 0,
-          "human.gate.approve.label": "[A] Approved",
+          "human.gate.approve.label": "[R] Rejected (run stays unmerged, human decides)",
           "internal.retry_count.approve": 0,
           "graph.goal": "Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
           "outcome": "succeeded",
@@ -12762,7 +13124,7 @@
             "preview": "Filed three seeds (fabro-5bd9, fabro-797d, fabro-ffea) after dedup searches, wrote the revision marker at `.fabro/revisions/01M0TKB7H7DCWCR8TZY6SZPXD2.md`, and committed exactly the allowed paths as `"
           },
           "thread.file.current_node": "approve",
-          "human.gate.selected": "A",
+          "human.gate.selected": "R",
           "thread.approve.current_node": "select",
           "internal.retry_count.select": 0,
           "thread.select.current_node": "analyze",
@@ -12909,16 +13271,16 @@
           },
           "approve": {
             "status": "succeeded",
-            "preferred_label": "[A] Approved",
+            "preferred_label": "[R] Rejected (run stays unmerged, human decides)",
             "suggested_next_ids": [
-              "select"
+              "exit"
             ],
             "context_updates": {
-              "human.gate.label": "[A] Approved",
-              "human.gate.approve.label": "[A] Approved",
+              "human.gate.approve.label": "[R] Rejected (run stays unmerged, human decides)",
+              "human.gate.selected": "R",
               "human.gate.approve.question": "Approve filing + merge",
-              "human.gate.selected": "A",
-              "human.gate.approve.answer": "A"
+              "human.gate.label": "[R] Rejected (run stays unmerged, human decides)",
+              "human.gate.approve.answer": "R"
             },
             "usage": null
           },
@@ -12975,13 +13337,13 @@
             }
           }
         },
-        "next_node_id": "approve",
+        "next_node_id": "exit",
         "node_visits": {
           "analyze": 10,
           "start": 1,
           "file": 10,
           "select": 10,
-          "approve": 9
+          "approve": 10
         }
       },
       "diff": {}
@@ -14675,6 +15037,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "approve@10": {
+      "first_event_seq": 1620,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-04T23:09:51.964280252Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-04T23:08:02.423798903Z",
+      "handler": "human",
+      "graph_visit": 10,
+      "timing": {
+        "wall_time_ms": 99521,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
