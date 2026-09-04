@@ -668,7 +668,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-04T06:34:48.189639159Z",
-  "last_event_at": "2026-09-04T06:45:27.188252820Z",
+  "last_event_at": "2026-09-04T06:45:36.384186326Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -843,9 +843,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 150,
       "checkpoint": {
-        "timestamp": "2026-09-04T06:45:27.392176186Z",
+        "timestamp": "2026-09-04T06:45:31.633865818Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -854,56 +854,56 @@
         ],
         "node_retries": {},
         "context_values": {
-          "current_seed_brief": "Bug: in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`, `append_filtered_context_table` (~line 344, the `## Current context` table emitted at summary:high fidelity) renders non-large context values via `format_value`, which returns raw strings; a multi-line value (e.g. a bulleted `current_seed_brief`) embeds newlines inside a `| Key | Value |` row and shatters the table so later rows like `current_seed_id`/`current_seed_title` visually detach (user report 2026-09-03, run 01M1MMK5C6B313SY70Y2EPKE82). The seed offers three fix directions; chosen reading: direction 1 (render cells single-line) because it is the smallest change satisfying every acceptance criterion and mirrors the single-lining already done by `format_large_value_table_cell`. Acceptance criteria:\n- every context value renders as exactly one single-line table row: newlines collapse to a visible single-line separator (e.g. slash-joined lines); no raw newline character appears inside any `| ... |` row\n- plain (non-large) table cells escape `|` as `\\|`, matching the existing large-value cell path — a raw pipe breaks a row the same way a newline does, so this is required for criterion 1's \"valid single table row in every markdown viewer\"\n- fix scoped to the table-cell renderer only: `format_value` stays unchanged because the bullet-list path (`append_filtered_context`, compact/medium fidelity) legally keeps multi-line values\n- with a multi-line `current_seed_brief` in context, `current_seed_id` and `current_seed_title` still render as intact readable rows adjacent to it (keys sort adjacently)\n- no information loss: only prompt rendering changes; context values are unmodified and `context_read` still serves the full multi-line value\n- unit tests in the `preamble.rs` test module: a new test sets a multi-line value plus `current_seed_id` and asserts exactly one table row per key (count lines starting with `| ` in the `## Current context` section) with no newline inside a row; existing `summary_high_context_as_table` and `summary_high_table_compacts_large_value_preview` keep passing\n- verify with `cargo nextest run -p fabro-workflow` and `cargo +nightly-2026-04-14 clippy -p fabro-workflow --all-targets -- -D warnings`",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.seed_cycle_anchor": "fabro-f677",
-          "internal.fidelity": "summary:high",
-          "last_stage": "implementer",
-          "internal.retry_count.implementer": 0,
-          "lesson_capture": "nothing durable — skipped",
           "current_node": "implementer",
-          "thread.start.current_node": "planner",
+          "failure_class": "",
+          "current_seed_id": "fabro-f677",
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.implementer",
             "chars": 2740,
             "preview": "All 86 preamble-related tests pass, including the new `summary_high_table_single_lines_multi_line_values` and the existing `summary_high_context_as_table` / `summary_high_table_compacts_large_value_pr"
           },
-          "graph.preamble_budget_kb": "24",
-          "failure_class": "",
+          "last_stage": "implementer",
+          "lesson_capture": "nothing durable — skipped",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "failure_signature": "",
           "current_seed_title": "engine: preamble context table breaks markdown with multi-line values",
-          "last_response": "All 86 preamble-related tests pass, including the new `summary_high_table_single_lines_multi_line_values` and the existing `summary_high_context_as_table` / `summary_high_table_compacts_large_value_pr",
-          "graph.max_node_visits": "40",
-          "internal.run_id": "01M1NHZVTXRC1AVW28D3FG0XYP",
           "preferred_label": "Implemented",
-          "internal.retry_count.planner": 0,
+          "thread.start.current_node": "planner",
           "thread.planner.current_node": "implementer",
+          "graph.goal": "Implement product seed fabro-f677: engine preamble context table breaks markdown with multi-line values",
+          "internal.work_dir": "/workspace/fabro",
+          "last_response": "All 86 preamble-related tests pass, including the new `summary_high_table_single_lines_multi_line_values` and the existing `summary_high_context_as_table` / `summary_high_table_compacts_large_value_pr",
+          "implementation_summary": "Added `format_value_table_cell` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` and used it in `append_filtered_context_table` for non-large values: newlines collapse to ` / `, `|` escapes to `\\|`, matching the large-value cell path. `format_value` and the bullet-list path are unchanged. New test `summary_high_table_single_lines_multi_line_values` plus existing table tests pass (86/86 preamble tests via `cargo nextest run -p fabro-workflow`). Lesson capture: nothing durable — skipped. Per-criterion report: single-line rows PASS (`format_value_table_cell` + new test); pipe escaping PASS (same test asserts `a \\| b`); renderer-only scope PASS (`format_value` untouched); adjacent intact id/title rows PASS (exact sorted row list asserted); no info loss PASS (prompt-render-only change); tests PASS (86/86, clippy left to tester).",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.start": 0,
+          "internal.run_id": "01M1NHZVTXRC1AVW28D3FG0XYP",
+          "internal.retry_count.planner": 0,
+          "internal.seed_cycle_anchor": "fabro-f677",
+          "internal.thread_id": "planner",
           "journal": {
             "painpoints": [],
             "observations": [
               "The large-value table-cell path already single-lined and pipe-escaped (`format_large_value_table_cell`, preamble.rs ~133), so the fix mirrored it for plain values; any future table-cell additions should reuse these helpers rather than raw format_value."
             ]
           },
-          "graph.goal": "Implement product seed fabro-f677: engine preamble context table breaks markdown with multi-line values",
-          "failure_signature": "",
-          "seed_cycles": {
-            "planner": 1,
-            "implementer": 1
-          },
-          "implementation_summary": "Added `format_value_table_cell` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` and used it in `append_filtered_context_table` for non-large values: newlines collapse to ` / `, `|` escapes to `\\|`, matching the large-value cell path. `format_value` and the bullet-list path are unchanged. New test `summary_high_table_single_lines_multi_line_values` plus existing table tests pass (86/86 preamble tests via `cargo nextest run -p fabro-workflow`). Lesson capture: nothing durable — skipped. Per-criterion report: single-line rows PASS (`format_value_table_cell` + new test); pipe escaping PASS (same test asserts `a \\| b`); renderer-only scope PASS (`format_value` untouched); adjacent intact id/title rows PASS (exact sorted row list asserted); no info loss PASS (prompt-render-only change); tests PASS (86/86, clippy left to tester).",
-          "graph.rankdir": "LR",
-          "internal.thread_id": "planner",
-          "internal.node_visit_count": 1,
-          "outcome": "succeeded",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
             "chars": 3777,
             "preview": "Seed `fabro-f677` claimed. I inspected the code: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` renders non-large values via `format_value`, which retur"
           },
-          "current_seed_id": "fabro-f677",
+          "current_seed_brief": "Bug: in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`, `append_filtered_context_table` (~line 344, the `## Current context` table emitted at summary:high fidelity) renders non-large context values via `format_value`, which returns raw strings; a multi-line value (e.g. a bulleted `current_seed_brief`) embeds newlines inside a `| Key | Value |` row and shatters the table so later rows like `current_seed_id`/`current_seed_title` visually detach (user report 2026-09-03, run 01M1MMK5C6B313SY70Y2EPKE82). The seed offers three fix directions; chosen reading: direction 1 (render cells single-line) because it is the smallest change satisfying every acceptance criterion and mirrors the single-lining already done by `format_large_value_table_cell`. Acceptance criteria:\n- every context value renders as exactly one single-line table row: newlines collapse to a visible single-line separator (e.g. slash-joined lines); no raw newline character appears inside any `| ... |` row\n- plain (non-large) table cells escape `|` as `\\|`, matching the existing large-value cell path — a raw pipe breaks a row the same way a newline does, so this is required for criterion 1's \"valid single table row in every markdown viewer\"\n- fix scoped to the table-cell renderer only: `format_value` stays unchanged because the bullet-list path (`append_filtered_context`, compact/medium fidelity) legally keeps multi-line values\n- with a multi-line `current_seed_brief` in context, `current_seed_id` and `current_seed_title` still render as intact readable rows adjacent to it (keys sort adjacently)\n- no information loss: only prompt rendering changes; context values are unmodified and `context_read` still serves the full multi-line value\n- unit tests in the `preamble.rs` test module: a new test sets a multi-line value plus `current_seed_id` and asserts exactly one table row per key (count lines starting with `| ` in the `## Current context` section) with no newline inside a row; existing `summary_high_context_as_table` and `summary_high_table_compacts_large_value_preview` keep passing\n- verify with `cargo nextest run -p fabro-workflow` and `cargo +nightly-2026-04-14 clippy -p fabro-workflow --all-targets -- -D warnings`",
+          "graph.max_node_visits": "40",
+          "graph.rankdir": "LR",
+          "graph.preamble_budget_kb": "24",
+          "internal.fidelity": "summary:high",
           "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.retry_count.start": 0
+          "internal.retry_count.implementer": 0,
+          "outcome": "succeeded"
         },
         "node_outcomes": {
           "implementer": {
@@ -1018,10 +1018,225 @@
           }
         },
         "next_node_id": "tester",
+        "git_commit_sha": "5ab86b14625f9996c641a6bdb41a3be63b50e23e",
         "node_visits": {
-          "implementer": 1,
           "planner": 1,
-          "start": 1
+          "start": 1,
+          "implementer": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl b/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl\nindex dcc183e5..2eadd022 100644\n--- a/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl\n+++ b/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NHZVTXRC1AVW28D3FG0XYP\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T06:34:50Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NHZVTXRC1AVW28D3FG0XYP\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T06:36:45Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-f677 is Low priority among 42 ready seeds but was claimed because the goal names it explicitly; nothing else in progress for this effort.\",\"Seed description lists three alternative fix directions without picking one; brief resolves this to direction 1 (single-line table cells) and adds pipe-escaping for plain cells, which the spec's 'valid single table row' criterion implies but never states.\",\"Pitfall flagged in brief: `format_value` is shared by the table path and the bullet-list path (`append_filtered_context`); a global fix there would regress the bullet-list rendering where newlines are legal markdown.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NHZVTXRC1AVW28D3FG0XYP\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T06:45:27Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The large-value table-cell path already single-lined and pipe-escaped (`format_large_value_table_cell`, preamble.rs ~133), so the fix mirrored it for plain values; any future table-cell additions should reuse these helpers rather than raw format_value.\"]}}\ndiff --git a/lib/components/fabro-workflow/src/handler/llm/preamble.rs b/lib/components/fabro-workflow/src/handler/llm/preamble.rs\nindex 57c83e44..d1ef7e69 100644\n--- a/lib/components/fabro-workflow/src/handler/llm/preamble.rs\n+++ b/lib/components/fabro-workflow/src/handler/llm/preamble.rs\n@@ -130,6 +130,13 @@ fn append_large_value(\n     ));\n }\n \n+/// Render a non-large context value as a single-line Markdown table cell:\n+/// newlines collapse to ` / ` and `|` is escaped so the row stays intact.\n+fn format_value_table_cell(val: &serde_json::Value) -> String {\n+    let single_line = format_value(val).lines().collect::<Vec<_>>().join(\" / \");\n+    single_line.replace('|', \"\\\\|\")\n+}\n+\n fn format_large_value_table_cell(large: PromptLargeValue<'_>) -> String {\n     let summary = large.location_summary().replace('|', \"\\\\|\");\n     let preview = large\n@@ -363,7 +370,7 @@ fn append_filtered_context_table(\n         for key in context_keys {\n             if let Some(val) = snapshot.get(key) {\n                 let rendered = artifact::prompt_large_value(val)\n-                    .map_or_else(|| format_value(val), format_large_value_table_cell);\n+                    .map_or_else(|| format_value_table_cell(val), format_large_value_table_cell);\n                 parts.push(format!(\"| {key} | {rendered} |\"));\n             }\n         }\n@@ -1695,6 +1702,42 @@ mod tests {\n         );\n     }\n \n+    #[test]\n+    fn summary_high_table_single_lines_multi_line_values() {\n+        let graph = Graph::new(\"test\");\n+        let context = Context::new();\n+        context.set(\n+            \"current_seed_brief\",\n+            serde_json::json!(\"Bug: table breaks.\\n- bullet one\\n- bullet two\"),\n+        );\n+        context.set(\"current_seed_id\", serde_json::json!(\"fabro-f677\"));\n+        context.set(\"current_seed_title\", serde_json::json!(\"a | b\"));\n+        let preamble = build_preamble(\n+            keys::Fidelity::SummaryHigh,\n+            &context,\n+            &graph,\n+            &[],\n+            &HashMap::new(),\n+        );\n+\n+        let section = preamble\n+            .split(\"## Current context\")\n+            .nth(1)\n+            .expect(\"context table section\");\n+        let rows: Vec<&str> = section.lines().filter(|l| l.starts_with(\"| \")).collect();\n+        assert_eq!(\n+            rows,\n+            vec![\n+                \"| Key | Value |\",\n+                \"| current_seed_brief | Bug: table breaks. / - bullet one / - bullet two |\",\n+                \"| current_seed_id | fabro-f677 |\",\n+                \"| current_seed_title | a \\\\| b |\",\n+            ],\n+            \"each key must render as exactly one single-line row, adjacent in sorted order\"\n+        );\n+        assert!(rows.iter().all(|r| !r.contains('\\n')));\n+    }\n+\n     #[test]\n     fn summary_high_table_compacts_large_value_preview() {\n         let graph = Graph::new(\"test\");\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 48,
+          "deletions": 2
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-04T06:45:36.398781479Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "current_seed_brief": "Bug: in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`, `append_filtered_context_table` (~line 344, the `## Current context` table emitted at summary:high fidelity) renders non-large context values via `format_value`, which returns raw strings; a multi-line value (e.g. a bulleted `current_seed_brief`) embeds newlines inside a `| Key | Value |` row and shatters the table so later rows like `current_seed_id`/`current_seed_title` visually detach (user report 2026-09-03, run 01M1MMK5C6B313SY70Y2EPKE82). The seed offers three fix directions; chosen reading: direction 1 (render cells single-line) because it is the smallest change satisfying every acceptance criterion and mirrors the single-lining already done by `format_large_value_table_cell`. Acceptance criteria:\n- every context value renders as exactly one single-line table row: newlines collapse to a visible single-line separator (e.g. slash-joined lines); no raw newline character appears inside any `| ... |` row\n- plain (non-large) table cells escape `|` as `\\|`, matching the existing large-value cell path — a raw pipe breaks a row the same way a newline does, so this is required for criterion 1's \"valid single table row in every markdown viewer\"\n- fix scoped to the table-cell renderer only: `format_value` stays unchanged because the bullet-list path (`append_filtered_context`, compact/medium fidelity) legally keeps multi-line values\n- with a multi-line `current_seed_brief` in context, `current_seed_id` and `current_seed_title` still render as intact readable rows adjacent to it (keys sort adjacently)\n- no information loss: only prompt rendering changes; context values are unmodified and `context_read` still serves the full multi-line value\n- unit tests in the `preamble.rs` test module: a new test sets a multi-line value plus `current_seed_id` and asserts exactly one table row per key (count lines starting with `| ` in the `## Current context` section) with no newline inside a row; existing `summary_high_context_as_table` and `summary_high_table_compacts_large_value_preview` keep passing\n- verify with `cargo nextest run -p fabro-workflow` and `cargo +nightly-2026-04-14 clippy -p fabro-workflow --all-targets -- -D warnings`",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.seed_cycle_anchor": "fabro-f677",
+          "internal.fidelity": "compact",
+          "last_stage": "implementer",
+          "internal.retry_count.implementer": 0,
+          "lesson_capture": "nothing durable — skipped",
+          "current_node": "tester",
+          "thread.start.current_node": "planner",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2740,
+            "preview": "All 86 preamble-related tests pass, including the new `summary_high_table_single_lines_multi_line_values` and the existing `summary_high_context_as_table` / `summary_high_table_compacts_large_value_pr"
+          },
+          "graph.preamble_budget_kb": "24",
+          "failure_class": "deterministic",
+          "current_seed_title": "engine: preamble context table breaks markdown with multi-line values",
+          "last_response": "All 86 preamble-related tests pass, including the new `summary_high_table_single_lines_multi_line_values` and the existing `summary_high_context_as_table` / `summary_high_table_compacts_large_value_pr",
+          "graph.max_node_visits": "40",
+          "internal.run_id": "01M1NHZVTXRC1AVW28D3FG0XYP",
+          "preferred_label": "Implemented",
+          "internal.retry_count.planner": 0,
+          "internal.retry_count.tester": 0,
+          "thread.planner.current_node": "implementer",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "The large-value table-cell path already single-lined and pipe-escaped (`format_large_value_table_cell`, preamble.rs ~133), so the fix mirrored it for plain values; any future table-cell additions should reuse these helpers rather than raw format_value."
+            ]
+          },
+          "graph.goal": "Implement product seed fabro-f677: engine preamble context table breaks markdown with multi-line values",
+          "command.output": "blob://sha256/c8032c0d3c89e2684959d9c849995467da539387f1236621ba73ced5ace71234",
+          "failure_signature": "tester|deterministic|script failed with exit code: <n> ## output nu scripts/qualitygate.nu touched crates: fabro-workflow == cargo fmt --check --all == diff in /repos/denkhaus/fabro/lib/components/fabro-workflow/src/handler/llm/preamble.rs:<n>: parts.push(\"|---",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1
+          },
+          "implementation_summary": "Added `format_value_table_cell` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` and used it in `append_filtered_context_table` for non-large values: newlines collapse to ` / `, `|` escapes to `\\|`, matching the large-value cell path. `format_value` and the bullet-list path are unchanged. New test `summary_high_table_single_lines_multi_line_values` plus existing table tests pass (86/86 preamble tests via `cargo nextest run -p fabro-workflow`). Lesson capture: nothing durable — skipped. Per-criterion report: single-line rows PASS (`format_value_table_cell` + new test); pipe escaping PASS (same test asserts `a \\| b`); renderer-only scope PASS (`format_value` untouched); adjacent intact id/title rows PASS (exact sorted row list asserted); no info loss PASS (prompt-render-only change); tests PASS (86/86, clippy left to tester).",
+          "graph.rankdir": "LR",
+          "internal.thread_id": "implementer",
+          "internal.node_visit_count": 1,
+          "outcome": "failed",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3777,
+            "preview": "Seed `fabro-f677` claimed. I inspected the code: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` renders non-large values via `format_value`, which retur"
+          },
+          "current_seed_id": "fabro-f677",
+          "thread.implementer.current_node": "tester",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.start": 0
+        },
+        "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "Added `format_value_table_cell` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` and used it in `append_filtered_context_table` for non-large values: newlines collapse to ` / `, `|` escapes to `\\|`, matching the large-value cell path. `format_value` and the bullet-list path are unchanged. New test `summary_high_table_single_lines_multi_line_values` plus existing table tests pass (86/86 preamble tests via `cargo nextest run -p fabro-workflow`). Lesson capture: nothing durable — skipped. Per-criterion report: single-line rows PASS (`format_value_table_cell` + new test); pipe escaping PASS (same test asserts `a \\| b`); renderer-only scope PASS (`format_value` untouched); adjacent intact id/title rows PASS (exact sorted row list asserted); no info loss PASS (prompt-render-only change); tests PASS (86/86, clippy left to tester).",
+              "lesson_capture": "nothing durable — skipped",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The large-value table-cell path already single-lined and pipe-escaped (`format_large_value_table_cell`, preamble.rs ~133), so the fix mirrored it for plain values; any future table-cell additions should reuse these helpers rather than raw format_value."
+                ]
+              },
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2740,
+                "preview": "All 86 preamble-related tests pass, including the new `summary_high_table_single_lines_multi_line_values` and the existing `summary_high_context_as_table` / `summary_high_table_compacts_large_value_pr"
+              },
+              "last_response": "All 86 preamble-related tests pass, including the new `summary_high_table_single_lines_multi_line_values` and the existing `summary_high_context_as_table` / `summary_high_table_compacts_large_value_pr",
+              "last_stage": "implementer"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 17342,
+                    "output_tokens": 1520,
+                    "reasoning_tokens": 103,
+                    "cache_read_tokens": 128896,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 64922
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/components/fabro-workflow/src/handler/llm/preamble.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 61523,
+              "tool_time_ms": 401191,
+              "active_time_ms": 462714
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-f677 is Low priority among 42 ready seeds but was claimed because the goal names it explicitly; nothing else in progress for this effort.",
+                  "Seed description lists three alternative fix directions without picking one; brief resolves this to direction 1 (single-line table cells) and adds pipe-escaping for plain cells, which the spec's 'valid single table row' criterion implies but never states.",
+                  "Pitfall flagged in brief: `format_value` is shared by the table path and the bullet-list path (`append_filtered_context`); a global fix there would regress the bullet-list rendering where newlines are legal markdown."
+                ]
+              },
+              "current_seed_title": "engine: preamble context table breaks markdown with multi-line values",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3777,
+                "preview": "Seed `fabro-f677` claimed. I inspected the code: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` renders non-large values via `format_value`, which retur"
+              },
+              "current_seed_id": "fabro-f677",
+              "current_seed_brief": "Bug: in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`, `append_filtered_context_table` (~line 344, the `## Current context` table emitted at summary:high fidelity) renders non-large context values via `format_value`, which returns raw strings; a multi-line value (e.g. a bulleted `current_seed_brief`) embeds newlines inside a `| Key | Value |` row and shatters the table so later rows like `current_seed_id`/`current_seed_title` visually detach (user report 2026-09-03, run 01M1MMK5C6B313SY70Y2EPKE82). The seed offers three fix directions; chosen reading: direction 1 (render cells single-line) because it is the smallest change satisfying every acceptance criterion and mirrors the single-lining already done by `format_large_value_table_cell`. Acceptance criteria:\n- every context value renders as exactly one single-line table row: newlines collapse to a visible single-line separator (e.g. slash-joined lines); no raw newline character appears inside any `| ... |` row\n- plain (non-large) table cells escape `|` as `\\|`, matching the existing large-value cell path — a raw pipe breaks a row the same way a newline does, so this is required for criterion 1's \"valid single table row in every markdown viewer\"\n- fix scoped to the table-cell renderer only: `format_value` stays unchanged because the bullet-list path (`append_filtered_context`, compact/medium fidelity) legally keeps multi-line values\n- with a multi-line `current_seed_brief` in context, `current_seed_id` and `current_seed_title` still render as intact readable rows adjacent to it (keys sort adjacently)\n- no information loss: only prompt rendering changes; context values are unmodified and `context_read` still serves the full multi-line value\n- unit tests in the `preamble.rs` test module: a new test sets a multi-line value plus `current_seed_id` and asserts exactly one table row per key (count lines starting with `| ` in the `## Current context` section) with no newline inside a row; existing `summary_high_context_as_table` and `summary_high_table_compacts_large_value_preview` keep passing\n- verify with `cargo nextest run -p fabro-workflow` and `cargo +nightly-2026-04-14 clippy -p fabro-workflow --all-targets -- -D warnings`",
+              "last_response": "Seed `fabro-f677` claimed. I inspected the code: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` renders non-large values via `format_value`, which retur",
+              "last_stage": "planner"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 18832,
+                    "output_tokens": 1314,
+                    "reasoning_tokens": 3273,
+                    "cache_read_tokens": 100544,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 72679
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 103436,
+              "tool_time_ms": 1117,
+              "active_time_ms": 104553
+            }
+          },
+          "tester": {
+            "status": "failed",
+            "context_updates": {
+              "command.output": "blob://sha256/c8032c0d3c89e2684959d9c849995467da539387f1236621ba73ced5ace71234"
+            },
+            "failure": {
+              "message": "Script failed with exit code: 1\n\n## output\nnu scripts/qualitygate.nu\ntouched crates: fabro-workflow\n== cargo fmt --check --all ==\nDiff in /repos/denkhaus/fabro/lib/components/fabro-workflow/src/handler/llm/preamble.rs:369:\n         parts.push(\"|-----|-------|\".to_string());\n         for key in context_keys {\n             if let Some(val) = snapshot.get(key) {\n-                let rendered = artifact::prompt_large_value(val)\n-                    .map_or_else(|| format_value_table_cell(val), format_large_value_table_cell);\n+                let rendered = artifact::prompt_large_value(val).map_or_else(\n+                    || format_value_table_cell(val),\n+                    format_large_value_table_cell,\n+                );\n                 parts.push(format!(\"| {key} | {rendered} |\"));\n             }\n         }\n\nGATE RED\nerror: recipe `qualitygate` failed on line 128 with exit code 1\n",
+              "category": "deterministic"
+            },
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 4732,
+              "active_time_ms": 4732
+            }
+          }
+        },
+        "next_node_id": "implementer",
+        "node_visits": {
+          "start": 1,
+          "planner": 1,
+          "tester": 1,
+          "implementer": 1
         }
       },
       "diff": {}
@@ -1481,6 +1696,46 @@
       },
       "agent_control": "running",
       "state": "succeeded"
+    },
+    "tester@1": {
+      "first_event_seq": 153,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/c8032c0d3c89e2684959d9c849995467da539387f1236621ba73ced5ace71234",
+        "exit_code": 1,
+        "duration_ms": 4732,
+        "termination": "exited",
+        "output_bytes": 853,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 853,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-04T06:45:31.648122807Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "running"
     },
     "start@1": {
       "first_event_seq": 17,

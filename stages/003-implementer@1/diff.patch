@@ -1,0 +1,78 @@
+diff --git a/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl b/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl
+index dcc183e5..2eadd022 100644
+--- a/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl
++++ b/.fabro/journal/01M1NHZVTXRC1AVW28D3FG0XYP.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1NHZVTXRC1AVW28D3FG0XYP","node":"start","visit":1,"status":"succeeded","ts":"2026-09-04T06:34:50Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1NHZVTXRC1AVW28D3FG0XYP","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-04T06:36:45Z","data":{"painpoints":[],"observations":["fabro-f677 is Low priority among 42 ready seeds but was claimed because the goal names it explicitly; nothing else in progress for this effort.","Seed description lists three alternative fix directions without picking one; brief resolves this to direction 1 (single-line table cells) and adds pipe-escaping for plain cells, which the spec's 'valid single table row' criterion implies but never states.","Pitfall flagged in brief: `format_value` is shared by the table path and the bullet-list path (`append_filtered_context`); a global fix there would regress the bullet-list rendering where newlines are legal markdown."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1NHZVTXRC1AVW28D3FG0XYP","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-04T06:45:27Z","data":{"painpoints":[],"observations":["The large-value table-cell path already single-lined and pipe-escaped (`format_large_value_table_cell`, preamble.rs ~133), so the fix mirrored it for plain values; any future table-cell additions should reuse these helpers rather than raw format_value."]}}
+diff --git a/lib/components/fabro-workflow/src/handler/llm/preamble.rs b/lib/components/fabro-workflow/src/handler/llm/preamble.rs
+index 57c83e44..d1ef7e69 100644
+--- a/lib/components/fabro-workflow/src/handler/llm/preamble.rs
++++ b/lib/components/fabro-workflow/src/handler/llm/preamble.rs
+@@ -130,6 +130,13 @@ fn append_large_value(
+     ));
+ }
+ 
++/// Render a non-large context value as a single-line Markdown table cell:
++/// newlines collapse to ` / ` and `|` is escaped so the row stays intact.
++fn format_value_table_cell(val: &serde_json::Value) -> String {
++    let single_line = format_value(val).lines().collect::<Vec<_>>().join(" / ");
++    single_line.replace('|', "\\|")
++}
++
+ fn format_large_value_table_cell(large: PromptLargeValue<'_>) -> String {
+     let summary = large.location_summary().replace('|', "\\|");
+     let preview = large
+@@ -363,7 +370,7 @@ fn append_filtered_context_table(
+         for key in context_keys {
+             if let Some(val) = snapshot.get(key) {
+                 let rendered = artifact::prompt_large_value(val)
+-                    .map_or_else(|| format_value(val), format_large_value_table_cell);
++                    .map_or_else(|| format_value_table_cell(val), format_large_value_table_cell);
+                 parts.push(format!("| {key} | {rendered} |"));
+             }
+         }
+@@ -1695,6 +1702,42 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn summary_high_table_single_lines_multi_line_values() {
++        let graph = Graph::new("test");
++        let context = Context::new();
++        context.set(
++            "current_seed_brief",
++            serde_json::json!("Bug: table breaks.\n- bullet one\n- bullet two"),
++        );
++        context.set("current_seed_id", serde_json::json!("fabro-f677"));
++        context.set("current_seed_title", serde_json::json!("a | b"));
++        let preamble = build_preamble(
++            keys::Fidelity::SummaryHigh,
++            &context,
++            &graph,
++            &[],
++            &HashMap::new(),
++        );
++
++        let section = preamble
++            .split("## Current context")
++            .nth(1)
++            .expect("context table section");
++        let rows: Vec<&str> = section.lines().filter(|l| l.starts_with("| ")).collect();
++        assert_eq!(
++            rows,
++            vec![
++                "| Key | Value |",
++                "| current_seed_brief | Bug: table breaks. / - bullet one / - bullet two |",
++                "| current_seed_id | fabro-f677 |",
++                "| current_seed_title | a \\| b |",
++            ],
++            "each key must render as exactly one single-line row, adjacent in sorted order"
++        );
++        assert!(rows.iter().all(|r| !r.contains('\n')));
++    }
++
+     #[test]
+     fn summary_high_table_compacts_large_value_preview() {
+         let graph = Graph::new("test");
