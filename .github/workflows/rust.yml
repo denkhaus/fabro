@@ -18,7 +18,8 @@ on:
       - "openapi/**"
       - ".github/workflows/rust.yml"
   pull_request:
-    branches: [main]
+    # denkhaus: PRs from develop/revisor runs wait for CI before auto-merge
+    branches: [main, denkhaus]
     paths:
       - "lib/apps/**"
       - "lib/components/**"

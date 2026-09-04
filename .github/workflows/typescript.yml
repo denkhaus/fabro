@@ -14,7 +14,8 @@ on:
       - ".github/workflows/typescript.yml"
       - ".github/workflows/nightly.yml"
   pull_request:
-    branches: [main]
+    # denkhaus: PRs from develop/revisor runs wait for CI before auto-merge
+    branches: [main, denkhaus]
     paths:
       - "apps/**"
       - "lib/apps/fabro-spa/**"
