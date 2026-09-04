@@ -1,6 +1,6 @@
 digraph Develop {
     graph [
-        goal="Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+        goal="Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
         rankdir=LR,
         max_node_visits=40,
         // 24 KB (was 12): the reviewer's context usage peaked at 1.9% of
@@ -219,15 +219,16 @@ digraph Develop {
 
     // Closeout: DETERMINISTIC post-approval bookkeeping (ADR-0010). Never
     // an LLM — run 01M0… measured planner@2 at 21s / $0.021 / ~7% wall
-    // time for pure `sd close` + tracker reads. Script closes the approved
-    // seed, then emits tracker_empty=true|false via context update; the
-    // edges below route on it. Read-only failure keeps the seed open for
-    // the next run.
+    // time for pure `sd close`. Closes exactly this run's seed (stdin),
+    // then the run exits: one seed per run.
     closeout [
         label="Closeout",
         shape=parallelogram,
         script="nu .fabro/workflows/develop/scripts/closeout.nu",
-        output_schema="routing",
+        // The engine feeds the claimed seed's id via stdin — closeout closes
+        // EXACTLY this run's seed, never a stale first-in-progress claim
+        // (run 01M1NK4V3YG3AQAMEKDJ6V471F lesson: two wrong closures).
+        stdin_source="current_seed_id",
         timeout="1m",
         max_retries=1
     ]
@@ -289,10 +290,10 @@ digraph Develop {
     reviewer -> evidence  [label="Verification blocked", condition="preferred_label=\"Verification blocked\" && seed_cycles.evidence < 2"]
     reviewer -> exit [kind="soft", label="Reviewer failed (next run re-enters)", condition="outcome=failed"]
 
-    // Closeout routing: the script's routing output decides — Tracker
-    // empty exits, More seeds re-enters the planner on a FRESH claim.
-    // Failure keeps the seed open for the next run.
-    closeout -> exit      [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
-    closeout -> planner   [label="More seeds"]
+    // One seed per run (user directive 2026-09-04): after the approved
+    // seed is closed the run EXITS — natural completion, publish-eligible
+    // (the work passed gate + review). The next seed is the next run's
+    // job; bounded runs give the revisor a single-seed working field.
+    closeout -> exit [label="Seed closed"]
     closeout -> exit [kind="soft", label="Closeout failed (seed stays open)", condition="outcome=failed"]
 }
