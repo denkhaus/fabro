@@ -22,15 +22,15 @@ The engine maintains `seed_cycles` deterministically: `{ node -> completed visit
 
 | Command | Purpose |
 |---|---|
-| `sd ready` | Unblocked open seeds — start here. If it answers the question, do NOT also run `sd list`. |
-| `sd list --format json` | Full tracker picture (only when `sd ready` was not enough). |
+| `sd ready --limit 200` | Unblocked open seeds — start here. If it answers the question, do NOT also run `sd list`. ALWAYS pass `--limit 200`: the default limit 50 silently truncates lower-priority seeds out of the listing (fabro-c16d). |
+| `sd list --format json --limit 200` | Full tracker picture (only when `sd ready` was not enough). Same limit rule as `sd ready`. |
 | `sd show <id> --format json` | One seed in full (the supported path — never parse `.seeds/issues.jsonl` by hand). |
 | `sd update <id> --status <status>` | Claim / re-status. Takes NO `--format` flag (observed failure, run 01M0T9B7T6: `unknown option '--format'`). |
 | `sd close <id>` | NEVER yours — the deterministic Closeout step closes approved seeds. Do not run it. |
 
 ## Plan the next seed
 
-1. Run `sd ready` to list unblocked open seeds; `sd list --format json` for the full picture if needed.
+1. Run `sd ready --limit 200` to list unblocked open seeds; `sd list --format json --limit 200` for the full picture if needed.
 2. Pick the highest-priority unblocked seed that serves the goal. If two compete, prefer the one with fewest blockers.
 3. Claim it: `sd update <id> --status in_progress`.
 4. Write the implementation brief into the context as BULLETED acceptance criteria, not prose: seed id, title, then one bullet per requirement, plus review feedback if this is a re-plan. Bullets are cheaper to re-read, harder to misparse, and the reviewer and the implementer's PASS/FAIL report check them item-by-item. Shape each bullet as a checkable statement, e.g.:
