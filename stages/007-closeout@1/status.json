@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Script failed with exit code: 1\n\n## output\nError: nu::shell::io::uncategorized_error\n\n  x I/O error\n    ,-[/repos/denkhaus/fabro/.fabro/workflows/develop/scripts/closeout.nu:22:16]\n 21 | def main []: nothing -> nothing {\n 22 |     let raw = (input)\n    :                ^^|^^\n    :                  `-- Uncategorized error\n 23 |     let seed_id = ($raw | str trim)\n    `----\n\n",
+  "timestamp": "2026-09-04T18:55:52.341137588Z"
+}
