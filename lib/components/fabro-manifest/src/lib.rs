@@ -44,6 +44,7 @@ use crate::workflow_bundler::WorkflowBundler;
 pub use crate::workflow_version_collector::{
     MAX_WORKFLOW_VERSION_DEPTH, WorkflowVersionCollectError, collect_workflow_versions,
     collect_workflow_versions_at_location,
+    collect_inline_workflow_versions,
 };
 pub use crate::workflow_version_packager::SuppliedWorkflowVersionPackager;
 

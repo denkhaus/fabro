@@ -194,6 +194,13 @@ pub fn validate_workflow_source_paths<'a>(
     })
 }
 
+/// Reject exact duplicate paths and file/directory ancestor collisions.
+pub fn validate_workflow_path_collisions<'a>(
+    paths: impl IntoIterator<Item = &'a WorkflowPath>,
+) -> Result<(), WorkflowVersionShapeError> {
+    validate_path_collisions(paths, Cow::Borrowed)
+}
+
 /// Detect colliding paths under a comparison key: identical keys, or a key
 /// that names an ancestor directory of another.
 fn validate_path_collisions<'a>(

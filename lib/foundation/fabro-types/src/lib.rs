@@ -198,6 +198,6 @@ pub use workflow_path::{
 pub use workflow_version::{
     MAX_WORKFLOW_VERSION_BYTES, MAX_WORKFLOW_VERSION_DEPENDENCIES, MAX_WORKFLOW_VERSION_FILE_BYTES,
     MAX_WORKFLOW_VERSION_FILES, WorkflowVersion, WorkflowVersionShapeError,
-    validate_workflow_files, validate_workflow_source_paths,
+    validate_workflow_files, validate_workflow_source_paths, validate_workflow_path_collisions,
 };
 pub use workflow_version_id::{WorkflowVersionId, WorkflowVersionIdParseError};
