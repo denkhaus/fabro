@@ -41,9 +41,9 @@ Per-run workspace growth for a repo like this one (measured):
 | Rust `target/` after release builds | up to ~6.7 GB |
 | Checkpoints (git-based, in `/storage`) | MB-scale per run, unbounded without prune |
 
-Fabro's own dogfooding environment for this repo (`.fabro/project.toml`)
-requests 8 CPU / 16 GB RAM / 20 GB disk - a useful reference for the
-"agents compile Rust" case.
+Fabro's own dogfooding environment for this repo (the server-managed
+`toolchain` environment resource) requests 8 CPU / 16 GB RAM - a useful
+reference for the "agents compile Rust" case.
 
 ## Sizing profiles
 
@@ -66,10 +66,15 @@ max_concurrent_runs = 2
 ```
 
 ```toml
-# project .fabro/project.toml - run containers are unlimited by default
-[environments.docker-dev.resources]
-cpu = 2
-memory = "4GB"
+# server-managed environment resource - run containers are unlimited by
+# default; create via the environments API / `fabro ps` UI instead of
+# project.toml ([environments.*] there is not transmitted to runs)
+# PUT /api/v1/environments/docker-dev
+{
+  "id": "docker-dev",
+  "provider": "docker",
+  "resources": { "cpu": 2, "memory": "4GB" }
+}
 ```
 
 ## Disk hygiene
