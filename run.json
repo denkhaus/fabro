@@ -656,7 +656,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-04T21:41:52.693887788Z",
-  "last_event_at": "2026-09-04T21:59:11.344732654Z",
+  "last_event_at": "2026-09-04T22:00:05.079312501Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1023,9 +1023,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 461,
       "checkpoint": {
-        "timestamp": "2026-09-04T21:59:11.361900641Z",
+        "timestamp": "2026-09-04T21:59:15.128115256Z",
         "current_node": "tester",
         "completed_nodes": [
           "start",
@@ -1035,62 +1035,83 @@
         ],
         "node_retries": {},
         "context_values": {
-          "current_seed_id": "fabro-bd6c",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.retry_count.planner": 0,
-          "response.implementer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 3016,
-            "preview": "Implementation complete. `ask.rs` now renders through a `TextStreamRenderer<W: Write>` that tracks `saw_delta`: streamed deltas print as before, and once any delta rendered, the final `assistant_messa"
-          },
-          "internal.run_id": "01M1Q5XE2E1NVB9FPTY22N3JPQ",
-          "graph.max_node_visits": "40",
-          "internal.seed_cycle_anchor": "fabro-bd6c",
-          "journal": {
-            "painpoints": [],
-            "observations": [
-              "fabro_types EventEnvelope JSON fixtures require ULID-shaped run_id and turn_id (missing turn_id surfaced as a confusing ulid 'invalid length' error, not 'missing field'), and serde_json's json! macro spread (...props) is not available in this workspace — documented in mx-ad07d9, hit in lib/apps/fabro-cli/src/commands/run/ask.rs tests"
-            ]
-          },
-          "internal.retry_count.tester": 0,
-          "lesson_capture": "mx-ad07d9",
-          "graph.preamble_budget_kb": "24",
-          "outcome": "failed",
           "internal.work_dir": "/workspace/fabro",
+          "graph.rankdir": "LR",
+          "thread.implementer.current_node": "tester",
+          "current_seed_title": "CLI: fabro ask prints the answer twice (deltas AND assistant_message both rendered)",
           "implementation_summary": "Rewrote the text render path in lib/apps/fabro-cli/src/commands/run/ask.rs around a unit-testable TextStreamRenderer<W: Write> that writes into a locked stdout in run(); it tracks saw_delta so the final assistant_message only terminates the streamed line instead of reprinting the full text, while no-delta sessions keep the full println and --json mode emits every event unchanged. Added three in-module tests (delta stream byte-identical ECHO9T\\n, no-delta single print, JSON parity). Lesson captured as mx-ad07d9. Verification report: PASS text+delta stream no duplicate (text_mode_delta_stream_prints_answer_exactly_once); PASS no-delta final message prints once (text_mode_without_deltas_prints_final_message_once); PASS JSON path unchanged (json_mode_emits_every_event_once_as_json); PASS byte-identical regression probe (assert_eq on rendered string); PASS minimal/local to ask.rs, no server emission changes; PASS cargo nextest run -p fabro-cli 'commands::run::ask' 3/3 passed.",
-          "last_stage": "implementer",
-          "preferred_label": "Implemented",
-          "current_seed_brief": "Fix double-printed answers in text mode of `fabro ask`. Root cause is in `lib/apps/fabro-cli/src/commands/run/ask.rs` `render_event()`: the `run.session.assistant_delta` branch `print!()`s each delta, then the `run.session.assistant_message` branch `println!()`s the full text again. Acceptance criteria:\n- Text mode with streamed deltas: deltas render as before, and the `assistant_message` branch does NOT print the text again — it emits only the trailing newline needed to terminate the streamed line (deltas leave output mid-line).\n- Text mode with NO deltas seen (non-streaming session, if one occurs): the final `assistant_message` `println` remains the only output and still prints.\n- `--json` path unchanged: every event still printed as JSON, including both `assistant_delta` and `assistant_message` events.\n- Implementation shape: track whether any delta was rendered in text mode (e.g., a render-state flag threaded through the event loop in `run()`; current code has `json_output` as the only render arg). Note the seed's 'compare attach.rs' pointer is stale in the current worktree — attach.rs routes events through `run_progress::ProgressUI`, so implement the gating directly in ask.rs rather than copying a pattern from attach.\n- Regression test asserting byte-identical single output, modeled on the reproducer: feed a two-token delta stream (e.g. two deltas forming a probe token like ECHO9T) followed by the final `assistant_message` carrying the full text, and assert the rendered text output contains the token exactly once (byte-identical expected string). No stdout-capture helper exists in the workspace, so structure the render path to be unit-testable (e.g., render into a `String` or `impl Write` with thin printing glue, or a renderer struct with explicit state) — follow `docs/internal/testing-strategy.md` for placement.\n- Also cover in tests: no-delta session still prints the final message once; JSON mode unchanged.\n- Keep the fix minimal and local to ask.rs plus its tests; no changes to event emission on the server side.\n- Verification: `cargo nextest run -p fabro-cli` (plus targeted ask tests), `cargo +nightly-2026-04-14 fmt --all` and clippy clean for touched code.",
-          "command.output": "blob://sha256/96c8a856eaf7be65c21e3d8a30a1328858f2b1eedfd56e78bd4d4d11922e0264",
+          "lesson_capture": "mx-ad07d9",
+          "current_seed_id": "fabro-bd6c",
+          "graph.preamble_budget_kb": "24",
+          "current_node": "tester",
+          "thread.planner.current_node": "implementer",
+          "graph.goal": "Implement product seed fabro-bd6c: fabro ask prints the answer twice (deltas AND assistant_message both rendered) in text mode. The seed description carries the reproducer, root cause (lib/apps/fabro-cli/src/commands/run/ask.rs render_event: delta branch prints streamed deltas, assistant_message branch prints the full text again), fix sketch (track whether deltas rendered; skip the final println when they did — compare attach.rs which gates its final render), and acceptance criteria including a regression test. Follow the seed literally. Do not claim any other seed.",
+          "thread.start.current_node": "planner",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.node_visit_count": 1,
           "internal.thread_id": "implementer",
           "internal.retry_count.start": 0,
+          "outcome": "failed",
+          "last_response": "Implementation complete. `ask.rs` now renders through a `TextStreamRenderer<W: Write>` that tracks `saw_delta`: streamed deltas print as before, and once any delta rendered, the final `assistant_messa",
+          "last_stage": "implementer",
+          "failure_signature": "tester|deterministic|script failed with exit code: <n> ## output nu scripts/qualitygate.nu touched crates: fabro-cli == cargo fmt --check --all == diff in /repos/denkhaus/fabro/lib/apps/fabro-cli/src/commands/run/ask.rs:<n>: #[test] fn text_mode_delta_stream_pr",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
             "chars": 3713,
             "preview": "Seed `fabro-bd6c` claimed and grounded: I verified the double-print in `ask.rs` (`render_event` prints deltas at line 78-82 and the full text again at line 84-92), confirmed there is no existing ask t"
           },
-          "thread.planner.current_node": "implementer",
-          "internal.retry_count.implementer": 0,
-          "graph.rankdir": "LR",
-          "current_node": "tester",
-          "current_seed_title": "CLI: fabro ask prints the answer twice (deltas AND assistant_message both rendered)",
-          "failure_signature": "tester|deterministic|script failed with exit code: <n> ## output nu scripts/qualitygate.nu touched crates: fabro-cli == cargo fmt --check --all == diff in /repos/denkhaus/fabro/lib/apps/fabro-cli/src/commands/run/ask.rs:<n>: #[test] fn text_mode_delta_stream_pr",
-          "last_response": "Implementation complete. `ask.rs` now renders through a `TextStreamRenderer<W: Write>` that tracks `saw_delta`: streamed deltas print as before, and once any delta rendered, the final `assistant_messa",
+          "internal.run_id": "01M1Q5XE2E1NVB9FPTY22N3JPQ",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
             "tester": 1
           },
-          "graph.goal": "Implement product seed fabro-bd6c: fabro ask prints the answer twice (deltas AND assistant_message both rendered) in text mode. The seed description carries the reproducer, root cause (lib/apps/fabro-cli/src/commands/run/ask.rs render_event: delta branch prints streamed deltas, assistant_message branch prints the full text again), fix sketch (track whether deltas rendered; skip the final println when they did — compare attach.rs which gates its final render), and acceptance criteria including a regression test. Follow the seed literally. Do not claim any other seed.",
-          "internal.node_visit_count": 1,
-          "failure_class": "deterministic",
-          "thread.start.current_node": "planner",
+          "internal.retry_count.planner": 0,
+          "internal.retry_count.implementer": 0,
+          "preferred_label": "Implemented",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3016,
+            "preview": "Implementation complete. `ask.rs` now renders through a `TextStreamRenderer<W: Write>` that tracks `saw_delta`: streamed deltas print as before, and once any delta rendered, the final `assistant_messa"
+          },
           "internal.fidelity": "compact",
-          "thread.implementer.current_node": "tester"
+          "current_seed_brief": "Fix double-printed answers in text mode of `fabro ask`. Root cause is in `lib/apps/fabro-cli/src/commands/run/ask.rs` `render_event()`: the `run.session.assistant_delta` branch `print!()`s each delta, then the `run.session.assistant_message` branch `println!()`s the full text again. Acceptance criteria:\n- Text mode with streamed deltas: deltas render as before, and the `assistant_message` branch does NOT print the text again — it emits only the trailing newline needed to terminate the streamed line (deltas leave output mid-line).\n- Text mode with NO deltas seen (non-streaming session, if one occurs): the final `assistant_message` `println` remains the only output and still prints.\n- `--json` path unchanged: every event still printed as JSON, including both `assistant_delta` and `assistant_message` events.\n- Implementation shape: track whether any delta was rendered in text mode (e.g., a render-state flag threaded through the event loop in `run()`; current code has `json_output` as the only render arg). Note the seed's 'compare attach.rs' pointer is stale in the current worktree — attach.rs routes events through `run_progress::ProgressUI`, so implement the gating directly in ask.rs rather than copying a pattern from attach.\n- Regression test asserting byte-identical single output, modeled on the reproducer: feed a two-token delta stream (e.g. two deltas forming a probe token like ECHO9T) followed by the final `assistant_message` carrying the full text, and assert the rendered text output contains the token exactly once (byte-identical expected string). No stdout-capture helper exists in the workspace, so structure the render path to be unit-testable (e.g., render into a `String` or `impl Write` with thin printing glue, or a renderer struct with explicit state) — follow `docs/internal/testing-strategy.md` for placement.\n- Also cover in tests: no-delta session still prints the final message once; JSON mode unchanged.\n- Keep the fix minimal and local to ask.rs plus its tests; no changes to event emission on the server side.\n- Verification: `cargo nextest run -p fabro-cli` (plus targeted ask tests), `cargo +nightly-2026-04-14 fmt --all` and clippy clean for touched code.",
+          "internal.seed_cycle_anchor": "fabro-bd6c",
+          "failure_class": "deterministic",
+          "command.output": "blob://sha256/96c8a856eaf7be65c21e3d8a30a1328858f2b1eedfd56e78bd4d4d11922e0264",
+          "graph.max_node_visits": "40",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "fabro_types EventEnvelope JSON fixtures require ULID-shaped run_id and turn_id (missing turn_id surfaced as a confusing ulid 'invalid length' error, not 'missing field'), and serde_json's json! macro spread (...props) is not available in this workspace — documented in mx-ad07d9, hit in lib/apps/fabro-cli/src/commands/run/ask.rs tests"
+            ]
+          },
+          "internal.retry_count.tester": 0
         },
         "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "failed",
+            "context_updates": {
+              "command.output": "blob://sha256/96c8a856eaf7be65c21e3d8a30a1328858f2b1eedfd56e78bd4d4d11922e0264"
+            },
+            "failure": {
+              "message": "Script failed with exit code: 1\n\n## output\nnu scripts/qualitygate.nu\ntouched crates: fabro-cli\n== cargo fmt --check --all ==\nDiff in /repos/denkhaus/fabro/lib/apps/fabro-cli/src/commands/run/ask.rs:166:\n     #[test]\n     fn text_mode_delta_stream_prints_answer_exactly_once() {\n         let events = [\n-            envelope(\n-                \"run.session.assistant_delta\",\n-                json!({\"delta\": \"ECHO\"}),\n-            ),\n-            envelope(\n-                \"run.session.assistant_delta\",\n-                json!({\"delta\": \"9T\"}),\n-            ),\n-            envelope(\n-                \"run.session.assistant_message\",\n-                json!({\"text\": \"ECHO9T\"}),\n-            ),\n+            envelope(\"run.session.assistant_delta\", json!({\"delta\": \"ECHO\"})),\n+            envelope(\"run.session.assistant_delta\", json!({\"delta\": \"9T\"})),\n+            envelope(\"run.session.assistant_message\", json!({\"text\": \"ECHO9T\"})),\n         ];\n         assert_eq!(render_all(&events), \"ECHO9T\\n\");\n     }\nDiff in /repos/denkhaus/fabro/lib/apps/fabro-cli/src/commands/run/ask.rs:194:\n     #[test]\n     fn json_mode_emits_every_event_once_as_json() {\n         let events = [\n-            envelope(\n-                \"run.session.assistant_delta\",\n-                json!({\"delta\": \"ECHO\"}),\n-            ),\n-            envelope(\n-                \"run.session.assistant_delta\",\n-                json!({\"delta\": \"9T\"}),\n-            ),\n-            envelope(\n-                \"run.session.assistant_message\",\n-                json!({\"text\": \"ECHO9T\"}),\n-            ),\n+            envelope(\"run.session.assistant_delta\", json!({\"delta\": \"ECHO\"})),\n+            envelope(\"run.session.assistant_delta\", json!({\"delta\": \"9T\"})),\n+            envelope(\"run.session.assistant_message\", json!({\"text\": \"ECHO9T\"})),\n         ];\n         let mut out = Vec::new();\n         let mut renderer = TextStreamRenderer::new(&mut out);\n\nGATE RED\nerror: recipe `qualitygate` failed on line 128 with exit code 1\n",
+              "category": "deterministic"
+            },
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5363,
+              "active_time_ms": 5363
+            }
+          },
           "implementer": {
             "status": "succeeded",
             "preferred_label": "Implemented",
@@ -1142,6 +1163,212 @@
               "inference_time_ms": 270564,
               "tool_time_ms": 552415,
               "active_time_ms": 822979
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Seed `fabro-bd6c` claimed and grounded: I verified the double-print in `ask.rs` (`render_event` prints deltas at line 78-82 and the full text again at line 84-92), confirmed there is no existing ask t",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3713,
+                "preview": "Seed `fabro-bd6c` claimed and grounded: I verified the double-print in `ask.rs` (`render_event` prints deltas at line 78-82 and the full text again at line 84-92), confirmed there is no existing ask t"
+              },
+              "current_seed_id": "fabro-bd6c",
+              "current_seed_brief": "Fix double-printed answers in text mode of `fabro ask`. Root cause is in `lib/apps/fabro-cli/src/commands/run/ask.rs` `render_event()`: the `run.session.assistant_delta` branch `print!()`s each delta, then the `run.session.assistant_message` branch `println!()`s the full text again. Acceptance criteria:\n- Text mode with streamed deltas: deltas render as before, and the `assistant_message` branch does NOT print the text again — it emits only the trailing newline needed to terminate the streamed line (deltas leave output mid-line).\n- Text mode with NO deltas seen (non-streaming session, if one occurs): the final `assistant_message` `println` remains the only output and still prints.\n- `--json` path unchanged: every event still printed as JSON, including both `assistant_delta` and `assistant_message` events.\n- Implementation shape: track whether any delta was rendered in text mode (e.g., a render-state flag threaded through the event loop in `run()`; current code has `json_output` as the only render arg). Note the seed's 'compare attach.rs' pointer is stale in the current worktree — attach.rs routes events through `run_progress::ProgressUI`, so implement the gating directly in ask.rs rather than copying a pattern from attach.\n- Regression test asserting byte-identical single output, modeled on the reproducer: feed a two-token delta stream (e.g. two deltas forming a probe token like ECHO9T) followed by the final `assistant_message` carrying the full text, and assert the rendered text output contains the token exactly once (byte-identical expected string). No stdout-capture helper exists in the workspace, so structure the render path to be unit-testable (e.g., render into a `String` or `impl Write` with thin printing glue, or a renderer struct with explicit state) — follow `docs/internal/testing-strategy.md` for placement.\n- Also cover in tests: no-delta session still prints the final message once; JSON mode unchanged.\n- Keep the fix minimal and local to ask.rs plus its tests; no changes to event emission on the server side.\n- Verification: `cargo nextest run -p fabro-cli` (plus targeted ask tests), `cargo +nightly-2026-04-14 fmt --all` and clippy clean for touched code.",
+              "last_stage": "planner",
+              "current_seed_title": "CLI: fabro ask prints the answer twice (deltas AND assistant_message both rendered)",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Seed fabro-bd6c's fix sketch says 'compare attach.rs which gates its final render' but attach.rs in the current worktree has no such gating — it delegates to run_progress::ProgressUI. Brief annotates this so the implementer builds the flag directly in ask.rs instead of hunting for a pattern to copy.",
+                  "sd/mise failed until `mise trust /repos/denkhaus/fabro/.mise.toml` was run (host-side friction; run-container variant already tracked as fabro-66db).",
+                  "No ask.rs unit tests and no tests/it/cmd/ask.rs integration file exist today; render_event prints via macros with no stdout-capture helper anywhere in the workspace, so testability refactor is part of the fix."
+                ]
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 31541,
+                    "output_tokens": 1967,
+                    "reasoning_tokens": 1582,
+                    "cache_read_tokens": 356544,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 152454
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 90165,
+              "tool_time_ms": 3142,
+              "active_time_ms": 93307
+            }
+          }
+        },
+        "next_node_id": "implementer",
+        "git_commit_sha": "79b79568f86738772bedbd35aa8bbdaf8b766563",
+        "loop_failure_signatures": {
+          "tester|deterministic|script failed with exit code: <n> ## output nu scripts/qualitygate.nu touched crates: fabro-cli == cargo fmt --check --all == diff in /repos/denkhaus/fabro/lib/apps/fabro-cli/src/commands/run/ask.rs:<n>: #[test] fn text_mode_delta_stream_pr": 1
+        },
+        "node_visits": {
+          "tester": 1,
+          "implementer": 1,
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 4,
+          "additions": 163,
+          "deletions": 25
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-04T22:00:05.280501092Z",
+        "current_node": "implementer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "implementer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "current_seed_id": "fabro-bd6c",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.planner": 0,
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2408,
+            "preview": "Formatting fixed to match rustfmt's expected layout; all 3 targeted ask tests pass.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"imple"
+          },
+          "internal.run_id": "01M1Q5XE2E1NVB9FPTY22N3JPQ",
+          "graph.max_node_visits": "40",
+          "internal.seed_cycle_anchor": "fabro-bd6c",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "The implementer stage is forbidden from running formatters while the tester gate rejects on formatting (run 01M1Q5XE2E1NVB9FPTY22N3JPQ, fabro-bd6c): the first pass shipped test arrays that rustfmt wanted collapsed, wasting a full tester cycle on whitespace. Suggestion: either let the implementer run `cargo +nightly-2026-04-14 fmt --all` as a fix action (it is edit-like, not a gate), or have the tester auto-format-and-retry before failing."
+              }
+            ],
+            "observations": [
+              "The tester's failure output included the exact rustfmt diff, which made the fix a byte-for-byte manual edit — no formatter run was needed on my side."
+            ]
+          },
+          "internal.retry_count.tester": 0,
+          "thread.tester.current_node": "implementer",
+          "lesson_capture": "nothing durable — skipped",
+          "graph.preamble_budget_kb": "24",
+          "outcome": "succeeded",
+          "internal.work_dir": "/workspace/fabro",
+          "implementation_summary": "The previous implementer pass had already implemented the seed correctly (TextStreamRenderer with saw_delta gating in `lib/apps/fabro-cli/src/commands/run/ask.rs` plus three unit tests); the tester failed only on rustfmt formatting of the two test event arrays. This pass collapsed those multi-line `envelope(...)` calls to the exact single-line form rustfmt expects, matching the tester's diff byte-for-byte. Verified with `cargo nextest run -p fabro-cli ask`: 3/3 pass (text_mode_delta_stream_prints_answer_exactly_once, text_mode_without_deltas_prints_final_message_once, json_mode_emits_every_event_once_as_json). Lesson capture: nothing durable — skipped. Per-criterion report: - PASS deltas render and assistant_message emits only trailing newline: ask.rs TextStreamRenderer::render saw_delta branch + text_mode_delta_stream_prints_answer_exactly_once; - PASS no-delta session still prints final message once: else-branch + text_mode_without_deltas_prints_final_message_once; - PASS --json unchanged, every event as JSON: render_event json branch + json_mode_emits_every_event_once_as_json; - PASS regression test byte-identical single output: assert_eq!(render_all(&events), \"ECHO9T\\n\") over render-into-Vec<u8> renderer; - PASS minimal, local to ask.rs + tests, no server changes; - PASS fmt layout now matches rustfmt's expected diff (targeted tests run only, gate left to tester).",
+          "last_stage": "implementer",
+          "preferred_label": "Implemented",
+          "current_seed_brief": "Fix double-printed answers in text mode of `fabro ask`. Root cause is in `lib/apps/fabro-cli/src/commands/run/ask.rs` `render_event()`: the `run.session.assistant_delta` branch `print!()`s each delta, then the `run.session.assistant_message` branch `println!()`s the full text again. Acceptance criteria:\n- Text mode with streamed deltas: deltas render as before, and the `assistant_message` branch does NOT print the text again — it emits only the trailing newline needed to terminate the streamed line (deltas leave output mid-line).\n- Text mode with NO deltas seen (non-streaming session, if one occurs): the final `assistant_message` `println` remains the only output and still prints.\n- `--json` path unchanged: every event still printed as JSON, including both `assistant_delta` and `assistant_message` events.\n- Implementation shape: track whether any delta was rendered in text mode (e.g., a render-state flag threaded through the event loop in `run()`; current code has `json_output` as the only render arg). Note the seed's 'compare attach.rs' pointer is stale in the current worktree — attach.rs routes events through `run_progress::ProgressUI`, so implement the gating directly in ask.rs rather than copying a pattern from attach.\n- Regression test asserting byte-identical single output, modeled on the reproducer: feed a two-token delta stream (e.g. two deltas forming a probe token like ECHO9T) followed by the final `assistant_message` carrying the full text, and assert the rendered text output contains the token exactly once (byte-identical expected string). No stdout-capture helper exists in the workspace, so structure the render path to be unit-testable (e.g., render into a `String` or `impl Write` with thin printing glue, or a renderer struct with explicit state) — follow `docs/internal/testing-strategy.md` for placement.\n- Also cover in tests: no-delta session still prints the final message once; JSON mode unchanged.\n- Keep the fix minimal and local to ask.rs plus its tests; no changes to event emission on the server side.\n- Verification: `cargo nextest run -p fabro-cli` (plus targeted ask tests), `cargo +nightly-2026-04-14 fmt --all` and clippy clean for touched code.",
+          "command.output": "blob://sha256/96c8a856eaf7be65c21e3d8a30a1328858f2b1eedfd56e78bd4d4d11922e0264",
+          "internal.thread_id": "tester",
+          "internal.retry_count.start": 0,
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3713,
+            "preview": "Seed `fabro-bd6c` claimed and grounded: I verified the double-print in `ask.rs` (`render_event` prints deltas at line 78-82 and the full text again at line 84-92), confirmed there is no existing ask t"
+          },
+          "thread.planner.current_node": "implementer",
+          "internal.retry_count.implementer": 0,
+          "graph.rankdir": "LR",
+          "current_node": "implementer",
+          "current_seed_title": "CLI: fabro ask prints the answer twice (deltas AND assistant_message both rendered)",
+          "failure_signature": "",
+          "last_response": "Formatting fixed to match rustfmt's expected layout; all 3 targeted ask tests pass.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"imple",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 2,
+            "tester": 1
+          },
+          "graph.goal": "Implement product seed fabro-bd6c: fabro ask prints the answer twice (deltas AND assistant_message both rendered) in text mode. The seed description carries the reproducer, root cause (lib/apps/fabro-cli/src/commands/run/ask.rs render_event: delta branch prints streamed deltas, assistant_message branch prints the full text again), fix sketch (track whether deltas rendered; skip the final println when they did — compare attach.rs which gates its final render), and acceptance criteria including a regression test. Follow the seed literally. Do not claim any other seed.",
+          "internal.node_visit_count": 2,
+          "failure_class": "",
+          "thread.start.current_node": "planner",
+          "internal.fidelity": "summary:high",
+          "thread.implementer.current_node": "tester"
+        },
+        "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_stage": "implementer",
+              "last_response": "Formatting fixed to match rustfmt's expected layout; all 3 targeted ask tests pass.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"imple",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "The implementer stage is forbidden from running formatters while the tester gate rejects on formatting (run 01M1Q5XE2E1NVB9FPTY22N3JPQ, fabro-bd6c): the first pass shipped test arrays that rustfmt wanted collapsed, wasting a full tester cycle on whitespace. Suggestion: either let the implementer run `cargo +nightly-2026-04-14 fmt --all` as a fix action (it is edit-like, not a gate), or have the tester auto-format-and-retry before failing."
+                  }
+                ],
+                "observations": [
+                  "The tester's failure output included the exact rustfmt diff, which made the fix a byte-for-byte manual edit — no formatter run was needed on my side."
+                ]
+              },
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2408,
+                "preview": "Formatting fixed to match rustfmt's expected layout; all 3 targeted ask tests pass.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"imple"
+              },
+              "implementation_summary": "The previous implementer pass had already implemented the seed correctly (TextStreamRenderer with saw_delta gating in `lib/apps/fabro-cli/src/commands/run/ask.rs` plus three unit tests); the tester failed only on rustfmt formatting of the two test event arrays. This pass collapsed those multi-line `envelope(...)` calls to the exact single-line form rustfmt expects, matching the tester's diff byte-for-byte. Verified with `cargo nextest run -p fabro-cli ask`: 3/3 pass (text_mode_delta_stream_prints_answer_exactly_once, text_mode_without_deltas_prints_final_message_once, json_mode_emits_every_event_once_as_json). Lesson capture: nothing durable — skipped. Per-criterion report: - PASS deltas render and assistant_message emits only trailing newline: ask.rs TextStreamRenderer::render saw_delta branch + text_mode_delta_stream_prints_answer_exactly_once; - PASS no-delta session still prints final message once: else-branch + text_mode_without_deltas_prints_final_message_once; - PASS --json unchanged, every event as JSON: render_event json branch + json_mode_emits_every_event_once_as_json; - PASS regression test byte-identical single output: assert_eq!(render_all(&events), \"ECHO9T\\n\") over render-into-Vec<u8> renderer; - PASS minimal, local to ask.rs + tests, no server changes; - PASS fmt layout now matches rustfmt's expected diff (targeted tests run only, gate left to tester).",
+              "lesson_capture": "nothing durable — skipped"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 15050,
+                    "output_tokens": 1123,
+                    "reasoning_tokens": 193,
+                    "cache_read_tokens": 40576,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 37405
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/apps/fabro-cli/src/commands/run/ask.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 25670,
+              "tool_time_ms": 17063,
+              "active_time_ms": 42733
             }
           },
           "tester": {
@@ -1219,10 +1446,10 @@
             }
           }
         },
-        "next_node_id": "implementer",
+        "next_node_id": "tester",
         "node_visits": {
           "planner": 1,
-          "implementer": 1,
+          "implementer": 2,
           "start": 1,
           "tester": 1
         }
@@ -1507,6 +1734,220 @@
       "agent_control": "running",
       "state": "succeeded"
     },
+    "implementer@2": {
+      "first_event_seq": 464,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-09-04T22:00:05.079312501Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-04T21:59:15.149326709Z",
+      "handler": "agent",
+      "graph_visit": 2,
+      "timing": {
+        "wall_time_ms": 43246,
+        "inference_time_ms": 25670,
+        "tool_time_ms": 17063,
+        "active_time_ms": 42733
+      },
+      "usage": {
+        "input_tokens": 15050,
+        "output_tokens": 1123,
+        "total_tokens": 56942,
+        "reasoning_tokens": 193,
+        "cache_read_tokens": 40576,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 37405
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 14980,
+        "usage_percent": 1.4286041259765625,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-04T22:00:05.061203829Z",
+        "event_seq": 493,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1100,
+            "usage_percent": 0.1049041748046875
+          },
+          {
+            "category": "tools",
+            "tokens": 1569,
+            "usage_percent": 0.14963150024414062
+          },
+          {
+            "category": "memory",
+            "tokens": 5393,
+            "usage_percent": 0.5143165588378906
+          },
+          {
+            "category": "conversation",
+            "tokens": 6911,
+            "usage_percent": 0.6590843200683594
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "planner@1": {
       "first_event_seq": 21,
       "prompt": null,
@@ -1725,7 +2166,12 @@
       "first_event_seq": 454,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "failed",
+        "notes": null,
+        "failure_reason": "Script failed with exit code: 1\n\n## output\nnu scripts/qualitygate.nu\ntouched crates: fabro-cli\n== cargo fmt --check --all ==\nDiff in /repos/denkhaus/fabro/lib/apps/fabro-cli/src/commands/run/ask.rs:166:\n     #[test]\n     fn text_mode_delta_stream_prints_answer_exactly_once() {\n         let events = [\n-            envelope(\n-                \"run.session.assistant_delta\",\n-                json!({\"delta\": \"ECHO\"}),\n-            ),\n-            envelope(\n-                \"run.session.assistant_delta\",\n-                json!({\"delta\": \"9T\"}),\n-            ),\n-            envelope(\n-                \"run.session.assistant_message\",\n-                json!({\"text\": \"ECHO9T\"}),\n-            ),\n+            envelope(\"run.session.assistant_delta\", json!({\"delta\": \"ECHO\"})),\n+            envelope(\"run.session.assistant_delta\", json!({\"delta\": \"9T\"})),\n+            envelope(\"run.session.assistant_message\", json!({\"text\": \"ECHO9T\"})),\n         ];\n         assert_eq!(render_all(&events), \"ECHO9T\\n\");\n     }\nDiff in /repos/denkhaus/fabro/lib/apps/fabro-cli/src/commands/run/ask.rs:194:\n     #[test]\n     fn json_mode_emits_every_event_once_as_json() {\n         let events = [\n-            envelope(\n-                \"run.session.assistant_delta\",\n-                json!({\"delta\": \"ECHO\"}),\n-            ),\n-            envelope(\n-                \"run.session.assistant_delta\",\n-                json!({\"delta\": \"9T\"}),\n-            ),\n-            envelope(\n-                \"run.session.assistant_message\",\n-                json!({\"text\": \"ECHO9T\"}),\n-            ),\n+            envelope(\"run.session.assistant_delta\", json!({\"delta\": \"ECHO\"})),\n+            envelope(\"run.session.assistant_delta\", json!({\"delta\": \"9T\"})),\n+            envelope(\"run.session.assistant_message\", json!({\"text\": \"ECHO9T\"})),\n         ];\n         let mut out = Vec::new();\n         let mut renderer = TextStreamRenderer::new(&mut out);\n\nGATE RED\nerror: recipe `qualitygate` failed on line 128 with exit code 1\n",
+        "timestamp": "2026-09-04T21:59:11.359891719Z"
+      },
       "provider_used": null,
       "diff": null,
       "script_invocation": {
@@ -1750,6 +2196,12 @@
       "started_at": "2026-09-04T21:59:05.976904777Z",
       "handler": "command",
       "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 5369,
+        "inference_time_ms": 0,
+        "tool_time_ms": 5363,
+        "active_time_ms": 5363
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -1759,7 +2211,7 @@
         "cache_write_tokens": 0
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "failed"
     }
   }
 }
