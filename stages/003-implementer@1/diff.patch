@@ -1,0 +1,136 @@
+diff --git a/.fabro/journal/01M1NGGDVKNJHWP2W0HPJJ84CZ.jsonl b/.fabro/journal/01M1NGGDVKNJHWP2W0HPJJ84CZ.jsonl
+index d7d5306a..6f47789b 100644
+--- a/.fabro/journal/01M1NGGDVKNJHWP2W0HPJJ84CZ.jsonl
++++ b/.fabro/journal/01M1NGGDVKNJHWP2W0HPJJ84CZ.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1NGGDVKNJHWP2W0HPJJ84CZ","node":"start","visit":1,"status":"succeeded","ts":"2026-09-04T06:08:54Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1NGGDVKNJHWP2W0HPJJ84CZ","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-04T06:11:14Z","data":{"painpoints":[],"observations":["fabro-f677 claimed fresh at cycle start; spec listed three compatible fix directions — brief pins direction 1 (single-line cells) with rationale so the implementer does not re-litigate.","Existing `format_large_value_table_cell` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` already collapses whitespace and escapes pipes for blob-demoted values; the plain-value table path lacks both, so the fix is sharing that behavior, not inventing a new rendering scheme."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1NGGDVKNJHWP2W0HPJJ84CZ","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-04T06:24:53Z","data":{"painpoints":[],"observations":["Stale cargo/nextest binary after edit_file changes in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`: a corrected assertion kept failing with the pre-edit panic message/line until `touch` forced recompile (runs 01M1NGGDVKNJHWP2W0HPJJ84CZ, ~300s wasted). Suggestion: implementers should suspect the build cache when a just-fixed test fails byte-identically; touching the edited file or checking that the run duration includes compilation resolves it."]}}
+diff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl
+index 3bb47cd3..1a682489 100644
+--- a/.mulch/expertise/engine.jsonl
++++ b/.mulch/expertise/engine.jsonl
+@@ -15,3 +15,4 @@
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-01T16:43:10.999Z","evidence":{"seeds":"fabro-e804","commit":"8dce562f89d85c942fcc75dcc2541d4a2d0f71d6"},"name":"engine-registered-stage-tool","description":"fabro-e804 (6890362b3): workflow-registered stage tools follow the fabro_run_tool closure pattern extended with per-node state: a RegisteredTool executor closes over Arc<ContextReadState> (RwLock view + run-scoped run_store/sandbox/run_dir + tokio Mutex locality); services flow per-node through CodergenRunRequest (built in Handler::execute where resolved wf_context, node, graph, and services.run are all in scope); CachedAgentSession AND LiveAgentInvocation carry the state handle so a reused full-fidelity thread refreshes per node and a mid-run failover swaps session+handle together. Registration is default-open in create_session_for for parent profile AND the subagent factory; NamedToolAccessPolicy (tools=) is the exclusion. Values over the shared artifact::resolve_inline_max_bytes threshold demote via the same machinery as preambles; serve() defensively rehydrates surviving blob:// refs via resolve_json_value. Test graphs: build programmatically (Graph::new + Node::new + AttrValue::Integer for int attrs) - DOT strings fail the parser and String('2') is not int_attr.","files":[".agents/skills/iterate/SKILL.md"],"id":"mx-70a200"}
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-01T19:32:16.512Z","evidence":{"seeds":"fabro-ba96","commit":"4cf410323a27fb8a057446dcf8e095a79b5705f7"},"name":"scoped-sandbox-decorator","description":"fabro-ba96 (b312459b4): per-node filesystem scope fs_hide/fs_write enforced by a ScopedSandbox decorator wrapping the stage session's Arc<dyn Sandbox> at workflow session construction (next to node.tools()). Covers every file tool in every vocabulary, read_many_files and apply_patch for free; subagent factory gets the same wrap (inheritance). Nonexistent semantics: hidden = reads fail, file_exists false, grep/glob/list_dir/walk_files filtered, writes denied; a dir/** glob also hides the dir entry (pure-glob semantics would leak the directory through listings). apply_patch pre-checks all target paths via ToolContext.fs_scope (atomic reject, no partial application). delegate_sandbox! cannot skip overridden methods — the impl is hand-written; macro evolution only when a second decorator appears (seed 922f).","id":"mx-0b9787"}
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-01T19:32:16.987Z","evidence":{"seeds":"fabro-ba96","commit":"4cf410323a27fb8a057446dcf8e095a79b5705f7"},"description":"fs_globs_valid test asserted fixed diagnostic indices over graph.nodes.values() — but Graph.nodes is a HashMap with per-process random iteration order, so the test passed by luck and failed after an unrelated rewrite. Any new validate rule test asserting multi-node diagnostic ORDER must sort or use order-independent any()-assertions (established pattern: tools_requires_agent_node sorts node_ids).","resolution":"Made the test order-independent (sort messages, any()-assertions).","id":"mx-ff65fd"}
++{"type":"failure","classification":"tactical","recorded_at":"2026-09-04T06:24:23.357Z","evidence":{"commit":"29fb0a1ae23df8f965bb4fd675f93a56afc14ba6"},"description":"cargo nextest ran a stale test binary after edit_file changes (panic message/line numbers from the pre-edit assertion): cargo did not detect the source change until touch. If a fix should make a test pass but it keeps failing identically, verify recompilation (touch the file or check compile output) before debugging the assertion itself. Run fabro-f677.","resolution":"touch the edited source file (or cargo clean -p <crate>) before re-running nextest; confirm the run duration includes a compile step","id":"mx-d56fe2"}
+diff --git a/lib/components/fabro-workflow/src/handler/llm/preamble.rs b/lib/components/fabro-workflow/src/handler/llm/preamble.rs
+index 57c83e44..fd3ecc57 100644
+--- a/lib/components/fabro-workflow/src/handler/llm/preamble.rs
++++ b/lib/components/fabro-workflow/src/handler/llm/preamble.rs
+@@ -130,14 +130,33 @@ fn append_large_value(
+     ));
+ }
+ 
+-fn format_large_value_table_cell(large: PromptLargeValue<'_>) -> String {
+-    let summary = large.location_summary().replace('|', "\\|");
+-    let preview = large
+-        .preview
+-        .split_whitespace()
++fn escape_table_cell_pipes(cell: String) -> String {
++    cell.replace('|', "\\|")
++}
++
++/// Format a plain context value for a Markdown table cell: collapse any
++/// newlines to a single-line `" / "` separator and escape pipes so the row
++/// stays intact in every renderer. The full value remains available via
++/// `context_read`.
++fn format_value_table_cell(val: &serde_json::Value) -> String {
++    let collapsed = format_value(val)
++        .lines()
++        .map(str::trim)
++        .filter(|line| !line.is_empty())
+         .collect::<Vec<_>>()
+-        .join(" ")
+-        .replace('|', "\\|");
++        .join("\" / \"");
++    escape_table_cell_pipes(collapsed)
++}
++
++fn format_large_value_table_cell(large: PromptLargeValue<'_>) -> String {
++    let summary = escape_table_cell_pipes(large.location_summary());
++    let preview = escape_table_cell_pipes(
++        large
++            .preview
++            .split_whitespace()
++            .collect::<Vec<_>>()
++            .join(" "),
++    );
+     format!("{summary}; Preview: {preview}…")
+ }
+ 
+@@ -363,7 +382,7 @@ fn append_filtered_context_table(
+         for key in context_keys {
+             if let Some(val) = snapshot.get(key) {
+                 let rendered = artifact::prompt_large_value(val)
+-                    .map_or_else(|| format_value(val), format_large_value_table_cell);
++                    .map_or_else(|| format_value_table_cell(val), format_large_value_table_cell);
+                 parts.push(format!("| {key} | {rendered} |"));
+             }
+         }
+@@ -1695,6 +1714,64 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn summary_high_context_table_multi_line_value_single_row() {
++        let graph = Graph::new("test");
++        let context = Context::new();
++        context.set(
++            "current_seed_brief",
++            serde_json::json!("- first line with a | pipe\n- second line\n- third line"),
++        );
++        context.set("current_seed_id", serde_json::json!("fabro-f677"));
++        context.set(
++            "current_seed_title",
++            serde_json::json!("engine: preamble context table breaks markdown"),
++        );
++
++        let preamble = build_preamble(
++            keys::Fidelity::SummaryHigh,
++            &context,
++            &graph,
++            &[],
++            &HashMap::new(),
++        );
++
++        let section = preamble
++            .split("## Current context")
++            .nth(1)
++            .expect("context table section should exist");
++        let rows: Vec<&str> = section
++            .lines()
++            .filter(|line| !line.trim().is_empty())
++            .collect();
++        assert!(
++            rows.iter().all(|line| line.starts_with('|')),
++            "every line of the context section must be a table row, got:\n{section}"
++        );
++        assert!(
++            rows.iter().all(|line| !line[1..].contains('\n')),
++            "no raw newline inside any table row"
++        );
++        // Exactly one row per key (plus header + separator).
++        assert_eq!(rows.len(), 5, "header + separator + 3 keys, got:\n{rows:?}");
++        let brief_row = rows
++            .iter()
++            .find(|line| line.starts_with("| current_seed_brief |"))
++            .expect("brief row");
++        assert_eq!(
++            *brief_row,
++            "| current_seed_brief | - first line with a \\| pipe\" / \"- second line\" / \"- third line |",
++            "multi-line value should collapse to one row with quoted \" / \" separators and escaped pipes"
++        );
++        let brief_pos = preamble.find("| current_seed_brief |").expect("brief row");
++        let id_pos = preamble.find("| current_seed_id |").expect("id row");
++        let title_pos = preamble.find("| current_seed_title |").expect("title row");
++        assert!(
++            brief_pos < id_pos && id_pos < title_pos,
++            "id/title rows must stay adjacent after the multi-line brief row"
++        );
++    }
++
+     #[test]
+     fn summary_high_table_compacts_large_value_preview() {
+         let graph = Graph::new("test");
