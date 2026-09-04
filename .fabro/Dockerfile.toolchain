@@ -30,16 +30,10 @@ RUN set -eux; \
 
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-RUN set -eux; \
-    curl -fsSL https://bun.sh/install | bash; \
-    /root/.bun/bin/bun --version
-
-ENV PATH="/root/.bun/bin:${PATH}"
-
-# Repo agent tooling: AGENTS.md asks agents to run `sd prime` / `ml prime` at
-# session start; without these binaries every run wastes turns on failures.
-# Pinned to the versions used on the host (seeds 0.5.15, mulch 0.10.7).
-RUN bun install -g @os-eco/seeds-cli@0.5.15 @os-eco/mulch-cli@0.10.7
+# bun rides the mise toolset (lab exemplar): the bun.sh/install script
+# failed on the ubuntu base ("unzip is required") and mise pins bun@1.4.0
+# the same way the lab runner image does. sd/ml install through the mise
+# bun into BUN_INSTALL, mirroring .fabro/Dockerfile.mise on denkhaus-lab.
 
 # Test workflows run `python3 -m pytest` (e.g. solitaire-*); the agent
 # otherwise fights PEP 668 externally-managed-environment workarounds.
@@ -56,16 +50,29 @@ RUN set -eux; \
 # image until the worlds are unified.
 ARG MISE_VERSION=v2026.8.10
 ENV MISE_DATA_DIR=/mise \
-    PATH=/mise/shims:${PATH}
+    BUN_INSTALL=/mise/bun-global \
+    PATH=/mise/shims:/mise/bun-global/bin:${PATH}
 
 RUN set -eux; \
     curl -fsSL "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-linux-x64" \
         -o /usr/local/bin/mise; \
     chmod +x /usr/local/bin/mise; \
     mise use -g \
+        bun@1.4.0 \
         aqua:nushell/nushell@0.115.0 \
         just@1.58.0 \
         aqua:BurntSushi/ripgrep@15.2.0 \
+    && bun --version \
     && nu --version \
     && just --version \
     && rg --version
+
+# Repo agent tooling: AGENTS.md asks agents to run `sd prime` / `ml prime` at
+# session start; without these binaries every run wastes turns on failures.
+# Pinned to the versions used on the host (seeds 0.5.15, mulch 0.10.7).
+# Installed through the mise bun into BUN_INSTALL (lab exemplar).
+RUN mise exec -- bun install -g \
+        @os-eco/seeds-cli@0.5.15 \
+        @os-eco/mulch-cli@0.10.7 \
+    && sd --version \
+    && ml --version
