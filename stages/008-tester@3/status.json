@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Script failed with exit code: 1\n\n## output\nnu scripts/qualitygate.nu\ntouched crates: fabro-cli\n== cargo fmt --check --all ==\nDiff in /repos/denkhaus/fabro/lib/apps/fabro-cli/src/commands/run/ask.rs:28:\n     let mut terminal_error = None;\n     let mut saw_terminal = false;\n     // Deliberate blocking stdout: deltas are printed as they stream in.\n-    #[expect(clippy::disallowed_methods, reason = \"intentional sync stdout streaming\")]\n+    #[expect(\n+        clippy::disallowed_methods,\n+        reason = \"intentional sync stdout streaming\"\n+    )]\n     let stdout = std::io::stdout();\n     let mut renderer = TextStreamRenderer::new(stdout.lock());\n     while let Some(event) = stream.next_event().await? {\n\nGATE RED\nerror: recipe `qualitygate` failed on line 128 with exit code 1\n",
+  "timestamp": "2026-09-04T22:04:46.832845572Z"
+}
