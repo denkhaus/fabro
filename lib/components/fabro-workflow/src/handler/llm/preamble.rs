@@ -340,6 +340,19 @@ fn append_filtered_context(
     }
 }
 
+/// Render a context value as a single-line Markdown table cell: newlines
+/// become " / ", blank lines and indentation runs collapse away, and literal
+/// pipes are escaped so they cannot split columns.
+fn sanitize_table_cell(value: &str) -> String {
+    value
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(" / ")
+        .replace('|', "\\|")
+}
+
 /// Append filtered context as a `## Current context` Markdown table.
 fn append_filtered_context_table(
     parts: &mut Vec<String>,
@@ -362,8 +375,10 @@ fn append_filtered_context_table(
         parts.push("|-----|-------|".to_string());
         for key in context_keys {
             if let Some(val) = snapshot.get(key) {
-                let rendered = artifact::prompt_large_value(val)
-                    .map_or_else(|| format_value(val), format_large_value_table_cell);
+                let rendered = artifact::prompt_large_value(val).map_or_else(
+                    || sanitize_table_cell(&format_value(val)),
+                    format_large_value_table_cell,
+                );
                 parts.push(format!("| {key} | {rendered} |"));
             }
         }
@@ -1693,6 +1708,58 @@ mod tests {
             preamble.contains("| user.name | alice |"),
             "should have context row"
         );
+    }
+
+    #[test]
+    fn summary_high_table_renders_multiline_value_as_single_row() {
+        let graph = Graph::new("test");
+        let context = Context::new();
+        context.set("current_seed_id", serde_json::json!("fabro-f677"));
+        context.set(
+            "current_seed_title",
+            serde_json::json!("engine: preamble context table breaks markdown"),
+        );
+        context.set(
+            "current_seed_brief",
+            serde_json::json!(
+                "Bug: the table breaks.\n\n- bullet one\n  - nested with a | pipe\nDone."
+            ),
+        );
+
+        let preamble = build_preamble(
+            keys::Fidelity::SummaryHigh,
+            &context,
+            &graph,
+            &[],
+            &HashMap::new(),
+        );
+
+        let (_, section) = preamble
+            .split_once("## Current context")
+            .expect("context table heading");
+        let rows: Vec<&str> = section.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert_eq!(
+            rows.len(),
+            5,
+            "header + separator + one row per key (3 keys), got:\n{section}"
+        );
+        for (i, row) in rows.iter().enumerate() {
+            assert!(
+                row.starts_with('|') && row.ends_with('|') && !row[..row.len() - 1].contains('\n'),
+                "row {i} must be a single-line table row, got:\n{row}"
+            );
+        }
+        assert_eq!(rows[0], "| Key | Value |");
+        // Keys sort alphabetically: brief, id, title — all adjacent intact rows.
+        assert!(
+            rows[2].starts_with("| current_seed_brief | Bug: the table breaks. / "),
+            "multiline value must collapse onto one row, got:\n{}",
+            rows[2]
+        );
+        assert!(rows[2].contains("nested with a \\| pipe"));
+        assert!(rows[2].ends_with("Done. |"));
+        assert!(rows[3].starts_with("| current_seed_id | fabro-f677 |"));
+        assert!(rows[4].starts_with("| current_seed_title |"));
     }
 
     #[test]
