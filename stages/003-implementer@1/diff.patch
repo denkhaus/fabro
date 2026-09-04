@@ -1,0 +1,113 @@
+diff --git a/.fabro/journal/01M1NK4V3YG3AQAMEKDJ6V471F.jsonl b/.fabro/journal/01M1NK4V3YG3AQAMEKDJ6V471F.jsonl
+index 4d632139..ac60e821 100644
+--- a/.fabro/journal/01M1NK4V3YG3AQAMEKDJ6V471F.jsonl
++++ b/.fabro/journal/01M1NK4V3YG3AQAMEKDJ6V471F.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1NK4V3YG3AQAMEKDJ6V471F","node":"start","visit":1,"status":"succeeded","ts":"2026-09-04T06:55:01Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1NK4V3YG3AQAMEKDJ6V471F","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-04T06:56:45Z","data":{"painpoints":[{"text":"Seed fabro-f677 description lists fix direction 2 (bullet list below the table) that directly contradicts its own acceptance criterion 1 (single table row per key). Ambiguous specs invite reviewer ping-pong; seed descriptions with multiple fix directions should mark which directions are compatible with the acceptance criteria (evidence: sd show fabro-f677, run 01M1MMK5C6B313SY70Y2EPKE82 report)."}],"observations":["fabro-f677 is Low priority but explicitly named by the goal, so it was claimed ahead of higher-priority unrelated seeds.","Bug is narrow and local: only `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` needs changes; `format_value` and `append_filtered_context` must stay multi-line-capable.","Existing test coverage for this table exists at `preamble.rs` line ~1685 (`## Current context` assertion) — a good anchor for the new unit test."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1NK4V3YG3AQAMEKDJ6V471F","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-04T07:08:17Z","data":{"painpoints":[],"observations":["First two test reruns after a passing-source edit ran a stale binary and failed with the old assertion message; `touch` on preamble.rs forced a rebuild and the test passed. Anyone seeing a nextest failure whose panic text doesn't match current source should force a rebuild before debugging."]}}
+diff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl
+index 3bb47cd3..67a4820f 100644
+--- a/.mulch/expertise/engine.jsonl
++++ b/.mulch/expertise/engine.jsonl
+@@ -15,3 +15,4 @@
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-01T16:43:10.999Z","evidence":{"seeds":"fabro-e804","commit":"8dce562f89d85c942fcc75dcc2541d4a2d0f71d6"},"name":"engine-registered-stage-tool","description":"fabro-e804 (6890362b3): workflow-registered stage tools follow the fabro_run_tool closure pattern extended with per-node state: a RegisteredTool executor closes over Arc<ContextReadState> (RwLock view + run-scoped run_store/sandbox/run_dir + tokio Mutex locality); services flow per-node through CodergenRunRequest (built in Handler::execute where resolved wf_context, node, graph, and services.run are all in scope); CachedAgentSession AND LiveAgentInvocation carry the state handle so a reused full-fidelity thread refreshes per node and a mid-run failover swaps session+handle together. Registration is default-open in create_session_for for parent profile AND the subagent factory; NamedToolAccessPolicy (tools=) is the exclusion. Values over the shared artifact::resolve_inline_max_bytes threshold demote via the same machinery as preambles; serve() defensively rehydrates surviving blob:// refs via resolve_json_value. Test graphs: build programmatically (Graph::new + Node::new + AttrValue::Integer for int attrs) - DOT strings fail the parser and String('2') is not int_attr.","files":[".agents/skills/iterate/SKILL.md"],"id":"mx-70a200"}
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-01T19:32:16.512Z","evidence":{"seeds":"fabro-ba96","commit":"4cf410323a27fb8a057446dcf8e095a79b5705f7"},"name":"scoped-sandbox-decorator","description":"fabro-ba96 (b312459b4): per-node filesystem scope fs_hide/fs_write enforced by a ScopedSandbox decorator wrapping the stage session's Arc<dyn Sandbox> at workflow session construction (next to node.tools()). Covers every file tool in every vocabulary, read_many_files and apply_patch for free; subagent factory gets the same wrap (inheritance). Nonexistent semantics: hidden = reads fail, file_exists false, grep/glob/list_dir/walk_files filtered, writes denied; a dir/** glob also hides the dir entry (pure-glob semantics would leak the directory through listings). apply_patch pre-checks all target paths via ToolContext.fs_scope (atomic reject, no partial application). delegate_sandbox! cannot skip overridden methods — the impl is hand-written; macro evolution only when a second decorator appears (seed 922f).","id":"mx-0b9787"}
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-01T19:32:16.987Z","evidence":{"seeds":"fabro-ba96","commit":"4cf410323a27fb8a057446dcf8e095a79b5705f7"},"description":"fs_globs_valid test asserted fixed diagnostic indices over graph.nodes.values() — but Graph.nodes is a HashMap with per-process random iteration order, so the test passed by luck and failed after an unrelated rewrite. Any new validate rule test asserting multi-node diagnostic ORDER must sort or use order-independent any()-assertions (established pattern: tools_requires_agent_node sorts node_ids).","resolution":"Made the test order-independent (sort messages, any()-assertions).","id":"mx-ff65fd"}
++{"type":"convention","classification":"tactical","recorded_at":"2026-09-04T07:07:47.749Z","evidence":{"commit":"7f3dde1988d88d5a0bff32801a92ecf74e9b1cc4"},"content":"Markdown table cells in agent preambles must be sanitized single-line: newlines -> ' / ', blank/indent runs collapsed, literal '|' escaped as '\\|' (see sanitize_table_cell in lib/components/fabro-workflow/src/handler/llm/preamble.rs). Bullet-list renderings (append_filtered_context/append_large_value) intentionally keep multi-line output; only the summary:high '## Current context' table path sanitizes. Never change format_value globally.","id":"mx-26cd4f"}
+diff --git a/lib/components/fabro-workflow/src/handler/llm/preamble.rs b/lib/components/fabro-workflow/src/handler/llm/preamble.rs
+index 57c83e44..bdb8a16f 100644
+--- a/lib/components/fabro-workflow/src/handler/llm/preamble.rs
++++ b/lib/components/fabro-workflow/src/handler/llm/preamble.rs
+@@ -340,6 +340,19 @@ fn append_filtered_context(
+     }
+ }
+ 
++/// Render a context value as a single-line Markdown table cell: newlines
++/// become " / ", blank lines and indentation runs collapse away, and literal
++/// pipes are escaped so they cannot split columns.
++fn sanitize_table_cell(value: &str) -> String {
++    value
++        .lines()
++        .map(str::trim)
++        .filter(|line| !line.is_empty())
++        .collect::<Vec<_>>()
++        .join(" / ")
++        .replace('|', "\\|")
++}
++
+ /// Append filtered context as a `## Current context` Markdown table.
+ fn append_filtered_context_table(
+     parts: &mut Vec<String>,
+@@ -362,8 +375,10 @@ fn append_filtered_context_table(
+         parts.push("|-----|-------|".to_string());
+         for key in context_keys {
+             if let Some(val) = snapshot.get(key) {
+-                let rendered = artifact::prompt_large_value(val)
+-                    .map_or_else(|| format_value(val), format_large_value_table_cell);
++                let rendered = artifact::prompt_large_value(val).map_or_else(
++                    || sanitize_table_cell(&format_value(val)),
++                    format_large_value_table_cell,
++                );
+                 parts.push(format!("| {key} | {rendered} |"));
+             }
+         }
+@@ -1695,6 +1710,58 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn summary_high_table_renders_multiline_value_as_single_row() {
++        let graph = Graph::new("test");
++        let context = Context::new();
++        context.set("current_seed_id", serde_json::json!("fabro-f677"));
++        context.set(
++            "current_seed_title",
++            serde_json::json!("engine: preamble context table breaks markdown"),
++        );
++        context.set(
++            "current_seed_brief",
++            serde_json::json!(
++                "Bug: the table breaks.\n\n- bullet one\n  - nested with a | pipe\nDone."
++            ),
++        );
++
++        let preamble = build_preamble(
++            keys::Fidelity::SummaryHigh,
++            &context,
++            &graph,
++            &[],
++            &HashMap::new(),
++        );
++
++        let (_, section) = preamble
++            .split_once("## Current context")
++            .expect("context table heading");
++        let rows: Vec<&str> = section.lines().filter(|l| !l.trim().is_empty()).collect();
++        assert_eq!(
++            rows.len(),
++            5,
++            "header + separator + one row per key (3 keys), got:\n{section}"
++        );
++        for (i, row) in rows.iter().enumerate() {
++            assert!(
++                row.starts_with('|') && row.ends_with('|') && !row[..row.len() - 1].contains('\n'),
++                "row {i} must be a single-line table row, got:\n{row}"
++            );
++        }
++        assert_eq!(rows[0], "| Key | Value |");
++        // Keys sort alphabetically: brief, id, title — all adjacent intact rows.
++        assert!(
++            rows[2].starts_with("| current_seed_brief | Bug: the table breaks. / "),
++            "multiline value must collapse onto one row, got:\n{}",
++            rows[2]
++        );
++        assert!(rows[2].contains("nested with a \\| pipe"));
++        assert!(rows[2].ends_with("Done. |"));
++        assert!(rows[3].starts_with("| current_seed_id | fabro-f677 |"));
++        assert!(rows[4].starts_with("| current_seed_title |"));
++    }
++
+     #[test]
+     fn summary_high_table_compacts_large_value_preview() {
+         let graph = Graph::new("test");
