@@ -18,22 +18,10 @@ on:
       - "openapi/**"
       - ".github/workflows/rust.yml"
   pull_request:
-    # denkhaus: PRs from develop/revisor runs wait for CI before auto-merge
     branches: [main, denkhaus]
-    paths:
-      - "lib/apps/**"
-      - "lib/components/**"
-      - "lib/foundation/**"
-      - "test/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - ".cargo/**"
-      - ".config/**"
-      - "bin/dev/**"
-      - "docs/public/reference/cli.mdx"
-      - "docs/public/reference/user-configuration.mdx"
-      - "openapi/**"
-      - ".github/workflows/rust.yml"
+    # No `paths` filter: branch protection requires both Rust+TypeScript
+    # checks on every PR. A skipped workflow never reports its required
+    # check and stalls auto-merge indefinitely (found on PR #16, 2026-09-04).
   workflow_dispatch:
 
 concurrency:

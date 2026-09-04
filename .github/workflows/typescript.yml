@@ -14,18 +14,10 @@ on:
       - ".github/workflows/typescript.yml"
       - ".github/workflows/nightly.yml"
   pull_request:
-    # denkhaus: PRs from develop/revisor runs wait for CI before auto-merge
     branches: [main, denkhaus]
-    paths:
-      - "apps/**"
-      - "lib/apps/fabro-spa/**"
-      - "lib/packages/**"
-      - "package.json"
-      - "bun.lock"
-      - ".gitattributes"
-      - "scripts/**"
-      - ".github/workflows/typescript.yml"
-      - ".github/workflows/nightly.yml"
+    # No `paths` filter: branch protection requires both Rust+TypeScript
+    # checks on every PR. A skipped workflow never reports its required
+    # check and stalls auto-merge indefinitely (found on PR #16, 2026-09-04).
   workflow_dispatch:
 
 concurrency:
