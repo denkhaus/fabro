@@ -3090,6 +3090,7 @@ pub(crate) async fn reconcile_incomplete_runs_on_startup(
     state: &Arc<AppState>,
 ) -> anyhow::Result<usize> {
     const RECONCILABLE_STATUSES: &[RunStatusKind] = &[
+        RunStatusKind::Runnable,
         RunStatusKind::Starting,
         RunStatusKind::Running,
         RunStatusKind::Blocked,
