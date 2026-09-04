@@ -130,6 +130,13 @@ fn append_large_value(
     ));
 }
 
+/// Render a non-large context value as a single-line Markdown table cell:
+/// newlines collapse to ` / ` and `|` is escaped so the row stays intact.
+fn format_value_table_cell(val: &serde_json::Value) -> String {
+    let single_line = format_value(val).lines().collect::<Vec<_>>().join(" / ");
+    single_line.replace('|', "\\|")
+}
+
 fn format_large_value_table_cell(large: PromptLargeValue<'_>) -> String {
     let summary = large.location_summary().replace('|', "\\|");
     let preview = large
@@ -363,7 +370,7 @@ fn append_filtered_context_table(
         for key in context_keys {
             if let Some(val) = snapshot.get(key) {
                 let rendered = artifact::prompt_large_value(val)
-                    .map_or_else(|| format_value(val), format_large_value_table_cell);
+                    .map_or_else(|| format_value_table_cell(val), format_large_value_table_cell);
                 parts.push(format!("| {key} | {rendered} |"));
             }
         }
@@ -1693,6 +1700,42 @@ mod tests {
             preamble.contains("| user.name | alice |"),
             "should have context row"
         );
+    }
+
+    #[test]
+    fn summary_high_table_single_lines_multi_line_values() {
+        let graph = Graph::new("test");
+        let context = Context::new();
+        context.set(
+            "current_seed_brief",
+            serde_json::json!("Bug: table breaks.\n- bullet one\n- bullet two"),
+        );
+        context.set("current_seed_id", serde_json::json!("fabro-f677"));
+        context.set("current_seed_title", serde_json::json!("a | b"));
+        let preamble = build_preamble(
+            keys::Fidelity::SummaryHigh,
+            &context,
+            &graph,
+            &[],
+            &HashMap::new(),
+        );
+
+        let section = preamble
+            .split("## Current context")
+            .nth(1)
+            .expect("context table section");
+        let rows: Vec<&str> = section.lines().filter(|l| l.starts_with("| ")).collect();
+        assert_eq!(
+            rows,
+            vec![
+                "| Key | Value |",
+                "| current_seed_brief | Bug: table breaks. / - bullet one / - bullet two |",
+                "| current_seed_id | fabro-f677 |",
+                "| current_seed_title | a \\| b |",
+            ],
+            "each key must render as exactly one single-line row, adjacent in sorted order"
+        );
+        assert!(rows.iter().all(|r| !r.contains('\n')));
     }
 
     #[test]
