@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Script failed with exit code: 1\n\n## output\nnu scripts/qualitygate.nu\ntouched crates: fabro-workflow\n== cargo fmt --check --all ==\nformat clean\n== cargo clippy fabro-workflow -D warnings ==\n╭────────────╮\n│ empty list │\n╰────────────╯\nerror: invalid character ` ` in package name: ` fabro-workflow`, the first character must be a Unicode XID start character (most letters or `_`)\nGATE RED\nerror: recipe `qualitygate` failed on line 128 with exit code 1\n",
+  "timestamp": "2026-09-04T06:46:46.538558130Z"
+}
