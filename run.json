@@ -504,8 +504,8 @@
   "status": {
     "kind": "running"
   },
-  "status_updated_at": "2026-09-04T22:12:14.741787544Z",
-  "last_event_at": "2026-09-04T22:18:48.198012051Z",
+  "status_updated_at": "2026-09-04T22:19:04.146167490Z",
+  "last_event_at": "2026-09-04T22:19:04.163737880Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -2136,9 +2136,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 335,
       "checkpoint": {
-        "timestamp": "2026-09-04T22:18:48.414801376Z",
+        "timestamp": "2026-09-04T22:18:55.801948930Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -2149,6 +2149,347 @@
           "select",
           "analyze",
           "file"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_signature": "",
+          "human.gate.approve.answer": "A",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 1002,
+            "preview": "Filed three seeds (`fabro-08dd`, `fabro-cf03`, `fabro-aa3d`) after confirming no duplicates; cross-referenced complementary seeds fabro-c2ca/e4fa/b382 instead of superseding. Marker written to `/works"
+          },
+          "internal.retry_count.approve": 0,
+          "human.gate.selected": "A",
+          "internal.retry_count.start": 0,
+          "thread.file.current_node": "approve",
+          "thread.start.current_node": "select",
+          "graph.max_node_visits": "30",
+          "internal.seed_cycle_anchor": "01M0WWKAQCWZC0Q0JK019H0ZC7",
+          "thread.approve.current_node": "select",
+          "internal.node_visit_count": 2,
+          "last_stage": "file",
+          "current_node": "file",
+          "failure_class": "",
+          "internal.thread_id": "analyze",
+          "revisor_target_title": "Implement product seed fabro-f74b: gofib -sum flag",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 4776,
+            "preview": "Tracker check complete: 5 of 8 recommendations are duplicates of already-filed seeds (notably `fabro-6a5a`, `fabro-8d2c`, `fabro-f8f8` were created 2026-09-02 citing this exact run — a prior pass di"
+          },
+          "revisor_target_wall": "6.0 min",
+          "human.gate.label": "[A] Approved",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "sd search returned empty for 'diff context' and 'sd list planner' but 'checkpoint' surfaced many hits — multi-keyword searches are needed to avoid false no-duplicate conclusions; fix idea: search at least two distinct theme keywords per finding."
+              }
+            ],
+            "observations": [
+              "fabro-c2ca covers non-agent-stage snapshot skipping only; fabro-cf03 complements it rather than superseding — no closure done.",
+              "Next bookkeeper: fabro-b382 conflicts with fabro-aa3d's routing change; whoever implements aa3d should reconcile b382's wording too."
+            ]
+          },
+          "last_response": "Filed three seeds (`fabro-08dd`, `fabro-cf03`, `fabro-aa3d`) after confirming no duplicates; cross-referenced complementary seeds fabro-c2ca/e4fa/b382 instead of superseding. Marker written to `/works",
+          "revision_findings": [
+            {
+              "title": "Bump evidence diff context from -U1 to -U3",
+              "description": "In `.fabro/workflows/develop/scripts/evidence.nu`, change the single `git diff -U1` to `-U3`. In run `01M0WWKAQCWZC0Q0JK019H0ZC7` the reviewer journal admits it \"trusted the green gate plus the pinning tests rather than re-deriving the range math\" because -U1 omitted where start/last are computed in run() — the exact code the seed was about. Not covered by open seeds: fabro-3c9d is sort+budget, fabro-1e9f is diff base, fabro-4b57 is loop-work diff. Expected effect: range/validation logic verifiable in-diff; approvals-by-trust at the core seam eliminated.",
+              "priority": 2
+            },
+            {
+              "title": "Make engine checkpoint metadata snapshots async or branch-point-only",
+              "description": "Engine checkpoint pipeline: make the metadata snapshot fire-and-forget async, or run it only on branch/failure nodes (tester/evidence/reviewer exits), not the happy path. In run `01M0WWKAQCWZC0Q0JK019H0ZC7` every checkpoint paid a synchronous ~2.5s snapshot (2.30s init seq 22, 2.49s after planner seq 80, 2.63s after evidence seq 213; ~17s, 6% of the 293s wall) on a linear zero-retry path nothing ever resumes from. Complements open fabro-c2ca (config-level skip for non-agent stages only — the planner snapshot here is an agent stage and would remain). Expected effect: ~15-17s shaved per seed cycle, compounding on multi-seed runs.",
+              "priority": 2
+            },
+            {
+              "title": "Legalize sd list for goal-condition open-seed verification in planner prompt",
+              "description": "In `.fabro/workflows/develop/prompts/planner.md`, reword the sd table: `sd list` is expected when the goal requires confirming no other open seed remains (blocked-but-open seeds are invisible to `sd ready`, which lists unblocked only). In run `01M0WWKAQCWZC0Q0JK019H0ZC7` the planner correctly ran `sd list --format json` (seq 68) despite the prompt's \"do NOT also run sd list\" rule — the rule must be disobeyed to route closeout correctly. Reconcile with fabro-e4fa/fabro-b382: b382's \"sd ready empty → route Tracker empty, do not run sd list\" would misroute while blocked-but-open seeds remain. Expected effect: no must-be-disobeyed instruction; wrongful \"Tracker empty\" closeout routing guarded.",
+              "priority": 2
+            }
+          ],
+          "revisor_target_status": "succeeded",
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 876,
+            "preview": "All listed develop runs are terminal; no active run. Unrevised + live-sandbox candidates: oldest is `01M0WWKAQCWZC0Q0JK019H0ZC7` (archived but terminal, sandbox live, ~6.0 min wall). Older runs (08-22"
+          },
+          "revisor_target_run_id": "01M0WWKAQCWZC0Q0JK019H0ZC7",
+          "human.gate.approve.question": "Approve filing + merge",
+          "internal.fidelity": "compact",
+          "internal.retry_count.analyze": 0,
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "graph.inspects": "develop",
+          "internal.run_id": "01M1Q7D2XXMS39J1GQTGF22446",
+          "graph.rankdir": "LR",
+          "preferred_label": "Staged",
+          "thread.select.current_node": "analyze",
+          "internal.retry_count.file": 0,
+          "outcome": "succeeded",
+          "human.gate.approve.label": "[A] Approved",
+          "thread.analyze.current_node": "file",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.select": 0,
+          "filed_seed_ids": [
+            "fabro-08dd",
+            "fabro-cf03",
+            "fabro-aa3d"
+          ],
+          "graph.preamble_budget_kb": "24"
+        },
+        "node_outcomes": {
+          "select": {
+            "status": "succeeded",
+            "preferred_label": "Run selected",
+            "context_updates": {
+              "last_stage": "select",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "17 runs listed, all unrevised but blocked, no live sandbox (sandbox removed); they stay unrevised until fresh analyst sandboxes are provisioned",
+                  "no active develop run; oldest selectable unrevised run chosen (archived 2026-08-25, evidence aging)"
+                ]
+              },
+              "revisor_target_title": "Implement product seed fabro-f74b: gofib -sum flag",
+              "response.select": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.select",
+                "chars": 876,
+                "preview": "All listed develop runs are terminal; no active run. Unrevised + live-sandbox candidates: oldest is `01M0WWKAQCWZC0Q0JK019H0ZC7` (archived but terminal, sandbox live, ~6.0 min wall). Older runs (08-22"
+              },
+              "last_response": "All listed develop runs are terminal; no active run. Unrevised + live-sandbox candidates: oldest is `01M0WWKAQCWZC0Q0JK019H0ZC7` (archived but terminal, sandbox live, ~6.0 min wall). Older runs (08-22",
+              "revisor_target_status": "succeeded",
+              "revisor_target_run_id": "01M0WWKAQCWZC0Q0JK019H0ZC7",
+              "revisor_target_wall": "6.0 min"
+            },
+            "notes": "Stage completed: select",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 20459,
+                    "output_tokens": 288,
+                    "reasoning_tokens": 151,
+                    "cache_read_tokens": 10048,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 33184
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 11086,
+              "tool_time_ms": 573,
+              "active_time_ms": 11659
+            }
+          },
+          "approve": {
+            "status": "succeeded",
+            "preferred_label": "[A] Approved",
+            "suggested_next_ids": [
+              "select"
+            ],
+            "context_updates": {
+              "human.gate.approve.question": "Approve filing + merge",
+              "human.gate.label": "[A] Approved",
+              "human.gate.approve.label": "[A] Approved",
+              "human.gate.selected": "A",
+              "human.gate.approve.answer": "A"
+            },
+            "usage": null
+          },
+          "file": {
+            "status": "succeeded",
+            "preferred_label": "Staged",
+            "context_updates": {
+              "filed_seed_ids": [
+                "fabro-08dd",
+                "fabro-cf03",
+                "fabro-aa3d"
+              ],
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 1002,
+                "preview": "Filed three seeds (`fabro-08dd`, `fabro-cf03`, `fabro-aa3d`) after confirming no duplicates; cross-referenced complementary seeds fabro-c2ca/e4fa/b382 instead of superseding. Marker written to `/works"
+              },
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "sd search returned empty for 'diff context' and 'sd list planner' but 'checkpoint' surfaced many hits — multi-keyword searches are needed to avoid false no-duplicate conclusions; fix idea: search at least two distinct theme keywords per finding."
+                  }
+                ],
+                "observations": [
+                  "fabro-c2ca covers non-agent-stage snapshot skipping only; fabro-cf03 complements it rather than superseding — no closure done.",
+                  "Next bookkeeper: fabro-b382 conflicts with fabro-aa3d's routing change; whoever implements aa3d should reconcile b382's wording too."
+                ]
+              },
+              "last_stage": "file",
+              "last_response": "Filed three seeds (`fabro-08dd`, `fabro-cf03`, `fabro-aa3d`) after confirming no duplicates; cross-referenced complementary seeds fabro-c2ca/e4fa/b382 instead of superseding. Marker written to `/works"
+            },
+            "notes": "Stage completed: file",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16430,
+                    "output_tokens": 1789,
+                    "reasoning_tokens": 89,
+                    "cache_read_tokens": 73024,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 50244
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/revisions/01M0WWKAQCWZC0Q0JK019H0ZC7.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 35476,
+              "tool_time_ms": 1504,
+              "active_time_ms": 36980
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "analyze": {
+            "status": "succeeded",
+            "preferred_label": "Findings ready",
+            "context_updates": {
+              "last_response": "Tracker check complete: 5 of 8 recommendations are duplicates of already-filed seeds (notably `fabro-6a5a`, `fabro-8d2c`, `fabro-f8f8` were created 2026-09-02 citing this exact run — a prior pass di",
+              "response.analyze": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.analyze",
+                "chars": 4776,
+                "preview": "Tracker check complete: 5 of 8 recommendations are duplicates of already-filed seeds (notably `fabro-6a5a`, `fabro-8d2c`, `fabro-f8f8` were created 2026-09-02 citing this exact run — a prior pass di"
+              },
+              "revision_findings": [
+                {
+                  "title": "Bump evidence diff context from -U1 to -U3",
+                  "description": "In `.fabro/workflows/develop/scripts/evidence.nu`, change the single `git diff -U1` to `-U3`. In run `01M0WWKAQCWZC0Q0JK019H0ZC7` the reviewer journal admits it \"trusted the green gate plus the pinning tests rather than re-deriving the range math\" because -U1 omitted where start/last are computed in run() — the exact code the seed was about. Not covered by open seeds: fabro-3c9d is sort+budget, fabro-1e9f is diff base, fabro-4b57 is loop-work diff. Expected effect: range/validation logic verifiable in-diff; approvals-by-trust at the core seam eliminated.",
+                  "priority": 2
+                },
+                {
+                  "title": "Make engine checkpoint metadata snapshots async or branch-point-only",
+                  "description": "Engine checkpoint pipeline: make the metadata snapshot fire-and-forget async, or run it only on branch/failure nodes (tester/evidence/reviewer exits), not the happy path. In run `01M0WWKAQCWZC0Q0JK019H0ZC7` every checkpoint paid a synchronous ~2.5s snapshot (2.30s init seq 22, 2.49s after planner seq 80, 2.63s after evidence seq 213; ~17s, 6% of the 293s wall) on a linear zero-retry path nothing ever resumes from. Complements open fabro-c2ca (config-level skip for non-agent stages only — the planner snapshot here is an agent stage and would remain). Expected effect: ~15-17s shaved per seed cycle, compounding on multi-seed runs.",
+                  "priority": 2
+                },
+                {
+                  "title": "Legalize sd list for goal-condition open-seed verification in planner prompt",
+                  "description": "In `.fabro/workflows/develop/prompts/planner.md`, reword the sd table: `sd list` is expected when the goal requires confirming no other open seed remains (blocked-but-open seeds are invisible to `sd ready`, which lists unblocked only). In run `01M0WWKAQCWZC0Q0JK019H0ZC7` the planner correctly ran `sd list --format json` (seq 68) despite the prompt's \"do NOT also run sd list\" rule — the rule must be disobeyed to route closeout correctly. Reconcile with fabro-e4fa/fabro-b382: b382's \"sd ready empty → route Tracker empty, do not run sd list\" would misroute while blocked-but-open seeds remain. Expected effect: no must-be-disobeyed instruction; wrongful \"Tracker empty\" closeout routing guarded.",
+                  "priority": 2
+                }
+              ],
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Selector re-selected run 01M0WWKAQCWZC0Q0JK019H0ZC7 as unrevised even though a 2026-09-02 pass already distilled it — seeds fabro-6a5a, fabro-8d2c, fabro-f8f8 all cite this exact run as evidence, yet no `.fabro/reviews/develop/01M0WWKAQCWZC0Q0JK019H0ZC7.md` existed (prior pass filed seeds without persisting the review), so 5 of 8 Ask-Fabro recommendations were duplicates the tracker check had to drop. Fix idea: selector should treat a run as reviewed when seeds cite it as evidence or when the review file exists, and the ask stage should always persist the review file in the same pass."
+                  }
+                ],
+                "observations": [
+                  "Duplicates withheld: rec 1 (PR postlude) → fabro-6a5a; rec 2 (preamble_budget_kb 32) → fabro-8d2c; rec 4 (implementer gate-rule contradiction) → fabro-a67f (same file/rule/effect: whitelist legalizes the violated checks); rec 6 (same-file batched writes) → fabro-1d94; rec 7 (files_touched from diff) → fabro-f8f8. All five are OPEN, so none are implemented yet.",
+                  "Amendments worth folding into existing seeds, not new seeds: fabro-6a5a should also reconcile the PR-body model mismatch (failure log names glm-5.3 while the spec configures zai:glm-4.7); fabro-a67f should delete the contradictory step-4 'never format/lint/run the full suite' sentence, not just add a whitelist; fabro-1d94 could optionally add the engine-side coalesce/reject guard the analyst suggested.",
+                  "Baseline health: 6/6 stages green, 293s wall, $0.271, zero retries; the two remaining recurring failures are already covered by open seeds (PR postlude, blob detour)."
+                ]
+              },
+              "last_stage": "analyze"
+            },
+            "notes": "Stage completed: analyze",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 27651,
+                    "output_tokens": 4105,
+                    "reasoning_tokens": 7749,
+                    "cache_read_tokens": 149184,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 129645
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reviews/develop/01M0WWKAQCWZC0Q0JK019H0ZC7.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 142511,
+              "tool_time_ms": 151082,
+              "active_time_ms": 293593
+            }
+          }
+        },
+        "next_node_id": "approve",
+        "git_commit_sha": "b38db69bb26536023231f877f357924616c72f33",
+        "node_visits": {
+          "analyze": 2,
+          "start": 1,
+          "file": 2,
+          "approve": 1,
+          "select": 2
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl\nindex fc697ed..66573ee 100644\n--- a/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl\n+++ b/.fabro/journal/01M1Q7D2XXMS39J1GQTGF22446.jsonl\n@@ -3,3 +3,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q7D2XXMS39J1GQTGF22446\",\"node\":\"approve\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T22:12:14Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q7D2XXMS39J1GQTGF22446\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T22:12:31Z\",\"data\":{\"painpoints\":[],\"observations\":[\"17 runs listed, all unrevised but blocked, no live sandbox (sandbox removed); they stay unrevised until fresh analyst sandboxes are provisioned\",\"no active develop run; oldest selectable unrevised run chosen (archived 2026-08-25, evidence aging)\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q7D2XXMS39J1GQTGF22446\",\"node\":\"analyze\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-04T22:18:03Z\",\"data\":{\"painpoints\":[{\"text\":\"Selector re-selected run 01M0WWKAQCWZC0Q0JK019H0ZC7 as unrevised even though a 2026-09-02 pass already distilled it — seeds fabro-6a5a, fabro-8d2c, fabro-f8f8 all cite this exact run as evidence, yet no `.fabro/reviews/develop/01M0WWKAQCWZC0Q0JK019H0ZC7.md` existed (prior pass filed seeds without persisting the review), so 5 of 8 Ask-Fabro recommendations were duplicates the tracker check had to drop. Fix idea: selector should treat a run as reviewed when seeds cite it as evidence or when the review file exists, and the ask stage should always persist the review file in the same pass.\"}],\"observations\":[\"Duplicates withheld: rec 1 (PR postlude) → fabro-6a5a; rec 2 (preamble_budget_kb 32) → fabro-8d2c; rec 4 (implementer gate-rule contradiction) → fabro-a67f (same file/rule/effect: whitelist legalizes the violated checks); rec 6 (same-file batched writes) → fabro-1d94; rec 7 (files_touched from diff) → fabro-f8f8. All five are OPEN, so none are implemented yet.\",\"Amendments worth folding into existing seeds, not new seeds: fabro-6a5a should also reconcile the PR-body model mismatch (failure log names glm-5.3 while the spec configures zai:glm-4.7); fabro-a67f should delete the contradictory step-4 'never format/lint/run the full suite' sentence, not just add a whitelist; fabro-1d94 could optionally add the engine-side coalesce/reject guard the analyst suggested.\",\"Baseline health: 6/6 stages green, 293s wall, $0.271, zero retries; the two remaining recurring failures are already covered by open seeds (PR postlude, blob detour).\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Q7D2XXMS39J1GQTGF22446\",\"node\":\"file\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-04T22:18:48Z\",\"data\":{\"painpoints\":[{\"text\":\"sd search returned empty for 'diff context' and 'sd list planner' but 'checkpoint' surfaced many hits — multi-keyword searches are needed to avoid false no-duplicate conclusions; fix idea: search at least two distinct theme keywords per finding.\"}],\"observations\":[\"fabro-c2ca covers non-agent-stage snapshot skipping only; fabro-cf03 complements it rather than superseding — no closure done.\",\"Next bookkeeper: fabro-b382 conflicts with fabro-aa3d's routing change; whoever implements aa3d should reconcile b382's wording too.\"]}}\ndiff --git a/.fabro/revisions/01M0WWKAQCWZC0Q0JK019H0ZC7.md b/.fabro/revisions/01M0WWKAQCWZC0Q0JK019H0ZC7.md\nnew file mode 100644\nindex 0000000..f47bc15\n--- /dev/null\n+++ b/.fabro/revisions/01M0WWKAQCWZC0Q0JK019H0ZC7.md\n@@ -0,0 +1,19 @@\n+# Revision — run 01M0WWKAQCWZC0Q0JK019H0ZC7\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M0WWKAQCWZC0Q0JK019H0ZC7.md\n+- seeds filed: fabro-08dd (Bump evidence diff context from -U1 to -U3), fabro-cf03 (Make engine checkpoint metadata snapshots async or branch-point-only), fabro-aa3d (Legalize sd list for goal-condition open-seed verification in planner prompt)\n+\n+## Findings\n+\n+### Bump evidence diff context from -U1 to -U3\n+- filed: fabro-08dd\n+- Change `git diff -U1` to `-U3` in `.fabro/workflows/develop/scripts/evidence.nu`. The reviewer journal in this run admits trusting the green gate and pinning tests rather than re-deriving range math, because -U1 omitted where start/last are computed in `run()` — the exact code under review. Distinct from fabro-3c9d (sort+budget), fabro-1e9f (diff base), fabro-4b57 (loop-work diff). Expected effect: range/validation logic verifiable in-diff; approvals-by-trust eliminated.\n+\n+### Make engine checkpoint metadata snapshots async or branch-point-only\n+- filed: fabro-cf03\n+- Make the metadata snapshot fire-and-forget async, or run only on branch/failure nodes (tester/evidence/reviewer exits). Every checkpoint in this run paid a synchronous ~2.5s snapshot (~17s total, 6% of 293s wall) on a linear zero-retry path nothing resumes from. Complements (does not supersede) open fabro-c2ca, which is a config-level skip for non-agent stages only — the planner snapshot here is an agent stage and would remain. Expected effect: ~15-17s shaved per seed cycle.\n+\n+### Legalize sd list for goal-condition open-seed verification in planner prompt\n+- filed: fabro-aa3d\n+- Reword the sd table in `.fabro/workflows/develop/prompts/planner.md`: `sd list` is expected when the goal requires confirming no other open seed remains (blocked-but-open seeds are invisible to `sd ready`). The planner here correctly ran `sd list --format json` (seq 68) despite the prompt's prohibition — a must-be-disobeyed instruction. Reconcile with fabro-e4fa/fabro-b382 (thematic overlap, not supersession): b382's \"sd ready empty → Tracker empty, do not run sd list\" would misroute while blocked-but-open seeds remain. Expected effect: no must-be-disobeyed instruction; wrongful closeout routing guarded.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 967ab41..a547d6c 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -167,3 +167,6 @@\n {\"id\":\"fabro-c16d\",\"title\":\"sd CLI default --limit 50 silently hides goal-mandated seeds from the planner\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-04T21:19:45.207Z\",\"updatedAt\":\"2026-09-04T21:19:45.207Z\",\"description\":\"Adopted from run 01M1PVMS7B6N39MG0041C5F7P6 planner painpoint.\\n\\n## Failure\\n\\n`sd ready` and `sd list` both default to `--limit 50`. After the tracker consolidation (109 open seeds, ~50 High), the goal-mandated seed fabro-8822 (priority 2) was truncated out of BOTH listings — the seed looked absent until the planner retried with `--limit 200`.\\n\\n## Fix directions\\n\\n- develop planner prompt (this repo, .fabro/workflows/develop/prompts/planner.md sd reference): pin `--limit 200` on tracker listings — partially adopted 2026-09-04.\\n- upstream seeds CLI: warn when output is truncated by the limit (external repo, @os-eco/seeds-cli).\\n- tracker hygiene: keep open-seed count under the limit (priority discipline).\\n\\n## Acceptance\\n\\nA goal naming a priority-2 seed resolves via `sd` listings without manual limit guessing.\",\"labels\":[\"workflows\",\"painpoint-adopted\"]}\n {\"id\":\"fabro-27f9\",\"title\":\"unexplained: .fabro/project.toml truncated to 0 bytes at 2026-09-04 23:08 (no identified writer)\",\"status\":\"open\",\"type\":\"bug\",\"priority\":3,\"createdAt\":\"2026-09-04T21:38:06.823Z\",\"updatedAt\":\"2026-09-04T21:38:06.823Z\",\"description\":\"## Failure (observed 2026-09-04)\\n\\nDuring the closeout-stdin diagnosis window, .fabro/project.toml was truncated to 0 bytes on the denkhaus working tree (mtime 2026-09-04 23:08:02 +0200, between commits cef7c2497 20:19 and f7db7d05a 23:10 — the slimmed 505-byte content was committed and intact before, gone after). No recurrence after restore (checked again ~23:37 and later); the file holds the slim project-root content.\\n\\nRuled out by reproduction (file stayed 505 bytes): `nu closeout.nu` (with sd shim), `fabro ps`, `fabro validate develop`, `fabro preflight develop`. Ruled out by timing: `fabro run` create (23:20) and `just up` rebuild window. Candidates not yet excluded: an interrupted IPython cell in that window, the edit skill, mise activation side effects.\\n\\n## Impact if it recurs\\n\\nA zero-byte project.toml still parses (empty layer) but silently breaks project discovery semantics; a run create from such a tree warns about the dirty worktree.\\n\\n## Fix\\n\\nIf it recurs: run the watcher (`stat` poll loop) or inotify on the file, capture the writing PID (fanotify/auditd), and check whether any fabro-config write path can open project.toml O_TRUNC (grep for `File::create` near project config). Watcher was prepared but not running when last checked.\",\"labels\":[\"platform\",\"painpoint-adopted\"]}\n {\"id\":\"fabro-7bea\",\"title\":\"Add repair-and-resume from checkpoint for deterministic config failures\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-04T22:11:45.538Z\",\"updatedAt\":\"2026-09-04T22:11:45.538Z\",\"description\":\"Run 01M0QJ01P9E6EKX8S6TQN91G8E: planner died on its first LLM call (invalid reasoning_effort pin — root cause tracked as fabro-b158) and the run went terminal with 'goal gate unsatisfied for node planner and no retry target', even though event seq 43 checkpointed the failed-planner state. Engine/graph change: allow a terminally failed run to resume from its checkpoint after the underlying config is fixed (or add a hold node before terminal exit). Expected effect: a 10-second human fix continues the run at node cost instead of forcing a fresh run with another ~33s sandbox/clone/mise/bootstrap setup. Distinct from closed fabro-18a5 (terminal classification) and open fabro-53d3 (Blocked edge): different mechanism — checkpoint-based repair. Cross-reference fabro-b440 (fork-from-checkpoint ends terminal failed) — complementary cases, same checkpoint machinery.\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-cf03\",\"title\":\"Make engine checkpoint metadata snapshots async or branch-point-only\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-04T22:18:30.091Z\",\"updatedAt\":\"2026-09-04T22:18:30.091Z\",\"description\":\"Engine checkpoint pipeline: make the metadata snapshot fire-and-forget async, or run it only on branch/failure nodes (tester/evidence/reviewer exits), not the happy path. In run 01M0WWKAQCWZC0Q0JK019H0ZC7 every checkpoint paid a synchronous ~2.5s snapshot (2.30s init seq 22, 2.49s after planner seq 80, 2.63s after evidence seq 213; ~17s, 6% of the 293s wall) on a linear zero-retry path nothing ever resumes from. Complements open fabro-c2ca (config-level skip for non-agent stages only — the planner snapshot here is an agent stage and would remain). Expected effect: ~15-17s shaved per seed cycle, compounding on multi-seed runs.\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-aa3d\",\"title\":\"Legalize sd list for goal-condition open-seed verification in planner prompt\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-04T22:18:30.208Z\",\"updatedAt\":\"2026-09-04T22:18:30.208Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md, reword the sd table: sd list is expected when the goal requires confirming no other open seed remains (blocked-but-open seeds are invisible to sd ready, which lists unblocked only). In run 01M0WWKAQCWZC0Q0JK019H0ZC7 the planner correctly ran sd list --format json (seq 68) despite the prompt's do NOT also run sd list rule — the rule must be disobeyed to route closeout correctly. Reconcile with fabro-e4fa/fabro-b382: b382's sd ready empty → route Tracker empty, do not run sd list would misroute while blocked-but-open seeds remain. Expected effect: no must-be-disobeyed instruction; wrongful Tracker empty closeout routing guarded.\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-08dd\",\"title\":\"Bump evidence diff context from -U1 to -U3\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-04T22:18:30.266Z\",\"updatedAt\":\"2026-09-04T22:18:30.266Z\",\"description\":\"In .fabro/workflows/develop/scripts/evidence.nu, change the single git diff -U1 to -U3. In run 01M0WWKAQCWZC0Q0JK019H0ZC7 the reviewer journal admits it trusted the green gate plus pinning tests rather than re-deriving the range math because -U1 omitted where start/last are computed in run() — the exact code the seed was about. Not covered by open seeds: fabro-3c9d is sort+budget, fabro-1e9f is diff base, fabro-4b57 is loop-work diff. Expected effect: range/validation logic verifiable in-diff; approvals-by-trust at the core seam eliminated.\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 6,
+          "additions": 144,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-04T22:19:04.404013333Z",
+        "current_node": "approve",
+        "completed_nodes": [
+          "start",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve"
         ],
         "node_retries": {},
         "context_values": {
@@ -2172,7 +2513,8 @@
           "seed_cycles": {
             "select": 1,
             "analyze": 1,
-            "file": 1
+            "file": 1,
+            "approve": 1
           },
           "response.analyze": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -2206,11 +2548,11 @@
           "revisor_target_status": "succeeded",
           "revisor_target_run_id": "01M0WWKAQCWZC0Q0JK019H0ZC7",
           "failure_signature": "",
-          "preferred_label": "Staged",
+          "preferred_label": "[A] Approved",
           "last_stage": "file",
-          "internal.thread_id": "analyze",
+          "internal.thread_id": "file",
           "human.gate.label": "[A] Approved",
-          "current_node": "file",
+          "current_node": "approve",
           "internal.fidelity": "compact",
           "graph.max_node_visits": "30",
           "human.gate.approve.answer": "A",
@@ -2394,11 +2736,11 @@
               "select"
             ],
             "context_updates": {
-              "human.gate.approve.question": "Approve filing + merge",
               "human.gate.label": "[A] Approved",
+              "human.gate.approve.answer": "A",
               "human.gate.approve.label": "[A] Approved",
               "human.gate.selected": "A",
-              "human.gate.approve.answer": "A"
+              "human.gate.approve.question": "Approve filing + merge"
             },
             "usage": null
           },
@@ -2456,13 +2798,13 @@
             }
           }
         },
-        "next_node_id": "approve",
+        "next_node_id": "select",
         "node_visits": {
           "analyze": 2,
           "start": 1,
           "file": 2,
           "select": 2,
-          "approve": 1
+          "approve": 2
         }
       },
       "diff": {}
@@ -3382,6 +3724,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "approve@2": {
+      "first_event_seq": 338,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-04T22:19:04.163737880Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-04T22:18:55.819450638Z",
+      "handler": "human",
+      "graph_visit": 2,
+      "timing": {
+        "wall_time_ms": 8327,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
