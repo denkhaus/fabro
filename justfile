@@ -28,9 +28,9 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 
 arch := if arch() == "x86_64" { "amd64" } else if arch() == "aarch64" { "arm64" } else { error("unsupported host arch: " + arch()) }
 image := "ghcr.io/fabro-sh/fabro:local"
-port := env_var_or_default("FABRO_PORT", "32276")
+port := env("FABRO_PORT", "32276")
 staged := "tmp/docker-context/" + arch + "/fabro"
-cli_bin := env_var("HOME") + "/.fabro/bin/fabro"
+cli_bin := env("HOME") + "/.fabro/bin/fabro"
 
 # List available recipes
 default:
@@ -120,3 +120,9 @@ smoke: wait-healthy
 # Script flags: `nu scripts/clean-target.nu <mode> --dry-run` to preview.
 clean mode="stale":
     nu scripts/clean-target.nu "{{ mode }}"
+
+# Touched-crates quality gate (fabro-5453): derives changed crates from the
+# run diff and gates exactly those (fmt full, clippy+nextest per touched
+# crate). Runs inside the run sandbox; logic lives in scripts/qualitygate.nu.
+qualitygate:
+    nu scripts/qualitygate.nu
