@@ -668,7 +668,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-04T06:08:51.709941766Z",
-  "last_event_at": "2026-09-04T06:11:14.042138638Z",
+  "last_event_at": "2026-09-04T06:24:53.754071554Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -715,9 +715,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 86,
       "checkpoint": {
-        "timestamp": "2026-09-04T06:11:14.242442372Z",
+        "timestamp": "2026-09-04T06:11:18.463860671Z",
         "current_node": "planner",
         "completed_nodes": [
           "start",
@@ -725,29 +725,14 @@
         ],
         "node_retries": {},
         "context_values": {
-          "thread.start.current_node": "planner",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.fidelity": "compact",
-          "graph.goal": "Implement product seed fabro-f677: engine preamble context table breaks markdown with multi-line values",
           "graph.preamble_budget_kb": "24",
-          "graph.max_node_visits": "40",
-          "graph.rankdir": "LR",
           "internal.node_visit_count": 1,
-          "internal.retry_count.start": 0,
-          "current_node": "planner",
-          "last_response": "Seed `fabro-f677` claimed. I inspected the bug site: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` (~line 344) sends plain values through `format_value",
+          "graph.rankdir": "LR",
+          "thread.start.current_node": "planner",
           "outcome": "succeeded",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 3833,
-            "preview": "Seed `fabro-f677` claimed. I inspected the bug site: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` (~line 344) sends plain values through `format_value"
-          },
-          "internal.retry_count.planner": 0,
-          "internal.run_id": "01M1NGGDVKNJHWP2W0HPJJ84CZ",
-          "failure_signature": "",
+          "graph.cycle_counter_reset_key": "current_seed_id",
           "current_seed_id": "fabro-f677",
-          "current_seed_title": "engine: preamble context table breaks markdown with multi-line values",
+          "internal.run_id": "01M1NGGDVKNJHWP2W0HPJJ84CZ",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -755,16 +740,31 @@
               "Existing `format_large_value_table_cell` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` already collapses whitespace and escapes pipes for blob-demoted values; the plain-value table path lacks both, so the fix is sharing that behavior, not inventing a new rendering scheme."
             ]
           },
-          "failure_class": "",
-          "internal.seed_cycle_anchor": "fabro-f677",
-          "preferred_label": "Seed claimed",
-          "internal.work_dir": "/workspace/fabro",
+          "failure_signature": "",
+          "last_response": "Seed `fabro-f677` claimed. I inspected the bug site: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` (~line 344) sends plain values through `format_value",
           "last_stage": "planner",
-          "internal.thread_id": "start",
+          "internal.seed_cycle_anchor": "fabro-f677",
           "current_seed_brief": "Bug: summary-high preamble's `## Current context` table inlines multi-line values raw into markdown table cells, so every renderer breaks and keys after a multi-line value (e.g. `current_seed_brief` bullet list hiding `current_seed_id`/`current_seed_title`) visually detach (user report 2026-09-03, run 01M1MMK5C6B313SY70Y2EPKE82). Fix site: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` (~line 344); plain values go through `format_value` which returns raw strings. Spec offers three fix directions; CHOSEN: direction 1 (render multi-line values single-line in table cells) — renderer-only, keeps exactly one row per key so id/title stay adjacent; directions 2 (bullet list below table) and 3 (newline-count blob demote) rejected as more invasive and direction 3 hides the brief behind a blob-ref. Acceptance criteria:\n- cell formatter: add a table-cell-only formatter (do NOT change `format_value` globally — bullet-list paths may keep multi-line) that collapses newlines in plain values to a quoted `\" / \"` separator so each value renders on one line\n- pipe escaping: escape `|` as `\\|` in plain-value cells (raw pipes break rows the same way as newlines; existing `format_large_value_table_cell` at ~line 133 already escapes — share/reuse that behavior)\n- one row per key: with a multi-line context value, every emitted line of the `## Current context` section is a single table row starting with `|`; no raw newline inside any row\n- adjacency: `current_seed_id` and `current_seed_title` render as rows immediately adjacent to a multi-line `current_seed_brief` row\n- no information loss: only the prompt rendering changes; stored Context values stay untouched and `context_read` continues to serve the full raw value\n- web UI: no `apps/fabro-web` change expected — the prompt view renders this same preamble string, fixing the engine text fixes every markdown viewer\n- tests: unit test beside `summary_high_context_table` (preamble.rs tests ~line 1668): set multi-line `current_seed_brief` plus `current_seed_id`/`current_seed_title`; build summary-high preamble; assert exactly one row per key, no raw newline inside any table row, and a value containing `|` is escaped; verify with `cargo nextest run -p fabro-workflow`, then `cargo +nightly-2026-04-14 fmt --all` and `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`",
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/workspace/fabro",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3833,
+            "preview": "Seed `fabro-f677` claimed. I inspected the bug site: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` (~line 344) sends plain values through `format_value"
+          },
           "seed_cycles": {
             "planner": 1
-          }
+          },
+          "internal.thread_id": "start",
+          "current_node": "planner",
+          "current_seed_title": "engine: preamble context table breaks markdown with multi-line values",
+          "graph.goal": "Implement product seed fabro-f677: engine preamble context table breaks markdown with multi-line values",
+          "preferred_label": "Seed claimed",
+          "internal.retry_count.planner": 0,
+          "graph.max_node_visits": "40",
+          "internal.retry_count.start": 0,
+          "failure_class": ""
         },
         "node_outcomes": {
           "planner": {
@@ -825,9 +825,200 @@
           }
         },
         "next_node_id": "implementer",
+        "git_commit_sha": "29fb0a1ae23df8f965bb4fd675f93a56afc14ba6",
+        "node_visits": {
+          "planner": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1NGGDVKNJHWP2W0HPJJ84CZ.jsonl b/.fabro/journal/01M1NGGDVKNJHWP2W0HPJJ84CZ.jsonl\nnew file mode 100644\nindex 00000000..d7d5306a\n--- /dev/null\n+++ b/.fabro/journal/01M1NGGDVKNJHWP2W0HPJJ84CZ.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NGGDVKNJHWP2W0HPJJ84CZ\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T06:08:54Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1NGGDVKNJHWP2W0HPJJ84CZ\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-04T06:11:14Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-f677 claimed fresh at cycle start; spec listed three compatible fix directions — brief pins direction 1 (single-line cells) with rationale so the implementer does not re-litigate.\",\"Existing `format_large_value_table_cell` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` already collapses whitespace and escapes pipes for blob-demoted values; the plain-value table path lacks both, so the fix is sharing that behavior, not inventing a new rendering scheme.\"]}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 26cbdf5d..6f39e0eb 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -96,5 +96,5 @@\n {\"id\":\"fabro-03ef\",\"title\":\"lab: migrate develop+revisor run behavior from project.toml to workflow.toml (v0.345 intent runs stop transmitting project settings)\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-03T20:31:01.034Z\",\"updatedAt\":\"2026-09-03T21:31:27.428Z\",\"description\":\"Migrate develop + revisor run behavior from denkhaus-lab project.toml into each workflow's own workflow.toml, required by upstream v0.345.0-nightly.0 (merge 6530c724f): `fabro run`/`fabro create` create runs from immutable workflow intents and no longer transmit project-level `[run]`+`[environments]` settings (warning only). Until this lands, every manual develop/revisor start silently runs on the server `default` environment (buildpack-deps:noble, 2 CPU/4 GB, no toolchain), skips mise/bootstrap prepare, falls back to a non-glm-5.3 default model, skips branch pushes, opens NO pull request (breaks the autonomous merge-back dev cycle), and posts no Slack terminal notifications.\\n\\nChange set (on branch denkhaus-lab):\\n1. develop + revisor workflow.toml: add `[run.environment] id=\\\"mise\\\"`, `[run.prepare]` (mise install, just bootstrap), `[run.model]` (zai glm-5.3), `[run.run_branch]`/`[run.meta_branch]` push=true, `[run.pull_request]` (enabled, auto_merge, squash, titler zai:glm-4.7), `[run.integrations.github.permissions]` (contents/pull_requests write), `[run.notifications.terminal]` (slack #dev-fabro). All keys verified workflow-transmissible in RunLayer (lib/foundation/fabro-config/src/layers/run.rs); admission applies the workflow layer at intent compilation.\\n2. Start wrapper: manual starts MUST pass `--environment mise` — the intent's environment override sits above the workflow layer, so a workflow-level pin alone does not select it (run_intent.rs admission + create.rs default to DEFAULT_ENVIRONMENT_ID). Pin it in the lab start script/just recipe so it cannot be forgotten.\\n3. Slim project.toml run keys on denkhaus-lab afterwards (they are inert for CLI runs now; only produce the warning).\\n4. Placement stays server-managed: the deployed server already carries the `mise` environment (fabro-runner:mise, 8 CPU/16 GB) — no environment creation needed.\\n\\nOrdering: do this BEFORE the two revisor qualification cycles of ADR-0013/fabro-5453 — broken merge-back would pollute the loop measurement.\\n\\nVerification: one manual `fabro run develop --environment mise` from a lab checkout that (a) shows the untransmitted-settings warning ONLY for remaining project keys (ideally none), (b) runs with the mise image and glm-5.3, (c) executes prepare steps, (d) opens and auto-merges its PR, (e) posts the terminal Slack notification.\",\"blocks\":[\"fabro-5453\"],\"closedAt\":\"2026-09-03T21:31:27.428Z\",\"closeReason\":\"Qualified green on run 01M1MHGS7PH26EP20B2RTAPN4G (2026-09-03): mise environment (sandbox 1s, prepare 2 cmds/16s), glm-5.3 from workflow.toml, no untransmitted-settings warning, PR #12 created and auto-merged (squash, wrapper ff-pull), notifications settings proven in spec with zero failure/skip logs. Two full cycles, BOTH fib seeds (fabro-93f2 -step, fabro-87cf -last) implemented, gated, approved first-pass, closed; lab tracker 0 open. 10.3 min, $0.68. Non-blocker: PR content fell back deterministically (fabro-cd27).\"}\n {\"id\":\"fabro-2e73\",\"title\":\"fabro checkout: manual `fabro run implement-issue` needs --environment toolchain since v0.345 intent runs\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-03T20:31:07.317Z\",\"updatedAt\":\"2026-09-03T20:31:23.727Z\",\"description\":\"Since upstream v0.345.0-nightly.0 (merge 6530c724f), manual `fabro run`/`fabro create` no longer transmit project-level [run]/[environments] settings. In the fabro checkout, .fabro/project.toml pins [run.environment] id=\\\"toolchain\\\" (rust/bun/sd/ml toolchain image fabro-toolchain:noble) — a manual `fabro run implement-issue` (whose workflow.toml carries no environment) now silently falls back to the server `default` environment (buildpack-deps:noble, no toolchain) with only a warning. Fix: either add [run.environment] id=\\\"toolchain\\\" to implement-issue/workflow.toml for documentation + workflow-owned fields AND pass --environment toolchain at start (intent override outranks the workflow pin), or wrap the manual start in a just recipe that passes the flag. Server already exposes the toolchain environment (8 CPU/16 GB). Low priority: implement-issue is currently triggered manually only.\"}\n {\"id\":\"fabro-4398\",\"title\":\"gofib tests: replace per-flag opts() wrappers with one options-literal builder\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-03T21:49:30.902Z\",\"updatedAt\":\"2026-09-03T21:49:36.429Z\",\"description\":\"From run 01M1MHGS7PH26EP20B2RTAPN4G (implementer@3 observation): fib_test.go predates the newer flags (-step, -last); every flag combination needed its own opts wrapper (stepOpts, lastOpts, ...), and each future flag would add another. Composing flags in tests drifts toward wrapper soup.\\n\\nRefactor: ONE test helper that takes an options literal (or builder) defaulting to the current defaults (n=100, start=0, limit=0, seed=0, step=1, last=0, format unset, json/pretty/sum/version false, output empty) and overrides only what a test exercises. All existing tests migrate to it; the per-flag wrappers are deleted.\\n\\nAcceptance: (1) exactly ONE options-construction helper remains in fib_test.go; (2) no test constructs options{} literals inline except through the helper; (3) behavior-neutral — the full test suite passes unchanged assertions; (4) just qualitygate stays green.\",\"closedAt\":\"2026-09-03T21:49:36.429Z\",\"closeReason\":\"Filed on the wrong tracker (platform); fib product seeds live on the lab branch — recreated there.\"}\n-{\"id\":\"fabro-f677\",\"title\":\"engine: preamble context table breaks markdown with multi-line values\",\"status\":\"open\",\"type\":\"bug\",\"priority\":3,\"createdAt\":\"2026-09-03T22:16:01.052Z\",\"updatedAt\":\"2026-09-03T22:16:01.052Z\",\"description\":\"The `## Current context` table (append_filtered_context_table, summary:high fidelity) inlines multi-line values raw into markdown table cells. Markdown tables cannot contain newlines, so every renderer breaks: rows after a multi-line value visually detach from the table. User report 2026-09-03, run 01M1MMK5C6B313SY70Y2EPKE82 implementer@1: current_seed_id and current_seed_title appeared \\\"missing\\\" because the multi-line current_seed_brief (acceptance bullet list) shattered the table around them.\\n\\nFix directions (pick one or combine):\\n1. Render multi-line values single-line (newlines -> \\\" / \\\") in table cells; full value stays available via the context_read tool.\\n2. Emit long/multi-line values as a bullet list BELOW the table (compact-fidelity style) with a short first-line cell + pointer.\\n3. Extend the existing large-value demote path to also trigger on newline count, not just byte size, so blob-ref handling applies.\\n\\nAcceptance: (1) a context value containing newlines renders as a valid single table row per key in every markdown viewer (web UI prompt view included); (2) current_seed_id/title stay visually adjacent to a multi-line brief; (3) no information loss for agents (full value still served by context_read); (4) unit test with a multi-line context value asserting one rendered row per key.\"}\n+{\"id\":\"fabro-f677\",\"title\":\"engine: preamble context table breaks markdown with multi-line values\",\"status\":\"in_progress\",\"type\":\"bug\",\"priority\":3,\"createdAt\":\"2026-09-03T22:16:01.052Z\",\"updatedAt\":\"2026-09-04T06:09:15.740Z\",\"description\":\"The `## Current context` table (append_filtered_context_table, summary:high fidelity) inlines multi-line values raw into markdown table cells. Markdown tables cannot contain newlines, so every renderer breaks: rows after a multi-line value visually detach from the table. User report 2026-09-03, run 01M1MMK5C6B313SY70Y2EPKE82 implementer@1: current_seed_id and current_seed_title appeared \\\"missing\\\" because the multi-line current_seed_brief (acceptance bullet list) shattered the table around them.\\n\\nFix directions (pick one or combine):\\n1. Render multi-line values single-line (newlines -> \\\" / \\\") in table cells; full value stays available via the context_read tool.\\n2. Emit long/multi-line values as a bullet list BELOW the table (compact-fidelity style) with a short first-line cell + pointer.\\n3. Extend the existing large-value demote path to also trigger on newline count, not just byte size, so blob-ref handling applies.\\n\\nAcceptance: (1) a context value containing newlines renders as a valid single table row per key in every markdown viewer (web UI prompt view included); (2) current_seed_id/title stay visually adjacent to a multi-line brief; (3) no information loss for agents (full value still served by context_read); (4) unit test with a multi-line context value asserting one rendered row per key.\"}\n {\"id\":\"fabro-3224\",\"title\":\"HANDOFF: resume world-merger phase 1 — toolchain image bun fix, gate numbers, qualitygate recipe, migration commit\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-03T22:47:08.989Z\",\"updatedAt\":\"2026-09-03T22:49:37.988Z\",\"description\":\"HANDOFF SEED (session end 2026-09-03 ~23:00). Resume the fabro world-merger work here. Context: upstream merge v0.345 (deployed, smoke 7/7), fabro-03ef config migration CLOSED (qualified green, run 01M1MHGS7P), fabro-cd27 PR-content fix CLOSED (live proof: PR #13 LLM body via glm-4.7, commit 989038c48), 59 workflow seeds relocated lab->meta (meta/denkhaus-lab @ 137278ac8), workflows synced to meta (1c231a039), fib loop proven 3x with auto-merge (PRs #12, #13). Lab tracker: 0 open. Platform tracker: 2e66/e7e5/f677/b440-rest open.\\n\\nCURRENT WORK — world merger phase 1 (fabro-5453), interrupted mid-flight:\\n\\n1. TOOLCHAIN IMAGE (commit 8b8bdeba5, WIP): .fabro/Dockerfile.toolchain rebased buildpack-deps:noble -> ubuntu:24.04 (user directive: buildpack carries 5 critical/112 high CVEs; lab mise image already made this switch) + mise toolset (nushell 0.115.0, just 1.58.0, ripgrep 15.2.0; sd/ml/pytest kept). KNOWN BROKEN: bun.sh/install fails on ubuntu base (\\\"unzip is required\\\"). FIX: move bun into the mise toolset (mise use -g bun@1.4.0) exactly like the lab image (.fabro/Dockerfile.mise on denkhaus-lab), delete the script-install step. Then: docker build -t fabro-toolchain:noble -f .fabro/Dockerfile.toolchain . and verify just/nu/rg/cargo-nextest/bun/sd/ml/pytest all resolve. Local tag currently still points at the last buildpack-based build (which WORKS and has the mise toolset).\\n\\n2. GATE MEASUREMENT: /tmp/gate-measure.nu (nu script, lab-exemplar style) runs cold+incremental timings inside the toolchain image constrained --cpus 8 --memory 16g (CFS quota; nproc MISREPORTS host CPUs, 24 — timings still representative). Run was in flight at session end; results land in /tmp/gate-measure-nu.log (survives until reboot; rerun command: docker run --rm --name gate-measure-nu --cpus 8 --memory 16g -v ~/dev/fabro:/src-ro:ro -v /tmp/gate-measure.nu:/measure.nu:ro -e CARGO_TARGET_DIR=/tmp/target-fresh --entrypoint nu fabro-toolchain:noble /measure.nu). Reference numbers at 24 CPUs: cold build --workspace 394s; clippy -p fabro-workflow incremental 152s; nextest -p fabro-workflow hit the KNOWN FLAKE fabro-80b3 (for_each_accepts_an_array_at_the_item_limit timeout) and aborted — gate design must tolerate that flake.\\n\\n3. GATE DESIGN DECISION (pending numbers): 10-min tester timeout is dead for cold builds (394s at 24 CPUs; expect 15-25min at 8). Recommended: touched-crates gate = fmt --check --all + clippy -p <touched> -D warnings + nextest -p <touched>; needs a just qualitygate recipe on the fabro repo (does not exist yet) + flake strategy for fabro-80b3.\\n\\n4. NEXT ACTIONS IN ORDER: (a) fix bun in Dockerfile.toolchain, rebuild, verify; (b) collect 8-CPU numbers; (c) draft just qualitygate recipe (touched-crates) + present to user for approval; (d) migration commit: develop+revisor workflows onto denkhaus (runtime blocks migrate as-is — workflow-owned since 03ef; prompts tuned for Rust diffs, lib/ module paths; runs target denkhaus with --environment toolchain, PRs against denkhaus); (e) tracker consolidation: platform tracker becomes THE product tracker, meta workflow seeds move in; (f) Phase 2: revisor qualification cycles on merged world (first engine seed candidate: fabro-f677 table rendering); (g) Phase 3: revisor cron (on_overlap feature fabro-09ea pays off), freeze denkhaus-lab + meta/denkhaus-lab.\\n\\nGOTCHAS FROM THIS SESSION: (1) NEVER switch branches in the shared checkout while a just-run wrapper is in flight — run_workflow integrate then mutates the wrong branch and escalated into a 4742-commit rebase (repaired same day; review file moved to denkhaus-lab b2e570a4b). (2) sd create/update with backticked text ALWAYS via Python subprocess list form, never bash double quotes (global memory exists). (3) just run --goal needs double quoting: just run develop --goal \\\"'...'\\\" (args interpolate unquoted; no angle brackets). (4) Slack terminal notifications post SILENTLY on success (only failures log) — presence proven via spec + absence of failure logs. (5) fabro run/create stop transmitting project [run] settings (v0.345): everything workflow-owned or server-env; manual starts MUST pass --environment (wrapper run_workflow.nu does, default mise). (6) Auth token for API probing: ~/.fabro/auth.json servers[...].token; vault secrets read-only via docker cp + sqlite (mx-d43be5 flow).\\n\\nSHUTDOWN NOTE 2026-09-03 ~00:55: machine powered down before session end. The 8-CPU measurement was interrupted mid cold-build (only the clone elapsed) — results NOT captured; rerun after reboot. The measurement script and the 24-CPU reference log are now COMMITTED at scripts/gate-measure.nu and scripts/gate-measure-24cpu-reference.log (commit d4d805f76) — /tmp is wiped by reboot, so ignore the old /tmp paths above and use the repo paths. Rerun: docker run --rm --name gate-measure-nu --cpus 8 --memory 16g -v ~/dev/fabro:/src-ro:ro -v ~/dev/fabro/scripts/gate-measure.nu:/measure.nu:ro -e CARGO_TARGET_DIR=/tmp/target-fresh --entrypoint nu fabro-toolchain:noble /measure.nu (needs the toolchain image bun fix FIRST, or use the currently-tagged buildpack-based local image which has the mise toolset). AFTER REBOOT the fabro server (localhost:32276) is down — restart with just up (from the denkhaus branch checkout) before any run/API work.\"}\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 3,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-04T06:24:53.944469111Z",
+        "current_node": "implementer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "thread.start.current_node": "planner",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.fidelity": "summary:high",
+          "graph.goal": "Implement product seed fabro-f677: engine preamble context table breaks markdown with multi-line values",
+          "graph.preamble_budget_kb": "24",
+          "graph.max_node_visits": "40",
+          "graph.rankdir": "LR",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.start": 0,
+          "current_node": "implementer",
+          "last_response": "Implementation complete. Summary of changes to `lib/components/fabro-workflow/src/handler/llm/preamble.rs`:\n\n- Added `escape_table_cell_pipes` helper and `format_value_table_cell` — a table-cell-onl",
+          "outcome": "succeeded",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3833,
+            "preview": "Seed `fabro-f677` claimed. I inspected the bug site: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` (~line 344) sends plain values through `format_value"
+          },
+          "internal.retry_count.planner": 0,
+          "internal.run_id": "01M1NGGDVKNJHWP2W0HPJJ84CZ",
+          "lesson_capture": "mx-d56fe2",
+          "implementation_summary": "In `lib/components/fabro-workflow/src/handler/llm/preamble.rs`: added `escape_table_cell_pipes` + `format_value_table_cell` (collapse newlines to quoted \" / \" separator, escape pipes) used by `append_filtered_context_table` for plain values, with `format_large_value_table_cell` refactored onto the shared pipe-escape helper; `format_value` unchanged so bullet-list paths keep multi-line output. Added `summary_high_context_table_multi_line_value_single_row` beside `summary_high_context_table`; `cargo nextest run -p fabro-workflow -E 'test(preamble)'` passes 86/86. Lesson capture: mx-d56fe2. Per-criterion: PASS cell formatter (`format_value_table_cell`, `format_value` untouched); PASS pipe escaping shared with `format_large_value_table_cell` via `escape_table_cell_pipes`; PASS one row per key / no raw newline in rows (test asserts every section line starts with `|` and rows.len()==5); PASS id/title adjacency after multi-line brief (ordered find assertions); PASS no information loss (rendering-only, `context_read` untouched); PASS no web UI change (none made); PASS tests + focused nextest run (fmt/clippy deferred to the deterministic tester).",
+          "failure_signature": "",
+          "current_seed_id": "fabro-f677",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 4104,
+            "preview": "Implementation complete. Summary of changes to `lib/components/fabro-workflow/src/handler/llm/preamble.rs`:\n\n- Added `escape_table_cell_pipes` helper and `format_value_table_cell` — a table-cell-onl"
+          },
+          "current_seed_title": "engine: preamble context table breaks markdown with multi-line values",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Stale cargo/nextest binary after edit_file changes in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`: a corrected assertion kept failing with the pre-edit panic message/line until `touch` forced recompile (runs 01M1NGGDVKNJHWP2W0HPJJ84CZ, ~300s wasted). Suggestion: implementers should suspect the build cache when a just-fixed test fails byte-identically; touching the edited file or checking that the run duration includes compilation resolves it."
+            ]
+          },
+          "failure_class": "",
+          "internal.seed_cycle_anchor": "fabro-f677",
+          "preferred_label": "Implemented",
+          "internal.work_dir": "/workspace/fabro",
+          "last_stage": "implementer",
+          "thread.planner.current_node": "implementer",
+          "internal.retry_count.implementer": 0,
+          "internal.thread_id": "planner",
+          "current_seed_brief": "Bug: summary-high preamble's `## Current context` table inlines multi-line values raw into markdown table cells, so every renderer breaks and keys after a multi-line value (e.g. `current_seed_brief` bullet list hiding `current_seed_id`/`current_seed_title`) visually detach (user report 2026-09-03, run 01M1MMK5C6B313SY70Y2EPKE82). Fix site: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` (~line 344); plain values go through `format_value` which returns raw strings. Spec offers three fix directions; CHOSEN: direction 1 (render multi-line values single-line in table cells) — renderer-only, keeps exactly one row per key so id/title stay adjacent; directions 2 (bullet list below table) and 3 (newline-count blob demote) rejected as more invasive and direction 3 hides the brief behind a blob-ref. Acceptance criteria:\n- cell formatter: add a table-cell-only formatter (do NOT change `format_value` globally — bullet-list paths may keep multi-line) that collapses newlines in plain values to a quoted `\" / \"` separator so each value renders on one line\n- pipe escaping: escape `|` as `\\|` in plain-value cells (raw pipes break rows the same way as newlines; existing `format_large_value_table_cell` at ~line 133 already escapes — share/reuse that behavior)\n- one row per key: with a multi-line context value, every emitted line of the `## Current context` section is a single table row starting with `|`; no raw newline inside any row\n- adjacency: `current_seed_id` and `current_seed_title` render as rows immediately adjacent to a multi-line `current_seed_brief` row\n- no information loss: only the prompt rendering changes; stored Context values stay untouched and `context_read` continues to serve the full raw value\n- web UI: no `apps/fabro-web` change expected — the prompt view renders this same preamble string, fixing the engine text fixes every markdown viewer\n- tests: unit test beside `summary_high_context_table` (preamble.rs tests ~line 1668): set multi-line `current_seed_brief` plus `current_seed_id`/`current_seed_title`; build summary-high preamble; assert exactly one row per key, no raw newline inside any table row, and a value containing `|` is escaped; verify with `cargo nextest run -p fabro-workflow`, then `cargo +nightly-2026-04-14 fmt --all` and `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          }
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3833,
+                "preview": "Seed `fabro-f677` claimed. I inspected the bug site: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` (~line 344) sends plain values through `format_value"
+              },
+              "current_seed_id": "fabro-f677",
+              "last_stage": "planner",
+              "current_seed_title": "engine: preamble context table breaks markdown with multi-line values",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-f677 claimed fresh at cycle start; spec listed three compatible fix directions — brief pins direction 1 (single-line cells) with rationale so the implementer does not re-litigate.",
+                  "Existing `format_large_value_table_cell` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` already collapses whitespace and escapes pipes for blob-demoted values; the plain-value table path lacks both, so the fix is sharing that behavior, not inventing a new rendering scheme."
+                ]
+              },
+              "current_seed_brief": "Bug: summary-high preamble's `## Current context` table inlines multi-line values raw into markdown table cells, so every renderer breaks and keys after a multi-line value (e.g. `current_seed_brief` bullet list hiding `current_seed_id`/`current_seed_title`) visually detach (user report 2026-09-03, run 01M1MMK5C6B313SY70Y2EPKE82). Fix site: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` (~line 344); plain values go through `format_value` which returns raw strings. Spec offers three fix directions; CHOSEN: direction 1 (render multi-line values single-line in table cells) — renderer-only, keeps exactly one row per key so id/title stay adjacent; directions 2 (bullet list below table) and 3 (newline-count blob demote) rejected as more invasive and direction 3 hides the brief behind a blob-ref. Acceptance criteria:\n- cell formatter: add a table-cell-only formatter (do NOT change `format_value` globally — bullet-list paths may keep multi-line) that collapses newlines in plain values to a quoted `\" / \"` separator so each value renders on one line\n- pipe escaping: escape `|` as `\\|` in plain-value cells (raw pipes break rows the same way as newlines; existing `format_large_value_table_cell` at ~line 133 already escapes — share/reuse that behavior)\n- one row per key: with a multi-line context value, every emitted line of the `## Current context` section is a single table row starting with `|`; no raw newline inside any row\n- adjacency: `current_seed_id` and `current_seed_title` render as rows immediately adjacent to a multi-line `current_seed_brief` row\n- no information loss: only the prompt rendering changes; stored Context values stay untouched and `context_read` continues to serve the full raw value\n- web UI: no `apps/fabro-web` change expected — the prompt view renders this same preamble string, fixing the engine text fixes every markdown viewer\n- tests: unit test beside `summary_high_context_table` (preamble.rs tests ~line 1668): set multi-line `current_seed_brief` plus `current_seed_id`/`current_seed_title`; build summary-high preamble; assert exactly one row per key, no raw newline inside any table row, and a value containing `|` is escaped; verify with `cargo nextest run -p fabro-workflow`, then `cargo +nightly-2026-04-14 fmt --all` and `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`",
+              "last_response": "Seed `fabro-f677` claimed. I inspected the bug site: `append_filtered_context_table` in `lib/components/fabro-workflow/src/handler/llm/preamble.rs` (~line 344) sends plain values through `format_value"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19146,
+                    "output_tokens": 1293,
+                    "reasoning_tokens": 3421,
+                    "cache_read_tokens": 114624,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 77338
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 128630,
+              "tool_time_ms": 1297,
+              "active_time_ms": 129927
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "In `lib/components/fabro-workflow/src/handler/llm/preamble.rs`: added `escape_table_cell_pipes` + `format_value_table_cell` (collapse newlines to quoted \" / \" separator, escape pipes) used by `append_filtered_context_table` for plain values, with `format_large_value_table_cell` refactored onto the shared pipe-escape helper; `format_value` unchanged so bullet-list paths keep multi-line output. Added `summary_high_context_table_multi_line_value_single_row` beside `summary_high_context_table`; `cargo nextest run -p fabro-workflow -E 'test(preamble)'` passes 86/86. Lesson capture: mx-d56fe2. Per-criterion: PASS cell formatter (`format_value_table_cell`, `format_value` untouched); PASS pipe escaping shared with `format_large_value_table_cell` via `escape_table_cell_pipes`; PASS one row per key / no raw newline in rows (test asserts every section line starts with `|` and rows.len()==5); PASS id/title adjacency after multi-line brief (ordered find assertions); PASS no information loss (rendering-only, `context_read` untouched); PASS no web UI change (none made); PASS tests + focused nextest run (fmt/clippy deferred to the deterministic tester).",
+              "last_response": "Implementation complete. Summary of changes to `lib/components/fabro-workflow/src/handler/llm/preamble.rs`:\n\n- Added `escape_table_cell_pipes` helper and `format_value_table_cell` — a table-cell-onl",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 4104,
+                "preview": "Implementation complete. Summary of changes to `lib/components/fabro-workflow/src/handler/llm/preamble.rs`:\n\n- Added `escape_table_cell_pipes` helper and `format_value_table_cell` — a table-cell-onl"
+              },
+              "last_stage": "implementer",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Stale cargo/nextest binary after edit_file changes in `lib/components/fabro-workflow/src/handler/llm/preamble.rs`: a corrected assertion kept failing with the pre-edit panic message/line until `touch` forced recompile (runs 01M1NGGDVKNJHWP2W0HPJJ84CZ, ~300s wasted). Suggestion: implementers should suspect the build cache when a just-fixed test fails byte-identically; touching the edited file or checking that the run duration includes compilation resolves it."
+                ]
+              },
+              "lesson_capture": "mx-d56fe2"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 26806,
+                    "output_tokens": 3730,
+                    "reasoning_tokens": 3921,
+                    "cache_read_tokens": 505152,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 202503
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/components/fabro-workflow/src/handler/llm/preamble.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 246952,
+              "tool_time_ms": 492953,
+              "active_time_ms": 739905
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "tester",
         "node_visits": {
           "start": 1,
-          "planner": 1
+          "planner": 1,
+          "implementer": 1
         }
       },
       "diff": {}
@@ -860,6 +1051,220 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "implementer@1": {
+      "first_event_seq": 89,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-09-04T06:24:53.754071554Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-04T06:11:18.481271918Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 740438,
+        "inference_time_ms": 246952,
+        "tool_time_ms": 492953,
+        "active_time_ms": 739905
+      },
+      "usage": {
+        "input_tokens": 26806,
+        "output_tokens": 3730,
+        "total_tokens": 539609,
+        "reasoning_tokens": 3921,
+        "cache_read_tokens": 505152,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 202503
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 26093,
+        "usage_percent": 2.488422393798828,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-04T06:24:53.737430515Z",
+        "event_seq": 243,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 995,
+            "usage_percent": 0.09489059448242188
+          },
+          {
+            "category": "tools",
+            "tokens": 1445,
+            "usage_percent": 0.13780593872070312
+          },
+          {
+            "category": "memory",
+            "tokens": 4966,
+            "usage_percent": 0.47359466552734375
+          },
+          {
+            "category": "conversation",
+            "tokens": 18681,
+            "usage_percent": 1.7815589904785156
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 17,
       "prompt": null,
