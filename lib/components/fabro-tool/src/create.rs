@@ -402,6 +402,13 @@ pub struct CreatedRunResult {
     pub workflow:        String,
     pub start_requested: bool,
     pub status:          String,
+    /// Set when the run was created but the follow-up start (or
+    /// retrieve, for `start = false`) failed. The run id above is
+    /// still valid: callers should poll or approve it instead of
+    /// recreating it. Carries the failure verbatim, e.g.
+    /// `start blocked: approval_required`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_error:     Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -451,24 +458,35 @@ pub async fn create_runs_with_options(
             .await
             .map_err(|err| ToolError::from_anyhow(&err))?;
         let start_requested = spec.start.unwrap_or(true);
-        let summary = if start_requested {
-            backend
-                .start_run(&run_id, false)
-                .await
-                .map_err(|err| ToolError::from_anyhow(&err))?
+        // Partial success (fabro-78ac): a failed start (or retrieve) must
+        // not discard the created run id — otherwise callers retry and
+        // duplicate children. Only create/parent-resolution failures
+        // above return Err, since nothing was created there.
+        let (summary, start_error): (Option<fabro_types::Run>, Option<String>) = if start_requested
+        {
+            match backend.start_run(&run_id, false).await {
+                Ok(summary) => (Some(summary), None),
+                Err(err) => (None, Some(format!("start blocked: {err}"))),
+            }
         } else {
-            backend
-                .retrieve_run(&run_id)
-                .await
-                .map_err(|err| ToolError::from_anyhow(&err))?
+            match backend.retrieve_run(&run_id).await {
+                Ok(summary) => (Some(summary), None),
+                Err(err) => (None, Some(format!("retrieve failed: {err}"))),
+            }
         };
         created.push(CreatedRunResult {
-            run_id: summary.id.to_string(),
-            parent_id: summary.parent_id.map(|parent_id| parent_id.to_string()),
-            children_count: summary.children_count,
+            run_id: run_id.to_string(),
+            parent_id: summary
+                .as_ref()
+                .and_then(|summary| summary.parent_id.map(|parent_id| parent_id.to_string()))
+                .or_else(|| parent_id.map(|parent_id| parent_id.to_string())),
+            children_count: summary.as_ref().map_or(0, |summary| summary.children_count),
             workflow: spec.workflow,
             start_requested,
-            status: summary.lifecycle.status.kind().to_string(),
+            status: summary
+                .map(|summary| summary.lifecycle.status.kind().to_string())
+                .unwrap_or_else(|| "unknown".to_string()),
+            start_error,
         });
     }
     Ok(CreateRunsResult { runs: created })
@@ -497,10 +515,19 @@ async fn resolve_parent_run_id(
 
 pub fn create_runs_text(result: &CreateRunsResult) -> String {
     let start_requested = result.runs.iter().filter(|run| run.start_requested).count();
-    format!(
+    let start_blocked = result
+        .runs
+        .iter()
+        .filter(|run| run.start_error.is_some())
+        .count();
+    let mut text = format!(
         "created {} Fabro run(s), start requested for {start_requested}",
         result.runs.len()
-    )
+    );
+    if start_blocked > 0 {
+        text.push_str(&format!(", start blocked for {start_blocked}"));
+    }
+    text
 }
 
 #[cfg(test)]
@@ -709,6 +736,8 @@ mod tests {
             created_parent_ids: Mutex::new(Vec::new()),
             resolved_selectors: Mutex::new(Vec::new()),
             started_run_ids: Mutex::new(Vec::new()),
+            start_error:      None,
+            retrieve_error: None,
         });
         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
             runs: vec![
@@ -760,6 +789,8 @@ mod tests {
             created_parent_ids: Mutex::new(Vec::new()),
             resolved_selectors: Mutex::new(Vec::new()),
             started_run_ids: Mutex::new(Vec::new()),
+            start_error:      None,
+            retrieve_error: None,
         });
         let runs: Vec<CreateRunSpecInput> = (0..2)
             .map(|_| {
@@ -810,6 +841,8 @@ mod tests {
             created_parent_ids: Mutex::new(Vec::new()),
             resolved_selectors: Mutex::new(Vec::new()),
             started_run_ids: Mutex::new(Vec::new()),
+            start_error:      None,
+            retrieve_error: None,
         });
         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
             runs: vec![
@@ -865,6 +898,8 @@ mod tests {
             created_parent_ids: Mutex::new(Vec::new()),
             resolved_selectors: Mutex::new(Vec::new()),
             started_run_ids: Mutex::new(Vec::new()),
+            start_error:      None,
+            retrieve_error: None,
         });
         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
             runs: vec![
@@ -902,6 +937,144 @@ mod tests {
         assert_eq!(
             create_runs_text(&result),
             "created 1 Fabro run(s), start requested for 1"
+        );
+    }
+
+    fn create_spec_input(start: Option<bool>) -> CreateRunSpecInput {
+        CreateRunSpec {
+            workflow_source:  None,
+            workflow:         "simple.fabro".to_string(),
+            cwd:              None,
+            parent_id:        None,
+            goal:             None,
+            goal_file:        None,
+            inputs:           HashMap::new(),
+            labels:           HashMap::new(),
+            dry_run:          None,
+            auto_approve:     None,
+            model:            None,
+            provider:         None,
+            environment:      None,
+            preserve_sandbox: None,
+            start,
+        }
+        .into()
+    }
+
+    #[tokio::test]
+    async fn create_runs_reports_partial_success_when_start_fails() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let settings = temp.path().join("settings.toml");
+        let child_id = run_id("01KRBZW5C00000000000000001");
+        let parent_id = run_id("01KRBZW4DW0000000000000002");
+        let backend = Arc::new(MockCreateBackend {
+            child_id,
+            parent_id,
+            created_parent_ids: Mutex::new(Vec::new()),
+            resolved_selectors: Mutex::new(Vec::new()),
+            started_run_ids: Mutex::new(Vec::new()),
+            start_error: Some("approval_required (409)".to_string()),
+            retrieve_error: None,
+        });
+        let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
+            runs: vec![create_spec_input(None)],
+        })
+        .expect("create params should validate");
+
+        let result = create_runs(backend.clone(), temp.path(), &settings, params)
+            .await
+            .expect("created run id must survive a failed start");
+
+        assert_eq!(result.runs[0].run_id, child_id.to_string());
+        assert_eq!(result.runs[0].status, "unknown");
+        assert_eq!(
+            result.runs[0].start_error.as_deref(),
+            Some("start blocked: approval_required (409)")
+        );
+        assert_eq!(backend.started_run_ids.lock().unwrap().as_slice(), &[
+            child_id
+        ]);
+        assert_eq!(
+            create_runs_text(&result),
+            "created 1 Fabro run(s), start requested for 1, start blocked for 1"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_runs_reports_partial_success_when_retrieve_fails() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let settings = temp.path().join("settings.toml");
+        let child_id = run_id("01KRBZW5C00000000000000001");
+        let parent_id = run_id("01KRBZW4DW0000000000000002");
+        let backend = Arc::new(MockCreateBackend {
+            child_id,
+            parent_id,
+            created_parent_ids: Mutex::new(Vec::new()),
+            resolved_selectors: Mutex::new(Vec::new()),
+            started_run_ids: Mutex::new(Vec::new()),
+            start_error: None,
+            retrieve_error: Some("run store unavailable".to_string()),
+        });
+        let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
+            runs: vec![create_spec_input(Some(false))],
+        })
+        .expect("create params should validate");
+
+        let result = create_runs(backend.clone(), temp.path(), &settings, params)
+            .await
+            .expect("created run id must survive a failed retrieve");
+
+        assert_eq!(result.runs[0].run_id, child_id.to_string());
+        assert_eq!(result.runs[0].status, "unknown");
+        assert_eq!(
+            result.runs[0].start_error.as_deref(),
+            Some("retrieve failed: run store unavailable")
+        );
+        assert_eq!(
+            create_runs_text(&result),
+            "created 1 Fabro run(s), start requested for 0, start blocked for 1"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_runs_preserves_earlier_results_when_later_sibling_start_fails() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let settings = temp.path().join("settings.toml");
+        let child_id = run_id("01KRBZW5C00000000000000001");
+        let parent_id = run_id("01KRBZW4DW0000000000000002");
+        let backend = Arc::new(MockCreateBackend {
+            child_id,
+            parent_id,
+            created_parent_ids: Mutex::new(Vec::new()),
+            resolved_selectors: Mutex::new(Vec::new()),
+            started_run_ids: Mutex::new(Vec::new()),
+            start_error: Some("approval_required (409)".to_string()),
+            retrieve_error: None,
+        });
+        let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
+            runs: vec![
+                create_spec_input(Some(false)),
+                create_spec_input(None),
+            ],
+        })
+        .expect("create params should validate");
+
+        let result = create_runs(backend.clone(), temp.path(), &settings, params)
+            .await
+            .expect("batch must report partial success, not a total failure");
+
+        assert_eq!(result.runs.len(), 2);
+        assert_eq!(result.runs[0].run_id, child_id.to_string());
+        assert_eq!(result.runs[0].status, "submitted");
+        assert_eq!(result.runs[0].start_error, None);
+        assert_eq!(result.runs[1].run_id, child_id.to_string());
+        assert_eq!(
+            result.runs[1].start_error.as_deref(),
+            Some("start blocked: approval_required (409)")
+        );
+        assert_eq!(
+            create_runs_text(&result),
+            "created 2 Fabro run(s), start requested for 1, start blocked for 1"
         );
     }
 
@@ -975,6 +1148,8 @@ mod tests {
         created_parent_ids: Mutex<Vec<Option<RunId>>>,
         resolved_selectors: Mutex<Vec<String>>,
         started_run_ids:    Mutex<Vec<RunId>>,
+        start_error:        Option<String>,
+        retrieve_error:     Option<String>,
     }
 
     #[async_trait]
@@ -1026,6 +1201,9 @@ mod tests {
 
         async fn retrieve_run(&self, run_id: &RunId) -> anyhow::Result<Run> {
             assert_eq!(*run_id, self.child_id);
+            if let Some(retrieve_error) = &self.retrieve_error {
+                anyhow::bail!("{retrieve_error}");
+            }
             Ok(run(self.child_id, Some(self.parent_id), 0))
         }
 
@@ -1033,6 +1211,9 @@ mod tests {
             assert_eq!(*run_id, self.child_id);
             assert!(!resume);
             self.started_run_ids.lock().unwrap().push(*run_id);
+            if let Some(start_error) = &self.start_error {
+                anyhow::bail!("{start_error}");
+            }
             Ok(run_with_status(
                 self.child_id,
                 Some(self.parent_id),
