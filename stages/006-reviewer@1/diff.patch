@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M1RJK3S9JJYR1MYZKXP1H7YZ.jsonl b/.fabro/journal/01M1RJK3S9JJYR1MYZKXP1H7YZ.jsonl
+index c3e728ba..9fe3772f 100644
+--- a/.fabro/journal/01M1RJK3S9JJYR1MYZKXP1H7YZ.jsonl
++++ b/.fabro/journal/01M1RJK3S9JJYR1MYZKXP1H7YZ.jsonl
+@@ -2,3 +2,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1RJK3S9JJYR1MYZKXP1H7YZ","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-05T10:45:00Z","data":{"painpoints":[],"observations":["planner.md step 4 now appears twice (claim at '4.' and brief-writing also numbered '4.'), pre-existing numbering drift that the fast-path edit did not touch — a future seed could renumber step 5 correctly"]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1RJK3S9JJYR1MYZKXP1H7YZ","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-05T10:45:10Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1RJK3S9JJYR1MYZKXP1H7YZ","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-05T10:45:18Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1RJK3S9JJYR1MYZKXP1H7YZ","node":"reviewer","visit":1,"status":"succeeded","ts":"2026-09-05T10:45:58Z","data":{"painpoints":[],"observations":["Verified the +1/-1 hunk against claim base db876569 directly via git diff: only planner.md step 1 changed and every seed criterion (first-call sd show, JSON success-field resolution, three fallback conditions, intact numbered flow and command table) is present in the new text. No other files touched; worktree clean."]}}
