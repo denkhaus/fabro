@@ -15602,6 +15602,49 @@ async fn worker_started_child_run_requires_approval_before_becoming_runnable() {
 }
 
 #[tokio::test]
+async fn worker_started_child_with_auto_approve_starts_runnable() {
+    let (_state, app) = jwt_auth_app();
+    let user_jwt = issue_test_user_jwt();
+    let parent_run_id = create_run_with_bearer(&app, &user_jwt).await;
+    let worker_token = issue_test_run_tools_worker_token(&parent_run_id);
+    let mut child_manifest = minimal_manifest_json(MINIMAL_DOT);
+    child_manifest["parent_id"] = json!(parent_run_id.to_string());
+    child_manifest["args"] = json!({ "auto_approve": true });
+
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::POST,
+            "/runs",
+            &worker_token,
+            &child_manifest,
+        ))
+        .await
+        .unwrap();
+    let child_body = response_json!(response, StatusCode::CREATED).await;
+    let child_run_id = child_body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+
+    // fabro-2e3c: args.auto_approve maps to ApprovalMode::Auto, which opts
+    // the parent-worker start out of the approval gate — orchestration
+    // children start unattended instead of parking approval_required.
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::POST,
+            &format!("/runs/{child_run_id}/start"),
+            &worker_token,
+            &json!({ "resume": false }),
+        ))
+        .await
+        .unwrap();
+    let started_body = response_json!(response, StatusCode::OK).await;
+    assert_eq!(
+        run_json_status(&started_body),
+        &json!({ "kind": "runnable" })
+    );
+}
+
+#[tokio::test]
 async fn denying_pending_child_run_fails_with_approval_denied() {
     let (_state, app) = jwt_auth_app();
     let user_jwt = issue_test_user_jwt();

@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use chrono::Utc;
+use fabro_types::settings::run::ApprovalMode;
 use tokio::time::{Instant, sleep_until};
 
 use super::super::{
@@ -142,7 +143,13 @@ pub(in crate::server) async fn queue_run_start(
         && matches!(
             &actor,
             Principal::Worker { run_id } if run_state.parent_id == Some(*run_id)
-        );
+        )
+        // A run created with auto-approval (intent args or manifest args
+        // mapping to ApprovalMode::Auto) opts out of the parent-worker
+        // approval gate — orchestration children (conductor legs,
+        // fabro-2e3c) must start unattended; the parent-worker identity
+        // stays the guard for every other spawn.
+        && run_state.spec.settings.run.execution.approval != ApprovalMode::Auto;
     if let Err(err) =
         workflow_event::append_event(&run_store, &id, &workflow_event::Event::RunStartRequested {
             resume,
