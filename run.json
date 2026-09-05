@@ -656,7 +656,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-05T10:10:12.799613538Z",
-  "last_event_at": "2026-09-05T10:12:51.188829155Z",
+  "last_event_at": "2026-09-05T10:13:00.961048178Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -835,9 +835,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 146,
       "checkpoint": {
-        "timestamp": "2026-09-05T10:12:51.411850521Z",
+        "timestamp": "2026-09-05T10:12:55.459389425Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -846,58 +846,108 @@
         ],
         "node_retries": {},
         "context_values": {
-          "failure_class": "",
           "journal": {
             "painpoints": [],
             "observations": [
               "The initial replacement text contained the literal substring 'tool writes are denied', which would have tripped the seed's own grep-based acceptance check — reworded to 'refused' before finishing; future verifications should grep for the exact banned substring before declaring done (implementer.md:46)."
             ]
           },
-          "last_stage": "implementer",
-          "outcome": "succeeded",
-          "implementation_summary": "Edited exactly two files, both through the shell (python3 heredoc + sed -i, since fs_hide binds file tools): `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` (Platform scope section, lines ~41-58) now states fs_hide binds FILE TOOLS only, that shell reads AND writes to `.fabro/`, `.seeds/`, `.mulch/`, `.agents/`, `scripts/`, `justfile` all succeed, and adds the platform-targeting carve-out (shell reads/edits for `.fabro/**` seeds; report-don't-fix still applies to incidental platform friction on product seeds); `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md` step 3 gains one sentence telling the planner to open `Basis:` platform paths through the shell because fs_hide binds tool calls only. Lesson capture: nothing durable — skipped. Verification per criterion: - PASS implementer.md replaces 'reads fail, writes are denied (fabro-1dae fs_hide)' with accurate mechanics: old sentence removed, new text says fs_hide binds read_file/write_file/edit_file/glob only and shell reads AND writes succeed (grep verified) — implementer.md lines 44-47; - PASS implementer.md platform-targeting carve-out added plainly with section-title tension resolved ('capability is not denied; unrequested platform change is off-limits') — implementer.md lines 51-56; - PASS planner.md step 3 appended the explicit one-sentence shell-bypass guidance — planner.md line 35; - PASS both edits done through the shell (read_file was denied on these paths earlier this run; sed/python heredoc succeeded); - PASS shell grep confirms 'writes are denied' appears in neither file and each file names the shell bypass explicitly; - PASS no changes outside the two prompt files (git status shows only those two modified).",
-          "internal.retry_count.implementer": 0,
-          "graph.goal": "implement fabro-56c2: state the fs_hide shell bypass plainly in develop prompts",
-          "current_seed_title": "State the fs_hide shell bypass plainly in develop prompts",
-          "current_seed_brief": "Edit two workflow prompt files — `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` (Platform scope section, lines ~41-47) and `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md` (step 3, STALE-BASIS CHECK, line ~35). Acceptance criteria:\n- implementer.md: replace the false claim 'reads fail, writes are denied (fabro-1dae fs_hide)' with the accurate mechanics: fs_hide binds FILE TOOLS only (read_file, write_file, edit_file, glob discovery); the shell is unaffected — reads AND writes to `.fabro/`, `.seeds/`, `.mulch/`, `.agents/`, `scripts/`, `justfile` all succeed through shell commands\n- implementer.md: add the platform-targeting carve-out plainly: when the claimed seed's brief explicitly targets platform files (e.g. prompts under `.fabro/**`), perform those reads/edits through the shell (grep, sed -n, sed -i, python3 heredoc); the report-don't-fix rule still applies to platform friction found incidentally on product seeds — resolve the section-title tension this way: capability is not denied, unrequested platform changes are what's off-limits\n- planner.md step 3: append one sentence of explicit guidance: when a seed's `Basis:` references platform paths (`.fabro/**` etc.), open them through the shell — fs_hide binds tool calls only, so read_file fails while sed/grep/cat succeed; never burn tool calls discovering the denial\n- both edits go through the shell yourself (fs_hide hides these two files from edit_file/write_file — verified this run: read_file denied, sed via shell worked)\n- verify via shell grep that 'writes are denied' appears in neither file and each file names the shell bypass explicitly\n- no changes outside the two prompt files (workflow.fabro comments are out of scope; the savings claim — 3-4 tool calls and 2-3 LLM turns per platform-targeting seed — is rationale, not a testable criterion)",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.work_dir": "/workspace/fabro",
-          "graph.rankdir": "LR",
-          "internal.node_visit_count": 1,
-          "thread.start.current_node": "planner",
-          "graph.preamble_budget_kb": "24",
-          "internal.retry_count.start": 0,
+          "internal.seed_cycle_anchor": "fabro-56c2",
           "lesson_capture": "nothing durable — skipped",
+          "internal.thread_id": "planner",
+          "failure_signature": "",
+          "last_stage": "implementer",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.node_visit_count": 1,
           "graph.max_node_visits": "40",
+          "thread.planner.current_node": "implementer",
+          "internal.run_id": "01M1RGQHJ5RV8Y28M2GH97XGEZ",
+          "thread.start.current_node": "planner",
+          "preferred_label": "Implemented",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1
           },
-          "internal.retry_count.planner": 0,
-          "response.implementer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 2431,
-            "preview": "Both edits landed cleanly via shell, verified. No lesson worth recording beyond what the seed itself encodes — skipping `ml record`.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label"
-          },
-          "internal.fidelity": "summary:high",
-          "internal.thread_id": "planner",
+          "internal.retry_count.implementer": 0,
+          "graph.preamble_budget_kb": "24",
+          "implementation_summary": "Edited exactly two files, both through the shell (python3 heredoc + sed -i, since fs_hide binds file tools): `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` (Platform scope section, lines ~41-58) now states fs_hide binds FILE TOOLS only, that shell reads AND writes to `.fabro/`, `.seeds/`, `.mulch/`, `.agents/`, `scripts/`, `justfile` all succeed, and adds the platform-targeting carve-out (shell reads/edits for `.fabro/**` seeds; report-don't-fix still applies to incidental platform friction on product seeds); `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md` step 3 gains one sentence telling the planner to open `Basis:` platform paths through the shell because fs_hide binds tool calls only. Lesson capture: nothing durable — skipped. Verification per criterion: - PASS implementer.md replaces 'reads fail, writes are denied (fabro-1dae fs_hide)' with accurate mechanics: old sentence removed, new text says fs_hide binds read_file/write_file/edit_file/glob only and shell reads AND writes succeed (grep verified) — implementer.md lines 44-47; - PASS implementer.md platform-targeting carve-out added plainly with section-title tension resolved ('capability is not denied; unrequested platform change is off-limits') — implementer.md lines 51-56; - PASS planner.md step 3 appended the explicit one-sentence shell-bypass guidance — planner.md line 35; - PASS both edits done through the shell (read_file was denied on these paths earlier this run; sed/python heredoc succeeded); - PASS shell grep confirms 'writes are denied' appears in neither file and each file names the shell bypass explicitly; - PASS no changes outside the two prompt files (git status shows only those two modified).",
+          "current_seed_title": "State the fs_hide shell bypass plainly in develop prompts",
+          "last_response": "Both edits landed cleanly via shell, verified. No lesson worth recording beyond what the seed itself encodes — skipping `ml record`.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
             "chars": 2868,
             "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Seed claimed\", \"context_updates\": {\"current_seed_id\": \"fabro-56c2\", \"current_seed_title\": \"State the fs_hide shell bypass plainly in develop prompts\","
           },
-          "last_response": "Both edits landed cleanly via shell, verified. No lesson worth recording beyond what the seed itself encodes — skipping `ml record`.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label",
-          "thread.planner.current_node": "implementer",
+          "outcome": "succeeded",
+          "internal.work_dir": "/workspace/fabro",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2431,
+            "preview": "Both edits landed cleanly via shell, verified. No lesson worth recording beyond what the seed itself encodes — skipping `ml record`.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label"
+          },
+          "graph.goal": "implement fabro-56c2: state the fs_hide shell bypass plainly in develop prompts",
+          "internal.retry_count.planner": 0,
+          "current_seed_brief": "Edit two workflow prompt files — `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` (Platform scope section, lines ~41-47) and `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md` (step 3, STALE-BASIS CHECK, line ~35). Acceptance criteria:\n- implementer.md: replace the false claim 'reads fail, writes are denied (fabro-1dae fs_hide)' with the accurate mechanics: fs_hide binds FILE TOOLS only (read_file, write_file, edit_file, glob discovery); the shell is unaffected — reads AND writes to `.fabro/`, `.seeds/`, `.mulch/`, `.agents/`, `scripts/`, `justfile` all succeed through shell commands\n- implementer.md: add the platform-targeting carve-out plainly: when the claimed seed's brief explicitly targets platform files (e.g. prompts under `.fabro/**`), perform those reads/edits through the shell (grep, sed -n, sed -i, python3 heredoc); the report-don't-fix rule still applies to platform friction found incidentally on product seeds — resolve the section-title tension this way: capability is not denied, unrequested platform changes are what's off-limits\n- planner.md step 3: append one sentence of explicit guidance: when a seed's `Basis:` references platform paths (`.fabro/**` etc.), open them through the shell — fs_hide binds tool calls only, so read_file fails while sed/grep/cat succeed; never burn tool calls discovering the denial\n- both edits go through the shell yourself (fs_hide hides these two files from edit_file/write_file — verified this run: read_file denied, sed via shell worked)\n- verify via shell grep that 'writes are denied' appears in neither file and each file names the shell bypass explicitly\n- no changes outside the two prompt files (workflow.fabro comments are out of scope; the savings claim — 3-4 tool calls and 2-3 LLM turns per platform-targeting seed — is rationale, not a testable criterion)",
           "current_seed_id": "fabro-56c2",
-          "internal.run_id": "01M1RGQHJ5RV8Y28M2GH97XGEZ",
-          "failure_signature": "",
-          "preferred_label": "Implemented",
-          "internal.seed_cycle_anchor": "fabro-56c2",
-          "current_node": "implementer"
+          "graph.rankdir": "LR",
+          "failure_class": "",
+          "current_node": "implementer",
+          "internal.fidelity": "summary:high",
+          "internal.retry_count.start": 0
         },
         "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "Edited exactly two files, both through the shell (python3 heredoc + sed -i, since fs_hide binds file tools): `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` (Platform scope section, lines ~41-58) now states fs_hide binds FILE TOOLS only, that shell reads AND writes to `.fabro/`, `.seeds/`, `.mulch/`, `.agents/`, `scripts/`, `justfile` all succeed, and adds the platform-targeting carve-out (shell reads/edits for `.fabro/**` seeds; report-don't-fix still applies to incidental platform friction on product seeds); `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md` step 3 gains one sentence telling the planner to open `Basis:` platform paths through the shell because fs_hide binds tool calls only. Lesson capture: nothing durable — skipped. Verification per criterion: - PASS implementer.md replaces 'reads fail, writes are denied (fabro-1dae fs_hide)' with accurate mechanics: old sentence removed, new text says fs_hide binds read_file/write_file/edit_file/glob only and shell reads AND writes succeed (grep verified) — implementer.md lines 44-47; - PASS implementer.md platform-targeting carve-out added plainly with section-title tension resolved ('capability is not denied; unrequested platform change is off-limits') — implementer.md lines 51-56; - PASS planner.md step 3 appended the explicit one-sentence shell-bypass guidance — planner.md line 35; - PASS both edits done through the shell (read_file was denied on these paths earlier this run; sed/python heredoc succeeded); - PASS shell grep confirms 'writes are denied' appears in neither file and each file names the shell bypass explicitly; - PASS no changes outside the two prompt files (git status shows only those two modified).",
+              "lesson_capture": "nothing durable — skipped",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The initial replacement text contained the literal substring 'tool writes are denied', which would have tripped the seed's own grep-based acceptance check — reworded to 'refused' before finishing; future verifications should grep for the exact banned substring before declaring done (implementer.md:46)."
+                ]
+              },
+              "last_response": "Both edits landed cleanly via shell, verified. No lesson worth recording beyond what the seed itself encodes — skipping `ml record`.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2431,
+                "preview": "Both edits landed cleanly via shell, verified. No lesson worth recording beyond what the seed itself encodes — skipping `ml record`.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label"
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14479,
+                    "output_tokens": 1503,
+                    "reasoning_tokens": 177,
+                    "cache_read_tokens": 50176,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 40704
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 36668,
+              "tool_time_ms": 698,
+              "active_time_ms": 37366
+            }
+          },
           "planner": {
             "status": "succeeded",
             "preferred_label": "Seed claimed",
@@ -956,6 +1006,166 @@
           "start": {
             "status": "succeeded",
             "usage": null
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "b02946cf7c93f3957fa7ebf03c5b717e7f25a22f",
+        "node_visits": {
+          "implementer": 1,
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1RGQHJ5RV8Y28M2GH97XGEZ.jsonl b/.fabro/journal/01M1RGQHJ5RV8Y28M2GH97XGEZ.jsonl\nindex ae3c174f..60ea06ac 100644\n--- a/.fabro/journal/01M1RGQHJ5RV8Y28M2GH97XGEZ.jsonl\n+++ b/.fabro/journal/01M1RGQHJ5RV8Y28M2GH97XGEZ.jsonl\n@@ -1 +1,2 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RGQHJ5RV8Y28M2GH97XGEZ\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T10:12:06Z\",\"data\":{\"painpoints\":[{\"text\":\"Planner stage fs_hide denies read_file on `.fabro/**` but nothing in the planner prompt warns of it; this run's goal seed was found only after read_file failed on both target prompts (planner.md step 3 stale-basis check sends you to open `.fabro/**` files with no shell hint). Fixed in-flight by fabro-56c2 itself; also the workflow.fabro comment (~line 99) still says 'hidden paths are unwritable anyway', the same disproved belief — consider a follow-up seed for that comment.\"}],\"observations\":[\"Planner read_file on `.fabro/**` prompts fails under fs_hide while shell sed/grep succeed — the exact asymmetry fabro-56c2 documents; goal-named seed id allowed a fast-path sd show instead of full tracker triage.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RGQHJ5RV8Y28M2GH97XGEZ\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T10:12:51Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The initial replacement text contained the literal substring 'tool writes are denied', which would have tripped the seed's own grep-based acceptance check — reworded to 'refused' before finishing; future verifications should grep for the exact banned substring before declaring done (implementer.md:46).\"]}}\ndiff --git a/.fabro/workflows/develop/prompts/implementer.md b/.fabro/workflows/develop/prompts/implementer.md\nindex 081981f7..91aab5f6 100644\n--- a/.fabro/workflows/develop/prompts/implementer.md\n+++ b/.fabro/workflows/develop/prompts/implementer.md\n@@ -41,9 +41,19 @@ cannot resolve is a deviation: say so explicitly instead of hiding it.\n You build the PRODUCT — on this world that is the Rust workspace under\n `lib/` (and, rarely, `apps/` for the web UI). For `.fabro/`, `.seeds/`,\n `.mulch/`, `.agents/`, `scripts/`, and `justfile` this is enforced\n-mechanically: those paths are hidden from your file tools — reads fail,\n-writes are denied (fabro-1dae fs_hide). The `sd` and `just` commands\n-keep working through the shell. `AGENTS.md`, `CLAUDE.md`, `docs/`,\n+mechanically by fs_hide (fabro-1dae), which binds FILE TOOLS only\n+(read_file, write_file, edit_file, glob discovery): tool reads fail and\n+tool writes are refused. The shell is unaffected — reads AND writes to\n+those paths all succeed through shell commands (grep, sed -n, sed -i,\n+cat, python3 heredocs). The `sd` and `just` commands\n+keep working through the shell.\n+\n+Carve-out for platform-targeting seeds: when the claimed seed's brief\n+explicitly targets platform files (e.g. prompts under `.fabro/**`),\n+perform those reads and edits through the shell — the capability is not\n+denied. What remains off-limits is unrequested platform change: the\n+report-don't-fix rule still applies to platform friction found\n+incidentally while working a product seed. `AGENTS.md`, `CLAUDE.md`, `docs/`,\n `Cargo.toml`, and the workspace manifests remain visible but are repo\n wiring: never modify them without the seed saying so explicitly. When\n your work reveals friction in any of these (a script bug, a prompt gap,\ndiff --git a/.fabro/workflows/develop/prompts/planner.md b/.fabro/workflows/develop/prompts/planner.md\nindex 518c3b79..b3754e39 100644\n--- a/.fabro/workflows/develop/prompts/planner.md\n+++ b/.fabro/workflows/develop/prompts/planner.md\n@@ -32,7 +32,7 @@ The engine maintains `seed_cycles` deterministically: `{ node -> completed visit\n \n 1. Run `sd ready --limit 200` to list unblocked open seeds; `sd list --format json --limit 200` for the full picture if needed.\n 2. Pick the highest-priority unblocked seed that serves the goal. If two compete, prefer the one with fewest blockers.\n-3. STALE-BASIS CHECK (ADR-0015): before claiming, read the seed body for its `Basis:` line (source run id, workflow version, repo commit). Open the referenced files/prompts in the CURRENT worktree: if the behavior the seed describes no longer exists, already changed, or the finding is moot against the current tree, the seed is superseded — close it with `sd close <id> --reason \"superseded: basis stale (<what changed>)\"` and pick the next candidate. Never implement a seed whose basis does not resolve. Seeds without a Basis line are legacy (pre-2026-09-05): judge them the same way against the current tree before claiming.\n+3. STALE-BASIS CHECK (ADR-0015): before claiming, read the seed body for its `Basis:` line (source run id, workflow version, repo commit). Open the referenced files/prompts in the CURRENT worktree: if the behavior the seed describes no longer exists, already changed, or the finding is moot against the current tree, the seed is superseded — close it with `sd close <id> --reason \"superseded: basis stale (<what changed>)\"` and pick the next candidate. Never implement a seed whose basis does not resolve. When a seed's `Basis:` references platform paths (`.fabro/**` etc.), open them through the shell — fs_hide binds tool calls only, so read_file fails while sed/grep/cat succeed; never burn tool calls discovering the denial. Seeds without a Basis line are legacy (pre-2026-09-05): judge them the same way against the current tree before claiming.\n 4. Claim it: `sd update <id> --status in_progress`.\n 4. Write the implementation brief into the context as BULLETED acceptance criteria, not prose: seed id, title, then one bullet per requirement, plus review feedback if this is a re-plan. Bullets are cheaper to re-read, harder to misparse, and the reviewer and the implementer's PASS/FAIL report check them item-by-item. Shape each bullet as a checkable statement, e.g.:\n \n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 17,
+          "deletions": 5
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-05T10:13:01.182427913Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_class": "",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "The initial replacement text contained the literal substring 'tool writes are denied', which would have tripped the seed's own grep-based acceptance check — reworded to 'refused' before finishing; future verifications should grep for the exact banned substring before declaring done (implementer.md:46)."
+            ]
+          },
+          "last_stage": "implementer",
+          "outcome": "succeeded",
+          "implementation_summary": "Edited exactly two files, both through the shell (python3 heredoc + sed -i, since fs_hide binds file tools): `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` (Platform scope section, lines ~41-58) now states fs_hide binds FILE TOOLS only, that shell reads AND writes to `.fabro/`, `.seeds/`, `.mulch/`, `.agents/`, `scripts/`, `justfile` all succeed, and adds the platform-targeting carve-out (shell reads/edits for `.fabro/**` seeds; report-don't-fix still applies to incidental platform friction on product seeds); `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md` step 3 gains one sentence telling the planner to open `Basis:` platform paths through the shell because fs_hide binds tool calls only. Lesson capture: nothing durable — skipped. Verification per criterion: - PASS implementer.md replaces 'reads fail, writes are denied (fabro-1dae fs_hide)' with accurate mechanics: old sentence removed, new text says fs_hide binds read_file/write_file/edit_file/glob only and shell reads AND writes succeed (grep verified) — implementer.md lines 44-47; - PASS implementer.md platform-targeting carve-out added plainly with section-title tension resolved ('capability is not denied; unrequested platform change is off-limits') — implementer.md lines 51-56; - PASS planner.md step 3 appended the explicit one-sentence shell-bypass guidance — planner.md line 35; - PASS both edits done through the shell (read_file was denied on these paths earlier this run; sed/python heredoc succeeded); - PASS shell grep confirms 'writes are denied' appears in neither file and each file names the shell bypass explicitly; - PASS no changes outside the two prompt files (git status shows only those two modified).",
+          "internal.retry_count.implementer": 0,
+          "graph.goal": "implement fabro-56c2: state the fs_hide shell bypass plainly in develop prompts",
+          "current_seed_title": "State the fs_hide shell bypass plainly in develop prompts",
+          "current_seed_brief": "Edit two workflow prompt files — `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` (Platform scope section, lines ~41-47) and `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md` (step 3, STALE-BASIS CHECK, line ~35). Acceptance criteria:\n- implementer.md: replace the false claim 'reads fail, writes are denied (fabro-1dae fs_hide)' with the accurate mechanics: fs_hide binds FILE TOOLS only (read_file, write_file, edit_file, glob discovery); the shell is unaffected — reads AND writes to `.fabro/`, `.seeds/`, `.mulch/`, `.agents/`, `scripts/`, `justfile` all succeed through shell commands\n- implementer.md: add the platform-targeting carve-out plainly: when the claimed seed's brief explicitly targets platform files (e.g. prompts under `.fabro/**`), perform those reads/edits through the shell (grep, sed -n, sed -i, python3 heredoc); the report-don't-fix rule still applies to platform friction found incidentally on product seeds — resolve the section-title tension this way: capability is not denied, unrequested platform changes are what's off-limits\n- planner.md step 3: append one sentence of explicit guidance: when a seed's `Basis:` references platform paths (`.fabro/**` etc.), open them through the shell — fs_hide binds tool calls only, so read_file fails while sed/grep/cat succeed; never burn tool calls discovering the denial\n- both edits go through the shell yourself (fs_hide hides these two files from edit_file/write_file — verified this run: read_file denied, sed via shell worked)\n- verify via shell grep that 'writes are denied' appears in neither file and each file names the shell bypass explicitly\n- no changes outside the two prompt files (workflow.fabro comments are out of scope; the savings claim — 3-4 tool calls and 2-3 LLM turns per platform-targeting seed — is rationale, not a testable criterion)",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.rankdir": "LR",
+          "internal.node_visit_count": 1,
+          "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+          "internal.retry_count.tester": 0,
+          "thread.start.current_node": "planner",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.start": 0,
+          "lesson_capture": "nothing durable — skipped",
+          "graph.max_node_visits": "40",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1
+          },
+          "internal.retry_count.planner": 0,
+          "thread.implementer.current_node": "tester",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2431,
+            "preview": "Both edits landed cleanly via shell, verified. No lesson worth recording beyond what the seed itself encodes — skipping `ml record`.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label"
+          },
+          "internal.fidelity": "compact",
+          "internal.thread_id": "implementer",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2868,
+            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Seed claimed\", \"context_updates\": {\"current_seed_id\": \"fabro-56c2\", \"current_seed_title\": \"State the fs_hide shell bypass plainly in develop prompts\","
+          },
+          "last_response": "Both edits landed cleanly via shell, verified. No lesson worth recording beyond what the seed itself encodes — skipping `ml record`.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label",
+          "thread.planner.current_node": "implementer",
+          "current_seed_id": "fabro-56c2",
+          "internal.run_id": "01M1RGQHJ5RV8Y28M2GH97XGEZ",
+          "failure_signature": "",
+          "preferred_label": "Implemented",
+          "internal.seed_cycle_anchor": "fabro-56c2",
+          "current_node": "tester"
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Planner stage fs_hide denies read_file on `.fabro/**` but nothing in the planner prompt warns of it; this run's goal seed was found only after read_file failed on both target prompts (planner.md step 3 stale-basis check sends you to open `.fabro/**` files with no shell hint). Fixed in-flight by fabro-56c2 itself; also the workflow.fabro comment (~line 99) still says 'hidden paths are unwritable anyway', the same disproved belief — consider a follow-up seed for that comment."
+                  }
+                ],
+                "observations": [
+                  "Planner read_file on `.fabro/**` prompts fails under fs_hide while shell sed/grep succeed — the exact asymmetry fabro-56c2 documents; goal-named seed id allowed a fast-path sd show instead of full tracker triage."
+                ]
+              },
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2868,
+                "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Seed claimed\", \"context_updates\": {\"current_seed_id\": \"fabro-56c2\", \"current_seed_title\": \"State the fs_hide shell bypass plainly in develop prompts\","
+              },
+              "current_seed_id": "fabro-56c2",
+              "current_seed_brief": "Edit two workflow prompt files — `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` (Platform scope section, lines ~41-47) and `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md` (step 3, STALE-BASIS CHECK, line ~35). Acceptance criteria:\n- implementer.md: replace the false claim 'reads fail, writes are denied (fabro-1dae fs_hide)' with the accurate mechanics: fs_hide binds FILE TOOLS only (read_file, write_file, edit_file, glob discovery); the shell is unaffected — reads AND writes to `.fabro/`, `.seeds/`, `.mulch/`, `.agents/`, `scripts/`, `justfile` all succeed through shell commands\n- implementer.md: add the platform-targeting carve-out plainly: when the claimed seed's brief explicitly targets platform files (e.g. prompts under `.fabro/**`), perform those reads/edits through the shell (grep, sed -n, sed -i, python3 heredoc); the report-don't-fix rule still applies to platform friction found incidentally on product seeds — resolve the section-title tension this way: capability is not denied, unrequested platform changes are what's off-limits\n- planner.md step 3: append one sentence of explicit guidance: when a seed's `Basis:` references platform paths (`.fabro/**` etc.), open them through the shell — fs_hide binds tool calls only, so read_file fails while sed/grep/cat succeed; never burn tool calls discovering the denial\n- both edits go through the shell yourself (fs_hide hides these two files from edit_file/write_file — verified this run: read_file denied, sed via shell worked)\n- verify via shell grep that 'writes are denied' appears in neither file and each file names the shell bypass explicitly\n- no changes outside the two prompt files (workflow.fabro comments are out of scope; the savings claim — 3-4 tool calls and 2-3 LLM turns per platform-targeting seed — is rationale, not a testable criterion)",
+              "current_seed_title": "State the fs_hide shell bypass plainly in develop prompts",
+              "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Seed claimed\", \"context_updates\": {\"current_seed_id\": \"fabro-56c2\", \"current_seed_title\": \"State the fs_hide shell bypass plainly in develop prompts\",",
+              "last_stage": "planner"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19867,
+                    "output_tokens": 2183,
+                    "reasoning_tokens": 2352,
+                    "cache_read_tokens": 138752,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 83829
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 97513,
+              "tool_time_ms": 1873,
+              "active_time_ms": 99386
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5466,
+              "active_time_ms": 5466
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
           },
           "implementer": {
             "status": "succeeded",
@@ -1008,11 +1218,12 @@
             }
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
           "start": 1,
           "implementer": 1,
-          "planner": 1
+          "planner": 1,
+          "tester": 1
         }
       },
       "diff": {}
@@ -1045,6 +1256,93 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "tester@1": {
+      "first_event_seq": 149,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-09-05T10:13:00.961048178Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+        "exit_code": 0,
+        "duration_ms": 5466,
+        "termination": "exited",
+        "output_bytes": 87,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 87,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-05T10:12:55.477314522Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 5471,
+        "inference_time_ms": 0,
+        "tool_time_ms": 5466,
+        "active_time_ms": 5466
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-05T10:10:14.862464306Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-05T10:10:14.848142198Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "implementer@1": {
       "first_event_seq": 104,
       "prompt": null,
@@ -1469,42 +1767,6 @@
           }
         ],
         "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "start@1": {
-      "first_event_seq": 17,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": null,
-        "failure_reason": null,
-        "timestamp": "2026-09-05T10:10:14.862464306Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-05T10:10:14.848142198Z",
-      "handler": "start",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 0,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
