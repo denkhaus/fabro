@@ -488,7 +488,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-05T09:50:43.926906740Z",
-  "last_event_at": "2026-09-05T09:57:35.662200487Z",
+  "last_event_at": "2026-09-05T09:57:43.429530782Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -907,9 +907,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 173,
       "checkpoint": {
-        "timestamp": "2026-09-05T09:57:35.921423875Z",
+        "timestamp": "2026-09-05T09:57:40.934550306Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -919,11 +919,34 @@
         ],
         "node_retries": {},
         "context_values": {
+          "internal.fidelity": "compact",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "graph.max_node_visits": "30",
+          "last_response": "All four findings deduplicated clean, filed as `fabro-56c2`, `fabro-7e88`, `fabro-3839`, `fabro-a0e3` with basis lines; the revision marker is written to `/workspace/fabro/.fabro/revisions/01M1RF53QWM",
+          "internal.exit_kind": "natural",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "internal.retry_count.analyze": 0,
           "internal.retry_count.start": 0,
-          "revisor_target_status": "succeeded",
           "internal.work_dir": "/workspace/fabro",
-          "thread.analyze.current_node": "file",
+          "last_stage": "file",
+          "graph.preamble_budget_kb": "24",
+          "failure_class": "",
+          "failure_signature": "",
+          "graph.inspects": "develop",
           "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "internal.node_visit_count": 1,
+          "internal.run_id": "01M1RFKQ8H5G7ATY6368SFT6ZS",
+          "preferred_label": "Staged",
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 969,
+            "preview": "Run selected:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Run selected\",\n  \"context_updates\": {\n    \"revisor_target_run_id\": \"01M1RF53QWM4Q5REBVSG9F9Y43\",\n    \"revisor_target_title\": \"imple"
+          },
           "revision_findings": [
             {
               "title": "State the fs_hide shell bypass plainly in develop prompts",
@@ -946,70 +969,105 @@
               "priority": 2
             }
           ],
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "graph.inspects": "develop",
-          "graph.rankdir": "LR",
-          "outcome": "succeeded",
-          "revisor_target_wall": "5.5 min",
-          "response.select": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.select",
-            "chars": 969,
-            "preview": "Run selected:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Run selected\",\n  \"context_updates\": {\n    \"revisor_target_run_id\": \"01M1RF53QWM4Q5REBVSG9F9Y43\",\n    \"revisor_target_title\": \"imple"
-          },
-          "last_response": "All four findings deduplicated clean, filed as `fabro-56c2`, `fabro-7e88`, `fabro-3839`, `fabro-a0e3` with basis lines; the revision marker is written to `/workspace/fabro/.fabro/revisions/01M1RF53QWM",
-          "internal.retry_count.select": 0,
-          "preferred_label": "Staged",
           "filed_seed_ids": [
             "fabro-56c2",
             "fabro-7e88",
             "fabro-3839",
             "fabro-a0e3"
           ],
-          "internal.retry_count.file": 0,
-          "current_node": "file",
-          "internal.exit_kind": "natural",
-          "failure_class": "",
-          "last_stage": "file",
-          "graph.max_node_visits": "30",
-          "graph.preamble_budget_kb": "24",
-          "thread.select.current_node": "analyze",
-          "seed_cycles": {
-            "select": 1,
-            "analyze": 1,
-            "file": 1
-          },
-          "internal.fidelity": "compact",
-          "thread.start.current_node": "select",
           "response.file": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.file",
             "chars": 889,
             "preview": "All four findings deduplicated clean, filed as `fabro-56c2`, `fabro-7e88`, `fabro-3839`, `fabro-a0e3` with basis lines; the revision marker is written to `/workspace/fabro/.fabro/revisions/01M1RF53QWM"
           },
-          "internal.run_id": "01M1RFKQ8H5G7ATY6368SFT6ZS",
-          "internal.thread_id": "analyze",
-          "internal.node_visit_count": 1,
-          "failure_signature": "",
-          "internal.seed_cycle_anchor": "01M1RF53QWM4Q5REBVSG9F9Y43",
-          "revisor_target_title": "implement fabro-37a6: steer implementer to mechanical shell bulk edits for repetitive rewrites",
-          "response.analyze": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "chars": 4655,
-            "preview": "Review persisted to `.fabro/reviews/develop/01M1RF53QWM4Q5REBVSG9F9Y43.md`. Distillation: of six recommendations, three named the same concrete change as open seeds (`fabro-4b57` evidence-churn diff, "
-          },
-          "internal.retry_count.analyze": 0,
           "revisor_target_run_id": "01M1RF53QWM4Q5REBVSG9F9Y43",
+          "thread.analyze.current_node": "file",
+          "revisor_target_wall": "5.5 min",
+          "revisor_target_status": "succeeded",
+          "internal.retry_count.file": 0,
+          "internal.retry_count.select": 0,
+          "current_node": "file",
+          "thread.select.current_node": "analyze",
+          "outcome": "succeeded",
+          "thread.start.current_node": "select",
           "journal": {
             "painpoints": [],
             "observations": [
               "sd search returned no output for all four themes (empty result rather than 'no matches' text) — treat blank stdout as zero matches, not a command failure",
               "Revisor target workflow_version_id was absent from context, so basis lines record 'workflow version absent'; the planner stale-basis check will judge these against the current tree"
             ]
+          },
+          "graph.rankdir": "LR",
+          "internal.seed_cycle_anchor": "01M1RF53QWM4Q5REBVSG9F9Y43",
+          "revisor_target_title": "implement fabro-37a6: steer implementer to mechanical shell bulk edits for repetitive rewrites",
+          "internal.thread_id": "analyze",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 4655,
+            "preview": "Review persisted to `.fabro/reviews/develop/01M1RF53QWM4Q5REBVSG9F9Y43.md`. Distillation: of six recommendations, three named the same concrete change as open seeds (`fabro-4b57` evidence-churn diff, "
           }
         },
         "node_outcomes": {
+          "file": {
+            "status": "succeeded",
+            "preferred_label": "Staged",
+            "context_updates": {
+              "last_response": "All four findings deduplicated clean, filed as `fabro-56c2`, `fabro-7e88`, `fabro-3839`, `fabro-a0e3` with basis lines; the revision marker is written to `/workspace/fabro/.fabro/revisions/01M1RF53QWM",
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 889,
+                "preview": "All four findings deduplicated clean, filed as `fabro-56c2`, `fabro-7e88`, `fabro-3839`, `fabro-a0e3` with basis lines; the revision marker is written to `/workspace/fabro/.fabro/revisions/01M1RF53QWM"
+              },
+              "last_stage": "file",
+              "filed_seed_ids": [
+                "fabro-56c2",
+                "fabro-7e88",
+                "fabro-3839",
+                "fabro-a0e3"
+              ],
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "sd search returned no output for all four themes (empty result rather than 'no matches' text) — treat blank stdout as zero matches, not a command failure",
+                  "Revisor target workflow_version_id was absent from context, so basis lines record 'workflow version absent'; the planner stale-basis check will judge these against the current tree"
+                ]
+              }
+            },
+            "notes": "Stage completed: file",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16212,
+                    "output_tokens": 2048,
+                    "reasoning_tokens": 81,
+                    "cache_read_tokens": 102080,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 58595
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/revisions/01M1RF53QWM4Q5REBVSG9F9Y43.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 51345,
+              "tool_time_ms": 1954,
+              "active_time_ms": 53299
+            }
+          },
           "select": {
             "status": "succeeded",
             "preferred_label": "Run selected",
@@ -1144,78 +1202,106 @@
               "tool_time_ms": 130284,
               "active_time_ms": 294719
             }
-          },
-          "file": {
-            "status": "succeeded",
-            "preferred_label": "Staged",
-            "context_updates": {
-              "last_response": "All four findings deduplicated clean, filed as `fabro-56c2`, `fabro-7e88`, `fabro-3839`, `fabro-a0e3` with basis lines; the revision marker is written to `/workspace/fabro/.fabro/revisions/01M1RF53QWM",
-              "response.file": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.file",
-                "chars": 889,
-                "preview": "All four findings deduplicated clean, filed as `fabro-56c2`, `fabro-7e88`, `fabro-3839`, `fabro-a0e3` with basis lines; the revision marker is written to `/workspace/fabro/.fabro/revisions/01M1RF53QWM"
-              },
-              "last_stage": "file",
-              "filed_seed_ids": [
-                "fabro-56c2",
-                "fabro-7e88",
-                "fabro-3839",
-                "fabro-a0e3"
-              ],
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "sd search returned no output for all four themes (empty result rather than 'no matches' text) — treat blank stdout as zero matches, not a command failure",
-                  "Revisor target workflow_version_id was absent from context, so basis lines record 'workflow version absent'; the planner stale-basis check will judge these against the current tree"
-                ]
-              }
-            },
-            "notes": "Stage completed: file",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 16212,
-                    "output_tokens": 2048,
-                    "reasoning_tokens": 81,
-                    "cache_read_tokens": 102080,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 58595
-            },
-            "files_touched": [
-              "/workspace/fabro/.fabro/revisions/01M1RF53QWM4Q5REBVSG9F9Y43.md"
-            ],
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 51345,
-              "tool_time_ms": 1954,
-              "active_time_ms": 53299
-            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "607108c94e77c0ec59720b521d68f367ca975130",
         "node_visits": {
-          "start": 1,
-          "analyze": 1,
           "file": 1,
-          "select": 1
+          "analyze": 1,
+          "select": 1,
+          "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1RFKQ8H5G7ATY6368SFT6ZS.jsonl b/.fabro/journal/01M1RFKQ8H5G7ATY6368SFT6ZS.jsonl\nindex 5c6a74f0..46acec9e 100644\n--- a/.fabro/journal/01M1RFKQ8H5G7ATY6368SFT6ZS.jsonl\n+++ b/.fabro/journal/01M1RFKQ8H5G7ATY6368SFT6ZS.jsonl\n@@ -1 +1,2 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RFKQ8H5G7ATY6368SFT6ZS\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T09:56:30Z\",\"data\":{\"painpoints\":[{\"text\":\"This revisor session's own first `sd list --format compact` failed exit 1 on untrusted `/repos/denkhaus/fabro/.mise.toml` (mise 2026.8.10), requiring a manual `mise trust` before tracker work could start — same wall as run-container planner stages, already tracked by `fabro-66db`; fix (pre-trust or `MISE_YES=1` in sandbox/stage init) would also cover revisor-side shells.\"}],\"observations\":[\"Duplicates withheld: evidence-churn diff → `fabro-4b57` (open), mise pre-trust → `fabro-66db` (open), stage-journal empty records → `fabro-850f` (open); the analyst itself tagged all three, and the exit-1-on-start-stage detail from this run is new corroborating evidence for `fabro-850f`'s scope.\",\"Analyst-cited seed ids `fabro-f4cd`, `fabro-7773`, `fabro-45bf` do not resolve in this tracker (verified via `sd search`); the underlying changes were validated as genuinely new by content searches ('sd show seed id', 'seed lint contradiction', 'pipeline progress stages completed' all empty), so they were filed without those attributions.\",\"Sibling run `01M1REC6FE1CNRH32W5SH7KB64` (failed, same baseline version) remains unrevised for a later pass per ADR-0015 newest-first ordering.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RFKQ8H5G7ATY6368SFT6ZS\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T09:57:35Z\",\"data\":{\"painpoints\":[],\"observations\":[\"sd search returned no output for all four themes (empty result rather than 'no matches' text) — treat blank stdout as zero matches, not a command failure\",\"Revisor target workflow_version_id was absent from context, so basis lines record 'workflow version absent'; the planner stale-basis check will judge these against the current tree\"]}}\ndiff --git a/.fabro/revisions/01M1RF53QWM4Q5REBVSG9F9Y43.md b/.fabro/revisions/01M1RF53QWM4Q5REBVSG9F9Y43.md\nnew file mode 100644\nindex 00000000..2cd68b38\n--- /dev/null\n+++ b/.fabro/revisions/01M1RF53QWM4Q5REBVSG9F9Y43.md\n@@ -0,0 +1,29 @@\n+# Revision — run 01M1RF53QWM4Q5REBVSG9F9Y43\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M1RF53QWM4Q5REBVSG9F9Y43.md\n+- seeds filed:\n+  - fabro-56c2 — State the fs_hide shell bypass plainly in develop prompts\n+  - fabro-7e88 — Fast-path `sd show <id>` in planner when the goal names a seed id\n+  - fabro-3839 — Lint filed seeds for resolvable basis refs and tool-name typos\n+  - fabro-a0e3 — Fix Pipeline progress header's unique-node denominator\n+- basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\n+- revised_at_commit: 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### State the fs_hide shell bypass plainly in develop prompts\n+Filed: fabro-56c2 (priority 1)\n+Concrete change: in `.fabro/workflows/develop/prompts/implementer.md` (Platform scope section) and `prompts/planner.md` (ADR-0015 stale-basis step), replace the \"writes are denied (fabro-1dae fs_hide)\" claim with explicit guidance that for platform-targeting seeds, `.fabro/**` reads/writes go through the shell because fs_hide binds tool calls only. Expected effect: 3-4 tool calls and 2-3 LLM turns saved per platform-targeting seed; prompts stop asserting unenforced behavior.\n+\n+### Fast-path `sd show <id>` in planner when the goal names a seed id\n+Filed: fabro-7e88 (priority 2)\n+Concrete change: add a rule to `.fabro/workflows/develop/prompts/planner.md` step 1 — if the goal names a seed id, run `sd show <id> --format json` first, fall back to `sd ready` only if unresolved. Expected effect: ~14 KB less context and one fewer call in the planner stage (63% of run cost).\n+\n+### Lint filed seeds for resolvable basis refs and tool-name typos\n+Filed: fabro-3839 (priority 2)\n+Concrete change: in the revisor/improve seed-intake stage writing `.seeds/issues.jsonl`, require a resolvable run-id/Basis line per ADR-0015 and flag tool-name typos against the pinned-toolchain list. Expected effect: planner passes stop paying the contradiction-resolution premium on defective briefs (typo `sd`/`sed`, unresolvable `fabro-28e8`, conflicting call-site counts in `fabro-37a6`).\n+\n+### Fix Pipeline progress header's unique-node denominator\n+Filed: fabro-a0e3 (priority 2)\n+Concrete change: fix the unique-node denominator in the stage-preamble \"Pipeline progress\" rendering so already-completed stages count. Expected effect: correct loop-state information in every stage preamble.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 2ff388a4..f0824153 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -182,3 +182,7 @@\n {\"id\":\"fabro-37a6\",\"title\":\"Steer implementer to mechanical shell bulk edits for repetitive rewrites\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-04T23:01:45.209Z\",\"updatedAt\":\"2026-09-05T09:47:52.651Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md, add one paragraph: for repetitive, pattern-shaped changes (call-site adaptation, renames), do one mechanical pass via shell (sd/perl -pi -e, already pinned in the runner image) and verify with one focused test, instead of N hand edits. Evidence: implementer@2 (fabro-28e8) was 42% of run cost ($0.486, 278s, 51.8k tokens) rewriting ~24 identical call sites one edit_file at a time, with 19 concurrent-write serialization warnings across passes and one swallowed-loop-body near-miss. Expected effect: refactor-class pass drops from ~$0.49/280s toward ~$0.12/112s; run cost -20-25%; eliminates the swallow-adjacent-code near-miss class. Distinct from fabro-4601 (sequential-edit discipline, different mechanism).\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-05T09:47:52.651Z\"}\n {\"id\":\"fabro-d5a6\",\"title\":\"web: files tab refuses large diffs ('too large to render inline') — offer truncated/per-record rendering\",\"status\":\"open\",\"type\":\"bug\",\"priority\":2,\"createdAt\":\"2026-09-05T07:56:35.110Z\",\"updatedAt\":\"2026-09-05T07:56:35.110Z\",\"description\":\"User report 2026-09-05: in a run's Files tab, the diff for .seeds/issues.jsonl (182 records / ~264KB) is refused with '.seeds/issues.jsonl too large to render inline', so revisor-filed seeds cannot be reviewed in the UI at all. Wanted: at minimum a truncated diff with explicit cut + full-diff download; ideally per-record (JSONL line) diff rendering so one revisor cycle's additions are readable. Basis: revisor run on denkhaus, Files tab, 2026-09-05.\",\"labels\":[\"web\",\"ux\"]}\n {\"id\":\"fabro-71b9\",\"title\":\"web: kanban run tiles — show run date, workflow name, and workflow version\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-09-05T08:41:02.820Z\",\"updatedAt\":\"2026-09-05T08:41:02.820Z\",\"description\":\"User request 2026-09-05: the kanban run tiles currently show only title, diff status, repo, and PR numbers. Wanted additionally on each tile: (1) the run date (created_at or last activity), (2) the workflow name, (3) the workflow version. The workflow_version_id is content-derived (SHA-256 of the canonical workflow package) and exposed by the API run record as workflow.workflow_version_id (runs list since ADR-0015 engine change, 2026-09-05); render a short form (first ~12 hex chars) so tiles stay compact. Complements fabro-d5a6 (large-diff rendering); together they close the run-identity visibility gap in the UI.\",\"labels\":[\"web\",\"ux\",\"workflows\"]}\n+{\"id\":\"fabro-56c2\",\"title\":\"State the fs_hide shell bypass plainly in develop prompts\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-05T09:56:55.646Z\",\"updatedAt\":\"2026-09-05T09:56:55.646Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md (Platform scope section) and prompts/planner.md (ADR-0015 stale-basis step), replace the claim 'writes are denied (fabro-1dae fs_hide)' — disproved in the target run — with explicit guidance that for platform-targeting seeds, .fabro/** reads/writes go through the shell because fs_hide binds tool calls only (implementer read_file denied at seq 145, then 3 discovery calls before a python3 heredoc edit at seq 174; planner forced into shell fallback at seq 83). Effect: 3-4 tool calls and 2-3 LLM turns saved per platform-targeting seed, and prompts stop asserting unenforced behavior. Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-7e88\",\"title\":\"Fast-path sd show <id> in planner when the goal names a seed id\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T09:57:01.637Z\",\"updatedAt\":\"2026-09-05T09:57:01.637Z\",\"description\":\"Add one rule to .fabro/workflows/develop/prompts/planner.md step 1: if the goal names a seed id, run 'sd show <id> --format json' first and only fall back to 'sd ready' if the id does not resolve. In the target run the goal contained fabro-37a6 yet step 1 ran 'sd ready --limit 200', pulling 118 issues / 13.9 KB truncated output next to the sd show in the same batch (seq 65-68). Effect: ~14 KB less context and one fewer call in the run's most expensive stage (planner = 63% of run cost). Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-3839\",\"title\":\"Lint filed seeds for resolvable basis refs and tool-name typos\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T09:57:08.037Z\",\"updatedAt\":\"2026-09-05T09:57:08.037Z\",\"description\":\"In the seed-intake path of the revisor/improve workflow (the stage writing .seeds/issues.jsonl), require a resolvable run-id/Basis line per ADR-0015 and flag tool-name typos against the pinned-toolchain list. Seed fabro-37a6 shipped three defects the planner burned high-effort reasoning resolving: 'sd' as a typo for 'sed', unresolvable evidence ref fabro-28e8, and a call-site count (~24) conflicting with the recorded one (~40). Effect: planner passes stop paying the contradiction-resolution premium and ambiguous briefs — a known reviewer ping-pong driver — are caught before a run starts. Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-a0e3\",\"title\":\"Fix Pipeline progress header's unique-node denominator\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T09:57:15.814Z\",\"updatedAt\":\"2026-09-05T09:57:15.814Z\",\"description\":\"Fix the 'Pipeline progress: 0 of 6 stages completed' agent-stage preamble header (unique-node denominator in the preamble rendering) so already-completed stages count: in the target run the implementer header reported 0 of 6 with planner done, misinforming the agent about loop state. Effect: correct loop-state information in every stage preamble. Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 73,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-05T09:57:41.013103974Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 381434,
+      "inference_time_ms": 228245,
+      "tool_time_ms": 132889,
+      "active_time_ms": 361134
+    },
+    "final_git_commit_sha": "607108c94e77c0ec59720b521d68f367ca975130",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 13684,
+          "inference_time_ms": 12465,
+          "tool_time_ms": 651,
+          "active_time_ms": 13116
+        },
+        "billing_usd_micros": 34617,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 295273,
+          "inference_time_ms": 164435,
+          "tool_time_ms": 130284,
+          "active_time_ms": 294719
+        },
+        "billing_usd_micros": 117203,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 53856,
+          "inference_time_ms": 51345,
+          "tool_time_ms": 1954,
+          "active_time_ms": 53299
+        },
+        "billing_usd_micros": 58595,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 63468,
+      "output_tokens": 6165,
+      "total_tokens": 286568,
+      "reasoning_tokens": 9191,
+      "cache_read_tokens": 207744,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 210415
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1RFKQ8H5G7ATY6368SFT6ZS.jsonl b/.fabro/journal/01M1RFKQ8H5G7ATY6368SFT6ZS.jsonl\nnew file mode 100644\nindex 00000000..46acec9e\n--- /dev/null\n+++ b/.fabro/journal/01M1RFKQ8H5G7ATY6368SFT6ZS.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RFKQ8H5G7ATY6368SFT6ZS\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T09:56:30Z\",\"data\":{\"painpoints\":[{\"text\":\"This revisor session's own first `sd list --format compact` failed exit 1 on untrusted `/repos/denkhaus/fabro/.mise.toml` (mise 2026.8.10), requiring a manual `mise trust` before tracker work could start — same wall as run-container planner stages, already tracked by `fabro-66db`; fix (pre-trust or `MISE_YES=1` in sandbox/stage init) would also cover revisor-side shells.\"}],\"observations\":[\"Duplicates withheld: evidence-churn diff → `fabro-4b57` (open), mise pre-trust → `fabro-66db` (open), stage-journal empty records → `fabro-850f` (open); the analyst itself tagged all three, and the exit-1-on-start-stage detail from this run is new corroborating evidence for `fabro-850f`'s scope.\",\"Analyst-cited seed ids `fabro-f4cd`, `fabro-7773`, `fabro-45bf` do not resolve in this tracker (verified via `sd search`); the underlying changes were validated as genuinely new by content searches ('sd show seed id', 'seed lint contradiction', 'pipeline progress stages completed' all empty), so they were filed without those attributions.\",\"Sibling run `01M1REC6FE1CNRH32W5SH7KB64` (failed, same baseline version) remains unrevised for a later pass per ADR-0015 newest-first ordering.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RFKQ8H5G7ATY6368SFT6ZS\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T09:57:35Z\",\"data\":{\"painpoints\":[],\"observations\":[\"sd search returned no output for all four themes (empty result rather than 'no matches' text) — treat blank stdout as zero matches, not a command failure\",\"Revisor target workflow_version_id was absent from context, so basis lines record 'workflow version absent'; the planner stale-basis check will judge these against the current tree\"]}}\ndiff --git a/.fabro/reviews/develop/01M1RF53QWM4Q5REBVSG9F9Y43.md b/.fabro/reviews/develop/01M1RF53QWM4Q5REBVSG9F9Y43.md\nnew file mode 100644\nindex 00000000..40677a17\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M1RF53QWM4Q5REBVSG9F9Y43.md\n@@ -0,0 +1,38 @@\n+# Improve review — run 01M1RF53QWM4Q5REBVSG9F9Y43\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (5.5 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-05 09:55+0000 by revisor `fabro_ask`\n+\n+---\n+\n+All evidence below is from this run's events, checkpoints, stage transcripts, journal, worker log, and the billing/summary in the run record. Run totals for scale: 289 s wall, $0.216, of which planner = 172 s / $0.136 (63% of cost, 8,045 of the run's 8,774 reasoning tokens); implementer 62 s / $0.053; reviewer 15.9 s / $0.026; tester 6.1 s; evidence 0.37 s; closeout 0.27 s. One-pass approval, zero retries — the loop itself worked.\n+\n+## Recommendations, by expected impact\n+\n+**1. `evidence.nu`: emit the diff when only \"loop-churn\" files changed (open seed fabro-4b57, already filed High).**\n+What happened: the run's only real change (`.fabro/workflows/develop/prompts/implementer.md` +1/−1) was classified as loop churn, so the evidence capture the reviewer received says `seed-work=0 files +0/-0` and `\"(no seed-work files to diff)\"` (from the evidence stage output in the reviewer prompt). The reviewer's contract says judge \"the diff in `command.output`\" and \"distrust claims not visible in the evidence\" — there was no diff to judge. It approved only because it went beyond the contract and ran its own `git diff 45b23276` + `grep -c` (events seq 227–231). A stricter reviewer would have routed \"Verification blocked,\" costing a re-capture cycle (~3.5 min per the graph's own comments).\n+Change: in `.fabro/workflows/develop/scripts/evidence.nu`, when the seed-work set is empty but loop-churn is non-empty, include the loop-churn diff (labeled) — or treat files the current seed names as seed work. Expected effect: the entire class of revision seeds targeting `.fabro/**` becomes reviewable from context; removes the latent extra-cycle risk and the reviewer's mandatory tool detour.\n+\n+**2. Pre-trust the repo mise config in the runner image (fabro-66db).**\n+What happened: the planner's first two tool calls failed with exit 1 (`mise ERROR ... /repos/denkhaus/fabro/.mise.toml are not trusted`, events seq 32–37), then it spent ~31 s and 7 shell calls / 6 LLM turns diagnosing (`which sd`, shebang hunt, `pwd -P`, env grep) before `mise trust` fixed it (seq 59–61) — inside the run's longest, most expensive stage. The planner journaled this exact painpoint.\n+Change: add `mise trust` (or `MISE_YES=1` / pre-trust at image build) to the toolchain sandbox init — the planner's journal notes the in-repo stage shell hits the same wall fabro-66db already tracks for run containers. Expected effect: ~30–45 s wall and ~7 tool calls removed from every run, deterministically, before any reasoning starts.\n+\n+**3. Resolve the fs_hide-vs-shell contradiction for platform-targeting seeds.**\n+What happened: the implementer's `read_file` on the target file was denied (seq 145–146), it then spent 3 more calls discovering that shell writes to `.fabro/**` work anyway (`touch .wtest` probe, seq 162–164) and did the whole edit via a python3 heredoc (seq 174). The prompt's claim \"writes are denied (fabro-1dae fs_hide)\" is factually false on the shell path. The planner hit the mirrored problem: the ADR-0015 stale-basis check demands opening referenced files, but `read_file` is hidden (seq 83–84), forcing a shell fallback (journaled as painpoint #2).\n+Change: either (a) prompt-only, in `.fabro/workflows/develop/prompts/implementer.md` (\"Platform scope\" section) and `prompts/planner.md` (stale-basis step): state plainly that `.fabro/**` reads/writes for seeds that target platform files go through the shell; or (b) engine-side, make fs_hide actually bind the shell. Expected effect: 3–4 wasted tool calls + 2–3 LLM turns saved per platform-targeting seed, and the prompts stop asserting an enforcement that this run disproved.\n+\n+**4. Fast-path the planner when the goal names a seed id (fabro-f4cd).**\n+What happened: the goal literally contains `fabro-37a6`, yet planner step 1 ran `sd ready --limit 200`, which returned 118 issues / 13.9 KB with `stdout_truncated: true` (events seq 65–68) — pure noise next to the `sd show fabro-37a6` it ran in the same batch.\n+Change: one rule in `.fabro/workflows/develop/prompts/planner.md` step 1: \"If the goal names a seed id, run `sd show <id> --format json` first; only fall back to `sd ready` if that id doesn't resolve.\" Expected effect: ~14 KB less context and one fewer call in the most expensive stage; less distraction for high-effort reasoning.\n+\n+**5. Fix `stage-journal.nu`: it exits 1 on the start stage and writes empty records.**\n+What happened: the worker log shows `Non-blocking hook failed ... hook=stage-journal ... exited with code 1` at 09:42:46 (the start stage — the journal file's first entry is planner@1, so start was silently lost). Separately, 3 of the 6 journal entries (`tester`, `evidence`, `closeout`) are empty `\"data\":{}` lines (from the journal diffs in checkpoints).\n+Change: in `.fabro/workflows/develop/scripts/stage-journal.nu`, exit 0 when there is nothing to record and write only non-empty entries (covers open seed fabro-850f). Expected effect: no per-run WARN, complete journal coverage (start included), and a cleaner stream for the improve workflow that scans these branches.\n+\n+**6. Lint seeds for contradictions at filing time (fabro-7773).**\n+What happened: this seed shipped three defects the planner had to burn high-effort reasoning to detect and resolve (its journal observation #1): `sd` as a typo for `sed`, an evidence ref `fabro-28e8` that \"does not resolve in the tracker,\" and a call-site count (~24) conflicting with the already-recorded one (~40) for the same incident — on top of a near-duplicate note that had already landed at line 25 before the seed was filed.\n+Change: in the seed-intake path (revisor/improve workflow that writes `.seeds/issues.jsonl`), require a resolvable run-id/Basis line per ADR-0015 and flag tool-name typos against the pinned-toolchain list. Expected effect: planner passes stop paying the contradiction-resolution premium, and ambiguous briefs — the known driver of reviewer ping-pong — get caught before a run ever starts.\n+\n+Minor, for free: the implementer's prompt header said \"Pipeline progress: 0 of 6 stages completed\" with planner already done (open seed fabro-45bf, unique-node denominator) — cosmetic, but it misinforms the agent about loop state.\ndiff --git a/.fabro/revisions/01M1RF53QWM4Q5REBVSG9F9Y43.md b/.fabro/revisions/01M1RF53QWM4Q5REBVSG9F9Y43.md\nnew file mode 100644\nindex 00000000..2cd68b38\n--- /dev/null\n+++ b/.fabro/revisions/01M1RF53QWM4Q5REBVSG9F9Y43.md\n@@ -0,0 +1,29 @@\n+# Revision — run 01M1RF53QWM4Q5REBVSG9F9Y43\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M1RF53QWM4Q5REBVSG9F9Y43.md\n+- seeds filed:\n+  - fabro-56c2 — State the fs_hide shell bypass plainly in develop prompts\n+  - fabro-7e88 — Fast-path `sd show <id>` in planner when the goal names a seed id\n+  - fabro-3839 — Lint filed seeds for resolvable basis refs and tool-name typos\n+  - fabro-a0e3 — Fix Pipeline progress header's unique-node denominator\n+- basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\n+- revised_at_commit: 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### State the fs_hide shell bypass plainly in develop prompts\n+Filed: fabro-56c2 (priority 1)\n+Concrete change: in `.fabro/workflows/develop/prompts/implementer.md` (Platform scope section) and `prompts/planner.md` (ADR-0015 stale-basis step), replace the \"writes are denied (fabro-1dae fs_hide)\" claim with explicit guidance that for platform-targeting seeds, `.fabro/**` reads/writes go through the shell because fs_hide binds tool calls only. Expected effect: 3-4 tool calls and 2-3 LLM turns saved per platform-targeting seed; prompts stop asserting unenforced behavior.\n+\n+### Fast-path `sd show <id>` in planner when the goal names a seed id\n+Filed: fabro-7e88 (priority 2)\n+Concrete change: add a rule to `.fabro/workflows/develop/prompts/planner.md` step 1 — if the goal names a seed id, run `sd show <id> --format json` first, fall back to `sd ready` only if unresolved. Expected effect: ~14 KB less context and one fewer call in the planner stage (63% of run cost).\n+\n+### Lint filed seeds for resolvable basis refs and tool-name typos\n+Filed: fabro-3839 (priority 2)\n+Concrete change: in the revisor/improve seed-intake stage writing `.seeds/issues.jsonl`, require a resolvable run-id/Basis line per ADR-0015 and flag tool-name typos against the pinned-toolchain list. Expected effect: planner passes stop paying the contradiction-resolution premium on defective briefs (typo `sd`/`sed`, unresolvable `fabro-28e8`, conflicting call-site counts in `fabro-37a6`).\n+\n+### Fix Pipeline progress header's unique-node denominator\n+Filed: fabro-a0e3 (priority 2)\n+Concrete change: fix the unique-node denominator in the stage-preamble \"Pipeline progress\" rendering so already-completed stages count. Expected effect: correct loop-state information in every stage preamble.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 2ff388a4..f0824153 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -182,3 +182,7 @@\n {\"id\":\"fabro-37a6\",\"title\":\"Steer implementer to mechanical shell bulk edits for repetitive rewrites\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-04T23:01:45.209Z\",\"updatedAt\":\"2026-09-05T09:47:52.651Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md, add one paragraph: for repetitive, pattern-shaped changes (call-site adaptation, renames), do one mechanical pass via shell (sd/perl -pi -e, already pinned in the runner image) and verify with one focused test, instead of N hand edits. Evidence: implementer@2 (fabro-28e8) was 42% of run cost ($0.486, 278s, 51.8k tokens) rewriting ~24 identical call sites one edit_file at a time, with 19 concurrent-write serialization warnings across passes and one swallowed-loop-body near-miss. Expected effect: refactor-class pass drops from ~$0.49/280s toward ~$0.12/112s; run cost -20-25%; eliminates the swallow-adjacent-code near-miss class. Distinct from fabro-4601 (sequential-edit discipline, different mechanism).\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-05T09:47:52.651Z\"}\n {\"id\":\"fabro-d5a6\",\"title\":\"web: files tab refuses large diffs ('too large to render inline') — offer truncated/per-record rendering\",\"status\":\"open\",\"type\":\"bug\",\"priority\":2,\"createdAt\":\"2026-09-05T07:56:35.110Z\",\"updatedAt\":\"2026-09-05T07:56:35.110Z\",\"description\":\"User report 2026-09-05: in a run's Files tab, the diff for .seeds/issues.jsonl (182 records / ~264KB) is refused with '.seeds/issues.jsonl too large to render inline', so revisor-filed seeds cannot be reviewed in the UI at all. Wanted: at minimum a truncated diff with explicit cut + full-diff download; ideally per-record (JSONL line) diff rendering so one revisor cycle's additions are readable. Basis: revisor run on denkhaus, Files tab, 2026-09-05.\",\"labels\":[\"web\",\"ux\"]}\n {\"id\":\"fabro-71b9\",\"title\":\"web: kanban run tiles — show run date, workflow name, and workflow version\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-09-05T08:41:02.820Z\",\"updatedAt\":\"2026-09-05T08:41:02.820Z\",\"description\":\"User request 2026-09-05: the kanban run tiles currently show only title, diff status, repo, and PR numbers. Wanted additionally on each tile: (1) the run date (created_at or last activity), (2) the workflow name, (3) the workflow version. The workflow_version_id is content-derived (SHA-256 of the canonical workflow package) and exposed by the API run record as workflow.workflow_version_id (runs list since ADR-0015 engine change, 2026-09-05); render a short form (first ~12 hex chars) so tiles stay compact. Complements fabro-d5a6 (large-diff rendering); together they close the run-identity visibility gap in the UI.\",\"labels\":[\"web\",\"ux\",\"workflows\"]}\n+{\"id\":\"fabro-56c2\",\"title\":\"State the fs_hide shell bypass plainly in develop prompts\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-05T09:56:55.646Z\",\"updatedAt\":\"2026-09-05T09:56:55.646Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md (Platform scope section) and prompts/planner.md (ADR-0015 stale-basis step), replace the claim 'writes are denied (fabro-1dae fs_hide)' — disproved in the target run — with explicit guidance that for platform-targeting seeds, .fabro/** reads/writes go through the shell because fs_hide binds tool calls only (implementer read_file denied at seq 145, then 3 discovery calls before a python3 heredoc edit at seq 174; planner forced into shell fallback at seq 83). Effect: 3-4 tool calls and 2-3 LLM turns saved per platform-targeting seed, and prompts stop asserting unenforced behavior. Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-7e88\",\"title\":\"Fast-path sd show <id> in planner when the goal names a seed id\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T09:57:01.637Z\",\"updatedAt\":\"2026-09-05T09:57:01.637Z\",\"description\":\"Add one rule to .fabro/workflows/develop/prompts/planner.md step 1: if the goal names a seed id, run 'sd show <id> --format json' first and only fall back to 'sd ready' if the id does not resolve. In the target run the goal contained fabro-37a6 yet step 1 ran 'sd ready --limit 200', pulling 118 issues / 13.9 KB truncated output next to the sd show in the same batch (seq 65-68). Effect: ~14 KB less context and one fewer call in the run's most expensive stage (planner = 63% of run cost). Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-3839\",\"title\":\"Lint filed seeds for resolvable basis refs and tool-name typos\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T09:57:08.037Z\",\"updatedAt\":\"2026-09-05T09:57:08.037Z\",\"description\":\"In the seed-intake path of the revisor/improve workflow (the stage writing .seeds/issues.jsonl), require a resolvable run-id/Basis line per ADR-0015 and flag tool-name typos against the pinned-toolchain list. Seed fabro-37a6 shipped three defects the planner burned high-effort reasoning resolving: 'sd' as a typo for 'sed', unresolvable evidence ref fabro-28e8, and a call-site count (~24) conflicting with the recorded one (~40). Effect: planner passes stop paying the contradiction-resolution premium and ambiguous briefs — a known reviewer ping-pong driver — are caught before a run starts. Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-a0e3\",\"title\":\"Fix Pipeline progress header's unique-node denominator\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T09:57:15.814Z\",\"updatedAt\":\"2026-09-05T09:57:15.814Z\",\"description\":\"Fix the 'Pipeline progress: 0 of 6 stages completed' agent-stage preamble header (unique-node denominator in the preamble rendering) so already-completed stages count: in the target run the implementer header reported 0 of 6 with planner done, misinforming the agent about loop state. Effect: correct loop-state information in every stage preamble. Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 73,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1242,6 +1328,42 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 176,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-05T09:57:40.935077014Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-05T09:57:40.934935684Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "analyze@1": {
       "first_event_seq": 50,
       "prompt": null,
