@@ -565,7 +565,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-05T16:11:46.753952339Z",
-  "last_event_at": "2026-09-05T16:23:12.625876747Z",
+  "last_event_at": "2026-09-05T16:23:17.258006133Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -722,9 +722,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 249,
       "checkpoint": {
-        "timestamp": "2026-09-05T16:23:12.797566274Z",
+        "timestamp": "2026-09-05T16:23:17.257326592Z",
         "current_node": "develop",
         "completed_nodes": [
           "start",
@@ -733,36 +733,22 @@
         ],
         "node_retries": {},
         "context_values": {
+          "failure_class": "",
           "internal.thread_id": "survey",
+          "current_node": "develop",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "last_stage": "develop",
+          "internal.run_id": "01M1S5D9XCJMWCQ1F8EABSN7FB",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.start": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "graph.inspects": "develop,merge-upstream,revisor",
           "response.develop": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.develop",
             "chars": 1446,
             "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Develop child failed\", \"failure_reason\": \"\", \"context_updates\": {\"child_run_id\": \"01M1S5RTW80R9FS4E29T6XNDXX\", \"journal\": \"Develop child 01M1S5RTW80R9"
-          },
-          "internal.retry_count.survey": 0,
-          "internal.retry_count.develop": 0,
-          "internal.exit_kind": "soft",
-          "outcome": "succeeded",
-          "last_stage": "develop",
-          "internal.seed_cycle_anchor": "",
-          "internal.run_id": "01M1S5D9XCJMWCQ1F8EABSN7FB",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.fidelity": "compact",
-          "preferred_label": "Develop child failed",
-          "graph.max_node_visits": "12",
-          "failure_signature": "",
-          "internal.node_visit_count": 1,
-          "failure_class": "",
-          "thread.start.current_node": "survey",
-          "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Develop child failed\", \"failure_reason\": \"\", \"context_updates\": {\"child_run_id\": \"01M1S5RTW80R9FS4E29T6XNDXX\", \"journal\": \"Develop child 01M1S5RTW80R9",
-          "internal.retry_count.start": 0,
-          "response.survey": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.survey",
-            "chars": 578,
-            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": \"Surveyor pass 1: upstream drift count = 4 (origin/denkhaus..ups"
           },
           "thread.survey.current_node": "develop",
           "seed_cycles": {
@@ -771,61 +757,28 @@
             "develop": 1
           },
           "journal": "Develop child 01M1S5RTW80R9FS4E29T6XNDXX (workflow develop, goalless seed pick, env toolchain) failed terminal at 16:21:42Z with status failed / reason cancelled ('Pipeline cancelled') while planner@1 was mid-inference; no PR, no seed claimed (checkpoints show no current_seed_id; tracker untouched). Retriable — the next conductor fire re-creates the child. Painpoints: (1) first create attempt 01M1S5MWDTFSQBZ833Q74AGPXB stuck in approval_required (execution approval=prompt, no approve tool exposed to this leg) — it remains pending and orphaned; had to re-create with auto_approve=true. Suggest: develop children of conductor runs should default to auto approval, or the develop-leg prompt must pass auto_approve on first create. (2) The conductor's fabro_run_create tool schema rejects the documented {workflow_source:{repo,branch,workflow}} form (anyOf validation failure); the call only succeeds with workflow:'develop' + workflow_source as sibling properties — fix the tool schema or the prompt example. (3) Child got cancelled 2.5 min into planner@1 for an unstated cause ('Pipeline cancelled', category canceled) — worth checking server logs for who issued the cancel; possibly tied to cleanup of the orphaned pending sibling.",
-          "child_run_id": "01M1S5RTW80R9FS4E29T6XNDXX",
+          "preferred_label": "Develop child failed",
           "graph.preamble_budget_kb": "12",
-          "current_node": "develop",
-          "graph.cycle_counter_reset_key": "pass_id",
+          "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Develop child failed\", \"failure_reason\": \"\", \"context_updates\": {\"child_run_id\": \"01M1S5RTW80R9FS4E29T6XNDXX\", \"journal\": \"Develop child 01M1S5RTW80R9",
+          "outcome": "succeeded",
+          "response.survey": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.survey",
+            "chars": 578,
+            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": \"Surveyor pass 1: upstream drift count = 4 (origin/denkhaus..ups"
+          },
+          "failure_signature": "",
+          "internal.exit_kind": "soft",
+          "internal.seed_cycle_anchor": "",
+          "graph.max_node_visits": "12",
+          "internal.retry_count.survey": 0,
+          "thread.start.current_node": "survey",
+          "child_run_id": "01M1S5RTW80R9FS4E29T6XNDXX",
+          "internal.fidelity": "compact",
           "graph.rankdir": "LR",
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged"
+          "internal.retry_count.develop": 0
         },
         "node_outcomes": {
-          "survey": {
-            "status": "succeeded",
-            "preferred_label": "Work",
-            "context_updates": {
-              "journal": "Surveyor pass 1: upstream drift count = 4 (origin/denkhaus..upstream/main), below MIN threshold of 5, so no merge this pass. Newest upstream subject: 'Merge pull request #842 from fabro-sh/fix/replay-conclusion-summaries'. Drift accumulates toward the threshold; one more upstream commit triggers a merge slot. Nothing hurt; both fetches and the rev-list ran clean, though the first-time origin fetch produced a very large branch listing.",
-              "response.survey": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.survey",
-                "chars": 578,
-                "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": \"Surveyor pass 1: upstream drift count = 4 (origin/denkhaus..ups"
-              },
-              "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": \"Surveyor pass 1: upstream drift count = 4 (origin/denkhaus..ups",
-              "last_stage": "survey"
-            },
-            "notes": "Stage completed: survey",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 21292,
-                    "output_tokens": 403,
-                    "reasoning_tokens": 17,
-                    "cache_read_tokens": 30336,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 39540
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 21091,
-              "tool_time_ms": 52485,
-              "active_time_ms": 73576
-            }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "develop": {
             "status": "succeeded",
             "preferred_label": "Develop child failed",
@@ -869,19 +822,145 @@
               "tool_time_ms": 380113,
               "active_time_ms": 545663
             }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "survey": {
+            "status": "succeeded",
+            "preferred_label": "Work",
+            "context_updates": {
+              "journal": "Surveyor pass 1: upstream drift count = 4 (origin/denkhaus..upstream/main), below MIN threshold of 5, so no merge this pass. Newest upstream subject: 'Merge pull request #842 from fabro-sh/fix/replay-conclusion-summaries'. Drift accumulates toward the threshold; one more upstream commit triggers a merge slot. Nothing hurt; both fetches and the rev-list ran clean, though the first-time origin fetch produced a very large branch listing.",
+              "response.survey": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.survey",
+                "chars": 578,
+                "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": \"Surveyor pass 1: upstream drift count = 4 (origin/denkhaus..ups"
+              },
+              "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": \"Surveyor pass 1: upstream drift count = 4 (origin/denkhaus..ups",
+              "last_stage": "survey"
+            },
+            "notes": "Stage completed: survey",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 21292,
+                    "output_tokens": 403,
+                    "reasoning_tokens": 17,
+                    "cache_read_tokens": 30336,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 39540
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 21091,
+              "tool_time_ms": 52485,
+              "active_time_ms": 73576
+            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "cef2f6c8d63a4024116e2bbd1ef3c6568bfa1901",
         "node_visits": {
-          "start": 1,
+          "survey": 1,
           "develop": 1,
-          "survey": 1
+          "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-05T16:23:17.346822564Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 633076,
+      "inference_time_ms": 186641,
+      "tool_time_ms": 432598,
+      "active_time_ms": 619239
+    },
+    "failure": {
+      "reason": "soft_stop",
+      "detail": {
+        "message": "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; the next run re-enters autonomously",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "cef2f6c8d63a4024116e2bbd1ef3c6568bfa1901",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 74283,
+          "inference_time_ms": 21091,
+          "tool_time_ms": 52485,
+          "active_time_ms": 73576
+        },
+        "billing_usd_micros": 39540,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 546401,
+          "inference_time_ms": 165550,
+          "tool_time_ms": 380113,
+          "active_time_ms": 545663
+        },
+        "billing_usd_micros": 321912,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 114971,
+      "output_tokens": 2342,
+      "total_tokens": 827947,
+      "reasoning_tokens": 1322,
+      "cache_read_tokens": 709312,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 361452
+    },
+    "total_retries": 0,
+    "diff": {
+      "summary": {
+        "files_changed": 0,
+        "additions": 0,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "soft"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1450,6 +1529,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 252,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-05T16:23:17.258006133Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-05T16:23:17.257787273Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
