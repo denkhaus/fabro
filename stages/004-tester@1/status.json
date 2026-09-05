@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Script failed with exit code: 127\n\n## output\n/bin/bash: line 2: just: command not found\n",
+  "timestamp": "2026-09-05T09:35:50.257427833Z"
+}
