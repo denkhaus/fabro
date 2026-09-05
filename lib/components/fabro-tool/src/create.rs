@@ -190,6 +190,8 @@ impl JsonSchema for CreateRunSpecInput {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateRunSpec {
     pub workflow:         String,
+    #[serde(default)]
+    pub workflow_source:  Option<WorkflowSourceRef>,
     pub cwd:              Option<PathBuf>,
     pub parent_id:        Option<String>,
     pub goal:             Option<String>,
@@ -245,6 +247,24 @@ impl JsonSchema for RunInputValue {
     }
 }
 
+/// Git workflow source reference (fabro-e297): resolve the workflow in
+/// the repo the server can reach, independent of the caller's filesystem.
+#[derive(Clone, Debug, Deserialize, JsonSchema)]
+pub struct WorkflowSourceRef {
+    /// GitHub repository slug hosting the workflow, e.g. `denkhaus/fabro`.
+    pub repo:     String,
+    /// Working branch to resolve.
+    pub branch:   String,
+    #[serde(default)]
+    pub tag:      Option<String>,
+    #[serde(default)]
+    pub sha:      Option<String>,
+    /// Workflow selector relative to the checkout root (extensionless
+    /// workflow name or explicit path).
+    #[serde(default)]
+    pub workflow: Option<String>,
+}
+
 #[derive(Debug)]
 pub struct ValidatedCreateRuns {
     pub runs: Vec<ValidatedCreateRunSpec>,
@@ -253,6 +273,7 @@ pub struct ValidatedCreateRuns {
 #[derive(Debug)]
 pub struct ValidatedCreateRunSpec {
     pub workflow:         String,
+    pub workflow_source:  Option<WorkflowSourceRef>,
     pub cwd:              Option<PathBuf>,
     pub parent_id:        Option<String>,
     pub goal:             Option<String>,
@@ -294,6 +315,7 @@ impl TryFrom<CreateRunSpecInput> for ValidatedCreateRunSpec {
                 }
                 Self::try_from(CreateRunSpec {
                     workflow:         workflow.to_string(),
+                    workflow_source:  None,
                     cwd:              None,
                     parent_id:        None,
                     goal:             None,
@@ -349,6 +371,7 @@ impl TryFrom<CreateRunSpec> for ValidatedCreateRunSpec {
             .collect::<ToolResult<HashMap<_, _>>>()?;
         Ok(Self {
             workflow: spec.workflow,
+            workflow_source: spec.workflow_source,
             cwd: spec.cwd,
             parent_id,
             goal: spec.goal,
@@ -529,6 +552,7 @@ mod tests {
     fn create_spec_accepts_parent_selector() {
         let spec = ValidatedCreateRunSpec::try_from(CreateRunSpec {
             workflow:         "simple.fabro".to_string(),
+            workflow_source:  None,
             cwd:              None,
             parent_id:        Some(" nightly-parent ".to_string()),
             goal:             None,
@@ -689,6 +713,7 @@ mod tests {
         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
             runs: vec![
                 CreateRunSpec {
+                    workflow_source:  None,
                     workflow:         "simple.fabro".to_string(),
                     cwd:              None,
                     parent_id:        Some("nightly-parent".to_string()),
@@ -739,6 +764,7 @@ mod tests {
         let runs: Vec<CreateRunSpecInput> = (0..2)
             .map(|_| {
                 CreateRunSpecInput::from(CreateRunSpec {
+                    workflow_source:  None,
                     workflow:         "simple.fabro".to_string(),
                     cwd:              None,
                     parent_id:        Some("nightly-parent".to_string()),
@@ -788,6 +814,7 @@ mod tests {
         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
             runs: vec![
                 CreateRunSpec {
+                    workflow_source:  None,
                     workflow:         "simple.fabro".to_string(),
                     cwd:              None,
                     parent_id:        Some(parent_id.to_string()),
@@ -842,6 +869,7 @@ mod tests {
         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
             runs: vec![
                 CreateRunSpec {
+                    workflow_source:  None,
                     workflow:         "simple.fabro".to_string(),
                     cwd:              None,
                     parent_id:        Some(parent_id.to_string()),

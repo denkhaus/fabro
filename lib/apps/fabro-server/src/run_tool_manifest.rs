@@ -105,6 +105,7 @@ mod tests {
     fn create_run_spec(workflow: &str) -> ValidatedCreateRunSpec {
         ValidatedCreateRunSpec::try_from(CreateRunSpec {
             workflow:         workflow.to_string(),
+            workflow_source:  None,
             parent_id:        None,
             cwd:              None,
             goal:             None,
@@ -161,6 +162,7 @@ mod tests {
     #[test]
     fn manifest_args_preserve_input_provenance() {
         let spec = ValidatedCreateRunSpec::try_from(CreateRunSpec {
+            workflow_source:  None,
             workflow:         "simple".to_string(),
             parent_id:        None,
             cwd:              None,
@@ -192,6 +194,7 @@ mod tests {
     #[test]
     fn run_overrides_preserve_goal_file_as_file_goal() {
         let spec = ValidatedCreateRunSpec::try_from(CreateRunSpec {
+            workflow_source:  None,
             workflow:         "implement-plan".to_string(),
             parent_id:        None,
             cwd:              None,

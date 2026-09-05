@@ -15,8 +15,8 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use fabro_api::types::{
-    BoardColumn, ManifestConfigType, ManifestGoalType, RunIntent, RunManifest, SubmitAnswerRequest,
-    UpdateRunParentRequest, UpdateRunRequest,
+    BoardColumn, GitSourceRunIntent, ManifestConfigType, ManifestGoalType, RunIntent, RunManifest,
+    SubmitAnswerRequest, UpdateRunParentRequest, UpdateRunRequest,
 };
 use fabro_config::{CliLayer, RunLayer, Storage, project};
 use fabro_environment::{DEFAULT_ENVIRONMENT_ID, EnvironmentId};
@@ -553,9 +553,21 @@ async fn create_run(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    // Both lanes parse the raw bytes directly so serde_json keeps its
+    // All lanes parse the raw bytes directly so serde_json keeps its
     // duplicate-key rejection and line/column error locations; a JSON `Value`
     // round-trip would silently collapse duplicate keys to last-key-wins.
+    let git_source_error = match serde_json::from_slice::<GitSourceRunIntent>(&body) {
+        Ok(source_intent) => {
+            return Box::pin(create_run_from_git_source(
+                state,
+                actor,
+                headers,
+                source_intent,
+            ))
+            .await;
+        }
+        Err(err) => err,
+    };
     let intent_error = match serde_json::from_slice::<RunIntent>(&body) {
         Ok(intent) => {
             return Box::pin(create_run_from_intent(state, CreateRunFromIntentRequest {
@@ -572,7 +584,12 @@ async fn create_run(
     let req = match serde_json::from_slice::<RunManifest>(&body) {
         Ok(req) => req,
         Err(manifest_error) => {
-            return create_run_parse_error(&body, &intent_error, &manifest_error);
+            return create_run_parse_error(
+                &body,
+                &git_source_error,
+                &intent_error,
+                &manifest_error,
+            );
         }
     };
     let explicit_title_supplied = req.title.is_some();
@@ -592,12 +609,101 @@ async fn create_run(
     .await
 }
 
+/// Create a run from a git-hosted workflow (fabro-e297): resolve and
+/// register the workflow versions server-side — the same production path
+/// automations use — then hand the resolved intent to the standard intent
+/// lane. Serves orchestration callers whose context cannot host the
+/// manifest build (conductor children).
+async fn create_run_from_git_source(
+    state: Arc<AppState>,
+    actor: fabro_types::Principal,
+    headers: HeaderMap,
+    source_intent: GitSourceRunIntent,
+) -> Response {
+    let GitSourceRunIntent {
+        repo,
+        branch,
+        tag,
+        sha,
+        workflow,
+        target,
+        args,
+        environment_id,
+        parent_id,
+        title,
+        goal,
+    } = source_intent;
+    let parent_id = match parent_id
+        .map(|value| {
+            value
+                .parse::<fabro_types::RunId>()
+                .map_err(|err| ApiError::bad_request(format!("invalid parent_id: {err}")))
+        })
+        .transpose()
+    {
+        Ok(parent_id) => parent_id,
+        Err(error) => return error.into_response(),
+    };
+    let title = title.map(String::from);
+    let git_target = fabro_types::GitRunTarget {
+        repo,
+        branch,
+        tag,
+        sha,
+    };
+    let (workflow_version_id, resolved_target) = match state
+        .resolve_git_workflow_source(git_target.clone(), &workflow)
+        .await
+    {
+        Ok(resolved) => resolved,
+        Err(err) => {
+            return ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, err.to_string())
+                .into_response();
+        }
+    };
+    let source_repo = git_target.repo.clone();
+    drop(git_target);
+    let mut run_target = match target {
+        RunTarget::Git(git) => git,
+        other => {
+            return ApiError::bad_request(format!(
+                "git-source intents require a git target, got {other:?}"
+            ))
+            .into_response();
+        }
+    };
+    // Freshness pin (ADR-0015): when the run's workspace is the workflow's
+    // own repository, pin it to the exact commit the versions were resolved
+    // from, so the child's basis and its workflow version always agree.
+    if run_target.repo == source_repo {
+        run_target.sha = resolved_target.sha.clone().or(run_target.sha.take());
+    }
+    let intent = RunIntent {
+        workflow_version_id,
+        target: RunTarget::Git(run_target),
+        args,
+        environment_id,
+        parent_id,
+        title,
+        goal,
+    };
+    Box::pin(create_run_from_intent(state, CreateRunFromIntentRequest {
+        intent,
+        explicit_run_id: None,
+        actor,
+        headers,
+        automation: None,
+    }))
+    .await
+}
+
 /// Attribute a create-run body that neither lane accepted. A body carrying
 /// any of the legacy manifest's required keys is a defective manifest even
 /// when a stray `workflow_version_id` rides along, and keeps the manifest
 /// lane's `400` contract; only an intent-shaped body gets the intent `422`.
 fn create_run_parse_error(
     body: &[u8],
+    _git_source_error: &serde_json::Error,
     intent_error: &serde_json::Error,
     manifest_error: &serde_json::Error,
 ) -> Response {

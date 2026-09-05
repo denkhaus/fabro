@@ -18,6 +18,9 @@
 import type { GitContext } from './git-context';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { GitSourceRunIntent } from './git-source-run-intent';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { ManifestConfig } from './manifest-config';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -39,4 +42,4 @@ import type { RunTarget } from './run-target';
  * @type CreateRunRequest
  * Transitional create body used while callers migrate independently from self-contained manifests to immutable workflow-version intents.
  */
-export type CreateRunRequest = RunIntent | RunManifest;
+export type CreateRunRequest = GitSourceRunIntent | RunIntent | RunManifest;

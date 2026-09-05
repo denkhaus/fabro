@@ -10,6 +10,7 @@ use fabro_types::{
     PairTranscriptResponse, Run, RunId, RunPairStatusResponse, RunProjection, SessionId, StageId,
 };
 
+use crate::git_source::intent_from_spec;
 use crate::{FabroToolBackend, RunManifestBuilder, ToolError};
 
 #[derive(Clone)]
@@ -66,6 +67,12 @@ impl FabroToolBackend for ClientBackend {
     ) -> anyhow::Result<RunId> {
         if let Some(parent_id) = parent_id.as_ref() {
             self.ensure_run_scope(parent_id)?;
+        }
+        // Git-source form (fabro-e297): resolve server-side; no manifest
+        // build, so the caller's filesystem never participates.
+        if let Some(source) = spec.workflow_source.as_ref() {
+            let intent = intent_from_spec(spec, source, parent_id)?;
+            return self.client.create_run_from_git_source(intent).await;
         }
         let Some(builder) = self.manifest_builder.as_ref() else {
             return Err(ToolError::message(format!(

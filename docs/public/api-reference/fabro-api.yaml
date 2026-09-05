@@ -9386,6 +9386,62 @@ components:
       oneOf:
         - $ref: "#/components/schemas/RunManifest"
         - $ref: "#/components/schemas/RunIntent"
+        - $ref: "#/components/schemas/GitSourceRunIntent"
+
+    GitSourceRunIntent:
+      description: >-
+        Create a run from a workflow that lives in a git repository: the
+        server checks out the source, registers the immutable workflow
+        versions, and creates the run from the resolved root version — the
+        same resolution automations use. Serves callers whose execution
+        context cannot host the manifest build (e.g. run-tool orchestration
+        from inside a sandbox, fabro-e297).
+      type: object
+      additionalProperties: false
+      required:
+        - repo
+        - branch
+        - workflow
+        - target
+        - args
+      properties:
+        repo:
+          type: string
+          description: GitHub repository slug hosting the workflow.
+          example: denkhaus/fabro
+        branch:
+          type: string
+          description: Working branch to resolve; branch HEAD is used when
+            `sha` is absent.
+        tag:
+          type: ["string", "null"]
+          description: Optional tag; takes precedence over `branch` when set.
+        sha:
+          type: ["string", "null"]
+          description: Optional exact commit; when set, `branch` still names
+            the working branch the run reports.
+        workflow:
+          type: string
+          description: Workflow selector relative to the checkout root
+            (extensionless workflow name or explicit path).
+          example: develop
+        target:
+          $ref: "#/components/schemas/RunTarget"
+        args:
+          $ref: "#/components/schemas/RunIntentArgs"
+        environment_id:
+          type: string
+          description: Server environment catalog ID. Omission selects `default`.
+        parent_id:
+          type: string
+          description: Optional orchestration parent run ID.
+        title:
+          type: string
+          maxLength: 100
+          description: Optional explicit run title, normalized by the server.
+        goal:
+          type: string
+          description: Optional inline goal override.
 
     RunIntent:
       description: >-

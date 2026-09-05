@@ -11,6 +11,7 @@ mod events;
 pub mod fabro_client;
 mod gather;
 mod get;
+mod git_source;
 mod interact;
 mod logs;
 mod manifest;
@@ -31,8 +32,8 @@ pub use common::{
 };
 pub use create::{
     CreateRunOptions, CreateRunSpec, CreateRunSpecInput, CreateRunsResult, CreatedRunResult,
-    FabroRunCreateParams, RunInputValue, ValidatedCreateRunSpec, ValidatedCreateRuns, create_runs,
-    create_runs_text, create_runs_with_options,
+    FabroRunCreateParams, RunInputValue, ValidatedCreateRunSpec, ValidatedCreateRuns,
+    WorkflowSourceRef, create_runs, create_runs_text, create_runs_with_options,
 };
 pub use events::{
     FabroRunEventsParams, RunEventResult, RunEventsAction, RunEventsResult, ValidatedRunEvents,

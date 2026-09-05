@@ -129,6 +129,7 @@ export * from './fork-source-ref';
 export * from './git-author-settings';
 export * from './git-context';
 export * from './git-run-target';
+export * from './git-source-run-intent';
 export * from './github-integration-settings';
 export * from './github-integration-strategy';
 export * from './health-response';

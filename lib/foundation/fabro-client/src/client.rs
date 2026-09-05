@@ -761,6 +761,17 @@ impl Client {
         self.submit_create_run(intent.into()).await
     }
 
+    /// Create a run from a git-hosted workflow (fabro-e297): the server
+    /// resolves and registers the workflow versions and creates the run
+    /// from the resolved root version. Serves callers whose execution
+    /// context cannot host the manifest build (orchestration children).
+    pub async fn create_run_from_git_source(
+        &self,
+        intent: types::GitSourceRunIntent,
+    ) -> Result<RunId> {
+        self.submit_create_run(intent.into()).await
+    }
+
     async fn submit_create_run(&self, body: types::CreateRunRequest) -> Result<RunId> {
         let response = self
             .send_api(|client| async move { client.create_run().body(body.clone()).send().await })

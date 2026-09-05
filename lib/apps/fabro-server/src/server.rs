@@ -49,7 +49,7 @@ pub use fabro_api::types::{
     UpdateVariableRequest, VariableListResponse, VncPreviewResponse, WriteBlobResponse,
 };
 use fabro_auth::{CredentialSource, SqlVaultCredentialSource, auth_issue_message};
-use fabro_automation::{self, AutomationStore};
+use fabro_automation::{self, AutomationId, AutomationStore};
 use fabro_config::daemon::ServerDaemon;
 use fabro_config::{RunLayer, Storage, WorkflowSettingsBuilder};
 use fabro_db::DbPool;
@@ -97,10 +97,10 @@ use fabro_types::settings::server::{
     GithubIntegrationSettings, GithubIntegrationStrategy, LogDestination,
 };
 use fabro_types::{
-    AgentBackend, AskFabro, AskFabroUnavailableReason, BlobHash, EventBody,
+    AgentBackend, AskFabro, AskFabroUnavailableReason, BlobHash, EventBody, GitRunTarget,
     InterviewQuestionRecord, PairId, PairMessageId, PairTarget, PendingReason, Principal,
     PullRequestLink, QuestionType, RunControlAction, RunEvent, RunId, RunRunnableSource,
-    RunStatusKind, SandboxProviderKind, ServerSettings, SessionCapability,
+    RunStatusKind, SandboxProviderKind, ServerSettings, SessionCapability, WorkflowVersionId,
 };
 use fabro_util::error::{
     SharedError, collect_causes, render_compact_with_causes, render_with_causes,
@@ -1305,6 +1305,31 @@ impl AppState {
         )
         .materialize(input)
         .await
+    }
+
+    /// Resolve a workflow that lives in a git repository into its registered
+    /// immutable version (fabro-e297): checkout, collect, register — the
+    /// same production path automations use. Returns the root workflow
+    /// version id and the resolved target (exact checked-out sha).
+    pub(crate) async fn resolve_git_workflow_source(
+        &self,
+        source: GitRunTarget,
+        workflow: &str,
+    ) -> Result<(WorkflowVersionId, GitRunTarget), RunMaterializeError> {
+        let synthetic_automation_id = AutomationId::new("workflow-source-resolution")
+            .expect("static automation id satisfies validation");
+        let scratch_run_id = RunId::new();
+        let materialized = self
+            .materialize_automation_run(AutomationRunMaterializeInput {
+                automation_id:   synthetic_automation_id,
+                target:          source,
+                workflow_source: None,
+                workflow:        workflow.to_string(),
+                run_id:          scratch_run_id,
+                temp_root:       self.automation_temp_root().clone(),
+            })
+            .await?;
+        Ok((materialized.workflow_version_id, materialized.target))
     }
 
     pub(crate) fn notify_automation_scheduler(&self) {
