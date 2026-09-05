@@ -134,6 +134,16 @@ def main [
         fail $"run ($run_id) ended ($status) ($reason) — nothing integrated; inspect ($server)/runs/($run_id)"
     }
 
+    # Orchestration runs (conductor) disable PRs: no PR means nothing to
+    # auto-merge — skip the integration wait instead of polling a merge
+    # that cannot happen (the journal stays on the run branch; the UI
+    # and Slack carry the outcomes).
+    let has_pr = (($info | get -o pull_request | default null) != null)
+    if not $has_pr {
+        print $"run_workflow: orchestration run (no PR) — nothing to integrate"
+        exit 0
+    }
+
     # ── 5. integrate the run branch ──────────────────────────────────
     ok (do { git fetch origin } | complete) 'git fetch'
     let run_branch = $"origin/fabro/run/($run_id)"
