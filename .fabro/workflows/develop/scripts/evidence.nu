@@ -254,16 +254,15 @@ def seed-work-files-section [seed_rows: list]: nothing -> string {
 # pathological-input safety only; on cap the walk stops and the
 # disclosure names the omitted files — with docs sorted last, a cap hit
 # eats documentation before source.
-def diff-section [base: string, seed_rows: list]: nothing -> string {
-    let head = "\n== seed work: complete diff (git diff -U3 against the per-seed claim base named in the header, files above; source before docs) ==\n"
-    let seed_files = ($seed_rows | get -o path | default [] | sort-by {|f| diff-sort-key $f })
-    if ($seed_files | is-empty) {
-        return ($head + "(no seed-work files to diff)\n")
-    }
+# Shared per-seed diff walk behind both diff sections (seed work and, for
+# churn-only seeds, loop work — fabro-4b57): diff each file against the
+# claim base, sanitize the body, silently skip files with no hunks, stop at
+# the HARD_CAP and report what was cut.
+def diff-walk [base: string, files: list]: nothing -> record<body: string, omitted: list> {
     mut used = 0
     mut parts = []
     mut included = []
-    for f in $seed_files {
+    for f in $files {
         let res = (do { git diff -U3 $base -- $f } | complete)
         if $res.exit_code != 0 {
             continue
@@ -277,14 +276,41 @@ def diff-section [base: string, seed_rows: list]: nothing -> string {
         if ($used + $cost) > $HARD_CAP { break }
         $used = ($used + $cost)
         $parts = ($parts | append $"($text)\n")
-        $included = ($included | append $f)
     }
-    let omitted = ($seed_files | where {|f| $f not-in $included })
-    let body = ($parts | str join)
-    if ($omitted | is-empty) {
-        $head + $body
+    {body: ($parts | str join), omitted: ($files | where {|f| $f not-in $included })}
+}
+
+def diff-section [base: string, seed_rows: list]: nothing -> string {
+    let head = "\n== seed work: complete diff (git diff -U3 against the per-seed claim base named in the header, files above; source before docs) ==\n"
+    let seed_files = ($seed_rows | get -o path | default [] | sort-by {|f| diff-sort-key $f })
+    if ($seed_files | is-empty) {
+        return ($head + "(no seed-work files to diff)\n")
+    }
+    let walk = (diff-walk $base $seed_files)
+    if ($walk.omitted | is-empty) {
+        $head + $walk.body
     } else {
-        $head + $body + "\n(hard cap hit: " + ($omitted | length | into string) + " of " + ($seed_files | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
+        $head + $walk.body + "\n(hard cap hit: " + ($walk.omitted | length | into string) + " of " + ($seed_files | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
+    }
+}
+
+# Churn-only dev-loop seeds (seed_rows empty, churn_rows not) used to
+# capture as seed-work=0 files +0/-0 with no diff at all, forcing reviewers
+# into a manual git detour (fabro-4b57). Same walk, same cap, same
+# disclosure as the seed-work section — only the file set and the header
+# differ. Emission is gated in `main`: NOT emitted when seed_rows is
+# non-empty (loop churn stays counts-only) or when both lists are empty.
+def loop-diff-section [base: string, churn_rows: list]: nothing -> string {
+    let head = "\n== loop work: complete diff (churn-only seed — loop files diffed with git diff -U3 against the per-seed claim base named in the header; this diff IS the seed's work, source before docs) ==\n"
+    let churn_files = ($churn_rows | get -o path | default [] | sort-by {|f| diff-sort-key $f })
+    let walk = (diff-walk $base $churn_files)
+    if ($walk.omitted | is-empty) and ($walk.body | is-empty) {
+        return ($head + "(no loop-work hunks against the claim base)\n")
+    }
+    if ($walk.omitted | is-empty) {
+        $head + $walk.body
+    } else {
+        $head + $walk.body + "\n(hard cap hit: " + ($walk.omitted | length | into string) + " of " + ($churn_files | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
     }
 }
 
@@ -346,6 +372,11 @@ def main []: nothing -> nothing {
     let spec = (spec-section $wip)
     let files = (seed-work-files-section $seed_rows)
     let churn = (loop-churn-section $churn_rows)
+    # Churn-only seeds get a loop-work diff adjacent to the churn counts
+    # (fabro-4b57); mixed or clean captures are unchanged.
+    let loop_diff = (if ($seed_rows | is-empty) and (not ($churn_rows | is-empty)) {
+        loop-diff-section $claim.base $churn_rows
+    } else { "" })
     let worktree = (worktree-section $wt.lines)
 
     # …then the diff gets whatever remains under the hard output budget
@@ -360,6 +391,7 @@ def main []: nothing -> nothing {
     print $files
     print $diff
     print $churn
+    if ($loop_diff | is-not-empty) { print $loop_diff }
     print $worktree
     # Duplicate of the header line: survives a tail-anchored truncation too.
     print ""
