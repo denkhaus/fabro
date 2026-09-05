@@ -1,0 +1,38 @@
+# Improve review — run 01M1RF53QWM4Q5REBVSG9F9Y43
+
+- workflow: develop
+- branch integrated: this revisor pass (unmerged until approved)
+- status: succeeded (5.5 min, revisor pass — reason and cost in run detail)
+- generated: 2026-09-05 09:55+0000 by revisor `fabro_ask`
+
+---
+
+All evidence below is from this run's events, checkpoints, stage transcripts, journal, worker log, and the billing/summary in the run record. Run totals for scale: 289 s wall, $0.216, of which planner = 172 s / $0.136 (63% of cost, 8,045 of the run's 8,774 reasoning tokens); implementer 62 s / $0.053; reviewer 15.9 s / $0.026; tester 6.1 s; evidence 0.37 s; closeout 0.27 s. One-pass approval, zero retries — the loop itself worked.
+
+## Recommendations, by expected impact
+
+**1. `evidence.nu`: emit the diff when only "loop-churn" files changed (open seed fabro-4b57, already filed High).**
+What happened: the run's only real change (`.fabro/workflows/develop/prompts/implementer.md` +1/−1) was classified as loop churn, so the evidence capture the reviewer received says `seed-work=0 files +0/-0` and `"(no seed-work files to diff)"` (from the evidence stage output in the reviewer prompt). The reviewer's contract says judge "the diff in `command.output`" and "distrust claims not visible in the evidence" — there was no diff to judge. It approved only because it went beyond the contract and ran its own `git diff 45b23276` + `grep -c` (events seq 227–231). A stricter reviewer would have routed "Verification blocked," costing a re-capture cycle (~3.5 min per the graph's own comments).
+Change: in `.fabro/workflows/develop/scripts/evidence.nu`, when the seed-work set is empty but loop-churn is non-empty, include the loop-churn diff (labeled) — or treat files the current seed names as seed work. Expected effect: the entire class of revision seeds targeting `.fabro/**` becomes reviewable from context; removes the latent extra-cycle risk and the reviewer's mandatory tool detour.
+
+**2. Pre-trust the repo mise config in the runner image (fabro-66db).**
+What happened: the planner's first two tool calls failed with exit 1 (`mise ERROR ... /repos/denkhaus/fabro/.mise.toml are not trusted`, events seq 32–37), then it spent ~31 s and 7 shell calls / 6 LLM turns diagnosing (`which sd`, shebang hunt, `pwd -P`, env grep) before `mise trust` fixed it (seq 59–61) — inside the run's longest, most expensive stage. The planner journaled this exact painpoint.
+Change: add `mise trust` (or `MISE_YES=1` / pre-trust at image build) to the toolchain sandbox init — the planner's journal notes the in-repo stage shell hits the same wall fabro-66db already tracks for run containers. Expected effect: ~30–45 s wall and ~7 tool calls removed from every run, deterministically, before any reasoning starts.
+
+**3. Resolve the fs_hide-vs-shell contradiction for platform-targeting seeds.**
+What happened: the implementer's `read_file` on the target file was denied (seq 145–146), it then spent 3 more calls discovering that shell writes to `.fabro/**` work anyway (`touch .wtest` probe, seq 162–164) and did the whole edit via a python3 heredoc (seq 174). The prompt's claim "writes are denied (fabro-1dae fs_hide)" is factually false on the shell path. The planner hit the mirrored problem: the ADR-0015 stale-basis check demands opening referenced files, but `read_file` is hidden (seq 83–84), forcing a shell fallback (journaled as painpoint #2).
+Change: either (a) prompt-only, in `.fabro/workflows/develop/prompts/implementer.md` ("Platform scope" section) and `prompts/planner.md` (stale-basis step): state plainly that `.fabro/**` reads/writes for seeds that target platform files go through the shell; or (b) engine-side, make fs_hide actually bind the shell. Expected effect: 3–4 wasted tool calls + 2–3 LLM turns saved per platform-targeting seed, and the prompts stop asserting an enforcement that this run disproved.
+
+**4. Fast-path the planner when the goal names a seed id (fabro-f4cd).**
+What happened: the goal literally contains `fabro-37a6`, yet planner step 1 ran `sd ready --limit 200`, which returned 118 issues / 13.9 KB with `stdout_truncated: true` (events seq 65–68) — pure noise next to the `sd show fabro-37a6` it ran in the same batch.
+Change: one rule in `.fabro/workflows/develop/prompts/planner.md` step 1: "If the goal names a seed id, run `sd show <id> --format json` first; only fall back to `sd ready` if that id doesn't resolve." Expected effect: ~14 KB less context and one fewer call in the most expensive stage; less distraction for high-effort reasoning.
+
+**5. Fix `stage-journal.nu`: it exits 1 on the start stage and writes empty records.**
+What happened: the worker log shows `Non-blocking hook failed ... hook=stage-journal ... exited with code 1` at 09:42:46 (the start stage — the journal file's first entry is planner@1, so start was silently lost). Separately, 3 of the 6 journal entries (`tester`, `evidence`, `closeout`) are empty `"data":{}` lines (from the journal diffs in checkpoints).
+Change: in `.fabro/workflows/develop/scripts/stage-journal.nu`, exit 0 when there is nothing to record and write only non-empty entries (covers open seed fabro-850f). Expected effect: no per-run WARN, complete journal coverage (start included), and a cleaner stream for the improve workflow that scans these branches.
+
+**6. Lint seeds for contradictions at filing time (fabro-7773).**
+What happened: this seed shipped three defects the planner had to burn high-effort reasoning to detect and resolve (its journal observation #1): `sd` as a typo for `sed`, an evidence ref `fabro-28e8` that "does not resolve in the tracker," and a call-site count (~24) conflicting with the already-recorded one (~40) for the same incident — on top of a near-duplicate note that had already landed at line 25 before the seed was filed.
+Change: in the seed-intake path (revisor/improve workflow that writes `.seeds/issues.jsonl`), require a resolvable run-id/Basis line per ADR-0015 and flag tool-name typos against the pinned-toolchain list. Expected effect: planner passes stop paying the contradiction-resolution premium, and ambiguous briefs — the known driver of reviewer ping-pong — get caught before a run ever starts.
+
+Minor, for free: the implementer's prompt header said "Pipeline progress: 0 of 6 stages completed" with planner already done (open seed fabro-45bf, unique-node denominator) — cosmetic, but it misinforms the agent about loop state.
