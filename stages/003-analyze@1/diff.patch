@@ -1,0 +1,65 @@
+diff --git a/.fabro/journal/01M1RJVKW9AE5QZHTRFS6CYTG9.jsonl b/.fabro/journal/01M1RJVKW9AE5QZHTRFS6CYTG9.jsonl
+new file mode 100644
+index 00000000..98c12f2e
+--- /dev/null
++++ b/.fabro/journal/01M1RJVKW9AE5QZHTRFS6CYTG9.jsonl
+@@ -0,0 +1 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1RJVKW9AE5QZHTRFS6CYTG9","node":"analyze","visit":1,"status":"succeeded","ts":"2026-09-05T10:55:50Z","data":{"painpoints":[{"text":"Live third recurrence of fabro-66db inside THIS revisor pass: `sd list` failed with the same `mise ERROR Config files in /repos/denkhaus/fabro/.mise.toml are not trusted` until I ran `mise trust`; fix idea — fold the interim planner.md sd-table `mise trust` hint into fabro-66db and consider raising its priority."},{"text":"The analyst's rec-6 named fix (create journal file/parent path) already exists in stage-journal.nu (it mkdirs `.fabro/journal`), so the surviving candidate is reframed as fault tolerance/diagnostics; analyst recommendations occasionally name already-implemented mechanisms, so the mandated tracker+file verification before filing is load-bearing."}],"observations":["Duplicates dropped with ids: mise pre-trust → duplicate_of fabro-66db (open); evidence seed-work classification → duplicate_of fabro-4b57 (open; classification variant already litigated by closed fabro-2992 — this run's reviewer burning 3 tool calls on git diff strengthens fabro-4b57's High priority); pipeline progress denominator → duplicate_of fabro-a0e3 (also fabro-45bf, both open); per-node memory scoping AND the rust-style-guide quick win → duplicate_of fabro-9588 (open).","fabro-7e88 (fast-path `sd show <id>`) landed in this run at commit `05adeba6` and is closed; on the next named-seed run, check the planner's first tracker call is `sd show` (~7–14 KB less context, 1–2 fewer calls in the costliest stage).","fabro-f4cd was journaled as superseded by this run's planner — the file stage/bookkeeper should close it as superseded by fabro-7e88 (bookkeeping, not a develop seed)."]}}
+diff --git a/.fabro/reviews/develop/01M1RJK3S9JJYR1MYZKXP1H7YZ.md b/.fabro/reviews/develop/01M1RJK3S9JJYR1MYZKXP1H7YZ.md
+new file mode 100644
+index 00000000..46b300c3
+--- /dev/null
++++ b/.fabro/reviews/develop/01M1RJK3S9JJYR1MYZKXP1H7YZ.md
+@@ -0,0 +1,52 @@
++# Improve review — run 01M1RJK3S9JJYR1MYZKXP1H7YZ
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: succeeded (3.5 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-05 10:50+0000 by revisor `fabro_ask`
++
++---
++
++All findings below are grounded in this run's event history (seq numbers), the run summary/checkpoints, and the worker log. Run profile for scale: $0.145 total, 184.9 s wall, planner = $0.079/55% of cost and 87.7 s of the 144.5 s total inference; 0 stage retries.
++
++## Recommendations, by expected impact
++
++**1. Pre-trust the repo mise config in run containers (fixes the fabro-66db recurrence)**
++
++- What happened: the planner's first two shell calls (`sd ready`, `sd show fabro-7e88`, seq 32–37) both failed with `mise ERROR ... .mise.toml are not trusted`. The agent then burned a diagnosis call (seq 41), a symlink/mise-lookup call (seq 47), and only recovered at `mise trust` (seq 53) — 3 wasted tool calls + 2 wasted LLM turns, ~31 s of the planner's 90 s wall in the run's most expensive stage. The planner journal logged it as a recurrence of filed fabro-66db.
++- Change: add a `prepare` step or bake into the `fabro-toolchain:noble` image: `mise trust <primary_repo_path>/.mise.toml` (the path is known at sandbox init — `/repos/denkhaus/fabro`). Interim one-liner: add the `mise trust` recovery to the sd command table in `.fabro/workflows/develop/prompts/planner.md`.
++- Effect: removes ~30 s and 2 LLM turns from every develop run's planner, not just this one — it has now recurred across runs.
++
++**2. Fix evidence.nu's seed-work classification for platform-targeting seeds**
++
++- What happened: the evidence capture delivered to the reviewer said `integrity: seed-work=0 files +0/-0`, `seed work: changed files ... (none)`, `(no seed-work files to diff)` — while the run's entire deliverable (`.fabro/workflows/develop/prompts/planner.md +1/-1`) was listed under "loop churn, counts only" (seq 162, reviewer prompt). The reviewer had to reconstruct the diff itself with 3 tool calls across 2 extra turns (`read_file` planner.md, `git log/show`, `git diff db876569..HEAD`, seq 172–181), and its journal confirms it verified "directly via git diff" instead of from the capture.
++- Change: in `.fabro/workflows/develop/scripts/evidence.nu`, classify changed files as seed-work when they match paths named in the claimed seed's spec/brief (parse target paths from the seed body), instead of the static product-path rule that lumps all `.fabro/**` into churn. At minimum, emit the full diff of churn files when seed-work is empty.
++- Effect: the reviewer verifies from the capture as designed — saves 2 tool round-trips per platform seed and removes the risk of a "Verification blocked" → re-capture cycle every time a seed legitimately targets platform files.
++
++**3. Fix the "Pipeline progress" header denominator (fabro-a0e3, recurred here)**
++
++- What happened: the implementer's prompt reported "Pipeline progress: 0 of 6 stages completed" with the planner already done (seq 103); the reviewer's reported "2 of 6" with five stages complete (seq 162).
++- Change: engine-side preamble renderer — count completed stages correctly (it appears to count only command-handler stages or to reset per thread).
++- Effect: every agent stage gets correct loop-state information; trivial fix, removes a standing misinformation source the tracker already carries as a seed.
++
++**4. Harvest this run's own fix: verify the fast-path next run, close duplicate fabro-f4cd, lint duplicates at intake**
++
++- What happened: the goal named `fabro-7e88`, yet the planner still ran `sd ready --limit 200` (7.2 KB of tracker listing retained in context, seq 54–55) beside the `sd show` — the exact waste the seed describes. The fix landed in this run (planner.md step 1, commit `05adeba6`). The planner also burned an extra `sd show fabro-f4cd` plus a comparison turn on the near-duplicate (seq 60–67) and journaled that f4cd is now superseded.
++- Change: (a) on the next named-seed run, check the first planner tracker call is `sd show` (the fast-path's payoff: ~7–14 KB less context, 1–2 fewer calls in the costliest stage); (b) close `fabro-f4cd` as superseded; (c) extend the revisor intake lint (fabro-3839 covers basis refs/typos) with a title/target-file duplicate check.
++- Effect: the planner's dominant cost shrinks on the common named-seed path, and future duplicate seeds stop costing an extra claim-decision cycle.
++
++**5. Scope memory per node or slim AGENTS.md**
++
++- What happened: the full 23.4 KB `AGENTS.md` was loaded into all three agent stages (seq 24, 105, 164) — ~5.6 k tokens each, 29% of the planner's input and ~39% of the implementer's. For a prompt-only platform seed, most of it (Rust workspace conventions) is irrelevant.
++- Change: implement per-node memory scoping (already filed as fabro-9588), or split `AGENTS.md` into role-relevant sections the engine can select.
++- Effect: ~5 k fewer input tokens per stage; mostly cache-read today so the cost win is modest, but it frees preamble budget and shortens every stage conversation.
++
++**6. Make the stage-journal hook survive first invocation**
++
++- What happened: the only warning in the worker log: `Non-blocking hook failed ... hook=stage-journal ... hook exited with code 1` at 10:42:48 (the `start` stage). The `start` entry is consequently missing from `.fabro/journal/01M1RJK3S9JJYR1MYZKXP1H7YZ.jsonl`, which begins at planner@1.
++- Change: in `.fabro/workflows/develop/scripts/stage-journal.nu`, create the journal file/parent path (or tolerate absence) before appending.
++- Effect: complete per-stage journal records and a clean warn-free log; small but it's the one real error the run hit.
++
++**Quick wins worth bundling** (from the implementer/reviewer journals): renumber the duplicated "4." in planner.md "## Plan the next seed" (claim and brief-writing both numbered 4), and drop the rust-style-guide skill advertisement from prompt-only review passes (224 tokens, never activated).
++
++What I could not inspect: the engine-side preamble renderer and sandbox image build (recommendations 1 and 3 name the component but the fix lives outside this workspace's workflow files); everything else is verifiable in `.fabro/workflows/develop/` and the run events cited above.
