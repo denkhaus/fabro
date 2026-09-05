@@ -1,0 +1,93 @@
+# Dogfood Gate — fork-only, path-adaptive CI for the denkhaus branch.
+#
+# Why this exists (2026-09-05): the inherited Rust/TypeScript workflows run
+# the full matrix on EVERY pull request (16-18 min each) because required
+# status checks never report for path-filtered workflows — a revisor PR that
+# only writes markdown files paid the whole price. Those workflows are
+# DISABLED on this fork (repo-level, no file divergence); this single always-
+# completing job is the required check instead:
+#
+#   * markdown-only PRs (revisor markers/reviews, seeds, journal): no Rust,
+#     no TypeScript — the check finishes in seconds.
+#   * Rust-path PRs: fmt (pinned nightly), clippy --workspace -D warnings,
+#     nextest --workspace (Linux, cached) — the real program, because a code
+#     change is what it is for.
+#   * TS-path PRs: typecheck + tests via bun.
+#
+# The check run name is the job id (dogfood-gate); branch protection on
+# denkhaus requires it plus lab-check-local (variant B, fabro-ab2c).
+# Keep this file fork-only; upstream keeps its own CI.
+name: Dogfood Gate
+
+on:
+  pull_request:
+    branches: [denkhaus]
+
+concurrency:
+  group: dogfood-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dogfood-gate:
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths
+        id: changes
+        run: |
+          base="origin/${{ github.base_ref }}"
+          git fetch origin "${{ github.base_ref }}" --depth=1 >/dev/null 2>&1 || true
+          files=$(git diff --name-only "$base"...HEAD || git diff --name-only "$base" HEAD)
+          echo "$files" | head -50
+          rust=$(echo "$files" | grep -qE '^(lib/|Cargo\.toml$|Cargo\.lock$|\.cargo/|rust-toolchain|justfile$|scripts/qualitygate)' && echo true || echo false)
+          ts=$(echo "$files" | grep -qE '^(apps/|lib/packages/|bun\.lock$|\.github/workflows/dogfood-gate\.yml$)' && echo true || echo false)
+          {
+            echo "rust=$rust"
+            echo "ts=$ts"
+          } >> "$GITHUB_OUTPUT"
+
+      # ── Rust (only when Rust paths changed) ────────────────────────────
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        if: steps.changes.outputs.rust == 'true'
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # nightly pin
+        if: steps.changes.outputs.rust == 'true'
+        with:
+          toolchain: nightly-2026-04-14
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
+        if: steps.changes.outputs.rust == 'true'
+        with:
+          cache-on-failure: true
+      - name: Rust format
+        if: steps.changes.outputs.rust == 'true'
+        run: cargo +nightly-2026-04-14 fmt --check --all
+      - name: Rust clippy
+        if: steps.changes.outputs.rust == 'true'
+        run: cargo +nightly-2026-04-14 clippy --locked --workspace --all-targets -- -D warnings
+      - uses: taiki-e/install-action@773334c0e05d7e699e4d78234494308223f3a2cf # nextest
+        if: steps.changes.outputs.rust == 'true'
+      - name: Rust tests
+        if: steps.changes.outputs.rust == 'true'
+        run: cargo nextest run --locked --workspace --status-level slow --profile ci
+
+      # ── TypeScript (only when TS paths changed) ────────────────────────
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: steps.changes.outputs.ts == 'true'
+        with:
+          bun-version: 1.3.14
+      - name: TypeScript install
+        if: steps.changes.outputs.ts == 'true'
+        run: bun install --frozen-lockfile
+      - name: TypeScript typecheck
+        if: steps.changes.outputs.ts == 'true'
+        run: |
+          cd apps/fabro-web && bun run typecheck
+          cd ../.. && cd lib/packages/fabro-api-client && bun run typecheck
+      - name: TypeScript tests
+        if: steps.changes.outputs.ts == 'true'
+        run: cd apps/fabro-web && bun run test

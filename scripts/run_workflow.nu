@@ -161,18 +161,21 @@ def main [
         print $"run_workflow: WARN local lab-check post failed — auto-merge cannot engage, squash fallback will integrate: ($detail)"
     }
 
-    # Auto-merge engages within seconds of the status; poll briefly so
-    # the ff-pull path wins over the local squash fallback.
+    # Auto-merge is the PRIMARY integration path (user directive
+    # 2026-09-05: local squash is only an emergency workaround): the
+    # Dogfood Gate (path-adaptive CI) usually completes in seconds for
+    # markdown-only run PRs and in minutes for code PRs, so wait for the
+    # REAL GitHub merge instead of racing it locally.
     #
     # Detection is TREE EQUALITY, not commit ancestry: GitHub auto-merge
     # SQUASHES the run branch into the base (run 01M11P68SHFS: merge
     # commit 5f953db8, one parent), so the run-branch tip is never an
     # ancestor of origin/<branch> after integration — an is-ancestor
-    # check can never see the landed merge and always falls into the
-    # squash fallback (push race, ALARM exit).
+    # check can never see the landed merge.
     mut auto_merged = false
-    for _ in 1..9 {
-        sleep 10sec
+    let merge_deadline = 40
+    for _ in 1..$merge_deadline {
+        sleep 15sec
         let _ = (do { git fetch origin $branch } | complete)
         $auto_merged = ((do {
             git diff --quiet $run_branch $"origin/($branch)"
@@ -181,9 +184,10 @@ def main [
     }
     let already_merged = $auto_merged
     if $already_merged {
-        print 'run_workflow: auto-merge already landed — fast-forward pull'
+        print 'run_workflow: auto-merge landed — fast-forward pull'
         ok (do { git pull --ff-only origin $branch } | complete) 'git pull'
     } else {
+        print $"run_workflow: WARN auto-merge did not land within ($merge_deadline * 15) sec — EMERGENCY squash fallback engages (dogfood-gate stuck? check the PR checks)"
         print $"run_workflow: squash-merging ($run_branch) into ($branch) \(provisional auto-merge, fabro-ab2c)"
         ok (do { git merge --squash $run_branch } | complete) 'squash merge'
         let nothing_staged = ((do { git diff --cached --quiet } | complete).exit_code == 0)
