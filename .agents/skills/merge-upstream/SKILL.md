@@ -95,7 +95,11 @@ Order matters; a red earlier step means fix before continuing.
 3. Deploy + verify in one step: `just up` (has a pipeline lock and the
    post-deploy smoke). Watch `/tmp/just-up<N>.log` via PROCESS LIVENESS +
    terminal markers ("smoke: all" / "recipe ... failed"), never blind
-   sleep-polling. Smoke must be 7/7 green.
+   sleep-polling. Smoke must be 7/7 green. (2026-09-05, user directive:
+   start `just up` nohup-backgrounded, then schedule an rlm_heartbeat
+   (follow_up, 5m) whose instruction names the log path, PID, terminal
+   markers, and the full post-success continuation — wakes the session
+   autonomously instead of waiting for the user to ask for status.)
 4. Prove the container runs the merged code (e.g. strings of the binary
    for a marker of the new upstream change) when cheap.
 

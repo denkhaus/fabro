@@ -146,3 +146,12 @@ upstream's new signatures; never revert upstream, never drop our features.
 - (false-alarm recurrence, see 2026-09-02): the tokio_stream unused-import
   warning reappeared on stable nextest --no-run; nightly clippy gate stayed
   clean — confirmed pre-existing upstream, not chased.
+
+- 2026-09-05 (v0.346, first fully conflict-free merge): NEW class 'auto-merge
+  orphaned import' — zero textual conflicts, but the merged tests.rs kept OUR
+  tokio_stream::StreamExt import that only UPSTREAM's deleted playground tests
+  had used; surfaced as unused_imports during the mandatory `nextest --no-run`
+  pre-step (would have failed clippy -D warnings later). Resolution: remove the
+  import; the one real use in the file was fully qualified (futures_util).
+  Lesson: after a conflict-free auto-merge, still grep the 7-ish both-touched
+  files for imports whose only users lived in upstream-deleted code.

@@ -165,3 +165,15 @@ Upstream directions that may supersede our work — re-evaluate per merge:
 - Automations: scheduler run creation rides `create_run_from_intent`, so the
   Local+auto-PR rejection applies to automations uniformly; our Docker
   environments unaffected.
+
+- 2026-09-05 (v0.346): RunStatusKind::Runnable joined
+  reconcile_incomplete_runs_on_startup (PR #841) — server restarts now emit
+  RunFailed for admitted-but-unstarted runs; our Slack lifecycle routes
+  receive those correctly. Interacts with future revisor cron (ADR-0013
+  phase 3): restarts fail scheduled runs cleanly instead of zombie-ing.
+- 2026-09-05 (v0.346): playground fully removed (PR #839) — if any future
+  seed or doc references /playground or POST /api/v1/playground/chat, treat
+  as dead; PR #533 superseded upstream.
+- 2026-09-05 (v0.346): Client::list_environments() is now available for
+  engine-side use — candidate infra for fabro-8d30 part a (availability
+  probe UX), watch when that seed is picked up.
