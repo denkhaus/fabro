@@ -736,7 +736,7 @@ mod tests {
             created_parent_ids: Mutex::new(Vec::new()),
             resolved_selectors: Mutex::new(Vec::new()),
             started_run_ids: Mutex::new(Vec::new()),
-            start_error:      None,
+            start_error: None,
             retrieve_error: None,
         });
         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
@@ -789,7 +789,7 @@ mod tests {
             created_parent_ids: Mutex::new(Vec::new()),
             resolved_selectors: Mutex::new(Vec::new()),
             started_run_ids: Mutex::new(Vec::new()),
-            start_error:      None,
+            start_error: None,
             retrieve_error: None,
         });
         let runs: Vec<CreateRunSpecInput> = (0..2)
@@ -841,7 +841,7 @@ mod tests {
             created_parent_ids: Mutex::new(Vec::new()),
             resolved_selectors: Mutex::new(Vec::new()),
             started_run_ids: Mutex::new(Vec::new()),
-            start_error:      None,
+            start_error: None,
             retrieve_error: None,
         });
         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
@@ -898,7 +898,7 @@ mod tests {
             created_parent_ids: Mutex::new(Vec::new()),
             resolved_selectors: Mutex::new(Vec::new()),
             started_run_ids: Mutex::new(Vec::new()),
-            start_error:      None,
+            start_error: None,
             retrieve_error: None,
         });
         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
@@ -942,19 +942,19 @@ mod tests {
 
     fn create_spec_input(start: Option<bool>) -> CreateRunSpecInput {
         CreateRunSpec {
-            workflow_source:  None,
-            workflow:         "simple.fabro".to_string(),
-            cwd:              None,
-            parent_id:        None,
-            goal:             None,
-            goal_file:        None,
-            inputs:           HashMap::new(),
-            labels:           HashMap::new(),
-            dry_run:          None,
-            auto_approve:     None,
-            model:            None,
-            provider:         None,
-            environment:      None,
+            workflow_source: None,
+            workflow: "simple.fabro".to_string(),
+            cwd: None,
+            parent_id: None,
+            goal: None,
+            goal_file: None,
+            inputs: HashMap::new(),
+            labels: HashMap::new(),
+            dry_run: None,
+            auto_approve: None,
+            model: None,
+            provider: None,
+            environment: None,
             preserve_sandbox: None,
             start,
         }
@@ -1052,10 +1052,7 @@ mod tests {
             retrieve_error: None,
         });
         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
-            runs: vec![
-                create_spec_input(Some(false)),
-                create_spec_input(None),
-            ],
+            runs: vec![create_spec_input(Some(false)), create_spec_input(None)],
         })
         .expect("create params should validate");
 
