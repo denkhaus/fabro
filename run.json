@@ -656,7 +656,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-05T10:10:12.799613538Z",
-  "last_event_at": "2026-09-05T10:13:37.770795368Z",
+  "last_event_at": "2026-09-05T10:13:42.776219365Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1760,9 +1760,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 203,
       "checkpoint": {
-        "timestamp": "2026-09-05T10:13:37.978051662Z",
+        "timestamp": "2026-09-05T10:13:41.785504352Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -1775,7 +1775,52 @@
         ],
         "node_retries": {},
         "context_values": {
+          "failure_signature": "",
+          "internal.retry_count.start": 0,
+          "current_seed_title": "State the fs_hide shell bypass plainly in develop prompts",
+          "thread.planner.current_node": "implementer",
+          "internal.node_visit_count": 1,
+          "current_node": "closeout",
+          "graph.rankdir": "LR",
+          "command.output": "blob://sha256/a029b04a9bd4cd238df3a93833c83a4b0024250288dbd88ba248ef9befc6db66",
+          "internal.retry_count.tester": 0,
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2431,
+            "preview": "Both edits landed cleanly via shell, verified. No lesson worth recording beyond what the seed itself encodes — skipping `ml record`.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label"
+          },
+          "thread.implementer.current_node": "tester",
+          "thread.start.current_node": "planner",
+          "internal.retry_count.implementer": 0,
+          "internal.fidelity": "compact",
+          "last_stage": "reviewer",
+          "review_verdict": "approved",
+          "internal.retry_count.closeout": 0,
+          "internal.retry_count.planner": 0,
+          "current_seed_brief": "Edit two workflow prompt files — `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` (Platform scope section, lines ~41-47) and `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md` (step 3, STALE-BASIS CHECK, line ~35). Acceptance criteria:\n- implementer.md: replace the false claim 'reads fail, writes are denied (fabro-1dae fs_hide)' with the accurate mechanics: fs_hide binds FILE TOOLS only (read_file, write_file, edit_file, glob discovery); the shell is unaffected — reads AND writes to `.fabro/`, `.seeds/`, `.mulch/`, `.agents/`, `scripts/`, `justfile` all succeed through shell commands\n- implementer.md: add the platform-targeting carve-out plainly: when the claimed seed's brief explicitly targets platform files (e.g. prompts under `.fabro/**`), perform those reads/edits through the shell (grep, sed -n, sed -i, python3 heredoc); the report-don't-fix rule still applies to platform friction found incidentally on product seeds — resolve the section-title tension this way: capability is not denied, unrequested platform changes are what's off-limits\n- planner.md step 3: append one sentence of explicit guidance: when a seed's `Basis:` references platform paths (`.fabro/**` etc.), open them through the shell — fs_hide binds tool calls only, so read_file fails while sed/grep/cat succeed; never burn tool calls discovering the denial\n- both edits go through the shell yourself (fs_hide hides these two files from edit_file/write_file — verified this run: read_file denied, sed via shell worked)\n- verify via shell grep that 'writes are denied' appears in neither file and each file names the shell bypass explicitly\n- no changes outside the two prompt files (workflow.fabro comments are out of scope; the savings claim — 3-4 tool calls and 2-3 LLM turns per platform-targeting seed — is rationale, not a testable criterion)",
           "failure_class": "",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2278,
+            "preview": "Verified directly via shell (fs_hide-safe): both edits match the spec.\n\n- **implementer.md** Platform scope section: the false \"writes are denied\" claim is gone; new text states fs_hide binds file too"
+          },
+          "internal.seed_cycle_anchor": "fabro-56c2",
+          "internal.run_id": "01M1RGQHJ5RV8Y28M2GH97XGEZ",
+          "thread.reviewer.current_node": "closeout",
+          "graph.preamble_budget_kb": "24",
+          "last_response": "Verified directly via shell (fs_hide-safe): both edits match the spec.\n\n- **implementer.md** Platform scope section: the false \"writes are denied\" claim is gone; new text states fs_hide binds file too",
+          "thread.evidence.current_node": "reviewer",
+          "internal.thread_id": "reviewer",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.max_node_visits": "40",
+          "current_seed_id": "fabro-56c2",
+          "internal.retry_count.reviewer": 0,
+          "implementation_summary": "Edited exactly two files, both through the shell (python3 heredoc + sed -i, since fs_hide binds file tools): `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` (Platform scope section, lines ~41-58) now states fs_hide binds FILE TOOLS only, that shell reads AND writes to `.fabro/`, `.seeds/`, `.mulch/`, `.agents/`, `scripts/`, `justfile` all succeed, and adds the platform-targeting carve-out (shell reads/edits for `.fabro/**` seeds; report-don't-fix still applies to incidental platform friction on product seeds); `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md` step 3 gains one sentence telling the planner to open `Basis:` platform paths through the shell because fs_hide binds tool calls only. Lesson capture: nothing durable — skipped. Verification per criterion: - PASS implementer.md replaces 'reads fail, writes are denied (fabro-1dae fs_hide)' with accurate mechanics: old sentence removed, new text says fs_hide binds read_file/write_file/edit_file/glob only and shell reads AND writes succeed (grep verified) — implementer.md lines 44-47; - PASS implementer.md platform-targeting carve-out added plainly with section-title tension resolved ('capability is not denied; unrequested platform change is off-limits') — implementer.md lines 51-56; - PASS planner.md step 3 appended the explicit one-sentence shell-bypass guidance — planner.md line 35; - PASS both edits done through the shell (read_file was denied on these paths earlier this run; sed/python heredoc succeeded); - PASS shell grep confirms 'writes are denied' appears in neither file and each file names the shell bypass explicitly; - PASS no changes outside the two prompt files (git status shows only those two modified).",
+          "thread.tester.current_node": "evidence",
+          "graph.goal": "implement fabro-56c2: state the fs_hide shell bypass plainly in develop prompts",
+          "graph.cycle_counter_reset_key": "current_seed_id",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -1783,29 +1828,17 @@
               "Verified via shell reads since fs_hide denies read_file on the target paths — exactly the behavior the seed documents; grep confirmed 'writes are denied' is absent from both files and each names the shell bypass explicitly."
             ]
           },
-          "last_stage": "reviewer",
-          "outcome": "succeeded",
-          "implementation_summary": "Edited exactly two files, both through the shell (python3 heredoc + sed -i, since fs_hide binds file tools): `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` (Platform scope section, lines ~41-58) now states fs_hide binds FILE TOOLS only, that shell reads AND writes to `.fabro/`, `.seeds/`, `.mulch/`, `.agents/`, `scripts/`, `justfile` all succeed, and adds the platform-targeting carve-out (shell reads/edits for `.fabro/**` seeds; report-don't-fix still applies to incidental platform friction on product seeds); `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md` step 3 gains one sentence telling the planner to open `Basis:` platform paths through the shell because fs_hide binds tool calls only. Lesson capture: nothing durable — skipped. Verification per criterion: - PASS implementer.md replaces 'reads fail, writes are denied (fabro-1dae fs_hide)' with accurate mechanics: old sentence removed, new text says fs_hide binds read_file/write_file/edit_file/glob only and shell reads AND writes succeed (grep verified) — implementer.md lines 44-47; - PASS implementer.md platform-targeting carve-out added plainly with section-title tension resolved ('capability is not denied; unrequested platform change is off-limits') — implementer.md lines 51-56; - PASS planner.md step 3 appended the explicit one-sentence shell-bypass guidance — planner.md line 35; - PASS both edits done through the shell (read_file was denied on these paths earlier this run; sed/python heredoc succeeded); - PASS shell grep confirms 'writes are denied' appears in neither file and each file names the shell bypass explicitly; - PASS no changes outside the two prompt files (git status shows only those two modified).",
-          "internal.retry_count.implementer": 0,
-          "thread.tester.current_node": "evidence",
-          "graph.goal": "implement fabro-56c2: state the fs_hide shell bypass plainly in develop prompts",
-          "thread.evidence.current_node": "reviewer",
-          "review_verdict": "approved",
-          "current_seed_title": "State the fs_hide shell bypass plainly in develop prompts",
-          "thread.reviewer.current_node": "closeout",
-          "internal.retry_count.closeout": 0,
-          "current_seed_brief": "Edit two workflow prompt files — `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` (Platform scope section, lines ~41-47) and `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md` (step 3, STALE-BASIS CHECK, line ~35). Acceptance criteria:\n- implementer.md: replace the false claim 'reads fail, writes are denied (fabro-1dae fs_hide)' with the accurate mechanics: fs_hide binds FILE TOOLS only (read_file, write_file, edit_file, glob discovery); the shell is unaffected — reads AND writes to `.fabro/`, `.seeds/`, `.mulch/`, `.agents/`, `scripts/`, `justfile` all succeed through shell commands\n- implementer.md: add the platform-targeting carve-out plainly: when the claimed seed's brief explicitly targets platform files (e.g. prompts under `.fabro/**`), perform those reads/edits through the shell (grep, sed -n, sed -i, python3 heredoc); the report-don't-fix rule still applies to platform friction found incidentally on product seeds — resolve the section-title tension this way: capability is not denied, unrequested platform changes are what's off-limits\n- planner.md step 3: append one sentence of explicit guidance: when a seed's `Basis:` references platform paths (`.fabro/**` etc.), open them through the shell — fs_hide binds tool calls only, so read_file fails while sed/grep/cat succeed; never burn tool calls discovering the denial\n- both edits go through the shell yourself (fs_hide hides these two files from edit_file/write_file — verified this run: read_file denied, sed via shell worked)\n- verify via shell grep that 'writes are denied' appears in neither file and each file names the shell bypass explicitly\n- no changes outside the two prompt files (workflow.fabro comments are out of scope; the savings claim — 3-4 tool calls and 2-3 LLM turns per platform-targeting seed — is rationale, not a testable criterion)",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.work_dir": "/workspace/fabro",
-          "graph.rankdir": "LR",
-          "internal.node_visit_count": 1,
-          "command.output": "blob://sha256/a029b04a9bd4cd238df3a93833c83a4b0024250288dbd88ba248ef9befc6db66",
-          "internal.retry_count.tester": 0,
-          "thread.start.current_node": "planner",
-          "graph.preamble_budget_kb": "24",
-          "internal.retry_count.start": 0,
           "lesson_capture": "nothing durable — skipped",
-          "graph.max_node_visits": "40",
+          "internal.retry_count.evidence": 0,
+          "internal.exit_kind": "natural",
+          "outcome": "succeeded",
+          "preferred_label": "Approved",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2868,
+            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Seed claimed\", \"context_updates\": {\"current_seed_id\": \"fabro-56c2\", \"current_seed_title\": \"State the fs_hide shell bypass plainly in develop prompts\","
+          },
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -1813,42 +1846,37 @@
             "evidence": 1,
             "reviewer": 1,
             "closeout": 1
-          },
-          "internal.retry_count.planner": 0,
-          "thread.implementer.current_node": "tester",
-          "internal.retry_count.evidence": 0,
-          "response.implementer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 2431,
-            "preview": "Both edits landed cleanly via shell, verified. No lesson worth recording beyond what the seed itself encodes — skipping `ml record`.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label"
-          },
-          "internal.exit_kind": "natural",
-          "internal.fidelity": "compact",
-          "internal.thread_id": "reviewer",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 2868,
-            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Seed claimed\", \"context_updates\": {\"current_seed_id\": \"fabro-56c2\", \"current_seed_title\": \"State the fs_hide shell bypass plainly in develop prompts\","
-          },
-          "last_response": "Verified directly via shell (fs_hide-safe): both edits match the spec.\n\n- **implementer.md** Platform scope section: the false \"writes are denied\" claim is gone; new text states fs_hide binds file too",
-          "thread.planner.current_node": "implementer",
-          "current_seed_id": "fabro-56c2",
-          "response.reviewer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.reviewer",
-            "chars": 2278,
-            "preview": "Verified directly via shell (fs_hide-safe): both edits match the spec.\n\n- **implementer.md** Platform scope section: the false \"writes are denied\" claim is gone; new text states fs_hide binds file too"
-          },
-          "internal.retry_count.reviewer": 0,
-          "internal.run_id": "01M1RGQHJ5RV8Y28M2GH97XGEZ",
-          "failure_signature": "",
-          "preferred_label": "Approved",
-          "internal.seed_cycle_anchor": "fabro-56c2",
-          "current_node": "closeout"
+          }
         },
         "node_outcomes": {
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5466,
+              "active_time_ms": 5466
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/a029b04a9bd4cd238df3a93833c83a4b0024250288dbd88ba248ef9befc6db66"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 270,
+              "active_time_ms": 270
+            }
+          },
           "reviewer": {
             "status": "succeeded",
             "preferred_label": "Approved",
@@ -1899,36 +1927,54 @@
               "active_time_ms": 17181
             }
           },
-          "tester": {
+          "implementer": {
             "status": "succeeded",
+            "preferred_label": "Implemented",
             "context_updates": {
-              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+              "implementation_summary": "Edited exactly two files, both through the shell (python3 heredoc + sed -i, since fs_hide binds file tools): `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` (Platform scope section, lines ~41-58) now states fs_hide binds FILE TOOLS only, that shell reads AND writes to `.fabro/`, `.seeds/`, `.mulch/`, `.agents/`, `scripts/`, `justfile` all succeed, and adds the platform-targeting carve-out (shell reads/edits for `.fabro/**` seeds; report-don't-fix still applies to incidental platform friction on product seeds); `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md` step 3 gains one sentence telling the planner to open `Basis:` platform paths through the shell because fs_hide binds tool calls only. Lesson capture: nothing durable — skipped. Verification per criterion: - PASS implementer.md replaces 'reads fail, writes are denied (fabro-1dae fs_hide)' with accurate mechanics: old sentence removed, new text says fs_hide binds read_file/write_file/edit_file/glob only and shell reads AND writes succeed (grep verified) — implementer.md lines 44-47; - PASS implementer.md platform-targeting carve-out added plainly with section-title tension resolved ('capability is not denied; unrequested platform change is off-limits') — implementer.md lines 51-56; - PASS planner.md step 3 appended the explicit one-sentence shell-bypass guidance — planner.md line 35; - PASS both edits done through the shell (read_file was denied on these paths earlier this run; sed/python heredoc succeeded); - PASS shell grep confirms 'writes are denied' appears in neither file and each file names the shell bypass explicitly; - PASS no changes outside the two prompt files (git status shows only those two modified).",
+              "lesson_capture": "nothing durable — skipped",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The initial replacement text contained the literal substring 'tool writes are denied', which would have tripped the seed's own grep-based acceptance check — reworded to 'refused' before finishing; future verifications should grep for the exact banned substring before declaring done (implementer.md:46)."
+                ]
+              },
+              "last_response": "Both edits landed cleanly via shell, verified. No lesson worth recording beyond what the seed itself encodes — skipping `ml record`.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2431,
+                "preview": "Both edits landed cleanly via shell, verified. No lesson worth recording beyond what the seed itself encodes — skipping `ml record`.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label"
+              }
             },
-            "notes": "Script completed: just qualitygate",
-            "usage": null,
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14479,
+                    "output_tokens": 1503,
+                    "reasoning_tokens": 177,
+                    "cache_read_tokens": 50176,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 40704
+            },
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 5466,
-              "active_time_ms": 5466
-            }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
-          "evidence": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/312682a311623aa86b4fe6b96e25569ae0c5a791eda2d32eaf764ca95116c5c6"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 483,
-              "active_time_ms": 483
+              "inference_time_ms": 36668,
+              "tool_time_ms": 698,
+              "active_time_ms": 37366
             }
           },
           "planner": {
@@ -1986,86 +2032,159 @@
               "active_time_ms": 99386
             }
           },
-          "closeout": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "evidence": {
             "status": "succeeded",
             "context_updates": {
-              "command.output": "blob://sha256/a029b04a9bd4cd238df3a93833c83a4b0024250288dbd88ba248ef9befc6db66"
+              "command.output": "blob://sha256/312682a311623aa86b4fe6b96e25569ae0c5a791eda2d32eaf764ca95116c5c6"
             },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
             "usage": null,
             "timing": {
               "wall_time_ms": 0,
               "inference_time_ms": 0,
-              "tool_time_ms": 270,
-              "active_time_ms": 270
-            }
-          },
-          "implementer": {
-            "status": "succeeded",
-            "preferred_label": "Implemented",
-            "context_updates": {
-              "implementation_summary": "Edited exactly two files, both through the shell (python3 heredoc + sed -i, since fs_hide binds file tools): `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` (Platform scope section, lines ~41-58) now states fs_hide binds FILE TOOLS only, that shell reads AND writes to `.fabro/`, `.seeds/`, `.mulch/`, `.agents/`, `scripts/`, `justfile` all succeed, and adds the platform-targeting carve-out (shell reads/edits for `.fabro/**` seeds; report-don't-fix still applies to incidental platform friction on product seeds); `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md` step 3 gains one sentence telling the planner to open `Basis:` platform paths through the shell because fs_hide binds tool calls only. Lesson capture: nothing durable — skipped. Verification per criterion: - PASS implementer.md replaces 'reads fail, writes are denied (fabro-1dae fs_hide)' with accurate mechanics: old sentence removed, new text says fs_hide binds read_file/write_file/edit_file/glob only and shell reads AND writes succeed (grep verified) — implementer.md lines 44-47; - PASS implementer.md platform-targeting carve-out added plainly with section-title tension resolved ('capability is not denied; unrequested platform change is off-limits') — implementer.md lines 51-56; - PASS planner.md step 3 appended the explicit one-sentence shell-bypass guidance — planner.md line 35; - PASS both edits done through the shell (read_file was denied on these paths earlier this run; sed/python heredoc succeeded); - PASS shell grep confirms 'writes are denied' appears in neither file and each file names the shell bypass explicitly; - PASS no changes outside the two prompt files (git status shows only those two modified).",
-              "lesson_capture": "nothing durable — skipped",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "The initial replacement text contained the literal substring 'tool writes are denied', which would have tripped the seed's own grep-based acceptance check — reworded to 'refused' before finishing; future verifications should grep for the exact banned substring before declaring done (implementer.md:46)."
-                ]
-              },
-              "last_response": "Both edits landed cleanly via shell, verified. No lesson worth recording beyond what the seed itself encodes — skipping `ml record`.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label",
-              "last_stage": "implementer",
-              "response.implementer": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.implementer",
-                "chars": 2431,
-                "preview": "Both edits landed cleanly via shell, verified. No lesson worth recording beyond what the seed itself encodes — skipping `ml record`.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label"
-              }
-            },
-            "notes": "Stage completed: implementer",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 14479,
-                    "output_tokens": 1503,
-                    "reasoning_tokens": 177,
-                    "cache_read_tokens": 50176,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 40704
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 36668,
-              "tool_time_ms": 698,
-              "active_time_ms": 37366
+              "tool_time_ms": 483,
+              "active_time_ms": 483
             }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "6770b33ffc3923de0f06b4c53478e8d90a3f94d3",
         "node_visits": {
-          "start": 1,
-          "implementer": 1,
-          "evidence": 1,
-          "planner": 1,
           "reviewer": 1,
+          "evidence": 1,
+          "start": 1,
+          "tester": 1,
+          "planner": 1,
           "closeout": 1,
-          "tester": 1
+          "implementer": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1RGQHJ5RV8Y28M2GH97XGEZ.jsonl b/.fabro/journal/01M1RGQHJ5RV8Y28M2GH97XGEZ.jsonl\nindex 252dacff..b6667ef0 100644\n--- a/.fabro/journal/01M1RGQHJ5RV8Y28M2GH97XGEZ.jsonl\n+++ b/.fabro/journal/01M1RGQHJ5RV8Y28M2GH97XGEZ.jsonl\n@@ -3,3 +3,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RGQHJ5RV8Y28M2GH97XGEZ\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T10:13:01Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RGQHJ5RV8Y28M2GH97XGEZ\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T10:13:08Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RGQHJ5RV8Y28M2GH97XGEZ\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T10:13:30Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Evidence classified the seed's own deliverable (prompt edits) as loop churn with seed-work=0 files; the loop-churn counts matched the actual git diff exactly, so verification was still possible directly.\",\"Verified via shell reads since fs_hide denies read_file on the target paths — exactly the behavior the seed documents; grep confirmed 'writes are denied' is absent from both files and each names the shell bypass explicitly.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RGQHJ5RV8Y28M2GH97XGEZ\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T10:13:37Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex e5374cc0..c2b803c6 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -182,7 +182,7 @@\n {\"id\":\"fabro-37a6\",\"title\":\"Steer implementer to mechanical shell bulk edits for repetitive rewrites\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-04T23:01:45.209Z\",\"updatedAt\":\"2026-09-05T09:47:52.651Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md, add one paragraph: for repetitive, pattern-shaped changes (call-site adaptation, renames), do one mechanical pass via shell (sd/perl -pi -e, already pinned in the runner image) and verify with one focused test, instead of N hand edits. Evidence: implementer@2 (fabro-28e8) was 42% of run cost ($0.486, 278s, 51.8k tokens) rewriting ~24 identical call sites one edit_file at a time, with 19 concurrent-write serialization warnings across passes and one swallowed-loop-body near-miss. Expected effect: refactor-class pass drops from ~$0.49/280s toward ~$0.12/112s; run cost -20-25%; eliminates the swallow-adjacent-code near-miss class. Distinct from fabro-4601 (sequential-edit discipline, different mechanism).\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-05T09:47:52.651Z\"}\n {\"id\":\"fabro-d5a6\",\"title\":\"web: files tab refuses large diffs ('too large to render inline') — offer truncated/per-record rendering\",\"status\":\"open\",\"type\":\"bug\",\"priority\":2,\"createdAt\":\"2026-09-05T07:56:35.110Z\",\"updatedAt\":\"2026-09-05T07:56:35.110Z\",\"description\":\"User report 2026-09-05: in a run's Files tab, the diff for .seeds/issues.jsonl (182 records / ~264KB) is refused with '.seeds/issues.jsonl too large to render inline', so revisor-filed seeds cannot be reviewed in the UI at all. Wanted: at minimum a truncated diff with explicit cut + full-diff download; ideally per-record (JSONL line) diff rendering so one revisor cycle's additions are readable. Basis: revisor run on denkhaus, Files tab, 2026-09-05.\",\"labels\":[\"web\",\"ux\"]}\n {\"id\":\"fabro-71b9\",\"title\":\"web: kanban run tiles — show run date, workflow name, and workflow version\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-09-05T08:41:02.820Z\",\"updatedAt\":\"2026-09-05T08:41:02.820Z\",\"description\":\"User request 2026-09-05: the kanban run tiles currently show only title, diff status, repo, and PR numbers. Wanted additionally on each tile: (1) the run date (created_at or last activity), (2) the workflow name, (3) the workflow version. The workflow_version_id is content-derived (SHA-256 of the canonical workflow package) and exposed by the API run record as workflow.workflow_version_id (runs list since ADR-0015 engine change, 2026-09-05); render a short form (first ~12 hex chars) so tiles stay compact. Complements fabro-d5a6 (large-diff rendering); together they close the run-identity visibility gap in the UI.\",\"labels\":[\"web\",\"ux\",\"workflows\"]}\n-{\"id\":\"fabro-56c2\",\"title\":\"State the fs_hide shell bypass plainly in develop prompts\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-05T09:56:55.646Z\",\"updatedAt\":\"2026-09-05T10:11:35.535Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md (Platform scope section) and prompts/planner.md (ADR-0015 stale-basis step), replace the claim 'writes are denied (fabro-1dae fs_hide)' — disproved in the target run — with explicit guidance that for platform-targeting seeds, .fabro/** reads/writes go through the shell because fs_hide binds tool calls only (implementer read_file denied at seq 145, then 3 discovery calls before a python3 heredoc edit at seq 174; planner forced into shell fallback at seq 83). Effect: 3-4 tool calls and 2-3 LLM turns saved per platform-targeting seed, and prompts stop asserting unenforced behavior. Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-56c2\",\"title\":\"State the fs_hide shell bypass plainly in develop prompts\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-05T09:56:55.646Z\",\"updatedAt\":\"2026-09-05T10:13:37.676Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md (Platform scope section) and prompts/planner.md (ADR-0015 stale-basis step), replace the claim 'writes are denied (fabro-1dae fs_hide)' — disproved in the target run — with explicit guidance that for platform-targeting seeds, .fabro/** reads/writes go through the shell because fs_hide binds tool calls only (implementer read_file denied at seq 145, then 3 discovery calls before a python3 heredoc edit at seq 174; planner forced into shell fallback at seq 83). Effect: 3-4 tool calls and 2-3 LLM turns saved per platform-targeting seed, and prompts stop asserting unenforced behavior. Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-05T10:13:37.676Z\"}\n {\"id\":\"fabro-7e88\",\"title\":\"Fast-path sd show <id> in planner when the goal names a seed id\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T09:57:01.637Z\",\"updatedAt\":\"2026-09-05T09:57:01.637Z\",\"description\":\"Add one rule to .fabro/workflows/develop/prompts/planner.md step 1: if the goal names a seed id, run 'sd show <id> --format json' first and only fall back to 'sd ready' if the id does not resolve. In the target run the goal contained fabro-37a6 yet step 1 ran 'sd ready --limit 200', pulling 118 issues / 13.9 KB truncated output next to the sd show in the same batch (seq 65-68). Effect: ~14 KB less context and one fewer call in the run's most expensive stage (planner = 63% of run cost). Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-3839\",\"title\":\"Lint filed seeds for resolvable basis refs and tool-name typos\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T09:57:08.037Z\",\"updatedAt\":\"2026-09-05T09:57:08.037Z\",\"description\":\"In the seed-intake path of the revisor/improve workflow (the stage writing .seeds/issues.jsonl), require a resolvable run-id/Basis line per ADR-0015 and flag tool-name typos against the pinned-toolchain list. Seed fabro-37a6 shipped three defects the planner burned high-effort reasoning resolving: 'sd' as a typo for 'sed', unresolvable evidence ref fabro-28e8, and a call-site count (~24) conflicting with the recorded one (~40). Effect: planner passes stop paying the contradiction-resolution premium and ambiguous briefs — a known reviewer ping-pong driver — are caught before a run starts. Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-a0e3\",\"title\":\"Fix Pipeline progress header's unique-node denominator\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T09:57:15.814Z\",\"updatedAt\":\"2026-09-05T09:57:15.814Z\",\"description\":\"Fix the 'Pipeline progress: 0 of 6 stages completed' agent-stage preamble header (unique-node denominator in the preamble rendering) so already-completed stages count: in the target run the implementer header reported 0 of 6 with planner done, misinforming the agent about loop state. Effect: correct loop-state information in every stage preamble. Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 21,
+          "deletions": 5
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-05T10:13:41.853289785Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 189885,
+      "inference_time_ms": 151187,
+      "tool_time_ms": 8965,
+      "active_time_ms": 160152
+    },
+    "final_git_commit_sha": "6770b33ffc3923de0f06b4c53478e8d90a3f94d3",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 100053,
+          "inference_time_ms": 97513,
+          "tool_time_ms": 1873,
+          "active_time_ms": 99386
+        },
+        "billing_usd_micros": 83829,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 37883,
+          "inference_time_ms": 36668,
+          "tool_time_ms": 698,
+          "active_time_ms": 37366
+        },
+        "billing_usd_micros": 40704,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 5471,
+          "inference_time_ms": 0,
+          "tool_time_ms": 5466,
+          "active_time_ms": 5466
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 490,
+          "inference_time_ms": 0,
+          "tool_time_ms": 483,
+          "active_time_ms": 483
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 17724,
+          "inference_time_ms": 17006,
+          "tool_time_ms": 175,
+          "active_time_ms": 17181
+        },
+        "billing_usd_micros": 24720,
+        "retries": 0
+      },
+      {
+        "stage_id": "closeout",
+        "stage_label": "closeout",
+        "timing": {
+          "wall_time_ms": 276,
+          "inference_time_ms": 0,
+          "tool_time_ms": 270,
+          "active_time_ms": 270
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 47471,
+      "output_tokens": 4333,
+      "total_tokens": 255498,
+      "reasoning_tokens": 2606,
+      "cache_read_tokens": 201088,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 149253
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1RGQHJ5RV8Y28M2GH97XGEZ.jsonl b/.fabro/journal/01M1RGQHJ5RV8Y28M2GH97XGEZ.jsonl\nnew file mode 100644\nindex 00000000..b6667ef0\n--- /dev/null\n+++ b/.fabro/journal/01M1RGQHJ5RV8Y28M2GH97XGEZ.jsonl\n@@ -0,0 +1,6 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RGQHJ5RV8Y28M2GH97XGEZ\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T10:12:06Z\",\"data\":{\"painpoints\":[{\"text\":\"Planner stage fs_hide denies read_file on `.fabro/**` but nothing in the planner prompt warns of it; this run's goal seed was found only after read_file failed on both target prompts (planner.md step 3 stale-basis check sends you to open `.fabro/**` files with no shell hint). Fixed in-flight by fabro-56c2 itself; also the workflow.fabro comment (~line 99) still says 'hidden paths are unwritable anyway', the same disproved belief — consider a follow-up seed for that comment.\"}],\"observations\":[\"Planner read_file on `.fabro/**` prompts fails under fs_hide while shell sed/grep succeed — the exact asymmetry fabro-56c2 documents; goal-named seed id allowed a fast-path sd show instead of full tracker triage.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RGQHJ5RV8Y28M2GH97XGEZ\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T10:12:51Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The initial replacement text contained the literal substring 'tool writes are denied', which would have tripped the seed's own grep-based acceptance check — reworded to 'refused' before finishing; future verifications should grep for the exact banned substring before declaring done (implementer.md:46).\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RGQHJ5RV8Y28M2GH97XGEZ\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T10:13:01Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RGQHJ5RV8Y28M2GH97XGEZ\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T10:13:08Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RGQHJ5RV8Y28M2GH97XGEZ\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T10:13:30Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Evidence classified the seed's own deliverable (prompt edits) as loop churn with seed-work=0 files; the loop-churn counts matched the actual git diff exactly, so verification was still possible directly.\",\"Verified via shell reads since fs_hide denies read_file on the target paths — exactly the behavior the seed documents; grep confirmed 'writes are denied' is absent from both files and each names the shell bypass explicitly.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RGQHJ5RV8Y28M2GH97XGEZ\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T10:13:37Z\",\"data\":{}}\ndiff --git a/.fabro/workflows/develop/prompts/implementer.md b/.fabro/workflows/develop/prompts/implementer.md\nindex 081981f7..91aab5f6 100644\n--- a/.fabro/workflows/develop/prompts/implementer.md\n+++ b/.fabro/workflows/develop/prompts/implementer.md\n@@ -41,9 +41,19 @@ cannot resolve is a deviation: say so explicitly instead of hiding it.\n You build the PRODUCT — on this world that is the Rust workspace under\n `lib/` (and, rarely, `apps/` for the web UI). For `.fabro/`, `.seeds/`,\n `.mulch/`, `.agents/`, `scripts/`, and `justfile` this is enforced\n-mechanically: those paths are hidden from your file tools — reads fail,\n-writes are denied (fabro-1dae fs_hide). The `sd` and `just` commands\n-keep working through the shell. `AGENTS.md`, `CLAUDE.md`, `docs/`,\n+mechanically by fs_hide (fabro-1dae), which binds FILE TOOLS only\n+(read_file, write_file, edit_file, glob discovery): tool reads fail and\n+tool writes are refused. The shell is unaffected — reads AND writes to\n+those paths all succeed through shell commands (grep, sed -n, sed -i,\n+cat, python3 heredocs). The `sd` and `just` commands\n+keep working through the shell.\n+\n+Carve-out for platform-targeting seeds: when the claimed seed's brief\n+explicitly targets platform files (e.g. prompts under `.fabro/**`),\n+perform those reads and edits through the shell — the capability is not\n+denied. What remains off-limits is unrequested platform change: the\n+report-don't-fix rule still applies to platform friction found\n+incidentally while working a product seed. `AGENTS.md`, `CLAUDE.md`, `docs/`,\n `Cargo.toml`, and the workspace manifests remain visible but are repo\n wiring: never modify them without the seed saying so explicitly. When\n your work reveals friction in any of these (a script bug, a prompt gap,\ndiff --git a/.fabro/workflows/develop/prompts/planner.md b/.fabro/workflows/develop/prompts/planner.md\nindex 518c3b79..b3754e39 100644\n--- a/.fabro/workflows/develop/prompts/planner.md\n+++ b/.fabro/workflows/develop/prompts/planner.md\n@@ -32,7 +32,7 @@ The engine maintains `seed_cycles` deterministically: `{ node -> completed visit\n \n 1. Run `sd ready --limit 200` to list unblocked open seeds; `sd list --format json --limit 200` for the full picture if needed.\n 2. Pick the highest-priority unblocked seed that serves the goal. If two compete, prefer the one with fewest blockers.\n-3. STALE-BASIS CHECK (ADR-0015): before claiming, read the seed body for its `Basis:` line (source run id, workflow version, repo commit). Open the referenced files/prompts in the CURRENT worktree: if the behavior the seed describes no longer exists, already changed, or the finding is moot against the current tree, the seed is superseded — close it with `sd close <id> --reason \"superseded: basis stale (<what changed>)\"` and pick the next candidate. Never implement a seed whose basis does not resolve. Seeds without a Basis line are legacy (pre-2026-09-05): judge them the same way against the current tree before claiming.\n+3. STALE-BASIS CHECK (ADR-0015): before claiming, read the seed body for its `Basis:` line (source run id, workflow version, repo commit). Open the referenced files/prompts in the CURRENT worktree: if the behavior the seed describes no longer exists, already changed, or the finding is moot against the current tree, the seed is superseded — close it with `sd close <id> --reason \"superseded: basis stale (<what changed>)\"` and pick the next candidate. Never implement a seed whose basis does not resolve. When a seed's `Basis:` references platform paths (`.fabro/**` etc.), open them through the shell — fs_hide binds tool calls only, so read_file fails while sed/grep/cat succeed; never burn tool calls discovering the denial. Seeds without a Basis line are legacy (pre-2026-09-05): judge them the same way against the current tree before claiming.\n 4. Claim it: `sd update <id> --status in_progress`.\n 4. Write the implementation brief into the context as BULLETED acceptance criteria, not prose: seed id, title, then one bullet per requirement, plus review feedback if this is a re-plan. Bullets are cheaper to re-read, harder to misparse, and the reviewer and the implementer's PASS/FAIL report check them item-by-item. Shape each bullet as a checkable statement, e.g.:\n \ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex f0824153..c2b803c6 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -182,7 +182,7 @@\n {\"id\":\"fabro-37a6\",\"title\":\"Steer implementer to mechanical shell bulk edits for repetitive rewrites\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-04T23:01:45.209Z\",\"updatedAt\":\"2026-09-05T09:47:52.651Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md, add one paragraph: for repetitive, pattern-shaped changes (call-site adaptation, renames), do one mechanical pass via shell (sd/perl -pi -e, already pinned in the runner image) and verify with one focused test, instead of N hand edits. Evidence: implementer@2 (fabro-28e8) was 42% of run cost ($0.486, 278s, 51.8k tokens) rewriting ~24 identical call sites one edit_file at a time, with 19 concurrent-write serialization warnings across passes and one swallowed-loop-body near-miss. Expected effect: refactor-class pass drops from ~$0.49/280s toward ~$0.12/112s; run cost -20-25%; eliminates the swallow-adjacent-code near-miss class. Distinct from fabro-4601 (sequential-edit discipline, different mechanism).\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-05T09:47:52.651Z\"}\n {\"id\":\"fabro-d5a6\",\"title\":\"web: files tab refuses large diffs ('too large to render inline') — offer truncated/per-record rendering\",\"status\":\"open\",\"type\":\"bug\",\"priority\":2,\"createdAt\":\"2026-09-05T07:56:35.110Z\",\"updatedAt\":\"2026-09-05T07:56:35.110Z\",\"description\":\"User report 2026-09-05: in a run's Files tab, the diff for .seeds/issues.jsonl (182 records / ~264KB) is refused with '.seeds/issues.jsonl too large to render inline', so revisor-filed seeds cannot be reviewed in the UI at all. Wanted: at minimum a truncated diff with explicit cut + full-diff download; ideally per-record (JSONL line) diff rendering so one revisor cycle's additions are readable. Basis: revisor run on denkhaus, Files tab, 2026-09-05.\",\"labels\":[\"web\",\"ux\"]}\n {\"id\":\"fabro-71b9\",\"title\":\"web: kanban run tiles — show run date, workflow name, and workflow version\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-09-05T08:41:02.820Z\",\"updatedAt\":\"2026-09-05T08:41:02.820Z\",\"description\":\"User request 2026-09-05: the kanban run tiles currently show only title, diff status, repo, and PR numbers. Wanted additionally on each tile: (1) the run date (created_at or last activity), (2) the workflow name, (3) the workflow version. The workflow_version_id is content-derived (SHA-256 of the canonical workflow package) and exposed by the API run record as workflow.workflow_version_id (runs list since ADR-0015 engine change, 2026-09-05); render a short form (first ~12 hex chars) so tiles stay compact. Complements fabro-d5a6 (large-diff rendering); together they close the run-identity visibility gap in the UI.\",\"labels\":[\"web\",\"ux\",\"workflows\"]}\n-{\"id\":\"fabro-56c2\",\"title\":\"State the fs_hide shell bypass plainly in develop prompts\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-05T09:56:55.646Z\",\"updatedAt\":\"2026-09-05T09:56:55.646Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md (Platform scope section) and prompts/planner.md (ADR-0015 stale-basis step), replace the claim 'writes are denied (fabro-1dae fs_hide)' — disproved in the target run — with explicit guidance that for platform-targeting seeds, .fabro/** reads/writes go through the shell because fs_hide binds tool calls only (implementer read_file denied at seq 145, then 3 discovery calls before a python3 heredoc edit at seq 174; planner forced into shell fallback at seq 83). Effect: 3-4 tool calls and 2-3 LLM turns saved per platform-targeting seed, and prompts stop asserting unenforced behavior. Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-56c2\",\"title\":\"State the fs_hide shell bypass plainly in develop prompts\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-05T09:56:55.646Z\",\"updatedAt\":\"2026-09-05T10:13:37.676Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md (Platform scope section) and prompts/planner.md (ADR-0015 stale-basis step), replace the claim 'writes are denied (fabro-1dae fs_hide)' — disproved in the target run — with explicit guidance that for platform-targeting seeds, .fabro/** reads/writes go through the shell because fs_hide binds tool calls only (implementer read_file denied at seq 145, then 3 discovery calls before a python3 heredoc edit at seq 174; planner forced into shell fallback at seq 83). Effect: 3-4 tool calls and 2-3 LLM turns saved per platform-targeting seed, and prompts stop asserting unenforced behavior. Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-05T10:13:37.676Z\"}\n {\"id\":\"fabro-7e88\",\"title\":\"Fast-path sd show <id> in planner when the goal names a seed id\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T09:57:01.637Z\",\"updatedAt\":\"2026-09-05T09:57:01.637Z\",\"description\":\"Add one rule to .fabro/workflows/develop/prompts/planner.md step 1: if the goal names a seed id, run 'sd show <id> --format json' first and only fall back to 'sd ready' if the id does not resolve. In the target run the goal contained fabro-37a6 yet step 1 ran 'sd ready --limit 200', pulling 118 issues / 13.9 KB truncated output next to the sd show in the same batch (seq 65-68). Effect: ~14 KB less context and one fewer call in the run's most expensive stage (planner = 63% of run cost). Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-3839\",\"title\":\"Lint filed seeds for resolvable basis refs and tool-name typos\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T09:57:08.037Z\",\"updatedAt\":\"2026-09-05T09:57:08.037Z\",\"description\":\"In the seed-intake path of the revisor/improve workflow (the stage writing .seeds/issues.jsonl), require a resolvable run-id/Basis line per ADR-0015 and flag tool-name typos against the pinned-toolchain list. Seed fabro-37a6 shipped three defects the planner burned high-effort reasoning resolving: 'sd' as a typo for 'sed', unresolvable evidence ref fabro-28e8, and a call-site count (~24) conflicting with the recorded one (~40). Effect: planner passes stop paying the contradiction-resolution premium and ambiguous briefs — a known reviewer ping-pong driver — are caught before a run starts. Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-a0e3\",\"title\":\"Fix Pipeline progress header's unique-node denominator\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T09:57:15.814Z\",\"updatedAt\":\"2026-09-05T09:57:15.814Z\",\"description\":\"Fix the 'Pipeline progress: 0 of 6 stages completed' agent-stage preamble header (unique-node denominator in the preamble rendering) so already-completed stages count: in the target run the implementer header reported 0 of 6 with planner done, misinforming the agent about loop state. Effect: correct loop-state information in every stage preamble. Basis: run 01M1RF53QWM4Q5REBVSG9F9Y43, workflow version absent, commit 3ca43b1cd19c8cf291668bdbdc4a1fbbc321e2ec\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 21,
+        "deletions": 5
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2092,318 +2211,45 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
-    "reviewer@1": {
-      "first_event_seq": 169,
+    "evidence@1": {
+      "first_event_seq": 159,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": "Stage completed: reviewer",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
         "failure_reason": null,
-        "timestamp": "2026-09-05T10:13:30.394515619Z"
-      },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "low"
-      },
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-05T10:13:12.656532255Z",
-      "handler": "agent",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 17724,
-        "inference_time_ms": 17006,
-        "tool_time_ms": 175,
-        "active_time_ms": 17181
-      },
-      "usage": {
-        "input_tokens": 13125,
-        "output_tokens": 647,
-        "total_tokens": 26009,
-        "reasoning_tokens": 77,
-        "cache_read_tokens": 12160,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 24720
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "skills": {
-        "available": [
-          {
-            "name": "rust-style-guide",
-            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
-          }
-        ],
-        "activated": []
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": true
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "use_skill",
-          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
-          "source": {
-            "kind": "skill"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 13122,
-        "usage_percent": 1.2514114379882812,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-05T10:13:30.376334129Z",
-        "event_seq": 186,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1131,
-            "usage_percent": 0.10786056518554688
-          },
-          {
-            "category": "tools",
-            "tokens": 1633,
-            "usage_percent": 0.15573501586914062
-          },
-          {
-            "category": "skills",
-            "tokens": 221,
-            "usage_percent": 0.021076202392578125
-          },
-          {
-            "category": "memory",
-            "tokens": 5615,
-            "usage_percent": 0.5354881286621094
-          },
-          {
-            "category": "conversation",
-            "tokens": 4514,
-            "usage_percent": 0.43048858642578125
-          },
-          {
-            "category": "other",
-            "tokens": 8,
-            "usage_percent": 0.000762939453125
-          }
-        ],
-        "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "tester@1": {
-      "first_event_seq": 149,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Script completed: just qualitygate",
-        "failure_reason": null,
-        "timestamp": "2026-09-05T10:13:00.961048178Z"
+        "timestamp": "2026-09-05T10:13:08.402776668Z"
       },
       "provider_used": null,
       "diff": null,
       "script_invocation": {
-        "script": "just qualitygate",
-        "command": "exec 2>&1\njust qualitygate",
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
         "language": "shell",
-        "timeout_ms": 1200000
+        "timeout_ms": 120000
       },
       "script_timing": {
-        "output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+        "output": "blob://sha256/312682a311623aa86b4fe6b96e25569ae0c5a791eda2d32eaf764ca95116c5c6",
         "exit_code": 0,
-        "duration_ms": 5466,
+        "duration_ms": 483,
         "termination": "exited",
-        "output_bytes": 87,
+        "output_bytes": 1818,
         "live_streaming": true
       },
       "parallel_results": null,
       "output": null,
-      "output_bytes": 87,
+      "output_bytes": 1818,
       "live_streaming": true,
       "termination": "exited",
-      "started_at": "2026-09-05T10:12:55.477314522Z",
+      "started_at": "2026-09-05T10:13:07.899634152Z",
       "handler": "command",
       "graph_visit": 1,
       "timing": {
-        "wall_time_ms": 5471,
+        "wall_time_ms": 490,
         "inference_time_ms": 0,
-        "tool_time_ms": 5466,
-        "active_time_ms": 5466
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "start@1": {
-      "first_event_seq": 17,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": null,
-        "failure_reason": null,
-        "timestamp": "2026-09-05T10:10:14.862464306Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-05T10:10:14.848142198Z",
-      "handler": "start",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 0,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
+        "tool_time_ms": 483,
+        "active_time_ms": 483
       },
       "usage": {
         "input_tokens": 0,
@@ -2895,45 +2741,30 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "evidence@1": {
-      "first_event_seq": 159,
+    "exit@1": {
+      "first_event_seq": 206,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "notes": null,
         "failure_reason": null,
-        "timestamp": "2026-09-05T10:13:08.402776668Z"
+        "timestamp": "2026-09-05T10:13:41.786239222Z"
       },
       "provider_used": null,
       "diff": null,
-      "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
-        "language": "shell",
-        "timeout_ms": 120000
-      },
-      "script_timing": {
-        "output": "blob://sha256/312682a311623aa86b4fe6b96e25569ae0c5a791eda2d32eaf764ca95116c5c6",
-        "exit_code": 0,
-        "duration_ms": 483,
-        "termination": "exited",
-        "output_bytes": 1818,
-        "live_streaming": true
-      },
+      "script_invocation": null,
+      "script_timing": null,
       "parallel_results": null,
       "output": null,
-      "output_bytes": 1818,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-05T10:13:07.899634152Z",
-      "handler": "command",
+      "started_at": "2026-09-05T10:13:41.786035726Z",
+      "handler": "exit",
       "graph_visit": 1,
       "timing": {
-        "wall_time_ms": 490,
+        "wall_time_ms": 0,
         "inference_time_ms": 0,
-        "tool_time_ms": 483,
-        "active_time_ms": 483
+        "tool_time_ms": 0,
+        "active_time_ms": 0
       },
       "usage": {
         "input_tokens": 0,
@@ -2942,6 +2773,330 @@
         "reasoning_tokens": 0,
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@1": {
+      "first_event_seq": 149,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-09-05T10:13:00.961048178Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+        "exit_code": 0,
+        "duration_ms": 5466,
+        "termination": "exited",
+        "output_bytes": 87,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 87,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-05T10:12:55.477314522Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 5471,
+        "inference_time_ms": 0,
+        "tool_time_ms": 5466,
+        "active_time_ms": 5466
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-05T10:10:14.862464306Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-05T10:10:14.848142198Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "reviewer@1": {
+      "first_event_seq": 169,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: reviewer",
+        "failure_reason": null,
+        "timestamp": "2026-09-05T10:13:30.394515619Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-05T10:13:12.656532255Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 17724,
+        "inference_time_ms": 17006,
+        "tool_time_ms": 175,
+        "active_time_ms": 17181
+      },
+      "usage": {
+        "input_tokens": 13125,
+        "output_tokens": 647,
+        "total_tokens": 26009,
+        "reasoning_tokens": 77,
+        "cache_read_tokens": 12160,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 24720
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 13122,
+        "usage_percent": 1.2514114379882812,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-05T10:13:30.376334129Z",
+        "event_seq": 186,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1131,
+            "usage_percent": 0.10786056518554688
+          },
+          {
+            "category": "tools",
+            "tokens": 1633,
+            "usage_percent": 0.15573501586914062
+          },
+          {
+            "category": "skills",
+            "tokens": 221,
+            "usage_percent": 0.021076202392578125
+          },
+          {
+            "category": "memory",
+            "tokens": 5615,
+            "usage_percent": 0.5354881286621094
+          },
+          {
+            "category": "conversation",
+            "tokens": 4514,
+            "usage_percent": 0.43048858642578125
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
       },
       "agent_control": "running",
       "state": "succeeded"
