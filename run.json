@@ -656,7 +656,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-05T10:42:46.137837588Z",
-  "last_event_at": "2026-09-05T10:45:00.024818996Z",
+  "last_event_at": "2026-09-05T10:45:09.973563549Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -839,14 +839,208 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 138,
       "checkpoint": {
-        "timestamp": "2026-09-05T10:45:00.226638325Z",
+        "timestamp": "2026-09-05T10:45:04.573732682Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
           "planner",
           "implementer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "planner.md step 4 now appears twice (claim at '4.' and brief-writing also numbered '4.'), pre-existing numbering drift that the fast-path edit did not touch — a future seed could renumber step 5 correctly"
+            ]
+          },
+          "last_stage": "implementer",
+          "internal.retry_count.planner": 0,
+          "failure_class": "",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.rankdir": "LR",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3482,
+            "preview": "Seed `fabro-7e88` claimed. Basis verified against the current tree: `.fabro/workflows/develop/prompts/planner.md` step 1 still opens unconditionally with `sd ready`, so the finding is live. The change"
+          },
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "graph.goal": "implement fabro-7e88: fast-path sd show <id> in planner when the goal names a seed id",
+          "internal.thread_id": "planner",
+          "graph.max_node_visits": "40",
+          "internal.node_visit_count": 1,
+          "preferred_label": "Implemented",
+          "thread.start.current_node": "planner",
+          "internal.run_id": "01M1RJK3S9JJYR1MYZKXP1H7YZ",
+          "internal.seed_cycle_anchor": "fabro-7e88",
+          "internal.retry_count.implementer": 0,
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2669,
+            "preview": "Implemented the fast-path rule as a step-1 lead-in in `.fabro/workflows/develop/prompts/planner.md`; no other files touched, no code or workflow changes. Lesson capture: nothing durable — skipped (t"
+          },
+          "current_seed_title": "Fast-path sd show <id> in planner when the goal names a seed id",
+          "failure_signature": "",
+          "current_seed_id": "fabro-7e88",
+          "internal.retry_count.start": 0,
+          "outcome": "succeeded",
+          "current_node": "implementer",
+          "graph.preamble_budget_kb": "24",
+          "last_response": "Implemented the fast-path rule as a step-1 lead-in in `.fabro/workflows/develop/prompts/planner.md`; no other files touched, no code or workflow changes. Lesson capture: nothing durable — skipped (t",
+          "thread.planner.current_node": "implementer",
+          "current_seed_brief": "Edit one file: `.fabro/workflows/develop/prompts/planner.md` (prompt-only seed; no workflow.fabro or code changes). Acceptance criteria:\n- fast-path rule: step 1 of `## Plan the next seed` instructs the planner to check the `<goal>` text for a seed id first; when one is named (e.g. fabro-37a6), the FIRST tracker call is `sd show <id> --format json`, not `sd ready`.\n- fallback: `sd ready --limit 200` runs only when the goal names no seed id, the id does not resolve, or the resolved seed cannot be claimed (closed or blocked) — normal selection then proceeds unchanged.\n- resolution detection: 'does not resolve' is judged from the sd show JSON `success` field / issue body, NOT the process exit code (seeds-cli exits 0 on errors, fabro-d936).\n- unchanged semantics: stale-basis check, verification-only flow, `sd update <id> --status in_progress` claim, one-seed-per-run, and the existing `--limit 200` + 'do NOT also run sd list' rules on the fallback path all keep working; the fast-path only changes which sd command runs first.\n- placement: the rule lands inside step 1 (or as a step-1 lead-in sentence) so the numbered flow stays intact and the existing table of sd commands is untouched.\n- scope guard: no other prompt files, no workflow.fabro edits, no Rust/TS changes.",
+          "lesson_capture": "nothing durable — skipped",
+          "internal.work_dir": "/workspace/fabro",
+          "implementation_summary": "Edited one file, `.fabro/workflows/develop/prompts/planner.md`: step 1 of '## Plan the next seed' now opens with a FAST-PATH rule — check the `<goal>` for a seed id first; when named, run `sd show <id> --format json` as the FIRST tracker call, judge resolution from the JSON `success` field (not exit code, fabro-d936), and fall back to `sd ready --limit 200` only when no id is named, the id does not resolve, or the seed is closed/blocked; numbered flow, sd command table, stale-basis, claim, and limit rules untouched. Lesson capture: nothing durable — skipped. Per-criterion report: PASS fast-path first-call sd show (planner.md step 1); PASS fallback conditions to sd ready --limit 200; PASS resolution via JSON success field not exit code; PASS stale-basis/claim/one-seed/limit-list rules unchanged; PASS placement inside step 1 with table untouched; PASS scope — git status shows only planner.md modified.",
+          "internal.fidelity": "summary:high"
+        },
+        "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "lesson_capture": "nothing durable — skipped",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "planner.md step 4 now appears twice (claim at '4.' and brief-writing also numbered '4.'), pre-existing numbering drift that the fast-path edit did not touch — a future seed could renumber step 5 correctly"
+                ]
+              },
+              "last_response": "Implemented the fast-path rule as a step-1 lead-in in `.fabro/workflows/develop/prompts/planner.md`; no other files touched, no code or workflow changes. Lesson capture: nothing durable — skipped (t",
+              "last_stage": "implementer",
+              "implementation_summary": "Edited one file, `.fabro/workflows/develop/prompts/planner.md`: step 1 of '## Plan the next seed' now opens with a FAST-PATH rule — check the `<goal>` for a seed id first; when named, run `sd show <id> --format json` as the FIRST tracker call, judge resolution from the JSON `success` field (not exit code, fabro-d936), and fall back to `sd ready --limit 200` only when no id is named, the id does not resolve, or the seed is closed/blocked; numbered flow, sd command table, stale-basis, claim, and limit rules untouched. Lesson capture: nothing durable — skipped. Per-criterion report: PASS fast-path first-call sd show (planner.md step 1); PASS fallback conditions to sd ready --limit 200; PASS resolution via JSON success field not exit code; PASS stale-basis/claim/one-seed/limit-list rules unchanged; PASS placement inside step 1 with table untouched; PASS scope — git status shows only planner.md modified.",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2669,
+                "preview": "Implemented the fast-path rule as a step-1 lead-in in `.fabro/workflows/develop/prompts/planner.md`; no other files touched, no code or workflow changes. Lesson capture: nothing durable — skipped (t"
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14221,
+                    "output_tokens": 1073,
+                    "reasoning_tokens": 86,
+                    "cache_read_tokens": 38464,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 35006
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 24420,
+              "tool_time_ms": 611,
+              "active_time_ms": 25031
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3482,
+                "preview": "Seed `fabro-7e88` claimed. Basis verified against the current tree: `.fabro/workflows/develop/prompts/planner.md` step 1 still opens unconditionally with `sd ready`, so the finding is live. The change"
+              },
+              "last_response": "Seed `fabro-7e88` claimed. Basis verified against the current tree: `.fabro/workflows/develop/prompts/planner.md` step 1 still opens unconditionally with `sd ready`, so the finding is live. The change",
+              "last_stage": "planner",
+              "current_seed_id": "fabro-7e88",
+              "current_seed_title": "Fast-path sd show <id> in planner when the goal names a seed id",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Recurrence of already-filed fabro-66db: this run's first two shell calls (sd ready, sd show) both failed with 'mise ERROR Config files in /repos/denkhaus/fabro/.mise.toml are not trusted' and the planner burned extra tool calls on diagnosis + `mise trust` before any tracker read. Fix idea remains pre-trusting the repo mise config in run containers (fabro-66db); until then the planner prompt could mention the one-line `mise trust` recovery."
+                  }
+                ],
+                "observations": [
+                  "fabro-f4cd (open, same priority) is a near-duplicate of fabro-7e88: same fast-path rule plus a 'never run sd list to re-confirm a count' clause from an older run; after fabro-7e88 lands, a following run should stale-check fabro-f4cd and likely close it as superseded (its extra clause is already covered by the existing 'do NOT also run sd list' line in the sd command table).",
+                  "Resolution detection cannot rely on sd exit codes (seeds-cli exits 0 on errors, open fabro-d936) — brief pins the JSON `success` field as the check.",
+                  "planner.md is not pinned by any test or digest; only run artifacts (`.fabro/reviews`, `.fabro/revisions`) reference it, so this is a safe prompt-only edit."
+                ]
+              },
+              "current_seed_brief": "Edit one file: `.fabro/workflows/develop/prompts/planner.md` (prompt-only seed; no workflow.fabro or code changes). Acceptance criteria:\n- fast-path rule: step 1 of `## Plan the next seed` instructs the planner to check the `<goal>` text for a seed id first; when one is named (e.g. fabro-37a6), the FIRST tracker call is `sd show <id> --format json`, not `sd ready`.\n- fallback: `sd ready --limit 200` runs only when the goal names no seed id, the id does not resolve, or the resolved seed cannot be claimed (closed or blocked) — normal selection then proceeds unchanged.\n- resolution detection: 'does not resolve' is judged from the sd show JSON `success` field / issue body, NOT the process exit code (seeds-cli exits 0 on errors, fabro-d936).\n- unchanged semantics: stale-basis check, verification-only flow, `sd update <id> --status in_progress` claim, one-seed-per-run, and the existing `--limit 200` + 'do NOT also run sd list' rules on the fallback path all keep working; the fast-path only changes which sd command runs first.\n- placement: the rule lands inside step 1 (or as a step-1 lead-in sentence) so the numbered flow stays intact and the existing table of sd commands is untouched.\n- scope guard: no other prompt files, no workflow.fabro edits, no Rust/TS changes."
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19614,
+                    "output_tokens": 1599,
+                    "reasoning_tokens": 2568,
+                    "cache_read_tokens": 129216,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 79379
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 87686,
+              "tool_time_ms": 2019,
+              "active_time_ms": 89705
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "05adeba6a5d61a48d2e8704e30a4775c1e411750",
+        "node_visits": {
+          "implementer": 1,
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1RJK3S9JJYR1MYZKXP1H7YZ.jsonl b/.fabro/journal/01M1RJK3S9JJYR1MYZKXP1H7YZ.jsonl\nindex 66c7ae59..ea5203e9 100644\n--- a/.fabro/journal/01M1RJK3S9JJYR1MYZKXP1H7YZ.jsonl\n+++ b/.fabro/journal/01M1RJK3S9JJYR1MYZKXP1H7YZ.jsonl\n@@ -1 +1,2 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RJK3S9JJYR1MYZKXP1H7YZ\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T10:44:27Z\",\"data\":{\"painpoints\":[{\"text\":\"Recurrence of already-filed fabro-66db: this run's first two shell calls (sd ready, sd show) both failed with 'mise ERROR Config files in /repos/denkhaus/fabro/.mise.toml are not trusted' and the planner burned extra tool calls on diagnosis + `mise trust` before any tracker read. Fix idea remains pre-trusting the repo mise config in run containers (fabro-66db); until then the planner prompt could mention the one-line `mise trust` recovery.\"}],\"observations\":[\"fabro-f4cd (open, same priority) is a near-duplicate of fabro-7e88: same fast-path rule plus a 'never run sd list to re-confirm a count' clause from an older run; after fabro-7e88 lands, a following run should stale-check fabro-f4cd and likely close it as superseded (its extra clause is already covered by the existing 'do NOT also run sd list' line in the sd command table).\",\"Resolution detection cannot rely on sd exit codes (seeds-cli exits 0 on errors, open fabro-d936) — brief pins the JSON `success` field as the check.\",\"planner.md is not pinned by any test or digest; only run artifacts (`.fabro/reviews`, `.fabro/revisions`) reference it, so this is a safe prompt-only edit.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1RJK3S9JJYR1MYZKXP1H7YZ\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T10:45:00Z\",\"data\":{\"painpoints\":[],\"observations\":[\"planner.md step 4 now appears twice (claim at '4.' and brief-writing also numbered '4.'), pre-existing numbering drift that the fast-path edit did not touch — a future seed could renumber step 5 correctly\"]}}\ndiff --git a/.fabro/workflows/develop/prompts/planner.md b/.fabro/workflows/develop/prompts/planner.md\nindex b3754e39..66705ba6 100644\n--- a/.fabro/workflows/develop/prompts/planner.md\n+++ b/.fabro/workflows/develop/prompts/planner.md\n@@ -30,7 +30,7 @@ The engine maintains `seed_cycles` deterministically: `{ node -> completed visit\n \n ## Plan the next seed\n \n-1. Run `sd ready --limit 200` to list unblocked open seeds; `sd list --format json --limit 200` for the full picture if needed.\n+1. FAST-PATH: first check the `<goal>` text for a seed id (e.g. fabro-37a6). When one is named, the FIRST tracker call is `sd show <id> --format json`, not `sd ready`; judge resolution from the JSON `success` field / issue body, NOT the process exit code (seeds-cli exits 0 on errors, fabro-d936). If the resolved seed is open and unblocked, continue at step 2 with it. Otherwise — goal names no seed id, the id does not resolve, or the seed cannot be claimed (closed or blocked) — run `sd ready --limit 200` to list unblocked open seeds; `sd list --format json --limit 200` for the full picture if needed (do NOT also run `sd list` when `sd ready` suffices).\n 2. Pick the highest-priority unblocked seed that serves the goal. If two compete, prefer the one with fewest blockers.\n 3. STALE-BASIS CHECK (ADR-0015): before claiming, read the seed body for its `Basis:` line (source run id, workflow version, repo commit). Open the referenced files/prompts in the CURRENT worktree: if the behavior the seed describes no longer exists, already changed, or the finding is moot against the current tree, the seed is superseded — close it with `sd close <id> --reason \"superseded: basis stale (<what changed>)\"` and pick the next candidate. Never implement a seed whose basis does not resolve. When a seed's `Basis:` references platform paths (`.fabro/**` etc.), open them through the shell — fs_hide binds tool calls only, so read_file fails while sed/grep/cat succeed; never burn tool calls discovering the denial. Seeds without a Basis line are legacy (pre-2026-09-05): judge them the same way against the current tree before claiming.\n 4. Claim it: `sd update <id> --status in_progress`.\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 4,
+          "deletions": 2
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-05T10:45:10.175666963Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
         ],
         "node_retries": {},
         "context_values": {
@@ -876,7 +1070,7 @@
           "internal.node_visit_count": 1,
           "current_seed_id": "fabro-7e88",
           "graph.rankdir": "LR",
-          "internal.thread_id": "planner",
+          "internal.thread_id": "implementer",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
@@ -888,18 +1082,22 @@
           "preferred_label": "Implemented",
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
           "current_seed_title": "Fast-path sd show <id> in planner when the goal names a seed id",
           "internal.retry_count.planner": 0,
+          "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
           "current_seed_brief": "Edit one file: `.fabro/workflows/develop/prompts/planner.md` (prompt-only seed; no workflow.fabro or code changes). Acceptance criteria:\n- fast-path rule: step 1 of `## Plan the next seed` instructs the planner to check the `<goal>` text for a seed id first; when one is named (e.g. fabro-37a6), the FIRST tracker call is `sd show <id> --format json`, not `sd ready`.\n- fallback: `sd ready --limit 200` runs only when the goal names no seed id, the id does not resolve, or the resolved seed cannot be claimed (closed or blocked) — normal selection then proceeds unchanged.\n- resolution detection: 'does not resolve' is judged from the sd show JSON `success` field / issue body, NOT the process exit code (seeds-cli exits 0 on errors, fabro-d936).\n- unchanged semantics: stale-basis check, verification-only flow, `sd update <id> --status in_progress` claim, one-seed-per-run, and the existing `--limit 200` + 'do NOT also run sd list' rules on the fallback path all keep working; the fast-path only changes which sd command runs first.\n- placement: the rule lands inside step 1 (or as a step-1 lead-in sentence) so the numbered flow stays intact and the existing table of sd commands is untouched.\n- scope guard: no other prompt files, no workflow.fabro edits, no Rust/TS changes.",
           "graph.goal": "implement fabro-7e88: fast-path sd show <id> in planner when the goal names a seed id",
-          "current_node": "implementer",
+          "current_node": "tester",
           "internal.work_dir": "/workspace/fabro",
           "internal.retry_count.start": 0,
-          "internal.fidelity": "summary:high",
+          "internal.retry_count.tester": 0,
+          "internal.fidelity": "compact",
           "graph.preamble_budget_kb": "24",
-          "lesson_capture": "nothing durable — skipped"
+          "lesson_capture": "nothing durable — skipped",
+          "thread.implementer.current_node": "tester"
         },
         "node_outcomes": {
           "start": {
@@ -963,6 +1161,20 @@
               "active_time_ms": 89705
             }
           },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5368,
+              "active_time_ms": 5368
+            }
+          },
           "implementer": {
             "status": "succeeded",
             "preferred_label": "Implemented",
@@ -1014,11 +1226,12 @@
             }
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
-          "planner": 1,
+          "implementer": 1,
           "start": 1,
-          "implementer": 1
+          "tester": 1,
+          "planner": 1
         }
       },
       "diff": {}
@@ -1475,6 +1688,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@1": {
+      "first_event_seq": 141,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-09-05T10:45:09.973563549Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+        "exit_code": 0,
+        "duration_ms": 5368,
+        "termination": "exited",
+        "output_bytes": 87,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 87,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-05T10:45:04.589711933Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 5372,
+        "inference_time_ms": 0,
+        "tool_time_ms": 5368,
+        "active_time_ms": 5368
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
