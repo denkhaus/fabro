@@ -12,15 +12,14 @@ to one CONTEXT.md per context. The contexts:
 | --- | --- | --- |
 | Engine | `lib/` (Rust workspace: apps/components/foundation) | run, stage, checkpoint, sandbox, workflow engine vocabulary |
 | Web | `apps/fabro-web`, `lib/packages/fabro-api-client` | SPA, API client, run/session UI vocabulary |
-| Lab | `denkhaus-lab` branch + `docs/lab/` on `denkhaus` | workflow dogfooding; gofib product world |
+| Lab | `docs/lab/` on `denkhaus` | workflow dogfooding; fabro-as-product (ADR-0012/0013) |
 | Marketing/docs | `apps/marketing`, `docs/public` | site and public docs vocabulary |
 
 ## The Lab contexts
 
-- **Product world**: the `denkhaus-lab` branch — gofib CLI plus its
-  `CONTEXT.md` (gofib, Fib, text/JSON mode, count flag, quality gate).
-  Read with `git show origin/denkhaus-lab:CONTEXT.md`. Do not duplicate
-  its terms into root docs.
+- **Product world (retired 2026-09-05)**: the `denkhaus-lab` branch is
+  gone — final state preserved as tag `archive/denkhaus-lab-final`
+  (gofib CLI world, ADR-0012 history). The product IS fabro now.
 - **Platform world (rescued)**: `docs/lab/` on `denkhaus` — the retired
   meta branch's durable home. ADRs 0001–0008 live in `docs/lab/adr/`
   (numbering continues there: ADR-0009+), the engine docs snapshot in

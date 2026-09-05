@@ -307,4 +307,4 @@ The five canonical triage labels, unchanged. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Multi-context: engine (`lib/`), web (`apps/fabro-web`), lab (branch-scoped `denkhaus-lab`/`meta/denkhaus-lab`), marketing (`apps/marketing`). See `docs/agents/domain.md`.
+Multi-context: engine (`lib/`), web (`apps/fabro-web`), lab (`docs/lab/` on `denkhaus`; the `denkhaus-lab` and `meta/denkhaus-lab` branches were retired 2026-09-05, archived as tags `archive/denkhaus-lab-final` and `archive/meta-denkhaus-lab-final`), marketing (`apps/marketing`). See `docs/agents/domain.md`.

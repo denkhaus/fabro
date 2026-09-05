@@ -4,7 +4,7 @@
 # 15+ min for a cold full build at the 8-CPU run environment, so the
 # develop-workflow tester cannot afford `--workspace` gates (measurement:
 # scripts/gate-measure-24cpu-reference.log, 394s cold at 24 CPUs).
-# Exit 0 = green. Style follows the lab exemplar (denkhaus-lab
+# Exit 0 = green. Style follows the retired lab exemplar (archived tag
 # scripts/qualitygate.nu): sections, `do { ^cmd } | complete`, first red
 # stops the gate.
 #

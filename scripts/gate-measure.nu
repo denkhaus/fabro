@@ -2,7 +2,7 @@
 # Cold/incremental gate timing for the fabro workspace (fabro-5453 phase 1).
 # Self-contained: clones from the read-only mount (no host target/ leakage)
 # into /src, measures with CARGO_TARGET_DIR=/tmp/target-fresh. Style follows
-# scripts/qualitygate.nu on denkhaus-lab (lab exemplar): literal external
+# scripts/qualitygate.nu (retired lab exemplar, archived tag): literal external
 # commands, sections, explicit failure blocks.
 
 def timed [label: string, block: closure]: nothing -> nothing {
