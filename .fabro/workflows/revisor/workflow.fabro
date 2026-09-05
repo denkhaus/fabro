@@ -53,7 +53,12 @@ digraph Revisor {
         // observations (blocked-backlog counts, skipped non-terminal runs)
         // are the continuity this loop-closing stage needs.
         preamble_allow_keys="journal",
-        context_allow_keys="revisor_target_run_id,revisor_target_title,revisor_target_status,revisor_target_wall,journal"
+        // context_allow_keys also gates this node's OWN context writes
+        // (enforce_stage_envelope): without the version key here, select's
+        // revisor_target_workflow_version write was dropped with a
+        // context_update_dropped notice and the basis lines degraded to
+        // "absent" (cycle 1, 2026-09-05).
+        context_allow_keys="revisor_target_run_id,revisor_target_title,revisor_target_status,revisor_target_wall,revisor_target_workflow_version,journal"
     ]
 
     // Analyze: the intellectual core. ONE fabro_ask call with the proven
