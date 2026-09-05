@@ -658,7 +658,7 @@
     "denial_reason": null
   },
   "status_updated_at": "2026-09-05T16:39:08.413519297Z",
-  "last_event_at": "2026-09-05T16:54:17.395752095Z",
+  "last_event_at": "2026-09-05T16:54:22.463673406Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -2403,9 +2403,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 476,
       "checkpoint": {
-        "timestamp": "2026-09-05T16:54:17.610662004Z",
+        "timestamp": "2026-09-05T16:54:21.957132184Z",
         "current_node": "reviewer",
         "completed_nodes": [
           "start",
@@ -2421,38 +2421,45 @@
         ],
         "node_retries": {},
         "context_values": {
-          "thread.implementer.current_node": "tester",
-          "internal.retry_count.tester": 0,
-          "thread.tester.current_node": "evidence",
-          "failure_signature": "",
-          "current_seed_id": "fabro-78ac",
-          "response.implementer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 2510,
-            "preview": "The gate failure was two denied clippy lints in the previous implementer pass. Both fixed in `lib/components/fabro-tool/src/create.rs` (`map_unwrap_or` → `map_or_else` at the `status` construction; "
-          },
-          "internal.retry_count.evidence": 0,
+          "graph.preamble_budget_kb": "24",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.planner": 0,
+          "graph.max_node_visits": "40",
           "response.reviewer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.reviewer",
             "chars": 3031,
             "preview": "The blob was fully readable and the capture is complete (diff ends cleanly, counts match: 1 seed-work file, +195/-15, worktree clean). I checked the diff against the seed spec criterion by criterion:\n"
           },
+          "internal.node_visit_count": 1,
           "internal.seed_cycle_anchor": "fabro-78ac",
-          "outcome": "succeeded",
-          "thread.evidence.current_node": "reviewer",
-          "internal.work_dir": "/workspace/fabro",
-          "last_response": "The blob was fully readable and the capture is complete (diff ends cleanly, counts match: 1 seed-work file, +195/-15, worktree clean). I checked the diff against the seed spec criterion by criterion:\n",
-          "internal.retry_count.implementer": 0,
-          "thread.planner.current_node": "implementer",
-          "review_verdict": "approved",
-          "internal.retry_count.reviewer": 0,
+          "internal.run_id": "01M1S6VRWQMD56M1X8HWAXDSNN",
           "last_stage": "reviewer",
           "graph.rankdir": "LR",
-          "internal.retry_count.planner": 0,
-          "implementation_summary": "Pass 3 of fabro-78ac: the tester gate was red solely on two clippy lints in `lib/components/fabro-tool/src/create.rs` — `map_unwrap_or` on the `status` field construction (now `map_or_else`) and `format_push_string` on the ', start blocked for N' summary append (now `write!` with `std::fmt::Write`). No behavior changed. Verified: pinned-nightly clippy `-D warnings` clean on fabro-tool (all targets), 67/67 fabro-tool nextest pass, `fmt --check --all` clean. Lesson captured as mx-9cf439 (nightly clippy denies map_unwrap_or/format_push_string; use map_or_else and write!). Per-criterion report: (1) PASS start-failure returns Ok with run_id — create.rs create_runs_with_options, tests create_runs_reports_start_failure...; (2) PASS additive `start_error: Option<String>` on CreatedRunResult, verified in schema-derived struct; (3) PASS loop pushes per-run results before/independent of later sibling start failure, preserved accumulated vec; (4) PASS start=false retrieve failure yields run_id + 'retrieve failed: ...' note (create.rs:472-475); (5) PASS create/parent-resolution failures still `?`-propagate as Err; (6) PASS create_runs_text appends ', start blocked for N' when any start_error; (7) PASS MockCreateBackend tests for start-failure and retrieve-failure cases present and passing (67/67); (8) PASS cargo build (via clippy full-target compile), nextest -p fabro-tool, pinned fmt/clippy all green.",
-          "failure_class": "",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2510,
+            "preview": "The gate failure was two denied clippy lints in the previous implementer pass. Both fixed in `lib/components/fabro-tool/src/create.rs` (`map_unwrap_or` → `map_or_else` at the `status` construction; "
+          },
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 4062,
+            "preview": "Claimed `fabro-78ac` (High bug, basis verified live in the worktree: create-then-start `?`-propagation at `lib/components/fabro-tool/src/create.rs:453-464` discards the created `run_id` when `start_ru"
+          },
+          "review_verdict": "approved",
+          "internal.retry_count.start": 0,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "lesson_capture": "mx-9cf439",
+          "preferred_label": "Approved",
+          "failure_signature": "",
+          "thread.evidence.current_node": "reviewer",
+          "internal.retry_count.reviewer": 0,
+          "thread.start.current_node": "planner",
+          "thread.tester.current_node": "evidence",
+          "last_response": "The blob was fully readable and the capture is complete (diff ends cleanly, counts match: 1 seed-work file, +195/-15, worktree clean). I checked the diff against the seed spec criterion by criterion:\n",
+          "internal.fidelity": "summary:high",
           "journal": {
             "painpoints": [
               {
@@ -2463,13 +2470,10 @@
               "Verified all 8 seed criteria against the complete diff in the blob (not the implementer summary); specifically confirmed run_id is now sourced from the create path rather than the start summary, status degrades to 'unknown' instead of guessing 'pending', and the batch test proves accumulated results survive a later sibling start failure. Gate treated as green per its three tester runs; did not re-run it since the diff matches the claimed third-pass state (map_or_else + write! fixes visible in the hunks)."
             ]
           },
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 4062,
-            "preview": "Claimed `fabro-78ac` (High bug, basis verified live in the worktree: create-then-start `?`-propagation at `lib/components/fabro-tool/src/create.rs:453-464` discards the created `run_id` when `start_ru"
-          },
-          "command.output": "blob://sha256/fc3c8add50e3f950e9df1368f7de6b2f9a359ac92fea821656d67d570f2afc96",
+          "failure_class": "",
+          "outcome": "succeeded",
+          "current_node": "reviewer",
+          "current_seed_id": "fabro-78ac",
           "seed_cycles": {
             "planner": 1,
             "implementer": 3,
@@ -2477,23 +2481,23 @@
             "evidence": 1,
             "reviewer": 1
           },
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "graph.max_node_visits": "40",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "current_node": "reviewer",
-          "internal.fidelity": "summary:high",
-          "current_seed_title": "engine: fabro_run_create swallows the created run id when start fails (partial success reported as total failure)",
-          "current_seed_brief": "In `lib/components/fabro-tool/src/create.rs`, `create_runs_with_options` (lines 428-475) does create-then-start with `?`-propagation: when `create_run_from_spec` succeeds but `start_run` fails (e.g. approval_required), the whole tool call errors and the created run id is discarded, so calling agents retry and create duplicate children (observed run 01M1S5D9XC). Fix so partial success is reported. Acceptance criteria: (1) start failure after successful create returns Ok with the created run_id present in the result, never a bare Err; (2) the start failure reason is machine-readable in the structured result — prefer an additive field on `CreatedRunResult` (e.g. `start_error: Option<String>` carrying 'start blocked: approval_required') over overloading the existing `status` string, since `CreatedRunResult` derives JsonSchema and is serialized to the LLM; (3) in multi-run batches, results for earlier successfully created runs are preserved when a later sibling's start fails (loop does not discard accumulated results); (4) the retrieve_run failure on the start=false path gets the same partial-success reporting (run id + error note), same rationale; (5) genuine create/parent-resolution failures keep returning Err — nothing was created, that boundary is deliberate and out of scope; (6) `create_runs_text` summary reflects blocked starts (e.g. adds 'start blocked for N') so the text summary never implies a clean start; (7) tests in the same file's `mod tests` (MockCreateBackend pattern, see existing `create_runs_defaults_to_start_request_and_reports_pending_child_status`): a backend whose start_run errors must yield an Ok result with run_id + failure reason, started_run_ids still recorded, correct text summary; plus the start=false retrieve-failure case; existing tests keep passing; (8) gate with `cargo nextest run -p fabro-tool`, `cargo build --workspace`, and pinned-nightly fmt/clippy. Ambiguity resolved: the seed's example 'created <id>, start blocked: approval_required' conflates summary text with structure — I chose structured-result-first with the text summary carrying counts; also the fix must not assume the run is 'pending' after a failed start (state is unknown unless a follow-up retrieve succeeds), so report the error verbatim rather than a guessed status. No review feedback yet (first pass, cycle 1).",
-          "graph.preamble_budget_kb": "24",
+          "command.output": "blob://sha256/fc3c8add50e3f950e9df1368f7de6b2f9a359ac92fea821656d67d570f2afc96",
           "internal.thread_id": "evidence",
-          "internal.node_visit_count": 1,
-          "internal.retry_count.start": 0,
-          "internal.run_id": "01M1S6VRWQMD56M1X8HWAXDSNN",
-          "thread.start.current_node": "planner",
-          "preferred_label": "Approved",
-          "lesson_capture": "mx-9cf439"
+          "thread.implementer.current_node": "tester",
+          "current_seed_brief": "In `lib/components/fabro-tool/src/create.rs`, `create_runs_with_options` (lines 428-475) does create-then-start with `?`-propagation: when `create_run_from_spec` succeeds but `start_run` fails (e.g. approval_required), the whole tool call errors and the created run id is discarded, so calling agents retry and create duplicate children (observed run 01M1S5D9XC). Fix so partial success is reported. Acceptance criteria: (1) start failure after successful create returns Ok with the created run_id present in the result, never a bare Err; (2) the start failure reason is machine-readable in the structured result — prefer an additive field on `CreatedRunResult` (e.g. `start_error: Option<String>` carrying 'start blocked: approval_required') over overloading the existing `status` string, since `CreatedRunResult` derives JsonSchema and is serialized to the LLM; (3) in multi-run batches, results for earlier successfully created runs are preserved when a later sibling's start fails (loop does not discard accumulated results); (4) the retrieve_run failure on the start=false path gets the same partial-success reporting (run id + error note), same rationale; (5) genuine create/parent-resolution failures keep returning Err — nothing was created, that boundary is deliberate and out of scope; (6) `create_runs_text` summary reflects blocked starts (e.g. adds 'start blocked for N') so the text summary never implies a clean start; (7) tests in the same file's `mod tests` (MockCreateBackend pattern, see existing `create_runs_defaults_to_start_request_and_reports_pending_child_status`): a backend whose start_run errors must yield an Ok result with run_id + failure reason, started_run_ids still recorded, correct text summary; plus the start=false retrieve-failure case; existing tests keep passing; (8) gate with `cargo nextest run -p fabro-tool`, `cargo build --workspace`, and pinned-nightly fmt/clippy. Ambiguity resolved: the seed's example 'created <id>, start blocked: approval_required' conflates summary text with structure — I chose structured-result-first with the text summary carrying counts; also the fix must not assume the run is 'pending' after a failed start (state is unknown unless a follow-up retrieve succeeds), so report the error verbatim rather than a guessed status. No review feedback yet (first pass, cycle 1).",
+          "implementation_summary": "Pass 3 of fabro-78ac: the tester gate was red solely on two clippy lints in `lib/components/fabro-tool/src/create.rs` — `map_unwrap_or` on the `status` field construction (now `map_or_else`) and `format_push_string` on the ', start blocked for N' summary append (now `write!` with `std::fmt::Write`). No behavior changed. Verified: pinned-nightly clippy `-D warnings` clean on fabro-tool (all targets), 67/67 fabro-tool nextest pass, `fmt --check --all` clean. Lesson captured as mx-9cf439 (nightly clippy denies map_unwrap_or/format_push_string; use map_or_else and write!). Per-criterion report: (1) PASS start-failure returns Ok with run_id — create.rs create_runs_with_options, tests create_runs_reports_start_failure...; (2) PASS additive `start_error: Option<String>` on CreatedRunResult, verified in schema-derived struct; (3) PASS loop pushes per-run results before/independent of later sibling start failure, preserved accumulated vec; (4) PASS start=false retrieve failure yields run_id + 'retrieve failed: ...' note (create.rs:472-475); (5) PASS create/parent-resolution failures still `?`-propagate as Err; (6) PASS create_runs_text appends ', start blocked for N' when any start_error; (7) PASS MockCreateBackend tests for start-failure and retrieve-failure cases present and passing (67/67); (8) PASS cargo build (via clippy full-target compile), nextest -p fabro-tool, pinned fmt/clippy all green.",
+          "internal.retry_count.tester": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "thread.planner.current_node": "implementer",
+          "internal.retry_count.implementer": 0,
+          "current_seed_title": "engine: fabro_run_create swallows the created run id when start fails (partial success reported as total failure)",
+          "internal.retry_count.evidence": 0
         },
         "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "tester": {
             "status": "succeeded",
             "context_updates": {
@@ -2506,73 +2510,6 @@
               "inference_time_ms": 0,
               "tool_time_ms": 7818,
               "active_time_ms": 7818
-            }
-          },
-          "evidence": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/fc3c8add50e3f950e9df1368f7de6b2f9a359ac92fea821656d67d570f2afc96"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 377,
-              "active_time_ms": 377
-            }
-          },
-          "reviewer": {
-            "status": "succeeded",
-            "preferred_label": "Approved",
-            "context_updates": {
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "The evidence capture arrived as a 14.2 KB blob ref at /tmp/fabro/runtime/blobs/fc3c8add...json (run 01M1S6VRWQMD56M1X8HWAXDSNN); I had to page it manually with read_file before judging. Workable, but the preamble preview truncates right before the diff body — surfacing the seed-work file list plus the first hunk in the preview would let most reviews start without a blob read."
-                  }
-                ],
-                "observations": [
-                  "Verified all 8 seed criteria against the complete diff in the blob (not the implementer summary); specifically confirmed run_id is now sourced from the create path rather than the start summary, status degrades to 'unknown' instead of guessing 'pending', and the batch test proves accumulated results survive a later sibling start failure. Gate treated as green per its three tester runs; did not re-run it since the diff matches the claimed third-pass state (map_or_else + write! fixes visible in the hunks)."
-                ]
-              },
-              "last_response": "The blob was fully readable and the capture is complete (diff ends cleanly, counts match: 1 seed-work file, +195/-15, worktree clean). I checked the diff against the seed spec criterion by criterion:\n",
-              "last_stage": "reviewer",
-              "response.reviewer": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.reviewer",
-                "chars": 3031,
-                "preview": "The blob was fully readable and the capture is complete (diff ends cleanly, counts match: 1 seed-work file, +195/-15, worktree clean). I checked the diff against the seed spec criterion by criterion:\n"
-              },
-              "review_verdict": "approved"
-            },
-            "notes": "Stage completed: reviewer",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 16280,
-                    "output_tokens": 786,
-                    "reasoning_tokens": 170,
-                    "cache_read_tokens": 12224,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 30174
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 20530,
-              "tool_time_ms": 16,
-              "active_time_ms": 20546
             }
           },
           "planner": {
@@ -2684,18 +2621,412 @@
               "active_time_ms": 108348
             }
           },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/fc3c8add50e3f950e9df1368f7de6b2f9a359ac92fea821656d67d570f2afc96"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 377,
+              "active_time_ms": 377
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "The evidence capture arrived as a 14.2 KB blob ref at /tmp/fabro/runtime/blobs/fc3c8add...json (run 01M1S6VRWQMD56M1X8HWAXDSNN); I had to page it manually with read_file before judging. Workable, but the preamble preview truncates right before the diff body — surfacing the seed-work file list plus the first hunk in the preview would let most reviews start without a blob read."
+                  }
+                ],
+                "observations": [
+                  "Verified all 8 seed criteria against the complete diff in the blob (not the implementer summary); specifically confirmed run_id is now sourced from the create path rather than the start summary, status degrades to 'unknown' instead of guessing 'pending', and the batch test proves accumulated results survive a later sibling start failure. Gate treated as green per its three tester runs; did not re-run it since the diff matches the claimed third-pass state (map_or_else + write! fixes visible in the hunks)."
+                ]
+              },
+              "last_response": "The blob was fully readable and the capture is complete (diff ends cleanly, counts match: 1 seed-work file, +195/-15, worktree clean). I checked the diff against the seed spec criterion by criterion:\n",
+              "last_stage": "reviewer",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 3031,
+                "preview": "The blob was fully readable and the capture is complete (diff ends cleanly, counts match: 1 seed-work file, +195/-15, worktree clean). I checked the diff against the seed spec criterion by criterion:\n"
+              },
+              "review_verdict": "approved"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16280,
+                    "output_tokens": 786,
+                    "reasoning_tokens": 170,
+                    "cache_read_tokens": 12224,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 30174
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 20530,
+              "tool_time_ms": 16,
+              "active_time_ms": 20546
+            }
+          }
+        },
+        "next_node_id": "closeout",
+        "git_commit_sha": "22a51b8bc5312f4f4ee69ef60b0d4a2e74771ae0",
+        "loop_failure_signatures": {
+          "tester|deterministic|script failed with exit code: <n> ## output nu scripts/qualitygate.nu touched crates: fabro-tool == cargo fmt --check --all == diff in /repos/denkhaus/fabro/lib/components/fabro-tool/src/create.rs:<n>: created_parent_ids: mutex::new(vec::ne": 1,
+          "tester|deterministic|script failed with exit code: <n> ## output ing ulid v1.<n>.<n> checking hyper-util v0.<n>.<n> compiling fabro-proc v0.<n>.<n>-nightly.<n> (/repos/denkhaus/fabro/lib/foundation/fabro-proc) checking mime v0.<n>.<n> checking iri-string v0.<n>": 1
+        },
+        "node_visits": {
+          "reviewer": 1,
+          "start": 1,
+          "evidence": 1,
+          "planner": 1,
+          "implementer": 3,
+          "tester": 3
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1S6VRWQMD56M1X8HWAXDSNN.jsonl b/.fabro/journal/01M1S6VRWQMD56M1X8HWAXDSNN.jsonl\nindex ed0219b..440ea40 100644\n--- a/.fabro/journal/01M1S6VRWQMD56M1X8HWAXDSNN.jsonl\n+++ b/.fabro/journal/01M1S6VRWQMD56M1X8HWAXDSNN.jsonl\n@@ -4,3 +4,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1S6VRWQMD56M1X8HWAXDSNN\",\"node\":\"implementer\",\"visit\":3,\"status\":\"succeeded\",\"ts\":\"2026-09-05T16:53:31Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Tester gate flagged only two style lints (map_unwrap_or, format_push_string) in create.rs — the implementer pass shipped without any clippy run because the role contract forbids gating; a cheap `cargo clippy -p <touched crate>` compile-check equivalent would catch these pre-gate at near-zero cost (run 01M1S6VRWQMD56M1X8HWAXDSNN, two tester cycles burned).\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1S6VRWQMD56M1X8HWAXDSNN\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T16:53:43Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1S6VRWQMD56M1X8HWAXDSNN\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T16:53:48Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1S6VRWQMD56M1X8HWAXDSNN\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T16:54:17Z\",\"data\":{\"painpoints\":[{\"text\":\"The evidence capture arrived as a 14.2 KB blob ref at /tmp/fabro/runtime/blobs/fc3c8add...json (run 01M1S6VRWQMD56M1X8HWAXDSNN); I had to page it manually with read_file before judging. Workable, but the preamble preview truncates right before the diff body — surfacing the seed-work file list plus the first hunk in the preview would let most reviews start without a blob read.\"}],\"observations\":[\"Verified all 8 seed criteria against the complete diff in the blob (not the implementer summary); specifically confirmed run_id is now sourced from the create path rather than the start summary, status degrades to 'unknown' instead of guessing 'pending', and the batch test proves accumulated results survive a later sibling start failure. Gate treated as green per its three tester runs; did not re-run it since the diff matches the claimed third-pass state (map_or_else + write! fixes visible in the hunks).\"]}}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 206,
+          "deletions": 16
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-05T16:54:22.694087675Z",
+        "current_node": "closeout",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "implementer",
+          "tester",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "thread.implementer.current_node": "tester",
+          "internal.retry_count.tester": 0,
+          "thread.tester.current_node": "evidence",
+          "failure_signature": "",
+          "current_seed_id": "fabro-78ac",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2510,
+            "preview": "The gate failure was two denied clippy lints in the previous implementer pass. Both fixed in `lib/components/fabro-tool/src/create.rs` (`map_unwrap_or` → `map_or_else` at the `status` construction; "
+          },
+          "internal.retry_count.evidence": 0,
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 3031,
+            "preview": "The blob was fully readable and the capture is complete (diff ends cleanly, counts match: 1 seed-work file, +195/-15, worktree clean). I checked the diff against the seed spec criterion by criterion:\n"
+          },
+          "internal.retry_count.closeout": 0,
+          "internal.seed_cycle_anchor": "fabro-78ac",
+          "outcome": "succeeded",
+          "thread.evidence.current_node": "reviewer",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.reviewer.current_node": "closeout",
+          "last_response": "The blob was fully readable and the capture is complete (diff ends cleanly, counts match: 1 seed-work file, +195/-15, worktree clean). I checked the diff against the seed spec criterion by criterion:\n",
+          "internal.retry_count.implementer": 0,
+          "thread.planner.current_node": "implementer",
+          "review_verdict": "approved",
+          "internal.retry_count.reviewer": 0,
+          "last_stage": "reviewer",
+          "graph.rankdir": "LR",
+          "internal.retry_count.planner": 0,
+          "implementation_summary": "Pass 3 of fabro-78ac: the tester gate was red solely on two clippy lints in `lib/components/fabro-tool/src/create.rs` — `map_unwrap_or` on the `status` field construction (now `map_or_else`) and `format_push_string` on the ', start blocked for N' summary append (now `write!` with `std::fmt::Write`). No behavior changed. Verified: pinned-nightly clippy `-D warnings` clean on fabro-tool (all targets), 67/67 fabro-tool nextest pass, `fmt --check --all` clean. Lesson captured as mx-9cf439 (nightly clippy denies map_unwrap_or/format_push_string; use map_or_else and write!). Per-criterion report: (1) PASS start-failure returns Ok with run_id — create.rs create_runs_with_options, tests create_runs_reports_start_failure...; (2) PASS additive `start_error: Option<String>` on CreatedRunResult, verified in schema-derived struct; (3) PASS loop pushes per-run results before/independent of later sibling start failure, preserved accumulated vec; (4) PASS start=false retrieve failure yields run_id + 'retrieve failed: ...' note (create.rs:472-475); (5) PASS create/parent-resolution failures still `?`-propagate as Err; (6) PASS create_runs_text appends ', start blocked for N' when any start_error; (7) PASS MockCreateBackend tests for start-failure and retrieve-failure cases present and passing (67/67); (8) PASS cargo build (via clippy full-target compile), nextest -p fabro-tool, pinned fmt/clippy all green.",
+          "failure_class": "",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "The evidence capture arrived as a 14.2 KB blob ref at /tmp/fabro/runtime/blobs/fc3c8add...json (run 01M1S6VRWQMD56M1X8HWAXDSNN); I had to page it manually with read_file before judging. Workable, but the preamble preview truncates right before the diff body — surfacing the seed-work file list plus the first hunk in the preview would let most reviews start without a blob read."
+              }
+            ],
+            "observations": [
+              "Verified all 8 seed criteria against the complete diff in the blob (not the implementer summary); specifically confirmed run_id is now sourced from the create path rather than the start summary, status degrades to 'unknown' instead of guessing 'pending', and the batch test proves accumulated results survive a later sibling start failure. Gate treated as green per its three tester runs; did not re-run it since the diff matches the claimed third-pass state (map_or_else + write! fixes visible in the hunks)."
+            ]
+          },
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 4062,
+            "preview": "Claimed `fabro-78ac` (High bug, basis verified live in the worktree: create-then-start `?`-propagation at `lib/components/fabro-tool/src/create.rs:453-464` discards the created `run_id` when `start_ru"
+          },
+          "command.output": "blob://sha256/b8e122b1e37f87ca2217132347125ec6a8b3b46d543340d06f878e57ded870b0",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 3,
+            "tester": 3,
+            "evidence": 1,
+            "reviewer": 1,
+            "closeout": 1
+          },
+          "internal.exit_kind": "natural",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.max_node_visits": "40",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "current_node": "closeout",
+          "internal.fidelity": "compact",
+          "current_seed_title": "engine: fabro_run_create swallows the created run id when start fails (partial success reported as total failure)",
+          "current_seed_brief": "In `lib/components/fabro-tool/src/create.rs`, `create_runs_with_options` (lines 428-475) does create-then-start with `?`-propagation: when `create_run_from_spec` succeeds but `start_run` fails (e.g. approval_required), the whole tool call errors and the created run id is discarded, so calling agents retry and create duplicate children (observed run 01M1S5D9XC). Fix so partial success is reported. Acceptance criteria: (1) start failure after successful create returns Ok with the created run_id present in the result, never a bare Err; (2) the start failure reason is machine-readable in the structured result — prefer an additive field on `CreatedRunResult` (e.g. `start_error: Option<String>` carrying 'start blocked: approval_required') over overloading the existing `status` string, since `CreatedRunResult` derives JsonSchema and is serialized to the LLM; (3) in multi-run batches, results for earlier successfully created runs are preserved when a later sibling's start fails (loop does not discard accumulated results); (4) the retrieve_run failure on the start=false path gets the same partial-success reporting (run id + error note), same rationale; (5) genuine create/parent-resolution failures keep returning Err — nothing was created, that boundary is deliberate and out of scope; (6) `create_runs_text` summary reflects blocked starts (e.g. adds 'start blocked for N') so the text summary never implies a clean start; (7) tests in the same file's `mod tests` (MockCreateBackend pattern, see existing `create_runs_defaults_to_start_request_and_reports_pending_child_status`): a backend whose start_run errors must yield an Ok result with run_id + failure reason, started_run_ids still recorded, correct text summary; plus the start=false retrieve-failure case; existing tests keep passing; (8) gate with `cargo nextest run -p fabro-tool`, `cargo build --workspace`, and pinned-nightly fmt/clippy. Ambiguity resolved: the seed's example 'created <id>, start blocked: approval_required' conflates summary text with structure — I chose structured-result-first with the text summary carrying counts; also the fix must not assume the run is 'pending' after a failed start (state is unknown unless a follow-up retrieve succeeds), so report the error verbatim rather than a guessed status. No review feedback yet (first pass, cycle 1).",
+          "graph.preamble_budget_kb": "24",
+          "internal.thread_id": "reviewer",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.start": 0,
+          "internal.run_id": "01M1S6VRWQMD56M1X8HWAXDSNN",
+          "thread.start.current_node": "planner",
+          "preferred_label": "Approved",
+          "lesson_capture": "mx-9cf439"
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_stage": "planner",
+              "current_seed_brief": "In `lib/components/fabro-tool/src/create.rs`, `create_runs_with_options` (lines 428-475) does create-then-start with `?`-propagation: when `create_run_from_spec` succeeds but `start_run` fails (e.g. approval_required), the whole tool call errors and the created run id is discarded, so calling agents retry and create duplicate children (observed run 01M1S5D9XC). Fix so partial success is reported. Acceptance criteria: (1) start failure after successful create returns Ok with the created run_id present in the result, never a bare Err; (2) the start failure reason is machine-readable in the structured result — prefer an additive field on `CreatedRunResult` (e.g. `start_error: Option<String>` carrying 'start blocked: approval_required') over overloading the existing `status` string, since `CreatedRunResult` derives JsonSchema and is serialized to the LLM; (3) in multi-run batches, results for earlier successfully created runs are preserved when a later sibling's start fails (loop does not discard accumulated results); (4) the retrieve_run failure on the start=false path gets the same partial-success reporting (run id + error note), same rationale; (5) genuine create/parent-resolution failures keep returning Err — nothing was created, that boundary is deliberate and out of scope; (6) `create_runs_text` summary reflects blocked starts (e.g. adds 'start blocked for N') so the text summary never implies a clean start; (7) tests in the same file's `mod tests` (MockCreateBackend pattern, see existing `create_runs_defaults_to_start_request_and_reports_pending_child_status`): a backend whose start_run errors must yield an Ok result with run_id + failure reason, started_run_ids still recorded, correct text summary; plus the start=false retrieve-failure case; existing tests keep passing; (8) gate with `cargo nextest run -p fabro-tool`, `cargo build --workspace`, and pinned-nightly fmt/clippy. Ambiguity resolved: the seed's example 'created <id>, start blocked: approval_required' conflates summary text with structure — I chose structured-result-first with the text summary carrying counts; also the fix must not assume the run is 'pending' after a failed start (state is unknown unless a follow-up retrieve succeeds), so report the error verbatim rather than a guessed status. No review feedback yet (first pass, cycle 1).",
+              "current_seed_id": "fabro-78ac",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Run-container mise config is untrusted, so the first `sd ready` call failed with 'Config files in /repos/denkhaus/fabro/.mise.toml are not trusted' and the planner burned a tool call on `mise trust` before any tracker read worked (this run, 01M1S6VRWQMD56M1X8HWAXDSNN). Already tracked as seed fabro-66db 'sandbox: pre-trust the repo mise config in run containers' — the pain recurred here, which strengthens its case."
+                  }
+                ],
+                "observations": [
+                  "Tracker holds 126 ready seeds; `sd ready --limit 200` put fabro-78ac first among High — picked it after verifying its basis is live (create-then-start `?` at lib/components/fabro-tool/src/create.rs:453-464) rather than stale.",
+                  "Resolved a spec ambiguity in the brief: the seed's 'created <id>, start blocked: ...' example reads like summary text but the real fix belongs in the structured CreatedRunResult (additive JsonSchema field preferred); documented that post-failure run state is unknown, so the error must be reported verbatim, not mapped to 'pending'."
+                ]
+              },
+              "current_seed_title": "engine: fabro_run_create swallows the created run id when start fails (partial success reported as total failure)",
+              "last_response": "Claimed `fabro-78ac` (High bug, basis verified live in the worktree: create-then-start `?`-propagation at `lib/components/fabro-tool/src/create.rs:453-464` discards the created `run_id` when `start_ru",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 4062,
+                "preview": "Claimed `fabro-78ac` (High bug, basis verified live in the worktree: create-then-start `?`-propagation at `lib/components/fabro-tool/src/create.rs:453-464` discards the created `run_id` when `start_ru"
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 28033,
+                    "output_tokens": 1700,
+                    "reasoning_tokens": 3635,
+                    "cache_read_tokens": 270080,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 132924
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 134851,
+              "tool_time_ms": 2119,
+              "active_time_ms": 136970
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "The evidence capture arrived as a 14.2 KB blob ref at /tmp/fabro/runtime/blobs/fc3c8add...json (run 01M1S6VRWQMD56M1X8HWAXDSNN); I had to page it manually with read_file before judging. Workable, but the preamble preview truncates right before the diff body — surfacing the seed-work file list plus the first hunk in the preview would let most reviews start without a blob read."
+                  }
+                ],
+                "observations": [
+                  "Verified all 8 seed criteria against the complete diff in the blob (not the implementer summary); specifically confirmed run_id is now sourced from the create path rather than the start summary, status degrades to 'unknown' instead of guessing 'pending', and the batch test proves accumulated results survive a later sibling start failure. Gate treated as green per its three tester runs; did not re-run it since the diff matches the claimed third-pass state (map_or_else + write! fixes visible in the hunks)."
+                ]
+              },
+              "last_response": "The blob was fully readable and the capture is complete (diff ends cleanly, counts match: 1 seed-work file, +195/-15, worktree clean). I checked the diff against the seed spec criterion by criterion:\n",
+              "last_stage": "reviewer",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 3031,
+                "preview": "The blob was fully readable and the capture is complete (diff ends cleanly, counts match: 1 seed-work file, +195/-15, worktree clean). I checked the diff against the seed spec criterion by criterion:\n"
+              },
+              "review_verdict": "approved"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16280,
+                    "output_tokens": 786,
+                    "reasoning_tokens": 170,
+                    "cache_read_tokens": 12224,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 30174
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 20530,
+              "tool_time_ms": 16,
+              "active_time_ms": 20546
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/b8e122b1e37f87ca2217132347125ec6a8b3b46d543340d06f878e57ded870b0"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 272,
+              "active_time_ms": 272
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/fc3c8add50e3f950e9df1368f7de6b2f9a359ac92fea821656d67d570f2afc96"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 377,
+              "active_time_ms": 377
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_response": "The gate failure was two denied clippy lints in the previous implementer pass. Both fixed in `lib/components/fabro-tool/src/create.rs` (`map_unwrap_or` → `map_or_else` at the `status` construction; ",
+              "last_stage": "implementer",
+              "implementation_summary": "Pass 3 of fabro-78ac: the tester gate was red solely on two clippy lints in `lib/components/fabro-tool/src/create.rs` — `map_unwrap_or` on the `status` field construction (now `map_or_else`) and `format_push_string` on the ', start blocked for N' summary append (now `write!` with `std::fmt::Write`). No behavior changed. Verified: pinned-nightly clippy `-D warnings` clean on fabro-tool (all targets), 67/67 fabro-tool nextest pass, `fmt --check --all` clean. Lesson captured as mx-9cf439 (nightly clippy denies map_unwrap_or/format_push_string; use map_or_else and write!). Per-criterion report: (1) PASS start-failure returns Ok with run_id — create.rs create_runs_with_options, tests create_runs_reports_start_failure...; (2) PASS additive `start_error: Option<String>` on CreatedRunResult, verified in schema-derived struct; (3) PASS loop pushes per-run results before/independent of later sibling start failure, preserved accumulated vec; (4) PASS start=false retrieve failure yields run_id + 'retrieve failed: ...' note (create.rs:472-475); (5) PASS create/parent-resolution failures still `?`-propagate as Err; (6) PASS create_runs_text appends ', start blocked for N' when any start_error; (7) PASS MockCreateBackend tests for start-failure and retrieve-failure cases present and passing (67/67); (8) PASS cargo build (via clippy full-target compile), nextest -p fabro-tool, pinned fmt/clippy all green.",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Tester gate flagged only two style lints (map_unwrap_or, format_push_string) in create.rs — the implementer pass shipped without any clippy run because the role contract forbids gating; a cheap `cargo clippy -p <touched crate>` compile-check equivalent would catch these pre-gate at near-zero cost (run 01M1S6VRWQMD56M1X8HWAXDSNN, two tester cycles burned)."
+                ]
+              },
+              "lesson_capture": "mx-9cf439",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2510,
+                "preview": "The gate failure was two denied clippy lints in the previous implementer pass. Both fixed in `lib/components/fabro-tool/src/create.rs` (`map_unwrap_or` → `map_or_else` at the `status` construction; "
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 18294,
+                    "output_tokens": 1780,
+                    "reasoning_tokens": 132,
+                    "cache_read_tokens": 197440,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 85343
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/components/fabro-tool/src/create.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 73450,
+              "tool_time_ms": 34898,
+              "active_time_ms": 108348
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/82ac587ba16c07e9ebf5130f6db77c046f42e311028ca8711c0c02488a8b598e"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 7818,
+              "active_time_ms": 7818
+            }
+          },
           "start": {
             "status": "succeeded",
             "usage": null
           }
         },
-        "next_node_id": "closeout",
+        "next_node_id": "exit",
         "node_visits": {
           "start": 1,
           "implementer": 3,
           "reviewer": 1,
           "evidence": 1,
           "tester": 3,
+          "closeout": 1,
           "planner": 1
         }
       },
@@ -3176,6 +3507,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "closeout@1": {
+      "first_event_seq": 479,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-05T16:54:22.463673406Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/b8e122b1e37f87ca2217132347125ec6a8b3b46d543340d06f878e57ded870b0",
+        "exit_code": 0,
+        "duration_ms": 272,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-05T16:54:22.171097605Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 278,
+        "inference_time_ms": 0,
+        "tool_time_ms": 272,
+        "active_time_ms": 272
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
