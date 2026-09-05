@@ -43,3 +43,35 @@ and benefits most from an operating self-improvement loop.
   consolidation, prompt/evidence adaptation for Rust diffs); they stay
   visible while the revisor is built.
 - Upstream posture unchanged; the merger is ours, not an offer.
+
+
+## Phase 3 executed (2026-09-05)
+
+Qualification 2/2 green (cycles: fabro-37a6 via 01M1RF53QW, fabro-56c2
+via 01M1RGQHJ5 + revisor 01M1RH2KM0). Executed decisions:
+
+- **Worlds retired.** `denkhaus-lab` and `meta/denkhaus-lab` deleted
+  after final-state tags `archive/denkhaus-lab-final` and
+  `archive/meta-denkhaus-lab-final`; trackers were empty, protections
+  removed, the dangling test automation deleted. The real work of the
+  merger lives on `denkhaus`.
+- **Conductor replaces cron-per-workflow.** One engine-side `conductor`
+  workflow (UI cron automation) is the serialized line: a pass runs
+  EITHER an upstream merge (threshold >= 5 new upstream commits —
+  single-commit drift must not consume merge slots) as an infra-only
+  pass OR one develop+revisor cycle. Children are created via
+  parent-scoped `fabro_run_create` only after the previous child's PR
+  auto-merged; serialization is structural (create-after-merge), not
+  temporal. `merge-upstream` is its own workflow (different lifecycle,
+  gate scope, and deploy handoff: runs push, the HOST deploys).
+- **429/budget exhaustion**: LLM retries are exponential with
+  Retry-After (fabro-llm); a persistent 429 fails the pass and the cron
+  is the deterministic reviver — next fire retries on a reset budget.
+- **Auto-merge prerequisite**: `dogfood-gate` (path-adaptive CI) is the
+  only required check; the host-posted `lab-check-local` was dropped
+  because the conductor cannot post it, and failed runs never receive
+  PRs (engine creates PRs only on terminal success), so the gate alone
+  cannot merge garbage.
+- **Agent end-state**: the agent session is the control function —
+  revisor-revision each cycle, seeds for gaps, deploy on merge reports
+  (workstation), grilling at forks.

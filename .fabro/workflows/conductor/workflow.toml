@@ -1,0 +1,45 @@
+_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+# conductor (ADR-0015 architecture, 2026-09-05): the serialized line as a
+# workflow. ONE cron automation fires it (UI: schedule, environment
+# `toolchain`); each pass runs AT MOST one leg type: an upstream merge
+# (infra pass, develop waits for the next fire) or a develop+revisor
+# cycle. Serialization is structural: child runs are created via
+# fabro_run_create (parent-scoped) only after the previous child's PR
+# auto-merged, and every child run clones origin/denkhaus fresh at
+# creation. 429/budget-exhaustion: LLM retries are exponential with
+# Retry-After (fabro-llm retry.rs); a node that still fails ends this
+# pass, and the CRON is the deterministic reviver — the next fire
+# retries with a reset budget.
+[run.agent]
+fabro_tools = true
+
+[[run.hooks]]
+name = "stage-journal"
+event = "stage_complete"
+script = "nu .fabro/workflows/conductor/scripts/stage-journal.nu"
+blocking = false
+timeout = "10s"
+sandbox = true
+
+[run.model]
+provider = "zai"
+name = "glm-5.3"
+
+# Orchestration run: no diff, no PR. Its value is the journal + Slack.
+[run.run_branch]
+push = true
+
+[run.pull_request]
+enabled = false
+
+[run.notifications.terminal]
+enabled = true
+provider = "slack"
+events = ["run.completed", "run.failed"]
+
+[run.notifications.terminal.slack]
+channel = "#dev-fabro"

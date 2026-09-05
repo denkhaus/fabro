@@ -1,0 +1,37 @@
+digraph MergeUpstream {
+    graph [
+        goal="Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; deploy is host-side",
+        rankdir=LR,
+        max_node_visits=6,
+        preamble_budget_kb=12,
+        cycle_counter_reset_key="merge_target_sha"
+    ]
+
+    start [shape=Mdiamond, label="Start"]
+    // Soft exits: tool failures leave the run branch unmerged; the
+    // conductor defers to manual /merge-upstream for hard conflicts.
+    exit  [shape=Msquare, label="Exit"]
+
+    // Merge: fetch upstream, merge --no-commit, resolve conflicts per
+    // .agents/skills/merge-upstream/references/conflict-policy.md (our
+    // features AND upstream changes both survive), run the full
+    // qualitygate, write the report artifact. The engine pushes the run
+    // branch and opens the PR; the Dogfood Gate (full Rust+TS program
+    // for code paths) gates the auto-merge.
+    merge [
+        label="Merge",
+        prompt="@prompts/merge.md",
+        output_schema="routing",
+        output_retries=2,
+        retry_policy="standard",
+        reasoning_effort="high",
+        project_memory=false,
+        preamble_stages_ignore="merge",
+        fs_write="",
+        fabro_tools=""
+    ]
+
+    start -> merge
+    merge -> exit [label="Merged and gated", condition="outcome=succeeded"]
+    merge -> exit [kind="soft", label="Merge failed (manual /merge-upstream takes over)"]
+}

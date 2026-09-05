@@ -1,0 +1,52 @@
+_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+# merge-upstream (ADR-0013/0015 architecture, 2026-09-05): merges
+# upstream/main into denkhaus per the conflict policy, gates the result,
+# and reports. Started by the conductor workflow (threshold-gated) or
+# manually (`just run merge-upstream`) for hard cases the conductor
+# defers. Deploy is HOST-side by design: the run pushes, the PR
+# auto-merges through the Dogfood Gate, and the host applies it
+# (workstation: agent control function runs `just up` on the report;
+# future 24/7 host: pull-and-rebuild watcher).
+[run.agent]
+fabro_tools = false
+
+[[run.hooks]]
+name = "stage-journal"
+event = "stage_complete"
+script = "nu .fabro/workflows/merge-upstream/scripts/stage-journal.nu"
+blocking = false
+timeout = "10s"
+sandbox = true
+
+[run.model]
+provider = "zai"
+name = "glm-5.3"
+
+[run.run_branch]
+push = true
+
+[run.meta_branch]
+push = true
+
+[run.pull_request]
+enabled = true
+draft = false
+auto_merge = true
+merge_strategy = "squash"
+model = "zai:glm-4.7"
+
+[run.integrations.github.permissions]
+contents = "write"
+pull_requests = "write"
+
+[run.notifications.terminal]
+enabled = true
+provider = "slack"
+events = ["run.completed", "run.failed"]
+
+[run.notifications.terminal.slack]
+channel = "#dev-fabro"
