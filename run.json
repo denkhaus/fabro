@@ -565,7 +565,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-05T16:11:46.753952339Z",
-  "last_event_at": "2026-09-05T16:13:11.926736963Z",
+  "last_event_at": "2026-09-05T16:23:12.625876747Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -613,9 +613,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 49,
       "checkpoint": {
-        "timestamp": "2026-09-05T16:13:12.100930086Z",
+        "timestamp": "2026-09-05T16:13:17.069145625Z",
         "current_node": "survey",
         "completed_nodes": [
           "start",
@@ -623,39 +623,39 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.thread_id": "start",
-          "internal.retry_count.survey": 0,
+          "graph.rankdir": "LR",
           "outcome": "succeeded",
-          "last_stage": "survey",
-          "internal.seed_cycle_anchor": "",
-          "internal.run_id": "01M1S5D9XCJMWCQ1F8EABSN7FB",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.fidelity": "compact",
-          "preferred_label": "Work",
-          "graph.max_node_visits": "12",
           "failure_signature": "",
-          "internal.node_visit_count": 1,
-          "failure_class": "",
-          "thread.start.current_node": "survey",
+          "current_node": "survey",
+          "internal.thread_id": "start",
           "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": \"Surveyor pass 1: upstream drift count = 4 (origin/denkhaus..ups",
-          "internal.retry_count.start": 0,
+          "preferred_label": "Work",
+          "journal": "Surveyor pass 1: upstream drift count = 4 (origin/denkhaus..upstream/main), below MIN threshold of 5, so no merge this pass. Newest upstream subject: 'Merge pull request #842 from fabro-sh/fix/replay-conclusion-summaries'. Drift accumulates toward the threshold; one more upstream commit triggers a merge slot. Nothing hurt; both fetches and the rev-list ran clean, though the first-time origin fetch produced a very large branch listing.",
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 578,
             "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": \"Surveyor pass 1: upstream drift count = 4 (origin/denkhaus..ups"
           },
+          "internal.retry_count.survey": 0,
+          "last_stage": "survey",
+          "graph.max_node_visits": "12",
+          "internal.seed_cycle_anchor": "",
+          "internal.retry_count.start": 0,
+          "thread.start.current_node": "survey",
+          "internal.run_id": "01M1S5D9XCJMWCQ1F8EABSN7FB",
+          "failure_class": "",
+          "graph.preamble_budget_kb": "12",
           "seed_cycles": {
             "start": 1,
             "survey": 1
           },
-          "journal": "Surveyor pass 1: upstream drift count = 4 (origin/denkhaus..upstream/main), below MIN threshold of 5, so no merge this pass. Newest upstream subject: 'Merge pull request #842 from fabro-sh/fix/replay-conclusion-summaries'. Drift accumulates toward the threshold; one more upstream commit triggers a merge slot. Nothing hurt; both fetches and the rev-list ran clean, though the first-time origin fetch produced a very large branch listing.",
-          "graph.preamble_budget_kb": "12",
-          "current_node": "survey",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
           "graph.cycle_counter_reset_key": "pass_id",
-          "graph.rankdir": "LR",
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged"
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.node_visit_count": 1
         },
         "node_outcomes": {
           "survey": {
@@ -707,8 +707,174 @@
           }
         },
         "next_node_id": "develop",
+        "git_commit_sha": "4592d1d4f654340f7515f313e07b6590b95e0b45",
         "node_visits": {
           "start": 1,
+          "survey": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-05T16:23:12.797566274Z",
+        "current_node": "develop",
+        "completed_nodes": [
+          "start",
+          "survey",
+          "develop"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.thread_id": "survey",
+          "response.develop": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.develop",
+            "chars": 1446,
+            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Develop child failed\", \"failure_reason\": \"\", \"context_updates\": {\"child_run_id\": \"01M1S5RTW80R9FS4E29T6XNDXX\", \"journal\": \"Develop child 01M1S5RTW80R9"
+          },
+          "internal.retry_count.survey": 0,
+          "internal.retry_count.develop": 0,
+          "internal.exit_kind": "soft",
+          "outcome": "succeeded",
+          "last_stage": "develop",
+          "internal.seed_cycle_anchor": "",
+          "internal.run_id": "01M1S5D9XCJMWCQ1F8EABSN7FB",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.fidelity": "compact",
+          "preferred_label": "Develop child failed",
+          "graph.max_node_visits": "12",
+          "failure_signature": "",
+          "internal.node_visit_count": 1,
+          "failure_class": "",
+          "thread.start.current_node": "survey",
+          "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Develop child failed\", \"failure_reason\": \"\", \"context_updates\": {\"child_run_id\": \"01M1S5RTW80R9FS4E29T6XNDXX\", \"journal\": \"Develop child 01M1S5RTW80R9",
+          "internal.retry_count.start": 0,
+          "response.survey": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.survey",
+            "chars": 578,
+            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": \"Surveyor pass 1: upstream drift count = 4 (origin/denkhaus..ups"
+          },
+          "thread.survey.current_node": "develop",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "develop": 1
+          },
+          "journal": "Develop child 01M1S5RTW80R9FS4E29T6XNDXX (workflow develop, goalless seed pick, env toolchain) failed terminal at 16:21:42Z with status failed / reason cancelled ('Pipeline cancelled') while planner@1 was mid-inference; no PR, no seed claimed (checkpoints show no current_seed_id; tracker untouched). Retriable — the next conductor fire re-creates the child. Painpoints: (1) first create attempt 01M1S5MWDTFSQBZ833Q74AGPXB stuck in approval_required (execution approval=prompt, no approve tool exposed to this leg) — it remains pending and orphaned; had to re-create with auto_approve=true. Suggest: develop children of conductor runs should default to auto approval, or the develop-leg prompt must pass auto_approve on first create. (2) The conductor's fabro_run_create tool schema rejects the documented {workflow_source:{repo,branch,workflow}} form (anyOf validation failure); the call only succeeds with workflow:'develop' + workflow_source as sibling properties — fix the tool schema or the prompt example. (3) Child got cancelled 2.5 min into planner@1 for an unstated cause ('Pipeline cancelled', category canceled) — worth checking server logs for who issued the cancel; possibly tied to cleanup of the orphaned pending sibling.",
+          "child_run_id": "01M1S5RTW80R9FS4E29T6XNDXX",
+          "graph.preamble_budget_kb": "12",
+          "current_node": "develop",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "graph.rankdir": "LR",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged"
+        },
+        "node_outcomes": {
+          "survey": {
+            "status": "succeeded",
+            "preferred_label": "Work",
+            "context_updates": {
+              "journal": "Surveyor pass 1: upstream drift count = 4 (origin/denkhaus..upstream/main), below MIN threshold of 5, so no merge this pass. Newest upstream subject: 'Merge pull request #842 from fabro-sh/fix/replay-conclusion-summaries'. Drift accumulates toward the threshold; one more upstream commit triggers a merge slot. Nothing hurt; both fetches and the rev-list ran clean, though the first-time origin fetch produced a very large branch listing.",
+              "response.survey": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.survey",
+                "chars": 578,
+                "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": \"Surveyor pass 1: upstream drift count = 4 (origin/denkhaus..ups"
+              },
+              "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": \"Surveyor pass 1: upstream drift count = 4 (origin/denkhaus..ups",
+              "last_stage": "survey"
+            },
+            "notes": "Stage completed: survey",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 21292,
+                    "output_tokens": 403,
+                    "reasoning_tokens": 17,
+                    "cache_read_tokens": 30336,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 39540
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 21091,
+              "tool_time_ms": 52485,
+              "active_time_ms": 73576
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "develop": {
+            "status": "succeeded",
+            "preferred_label": "Develop child failed",
+            "context_updates": {
+              "journal": "Develop child 01M1S5RTW80R9FS4E29T6XNDXX (workflow develop, goalless seed pick, env toolchain) failed terminal at 16:21:42Z with status failed / reason cancelled ('Pipeline cancelled') while planner@1 was mid-inference; no PR, no seed claimed (checkpoints show no current_seed_id; tracker untouched). Retriable — the next conductor fire re-creates the child. Painpoints: (1) first create attempt 01M1S5MWDTFSQBZ833Q74AGPXB stuck in approval_required (execution approval=prompt, no approve tool exposed to this leg) — it remains pending and orphaned; had to re-create with auto_approve=true. Suggest: develop children of conductor runs should default to auto approval, or the develop-leg prompt must pass auto_approve on first create. (2) The conductor's fabro_run_create tool schema rejects the documented {workflow_source:{repo,branch,workflow}} form (anyOf validation failure); the call only succeeds with workflow:'develop' + workflow_source as sibling properties — fix the tool schema or the prompt example. (3) Child got cancelled 2.5 min into planner@1 for an unstated cause ('Pipeline cancelled', category canceled) — worth checking server logs for who issued the cancel; possibly tied to cleanup of the orphaned pending sibling.",
+              "last_stage": "develop",
+              "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Develop child failed\", \"failure_reason\": \"\", \"context_updates\": {\"child_run_id\": \"01M1S5RTW80R9FS4E29T6XNDXX\", \"journal\": \"Develop child 01M1S5RTW80R9",
+              "response.develop": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.develop",
+                "chars": 1446,
+                "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Develop child failed\", \"failure_reason\": \"\", \"context_updates\": {\"child_run_id\": \"01M1S5RTW80R9FS4E29T6XNDXX\", \"journal\": \"Develop child 01M1S5RTW80R9"
+              },
+              "child_run_id": "01M1S5RTW80R9FS4E29T6XNDXX"
+            },
+            "notes": "Stage completed: develop",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 93679,
+                    "output_tokens": 1939,
+                    "reasoning_tokens": 1305,
+                    "cache_read_tokens": 678976,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 321912
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 165550,
+              "tool_time_ms": 380113,
+              "active_time_ms": 545663
+            }
+          }
+        },
+        "next_node_id": "exit",
+        "node_visits": {
+          "start": 1,
+          "develop": 1,
           "survey": 1
         }
       },
@@ -1012,6 +1178,270 @@
             "category": "conversation",
             "tokens": 9738,
             "usage_percent": 0.9286880493164062
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "develop@1": {
+      "first_event_seq": 52,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: develop",
+        "failure_reason": null,
+        "timestamp": "2026-09-05T16:23:12.625876747Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-05T16:13:17.086512463Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 546401,
+        "inference_time_ms": 165550,
+        "tool_time_ms": 380113,
+        "active_time_ms": 545663
+      },
+      "usage": {
+        "input_tokens": 93679,
+        "output_tokens": 1939,
+        "total_tokens": 775899,
+        "reasoning_tokens": 1305,
+        "cache_read_tokens": 678976,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 321912
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_create",
+          "description": "Create one or more Fabro workflow runs, optionally under a parent run, starting them by default.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "fabro_run_get",
+          "description": "Read-only inspection of a Fabro run: returns its summary, projection, and pending questions without mutating state.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 92669,
+        "usage_percent": 8.837604522705078,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-05T16:23:12.605451714Z",
+        "event_seq": 242,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1062,
+            "usage_percent": 0.10128021240234375
+          },
+          {
+            "category": "tools",
+            "tokens": 2298,
+            "usage_percent": 0.21915435791015625
+          },
+          {
+            "category": "skills",
+            "tokens": 205,
+            "usage_percent": 0.019550323486328125
+          },
+          {
+            "category": "memory",
+            "tokens": 5243,
+            "usage_percent": 0.5000114440917969
+          },
+          {
+            "category": "conversation",
+            "tokens": 83853,
+            "usage_percent": 7.996845245361328
           },
           {
             "category": "other",
