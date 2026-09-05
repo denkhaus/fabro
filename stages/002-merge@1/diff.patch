@@ -1,0 +1,2639 @@
+diff --git a/.fabro/journal/01M1SR27KEJGNQ1HFN9266ZCZE.jsonl b/.fabro/journal/01M1SR27KEJGNQ1HFN9266ZCZE.jsonl
+new file mode 100644
+index 000000000..00c7766cb
+--- /dev/null
++++ b/.fabro/journal/01M1SR27KEJGNQ1HFN9266ZCZE.jsonl
+@@ -0,0 +1 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1SR27KEJGNQ1HFN9266ZCZE","node":"merge","visit":1,"status":"succeeded","ts":"2026-09-05T22:31:20Z","data":[{"timestamp":"2026-09-05","stage":"merge-upstream","observations":"Upstream commit count: 6 (`origin/denkhaus..upstream/main`, newest `5d290a609` = PR #844 remove expired secret migrations; range = v0.346.0 -> v0.347.0-nightly.0). Conflict classes seen: exactly ONE — import-block widening (known 2026-08-31 class) in `lib/components/fabro-workflow/src/pipeline/finalize.rs`: our `crate::context::keys` vs upstream's new `crate::billing_rollup` re-export (billing-rollup types moved to `fabro-types`); kept both, both provably used. Zero fork delta on `startup.rs`/`migrations.rs`/`billing_rollup.rs` so upstream's reshapes were clean takes; no fork-changed file deleted upstream. Gate duration: `just qualitygate` 2m30s (GATE GREEN), supplemental pinned-nightly clippy on 5 touched crates 2m44s, nextest 4457-test runs ~2m each; touchpoint probes green (finalize 26/26, seed_cycles 4/4, publish_blocked 2/2). Merge committed as `c3d59ab44` on `fabro/run/01M1SR27KEJGNQ1HFN9266ZCZE`; report at `.fabro/reports/merge-upstream/5d290a609.md`. No seeds superseded; fabro-b7c4 upstream PR offer still valid.","painpoints":"1) The merge node's `fs_write=\"\"` blocked file-tool edits even for conflict resolution and the report — had to route all writes through the shell (documented escape hatch); worth an explicit glob or a policy note in `.fabro/workflows/merge-upstream/workflow.fabro`. 2) `scripts/qualitygate.nu` silently degrades to fmt+check-only when the merge bumps root `Cargo.toml`/`Cargo.lock` (always true for upstream merges), so the 'expect near-full fmt+clippy+nextest' contract required a manual supplemental run of clippy+nextest on the merge-touched crates — consider a merge-mode flag on the gate. 3) Two environmental flakes cost ~20min of reruns: the documented fabro-80b3 timeout class plus `pull_request_creation_persists_generation_failure` failing once under 5-crate load (helpers untouched by the merge; green in 3 subsequent runs). 4) `mise trust` was required before `just` recipes would run in this sandbox. 5) First cold `cargo build --workspace` exceeded the 600s default tool timeout — merges need explicit `timeout_ms` headroom."}]}
+diff --git a/.fabro/reports/merge-upstream/5d290a609.md b/.fabro/reports/merge-upstream/5d290a609.md
+new file mode 100644
+index 000000000..fb112e56a
+--- /dev/null
++++ b/.fabro/reports/merge-upstream/5d290a609.md
+@@ -0,0 +1,78 @@
++# Upstream merge report — 5d290a609 (v0.347.0-nightly.0)
++
++## Merge identity
++
++- Range: `origin/denkhaus..upstream/main`, 6 commits, newest subject
++  `Merge pull request #844 from fabro-sh/remove/expired-secret-migrations`.
++- Fork tip before: `da12258b3` (seeds sync 2026-09-05); upstream tip: `5d290a609`.
++- Run branch aligned to `origin/denkhaus` first (fast-forward of the seeds sync),
++  then `git merge upstream/main --no-commit`.
++
++## Conflicts resolved by class
++
++- **1 conflict total** — `lib/components/fabro-workflow/src/pipeline/finalize.rs`,
++  import-block widening (known class, cf. 2026-08-31). Our side:
++  `use crate::context::keys;` (exit-kind plumbing, `keys::INTERNAL_EXIT_KIND`,
++  seeds fabro-08b4/67e5 line). Upstream side: `use crate::billing_rollup;`
++  (new module re-exporting the billing-rollup types that moved to
++  `lib/foundation/fabro-types/src/billing_rollup.rs`). Resolution: keep BOTH
++  imports (both used in the merged body — ours at the exit-kind reads,
++  upstream's at the two `billing_rollup_from_projection` call sites),
++  alphabetical order. No other conflict classes appeared.
++- No add/add test conflicts, no signature drift against our call sites, no
++  upstream-deleted files with fork deltas (verified: intersection of fork-delta
++  and upstream-deleted paths is empty).
++
++## Verification commands + results
++
++| Command | Result |
++|---|---|
++| `cargo build --workspace` | green |
++| `just qualitygate` | GATE GREEN — root manifest/lock changed (version bump), so the script ran fmt + `cargo check --workspace` per its own rule |
++| `cargo +nightly-2026-04-14 clippy -p fabro-cli -p fabro-server -p fabro-store -p fabro-workflow -p fabro-types --all-targets -- -D warnings` | clean (supplemental: the gate script degrades to check-only on root-manifest diffs; this restores the expected near-full gate for the merge-touched crates and doubles as the policy-mandated test compile) |
++| `cargo nextest run` on the same 5 crates (full 4457-test run, twice) | 4456/4457 pass in both runs |
++| `cargo nextest run -p fabro-workflow -E 'test(pipeline::finalize)'` | 26/26 (publish-blocked + boundary taxonomy touchpoints) |
++| `cargo nextest run -p fabro-workflow -E 'test(seed_cycles)'` | 4/4 (fabro-45d0 re-attachment intact) |
++| `cargo nextest run -p fabro-server -E 'test(publish_blocked)'` | 2/2 (Slack lifecycle remediation intact) |
++
++Flake notes (environmental, not merge regressions):
++- `fabro-workflow handler::parallel::tests::for_each_accepts_an_array_at_the_item_limit`
++  timed out under full-suite load — the DOCUMENTED fabro-80b3 class named in
++  `scripts/qualitygate.nu`; passes isolated (3.7s, marked slow).
++- `fabro-server server::tests::pull_request_creation_persists_generation_failure`
++  failed once under 5-crate load, then passed standalone, in the package-level
++  run, and in the repeat 5-crate run. The upstream diff provably does not touch
++  its helpers (`pr_test_app_with_completed_run`, supervisor, polling helper).
++
++## Obsolescence notes (seeds/features upstream now supersedes)
++
++- **None.** No fork seed is superseded by this range. Our fork had zero delta on
++  `lib/components/fabro-workflow/src/billing_rollup.rs`, `lib/apps/fabro-server/src/startup.rs`,
++  and `lib/apps/fabro-server/src/migrations.rs`, so upstream's reshapes there
++  were clean takes.
++- fabro-b7c4 (legacy run-catalog key acceptance): local fix `31809f2ad`
++  untouched by this range; upstream still lacks it, PR offer still valid.
++- Watchlist unchanged: no exit-kind/publish-blocked equivalent upstream; no
++  node-on-failure adoption for `develop`.
++
++## What it means for us — per upstream theme
++
++- **Version bump to 0.347.0-nightly.0**: routine.
++- **Rebuild conclusion stage summaries from run events (PR #842)**: replayed/
++  projected conclusions now rebuild from the event log in
++  `lib/components/fabro-store/src/run_state.rs` instead of trusting
++  finalize-time persistence; `finalize.rs` shrinks. For us: our terminal-event
++  taxonomy (publish-blocked, boundary, deadlock/soft-stop) classifies the SAME
++  events the rebuild reads — replay and live conclusion stay consistent with no
++  fork adaptation needed; keep building terminal-semantics work on the event
++  stream, not on extra persisted state.
++- **Billing rollup types moved to `fabro-types`** (re-exported from
++  `fabro-workflow`): a foundation-level home for rollup shapes. For us: any
++  fork usage should import from the re-export as `finalize.rs` now does; no
++  parallel type.
++- **Remove expired startup secret migrations (PR #844)**: deletes the two
++  expired 2026-05 migrations and their tests, shrinking `startup.rs` by ~246
++  lines. For us: smaller startup surface, docs
++  (`docs/internal/server-secrets-strategy.md`,
++  `docs/internal/migrations-strategy.md`) updated upstream — our secrets flow
++  rides upstream's; nothing fork-local to re-attach.
+diff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl
+index 5dd8db96b..f3c41c3ab 100644
+--- a/.seeds/issues.jsonl
++++ b/.seeds/issues.jsonl
+@@ -203,4 +203,4 @@
+ {"id":"fabro-e988","title":"Print critical-first failure summary in the qualitygate script","status":"open","type":"task","priority":2,"createdAt":"2026-09-05T17:28:57.277Z","updatedAt":"2026-09-05T17:28:57.277Z","description":"Change scripts/qualitygate.nu (wired via the qualitygate recipe in justfile): on failure, print a compact summary first — failing step name plus the ^error lines grepped from the log — before the full output. Basis: in run 01M1S6VRWQMD56M1X8HWAXDSNN, tester@2's ~10 KB failure message buried the two decisive clippy errors at the very end; implementer@3 saw only a preview cut mid-log and had to open the blob to learn what broke. Expected effect: the re-entering implementer reads the actual error inline — faster, cheaper rework; composes with fabro-0d56. Basis: run 01M1S6VRWQMD56M1X8HWAXDSNN, workflow version af625ca581c5947f51dfa5597eb67892e0bee5d71ae041130412d1a54873ce8e, commit ecbd4d47c4c6d3272035e535731bc14f61a20662","labels":["revision"]}
+ {"id":"fabro-c3b4","title":"Use a top-N sd ready view in the planner instead of the full firehose","status":"open","type":"task","priority":2,"createdAt":"2026-09-05T17:28:57.532Z","updatedAt":"2026-09-05T17:28:57.532Z","description":"Change .fabro/workflows/develop/prompts/planner.md to instruct a top-N pick view (sd ready --first 10 or --priority high), falling back to the full listing only when top candidates are unclaimable. Basis: in run 01M1S6VRWQMD56M1X8HWAXDSNN, one sd ready --limit 200 poured ~15 KB / 126 seed lines into the planner conversation (event 47: 15,112 output bytes, ~4k tokens) just to learn which seed is top of the queue. Expected effect: less context bloat and distraction per planning pass; composes with open seed fabro-e4fa (call economy, distinct mechanism: output volume per call, not number of calls). Basis: run 01M1S6VRWQMD56M1X8HWAXDSNN, workflow version af625ca581c5947f51dfa5597eb67892e0bee5d71ae041130412d1a54873ce8e, commit ecbd4d47c4c6d3272035e535731bc14f61a20662","labels":["revision"]}
+ {"id":"fabro-1716","title":"Auto-approve parent-spawned develop runs for trusted worker subjects","status":"open","type":"task","priority":2,"createdAt":"2026-09-05T17:28:57.805Z","updatedAt":"2026-09-05T17:28:57.805Z","description":"Extend the server auto-approve policy to trusted worker subjects on parent-spawned develop runs, closing the idle approval window. Basis: run 01M1S6VRWQMD56M1X8HWAXDSNN sat pending(approval_required) from 16:36:39 to 16:38:58 — 2m19s, ~13% of run wall, doing nothing — even though conductor auto-approve landed same-day in commit 7fda512 (16:18 UTC); verify whether that commit's subject set covers this spawn path and extend it if not. Expected effect: ~2 min saved per run and no zombie-pending risk; the approval-TTL backstop is already filed as fabro-54f0, so this seed covers only the auto-approve mechanism. Basis: run 01M1S6VRWQMD56M1X8HWAXDSNN, workflow version af625ca581c5947f51dfa5597eb67892e0bee5d71ae041130412d1a54873ce8e, commit ecbd4d47c4c6d3272035e535731bc14f61a20662","labels":["revision"]}
+-{"id":"fabro-2e3c","title":"engine: auto_approve not effective through the git-source intent path (children still wait approval_required)","status":"in_progress","type":"bug","priority":1,"createdAt":"2026-09-05T17:21:38.401Z","updatedAt":"2026-09-05T21:13:37.881Z","description":"Conductor pass 01M1S6MSV4 passed auto_approve:true on fabro_run_create (visible in the tool-call args); git_source::intent_from_spec maps it into RunIntentArgs.auto_approve, but BOTH children (develop 01M1S6VRWQ, revisor 01M1S9C1H8) still landed in pending/approval_required and needed manual approval (2026-09-05). The intent admission path apparently does not apply args.auto_approve as the pre-execution approval (the legacy manifest path filtered/honored it). Fix: create_run_from_intent admission must honor RunIntentArgs.auto_approve (set approval to Auto or record the approval event at admission). Blocks fully autonomous conductor children. Basis: runs 01M1S6VRWQMD56M1X8HWAXDSNN + 01M1S9C1H8XVVEEB62JQKPXKY3, commits 5f413bbc7/7fda51235.","labels":["engine","workflows"]}
++{"id":"fabro-2e3c","title":"engine: auto_approve not effective through the git-source intent path (children still wait approval_required)","status":"closed","type":"bug","priority":1,"createdAt":"2026-09-05T17:21:38.401Z","updatedAt":"2026-09-05T21:38:44.449Z","description":"Conductor pass 01M1S6MSV4 passed auto_approve:true on fabro_run_create (visible in the tool-call args); git_source::intent_from_spec maps it into RunIntentArgs.auto_approve, but BOTH children (develop 01M1S6VRWQ, revisor 01M1S9C1H8) still landed in pending/approval_required and needed manual approval (2026-09-05). The intent admission path apparently does not apply args.auto_approve as the pre-execution approval (the legacy manifest path filtered/honored it). Fix: create_run_from_intent admission must honor RunIntentArgs.auto_approve (set approval to Auto or record the approval event at admission). Blocks fully autonomous conductor children. Basis: runs 01M1S6VRWQMD56M1X8HWAXDSNN + 01M1S9C1H8XVVEEB62JQKPXKY3, commits 5f413bbc7/7fda51235.","labels":["engine","workflows"],"closedAt":"2026-09-05T21:38:44.449Z","closeReason":"Fixed and production-proven (commit aa5c598a9): the start handler's parent-worker approval gate now honors the resolved approval mode — args.auto_approve=true (-> ApprovalMode::Auto) starts orchestration children directly; every other parent-worker spawn keeps the anti-runaway guard. Proof: conductor pass 01M1SQYDJMHSVJYMZB3C643K7J created merge-upstream child 01M1SR27KEJGNQ which went straight to running with NO pending/approval_required. 920/920 fabro-server tests green incl. new companion tests (auto_approve starts runnable; without the flag the gate still parks)."}
+diff --git a/Cargo.lock b/Cargo.lock
+index b7e53d941..3411ab62b 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2257,7 +2257,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-acp"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "agent-client-protocol",
+  "agent-client-protocol-tokio",
+@@ -2276,7 +2276,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-agent"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "async-trait",
+@@ -2323,7 +2323,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-api"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "chrono",
+  "fabro-automation",
+@@ -2346,7 +2346,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-auth"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "async-trait",
+@@ -2371,7 +2371,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-automation"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -2393,11 +2393,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-build-support"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ 
+ [[package]]
+ name = "fabro-checkpoint"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "chrono",
+  "fabro-config",
+@@ -2413,7 +2413,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-cli"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+@@ -2515,7 +2515,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-client"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "bytes",
+@@ -2544,7 +2544,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-config"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -2574,7 +2574,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-core"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "async-trait",
+  "fabro-types",
+@@ -2590,7 +2590,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-db"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -2603,7 +2603,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-dev"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+@@ -2622,7 +2622,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-dump"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "bytes",
+@@ -2636,7 +2636,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-environment"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -2658,7 +2658,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-github"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "async-trait",
+@@ -2683,7 +2683,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-graphviz"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "fabro-types",
+@@ -2698,7 +2698,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-hooks"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "async-trait",
+  "fabro-agent",
+@@ -2721,7 +2721,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-http"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "fabro-static",
+  "http 1.4.0",
+@@ -2731,7 +2731,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-install"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "base64",
+@@ -2750,7 +2750,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-interview"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "async-trait",
+  "dialoguer",
+@@ -2765,7 +2765,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-llm"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "async-trait",
+@@ -2807,7 +2807,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-macros"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "clap",
+  "fabro-options-metadata",
+@@ -2818,7 +2818,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-manifest"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "fabro-api",
+@@ -2842,7 +2842,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-mcp"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "axum",
+@@ -2862,7 +2862,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-mcp-server"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -2890,7 +2890,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-mcp-store"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "chrono",
+  "fabro-db",
+@@ -2908,7 +2908,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-model"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "clap",
+  "fabro-static",
+@@ -2925,7 +2925,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-oauth"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "axum",
+@@ -2947,7 +2947,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-options-metadata"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "serde",
+  "serde_json",
+@@ -2955,7 +2955,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-proc"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "cc",
+  "libc",
+@@ -2964,7 +2964,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-redact"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "aho-corasick",
+  "ref-cast",
+@@ -2980,7 +2980,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-sandbox"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "async-trait",
+@@ -3025,7 +3025,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-server"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "async-trait",
+@@ -3121,7 +3121,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-slack"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "fabro-http",
+  "fabro-interview",
+@@ -3143,18 +3143,18 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-spa"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "rust-embed",
+ ]
+ 
+ [[package]]
+ name = "fabro-static"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ 
+ [[package]]
+ name = "fabro-store"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "async-trait",
+  "bytes",
+@@ -3185,7 +3185,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-telemetry"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "base64",
+@@ -3211,7 +3211,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-template"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "fabro-types",
+@@ -3225,7 +3225,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-test"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+@@ -3250,7 +3250,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-tool"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "async-trait",
+@@ -3272,7 +3272,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-tracker"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "async-trait",
+@@ -3286,7 +3286,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-types"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "chrono",
+  "clap",
+@@ -3309,7 +3309,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-util"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "console 0.15.11",
+@@ -3332,7 +3332,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-validate"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "fabro-acp",
+  "fabro-agent",
+@@ -3350,7 +3350,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-variable"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -3367,7 +3367,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-vault"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -3386,7 +3386,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-workflow"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+@@ -3456,7 +3456,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "fabro-workflow-version"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "fabro-config",
+  "fabro-graphviz",
+@@ -8613,7 +8613,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "twin-github"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "axum",
+  "base64",
+@@ -8632,7 +8632,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "twin-openai"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ dependencies = [
+  "anyhow",
+  "async-stream",
+diff --git a/Cargo.toml b/Cargo.toml
+index 5e77c8e41..d44b7713d 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -11,7 +11,7 @@ resolver = "2"
+ 
+ [workspace.package]
+ edition = "2021"
+-version = "0.346.0-nightly.0"
++version = "0.347.0-nightly.0"
+ license = "MIT"
+ 
+ [workspace.dependencies]
+diff --git a/docs/internal/migrations-strategy.md b/docs/internal/migrations-strategy.md
+index 318463a58..026abe844 100644
+--- a/docs/internal/migrations-strategy.md
++++ b/docs/internal/migrations-strategy.md
+@@ -20,7 +20,7 @@ The crate-local `src/migrations.rs` module is the registry. It imports numbered
+ Examples:
+ 
+ - `fabro-config` owns settings-file migrations.
+-- `fabro-server` owns server startup migrations for `server.env` and vault files.
++- `fabro-server` owns server startup activation migrations for SQLite blob storage and run history.
+ 
+ Keep migration APIs `pub(crate)` unless another crate genuinely orchestrates the migration.
+ 
+@@ -125,7 +125,7 @@ If a migration removes entries from a file after writing another store, write th
+ 
+ Choose the error policy deliberately.
+ 
+-Use warn-and-continue only when the normal path may still succeed and compatibility is best-effort. The legacy vault-entry migration does this because an unreadable legacy shape should not block loading an otherwise usable vault file.
++Use warn-and-continue only when the normal path may still succeed and compatibility is best-effort.
+ 
+ Return an error when the migration found data it must move or rewrite and cannot do so safely. This gives operators a precise migration failure instead of a later, misleading startup error.
+ 
+diff --git a/docs/internal/server-secrets-strategy.md b/docs/internal/server-secrets-strategy.md
+index df4160886..a6546f751 100644
+--- a/docs/internal/server-secrets-strategy.md
++++ b/docs/internal/server-secrets-strategy.md
+@@ -119,7 +119,7 @@ Bootstrap secrets come from one of two sources:
+ 
+ Optional integration secrets are provisioned into the vault, usually with `fabro secret set` or `fabro install`.
+ 
+-There is no startup-time secret generation. A temporary startup migration moves recognized legacy optional secrets from process env or `server.env` into the vault, removes matching `server.env` entries after writing a backup, and logs conflicts by key name only. Runtime lookup remains vault-only after that migration step. See [migrations-strategy.md](migrations-strategy.md) for the migration pattern.
++There is no startup-time secret generation or import of optional integration secrets from process env or `server.env`. The compatibility migrations for those sources and pre-token/OAuth vault entries have been removed. The separate one-time import of current-format `secrets.json` entries into SQLite remains supported.
+ 
+ ## Subprocess Boundaries
+ 
+diff --git a/docs/public/administration/server-configuration.mdx b/docs/public/administration/server-configuration.mdx
+index d37b7223a..6fc9be4fb 100644
+--- a/docs/public/administration/server-configuration.mdx
++++ b/docs/public/administration/server-configuration.mdx
+@@ -371,7 +371,7 @@ Fabro splits server-runtime secrets into two scopes:
+ 
+ `server.env` is not used for Slack, Daytona, Brave Search, Venice Search, LLM provider keys, `GITHUB_TOKEN`, or GitHub App private key/client secret/webhook secret. Configure those optional integrations with `fabro secret set`, `fabro provider login`, or `fabro install`.
+ 
+-During startup, Fabro temporarily migrates recognized legacy optional integration secrets from process env or `server.env` into the vault. When a matching `server.env` entry can be safely removed, Fabro writes a hidden backup beside `server.env` first. Process env values cannot be cleaned up automatically, so remove those from your deployment environment after the vault contains the secret.
++Startup does not import optional integration secrets from process env or `server.env`, or rewrite old `credential` / `environment` vault entries. Provision these secrets with the commands above before upgrading an installation that still uses those retired sources or formats.
+ 
+ Fabro no longer auto-loads `.env` files. Provider API keys are required for the models you want to use; everything else is optional.
+ 
+diff --git a/lib/apps/fabro-cli/src/commands/server/start.rs b/lib/apps/fabro-cli/src/commands/server/start.rs
+index c703555a9..233465885 100644
+--- a/lib/apps/fabro-cli/src/commands/server/start.rs
++++ b/lib/apps/fabro-cli/src/commands/server/start.rs
+@@ -13,9 +13,7 @@ use fabro_config::user::default_settings_path;
+ use fabro_config::{RuntimeDirectory, Storage};
+ use fabro_server::jwt_auth::auth_method_name;
+ use fabro_server::serve::{DEFAULT_TCP_PORT, ServeArgs, resolve_runtime_server_settings_for_start};
+-use fabro_server::{
+-    migrate_startup_vault, process_env_snapshot, validate_startup, validate_startup_configuration,
+-};
++use fabro_server::{process_env_snapshot, validate_startup, validate_startup_configuration};
+ use fabro_static::EnvVars;
+ use fabro_types::settings::{LogDestination, ServerAuthMethod};
+ use fabro_util::printer::Printer;
+@@ -291,7 +289,6 @@ async fn execute_daemon(
+     }
+     validate_startup_configuration(&resolved_settings)?;
+     let storage = Storage::new(storage_dir);
+-    migrate_startup_vault(storage.secrets_path());
+     let startup_vault = SecretStore::open_snapshot(storage.sqlite_path(), storage.secrets_path())
+         .await
+         .context("loading secrets for startup validation")?;
+diff --git a/lib/apps/fabro-cli/tests/it/cmd/inspect.rs b/lib/apps/fabro-cli/tests/it/cmd/inspect.rs
+index 56821fe45..0943f2230 100644
+--- a/lib/apps/fabro-cli/tests/it/cmd/inspect.rs
++++ b/lib/apps/fabro-cli/tests/it/cmd/inspect.rs
+@@ -386,7 +386,7 @@ fn inspect_completed_run_shows_run_start_conclusion_checkpoint() {
+         "conclusion": {
+           "status": "succeeded",
+           "timing": "[TIMING]",
+-          "stage_count": null
++          "stage_count": 3
+         },
+         "checkpoint": {
+           "current_node": "report",
+@@ -458,7 +458,7 @@ fn inspect_completed_run_reads_store_without_disk_metadata_files() {
+         "conclusion": {
+           "status": "succeeded",
+           "timing": "[TIMING]",
+-          "stage_count": null
++          "stage_count": 3
+         },
+         "checkpoint": {
+           "current_node": "report",
+@@ -518,7 +518,7 @@ fn inspect_git_backed_run_exposes_checkpoint_and_sandbox_state() {
+           "status": "succeeded",
+           "timing": "[TIMING]",
+           "final_git_commit_sha": "[SHA]",
+-          "stage_count": null
++          "stage_count": 3
+         },
+         "checkpoint": {
+           "current_node": "step_two",
+diff --git a/lib/apps/fabro-cli/tests/it/cmd/server_start.rs b/lib/apps/fabro-cli/tests/it/cmd/server_start.rs
+index 899405856..68c1ceb13 100644
+--- a/lib/apps/fabro-cli/tests/it/cmd/server_start.rs
++++ b/lib/apps/fabro-cli/tests/it/cmd/server_start.rs
+@@ -292,6 +292,15 @@ methods = []
+             server_env:     &[("SESSION_SECRET", TEST_SESSION_SECRET)],
+             expected_error: "Fabro server refuses to start: github auth is enabled but GITHUB_APP_CLIENT_SECRET is not configured in the vault.",
+         },
++        StartupFailureCase {
++            name:           "github-client-secret-only-in-server-env",
++            settings:       GITHUB_SETTINGS,
++            server_env:     &[
++                ("SESSION_SECRET", TEST_SESSION_SECRET),
++                ("GITHUB_APP_CLIENT_SECRET", "unprovisioned-client-secret"),
++            ],
++            expected_error: "Fabro server refuses to start: github auth is enabled but GITHUB_APP_CLIENT_SECRET is not configured in the vault.",
++        },
+         StartupFailureCase {
+             name:           "empty-auth-methods",
+             settings:       EMPTY_AUTH_METHODS_SETTINGS,
+diff --git a/lib/apps/fabro-server/migrations/2026051801_legacy_vault_entries.rs b/lib/apps/fabro-server/migrations/2026051801_legacy_vault_entries.rs
+deleted file mode 100644
+index d37d5213d..000000000
+--- a/lib/apps/fabro-server/migrations/2026051801_legacy_vault_entries.rs
++++ /dev/null
+@@ -1,275 +0,0 @@
+-//! Temporary compatibility shim for pre-token/oauth vault files.
+-//!
+-//! Delete this module after 2026-08-18, once supported installs have had a
+-//! release window to rewrite `credential` / `environment` entries to the
+-//! `oauth` / `token` schemas.
+-
+-#![expect(
+-    clippy::disallowed_methods,
+-    reason = "Temporary startup migration uses synchronous vault file I/O before serving requests."
+-)]
+-
+-use std::collections::HashSet;
+-use std::path::{Path, PathBuf};
+-
+-use anyhow::{Context, bail};
+-use fabro_auth::{OAuthConfig, OAuthCredential, OAuthTokens};
+-use serde::Deserialize;
+-use serde_json::{Map, Value};
+-
+-pub(crate) const REMOVAL_DEADLINE: &str = "2026-08-18";
+-
+-#[derive(Debug, Default, PartialEq, Eq)]
+-pub(crate) struct LegacyVaultMigrationReport {
+-    pub(crate) migrated_entries: usize,
+-    pub(crate) skipped_entries:  usize,
+-    pub(crate) backup_path:      Option<PathBuf>,
+-}
+-
+-impl LegacyVaultMigrationReport {
+-    pub(crate) fn changed(&self) -> bool {
+-        self.migrated_entries > 0 || self.skipped_entries > 0
+-    }
+-}
+-
+-#[derive(Debug, Deserialize)]
+-struct LegacyAuthCredential {
+-    provider: String,
+-    #[serde(flatten)]
+-    details:  LegacyAuthDetails,
+-}
+-
+-#[derive(Debug, Deserialize)]
+-#[serde(tag = "type", rename_all = "snake_case")]
+-enum LegacyAuthDetails {
+-    ApiKey {
+-        key: String,
+-    },
+-    CodexOauth {
+-        tokens:     OAuthTokens,
+-        config:     OAuthConfig,
+-        #[serde(default)]
+-        account_id: Option<String>,
+-    },
+-}
+-
+-pub(crate) fn migrate_legacy_vault_file(path: &Path) -> anyhow::Result<LegacyVaultMigrationReport> {
+-    let contents = match std::fs::read_to_string(path) {
+-        Ok(contents) => contents,
+-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+-            return Ok(LegacyVaultMigrationReport::default());
+-        }
+-        Err(err) => return Err(err).with_context(|| format!("read vault {}", path.display())),
+-    };
+-    let entries = parse_vault_entries(&contents)?;
+-    let (next_entries, migrated_entries, skipped_entries) = rewrite_entries(entries);
+-    let mut report = LegacyVaultMigrationReport {
+-        migrated_entries,
+-        skipped_entries,
+-        backup_path: None,
+-    };
+-    if !report.changed() {
+-        return Ok(report);
+-    }
+-
+-    let backup_path = backup_vault_file(path)?;
+-    write_vault_entries(path, &next_entries)?;
+-    report.backup_path = Some(backup_path);
+-    Ok(report)
+-}
+-
+-fn parse_vault_entries(contents: &str) -> anyhow::Result<Map<String, Value>> {
+-    let value: Value = serde_json::from_str(contents).context("parse vault JSON")?;
+-    match value {
+-        Value::Object(entries) => Ok(entries),
+-        _ => bail!("vault JSON root must be an object"),
+-    }
+-}
+-
+-fn rewrite_entries(entries: Map<String, Value>) -> (Map<String, Value>, usize, usize) {
+-    let mut next_entries = Map::new();
+-    let mut occupied = HashSet::new();
+-    for (name, entry) in &entries {
+-        if matches!(
+-            entry.get("type").and_then(Value::as_str),
+-            Some("token" | "oauth" | "file")
+-        ) {
+-            next_entries.insert(name.clone(), entry.clone());
+-            occupied.insert(name.clone());
+-        }
+-    }
+-
+-    let mut migrated_entries = 0;
+-    let mut skipped_entries = 0;
+-    for (name, entry) in entries {
+-        match entry.get("type").and_then(Value::as_str) {
+-            Some("token" | "oauth" | "file") => {}
+-            Some("environment") => {
+-                if insert_rewritten_entry(
+-                    &mut next_entries,
+-                    &mut occupied,
+-                    name,
+-                    rewrite_entry(entry, "token", None),
+-                ) {
+-                    migrated_entries += 1;
+-                } else {
+-                    skipped_entries += 1;
+-                }
+-            }
+-            Some("credential") => match legacy_credential_entry(&name, &entry) {
+-                Some((target_name, rewritten)) => {
+-                    if insert_rewritten_entry(
+-                        &mut next_entries,
+-                        &mut occupied,
+-                        target_name,
+-                        rewritten,
+-                    ) {
+-                        migrated_entries += 1;
+-                    } else {
+-                        skipped_entries += 1;
+-                    }
+-                }
+-                None => skipped_entries += 1,
+-            },
+-            _ => skipped_entries += 1,
+-        }
+-    }
+-
+-    (next_entries, migrated_entries, skipped_entries)
+-}
+-
+-fn insert_rewritten_entry(
+-    entries: &mut Map<String, Value>,
+-    occupied: &mut HashSet<String>,
+-    name: String,
+-    entry: Value,
+-) -> bool {
+-    if !occupied.insert(name.clone()) {
+-        return false;
+-    }
+-    entries.insert(name, entry);
+-    true
+-}
+-
+-fn legacy_credential_entry(name: &str, entry: &Value) -> Option<(String, Value)> {
+-    let value = entry.get("value").and_then(Value::as_str)?;
+-    let credential: LegacyAuthCredential = serde_json::from_str(value).ok()?;
+-    match credential.details {
+-        LegacyAuthDetails::ApiKey { key } => {
+-            let target_name = api_key_secret_name(&credential.provider)?;
+-            Some((
+-                target_name,
+-                rewrite_entry(entry.clone(), "token", Some(key)),
+-            ))
+-        }
+-        LegacyAuthDetails::CodexOauth {
+-            tokens,
+-            config,
+-            account_id,
+-        } if credential.provider == "openai" && name == "openai_codex" => {
+-            let credential = OAuthCredential {
+-                tokens,
+-                config,
+-                account_id,
+-            };
+-            let value = serde_json::to_string(&credential).ok()?;
+-            Some((
+-                "OPENAI_CODEX".to_string(),
+-                rewrite_entry(entry.clone(), "oauth", Some(value)),
+-            ))
+-        }
+-        LegacyAuthDetails::CodexOauth { .. } => None,
+-    }
+-}
+-
+-fn rewrite_entry(mut entry: Value, secret_type: &str, value: Option<String>) -> Value {
+-    if let Value::Object(fields) = &mut entry {
+-        fields.insert("type".to_string(), Value::String(secret_type.to_string()));
+-        if let Some(value) = value {
+-            fields.insert("value".to_string(), Value::String(value));
+-        }
+-    }
+-    entry
+-}
+-
+-fn api_key_secret_name(provider: &str) -> Option<String> {
+-    let mut name = String::new();
+-    for ch in provider.chars() {
+-        if ch.is_ascii_alphanumeric() {
+-            name.push(ch.to_ascii_uppercase());
+-        } else if !name.ends_with('_') {
+-            name.push('_');
+-        }
+-    }
+-    while name.ends_with('_') {
+-        name.pop();
+-    }
+-    if name.is_empty() {
+-        return None;
+-    }
+-    if !name.ends_with("_API_KEY") {
+-        name.push_str("_API_KEY");
+-    }
+-    Some(name)
+-}
+-
+-fn backup_vault_file(path: &Path) -> anyhow::Result<PathBuf> {
+-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+-    let file_name = path
+-        .file_name()
+-        .and_then(|name| name.to_str())
+-        .unwrap_or("secrets.json");
+-    let backup_path = parent.join(format!(
+-        ".{file_name}.legacy-vault-migration-{}.bak",
+-        ulid::Ulid::new()
+-    ));
+-    std::fs::copy(path, &backup_path).with_context(|| {
+-        format!(
+-            "copy vault {} to backup {}",
+-            path.display(),
+-            backup_path.display()
+-        )
+-    })?;
+-    set_private_permissions(&backup_path)?;
+-    Ok(backup_path)
+-}
+-
+-fn write_vault_entries(path: &Path, entries: &Map<String, Value>) -> anyhow::Result<()> {
+-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+-    std::fs::create_dir_all(parent)
+-        .with_context(|| format!("create vault directory {}", parent.display()))?;
+-    let file_name = path
+-        .file_name()
+-        .and_then(|name| name.to_str())
+-        .unwrap_or("secrets.json");
+-    let tmp_path = parent.join(format!(
+-        ".{file_name}.legacy-vault-migration-tmp-{}",
+-        ulid::Ulid::new()
+-    ));
+-    let json = serde_json::to_vec_pretty(entries).context("serialize migrated vault JSON")?;
+-    std::fs::write(&tmp_path, json)
+-        .with_context(|| format!("write migrated vault temp file {}", tmp_path.display()))?;
+-    set_private_permissions(&tmp_path)?;
+-    std::fs::rename(&tmp_path, path).with_context(|| {
+-        format!(
+-            "rename migrated vault temp file {} to {}",
+-            tmp_path.display(),
+-            path.display()
+-        )
+-    })?;
+-    Ok(())
+-}
+-
+-#[cfg(unix)]
+-fn set_private_permissions(path: &Path) -> anyhow::Result<()> {
+-    use std::os::unix::fs::PermissionsExt;
+-
+-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+-        .with_context(|| format!("set private permissions on {}", path.display()))?;
+-    Ok(())
+-}
+-
+-#[cfg(not(unix))]
+-fn set_private_permissions(_path: &Path) -> anyhow::Result<()> {
+-    Ok(())
+-}
+diff --git a/lib/apps/fabro-server/migrations/2026052501_optional_server_env_secrets_to_vault.rs b/lib/apps/fabro-server/migrations/2026052501_optional_server_env_secrets_to_vault.rs
+deleted file mode 100644
+index ab2f03650..000000000
+--- a/lib/apps/fabro-server/migrations/2026052501_optional_server_env_secrets_to_vault.rs
++++ /dev/null
+@@ -1,172 +0,0 @@
+-//! Temporary compatibility shim for optional secrets that used to live in
+-//! `server.env`.
+-//!
+-//! Delete this migration after 2026-08-18, once supported installs have had a
+-//! release window to move optional integration secrets into the vault.
+-
+-#![expect(
+-    clippy::disallowed_methods,
+-    reason = "Temporary startup migration uses synchronous file I/O before serving requests."
+-)]
+-
+-use std::collections::HashMap;
+-use std::path::{Path, PathBuf};
+-
+-use anyhow::Context as _;
+-use fabro_config::envfile::{self, EnvFileRemoval};
+-use fabro_static::{EnvVars, optional_vault_secrets};
+-use fabro_vault::{SecretStore, SecretStoreWrite, SecretType};
+-
+-pub(crate) const REMOVAL_DEADLINE: &str = "2026-08-18";
+-
+-#[derive(Debug, Default, PartialEq, Eq)]
+-pub(crate) struct OptionalServerEnvSecretsMigrationReport {
+-    pub(crate) migrated_secrets:      usize,
+-    pub(crate) removed_env_entries:   usize,
+-    pub(crate) preserved_env_entries: usize,
+-    pub(crate) backup_path:           Option<PathBuf>,
+-    pub(crate) warnings:              Vec<String>,
+-}
+-
+-impl OptionalServerEnvSecretsMigrationReport {
+-    pub(crate) fn changed(&self) -> bool {
+-        self.migrated_secrets > 0 || self.removed_env_entries > 0
+-    }
+-}
+-
+-pub(crate) async fn migrate_to_store(
+-    store: &SecretStore,
+-    server_env_path: &Path,
+-    env_entries: &HashMap<String, String>,
+-) -> anyhow::Result<OptionalServerEnvSecretsMigrationReport> {
+-    let server_env_entries = envfile::read_env_file(server_env_path)
+-        .with_context(|| format!("read server env file {}", server_env_path.display()))?;
+-    let stored = store.snapshot().await?;
+-    let mut writes = Vec::new();
+-    let mut env_removals = Vec::new();
+-    let mut warnings = Vec::new();
+-    let mut preserved_env_entries = 0;
+-
+-    for &name in optional_vault_secrets() {
+-        let process_value = env_entries.get(name);
+-        let file_value = server_env_entries.get(name);
+-        if let Some(entry) = stored.get_entry(name) {
+-            if let Some(file_value) = file_value {
+-                if file_value == &entry.value {
+-                    env_removals.push(env_removal(name));
+-                } else {
+-                    preserved_env_entries += 1;
+-                    warnings.push(format!(
+-                        "Preserved {name} in server.env because the secret store already contains a different value"
+-                    ));
+-                }
+-            }
+-            continue;
+-        }
+-
+-        let value = match (process_value, file_value) {
+-            (Some(value), Some(file_value)) => {
+-                if value == file_value {
+-                    env_removals.push(env_removal(name));
+-                } else {
+-                    preserved_env_entries += 1;
+-                    warnings.push(format!(
+-                        "Preserved {name} in server.env because process env takes precedence and the file value differs"
+-                    ));
+-                }
+-                Some(value)
+-            }
+-            (Some(value), None) => Some(value),
+-            (None, Some(value)) => {
+-                env_removals.push(env_removal(name));
+-                Some(value)
+-            }
+-            (None, None) => None,
+-        };
+-        if let Some(value) = value {
+-            writes.push(SecretStoreWrite {
+-                name:        name.to_string(),
+-                value:       value.clone(),
+-                secret_type: secret_type_for(name),
+-                description: None,
+-            });
+-        }
+-    }
+-
+-    let mut report = OptionalServerEnvSecretsMigrationReport {
+-        migrated_secrets: writes.len(),
+-        removed_env_entries: 0,
+-        preserved_env_entries,
+-        backup_path: None,
+-        warnings,
+-    };
+-    if writes.is_empty() && env_removals.is_empty() {
+-        return Ok(report);
+-    }
+-
+-    store.apply(&[], &writes).await?;
+-    if !env_removals.is_empty() {
+-        let backup_path = backup_server_env_file(server_env_path)?;
+-        let update_report =
+-            envfile::update_env_file_with_report(server_env_path, env_removals, Vec::new())
+-                .with_context(|| {
+-                    format!(
+-                        "remove migrated optional secrets from {}",
+-                        server_env_path.display()
+-                    )
+-                })?;
+-        report.removed_env_entries = update_report.removed_keys.len();
+-        report.backup_path = Some(backup_path);
+-    }
+-    Ok(report)
+-}
+-
+-fn secret_type_for(name: &str) -> SecretType {
+-    if name == EnvVars::GITHUB_APP_PRIVATE_KEY {
+-        SecretType::File
+-    } else {
+-        SecretType::Token
+-    }
+-}
+-
+-fn env_removal(name: &str) -> EnvFileRemoval {
+-    EnvFileRemoval {
+-        key:     name.to_string(),
+-        comment: None,
+-    }
+-}
+-
+-fn backup_server_env_file(path: &Path) -> anyhow::Result<PathBuf> {
+-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+-    let file_name = path
+-        .file_name()
+-        .and_then(|name| name.to_str())
+-        .unwrap_or("server.env");
+-    let backup_path = parent.join(format!(
+-        ".{file_name}.optional-server-env-secrets-to-vault-migration-{}.bak",
+-        ulid::Ulid::new()
+-    ));
+-    std::fs::copy(path, &backup_path).with_context(|| {
+-        format!(
+-            "copy server env {} to backup {}",
+-            path.display(),
+-            backup_path.display()
+-        )
+-    })?;
+-    set_private_permissions(&backup_path)?;
+-    Ok(backup_path)
+-}
+-
+-#[cfg(unix)]
+-fn set_private_permissions(path: &Path) -> anyhow::Result<()> {
+-    use std::os::unix::fs::PermissionsExt;
+-
+-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+-        .with_context(|| format!("set permissions on {}", path.display()))?;
+-    Ok(())
+-}
+-
+-#[cfg(not(unix))]
+-fn set_private_permissions(_path: &Path) -> anyhow::Result<()> {
+-    Ok(())
+-}
+diff --git a/lib/apps/fabro-server/src/lib.rs b/lib/apps/fabro-server/src/lib.rs
+index d58c92f51..98f7a2c77 100644
+--- a/lib/apps/fabro-server/src/lib.rs
++++ b/lib/apps/fabro-server/src/lib.rs
+@@ -59,4 +59,4 @@ mod worker_token;
+ pub use error::{ApiError, Error, Result};
+ pub use run_manifest::workflow_bundle_from_manifest;
+ pub use server_secrets::process_env_snapshot;
+-pub use startup::{migrate_startup_vault, validate_startup, validate_startup_configuration};
++pub use startup::{validate_startup, validate_startup_configuration};
+diff --git a/lib/apps/fabro-server/src/migrations.rs b/lib/apps/fabro-server/src/migrations.rs
+index 5c89015d0..68c4f9bd5 100644
+--- a/lib/apps/fabro-server/src/migrations.rs
++++ b/lib/apps/fabro-server/src/migrations.rs
+@@ -1,12 +1,3 @@
+-use std::collections::HashMap;
+-use std::path::Path;
+-
+-use fabro_vault::SecretStore;
+-
+-#[path = "../migrations/2026051801_legacy_vault_entries.rs"]
+-mod legacy_vault_entries;
+-#[path = "../migrations/2026052501_optional_server_env_secrets_to_vault.rs"]
+-mod optional_server_env_secrets_to_vault;
+ #[path = "../migrations/sqlite_activation_backup.rs"]
+ mod sqlite_activation_backup;
+ #[path = "../migrations/2026082301_sqlite_blob_activation.rs"]
+@@ -14,24 +5,5 @@ mod sqlite_blob_activation;
+ #[path = "../migrations/2026082801_sqlite_run_history_activation.rs"]
+ mod sqlite_run_history_activation;
+ 
+-pub(crate) use legacy_vault_entries::REMOVAL_DEADLINE as LEGACY_VAULT_REMOVAL_DEADLINE;
+-pub(crate) use optional_server_env_secrets_to_vault::REMOVAL_DEADLINE as OPTIONAL_SERVER_ENV_SECRETS_REMOVAL_DEADLINE;
+ pub(crate) use sqlite_blob_activation::activate_blob_storage;
+ pub(crate) use sqlite_run_history_activation::activate_run_history;
+-
+-pub(crate) type LegacyVaultMigrationReport = legacy_vault_entries::LegacyVaultMigrationReport;
+-pub(crate) type OptionalServerEnvSecretsMigrationReport =
+-    optional_server_env_secrets_to_vault::OptionalServerEnvSecretsMigrationReport;
+-
+-pub(crate) fn migrate_legacy_vault_file(path: &Path) -> anyhow::Result<LegacyVaultMigrationReport> {
+-    legacy_vault_entries::migrate_legacy_vault_file(path)
+-}
+-
+-pub(crate) async fn migrate_optional_server_env_secrets_to_store(
+-    store: &SecretStore,
+-    server_env_path: &Path,
+-    env_entries: &HashMap<String, String>,
+-) -> anyhow::Result<OptionalServerEnvSecretsMigrationReport> {
+-    optional_server_env_secrets_to_vault::migrate_to_store(store, server_env_path, env_entries)
+-        .await
+-}
+diff --git a/lib/apps/fabro-server/src/serve.rs b/lib/apps/fabro-server/src/serve.rs
+index 778adfb96..d0372b3b3 100644
+--- a/lib/apps/fabro-server/src/serve.rs
++++ b/lib/apps/fabro-server/src/serve.rs
+@@ -39,7 +39,7 @@ use crate::server::{
+     spawn_automation_scheduler, spawn_pull_request_creation_supervisor, spawn_scheduler,
+ };
+ use crate::server_secrets::{ServerSecrets, process_env_snapshot};
+-use crate::startup::{migrate_startup_vault, resolve_startup, validate_startup_configuration};
++use crate::startup::{resolve_startup, validate_startup_configuration};
+ use crate::{migrations, static_files};
+ 
+ pub const DEFAULT_TCP_PORT: u16 = 32276;
+@@ -666,7 +666,6 @@ where
+     let resolved_server_settings = resolved_app_settings.server_settings.server.clone();
+     validate_startup_configuration(&resolved_server_settings)?;
+     let env_entries = process_env_snapshot();
+-    migrate_startup_vault(&vault_path);
+     let bind_request = resolve_bind_request_from_server_settings(
+         &resolved_app_settings.server_settings,
+         args.bind.as_deref(),
+@@ -680,30 +679,6 @@ where
+         .await
+         .with_context(|| format!("importing legacy secrets file {}", vault_path.display()))?;
+     let secret_store = fabro_vault::SecretStore::new(database.clone_pool());
+-    let optional_report = migrations::migrate_optional_server_env_secrets_to_store(
+-        &secret_store,
+-        &server_env_path,
+-        &env_entries,
+-    )
+-    .await
+-    .context("migrate optional server env secrets into SQLite")?;
+-    for warning in &optional_report.warnings {
+-        warn!(
+-            warning = %warning,
+-            removal_deadline = migrations::OPTIONAL_SERVER_ENV_SECRETS_REMOVAL_DEADLINE,
+-            "Optional server env secrets migration warning"
+-        );
+-    }
+-    if optional_report.changed() {
+-        warn!(
+-            migrated_secrets = optional_report.migrated_secrets,
+-            removed_env_entries = optional_report.removed_env_entries,
+-            preserved_env_entries = optional_report.preserved_env_entries,
+-            backup_path = ?optional_report.backup_path,
+-            removal_deadline = migrations::OPTIONAL_SERVER_ENV_SECRETS_REMOVAL_DEADLINE,
+-            "Migrated optional server env secrets into SQLite"
+-        );
+-    }
+     let startup_vault = secret_store
+         .snapshot()
+         .await
+diff --git a/lib/apps/fabro-server/src/server/tests.rs b/lib/apps/fabro-server/src/server/tests.rs
+index 39ef03f1a..922a2c009 100644
+--- a/lib/apps/fabro-server/src/server/tests.rs
++++ b/lib/apps/fabro-server/src/server/tests.rs
+@@ -2622,128 +2622,6 @@ methods = ["dev-token"]
+     ));
+ }
+ 
+-#[tokio::test]
+-async fn build_app_state_migrates_legacy_vault_file_on_boot() {
+-    let vault_path = test_secret_store_path();
+-    let timestamp = "2026-05-18T12:00:00Z";
+-    let legacy_api_key = json!({
+-        "provider": "anthropic",
+-        "type": "api_key",
+-        "key": "sk-ant-legacy",
+-    });
+-    let legacy_oauth = json!({
+-        "provider": "openai",
+-        "type": "codex_oauth",
+-        "tokens": {
+-            "access_token": "codex-access",
+-            "refresh_token": "codex-refresh",
+-            "expires_at": "2026-05-18T13:00:00Z",
+-        },
+-        "config": {
+-            "auth_url": "https://auth.openai.com",
+-            "token_url": "https://auth.openai.com/oauth/token",
+-            "client_id": "client",
+-            "scopes": ["openid", "offline_access"],
+-            "redirect_uri": "https://auth.openai.com/deviceauth/callback",
+-            "use_pkce": false,
+-        },
+-        "account_id": "acct_legacy",
+-    });
+-    let legacy_vault = json!({
+-        "anthropic": {
+-            "value": legacy_api_key.to_string(),
+-            "type": "credential",
+-            "created_at": timestamp,
+-            "updated_at": timestamp,
+-        },
+-        "openai_codex": {
+-            "value": legacy_oauth.to_string(),
+-            "type": "credential",
+-            "created_at": timestamp,
+-            "updated_at": timestamp,
+-        },
+-        "GITHUB_TOKEN": {
+-            "value": "ghp_legacy",
+-            "type": "environment",
+-            "created_at": timestamp,
+-            "updated_at": timestamp,
+-        },
+-        "/tmp/github.pem": {
+-            "value": "/tmp/github.pem",
+-            "type": "file",
+-            "created_at": timestamp,
+-            "updated_at": timestamp,
+-        },
+-    });
+-    std::fs::write(
+-        &vault_path,
+-        serde_json::to_vec_pretty(&legacy_vault).unwrap(),
+-    )
+-    .expect("legacy vault should be writable");
+-
+-    let state = build_test_app_state_with_vault_path(&vault_path)
+-        .expect("legacy vault should not prevent server boot");
+-
+-    let vault = state.stores.vault.snapshot().await.unwrap();
+-    let api_key_entry = vault
+-        .get_entry("ANTHROPIC_API_KEY")
+-        .expect("legacy provider credential should be migrated to token name");
+-    assert_eq!(api_key_entry.secret_type, SecretType::Token);
+-    assert_eq!(api_key_entry.value, "sk-ant-legacy");
+-    assert!(vault.get_entry("anthropic").is_none());
+-
+-    let oauth_entry = vault
+-        .get_entry("OPENAI_CODEX")
+-        .expect("legacy Codex credential should be migrated to canonical OAuth name");
+-    assert_eq!(oauth_entry.secret_type, SecretType::Oauth);
+-    let oauth: fabro_auth::OAuthCredential =
+-        serde_json::from_str(&oauth_entry.value).expect("migrated OAuth JSON should parse");
+-    assert_eq!(oauth.tokens.access_token, "codex-access");
+-    assert_eq!(oauth.account_id.as_deref(), Some("acct_legacy"));
+-    assert!(vault.get_entry("openai_codex").is_none());
+-
+-    assert_eq!(
+-        vault.get_entry("GITHUB_TOKEN").unwrap().secret_type,
+-        SecretType::Token
+-    );
+-    assert_eq!(
+-        vault.get_entry("/tmp/github.pem").unwrap().secret_type,
+-        SecretType::File
+-    );
+-}
+-
+-fn build_test_app_state_with_vault_path(vault_path: &Path) -> anyhow::Result<Arc<AppState>> {
+-    let (store, artifact_store) = test_store_bundle();
+-    let db_pool = test_db_pool_for_vault_path(vault_path)?;
+-    let preloaded_vault = crate::test_support::test_secret_snapshot(db_pool.clone())?;
+-    build_app_state(AppStateConfig {
+-        resolved_settings: resolved_runtime_settings_for_tests(
+-            default_test_server_settings(),
+-            RunLayer::default(),
+-            LlmCatalogSettings::default(),
+-        ),
+-        registry_factory_override: None,
+-        max_concurrent_runs: 5,
+-        store,
+-        artifact_store,
+-        db_pool,
+-        preloaded_vault,
+-        server_secrets: load_test_server_secrets(
+-            vault_path.with_file_name("server.env"),
+-            HashMap::new(),
+-        ),
+-        env_lookup: default_env_lookup(),
+-        github_api_base_url: None,
+-        active_config_path: tempfile::tempdir().unwrap().path().join("settings.toml"),
+-        http_client: Some(fabro_http::test_http_client().expect("test HTTP client should build")),
+-        sandbox_provider_registry: None,
+-        shutdown: tokio_util::sync::CancellationToken::new(),
+-        worker_control_bus: None,
+-        worker_runtime: None,
+-        automation_materializer_override: None,
+-    })
+-}
+-
+ fn test_worker_ref(pid: u32) -> WorkerRef {
+     WorkerRef::Local { pid }
+ }
+diff --git a/lib/apps/fabro-server/src/startup.rs b/lib/apps/fabro-server/src/startup.rs
+index 78fef39cb..bdf343c36 100644
+--- a/lib/apps/fabro-server/src/startup.rs
++++ b/lib/apps/fabro-server/src/startup.rs
+@@ -4,10 +4,8 @@ use std::path::Path;
+ use fabro_static::EnvVars;
+ use fabro_types::settings::ServerNamespace;
+ use fabro_vault::Vault;
+-use tracing::warn;
+ 
+ use crate::jwt_auth::{AuthMode, resolve_auth_mode_with_lookup, validate_auth_configuration};
+-use crate::migrations;
+ use crate::server_secrets::ServerSecrets;
+ 
+ pub(crate) fn resolve_startup(
+@@ -25,33 +23,6 @@ pub(crate) fn resolve_startup(
+     Ok((auth_mode, server_secrets))
+ }
+ 
+-pub fn migrate_startup_vault(vault_path: impl AsRef<Path>) {
+-    let vault_path = vault_path.as_ref();
+-    match migrations::migrate_legacy_vault_file(vault_path) {
+-        Ok(report) if report.changed() => {
+-            let backup_path = report
+-                .backup_path
+-                .as_ref()
+-                .map_or_else(|| "<none>".to_string(), |path| path.display().to_string());
+-            warn!(
+-                migrated_entries = report.migrated_entries,
+-                skipped_entries = report.skipped_entries,
+-                backup_path = %backup_path,
+-                removal_deadline = migrations::LEGACY_VAULT_REMOVAL_DEADLINE,
+-                "Migrated legacy vault file"
+-            );
+-        }
+-        Ok(_) => {}
+-        Err(err) => {
+-            warn!(
+-                error = %err,
+-                removal_deadline = migrations::LEGACY_VAULT_REMOVAL_DEADLINE,
+-                "Legacy vault migration failed; continuing with normal vault load"
+-            );
+-        }
+-    }
+-}
+-
+ pub fn validate_startup(
+     env_path: &Path,
+     env_entries: HashMap<String, String>,
+@@ -68,15 +39,13 @@ pub fn validate_startup_configuration(settings: &ServerNamespace) -> anyhow::Res
+ #[cfg(test)]
+ mod tests {
+     use std::collections::HashMap;
+-    use std::path::{Path, PathBuf};
+ 
+-    use fabro_config::{ServerSettingsBuilder, envfile};
++    use fabro_config::ServerSettingsBuilder;
+     use fabro_static::EnvVars;
+     use fabro_types::settings::ServerNamespace;
+-    use fabro_vault::{SecretStore, SecretType, Vault};
++    use fabro_vault::{SecretType, Vault};
+ 
+     use super::validate_startup;
+-    use crate::migrations;
+ 
+     fn resolved_settings(auth_methods: &[&str]) -> ServerNamespace {
+         ServerSettingsBuilder::from_toml(&format!(
+@@ -106,36 +75,6 @@ client_id = "Iv1.test"
+         Vault::load(dir.path().join("secrets.json")).unwrap()
+     }
+ 
+-    fn env_path(dir: &tempfile::TempDir) -> PathBuf {
+-        dir.path().join("server.env")
+-    }
+-
+-    async fn test_secret_store(dir: &tempfile::TempDir) -> SecretStore {
+-        let database = fabro_db::Database::connect(dir.path().join("fabro.db"))
+-            .await
+-            .unwrap();
+-        database.migrate().await.unwrap();
+-        SecretStore::new(database.clone_pool())
+-    }
+-
+-    #[expect(
+-        clippy::disallowed_methods,
+-        reason = "test helper scans a temporary directory after startup migration completes"
+-    )]
+-    fn migration_backups(dir: &Path) -> Vec<PathBuf> {
+-        std::fs::read_dir(dir)
+-            .unwrap()
+-            .map(|entry| entry.unwrap().path())
+-            .filter(|path| {
+-                path.file_name()
+-                    .and_then(|name| name.to_str())
+-                    .is_some_and(|name| {
+-                        name.contains("optional-server-env-secrets-to-vault-migration")
+-                    })
+-            })
+-            .collect()
+-    }
+-
+     #[test]
+     fn validate_startup_accepts_configured_secrets() {
+         let dir = tempfile::tempdir().unwrap();
+@@ -234,185 +173,4 @@ client_id = "Iv1.test"
+         )
+         .expect("github client secret in vault should satisfy startup");
+     }
+-
+-    #[tokio::test]
+-    async fn migrate_optional_secrets_moves_server_env_secrets_to_store() {
+-        let dir = tempfile::tempdir().unwrap();
+-        let server_env_path = env_path(&dir);
+-        envfile::write_env_file(
+-            &server_env_path,
+-            &HashMap::from([
+-                (
+-                    EnvVars::SESSION_SECRET.to_string(),
+-                    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+-                ),
+-                (
+-                    EnvVars::GITHUB_APP_CLIENT_SECRET.to_string(),
+-                    "legacy-client-secret".to_string(),
+-                ),
+-                (
+-                    EnvVars::GITHUB_APP_PRIVATE_KEY.to_string(),
+-                    "legacy-private-key".to_string(),
+-                ),
+-                (EnvVars::OPENAI_API_KEY.to_string(), "sk-legacy".to_string()),
+-            ]),
+-        )
+-        .unwrap();
+-        let store = test_secret_store(&dir).await;
+-
+-        migrations::migrate_optional_server_env_secrets_to_store(
+-            &store,
+-            &server_env_path,
+-            &HashMap::new(),
+-        )
+-        .await
+-        .expect("legacy optional secrets should migrate");
+-
+-        let client_secret = store
+-            .get(EnvVars::GITHUB_APP_CLIENT_SECRET)
+-            .await
+-            .unwrap()
+-            .expect("client secret should be stored");
+-        assert_eq!(client_secret.value, "legacy-client-secret");
+-        assert_eq!(client_secret.secret_type, SecretType::Token);
+-        let private_key = store
+-            .get(EnvVars::GITHUB_APP_PRIVATE_KEY)
+-            .await
+-            .unwrap()
+-            .expect("private key should be stored");
+-        assert_eq!(private_key.value, "legacy-private-key");
+-        assert_eq!(private_key.secret_type, SecretType::File);
+-        let openai_key = store
+-            .get(EnvVars::OPENAI_API_KEY)
+-            .await
+-            .unwrap()
+-            .expect("openai key should be stored");
+-        assert_eq!(openai_key.value, "sk-legacy");
+-
+-        let server_env = envfile::read_env_file(&server_env_path).unwrap();
+-        assert!(server_env.contains_key(EnvVars::SESSION_SECRET));
+-        assert!(!server_env.contains_key(EnvVars::GITHUB_APP_CLIENT_SECRET));
+-        assert!(!server_env.contains_key(EnvVars::GITHUB_APP_PRIVATE_KEY));
+-        assert!(!server_env.contains_key(EnvVars::OPENAI_API_KEY));
+-        assert_eq!(migration_backups(dir.path()).len(), 1);
+-    }
+-
+-    #[tokio::test]
+-    async fn migrate_optional_secrets_prefers_process_env_and_preserves_conflicting_server_env() {
+-        let dir = tempfile::tempdir().unwrap();
+-        let server_env_path = env_path(&dir);
+-        envfile::write_env_file(
+-            &server_env_path,
+-            &HashMap::from([(
+-                EnvVars::GITHUB_APP_CLIENT_SECRET.to_string(),
+-                "file-client-secret".to_string(),
+-            )]),
+-        )
+-        .unwrap();
+-        let env_entries = HashMap::from([(
+-            EnvVars::GITHUB_APP_CLIENT_SECRET.to_string(),
+-            "process-client-secret".to_string(),
+-        )]);
+-        let store = test_secret_store(&dir).await;
+-
+-        migrations::migrate_optional_server_env_secrets_to_store(
+-            &store,
+-            &server_env_path,
+-            &env_entries,
+-        )
+-        .await
+-        .expect("process env secret should migrate");
+-
+-        let client_secret = store
+-            .get(EnvVars::GITHUB_APP_CLIENT_SECRET)
+-            .await
+-            .unwrap()
+-            .expect("client secret should be stored");
+-        assert_eq!(client_secret.value, "process-client-secret");
+-        let server_env = envfile::read_env_file(&server_env_path).unwrap();
+-        assert_eq!(
+-            server_env
+-                .get(EnvVars::GITHUB_APP_CLIENT_SECRET)
+-                .map(String::as_str),
+-            Some("file-client-secret")
+-        );
+-        assert!(migration_backups(dir.path()).is_empty());
+-    }
+-
+-    #[tokio::test]
+-    async fn migrate_optional_secrets_keeps_existing_stored_secret_and_removes_matching_server_env()
+-    {
+-        let dir = tempfile::tempdir().unwrap();
+-        let server_env_path = env_path(&dir);
+-        envfile::write_env_file(
+-            &server_env_path,
+-            &HashMap::from([(
+-                EnvVars::GITHUB_APP_CLIENT_SECRET.to_string(),
+-                "vault-client-secret".to_string(),
+-            )]),
+-        )
+-        .unwrap();
+-        let store = test_secret_store(&dir).await;
+-        store
+-            .set(
+-                EnvVars::GITHUB_APP_CLIENT_SECRET,
+-                "vault-client-secret",
+-                SecretType::Token,
+-                None,
+-            )
+-            .await
+-            .unwrap();
+-
+-        migrations::migrate_optional_server_env_secrets_to_store(
+-            &store,
+-            &server_env_path,
+-            &HashMap::new(),
+-        )
+-        .await
+-        .expect("redundant server env secret should be cleaned up");
+-
+-        let client_secret = store
+-            .get(EnvVars::GITHUB_APP_CLIENT_SECRET)
+-            .await
+-            .unwrap()
+-            .expect("client secret should be stored");
+-        assert_eq!(client_secret.value, "vault-client-secret");
+-        let server_env = envfile::read_env_file(&server_env_path).unwrap();
+-        assert!(!server_env.contains_key(EnvVars::GITHUB_APP_CLIENT_SECRET));
+-        assert_eq!(migration_backups(dir.path()).len(), 1);
+-    }
+-
+-    #[tokio::test]
+-    async fn migrate_optional_secrets_migrated_github_client_secret_satisfies_startup() {
+-        let dir = tempfile::tempdir().unwrap();
+-        let server_env_path = env_path(&dir);
+-        envfile::write_env_file(
+-            &server_env_path,
+-            &HashMap::from([
+-                (
+-                    EnvVars::SESSION_SECRET.to_string(),
+-                    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+-                ),
+-                (
+-                    EnvVars::GITHUB_APP_CLIENT_SECRET.to_string(),
+-                    "legacy-client-secret".to_string(),
+-                ),
+-            ]),
+-        )
+-        .unwrap();
+-        let settings = resolved_settings(&["github"]);
+-        let store = test_secret_store(&dir).await;
+-
+-        migrations::migrate_optional_server_env_secrets_to_store(
+-            &store,
+-            &server_env_path,
+-            &HashMap::new(),
+-        )
+-        .await
+-        .expect("legacy github client secret should migrate");
+-
+-        let vault = store.snapshot().await.unwrap().into_vault();
+-        validate_startup(&server_env_path, HashMap::new(), &settings, &vault)
+-            .expect("migrated github client secret should satisfy startup");
+-    }
+ }
+diff --git a/lib/apps/fabro-server/src/test_support.rs b/lib/apps/fabro-server/src/test_support.rs
+index c55391f8c..e2386144a 100644
+--- a/lib/apps/fabro-server/src/test_support.rs
++++ b/lib/apps/fabro-server/src/test_support.rs
+@@ -33,6 +33,7 @@ use tokio::runtime::Builder as TokioRuntimeBuilder;
+ use tokio_util::sync::CancellationToken;
+ use ulid::Ulid;
+ 
++use crate::auth;
+ pub use crate::automation_materializer::TestAutomationRunMaterializer;
+ use crate::interp::process_env_var;
+ use crate::jwt_auth::{AuthMode, ConfiguredAuth};
+@@ -45,7 +46,6 @@ use crate::server::{
+ use crate::server_secrets::ServerSecrets;
+ #[cfg(test)]
+ use crate::worker_runtime::WorkerRuntime;
+-use crate::{auth, migrations};
+ 
+ pub const TEST_DEV_TOKEN: &str =
+     "fabro_dev_abababababababababababababababababababababababababababababababab";
+@@ -631,7 +631,6 @@ fn test_db_pool(
+     default_environment_provider: Option<EnvironmentProvider>,
+ ) -> anyhow::Result<DbPool> {
+     std::thread::spawn(move || {
+-        migrations::migrate_legacy_vault_file(&vault_path)?;
+         let runtime = TokioRuntimeBuilder::new_current_thread()
+             .enable_all()
+             .build()?;
+diff --git a/lib/components/fabro-store/src/run_state.rs b/lib/components/fabro-store/src/run_state.rs
+index 4b5bc6b9b..554cbaad4 100644
+--- a/lib/components/fabro-store/src/run_state.rs
++++ b/lib/components/fabro-store/src/run_state.rs
+@@ -19,7 +19,7 @@ use fabro_types::{
+     RunStatus, RunTimestamps, SandboxProviderKind, StageCompletion, StageHandler, StageId,
+     StageInferenceProjection, StageModelUsage, StageOutcome, StageProjection, StageState,
+     StartRecord, SubAgentProjection, SubAgentStatus, TodoListKind, TodoListProjection,
+-    TodoProjection, WorkflowRef, first_event_seq, timing,
++    TodoProjection, WorkflowRef, billing_rollup, first_event_seq, timing,
+ };
+ use fabro_util::error::render_compact_with_causes;
+ 
+@@ -247,7 +247,7 @@ impl RunProjectionReducer for RunProjection {
+                     ts,
+                 )?;
+                 self.pending_control = None;
+-                self.conclusion = Some(conclusion_from_completed(props, ts)?);
++                self.conclusion = Some(conclusion_from_completed(self, props, ts)?);
+                 self.pending_interviews.clear();
+             }
+             EventBody::RunFailed(props) => {
+@@ -258,7 +258,7 @@ impl RunProjectionReducer for RunProjection {
+                     ts,
+                 )?;
+                 self.pending_control = None;
+-                self.conclusion = Some(conclusion_from_failed(props, ts));
++                self.conclusion = Some(conclusion_from_failed(self, props, ts));
+                 self.pending_interviews.clear();
+                 finalize_unfinished_stages_after_run_failed(self, props, ts);
+             }
+@@ -1563,9 +1563,12 @@ fn diff_from_checkpoint_props(props: &CheckpointCompletedProps) -> RunDiff {
+ }
+ 
+ fn conclusion_from_completed(
++    projection: &RunProjection,
+     props: &RunCompletedProps,
+     timestamp: DateTime<Utc>,
+ ) -> Result<Conclusion> {
++    let (stages, total_retries) = billing_rollup::billing_rollup_from_projection(projection, None)
++        .conclusion_stages(projection);
+     Ok(Conclusion {
+         timestamp,
+         status: StageOutcome::from_str(&props.status)
+@@ -1573,9 +1576,9 @@ fn conclusion_from_completed(
+         timing: props.timing,
+         failure: None,
+         final_git_commit_sha: props.final_git_commit_sha.clone(),
+-        stages: Vec::new(),
++        stages,
+         billing: props.billing.clone(),
+-        total_retries: 0,
++        total_retries,
+         diff: RunDiff {
+             patch:   props.final_patch.clone(),
+             summary: props.diff_summary,
+@@ -1584,7 +1587,13 @@ fn conclusion_from_completed(
+     })
+ }
+ 
+-fn conclusion_from_failed(props: &RunFailedProps, timestamp: DateTime<Utc>) -> Conclusion {
++fn conclusion_from_failed(
++    projection: &RunProjection,
++    props: &RunFailedProps,
++    timestamp: DateTime<Utc>,
++) -> Conclusion {
++    let (stages, total_retries) = billing_rollup::billing_rollup_from_projection(projection, None)
++        .conclusion_stages(projection);
+     Conclusion {
+         timestamp,
+         status: StageOutcome::Failed {
+@@ -1593,9 +1602,9 @@ fn conclusion_from_failed(props: &RunFailedProps, timestamp: DateTime<Utc>) -> C
+         timing: props.timing,
+         failure: Some(props.failure.clone()),
+         final_git_commit_sha: props.final_git_commit_sha.clone(),
+-        stages: Vec::new(),
++        stages,
+         billing: props.billing.clone(),
+-        total_retries: 0,
++        total_retries,
+         diff: RunDiff {
+             patch:   props.final_patch.clone(),
+             summary: props.diff_summary,
+@@ -4430,6 +4439,170 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn terminal_conclusion_replays_stage_summaries_without_metadata() {
++        for terminal_name in ["run.completed", "run.failed"] {
++            let mut settings = WorkflowSettings::default();
++            settings.run.meta_branch.enabled = false;
++            let mut events = vec![
++                test_raw_event(
++                    1,
++                    "run.created",
++                    &json!({
++                        "settings": settings,
++                        "graph": { "name": "test", "nodes": {}, "edges": [], "attrs": {} },
++                        "labels": {},
++                        "provenance": test_support::test_run_provenance()
++                    }),
++                    None,
++                ),
++                test_raw_event(
++                    2,
++                    "run.runnable",
++                    &json!({ "source": "start_requested" }),
++                    None,
++                ),
++                test_raw_event(3, "run.starting", &json!({}), None),
++                test_raw_event(4, "run.running", &json!({}), None),
++            ];
++            // Two executions of zebra share one conclusion row. First-event
++            // order differs from checkpoint order, and skipped has no completion.
++            for (seq, node, visit, millis, tokens) in [
++                (5, "zebra", 1, 1200, 100),
++                (6, "apple", 1, 300, 20),
++                (7, "zebra", 2, 800, 200),
++            ] {
++                let mut props = completed_props(millis, StageOutcome::Succeeded);
++                props.billing = Some(test_usage("test-model", tokens, 10));
++                events.push(test_stage_event(
++                    seq,
++                    EventBody::StageCompleted(props),
++                    StageId::new(node, visit),
++                ));
++            }
++            events.push(test_raw_event(8, "checkpoint.completed", &json!({
++                "status": "succeeded",
++                "current_node": "zebra",
++                "completed_nodes": ["apple", "zebra", "zebra"],
++                "node_retries": { "zebra": 3, "apple": 1 },
++                "node_outcomes": {
++                    "apple": Outcome::<Option<BilledModelUsage>>::success(),
++                    "zebra": Outcome::<Option<BilledModelUsage>>::success(),
++                    "skipped": Outcome::<Option<BilledModelUsage>>::skipped("condition was false")
++                },
++                "context_values": {},
++                "node_visits": { "zebra": 2, "apple": 1, "skipped": 1 },
++                "git_commit_sha": "checkpoint-sha"
++            }), Some("zebra")));
++            let terminal_billing = usage_counts(&test_usage("test-model", 320, 30));
++            let terminal_props = if terminal_name == "run.completed" {
++                json!({
++                    "status": "succeeded", "reason": "completed",
++                    "timing": fabro_types::RunTiming::wall_only(9000),
++                    "artifact_count": 0, "billing": terminal_billing,
++                    "final_git_commit_sha": "final-sha", "final_patch": "final patch"
++                })
++            } else {
++                let mut props = run_failed_props(FailureReason::WorkflowError);
++                props.timing = fabro_types::RunTiming::wall_only(9000);
++                props.billing = Some(terminal_billing.clone());
++                props.final_git_commit_sha = Some("final-sha".to_string());
++                props.final_patch = Some("final patch".to_string());
++                serde_json::to_value(props).unwrap()
++            };
++            events.push(test_raw_event(9, terminal_name, &terminal_props, None));
++            for event in &mut events {
++                event.event.ts = test_dt("2026-04-07T12:00:00Z")
++                    + chrono::Duration::seconds(i64::from(event.seq));
++            }
++
++            // Cross the persisted wire boundary before both incremental and full replay.
++            let events: Vec<EventEnvelope> =
++                serde_json::from_slice(&serde_json::to_vec(&events).unwrap()).unwrap();
++            let mut live = RunProjection::apply_events(&events[..1]).unwrap();
++            for event in &events[1..] {
++                live.apply_event(event).unwrap();
++            }
++            let replayed = RunProjection::apply_events(&events).unwrap();
++            let conclusion = replayed.conclusion.as_ref().unwrap();
++            assert_eq!(
++                serde_json::to_value(&live.conclusion).unwrap(),
++                serde_json::to_value(conclusion).unwrap(),
++            );
++            assert_eq!(conclusion.timestamp, events.last().unwrap().event.ts);
++            assert_eq!(conclusion.timing.wall_time_ms, 9000);
++            assert_eq!(conclusion.billing, Some(terminal_billing));
++            assert_eq!(
++                conclusion.final_git_commit_sha.as_deref(),
++                Some("final-sha")
++            );
++            assert_eq!(conclusion.diff.patch.as_deref(), Some("final patch"));
++            assert_eq!(conclusion.failure.is_some(), terminal_name == "run.failed");
++            insta::allow_duplicates! {
++                insta::assert_snapshot!(serde_json::to_string_pretty(&json!({
++                    "stages": conclusion.stages,
++                    "total_retries": conclusion.total_retries,
++                })).unwrap(), @r###"
++                {
++                  "stages": [
++                    {
++                      "stage_id": "zebra",
++                      "stage_label": "zebra",
++                      "timing": {
++                        "wall_time_ms": 2000,
++                        "inference_time_ms": 0,
++                        "tool_time_ms": 0,
++                        "active_time_ms": 0
++                      },
++                      "billing_usd_micros": 320,
++                      "retries": 2
++                    },
++                    {
++                      "stage_id": "apple",
++                      "stage_label": "apple",
++                      "timing": {
++                        "wall_time_ms": 300,
++                        "inference_time_ms": 0,
++                        "tool_time_ms": 0,
++                        "active_time_ms": 0
++                      },
++                      "billing_usd_micros": 30,
++                      "retries": 0
++                    },
++                    {
++                      "stage_id": "skipped",
++                      "stage_label": "skipped",
++                      "timing": {
++                        "wall_time_ms": 0,
++                        "inference_time_ms": 0,
++                        "tool_time_ms": 0,
++                        "active_time_ms": 0
++                      },
++                      "retries": 0
++                    }
++                  ],
++                  "total_retries": 2
++                }
++                "###);
++            }
++        }
++    }
++
++    #[test]
++    fn terminal_conclusion_without_checkpoint_has_no_stage_summaries() {
++        let mut state = running_projection();
++        let terminal = test_event(
++            4,
++            EventBody::RunFailed(run_failed_props(FailureReason::WorkflowError)),
++            None,
++        );
++        state.apply_event(&terminal).unwrap();
++        let conclusion = state.conclusion.unwrap();
++        assert!(conclusion.stages.is_empty());
++        assert_eq!(conclusion.total_retries, 0);
++        assert_eq!(conclusion.timestamp, terminal.event.ts);
++    }
++
+     #[test]
+     fn run_failed_with_final_patch_populates_projection() {
+         let mut state = running_projection();
+diff --git a/lib/components/fabro-workflow/src/billing_rollup.rs b/lib/components/fabro-workflow/src/billing_rollup.rs
+index 1b6487f36..46056eace 100644
+--- a/lib/components/fabro-workflow/src/billing_rollup.rs
++++ b/lib/components/fabro-workflow/src/billing_rollup.rs
+@@ -1,128 +1,7 @@
+-use std::collections::HashMap;
+-
+-use fabro_model::Catalog;
+-use fabro_types::{BilledTokenCounts, ModelRef, RunProjection, RunTiming, StageTiming};
+-
+-#[derive(Debug, Clone, PartialEq)]
+-pub struct ProjectionBillingStage {
+-    pub node_id: String,
+-    pub billing: BilledTokenCounts,
+-    /// Per-node timing summed across every visit of that node within this
+-    /// projection. `wall_time_ms`, `inference_time_ms`, `tool_time_ms`, and
+-    /// `active_time_ms` are all summed in lockstep.
+-    pub timing:  StageTiming,
+-    pub model:   Option<ModelRef>,
+-}
+-
+-#[derive(Debug, Clone, PartialEq, Eq)]
+-pub struct ProjectionBillingByModel {
+-    pub model:   ModelRef,
+-    pub stages:  i64,
+-    pub billing: BilledTokenCounts,
+-}
+-
+-#[derive(Debug, Clone, Default, PartialEq)]
+-pub struct ProjectionBillingRollup {
+-    pub stages:             Vec<ProjectionBillingStage>,
+-    pub totals:             BilledTokenCounts,
+-    pub by_model:           Vec<ProjectionBillingByModel>,
+-    /// Run-level timing summed across every stage visit. `wall_time_ms` is
+-    /// the sum of stage visit wall times (not the run clock duration).
+-    pub timing:             RunTiming,
+-    pub billed_visit_count: usize,
+-}
+-
+-impl ProjectionBillingRollup {
+-    #[must_use]
+-    pub fn billing_if_present(&self) -> Option<BilledTokenCounts> {
+-        (self.billed_visit_count > 0).then(|| self.totals.clone())
+-    }
+-}
+-
+-#[must_use]
+-pub fn billing_rollup_from_projection(
+-    projection: &RunProjection,
+-    catalog: Option<&Catalog>,
+-) -> ProjectionBillingRollup {
+-    let mut stage_indices = HashMap::<String, usize>::new();
+-    let mut stages = Vec::<ProjectionBillingStage>::new();
+-    let mut by_model = HashMap::<ModelRef, ProjectionBillingByModel>::new();
+-    let mut totals = BilledTokenCounts::default();
+-    let mut run_timing = RunTiming::default();
+-    let mut billed_visit_count = 0_usize;
+-
+-    for (stage_id, stage) in projection.iter_stages() {
+-        if projection.is_boundary_stage(stage_id.node_id()) {
+-            continue;
+-        }
+-        let usage = stage.billed_usage(catalog);
+-        let usage = usage.as_ref();
+-        if stage.completion.is_none() && stage.timing.is_none() && usage.is_zero() {
+-            continue;
+-        }
+-
+-        let node_id = stage_id.node_id();
+-        let index = *stage_indices.entry(node_id.to_string()).or_insert_with(|| {
+-            let index = stages.len();
+-            stages.push(ProjectionBillingStage {
+-                node_id: node_id.to_string(),
+-                billing: BilledTokenCounts::default(),
+-                timing:  StageTiming::default(),
+-                model:   None,
+-            });
+-            index
+-        });
+-        let row = &mut stages[index];
+-
+-        if let Some(timing) = stage.timing {
+-            row.timing = row.timing.saturating_add(&timing);
+-            run_timing = run_timing.saturating_add(&RunTiming::from(timing));
+-        }
+-
+-        if !usage.is_zero() {
+-            billed_visit_count += 1;
+-            row.billing.add_counts(usage);
+-            totals.add_counts(usage);
+-
+-            if let Some(model) = &stage.model {
+-                row.model = Some(model.clone());
+-                let model_entry =
+-                    by_model
+-                        .entry(model.clone())
+-                        .or_insert_with(|| ProjectionBillingByModel {
+-                            model:   model.clone(),
+-                            stages:  0,
+-                            billing: BilledTokenCounts::default(),
+-                        });
+-                model_entry.stages += 1;
+-                model_entry.billing.add_counts(usage);
+-            }
+-        }
+-    }
+-
+-    let mut by_model = by_model.into_values().collect::<Vec<_>>();
+-    by_model.sort_by(|left, right| {
+-        let left_provider = left.model.provider.to_string();
+-        let right_provider = right.model.provider.to_string();
+-        left_provider
+-            .cmp(&right_provider)
+-            .then_with(|| left.model.model_id.cmp(&right.model.model_id))
+-            .then_with(|| {
+-                left.model
+-                    .speed
+-                    .map(<&'static str>::from)
+-                    .cmp(&right.model.speed.map(<&'static str>::from))
+-            })
+-    });
+-
+-    ProjectionBillingRollup {
+-        stages,
+-        totals,
+-        by_model,
+-        timing: run_timing,
+-        billed_visit_count,
+-    }
+-}
++pub use fabro_types::billing_rollup::{
++    ProjectionBillingByModel, ProjectionBillingRollup, ProjectionBillingStage,
++    billing_rollup_from_projection,
++};
+ 
+ #[cfg(test)]
+ mod tests {
+diff --git a/lib/components/fabro-workflow/src/pipeline/finalize.rs b/lib/components/fabro-workflow/src/pipeline/finalize.rs
+index 58476478a..7077fca93 100644
+--- a/lib/components/fabro-workflow/src/pipeline/finalize.rs
++++ b/lib/components/fabro-workflow/src/pipeline/finalize.rs
+@@ -1,4 +1,3 @@
+-use std::collections::HashMap;
+ use std::sync::Arc;
+ use std::time::Instant;
+ 
+@@ -10,18 +9,18 @@ use fabro_util::error::collect_causes;
+ use fabro_util::time::elapsed_ms;
+ 
+ use super::types::{Concluded, Executed, FinalizeOptions, Finalized, PublishOutcome, Published};
++use crate::billing_rollup;
+ use crate::context::keys;
+ use crate::error::{Error, run_failure_from_error, run_failure_from_outcome_failure};
+ use crate::event::{Event, RunNoticeCode, RunNoticeLevel};
+ use crate::outcome::{Outcome, StageOutcome};
+-use crate::records::{Checkpoint, Conclusion, StageSummary};
++use crate::records::Conclusion;
+ use crate::run_metadata::{MetadataSnapshot, metadata_push_failure_is_transient};
+ use crate::run_options::RunOptions;
+ use crate::run_status::{FailureReason, RunStatus, SuccessReason};
+ use crate::runtime_store::RunStoreHandle;
+ use crate::sandbox_git::{git_diff_with_timeout, list_diff_numstat, summarize_diff_numstat};
+ use crate::services::RunServices;
+-use crate::{ProjectionBillingRollup, billing_rollup_from_projection};
+ 
+ pub fn classify_engine_result(
+     engine_result: &Result<Outcome, Error>,
+@@ -159,22 +158,8 @@ pub(crate) async fn build_conclusion_from_store(
+     final_git_commit_sha: Option<String>,
+ ) -> Conclusion {
+     let projection = run_store.state().await.ok();
+-    let projection_order = projection
+-        .as_ref()
+-        .map(stage_projection_order)
+-        .unwrap_or_default();
+-    let projection_billing = projection
+-        .as_ref()
+-        .map(|projection| billing_rollup_from_projection(projection, None))
+-        .unwrap_or_default();
+-    let checkpoint = projection
+-        .as_ref()
+-        .and_then(|state| state.current_checkpoint());
+-
+-    build_conclusion_from_parts(
+-        checkpoint,
+-        &projection_billing,
+-        &projection_order,
++    build_conclusion_from_projection(
++        projection.as_ref(),
+         status,
+         failure,
+         run_wall_time_ms,
+@@ -182,114 +167,33 @@ pub(crate) async fn build_conclusion_from_store(
+     )
+ }
+ 
+-fn build_conclusion_from_parts(
+-    checkpoint: Option<&Checkpoint>,
+-    projection_billing: &ProjectionBillingRollup,
+-    projection_order: &HashMap<String, u32>,
++fn build_conclusion_from_projection(
++    projection: Option<&RunProjection>,
+     status: StageOutcome,
+     failure: Option<RunFailure>,
+     run_wall_time_ms: u64,
+     final_git_commit_sha: Option<String>,
+ ) -> Conclusion {
+-    // Looping workflows revisit nodes; `completed_nodes` accumulates duplicates
+-    // while the other checkpoint maps are keyed by node_id. Dedupe to one row
+-    // per node so the stages table matches the deduped billing total.
+-    let (stages, total_retries) = if let Some(cp) = checkpoint {
+-        let billing_by_node = projection_billing
+-            .stages
+-            .iter()
+-            .map(|stage| (stage.node_id.as_str(), stage))
+-            .collect::<HashMap<_, _>>();
+-        let mut stage_rows = Vec::new();
+-        let mut seen = std::collections::HashSet::new();
+-        let mut retries_sum: u32 = 0;
+-        let mut stage_order = Vec::new();
+-
+-        for (original_checkpoint_order, node_id) in cp.completed_nodes.iter().enumerate() {
+-            if !seen.insert(node_id.as_str()) {
+-                continue;
+-            }
+-            stage_order.push((original_checkpoint_order, node_id.as_str()));
+-        }
+-        let mut extra_node_outcomes = cp
+-            .node_outcomes
+-            .keys()
+-            .filter(|node_id| !seen.contains(node_id.as_str()))
+-            .map(String::as_str)
+-            .collect::<Vec<_>>();
+-        extra_node_outcomes.sort_unstable();
+-        let extra_offset = stage_order.len();
+-        for (extra_index, node_id) in extra_node_outcomes.into_iter().enumerate() {
+-            seen.insert(node_id);
+-            stage_order.push((extra_offset + extra_index, node_id));
+-        }
+-
+-        for (original_checkpoint_order, node_id) in stage_order {
+-            let retries = cp
+-                .node_retries
+-                .get(node_id)
+-                .copied()
+-                .unwrap_or(1)
+-                .saturating_sub(1);
+-            retries_sum += retries;
+-            let billing = billing_by_node.get(node_id);
+-
+-            let summary = StageSummary {
+-                stage_id: node_id.to_string(),
+-                stage_label: node_id.to_string(),
+-                timing: billing
+-                    .map_or_else(fabro_types::StageTiming::default, |stage| stage.timing),
+-                billing_usd_micros: billing.and_then(|stage| stage.billing.total_usd_micros),
+-                retries,
+-            };
+-            stage_rows.push((
+-                projection_order.get(node_id).copied().unwrap_or(u32::MAX),
+-                original_checkpoint_order,
+-                summary,
+-            ));
+-        }
+-        stage_rows.sort_by(|left, right| {
+-            left.0
+-                .cmp(&right.0)
+-                .then_with(|| left.1.cmp(&right.1))
+-                .then_with(|| left.2.stage_id.cmp(&right.2.stage_id))
+-        });
+-        let stages = stage_rows
+-            .into_iter()
+-            .map(|(_, _, summary)| summary)
+-            .collect();
+-        (stages, retries_sum)
+-    } else {
+-        (vec![], 0)
+-    };
+-
++    let billing = projection
++        .map(|projection| billing_rollup::billing_rollup_from_projection(projection, None))
++        .unwrap_or_default();
++    let (stages, total_retries) = projection
++        .map(|projection| billing.conclusion_stages(projection))
++        .unwrap_or_default();
+     Conclusion {
+         timestamp: chrono::Utc::now(),
+         status,
+-        timing: projection_billing.timing.with_wall_time(run_wall_time_ms),
++        timing: billing.timing.with_wall_time(run_wall_time_ms),
+         failure,
+         final_git_commit_sha,
+         stages,
+-        billing: projection_billing.billing_if_present(),
++        billing: billing.billing_if_present(),
+         total_retries,
+         diff: fabro_types::RunDiff::default(),
+         exit_kind: String::new(),
+     }
+ }
+ 
+-fn stage_projection_order(state: &RunProjection) -> HashMap<String, u32> {
+-    let mut order = HashMap::new();
+-    for (stage_id, stage) in state.iter_stages() {
+-        order
+-            .entry(stage_id.node_id().to_string())
+-            .and_modify(|first_seq: &mut u32| {
+-                *first_seq = (*first_seq).min(stage.first_event_seq.get());
+-            })
+-            .or_insert_with(|| stage.first_event_seq.get());
+-    }
+-    order
+-}
+-
+ /// `conclusion` is injected because the terminal event hasn't been emitted
+ /// yet — the run store's `projection.conclusion` is still `None` at this point.
+ pub async fn write_finalize_commit(
+@@ -534,7 +438,7 @@ async fn compute_final_patch(
+ 
+ #[cfg(any(test, feature = "test-support"))]
+ pub(crate) fn billing_from_projection(projection: &RunProjection) -> Option<BilledTokenCounts> {
+-    billing_rollup_from_projection(projection, None).billing_if_present()
++    billing_rollup::billing_rollup_from_projection(projection, None).billing_if_present()
+ }
+ 
+ pub(crate) fn build_terminal_event(
+@@ -666,21 +570,8 @@ pub async fn conclude(executed: Executed, options: &FinalizeOptions) -> Result<C
+         .filter(|envelope| matches!(envelope.event.body, EventBody::ArtifactCaptured(_)))
+         .count();
+     let projection = services.run_store.state().await.ok();
+-    let projection_order = projection
+-        .as_ref()
+-        .map(stage_projection_order)
+-        .unwrap_or_default();
+-    let projection_billing = projection
+-        .as_ref()
+-        .map(|projection| billing_rollup_from_projection(projection, None))
+-        .unwrap_or_default();
+-    let checkpoint = projection
+-        .as_ref()
+-        .and_then(|state| state.current_checkpoint());
+-    let mut conclusion = build_conclusion_from_parts(
+-        checkpoint,
+-        &projection_billing,
+-        &projection_order,
++    let mut conclusion = build_conclusion_from_projection(
++        projection.as_ref(),
+         final_status,
+         failure_reason,
+         wall_time_ms,
+@@ -866,6 +757,7 @@ mod tests {
+     use crate::context::Context;
+     use crate::error::ErrorStage;
+     use crate::event::{Emitter, StoreProgressLogger, append_event};
++    use crate::records::Checkpoint;
+     use crate::run_metadata::{RunMetadataRuntime, RunMetadataWriterHandle};
+     use crate::run_options::{GitCheckpointOptions, RunOptions};
+     use crate::runtime_store::{RunStoreBackend, RunStoreHandle};
+@@ -1438,7 +1330,6 @@ mod tests {
+         let mut projection = test_projection();
+         projection.stage_entry("zebra", 1, first_event_seq(1));
+         projection.stage_entry("apple", 1, first_event_seq(2));
+-        let projection_order = stage_projection_order(&projection);
+         let checkpoint = checkpoint_with(
+             vec!["apple", "zebra"],
+             HashMap::from([
+@@ -1447,10 +1338,13 @@ mod tests {
+             ]),
+         );
+ 
+-        let conclusion = build_conclusion_from_parts(
+-            Some(&checkpoint),
+-            &ProjectionBillingRollup::default(),
+-            &projection_order,
++        projection.checkpoints.push(fabro_types::CheckpointRecord {
++            seq: 10,
++            checkpoint,
++            diff: fabro_types::RunDiff::default(),
++        });
++        let conclusion = build_conclusion_from_projection(
++            Some(&projection),
+             StageOutcome::Succeeded,
+             None,
+             10,
+@@ -1470,7 +1364,6 @@ mod tests {
+         let mut projection = test_projection();
+         projection.stage_entry("skipped", 1, first_event_seq(4));
+         projection.stage_entry("finished", 1, first_event_seq(5));
+-        let projection_order = stage_projection_order(&projection);
+         let checkpoint = checkpoint_with(
+             vec!["finished"],
+             HashMap::from([
+@@ -1482,10 +1375,13 @@ mod tests {
+             ]),
+         );
+ 
+-        let conclusion = build_conclusion_from_parts(
+-            Some(&checkpoint),
+-            &ProjectionBillingRollup::default(),
+-            &projection_order,
++        projection.checkpoints.push(fabro_types::CheckpointRecord {
++            seq: 10,
++            checkpoint,
++            diff: fabro_types::RunDiff::default(),
++        });
++        let conclusion = build_conclusion_from_projection(
++            Some(&projection),
+             StageOutcome::Succeeded,
+             None,
+             10,
+@@ -1529,8 +1425,6 @@ mod tests {
+             timestamp:      chrono::Utc::now(),
+         });
+ 
+-        let projection_order = stage_projection_order(&projection);
+-        let projection_billing = billing_rollup_from_projection(&projection, None);
+         let mut latest_outcome = Outcome::success();
+         latest_outcome.usage = Some(success_usage);
+         latest_outcome.timing = Some(fabro_types::StageTiming::wall_only(800));
+@@ -1540,10 +1434,13 @@ mod tests {
+         );
+         checkpoint.node_retries.insert("verify".to_string(), 2);
+ 
+-        let conclusion = build_conclusion_from_parts(
+-            Some(&checkpoint),
+-            &projection_billing,
+-            &projection_order,
++        projection.checkpoints.push(fabro_types::CheckpointRecord {
++            seq: 10,
++            checkpoint,
++            diff: fabro_types::RunDiff::default(),
++        });
++        let conclusion = build_conclusion_from_projection(
++            Some(&projection),
+             StageOutcome::Succeeded,
+             None,
+             10,
+diff --git a/lib/foundation/fabro-types/src/billing_rollup.rs b/lib/foundation/fabro-types/src/billing_rollup.rs
+new file mode 100644
+index 000000000..acdefa407
+--- /dev/null
++++ b/lib/foundation/fabro-types/src/billing_rollup.rs
+@@ -0,0 +1,217 @@
++use std::collections::HashMap;
++
++use fabro_model::Catalog;
++
++use crate::{BilledTokenCounts, ModelRef, RunProjection, RunTiming, StageSummary, StageTiming};
++
++#[derive(Debug, Clone, PartialEq)]
++pub struct ProjectionBillingStage {
++    pub node_id: String,
++    pub billing: BilledTokenCounts,
++    /// Per-node timing summed across every visit of that node within this
++    /// projection. `wall_time_ms`, `inference_time_ms`, `tool_time_ms`, and
++    /// `active_time_ms` are all summed in lockstep.
++    pub timing:  StageTiming,
++    pub model:   Option<ModelRef>,
++}
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct ProjectionBillingByModel {
++    pub model:   ModelRef,
++    pub stages:  i64,
++    pub billing: BilledTokenCounts,
++}
++
++#[derive(Debug, Clone, Default, PartialEq)]
++pub struct ProjectionBillingRollup {
++    pub stages:             Vec<ProjectionBillingStage>,
++    pub totals:             BilledTokenCounts,
++    pub by_model:           Vec<ProjectionBillingByModel>,
++    /// Run-level timing summed across every stage visit. `wall_time_ms` is
++    /// the sum of stage visit wall times (not the run clock duration).
++    pub timing:             RunTiming,
++    pub billed_visit_count: usize,
++}
++
++impl ProjectionBillingRollup {
++    #[must_use]
++    pub fn billing_if_present(&self) -> Option<BilledTokenCounts> {
++        (self.billed_visit_count > 0).then(|| self.totals.clone())
++    }
++
++    /// Reconstruct the conclusion's per-node summaries from checkpoint and
++    /// stage events. Repeated visits share one row, ordered by the node's
++    /// first stage event.
++    #[must_use]
++    pub fn conclusion_stages(&self, projection: &RunProjection) -> (Vec<StageSummary>, u32) {
++        let projection_order = stage_projection_order(projection);
++        // Looping workflows revisit nodes; `completed_nodes` accumulates duplicates
++        // while the other checkpoint maps are keyed by node_id. Dedupe to one row
++        // per node so the stages table matches the deduped billing total.
++        if let Some(cp) = projection.current_checkpoint() {
++            let billing_by_node = self
++                .stages
++                .iter()
++                .map(|stage| (stage.node_id.as_str(), stage))
++                .collect::<HashMap<_, _>>();
++            let mut stage_rows = Vec::new();
++            let mut seen = std::collections::HashSet::new();
++            let mut retries_sum: u32 = 0;
++            let mut stage_order = Vec::new();
++
++            for (original_checkpoint_order, node_id) in cp.completed_nodes.iter().enumerate() {
++                if !seen.insert(node_id.as_str()) {
++                    continue;
++                }
++                stage_order.push((original_checkpoint_order, node_id.as_str()));
++            }
++            let mut extra_node_outcomes = cp
++                .node_outcomes
++                .keys()
++                .filter(|node_id| !seen.contains(node_id.as_str()))
++                .map(String::as_str)
++                .collect::<Vec<_>>();
++            extra_node_outcomes.sort_unstable();
++            let extra_offset = stage_order.len();
++            for (extra_index, node_id) in extra_node_outcomes.into_iter().enumerate() {
++                seen.insert(node_id);
++                stage_order.push((extra_offset + extra_index, node_id));
++            }
++
++            for (original_checkpoint_order, node_id) in stage_order {
++                let retries = cp
++                    .node_retries
++                    .get(node_id)
++                    .copied()
++                    .unwrap_or(1)
++                    .saturating_sub(1);
++                retries_sum += retries;
++                let billing = billing_by_node.get(node_id);
++
++                let summary = StageSummary {
++                    stage_id: node_id.to_string(),
++                    stage_label: node_id.to_string(),
++                    timing: billing.map_or_else(StageTiming::default, |stage| stage.timing),
++                    billing_usd_micros: billing.and_then(|stage| stage.billing.total_usd_micros),
++                    retries,
++                };
++                stage_rows.push((
++                    projection_order.get(node_id).copied().unwrap_or(u32::MAX),
++                    original_checkpoint_order,
++                    summary,
++                ));
++            }
++            stage_rows.sort_by(|left, right| {
++                left.0
++                    .cmp(&right.0)
++                    .then_with(|| left.1.cmp(&right.1))
++                    .then_with(|| left.2.stage_id.cmp(&right.2.stage_id))
++            });
++            let stages = stage_rows
++                .into_iter()
++                .map(|(_, _, summary)| summary)
++                .collect();
++            (stages, retries_sum)
++        } else {
++            (vec![], 0)
++        }
++    }
++}
++
++#[must_use]
++pub fn billing_rollup_from_projection(
++    projection: &RunProjection,
++    catalog: Option<&Catalog>,
++) -> ProjectionBillingRollup {
++    let mut stage_indices = HashMap::<String, usize>::new();
++    let mut stages = Vec::<ProjectionBillingStage>::new();
++    let mut by_model = HashMap::<ModelRef, ProjectionBillingByModel>::new();
++    let mut totals = BilledTokenCounts::default();
++    let mut run_timing = RunTiming::default();
++    let mut billed_visit_count = 0_usize;
++
++    for (stage_id, stage) in projection.iter_stages() {
++        if projection.is_boundary_stage(stage_id.node_id()) {
++            continue;
++        }
++        let usage = stage.billed_usage(catalog);
++        let usage = usage.as_ref();
++        if stage.completion.is_none() && stage.timing.is_none() && usage.is_zero() {
++            continue;
++        }
++
++        let node_id = stage_id.node_id();
++        let index = *stage_indices.entry(node_id.to_string()).or_insert_with(|| {
++            let index = stages.len();
++            stages.push(ProjectionBillingStage {
++                node_id: node_id.to_string(),
++                billing: BilledTokenCounts::default(),
++                timing:  StageTiming::default(),
++                model:   None,
++            });
++            index
++        });
++        let row = &mut stages[index];
++
++        if let Some(timing) = stage.timing {
++            row.timing = row.timing.saturating_add(&timing);
++            run_timing = run_timing.saturating_add(&RunTiming::from(timing));
++        }
++
++        if !usage.is_zero() {
++            billed_visit_count += 1;
++            row.billing.add_counts(usage);
++            totals.add_counts(usage);
++
++            if let Some(model) = &stage.model {
++                row.model = Some(model.clone());
++                let model_entry =
++                    by_model
++                        .entry(model.clone())
++                        .or_insert_with(|| ProjectionBillingByModel {
++                            model:   model.clone(),
++                            stages:  0,
++                            billing: BilledTokenCounts::default(),
++                        });
++                model_entry.stages += 1;
++                model_entry.billing.add_counts(usage);
++            }
++        }
++    }
++
++    let mut by_model = by_model.into_values().collect::<Vec<_>>();
++    by_model.sort_by(|left, right| {
++        let left_provider = left.model.provider.to_string();
++        let right_provider = right.model.provider.to_string();
++        left_provider
++            .cmp(&right_provider)
++            .then_with(|| left.model.model_id.cmp(&right.model.model_id))
++            .then_with(|| {
++                left.model
++                    .speed
++                    .map(<&'static str>::from)
++                    .cmp(&right.model.speed.map(<&'static str>::from))
++            })
++    });
++
++    ProjectionBillingRollup {
++        stages,
++        totals,
++        by_model,
++        timing: run_timing,
++        billed_visit_count,
++    }
++}
++
++fn stage_projection_order(state: &RunProjection) -> HashMap<String, u32> {
++    let mut order = HashMap::new();
++    for (stage_id, stage) in state.iter_stages() {
++        order
++            .entry(stage_id.node_id().to_string())
++            .and_modify(|first_seq: &mut u32| {
++                *first_seq = (*first_seq).min(stage.first_event_seq.get());
++            })
++            .or_insert_with(|| stage.first_event_seq.get());
++    }
++    order
++}
+diff --git a/lib/foundation/fabro-types/src/lib.rs b/lib/foundation/fabro-types/src/lib.rs
+index 2f215bd89..39fa5fb57 100644
+--- a/lib/foundation/fabro-types/src/lib.rs
++++ b/lib/foundation/fabro-types/src/lib.rs
+@@ -3,6 +3,7 @@ extern crate self as fabro_types;
+ pub mod artifact;
+ pub mod auth;
+ pub mod billing;
++pub mod billing_rollup;
+ pub mod blob_hash;
+ pub mod blob_ref;
+ pub mod checkpoint;
