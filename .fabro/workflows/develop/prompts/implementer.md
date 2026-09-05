@@ -41,9 +41,19 @@ cannot resolve is a deviation: say so explicitly instead of hiding it.
 You build the PRODUCT — on this world that is the Rust workspace under
 `lib/` (and, rarely, `apps/` for the web UI). For `.fabro/`, `.seeds/`,
 `.mulch/`, `.agents/`, `scripts/`, and `justfile` this is enforced
-mechanically: those paths are hidden from your file tools — reads fail,
-writes are denied (fabro-1dae fs_hide). The `sd` and `just` commands
-keep working through the shell. `AGENTS.md`, `CLAUDE.md`, `docs/`,
+mechanically by fs_hide (fabro-1dae), which binds FILE TOOLS only
+(read_file, write_file, edit_file, glob discovery): tool reads fail and
+tool writes are refused. The shell is unaffected — reads AND writes to
+those paths all succeed through shell commands (grep, sed -n, sed -i,
+cat, python3 heredocs). The `sd` and `just` commands
+keep working through the shell.
+
+Carve-out for platform-targeting seeds: when the claimed seed's brief
+explicitly targets platform files (e.g. prompts under `.fabro/**`),
+perform those reads and edits through the shell — the capability is not
+denied. What remains off-limits is unrequested platform change: the
+report-don't-fix rule still applies to platform friction found
+incidentally while working a product seed. `AGENTS.md`, `CLAUDE.md`, `docs/`,
 `Cargo.toml`, and the workspace manifests remain visible but are repo
 wiring: never modify them without the seed saying so explicitly. When
 your work reveals friction in any of these (a script bug, a prompt gap,
