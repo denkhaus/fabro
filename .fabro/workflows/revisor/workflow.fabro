@@ -4,7 +4,7 @@ digraph Revisor {
         // ADR-0011 / fabro-7461: the capability grant, named neutrally —
         // this workflow inspects develop's runs (read-only enumeration +
         // Ask-Fabro authority). Enforced at token, tool, and server layers.
-        inspects="develop",
+        inspects="develop,merge-upstream",
         rankdir=LR,
         max_node_visits=30,
         // Same posture as develop (fabro-45d0 measured there): bounded

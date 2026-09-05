@@ -75,8 +75,11 @@ digraph Conductor {
     survey -> develop [label="Work", condition="preferred_label=\"Work\""]
     survey -> exit    [label="Nothing to do", condition="preferred_label=\"Nothing to do\""]
     survey -> exit    [kind="soft", label="Survey failed", condition="outcome=failed"]
-    // Infra pass: after a merge, develop waits for the NEXT fire.
-    merge -> exit [label="Infra pass complete"]
+    // Infra pass: after a merge, develop waits for the NEXT fire — but
+    // the REVISE leg still runs: the merge-upstream run itself carries
+    // painpoints worth filing (user directive 2026-09-05; first
+    // autonomous merge 01M1SR27KEJGNQ hit an fs-policy wall worth a seed).
+    merge -> revise [label="Infra merged — revise the merge run"]
     merge -> exit [kind="soft", label="Merge child failed — manual /merge-upstream", condition="preferred_label=\"Merge child failed\""]
     develop -> revise [label="Develop integrated", condition="preferred_label=\"Develop integrated\""]
     develop -> exit   [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]

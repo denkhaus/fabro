@@ -11,7 +11,9 @@ object inside `workflow` (a common misread; the validator only says
 is wrong):
 
 `{"workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "merge-upstream"}, "environment": "toolchain", "auto_approve": true}`. Record the child id (context key `child_run_id`).
-2. Wait terminal: poll `fabro_run_get` for the child roughly every 60s (shell `sleep 60` between polls; up to 40 min). Terminal statuses end the wait.
+2. Record the child id in context key `child_run_id` (the revise leg
+   reuses it for continuity) — then wait terminal: poll `fabro_run_get`
+   for the child roughly every 60s (shell `sleep 60` between polls; up to 40 min). Terminal statuses end the wait.
 3. If the child FAILED: route "Merge child failed" and journal the failure reason — the manual /merge-upstream skill owns hard conflicts. Do not retry in this pass.
 4. If the child SUCCEEDED: wait for the PR auto-merge (Dogfood Gate): shell — `git fetch origin denkhaus` and compare trees `git diff --quiet origin/fabro/run/<child_id> origin/denkhaus`; repeat ~every 30s up to 20 min. Merged (equal trees) -> route "Infra pass complete". Timeout -> "Merge child failed" with a journal note (gate stuck; check the PR).
 
