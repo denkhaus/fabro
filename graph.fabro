@@ -1,0 +1,93 @@
+digraph Conductor {
+    graph [
+        goal="Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+        inspects="develop,merge-upstream,revisor",
+        rankdir=LR,
+        max_node_visits=12,
+        preamble_budget_kb=12,
+        cycle_counter_reset_key="pass_id"
+    ]
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    // Survey (cheap): count unrevised upstream commits. MIN threshold
+    // 5 (user decision 2026-09-05): single-commit upstream drifts must
+    // not consume merge slots that product cycles need.
+    survey [
+        label="Survey",
+        prompt="@prompts/survey.md",
+        output_schema="routing",
+        output_retries=2,
+        retry_policy="standard",
+        reasoning_effort="low",
+        project_memory=false,
+        preamble_stages_ignore="survey",
+        fs_write="",
+        fabro_tools="fabro_runs_list"
+    ]
+
+    // Merge leg: create the merge-upstream child, wait terminal, wait
+    // PR merge (tree equality). Infra pass: no develop this fire.
+    merge [
+        label="Merge leg",
+        prompt="@prompts/merge-leg.md",
+        output_schema="routing",
+        output_retries=2,
+        retry_policy="standard",
+        reasoning_effort="low",
+        project_memory=false,
+        preamble_stages_ignore="survey,merge",
+        fs_write="",
+        fabro_tools="fabro_run_create,fabro_run_get,fabro_runs_list"
+    ]
+
+    // Develop leg: one seed implementation through gate+review+PR.
+    develop [
+        label="Develop leg",
+        prompt="@prompts/develop-leg.md",
+        output_schema="routing",
+        output_retries=2,
+        retry_policy="standard",
+        reasoning_effort="low",
+        project_memory=false,
+        preamble_stages_ignore="survey,develop",
+        fs_write="",
+        fabro_tools="fabro_run_create,fabro_run_get,fabro_runs_list"
+    ]
+
+    // Revise leg: revisor revises the newest develop run.
+    revise [
+        label="Revise leg",
+        prompt="@prompts/revise-leg.md",
+        output_schema="routing",
+        output_retries=2,
+        retry_policy="standard",
+        reasoning_effort="low",
+        project_memory=false,
+        preamble_stages_ignore="survey,develop,revise",
+        fs_write="",
+        fabro_tools="fabro_run_create,fabro_run_get,fabro_runs_list"
+    ]
+
+    start -> survey
+    survey -> merge   [label="Merge needed", condition="preferred_label=\"Merge needed\""]
+    survey -> develop [label="Work", condition="preferred_label=\"Work\""]
+    survey -> exit    [label="Nothing to do", condition="preferred_label=\"Nothing to do\""]
+    survey -> exit    [kind="soft", label="Survey failed", condition="outcome=failed"]
+    // Infra pass: after a merge, develop waits for the NEXT fire.
+    merge -> exit [label="Infra pass complete"]
+    merge -> exit [kind="soft", label="Merge child failed — manual /merge-upstream", condition="preferred_label=\"Merge child failed\""]
+    develop -> revise [label="Develop integrated", condition="preferred_label=\"Develop integrated\""]
+    develop -> exit   [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
+    develop -> exit   [kind="soft", label="Develop child failed", condition="preferred_label=\"Develop child failed\""]
+    revise -> exit [label="Cycle complete"]
+    revise -> exit [kind="soft", label="Revisor child failed", condition="preferred_label=\"Revisor child failed\""]
+    // Unconditional safety nets (validator rule all_conditional_edges):
+    // an unrouted outcome ends the pass softly — the next cron fire
+    // re-enters cleanly; nothing merges on an ambiguous state.
+    survey -> exit [kind="soft", label="Unrouted survey outcome"]
+    merge -> exit [kind="soft", label="Unrouted merge outcome"]
+    develop -> exit [kind="soft", label="Unrouted develop outcome"]
+    revise -> exit [kind="soft", label="Unrouted revise outcome"]
+}
