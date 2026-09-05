@@ -177,6 +177,16 @@ decision, not an accident - it needs the user plus an ADR.
   (including untracked files - stash ^3 parent carries them) BEFORE a
   clean-tree control, and re-run the lint on the clean tree before
   believing the failure.
+- REVISE THE REVISOR (user directive 2026-09-05): after every delegated
+  cycle, inspect the REVISOR run itself — its journal painpoints/
+  observations, stage outcomes, and obvious gaps — because there is no
+  revisor-revisor; findings that only surface in the revisor's own run
+  (tool walls, write drops, prompt defects) die silently otherwise.
+  Every revisor painpoint must land as a seed, a skill edit, or an
+  explicit no-action note in the cycle report - never in chat only. A
+  full `fabro ask <revisor-run-id>` improve-review is NOT needed every
+  cycle but is worth running occasionally (e.g. every 5th cycle or when
+  the journals show recurring unresolved painpoints).
 - E2E-test verification (2026-08-31 lesson, fabro-47b5): a green
   `--profile e2e` run can be a NO-OP for twin-only tests
   (NEXTEST_PROFILE=e2e => TestMode::Strict => e2e_test(twin) prints
