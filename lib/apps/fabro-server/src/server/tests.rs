@@ -39,7 +39,6 @@ use httpmock::Method::{GET, POST};
 use httpmock::MockServer;
 use serde_json::json;
 use tokio::sync::Notify;
-use tokio_stream::StreamExt as _;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::Message as WebSocketMessage;
 use tower::ServiceExt;
@@ -19283,6 +19282,111 @@ async fn unpause_run_returns_blocked_when_human_gate_is_still_unresolved() {
 }
 
 #[tokio::test]
+async fn reconcile_incomplete_runs_terminates_durable_runnable_runs_after_restart() {
+    let object_store: Arc<dyn object_store::ObjectStore> =
+        Arc::new(object_store::memory::InMemory::new());
+    let summaries = fabro_store::test_support::test_run_summary_store();
+    let blobs = fabro_store::test_support::test_blob_store();
+    let first_state = test_app_state_over_shared_stores(&object_store, &blobs, &summaries);
+    let mut histories = Vec::new();
+
+    for (run_id, reason) in [
+        (fixtures::RUN_1, FailureReason::Terminated),
+        (fixtures::RUN_2, FailureReason::Cancelled),
+    ] {
+        let mut events = vec![
+            workflow_event::Event::RunSubmitted {
+                definition_blob: None,
+            },
+            workflow_event::Event::RunRunnable {
+                source: fabro_types::RunRunnableSource::StartRequested,
+                actor:  None,
+            },
+        ];
+        let pending_control =
+            (reason == FailureReason::Cancelled).then_some(RunControlAction::Cancel);
+        if pending_control.is_some() {
+            events.push(workflow_event::Event::RunCancelRequested { actor: None });
+        }
+        create_durable_run_with_events(&first_state, run_id, &events).await;
+
+        let reader = first_state
+            .stores
+            .runs
+            .open_run_reader(&run_id)
+            .await
+            .unwrap();
+        let run = reader.state().await.unwrap();
+        assert_eq!(run.status, RunStatus::Runnable);
+        assert_eq!(run.pending_control, pending_control);
+        let history = reader.list_events().await.unwrap();
+        // The fixture may insert intermediate events for later lifecycle states;
+        // these runs must remain admitted but never started.
+        assert_eq!(history.len(), events.len() + 1);
+        assert!(!history.iter().any(|envelope| matches!(
+            envelope.event.body,
+            EventBody::RunStarting(_) | EventBody::RunRunning(_) | EventBody::RunFailed(_)
+        )));
+        histories.push((run_id, reason, history));
+    }
+    assert!(first_state.runs.lock().unwrap().is_empty());
+    drop(first_state);
+
+    let reopened_state = test_app_state_over_shared_stores(&object_store, &blobs, &summaries);
+    assert!(reopened_state.runs.lock().unwrap().is_empty());
+    assert_eq!(
+        reconcile_incomplete_runs_on_startup(&reopened_state)
+            .await
+            .unwrap(),
+        2
+    );
+    assert!(reopened_state.runs.lock().unwrap().is_empty());
+
+    let mut reconciled_histories = Vec::new();
+    for (run_id, reason, before) in histories {
+        let reader = reopened_state
+            .stores
+            .runs
+            .open_run_reader(&run_id)
+            .await
+            .unwrap();
+        let run = reader.state().await.unwrap();
+        assert_eq!(run.status, RunStatus::Failed { reason });
+        assert_eq!(run.pending_control, None);
+        let summary = summaries.get(&run_id, Utc::now()).await.unwrap().unwrap();
+        assert_eq!(summary.lifecycle.status, run.status);
+        assert_eq!(summary.lifecycle.pending_control, None);
+
+        let after = reader.list_events().await.unwrap();
+        assert_eq!(after.len(), before.len() + 1);
+        assert_eq!(&after[..before.len()], before.as_slice());
+        assert_eq!(run_failed_reasons(&after), vec![reason]);
+        assert!(!after.iter().any(|envelope| matches!(
+            envelope.event.body,
+            EventBody::RunStarting(_) | EventBody::RunRunning(_)
+        )));
+        reconciled_histories.push((run_id, after));
+    }
+
+    assert_eq!(
+        reconcile_incomplete_runs_on_startup(&reopened_state)
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(reopened_state.runs.lock().unwrap().is_empty());
+    for (run_id, expected) in reconciled_histories {
+        let reader = reopened_state
+            .stores
+            .runs
+            .open_run_reader(&run_id)
+            .await
+            .unwrap();
+        assert_eq!(reader.list_events().await.unwrap(), expected);
+    }
+}
+
+#[tokio::test]
 async fn reconcile_incomplete_runs_marks_inflight_runs_terminal() {
     let state = test_app_state();
 
@@ -19311,19 +19415,44 @@ async fn reconcile_incomplete_runs_marks_inflight_runs_terminal() {
     ])
     .await;
 
+    create_durable_run_with_events(&state, fixtures::RUN_4, &[
+        workflow_event::Event::RunSubmitted {
+            definition_blob: None,
+        },
+        workflow_event::Event::RunPending {
+            reason: fabro_types::PendingReason::ApprovalRequired,
+            actor:  None,
+        },
+    ])
+    .await;
+    let mut untouched_histories = Vec::new();
+    for (run_id, expected_status) in [
+        (fixtures::RUN_1, RunStatus::Submitted),
+        (fixtures::RUN_4, RunStatus::Pending {
+            reason: fabro_types::PendingReason::ApprovalRequired,
+        }),
+    ] {
+        let reader = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+        assert_eq!(reader.state().await.unwrap().status, expected_status);
+        untouched_histories.push((run_id, expected_status, reader.list_events().await.unwrap()));
+    }
+
     let reconciled = reconcile_incomplete_runs_on_startup(&state).await.unwrap();
     assert_eq!(reconciled, 2);
 
-    let run_1 = state
-        .stores
-        .runs
-        .open_run_reader(&fixtures::RUN_1)
-        .await
-        .unwrap()
-        .state()
-        .await
-        .unwrap();
-    assert_eq!(run_1.status, RunStatus::Submitted);
+    for (run_id, expected_status, expected_history) in untouched_histories {
+        let reader = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+        assert_eq!(reader.state().await.unwrap().status, expected_status);
+        assert_eq!(reader.list_events().await.unwrap(), expected_history);
+        let summary = state
+            .stores
+            .run_summaries
+            .get(&run_id, Utc::now())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(summary.lifecycle.status, expected_status);
+    }
 
     let run_2 = state
         .stores
