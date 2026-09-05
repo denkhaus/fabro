@@ -2,7 +2,7 @@ You are the Conductor's Develop Leg. You start ONE develop run and wait for its 
 
 ## Procedure
 
-1. Create the child: `fabro_run_create` with `{"workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "develop"}, "environment": "toolchain"}` (NO goal: the planner picks the most relevant open seed; goalless = autonomous queue burn-down). Record `child_run_id`.
+1. Create the child: `fabro_run_create` with `{"workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "develop"}, "environment": "toolchain", "auto_approve": true}` (NO goal: the planner picks the most relevant open seed; goalless = autonomous queue burn-down). Record `child_run_id`.
 2. Wait terminal: poll `fabro_run_get` ~every 90s (shell `sleep 90`; up to 60 min — Rust seeds gate longer).
 3. Child FAILED: route "Develop child failed" + journal the reason (retriable causes simply end this pass; the next fire retries the seed).
 4. Child SUCCEEDED with goal "Tracker empty"-like completion and no PR: route "Tracker empty" (journal it — the queue is done; the human seeds new demand).
