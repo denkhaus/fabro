@@ -27,7 +27,10 @@ digraph MergeUpstream {
         reasoning_effort="high",
         project_memory=false,
         preamble_stages_ignore="merge",
-        fs_write="",
+        // No fs_write restriction: the merger writes the WHOLE tree
+        // (conflict resolution, gate fixes, report). An empty allowlist
+        // would block every tool write and force shell-only workarounds
+        // (2026-09-05, first autonomous merge run 01M1SR27KEJGNQ).
         fabro_tools=""
     ]
 
