@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     DiffSummary, GitRunTarget, InterviewQuestionRecord, Principal, PullRequestLink, RepositoryRef,
-    RunControlAction, RunId, RunSandbox, RunStatus, RunTiming,
+    RunControlAction, RunId, RunSandbox, RunStatus, RunTiming, WorkflowVersionId,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,17 +88,22 @@ pub struct Run {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkflowRef {
     #[serde(default)]
-    pub slug:       Option<String>,
+    pub slug:                Option<String>,
     #[serde(default)]
-    pub name:       Option<String>,
+    pub name:                Option<String>,
     #[serde(default)]
-    pub graph_name: Option<String>,
+    pub graph_name:          Option<String>,
+    /// Content-derived id of the immutable workflow version this run was
+    /// created from (ADR-0015 freshness precondition). `None` for runs
+    /// created before intent-based runs or without a registered workflow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_version_id: Option<WorkflowVersionId>,
     /// Number of nodes in the workflow graph.
     #[serde(default)]
-    pub node_count: i64,
+    pub node_count:          i64,
     /// Number of edges in the workflow graph.
     #[serde(default)]
-    pub edge_count: i64,
+    pub edge_count:          i64,
 }
 
 impl WorkflowRef {

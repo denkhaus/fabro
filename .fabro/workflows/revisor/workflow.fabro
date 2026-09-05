@@ -1,6 +1,6 @@
 digraph Revisor {
     graph [
-        goal="Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
+        goal="Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
         // ADR-0011 / fabro-7461: the capability grant, named neutrally —
         // this workflow inspects develop's runs (read-only enumeration +
         // Ask-Fabro authority). Enforced at token, tool, and server layers.
@@ -14,20 +14,22 @@ digraph Revisor {
     ]
 
     start [shape=Mdiamond, label="Start"]
-    // Exit kinds (fabro-b907, ADR-0010): deadlock -> human decides (run
-    // branch stays unmerged, no base marker — the run counts as unrevised
-    // and a later pass may re-pick it; known ramp edge, ADR-0011
-    // defer-while-active notes the cron-phase fix); soft -> next pass
-    // re-enters. Natural completion = approved revision, merged by the
-    // host-side integrate step (run_workflow.nu PR + auto-merge).
+    // Exit kinds (fabro-b907, ADR-0010): soft -> next pass re-enters.
+    // ADR-0015 v2 removed the approval gate: natural completion = the
+    // pass budget is exhausted after filing, merged by the host-side
+    // integrate step (run_workflow.nu PR + auto-merge) — identical to
+    // develop's merge path, no human in the loop.
     exit  [shape=Msquare, label="Exit"]
 
-    // Select: pick the oldest unrevised TERMINAL develop run. Markers are
-    // merged .fabro/revisions/<run-id>.md files — absence on this branch
-    // means unrevised. ONE run per pass keeps each revision reviewable
-    // (ramp decision, fabro-7461). Read-only node: fs_write empty,
-    // product code and tracker hidden; fabro_runs_list is the only
-    // fabro tool it needs.
+    // Select (ADR-0015 v2): pick the NEWEST revisable develop run —
+    // revisable = terminal, live sandbox, and workflow_version_id equal
+    // to the newest run's version (stale-evidence runs are skipped so
+    // outdated workflow definitions cannot produce outdated seeds).
+    // Markers are merged .fabro/revisions/<run-id>.md files — absence on
+    // this branch means unrevised. ONE run per pass; the invocation ends
+    // after the first filed revision (budget constant on the file edges).
+    // Read-only node: fs_write empty, product code and tracker hidden;
+    // fabro_runs_list is the only fabro tool it needs.
     select [
         label="Select",
         prompt="@prompts/select.md",
@@ -80,7 +82,7 @@ digraph Revisor {
         // stale, analyze re-emits fresh ones. journal stays: the prior
         // analyst's observations carried real threads across cycles
         // (the d810 cross-world blocker surfaced twice this way).
-        preamble_allow_keys="revisor_target_run_id,revisor_target_title,revisor_target_status,revisor_target_wall,journal",
+        preamble_allow_keys="revisor_target_run_id,revisor_target_title,revisor_target_status,revisor_target_wall,revisor_target_workflow_version,journal",
         context_allow_keys="revision_findings,journal"
     ]
 
@@ -114,18 +116,8 @@ digraph Revisor {
         // (2026-09-02 preamble review). The node's own filed_seed_ids
         // never render back either (stale on loops); its journal EMISSION
         // is unaffected (that is the write side, context_allow_keys).
-        preamble_allow_keys="revisor_target_run_id,revisor_target_title,revisor_target_status,revision_findings",
+        preamble_allow_keys="revisor_target_run_id,revisor_target_title,revisor_target_status,revisor_target_workflow_version,revision_findings",
         context_allow_keys="filed_seed_ids,journal"
-    ]
-
-    // Approve: the HITL control (ADR-0011: auto-merge from day one, the
-    // interview gate is the control — first production hexagon gate).
-    // Fail-closed by engine semantics: an unanswered gate routes only via
-    // the explicit failed edge below. Approval releases the run branch to
-    // the host-side integrate; rejection leaves everything unmerged.
-    approve [
-        shape=hexagon,
-        label="Approve filing + merge"
     ]
 
     start -> select
@@ -146,20 +138,20 @@ digraph Revisor {
     // the run stays unrevised, the next pass retries it.
     analyze -> exit [kind="soft", label="Ask failed (next pass retries)"]
 
-    file -> approve [label="Staged", condition="outcome=succeeded"]
-    // Bookkeeping failure (sd/git error): nothing staged, nothing merged.
-    file -> exit [kind="soft", label="Bookkeeping failed (nothing merged)"]
-
-    // The loop (fork 2, fabro-7461): approval closes THIS revision and
-    // re-enters selection — one revisor invocation walks the backlog with
-    // a human gate per revision; the run ends naturally when select finds
-    // nothing left. Artifacts accumulate as one commit per cycle on this
-    // run branch; the host-side integrate merges once at the end. A
-    // rejection deadlocks the WHOLE branch (including earlier approved
-    // cycles) for a human decision — known ramp edge: the human may merge
-    // the branch manually to salvage approved cycles.
-    approve -> select [label="[A] Approved"]
-    approve -> exit [kind="deadlock", label="[R] Rejected (run stays unmerged, human decides)"]
-    // Unanswered gate: fail-closed, nothing merges, next pass re-enters.
-    approve -> exit [condition="outcome=failed", label="Unanswered (fail-closed)"]
+    // ADR-0015 v2: no HITL gate. One revision per invocation by default —
+    // the engine counts select passes via seed_cycles (reset per target).
+    // Edges are mutually exclusive (matched condition edges can be picked
+    // nondeterministically when several match): failed -> soft exit;
+    // budget exhausted -> natural exit (merges via the normal PR +
+    // auto-merge path, identical to develop); budget remaining -> next
+    // pass. Raising the budget is currently these two constants (N in
+    // "seed_cycles.select >= N" / "< N"); an engine graph attribute can
+    // replace them later.
+    file -> exit [kind="soft", label="Bookkeeping failed (nothing merged)", condition="outcome=failed"]
+    file -> exit [label="Pass complete (budget)", condition="outcome=succeeded && seed_cycles.select >= 1"]
+    file -> select [label="Continue backlog", condition="outcome=succeeded && seed_cycles.select < 1"]
+    // Unconditional safety net (validator rule all_conditional_edges):
+    // an outcome shape none of the edges above matched routes as a soft
+    // exit — nothing merges, the next invocation retries the run.
+    file -> exit [kind="soft", label="Unrouted outcome (soft retry)"]
 }

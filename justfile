@@ -126,3 +126,34 @@ clean mode="stale":
 # crate). Runs inside the run sandbox; logic lives in scripts/qualitygate.nu.
 qualitygate:
     nu scripts/qualitygate.nu
+
+# Run a workflow end to end: create+start+attach, wait, integrate the run
+# branch (ff-pull when auto-merge landed, else provisional squash-merge).
+# No ask-based review — the revisor workflow owns run revisioning
+# (ADR-0015). Thin wrapper — logic lives in scripts/run_workflow.nu.
+# Examples:
+#   just run develop --goal "Implement product seed fabro-6a5a ..."
+#   just run develop --adopt 01M0WW
+run *args:
+    nu scripts/run_workflow.nu {{ args }}
+
+# One ADR-0015 qualification cycle, sequential by design (the
+# serialization principle): a develop run (implements the most relevant
+# open seed through gate+review), then a revisor run (revises exactly
+# that newest run, files seeds with a basis line). Extra args go to the
+# DEVELOP leg only (the revisor leg needs no goal). Examples:
+#   just cycle
+#   just cycle --goal "'implement fabro-6a5a'"
+#
+# INVOCATION MODEL (user directive 2026-09-05): /iterate and
+# /merge-upstream are the USER's manual entry points; this target (and
+# `just run`) is the AGENT-facing surface — local agent sessions invoke
+# it (background + heartbeat) when an iterate cycle delegates to the
+# workflow. Transition path (ADR-0015): manual invocations (by agents
+# or the user) until the revisor goes cron on a dedicated 24/7 host.
+# While a cycle is in flight, no other tracker consumer (agent session,
+# /iterate, upstream merge) may claim seeds — serialization principle:
+# one line, one executor.
+cycle *args:
+    nu scripts/run_workflow.nu develop {{ args }}
+    nu scripts/run_workflow.nu revisor

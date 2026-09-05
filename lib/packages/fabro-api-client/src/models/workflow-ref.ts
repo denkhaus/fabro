@@ -19,6 +19,10 @@ export interface WorkflowRef {
     'name': string | null;
     'graph_name': string | null;
     /**
+     * Content-derived id of the immutable workflow version this run was created from. Absent for runs created before intent-based runs or without a registered workflow; consumers use it to reject runs whose workflow definition drifted (stale evidence).
+     */
+    'workflow_version_id'?: string | null;
+    /**
      * Number of nodes in the workflow graph.
      */
     'node_count': number;

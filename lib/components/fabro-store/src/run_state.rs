@@ -1436,12 +1436,15 @@ pub(crate) fn build_summary(state: &RunProjection, run_id: &RunId) -> Run {
         title: state.title().into_owned(),
         goal,
         workflow: WorkflowRef {
-            slug:       state.spec.workflow_slug.clone(),
-            name:       state.spec.workflow_name().map(ToOwned::to_owned),
-            graph_name: state.spec.graph_name().map(ToOwned::to_owned),
-            node_count: i64::try_from(state.spec.graph.nodes.len())
+            slug:                state.spec.workflow_slug.clone(),
+            name:                state.spec.workflow_name().map(ToOwned::to_owned),
+            graph_name:          state.spec.graph_name().map(ToOwned::to_owned),
+            // ADR-0015: expose the immutable version id so run consumers
+            // (revisor selection) can reject stale-evidence runs.
+            workflow_version_id: state.spec.workflow_version_id,
+            node_count:          i64::try_from(state.spec.graph.nodes.len())
                 .expect("graph node count should fit in i64"),
-            edge_count: i64::try_from(state.spec.graph.edges.len())
+            edge_count:          i64::try_from(state.spec.graph.edges.len())
                 .expect("graph edge count should fit in i64"),
         },
         automation: state.spec.automation.clone(),
@@ -2465,6 +2468,14 @@ mod tests {
 
         assert_eq!(
             projection.spec.workflow_version_id,
+            Some(workflow_version_id)
+        );
+
+        // ADR-0015: the run summary exposes the version through the
+        // workflow ref so run consumers can reject stale-evidence runs.
+        let summary = build_summary(&projection, &fixtures::RUN_1);
+        assert_eq!(
+            summary.workflow.workflow_version_id,
             Some(workflow_version_id)
         );
     }

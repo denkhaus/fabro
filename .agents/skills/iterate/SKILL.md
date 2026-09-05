@@ -21,10 +21,16 @@ decision, not an accident - it needs the user plus an ADR.
 
 ## Phase 0 - Orient (always, cheap)
 
-- Which world am I in? `git branch --show-current`. Platform work on
-  `denkhaus`, product/lab worlds on `denkhaus-lab` (multi-context, see
-  docs/agents/domain.md). NEVER git worktrees - branch switches happen
-  in the main checkout.
+- Which world am I in? `git branch --show-current`. Since the world
+  merger (d9138572c, ADR-0013) platform AND product work both live on
+  `denkhaus`; `denkhaus-lab` is legacy (retirement pending, multi-context
+  see docs/agents/domain.md). NEVER git worktrees - branch switches
+  happen in the main checkout.
+- Is a workflow cycle in flight? (`fabro ps`, or a `just run`/`just
+  cycle` process). Serialization principle (ADR-0015): while the
+  develop/revisor workflow works the tracker, this agent session does
+  NOT claim seeds - one line, one executor. Wait for terminal state or
+  ask the user.
 - Interrupted cycle? Reconstruct BEFORE selecting: `git status` (uncommitted
   diff is the interrupted operation) + `sd list --status in_progress` tell
   you what was mid-flight; continue that work instead of picking a new seed.
@@ -50,6 +56,19 @@ decision, not an accident - it needs the user plus an ADR.
   must satisfy (newtypes, enums-vs-traits, error taxonomy, async task
   lifecycle, ...). A design that must deviate is itself a pivotal fork -
   put it to the user in the grill session, never drift silently.
+- Executor decision (ADR-0013 dogfooding + ADR-0015, 2026-09-05): WHO
+  implements the seed? Product seeds (workflow assets, product-world
+  code the develop workflow can build) are delegated to the workflow -
+  the AGENT starts `just run develop --goal "'implement <seed-id>:
+  <title>'"` for one leg, or `just cycle` for a full qualification
+  cycle (develop + revisor back to back), background + heartbeat per
+  the standing directive. Invocation model (user directive 2026-09-05):
+  /iterate and /merge-upstream are the USER's entry points; the just
+  targets are the agent-facing surface (until the revisor goes cron on
+  the 24/7 host). Engine/platform seeds and pivotal design work: this
+  skill implements directly. Delegation still runs Phases 3-6 here -
+  review the run's landed diff, reflect on run evidence; the workflow
+  owns implementation, not review or reflection.
 - Claim the seed: `sd update <id> --status in_progress`.
 
 ## Phase 2 - Build
@@ -68,7 +87,9 @@ decision, not an accident - it needs the user plus an ADR.
   AGENTS.md (build/test commands, API workflow, strategy docs - read
   the relevant doc before changing covered areas).
 - Product/lab change or engine+workflow validation: run the develop
-  workflow (`just run <workflow> ...`); quality gates run inside the run.
+  workflow via the wrapper (`just run <workflow> ...`, or `just cycle`
+  for develop+revisor; ADR-0015: the wrapper no longer runs an ask
+  review - the revisor owns revisioning); quality gates run inside the run.
 - ADR-0008: change graph, prompts, scripts, and settings as ONE unit
   in the same change.
 - Inserting an item BEFORE a struct via an anchor on the struct's own

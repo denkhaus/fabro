@@ -8,13 +8,14 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 
 ## Selection procedure
 
-1. Call `fabro_runs_list` with `{"workflow": "develop"}`. The result lists runs with id, status, created/started/completed timestamps, goal, and `sandbox_available`. Terminal statuses (succeeded, failed, or any terminal classification) qualify; a run that is still running, waiting, or scheduled does NOT — skip it. Derive the wall time from started_at..completed_at when both are present; otherwise "unknown".
+1. Call `fabro_runs_list` with `{"workflow": "develop"}`. The result lists runs with id, status, created/started/completed timestamps, goal, `sandbox_available`, and `workflow_version_id`. Terminal statuses (succeeded, failed, or any terminal classification) qualify; a run that is still running, waiting, or scheduled does NOT — skip it. Derive the wall time from started_at..completed_at when both are present; otherwise "unknown".
 2. HARD PRECONDITION — sandbox (fabro-8d30a): only a run with `sandbox_available == true` is selectable. `false` (sandbox removed) and ABSENT (no live view) both disqualify — never select, never ask anyway "to try". Count disqualified runs for the journal observation; they stay unrevised until the engine provisions fresh analyst sandboxes.
-3. A run is ALREADY REVISED when a marker file `.fabro/revisions/<run-id>.md` exists in the worktree (list the directory with your file tools; markers arrive merged from previous revisor passes).
-4. Among unrevised terminal runs WITH a live sandbox, pick the OLDEST by creation time — evidence ages fastest, and oldest-first keeps the marker set growing monotonically.
-5. Exactly ONE run per pass. Do not batch.
+3. HARD PRECONDITION — freshness (ADR-0015, stale-evidence rule): derive the BASELINE version — the `workflow_version_id` of the NEWEST develop run in the list (highest created_at). Only runs whose `workflow_version_id` EQUALS the baseline are revisable. A different version means the run executed a workflow definition that no longer matches the current tree; an ABSENT version means a pre-intent run. Both are stale-evidence: skip them, never file seeds from them, and count them for the journal observation ("N runs stale-evidence, version drift").
+4. A run is ALREADY REVISED when a marker file `.fabro/revisions/<run-id>.md` exists in the worktree (list the directory with your file tools; markers arrive merged from previous revisor passes).
+5. Among unrevised, terminal, live-sandbox, fresh runs, pick the NEWEST by creation time — fresh evidence matches the current workflow definition; stale-evidence runs never get revised by waiting.
+6. Exactly ONE run per pass. Do not batch. The invocation ends after this pass is filed (budget 1, ADR-0015).
 
-If runs remain unrevised but NONE is selectable (all lack a live sandbox), route "Nothing to revise" and say so explicitly in the observation — "N runs blocked, no live sandbox" — so the backlog stays visible instead of silently shrinking.
+If runs remain unrevised but NONE is selectable (all stale, sandbox-less, or non-terminal), route "Nothing to revise" and say so explicitly in the observation — "N runs blocked (X stale-evidence, Y no live sandbox)" — so the backlog stays visible instead of silently shrinking.
 
 ## Hygiene — hard rule
 
@@ -49,6 +50,7 @@ Run selected:
     "revisor_target_title": "<its title or goal, short>",
     "revisor_target_status": "<its terminal status>",
     "revisor_target_wall": "<e.g. 4.9 min, or unknown>",
+    "revisor_target_workflow_version": "<the selected run's workflow_version_id, or absent>",
     "journal": {"painpoints": [], "observations": ["none"]}
   }
 }

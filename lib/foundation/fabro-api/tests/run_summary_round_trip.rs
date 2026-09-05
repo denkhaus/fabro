@@ -72,11 +72,12 @@ fn run_summary_json_matches_openapi_shape() {
         title:            "API title".to_string(),
         goal:             String::new(),
         workflow:         WorkflowRef {
-            slug:       Some("workflow".to_string()),
-            name:       Some("Ship workflow".to_string()),
-            graph_name: Some("GraphName".to_string()),
-            node_count: 7,
-            edge_count: 9,
+            slug:                Some("workflow".to_string()),
+            name:                Some("Ship workflow".to_string()),
+            graph_name:          Some("GraphName".to_string()),
+            workflow_version_id: Some(test_support::test_workflow_version_id()),
+            node_count:          7,
+            edge_count:          9,
         },
         automation:       Some(AutomationRef {
             id:              "nightly".to_string(),
@@ -155,6 +156,7 @@ fn run_summary_json_matches_openapi_shape() {
                 "slug": "workflow",
                 "name": "Ship workflow",
                 "graph_name": "GraphName",
+                "workflow_version_id": test_support::test_workflow_version_id().to_string(),
                 "node_count": 7,
                 "edge_count": 9
             },

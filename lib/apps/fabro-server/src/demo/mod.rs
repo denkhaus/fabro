@@ -1198,6 +1198,9 @@ mod runs {
                 slug:       Some(workflow_slug.into()),
                 name:       Some(workflow_name.into()),
                 graph_name: None,
+                // Demo runs are synthetic: no registered workflow
+                // version exists to reference (field is optional).
+                workflow_version_id: None,
                 node_count: 0,
                 edge_count: 0,
             },

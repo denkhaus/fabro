@@ -189,6 +189,11 @@ pub struct RunSummaryResult {
     pub workflow_name:       Option<String>,
     pub workflow_graph_name: Option<String>,
     pub workflow_slug:       Option<String>,
+    /// Content-derived id of the immutable workflow version the run was
+    /// created from (ADR-0015 freshness precondition). Absent for runs
+    /// predating intent-based runs or without a registered workflow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_version_id: Option<String>,
     pub status:              String,
     /// True when the run's sandbox still exists on this host (live probe,
     /// stopped counts); false when it is gone; absent when no live view
@@ -317,6 +322,11 @@ pub(crate) fn run_summary_result(run: &Run) -> RunSummaryResult {
         workflow_name:       run.workflow.name.clone(),
         workflow_graph_name: run.workflow.graph_name.clone(),
         workflow_slug:       run.workflow.slug.clone(),
+        workflow_version_id: run
+            .workflow
+            .workflow_version_id
+            .as_ref()
+            .map(ToString::to_string),
         status:              run.lifecycle.status.kind().to_string(),
         sandbox_available:   None,
         archived:            run.lifecycle.archived,
@@ -468,11 +478,12 @@ mod tests {
             title:            "test".to_string(),
             goal:             "test".to_string(),
             workflow:         WorkflowRef {
-                slug:       Some("simple".to_string()),
-                name:       Some("Simple".to_string()),
-                graph_name: Some("GraphName".to_string()),
-                node_count: 0,
-                edge_count: 0,
+                slug:                Some("simple".to_string()),
+                name:                Some("Simple".to_string()),
+                graph_name:          Some("GraphName".to_string()),
+                workflow_version_id: Some(test_support::test_workflow_version_id()),
+                node_count:          0,
+                edge_count:          0,
             },
             automation:       None,
             repository:       None,
@@ -515,6 +526,11 @@ mod tests {
         assert_eq!(summary.children_count, 3);
         assert_eq!(summary.workflow_name.as_deref(), Some("Simple"));
         assert_eq!(summary.workflow_graph_name.as_deref(), Some("GraphName"));
+        let expected_version_id = test_support::test_workflow_version_id().to_string();
+        assert_eq!(
+            summary.workflow_version_id.as_deref(),
+            Some(expected_version_id.as_str())
+        );
     }
 
     fn run_id(raw: &str) -> RunId {

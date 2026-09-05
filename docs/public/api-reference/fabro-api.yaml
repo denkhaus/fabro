@@ -12200,6 +12200,14 @@ components:
           type: ["string", "null"]
         graph_name:
           type: ["string", "null"]
+        workflow_version_id:
+          type: ["string", "null"]
+          description: |
+            Content-derived id of the immutable workflow version this run
+            was created from. Absent for runs created before intent-based
+            runs or without a registered workflow; consumers use it to
+            reject runs whose workflow definition drifted (stale
+            evidence).
         node_count:
           type: integer
           format: int64

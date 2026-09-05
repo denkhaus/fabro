@@ -158,6 +158,7 @@ fn search_run_summary_result(run: &Run) -> SearchRunSummaryResult {
         source_directory,
         repo_origin_url,
         goal,
+        workflow_version_id: _,
     } = common::run_summary_result(run);
     let (goal_preview, goal_truncated) = goal_preview(&goal);
 
@@ -440,11 +441,12 @@ mod tests {
             title:            "test".to_string(),
             goal:             "test".to_string(),
             workflow:         WorkflowRef {
-                slug:       Some("simple".to_string()),
-                name:       Some("Simple".to_string()),
-                graph_name: Some("GraphName".to_string()),
-                node_count: 0,
-                edge_count: 0,
+                slug:                Some("simple".to_string()),
+                name:                Some("Simple".to_string()),
+                graph_name:          Some("GraphName".to_string()),
+                workflow_version_id: None,
+                node_count:          0,
+                edge_count:          0,
             },
             automation:       None,
             repository:       None,
