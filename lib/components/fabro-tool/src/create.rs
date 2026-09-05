@@ -483,9 +483,10 @@ pub async fn create_runs_with_options(
             children_count: summary.as_ref().map_or(0, |summary| summary.children_count),
             workflow: spec.workflow,
             start_requested,
-            status: summary
-                .map(|summary| summary.lifecycle.status.kind().to_string())
-                .unwrap_or_else(|| "unknown".to_string()),
+            status: summary.map_or_else(
+                || "unknown".to_string(),
+                |summary| summary.lifecycle.status.kind().to_string(),
+            ),
             start_error,
         });
     }
@@ -525,7 +526,8 @@ pub fn create_runs_text(result: &CreateRunsResult) -> String {
         result.runs.len()
     );
     if start_blocked > 0 {
-        text.push_str(&format!(", start blocked for {start_blocked}"));
+        use std::fmt::Write;
+        let _ = write!(text, ", start blocked for {start_blocked}");
     }
     text
 }
