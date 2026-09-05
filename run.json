@@ -565,7 +565,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-05T16:33:15.058411391Z",
-  "last_event_at": "2026-09-05T16:34:05.119234188Z",
+  "last_event_at": "2026-09-05T17:20:09.754894623Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -613,9 +613,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 51,
       "checkpoint": {
-        "timestamp": "2026-09-05T16:34:05.284329837Z",
+        "timestamp": "2026-09-05T16:34:09.700699243Z",
         "current_node": "survey",
         "completed_nodes": [
           "start",
@@ -623,38 +623,38 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.node_visit_count": 1,
-          "graph.cycle_counter_reset_key": "pass_id",
-          "internal.thread_id": "start",
-          "current_node": "survey",
-          "preferred_label": "Work",
-          "internal.run_id": "01M1S6MSV4GBEMPMVV6AXWWE8H",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.fidelity": "compact",
+          "failure_signature": "",
           "failure_class": "",
-          "seed_cycles": {
-            "start": 1,
-            "survey": 1
-          },
           "graph.inspects": "develop,merge-upstream,revisor",
-          "outcome": "succeeded",
+          "internal.thread_id": "start",
+          "internal.node_visit_count": 1,
+          "last_response": "```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Work\",\n  \"journal\": \"Upstream count origin/denkhaus..upstream/main = 4 (< MIN 5). Newest upstream subject: 'Merge pull request #842 from ",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "last_stage": "survey",
+          "internal.seed_cycle_anchor": "",
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 504,
             "preview": "```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Work\",\n  \"journal\": \"Upstream count origin/denkhaus..upstream/main = 4 (< MIN 5). Newest upstream subject: 'Merge pull request #842 from "
           },
-          "last_stage": "survey",
-          "thread.start.current_node": "survey",
-          "internal.retry_count.survey": 0,
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "internal.seed_cycle_anchor": "",
+          "graph.cycle_counter_reset_key": "pass_id",
           "graph.max_node_visits": "12",
-          "last_response": "```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Work\",\n  \"journal\": \"Upstream count origin/denkhaus..upstream/main = 4 (< MIN 5). Newest upstream subject: 'Merge pull request #842 from ",
-          "failure_signature": "",
+          "internal.work_dir": "/workspace/fabro",
           "graph.preamble_budget_kb": "12",
+          "internal.retry_count.survey": 0,
+          "thread.start.current_node": "survey",
+          "current_node": "survey",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1
+          },
           "internal.retry_count.start": 0,
-          "graph.rankdir": "LR"
+          "internal.run_id": "01M1S6MSV4GBEMPMVV6AXWWE8H",
+          "internal.fidelity": "compact",
+          "graph.rankdir": "LR",
+          "outcome": "succeeded",
+          "preferred_label": "Work"
         },
         "node_outcomes": {
           "start": {
@@ -705,8 +705,198 @@
           }
         },
         "next_node_id": "develop",
+        "git_commit_sha": "0c15bf21d2306f356c03fddddc83427c6ac6cd72",
         "node_visits": {
           "survey": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-05T17:20:10.112395311Z",
+        "current_node": "develop",
+        "completed_nodes": [
+          "start",
+          "survey",
+          "develop"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "current_node": "develop",
+          "preferred_label": "Develop integrated",
+          "internal.run_id": "01M1S6MSV4GBEMPMVV6AXWWE8H",
+          "thread.survey.current_node": "develop",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "outcome": "succeeded",
+          "response.develop": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.develop",
+            "chars": 1660,
+            "preview": "Child run `01M1S6VRWQMD56M1X8HWAXDSNN` succeeded (seed `fabro-78ac` implemented, gated green, review approved, closed; PR #28 opened with auto-merge). I polled the `denkhaus` branch for tree equality "
+          },
+          "last_stage": "develop",
+          "thread.start.current_node": "survey",
+          "merge_status": "pending: PR #28 still open at 20-min auto-merge cap; denkhaus tip 7234a7f41 lacks the child tree; run branch fabro/run/01M1S6VRWQMD56M1X8HWAXDSNN pushed at a98db89f — merge leg must re-verify tree equality before the revisor leg",
+          "last_response": "Child run `01M1S6VRWQMD56M1X8HWAXDSNN` succeeded (seed `fabro-78ac` implemented, gated green, review approved, closed; PR #28 opened with auto-merge). I polled the `denkhaus` branch for tree equality ",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "Develop-leg create call: the fabro_run_create tool schema rejects the documented workflow_source-only object form; it only validates when 'workflow' is also present alongside 'workflow_source' (the server prefers the source form). Suggest adding workflow_source to the tool's JSON schema so callers don't burn retries discovering the accepted shape (run 01M1S6MSV4GBEMPMVV6AXWWE8H, 5 failed create attempts)."
+              }
+            ],
+            "observations": [
+              "Child sat in pending/approval_required for ~2.5 min despite auto_approve=true before a human/auto approval landed at 16:38:58 — matches seed fabro-54f0's zombie-pending concern; the one-child hard rule was honored (no second child created).",
+              "Child PR auto-merge did not complete within the 20-minute poll cap (PR #28 open at final check); integration is pending, not failed — the merge leg should pick it up."
+            ]
+          },
+          "failure_signature": "",
+          "graph.rankdir": "LR",
+          "pr_url": "https://github.com/denkhaus/fabro/pull/28",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "seed_id": "fabro-78ac",
+          "internal.thread_id": "survey",
+          "internal.work_dir": "/workspace/fabro",
+          "failure_class": "",
+          "internal.fidelity": "compact",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "develop": 1
+          },
+          "response.survey": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.survey",
+            "chars": 504,
+            "preview": "```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Work\",\n  \"journal\": \"Upstream count origin/denkhaus..upstream/main = 4 (< MIN 5). Newest upstream subject: 'Merge pull request #842 from "
+          },
+          "child_run_id": "01M1S6VRWQMD56M1X8HWAXDSNN",
+          "internal.retry_count.survey": 0,
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "internal.seed_cycle_anchor": "",
+          "graph.max_node_visits": "12",
+          "internal.retry_count.develop": 0,
+          "graph.preamble_budget_kb": "12",
+          "internal.retry_count.start": 0,
+          "internal.node_visit_count": 1
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "survey": {
+            "status": "succeeded",
+            "preferred_label": "Work",
+            "context_updates": {
+              "last_response": "```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Work\",\n  \"journal\": \"Upstream count origin/denkhaus..upstream/main = 4 (< MIN 5). Newest upstream subject: 'Merge pull request #842 from ",
+              "last_stage": "survey",
+              "response.survey": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.survey",
+                "chars": 504,
+                "preview": "```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Work\",\n  \"journal\": \"Upstream count origin/denkhaus..upstream/main = 4 (< MIN 5). Newest upstream subject: 'Merge pull request #842 from "
+              }
+            },
+            "notes": "Stage completed: survey",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 21109,
+                    "output_tokens": 213,
+                    "reasoning_tokens": 18,
+                    "cache_read_tokens": 30272,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 38436
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 13246,
+              "tool_time_ms": 28236,
+              "active_time_ms": 41482
+            }
+          },
+          "develop": {
+            "status": "succeeded",
+            "preferred_label": "Develop integrated",
+            "context_updates": {
+              "pr_url": "https://github.com/denkhaus/fabro/pull/28",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Develop-leg create call: the fabro_run_create tool schema rejects the documented workflow_source-only object form; it only validates when 'workflow' is also present alongside 'workflow_source' (the server prefers the source form). Suggest adding workflow_source to the tool's JSON schema so callers don't burn retries discovering the accepted shape (run 01M1S6MSV4GBEMPMVV6AXWWE8H, 5 failed create attempts)."
+                  }
+                ],
+                "observations": [
+                  "Child sat in pending/approval_required for ~2.5 min despite auto_approve=true before a human/auto approval landed at 16:38:58 — matches seed fabro-54f0's zombie-pending concern; the one-child hard rule was honored (no second child created).",
+                  "Child PR auto-merge did not complete within the 20-minute poll cap (PR #28 open at final check); integration is pending, not failed — the merge leg should pick it up."
+                ]
+              },
+              "response.develop": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.develop",
+                "chars": 1660,
+                "preview": "Child run `01M1S6VRWQMD56M1X8HWAXDSNN` succeeded (seed `fabro-78ac` implemented, gated green, review approved, closed; PR #28 opened with auto-merge). I polled the `denkhaus` branch for tree equality "
+              },
+              "child_run_id": "01M1S6VRWQMD56M1X8HWAXDSNN",
+              "last_response": "Child run `01M1S6VRWQMD56M1X8HWAXDSNN` succeeded (seed `fabro-78ac` implemented, gated green, review approved, closed; PR #28 opened with auto-merge). I polled the `denkhaus` branch for tree equality ",
+              "seed_id": "fabro-78ac",
+              "merge_status": "pending: PR #28 still open at 20-min auto-merge cap; denkhaus tip 7234a7f41 lacks the child tree; run branch fabro/run/01M1S6VRWQMD56M1X8HWAXDSNN pushed at a98db89f — merge leg must re-verify tree equality before the revisor leg",
+              "last_stage": "develop"
+            },
+            "notes": "Stage completed: develop",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 380665,
+                    "output_tokens": 3106,
+                    "reasoning_tokens": 2831,
+                    "cache_read_tokens": 4963584,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 1849518
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 308407,
+              "tool_time_ms": 2221561,
+              "active_time_ms": 2529968
+            }
+          }
+        },
+        "next_node_id": "revise",
+        "node_visits": {
+          "survey": 1,
+          "develop": 1,
           "start": 1
         }
       },
@@ -740,6 +930,270 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "develop@1": {
+      "first_event_seq": 54,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: develop",
+        "failure_reason": null,
+        "timestamp": "2026-09-05T17:20:09.754894623Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-05T16:34:09.719888392Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 2530784,
+        "inference_time_ms": 308407,
+        "tool_time_ms": 2221561,
+        "active_time_ms": 2529968
+      },
+      "usage": {
+        "input_tokens": 380665,
+        "output_tokens": 3106,
+        "total_tokens": 5350186,
+        "reasoning_tokens": 2831,
+        "cache_read_tokens": 4963584,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 1849518
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_create",
+          "description": "Create one or more Fabro workflow runs, optionally under a parent run, starting them by default.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "fabro_run_get",
+          "description": "Read-only inspection of a Fabro run: returns its summary, projection, and pending questions without mutating state.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 379284,
+        "usage_percent": 36.17134094238281,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-05T17:20:09.689095796Z",
+        "event_seq": 325,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1080,
+            "usage_percent": 0.102996826171875
+          },
+          {
+            "category": "tools",
+            "tokens": 2391,
+            "usage_percent": 0.22802352905273438
+          },
+          {
+            "category": "skills",
+            "tokens": 214,
+            "usage_percent": 0.02040863037109375
+          },
+          {
+            "category": "memory",
+            "tokens": 5455,
+            "usage_percent": 0.5202293395996094
+          },
+          {
+            "category": "conversation",
+            "tokens": 370137,
+            "usage_percent": 35.299015045166016
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "survey@1": {
       "first_event_seq": 21,
       "prompt": null,
