@@ -19,7 +19,7 @@ use fabro_types::{
     RunStatus, RunTimestamps, SandboxProviderKind, StageCompletion, StageHandler, StageId,
     StageInferenceProjection, StageModelUsage, StageOutcome, StageProjection, StageState,
     StartRecord, SubAgentProjection, SubAgentStatus, TodoListKind, TodoListProjection,
-    TodoProjection, WorkflowRef, first_event_seq, timing,
+    TodoProjection, WorkflowRef, billing_rollup, first_event_seq, timing,
 };
 use fabro_util::error::render_compact_with_causes;
 
@@ -247,7 +247,7 @@ impl RunProjectionReducer for RunProjection {
                     ts,
                 )?;
                 self.pending_control = None;
-                self.conclusion = Some(conclusion_from_completed(props, ts)?);
+                self.conclusion = Some(conclusion_from_completed(self, props, ts)?);
                 self.pending_interviews.clear();
             }
             EventBody::RunFailed(props) => {
@@ -258,7 +258,7 @@ impl RunProjectionReducer for RunProjection {
                     ts,
                 )?;
                 self.pending_control = None;
-                self.conclusion = Some(conclusion_from_failed(props, ts));
+                self.conclusion = Some(conclusion_from_failed(self, props, ts));
                 self.pending_interviews.clear();
                 finalize_unfinished_stages_after_run_failed(self, props, ts);
             }
@@ -1563,9 +1563,12 @@ fn diff_from_checkpoint_props(props: &CheckpointCompletedProps) -> RunDiff {
 }
 
 fn conclusion_from_completed(
+    projection: &RunProjection,
     props: &RunCompletedProps,
     timestamp: DateTime<Utc>,
 ) -> Result<Conclusion> {
+    let (stages, total_retries) = billing_rollup::billing_rollup_from_projection(projection, None)
+        .conclusion_stages(projection);
     Ok(Conclusion {
         timestamp,
         status: StageOutcome::from_str(&props.status)
@@ -1573,9 +1576,9 @@ fn conclusion_from_completed(
         timing: props.timing,
         failure: None,
         final_git_commit_sha: props.final_git_commit_sha.clone(),
-        stages: Vec::new(),
+        stages,
         billing: props.billing.clone(),
-        total_retries: 0,
+        total_retries,
         diff: RunDiff {
             patch:   props.final_patch.clone(),
             summary: props.diff_summary,
@@ -1584,7 +1587,13 @@ fn conclusion_from_completed(
     })
 }
 
-fn conclusion_from_failed(props: &RunFailedProps, timestamp: DateTime<Utc>) -> Conclusion {
+fn conclusion_from_failed(
+    projection: &RunProjection,
+    props: &RunFailedProps,
+    timestamp: DateTime<Utc>,
+) -> Conclusion {
+    let (stages, total_retries) = billing_rollup::billing_rollup_from_projection(projection, None)
+        .conclusion_stages(projection);
     Conclusion {
         timestamp,
         status: StageOutcome::Failed {
@@ -1593,9 +1602,9 @@ fn conclusion_from_failed(props: &RunFailedProps, timestamp: DateTime<Utc>) -> C
         timing: props.timing,
         failure: Some(props.failure.clone()),
         final_git_commit_sha: props.final_git_commit_sha.clone(),
-        stages: Vec::new(),
+        stages,
         billing: props.billing.clone(),
-        total_retries: 0,
+        total_retries,
         diff: RunDiff {
             patch:   props.final_patch.clone(),
             summary: props.diff_summary,
@@ -4428,6 +4437,170 @@ mod tests {
             value["spec"]["definition_blob"],
             events[1].event.properties().unwrap()["definition_blob"]
         );
+    }
+
+    #[test]
+    fn terminal_conclusion_replays_stage_summaries_without_metadata() {
+        for terminal_name in ["run.completed", "run.failed"] {
+            let mut settings = WorkflowSettings::default();
+            settings.run.meta_branch.enabled = false;
+            let mut events = vec![
+                test_raw_event(
+                    1,
+                    "run.created",
+                    &json!({
+                        "settings": settings,
+                        "graph": { "name": "test", "nodes": {}, "edges": [], "attrs": {} },
+                        "labels": {},
+                        "provenance": test_support::test_run_provenance()
+                    }),
+                    None,
+                ),
+                test_raw_event(
+                    2,
+                    "run.runnable",
+                    &json!({ "source": "start_requested" }),
+                    None,
+                ),
+                test_raw_event(3, "run.starting", &json!({}), None),
+                test_raw_event(4, "run.running", &json!({}), None),
+            ];
+            // Two executions of zebra share one conclusion row. First-event
+            // order differs from checkpoint order, and skipped has no completion.
+            for (seq, node, visit, millis, tokens) in [
+                (5, "zebra", 1, 1200, 100),
+                (6, "apple", 1, 300, 20),
+                (7, "zebra", 2, 800, 200),
+            ] {
+                let mut props = completed_props(millis, StageOutcome::Succeeded);
+                props.billing = Some(test_usage("test-model", tokens, 10));
+                events.push(test_stage_event(
+                    seq,
+                    EventBody::StageCompleted(props),
+                    StageId::new(node, visit),
+                ));
+            }
+            events.push(test_raw_event(8, "checkpoint.completed", &json!({
+                "status": "succeeded",
+                "current_node": "zebra",
+                "completed_nodes": ["apple", "zebra", "zebra"],
+                "node_retries": { "zebra": 3, "apple": 1 },
+                "node_outcomes": {
+                    "apple": Outcome::<Option<BilledModelUsage>>::success(),
+                    "zebra": Outcome::<Option<BilledModelUsage>>::success(),
+                    "skipped": Outcome::<Option<BilledModelUsage>>::skipped("condition was false")
+                },
+                "context_values": {},
+                "node_visits": { "zebra": 2, "apple": 1, "skipped": 1 },
+                "git_commit_sha": "checkpoint-sha"
+            }), Some("zebra")));
+            let terminal_billing = usage_counts(&test_usage("test-model", 320, 30));
+            let terminal_props = if terminal_name == "run.completed" {
+                json!({
+                    "status": "succeeded", "reason": "completed",
+                    "timing": fabro_types::RunTiming::wall_only(9000),
+                    "artifact_count": 0, "billing": terminal_billing,
+                    "final_git_commit_sha": "final-sha", "final_patch": "final patch"
+                })
+            } else {
+                let mut props = run_failed_props(FailureReason::WorkflowError);
+                props.timing = fabro_types::RunTiming::wall_only(9000);
+                props.billing = Some(terminal_billing.clone());
+                props.final_git_commit_sha = Some("final-sha".to_string());
+                props.final_patch = Some("final patch".to_string());
+                serde_json::to_value(props).unwrap()
+            };
+            events.push(test_raw_event(9, terminal_name, &terminal_props, None));
+            for event in &mut events {
+                event.event.ts = test_dt("2026-04-07T12:00:00Z")
+                    + chrono::Duration::seconds(i64::from(event.seq));
+            }
+
+            // Cross the persisted wire boundary before both incremental and full replay.
+            let events: Vec<EventEnvelope> =
+                serde_json::from_slice(&serde_json::to_vec(&events).unwrap()).unwrap();
+            let mut live = RunProjection::apply_events(&events[..1]).unwrap();
+            for event in &events[1..] {
+                live.apply_event(event).unwrap();
+            }
+            let replayed = RunProjection::apply_events(&events).unwrap();
+            let conclusion = replayed.conclusion.as_ref().unwrap();
+            assert_eq!(
+                serde_json::to_value(&live.conclusion).unwrap(),
+                serde_json::to_value(conclusion).unwrap(),
+            );
+            assert_eq!(conclusion.timestamp, events.last().unwrap().event.ts);
+            assert_eq!(conclusion.timing.wall_time_ms, 9000);
+            assert_eq!(conclusion.billing, Some(terminal_billing));
+            assert_eq!(
+                conclusion.final_git_commit_sha.as_deref(),
+                Some("final-sha")
+            );
+            assert_eq!(conclusion.diff.patch.as_deref(), Some("final patch"));
+            assert_eq!(conclusion.failure.is_some(), terminal_name == "run.failed");
+            insta::allow_duplicates! {
+                insta::assert_snapshot!(serde_json::to_string_pretty(&json!({
+                    "stages": conclusion.stages,
+                    "total_retries": conclusion.total_retries,
+                })).unwrap(), @r###"
+                {
+                  "stages": [
+                    {
+                      "stage_id": "zebra",
+                      "stage_label": "zebra",
+                      "timing": {
+                        "wall_time_ms": 2000,
+                        "inference_time_ms": 0,
+                        "tool_time_ms": 0,
+                        "active_time_ms": 0
+                      },
+                      "billing_usd_micros": 320,
+                      "retries": 2
+                    },
+                    {
+                      "stage_id": "apple",
+                      "stage_label": "apple",
+                      "timing": {
+                        "wall_time_ms": 300,
+                        "inference_time_ms": 0,
+                        "tool_time_ms": 0,
+                        "active_time_ms": 0
+                      },
+                      "billing_usd_micros": 30,
+                      "retries": 0
+                    },
+                    {
+                      "stage_id": "skipped",
+                      "stage_label": "skipped",
+                      "timing": {
+                        "wall_time_ms": 0,
+                        "inference_time_ms": 0,
+                        "tool_time_ms": 0,
+                        "active_time_ms": 0
+                      },
+                      "retries": 0
+                    }
+                  ],
+                  "total_retries": 2
+                }
+                "###);
+            }
+        }
+    }
+
+    #[test]
+    fn terminal_conclusion_without_checkpoint_has_no_stage_summaries() {
+        let mut state = running_projection();
+        let terminal = test_event(
+            4,
+            EventBody::RunFailed(run_failed_props(FailureReason::WorkflowError)),
+            None,
+        );
+        state.apply_event(&terminal).unwrap();
+        let conclusion = state.conclusion.unwrap();
+        assert!(conclusion.stages.is_empty());
+        assert_eq!(conclusion.total_retries, 0);
+        assert_eq!(conclusion.timestamp, terminal.event.ts);
     }
 
     #[test]
