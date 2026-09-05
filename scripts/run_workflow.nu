@@ -56,10 +56,16 @@ def main [
     --branch (-b): string         # world/base branch; default: current
     --adopt (-a): string          # adopt an existing run id (skip create/start)
     --timeout-min (-t): int = 90  # minutes to wait for the run
-    --environment (-e): string = 'mise'  # server-managed environment (fabro-03ef:
-                                         # v0.345 intent runs drop project-level
-                                         # [run] settings; the intent environment
-                                         # override outranks the workflow.toml pin)
+    --environment (-e): string = 'toolchain'  # server-managed environment
+                                         # (fabro-03ef: v0.345 intent runs drop
+                                         # project-level [run] settings; the
+                                         # intent environment override outranks
+                                         # the workflow.toml pin). Default is
+                                         # toolchain on the merged world: the
+                                         # develop tester needs just/nu/sd,
+                                         # which fabro-runner:mise LACKS
+                                         # (cycle 1, 2026-09-05: 'just: command
+                                         # not found' 3x deterministic).
 ]: nothing -> nothing {
     let fabro_bin = ($env.FABRO_BIN? | default $"($env.HOME)/.fabro/bin/fabro")
     let server = ($env.FABRO_SERVER? | default $SERVER_DEFAULT)
@@ -112,8 +118,14 @@ def main [
     let waited = (do {
         ^$fabro_bin wait $run_id --json --timeout $timeout_sec --server $server
     } | complete)
-    ok $waited 'fabro wait'
-    let info = ($waited.stdout | from json)
+    # fabro wait may exit non-zero when the RUN failed while still
+    # emitting the terminal status JSON — that is the verdict we want
+    # below, not an empty wrapper alarm (cycle 1, 2026-09-05). Only a
+    # result without parseable JSON is a tool failure.
+    let info = (try { $waited.stdout | from json } catch { null })
+    if $info == null {
+        ok $waited 'fabro wait'
+    }
 
     let status = ($info | get -o status | default '')
     let reason = ($info | get -o reason | default '')
