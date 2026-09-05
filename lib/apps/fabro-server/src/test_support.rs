@@ -33,6 +33,7 @@ use tokio::runtime::Builder as TokioRuntimeBuilder;
 use tokio_util::sync::CancellationToken;
 use ulid::Ulid;
 
+use crate::auth;
 pub use crate::automation_materializer::TestAutomationRunMaterializer;
 use crate::interp::process_env_var;
 use crate::jwt_auth::{AuthMode, ConfiguredAuth};
@@ -45,7 +46,6 @@ use crate::server::{
 use crate::server_secrets::ServerSecrets;
 #[cfg(test)]
 use crate::worker_runtime::WorkerRuntime;
-use crate::{auth, migrations};
 
 pub const TEST_DEV_TOKEN: &str =
     "fabro_dev_abababababababababababababababababababababababababababababababab";
@@ -600,7 +600,6 @@ fn test_db_pool(
     default_environment_provider: Option<EnvironmentProvider>,
 ) -> anyhow::Result<DbPool> {
     std::thread::spawn(move || {
-        migrations::migrate_legacy_vault_file(&vault_path)?;
         let runtime = TokioRuntimeBuilder::new_current_thread()
             .enable_all()
             .build()?;
