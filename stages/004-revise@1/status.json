@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "output schema validation failed after 2 repair attempt(s)",
+  "timestamp": "2026-09-05T17:31:52.195927708Z"
+}
