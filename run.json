@@ -658,7 +658,7 @@
     "denial_reason": null
   },
   "status_updated_at": "2026-09-05T16:39:08.413519297Z",
-  "last_event_at": "2026-09-05T16:48:39.721855737Z",
+  "last_event_at": "2026-09-05T16:48:49.172029078Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -839,9 +839,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 257,
       "checkpoint": {
-        "timestamp": "2026-09-05T16:48:39.943731611Z",
+        "timestamp": "2026-09-05T16:48:44.091430963Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -850,7 +850,205 @@
         ],
         "node_retries": {},
         "context_values": {
+          "internal.fidelity": "summary:high",
+          "last_response": "Implementation complete. Summary of changes in `lib/components/fabro-tool/src/create.rs`:\n\n- `CreatedRunResult` gained an additive `start_error: Option<String>` field (JsonSchema-derived, serialized t",
+          "internal.node_visit_count": 1,
+          "graph.max_node_visits": "40",
+          "internal.run_id": "01M1S6VRWQMD56M1X8HWAXDSNN",
+          "graph.preamble_budget_kb": "24",
+          "graph.rankdir": "LR",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 4280,
+            "preview": "Implementation complete. Summary of changes in `lib/components/fabro-tool/src/create.rs`:\n\n- `CreatedRunResult` gained an additive `start_error: Option<String>` field (JsonSchema-derived, serialized t"
+          },
+          "internal.retry_count.implementer": 0,
+          "current_seed_brief": "In `lib/components/fabro-tool/src/create.rs`, `create_runs_with_options` (lines 428-475) does create-then-start with `?`-propagation: when `create_run_from_spec` succeeds but `start_run` fails (e.g. approval_required), the whole tool call errors and the created run id is discarded, so calling agents retry and create duplicate children (observed run 01M1S5D9XC). Fix so partial success is reported. Acceptance criteria: (1) start failure after successful create returns Ok with the created run_id present in the result, never a bare Err; (2) the start failure reason is machine-readable in the structured result — prefer an additive field on `CreatedRunResult` (e.g. `start_error: Option<String>` carrying 'start blocked: approval_required') over overloading the existing `status` string, since `CreatedRunResult` derives JsonSchema and is serialized to the LLM; (3) in multi-run batches, results for earlier successfully created runs are preserved when a later sibling's start fails (loop does not discard accumulated results); (4) the retrieve_run failure on the start=false path gets the same partial-success reporting (run id + error note), same rationale; (5) genuine create/parent-resolution failures keep returning Err — nothing was created, that boundary is deliberate and out of scope; (6) `create_runs_text` summary reflects blocked starts (e.g. adds 'start blocked for N') so the text summary never implies a clean start; (7) tests in the same file's `mod tests` (MockCreateBackend pattern, see existing `create_runs_defaults_to_start_request_and_reports_pending_child_status`): a backend whose start_run errors must yield an Ok result with run_id + failure reason, started_run_ids still recorded, correct text summary; plus the start=false retrieve-failure case; existing tests keep passing; (8) gate with `cargo nextest run -p fabro-tool`, `cargo build --workspace`, and pinned-nightly fmt/clippy. Ambiguity resolved: the seed's example 'created <id>, start blocked: approval_required' conflates summary text with structure — I chose structured-result-first with the text summary carrying counts; also the fix must not assume the run is 'pending' after a failed start (state is unknown unless a follow-up retrieve succeeds), so report the error verbatim rather than a guessed status. No review feedback yet (first pass, cycle 1).",
+          "internal.seed_cycle_anchor": "fabro-78ac",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "thread.start.current_node": "planner",
+          "current_seed_id": "fabro-78ac",
           "failure_signature": "",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 4062,
+            "preview": "Claimed `fabro-78ac` (High bug, basis verified live in the worktree: create-then-start `?`-propagation at `lib/components/fabro-tool/src/create.rs:453-464` discards the created `run_id` when `start_ru"
+          },
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.retry_count.planner": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "current_seed_title": "engine: fabro_run_create swallows the created run id when start fails (partial success reported as total failure)",
+          "lesson_capture": "mx-3cb781",
+          "preferred_label": "Implemented",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "internal.thread_id": "planner",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Multi-line perl -0pi field insertion into four MockCreateBackend constructors in `lib/components/fabro-tool/src/create.rs` mangled two lines (captured group swallowed `Mutex::new(Vec::new())`); caught immediately by inspecting rg output and fixed with a second targeted pass, then verified by compiling tests. Risk class: regex transforms over constructor literals silently drop adjacent tokens — always re-grep the transformed lines before building."
+            ]
+          },
+          "failure_class": "",
+          "implementation_summary": "Modified `lib/components/fabro-tool/src/create.rs` only: added additive `start_error: Option<String>` to `CreatedRunResult`, converted start/retrieve follow-up failures in `create_runs_with_options` into partial-success results (run_id preserved, verbatim error, status \"unknown\"), extended `create_runs_text` with 'start blocked for N', added failure injection to `MockCreateBackend` and three new tests; all 17 create tests pass. Lesson captured as mx-3cb781. Per-criterion report: (1) PASS Ok-with-run_id on start failure — create_runs_reports_partial_success_when_start_fails; (2) PASS additive start_error field, not status overload — CreatedRunResult at create.rs:411; (3) PASS batch accumulation — create_runs_preserves_earlier_results_when_later_sibling_start_fails; (4) PASS retrieve-failure partial success — create_runs_reports_partial_success_when_retrieve_fails; (5) PASS create/parent failures still Err — unchanged ?-propagation in create_runs_with_options/resolve_parent_run_id; (6) PASS text summary adds 'start blocked for N' — create_runs_text, asserted in both failure tests; (7) PASS new tests + existing 17/17 green via cargo nextest run -p fabro-tool create; (8) DEFERRED to tester per implementer contract (no gate run), focused test green and no external constructors of CreatedRunResult.",
+          "current_node": "implementer",
+          "internal.retry_count.start": 0,
+          "last_stage": "implementer",
+          "outcome": "succeeded",
+          "thread.planner.current_node": "implementer"
+        },
+        "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "Modified `lib/components/fabro-tool/src/create.rs` only: added additive `start_error: Option<String>` to `CreatedRunResult`, converted start/retrieve follow-up failures in `create_runs_with_options` into partial-success results (run_id preserved, verbatim error, status \"unknown\"), extended `create_runs_text` with 'start blocked for N', added failure injection to `MockCreateBackend` and three new tests; all 17 create tests pass. Lesson captured as mx-3cb781. Per-criterion report: (1) PASS Ok-with-run_id on start failure — create_runs_reports_partial_success_when_start_fails; (2) PASS additive start_error field, not status overload — CreatedRunResult at create.rs:411; (3) PASS batch accumulation — create_runs_preserves_earlier_results_when_later_sibling_start_fails; (4) PASS retrieve-failure partial success — create_runs_reports_partial_success_when_retrieve_fails; (5) PASS create/parent failures still Err — unchanged ?-propagation in create_runs_with_options/resolve_parent_run_id; (6) PASS text summary adds 'start blocked for N' — create_runs_text, asserted in both failure tests; (7) PASS new tests + existing 17/17 green via cargo nextest run -p fabro-tool create; (8) DEFERRED to tester per implementer contract (no gate run), focused test green and no external constructors of CreatedRunResult.",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 4280,
+                "preview": "Implementation complete. Summary of changes in `lib/components/fabro-tool/src/create.rs`:\n\n- `CreatedRunResult` gained an additive `start_error: Option<String>` field (JsonSchema-derived, serialized t"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Multi-line perl -0pi field insertion into four MockCreateBackend constructors in `lib/components/fabro-tool/src/create.rs` mangled two lines (captured group swallowed `Mutex::new(Vec::new())`); caught immediately by inspecting rg output and fixed with a second targeted pass, then verified by compiling tests. Risk class: regex transforms over constructor literals silently drop adjacent tokens — always re-grep the transformed lines before building."
+                ]
+              },
+              "lesson_capture": "mx-3cb781",
+              "last_response": "Implementation complete. Summary of changes in `lib/components/fabro-tool/src/create.rs`:\n\n- `CreatedRunResult` gained an additive `start_error: Option<String>` field (JsonSchema-derived, serialized t",
+              "last_stage": "implementer"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 32755,
+                    "output_tokens": 5267,
+                    "reasoning_tokens": 1679,
+                    "cache_read_tokens": 561280,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 222328
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/components/fabro-tool/src/create.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 159683,
+              "tool_time_ms": 216184,
+              "active_time_ms": 375867
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_stage": "planner",
+              "current_seed_brief": "In `lib/components/fabro-tool/src/create.rs`, `create_runs_with_options` (lines 428-475) does create-then-start with `?`-propagation: when `create_run_from_spec` succeeds but `start_run` fails (e.g. approval_required), the whole tool call errors and the created run id is discarded, so calling agents retry and create duplicate children (observed run 01M1S5D9XC). Fix so partial success is reported. Acceptance criteria: (1) start failure after successful create returns Ok with the created run_id present in the result, never a bare Err; (2) the start failure reason is machine-readable in the structured result — prefer an additive field on `CreatedRunResult` (e.g. `start_error: Option<String>` carrying 'start blocked: approval_required') over overloading the existing `status` string, since `CreatedRunResult` derives JsonSchema and is serialized to the LLM; (3) in multi-run batches, results for earlier successfully created runs are preserved when a later sibling's start fails (loop does not discard accumulated results); (4) the retrieve_run failure on the start=false path gets the same partial-success reporting (run id + error note), same rationale; (5) genuine create/parent-resolution failures keep returning Err — nothing was created, that boundary is deliberate and out of scope; (6) `create_runs_text` summary reflects blocked starts (e.g. adds 'start blocked for N') so the text summary never implies a clean start; (7) tests in the same file's `mod tests` (MockCreateBackend pattern, see existing `create_runs_defaults_to_start_request_and_reports_pending_child_status`): a backend whose start_run errors must yield an Ok result with run_id + failure reason, started_run_ids still recorded, correct text summary; plus the start=false retrieve-failure case; existing tests keep passing; (8) gate with `cargo nextest run -p fabro-tool`, `cargo build --workspace`, and pinned-nightly fmt/clippy. Ambiguity resolved: the seed's example 'created <id>, start blocked: approval_required' conflates summary text with structure — I chose structured-result-first with the text summary carrying counts; also the fix must not assume the run is 'pending' after a failed start (state is unknown unless a follow-up retrieve succeeds), so report the error verbatim rather than a guessed status. No review feedback yet (first pass, cycle 1).",
+              "current_seed_id": "fabro-78ac",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Run-container mise config is untrusted, so the first `sd ready` call failed with 'Config files in /repos/denkhaus/fabro/.mise.toml are not trusted' and the planner burned a tool call on `mise trust` before any tracker read worked (this run, 01M1S6VRWQMD56M1X8HWAXDSNN). Already tracked as seed fabro-66db 'sandbox: pre-trust the repo mise config in run containers' — the pain recurred here, which strengthens its case."
+                  }
+                ],
+                "observations": [
+                  "Tracker holds 126 ready seeds; `sd ready --limit 200` put fabro-78ac first among High — picked it after verifying its basis is live (create-then-start `?` at lib/components/fabro-tool/src/create.rs:453-464) rather than stale.",
+                  "Resolved a spec ambiguity in the brief: the seed's 'created <id>, start blocked: ...' example reads like summary text but the real fix belongs in the structured CreatedRunResult (additive JsonSchema field preferred); documented that post-failure run state is unknown, so the error must be reported verbatim, not mapped to 'pending'."
+                ]
+              },
+              "current_seed_title": "engine: fabro_run_create swallows the created run id when start fails (partial success reported as total failure)",
+              "last_response": "Claimed `fabro-78ac` (High bug, basis verified live in the worktree: create-then-start `?`-propagation at `lib/components/fabro-tool/src/create.rs:453-464` discards the created `run_id` when `start_ru",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 4062,
+                "preview": "Claimed `fabro-78ac` (High bug, basis verified live in the worktree: create-then-start `?`-propagation at `lib/components/fabro-tool/src/create.rs:453-464` discards the created `run_id` when `start_ru"
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 28033,
+                    "output_tokens": 1700,
+                    "reasoning_tokens": 3635,
+                    "cache_read_tokens": 270080,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 132924
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 134851,
+              "tool_time_ms": 2119,
+              "active_time_ms": 136970
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "9440c9cfa9dd12f94b1b5615af9253709cd39a95",
+        "node_visits": {
+          "implementer": 1,
+          "planner": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1S6VRWQMD56M1X8HWAXDSNN.jsonl b/.fabro/journal/01M1S6VRWQMD56M1X8HWAXDSNN.jsonl\nindex 0c60bee..96e5c4f 100644\n--- a/.fabro/journal/01M1S6VRWQMD56M1X8HWAXDSNN.jsonl\n+++ b/.fabro/journal/01M1S6VRWQMD56M1X8HWAXDSNN.jsonl\n@@ -1 +1,2 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1S6VRWQMD56M1X8HWAXDSNN\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T16:41:42Z\",\"data\":{\"painpoints\":[{\"text\":\"Run-container mise config is untrusted, so the first `sd ready` call failed with 'Config files in /repos/denkhaus/fabro/.mise.toml are not trusted' and the planner burned a tool call on `mise trust` before any tracker read worked (this run, 01M1S6VRWQMD56M1X8HWAXDSNN). Already tracked as seed fabro-66db 'sandbox: pre-trust the repo mise config in run containers' — the pain recurred here, which strengthens its case.\"}],\"observations\":[\"Tracker holds 126 ready seeds; `sd ready --limit 200` put fabro-78ac first among High — picked it after verifying its basis is live (create-then-start `?` at lib/components/fabro-tool/src/create.rs:453-464) rather than stale.\",\"Resolved a spec ambiguity in the brief: the seed's 'created <id>, start blocked: ...' example reads like summary text but the real fix belongs in the structured CreatedRunResult (additive JsonSchema field preferred); documented that post-failure run state is unknown, so the error must be reported verbatim, not mapped to 'pending'.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1S6VRWQMD56M1X8HWAXDSNN\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T16:48:39Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Multi-line perl -0pi field insertion into four MockCreateBackend constructors in `lib/components/fabro-tool/src/create.rs` mangled two lines (captured group swallowed `Mutex::new(Vec::new())`); caught immediately by inspecting rg output and fixed with a second targeted pass, then verified by compiling tests. Risk class: regex transforms over constructor literals silently drop adjacent tokens — always re-grep the transformed lines before building.\"]}}\ndiff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl\nindex 0d277c5..56cddd4 100644\n--- a/.mulch/expertise/engine.jsonl\n+++ b/.mulch/expertise/engine.jsonl\n@@ -18,3 +18,4 @@\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-04T07:24:35.820Z\",\"evidence\":{\"commit\":\"93d52f188cc1d554207ee4b9eb823f1c5e1c2fc3\"},\"description\":\"gate script bug class: nu parse nesting + external spread word-split; exercise all paths locally\",\"resolution\":\"Fixed in c0b22f39d + locally exercised gate paths; guard rule: full local gate run before pushing gate changes\",\"id\":\"mx-4f583e\"}\n {\"type\":\"convention\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-04T07:07:47.749Z\",\"evidence\":{\"commit\":\"7f3dde1988d88d5a0bff32801a92ecf74e9b1cc4\"},\"content\":\"Markdown table cells in agent preambles must be sanitized single-line: newlines -> ' / ', blank/indent runs collapsed, literal '|' escaped as '\\\\|' (see sanitize_table_cell in lib/components/fabro-workflow/src/handler/llm/preamble.rs). Bullet-list renderings (append_filtered_context/append_large_value) intentionally keep multi-line output; only the summary:high '## Current context' table path sanitizes. Never change format_value globally.\",\"id\":\"mx-26cd4f\"}\n {\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-05T16:26:48.235Z\",\"evidence\":{\"commit\":\"74bfb5e153257c0d00e790e2ccd152259f84a465\"},\"name\":\"evidence-nu-diff-walk-included-append\",\"description\":\"evidence.nu diff-walk invariant: a file is appended to 'included' as soon as git diff exits 0 — BEFORE the empty-text check — so files with zero per-seed hunks are silently skipped but never disclosed as cap-omitted. When refactoring or reusing the walk (e.g. loop-diff-section, fabro-4b57), preserve that append placement; hoisting it after the empty check would list every hunk-less file under 'hard cap hit' and change seed-section output (fabro-4b57 verified via scratch-repo scenarios: churn-only emits loop-work diff, mixed stays counts-only).\",\"files\":[\".fabro/workflows/develop/prompts/reviewer.md\",\".fabro/workflows/develop/scripts/evidence.nu\",\".mulch/expertise/engine.jsonl\"],\"id\":\"mx-40abdb\"}\n+{\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-05T16:48:08.570Z\",\"evidence\":{\"commit\":\"feb8add5a9a5696262be85ccb0d2f13b8c039391\"},\"name\":\"partial-success-create-then-start\",\"description\":\"Partial-success reporting for create-then-start tool calls (fabro-78ac, lib/components/fabro-tool/src/create.rs): when an operation creates a durable resource and a follow-up call fails, return Ok with the resource id plus an additive Option<String> error field (start_error) on the structured result instead of ?-propagating — the LLM caller otherwise retries and duplicates the resource. Report the failure verbatim (e.g. 'start blocked: approval_required') and use status 'unknown' rather than guessing 'pending'; keep genuine create/parent-resolution failures as Err since nothing was created. Text summary adds 'start blocked for N' so it never implies a clean start.\",\"files\":[\"lib/components/fabro-tool/src/create.rs\"],\"id\":\"mx-3cb781\"}\ndiff --git a/lib/components/fabro-tool/src/create.rs b/lib/components/fabro-tool/src/create.rs\nindex da683fa..c438a85 100644\n--- a/lib/components/fabro-tool/src/create.rs\n+++ b/lib/components/fabro-tool/src/create.rs\n@@ -402,6 +402,13 @@ pub struct CreatedRunResult {\n     pub workflow:        String,\n     pub start_requested: bool,\n     pub status:          String,\n+    /// Set when the run was created but the follow-up start (or\n+    /// retrieve, for `start = false`) failed. The run id above is\n+    /// still valid: callers should poll or approve it instead of\n+    /// recreating it. Carries the failure verbatim, e.g.\n+    /// `start blocked: approval_required`.\n+    #[serde(skip_serializing_if = \"Option::is_none\")]\n+    pub start_error:     Option<String>,\n }\n \n #[derive(Debug, Clone, Copy, Default)]\n@@ -451,24 +458,35 @@ pub async fn create_runs_with_options(\n             .await\n             .map_err(|err| ToolError::from_anyhow(&err))?;\n         let start_requested = spec.start.unwrap_or(true);\n-        let summary = if start_requested {\n-            backend\n-                .start_run(&run_id, false)\n-                .await\n-                .map_err(|err| ToolError::from_anyhow(&err))?\n+        // Partial success (fabro-78ac): a failed start (or retrieve) must\n+        // not discard the created run id — otherwise callers retry and\n+        // duplicate children. Only create/parent-resolution failures\n+        // above return Err, since nothing was created there.\n+        let (summary, start_error): (Option<fabro_types::Run>, Option<String>) = if start_requested\n+        {\n+            match backend.start_run(&run_id, false).await {\n+                Ok(summary) => (Some(summary), None),\n+                Err(err) => (None, Some(format!(\"start blocked: {err}\"))),\n+            }\n         } else {\n-            backend\n-                .retrieve_run(&run_id)\n-                .await\n-                .map_err(|err| ToolError::from_anyhow(&err))?\n+            match backend.retrieve_run(&run_id).await {\n+                Ok(summary) => (Some(summary), None),\n+                Err(err) => (None, Some(format!(\"retrieve failed: {err}\"))),\n+            }\n         };\n         created.push(CreatedRunResult {\n-            run_id: summary.id.to_string(),\n-            parent_id: summary.parent_id.map(|parent_id| parent_id.to_string()),\n-            children_count: summary.children_count,\n+            run_id: run_id.to_string(),\n+            parent_id: summary\n+                .as_ref()\n+                .and_then(|summary| summary.parent_id.map(|parent_id| parent_id.to_string()))\n+                .or_else(|| parent_id.map(|parent_id| parent_id.to_string())),\n+            children_count: summary.as_ref().map_or(0, |summary| summary.children_count),\n             workflow: spec.workflow,\n             start_requested,\n-            status: summary.lifecycle.status.kind().to_string(),\n+            status: summary\n+                .map(|summary| summary.lifecycle.status.kind().to_string())\n+                .unwrap_or_else(|| \"unknown\".to_string()),\n+            start_error,\n         });\n     }\n     Ok(CreateRunsResult { runs: created })\n@@ -497,10 +515,19 @@ async fn resolve_parent_run_id(\n \n pub fn create_runs_text(result: &CreateRunsResult) -> String {\n     let start_requested = result.runs.iter().filter(|run| run.start_requested).count();\n-    format!(\n+    let start_blocked = result\n+        .runs\n+        .iter()\n+        .filter(|run| run.start_error.is_some())\n+        .count();\n+    let mut text = format!(\n         \"created {} Fabro run(s), start requested for {start_requested}\",\n         result.runs.len()\n-    )\n+    );\n+    if start_blocked > 0 {\n+        text.push_str(&format!(\", start blocked for {start_blocked}\"));\n+    }\n+    text\n }\n \n #[cfg(test)]\n@@ -709,6 +736,8 @@ mod tests {\n             created_parent_ids: Mutex::new(Vec::new()),\n             resolved_selectors: Mutex::new(Vec::new()),\n             started_run_ids: Mutex::new(Vec::new()),\n+            start_error:      None,\n+            retrieve_error: None,\n         });\n         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {\n             runs: vec![\n@@ -760,6 +789,8 @@ mod tests {\n             created_parent_ids: Mutex::new(Vec::new()),\n             resolved_selectors: Mutex::new(Vec::new()),\n             started_run_ids: Mutex::new(Vec::new()),\n+            start_error:      None,\n+            retrieve_error: None,\n         });\n         let runs: Vec<CreateRunSpecInput> = (0..2)\n             .map(|_| {\n@@ -810,6 +841,8 @@ mod tests {\n             created_parent_ids: Mutex::new(Vec::new()),\n             resolved_selectors: Mutex::new(Vec::new()),\n             started_run_ids: Mutex::new(Vec::new()),\n+            start_error:      None,\n+            retrieve_error: None,\n         });\n         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {\n             runs: vec![\n@@ -865,6 +898,8 @@ mod tests {\n             created_parent_ids: Mutex::new(Vec::new()),\n             resolved_selectors: Mutex::new(Vec::new()),\n             started_run_ids: Mutex::new(Vec::new()),\n+            start_error:      None,\n+            retrieve_error: None,\n         });\n         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {\n             runs: vec![\n@@ -905,6 +940,144 @@ mod tests {\n         );\n     }\n \n+    fn create_spec_input(start: Option<bool>) -> CreateRunSpecInput {\n+        CreateRunSpec {\n+            workflow_source:  None,\n+            workflow:         \"simple.fabro\".to_string(),\n+            cwd:              None,\n+            parent_id:        None,\n+            goal:             None,\n+            goal_file:        None,\n+            inputs:           HashMap::new(),\n+            labels:           HashMap::new(),\n+            dry_run:          None,\n+            auto_approve:     None,\n+            model:            None,\n+            provider:         None,\n+            environment:      None,\n+            preserve_sandbox: None,\n+            start,\n+        }\n+        .into()\n+    }\n+\n+    #[tokio::test]\n+    async fn create_runs_reports_partial_success_when_start_fails() {\n+        let temp = tempfile::tempdir().expect(\"tempdir should be created\");\n+        let settings = temp.path().join(\"settings.toml\");\n+        let child_id = run_id(\"01KRBZW5C00000000000000001\");\n+        let parent_id = run_id(\"01KRBZW4DW0000000000000002\");\n+        let backend = Arc::new(MockCreateBackend {\n+            child_id,\n+            parent_id,\n+            created_parent_ids: Mutex::new(Vec::new()),\n+            resolved_selectors: Mutex::new(Vec::new()),\n+            started_run_ids: Mutex::new(Vec::new()),\n+            start_error: Some(\"approval_required (409)\".to_string()),\n+            retrieve_error: None,\n+        });\n+        let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {\n+            runs: vec![create_spec_input(None)],\n+        })\n+        .expect(\"create params should validate\");\n+\n+        let result = create_runs(backend.clone(), temp.path(), &settings, params)\n+            .await\n+            .expect(\"created run id must survive a failed start\");\n+\n+        assert_eq!(result.runs[0].run_id, child_id.to_string());\n+        assert_eq!(result.runs[0].status, \"unknown\");\n+        assert_eq!(\n+            result.runs[0].start_error.as_deref(),\n+            Some(\"start blocked: approval_required (409)\")\n+        );\n+        assert_eq!(backend.started_run_ids.lock().unwrap().as_slice(), &[\n+            child_id\n+        ]);\n+        assert_eq!(\n+            create_runs_text(&result),\n+            \"created 1 Fabro run(s), start requested for 1, start blocked for 1\"\n+        );\n+    }\n+\n+    #[tokio::test]\n+    async fn create_runs_reports_partial_success_when_retrieve_fails() {\n+        let temp = tempfile::tempdir().expect(\"tempdir should be created\");\n+        let settings = temp.path().join(\"settings.toml\");\n+        let child_id = run_id(\"01KRBZW5C00000000000000001\");\n+        let parent_id = run_id(\"01KRBZW4DW0000000000000002\");\n+        let backend = Arc::new(MockCreateBackend {\n+            child_id,\n+            parent_id,\n+            created_parent_ids: Mutex::new(Vec::new()),\n+            resolved_selectors: Mutex::new(Vec::new()),\n+            started_run_ids: Mutex::new(Vec::new()),\n+            start_error: None,\n+            retrieve_error: Some(\"run store unavailable\".to_string()),\n+        });\n+        let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {\n+            runs: vec![create_spec_input(Some(false))],\n+        })\n+        .expect(\"create params should validate\");\n+\n+        let result = create_runs(backend.clone(), temp.path(), &settings, params)\n+            .await\n+            .expect(\"created run id must survive a failed retrieve\");\n+\n+        assert_eq!(result.runs[0].run_id, child_id.to_string());\n+        assert_eq!(result.runs[0].status, \"unknown\");\n+        assert_eq!(\n+            result.runs[0].start_error.as_deref(),\n+            Some(\"retrieve failed: run store unavailable\")\n+        );\n+        assert_eq!(\n+            create_runs_text(&result),\n+            \"created 1 Fabro run(s), start requested for 0, start blocked for 1\"\n+        );\n+    }\n+\n+    #[tokio::test]\n+    async fn create_runs_preserves_earlier_results_when_later_sibling_start_fails() {\n+        let temp = tempfile::tempdir().expect(\"tempdir should be created\");\n+        let settings = temp.path().join(\"settings.toml\");\n+        let child_id = run_id(\"01KRBZW5C00000000000000001\");\n+        let parent_id = run_id(\"01KRBZW4DW0000000000000002\");\n+        let backend = Arc::new(MockCreateBackend {\n+            child_id,\n+            parent_id,\n+            created_parent_ids: Mutex::new(Vec::new()),\n+            resolved_selectors: Mutex::new(Vec::new()),\n+            started_run_ids: Mutex::new(Vec::new()),\n+            start_error: Some(\"approval_required (409)\".to_string()),\n+            retrieve_error: None,\n+        });\n+        let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {\n+            runs: vec![\n+                create_spec_input(Some(false)),\n+                create_spec_input(None),\n+            ],\n+        })\n+        .expect(\"create params should validate\");\n+\n+        let result = create_runs(backend.clone(), temp.path(), &settings, params)\n+            .await\n+            .expect(\"batch must report partial success, not a total failure\");\n+\n+        assert_eq!(result.runs.len(), 2);\n+        assert_eq!(result.runs[0].run_id, child_id.to_string());\n+        assert_eq!(result.runs[0].status, \"submitted\");\n+        assert_eq!(result.runs[0].start_error, None);\n+        assert_eq!(result.runs[1].run_id, child_id.to_string());\n+        assert_eq!(\n+            result.runs[1].start_error.as_deref(),\n+            Some(\"start blocked: approval_required (409)\")\n+        );\n+        assert_eq!(\n+            create_runs_text(&result),\n+            \"created 2 Fabro run(s), start requested for 1, start blocked for 1\"\n+        );\n+    }\n+\n     fn run_id(raw: &str) -> RunId {\n         raw.parse().expect(\"test run id should parse\")\n     }\n@@ -975,6 +1148,8 @@ mod tests {\n         created_parent_ids: Mutex<Vec<Option<RunId>>>,\n         resolved_selectors: Mutex<Vec<String>>,\n         started_run_ids:    Mutex<Vec<RunId>>,\n+        start_error:        Option<String>,\n+        retrieve_error:     Option<String>,\n     }\n \n     #[async_trait]\n@@ -1026,6 +1201,9 @@ mod tests {\n \n         async fn retrieve_run(&self, run_id: &RunId) -> anyhow::Result<Run> {\n             assert_eq!(*run_id, self.child_id);\n+            if let Some(retrieve_error) = &self.retrieve_error {\n+                anyhow::bail!(\"{retrieve_error}\");\n+            }\n             Ok(run(self.child_id, Some(self.parent_id), 0))\n         }\n \n@@ -1033,6 +1211,9 @@ mod tests {\n             assert_eq!(*run_id, self.child_id);\n             assert!(!resume);\n             self.started_run_ids.lock().unwrap().push(*run_id);\n+            if let Some(start_error) = &self.start_error {\n+                anyhow::bail!(\"{start_error}\");\n+            }\n             Ok(run_with_status(\n                 self.child_id,\n                 Some(self.parent_id),\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 200,
+          "deletions": 16
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-05T16:48:49.190338820Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "thread.implementer.current_node": "tester",
+          "internal.retry_count.tester": 0,
+          "failure_signature": "tester|deterministic|script failed with exit code: <n> ## output nu scripts/qualitygate.nu touched crates: fabro-tool == cargo fmt --check --all == diff in /repos/denkhaus/fabro/lib/components/fabro-tool/src/create.rs:<n>: created_parent_ids: mutex::new(vec::ne",
           "current_seed_id": "fabro-78ac",
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -859,7 +1057,7 @@
             "preview": "Implementation complete. Summary of changes in `lib/components/fabro-tool/src/create.rs`:\n\n- `CreatedRunResult` gained an additive `start_error: Option<String>` field (JsonSchema-derived, serialized t"
           },
           "internal.seed_cycle_anchor": "fabro-78ac",
-          "outcome": "succeeded",
+          "outcome": "failed",
           "internal.work_dir": "/workspace/fabro",
           "last_response": "Implementation complete. Summary of changes in `lib/components/fabro-tool/src/create.rs`:\n\n- `CreatedRunResult` gained an additive `start_error: Option<String>` field (JsonSchema-derived, serialized t",
           "internal.retry_count.implementer": 0,
@@ -868,7 +1066,7 @@
           "graph.rankdir": "LR",
           "internal.retry_count.planner": 0,
           "implementation_summary": "Modified `lib/components/fabro-tool/src/create.rs` only: added additive `start_error: Option<String>` to `CreatedRunResult`, converted start/retrieve follow-up failures in `create_runs_with_options` into partial-success results (run_id preserved, verbatim error, status \"unknown\"), extended `create_runs_text` with 'start blocked for N', added failure injection to `MockCreateBackend` and three new tests; all 17 create tests pass. Lesson captured as mx-3cb781. Per-criterion report: (1) PASS Ok-with-run_id on start failure — create_runs_reports_partial_success_when_start_fails; (2) PASS additive start_error field, not status overload — CreatedRunResult at create.rs:411; (3) PASS batch accumulation — create_runs_preserves_earlier_results_when_later_sibling_start_fails; (4) PASS retrieve-failure partial success — create_runs_reports_partial_success_when_retrieve_fails; (5) PASS create/parent failures still Err — unchanged ?-propagation in create_runs_with_options/resolve_parent_run_id; (6) PASS text summary adds 'start blocked for N' — create_runs_text, asserted in both failure tests; (7) PASS new tests + existing 17/17 green via cargo nextest run -p fabro-tool create; (8) DEFERRED to tester per implementer contract (no gate run), focused test green and no external constructors of CreatedRunResult.",
-          "failure_class": "",
+          "failure_class": "deterministic",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -881,19 +1079,21 @@
             "chars": 4062,
             "preview": "Claimed `fabro-78ac` (High bug, basis verified live in the worktree: create-then-start `?`-propagation at `lib/components/fabro-tool/src/create.rs:453-464` discards the created `run_id` when `start_ru"
           },
+          "command.output": "blob://sha256/d6f563ce00106d39c73b826c13585c592716514c81bfe4b052c51b59ffca1b8d",
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "graph.max_node_visits": "40",
           "graph.cycle_counter_reset_key": "current_seed_id",
-          "current_node": "implementer",
-          "internal.fidelity": "summary:high",
+          "current_node": "tester",
+          "internal.fidelity": "compact",
           "current_seed_title": "engine: fabro_run_create swallows the created run id when start fails (partial success reported as total failure)",
           "current_seed_brief": "In `lib/components/fabro-tool/src/create.rs`, `create_runs_with_options` (lines 428-475) does create-then-start with `?`-propagation: when `create_run_from_spec` succeeds but `start_run` fails (e.g. approval_required), the whole tool call errors and the created run id is discarded, so calling agents retry and create duplicate children (observed run 01M1S5D9XC). Fix so partial success is reported. Acceptance criteria: (1) start failure after successful create returns Ok with the created run_id present in the result, never a bare Err; (2) the start failure reason is machine-readable in the structured result — prefer an additive field on `CreatedRunResult` (e.g. `start_error: Option<String>` carrying 'start blocked: approval_required') over overloading the existing `status` string, since `CreatedRunResult` derives JsonSchema and is serialized to the LLM; (3) in multi-run batches, results for earlier successfully created runs are preserved when a later sibling's start fails (loop does not discard accumulated results); (4) the retrieve_run failure on the start=false path gets the same partial-success reporting (run id + error note), same rationale; (5) genuine create/parent-resolution failures keep returning Err — nothing was created, that boundary is deliberate and out of scope; (6) `create_runs_text` summary reflects blocked starts (e.g. adds 'start blocked for N') so the text summary never implies a clean start; (7) tests in the same file's `mod tests` (MockCreateBackend pattern, see existing `create_runs_defaults_to_start_request_and_reports_pending_child_status`): a backend whose start_run errors must yield an Ok result with run_id + failure reason, started_run_ids still recorded, correct text summary; plus the start=false retrieve-failure case; existing tests keep passing; (8) gate with `cargo nextest run -p fabro-tool`, `cargo build --workspace`, and pinned-nightly fmt/clippy. Ambiguity resolved: the seed's example 'created <id>, start blocked: approval_required' conflates summary text with structure — I chose structured-result-first with the text summary carrying counts; also the fix must not assume the run is 'pending' after a failed start (state is unknown unless a follow-up retrieve succeeds), so report the error verbatim rather than a guessed status. No review feedback yet (first pass, cycle 1).",
           "graph.preamble_budget_kb": "24",
-          "internal.thread_id": "planner",
+          "internal.thread_id": "implementer",
           "internal.node_visit_count": 1,
           "internal.retry_count.start": 0,
           "internal.run_id": "01M1S6VRWQMD56M1X8HWAXDSNN",
@@ -902,6 +1102,23 @@
           "lesson_capture": "mx-3cb781"
         },
         "node_outcomes": {
+          "tester": {
+            "status": "failed",
+            "context_updates": {
+              "command.output": "blob://sha256/d6f563ce00106d39c73b826c13585c592716514c81bfe4b052c51b59ffca1b8d"
+            },
+            "failure": {
+              "message": "Script failed with exit code: 1\n\n## output\nnu scripts/qualitygate.nu\ntouched crates: fabro-tool\n== cargo fmt --check --all ==\nDiff in /repos/denkhaus/fabro/lib/components/fabro-tool/src/create.rs:736:\n             created_parent_ids: Mutex::new(Vec::new()),\n             resolved_selectors: Mutex::new(Vec::new()),\n             started_run_ids: Mutex::new(Vec::new()),\n-            start_error:      None,\n+            start_error: None,\n             retrieve_error: None,\n         });\n         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {\nDiff in /repos/denkhaus/fabro/lib/components/fabro-tool/src/create.rs:789:\n             created_parent_ids: Mutex::new(Vec::new()),\n             resolved_selectors: Mutex::new(Vec::new()),\n             started_run_ids: Mutex::new(Vec::new()),\n-            start_error:      None,\n+            start_error: None,\n             retrieve_error: None,\n         });\n         let runs: Vec<CreateRunSpecInput> = (0..2)\nDiff in /repos/denkhaus/fabro/lib/components/fabro-tool/src/create.rs:841:\n             created_parent_ids: Mutex::new(Vec::new()),\n             resolved_selectors: Mutex::new(Vec::new()),\n             started_run_ids: Mutex::new(Vec::new()),\n-            start_error:      None,\n+            start_error: None,\n             retrieve_error: None,\n         });\n         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {\nDiff in /repos/denkhaus/fabro/lib/components/fabro-tool/src/create.rs:898:\n             created_parent_ids: Mutex::new(Vec::new()),\n             resolved_selectors: Mutex::new(Vec::new()),\n             started_run_ids: Mutex::new(Vec::new()),\n-            start_error:      None,\n+            start_error: None,\n             retrieve_error: None,\n         });\n         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {\nDiff in /repos/denkhaus/fabro/lib/components/fabro-tool/src/create.rs:942:\n \n     fn create_spec_input(start: Option<bool>) -> CreateRunSpecInput {\n         CreateRunSpec {\n-            workflow_source:  None,\n-            workflow:         \"simple.fabro\".to_string(),\n-            cwd:              None,\n-            parent_id:        None,\n-            goal:             None,\n-            goal_file:        None,\n-            inputs:           HashMap::new(),\n-            labels:           HashMap::new(),\n-            dry_run:          None,\n-            auto_approve:     None,\n-            model:            None,\n-            provider:         None,\n-            environment:      None,\n+            workflow_source: None,\n+            workflow: \"simple.fabro\".to_string(),\n+            cwd: None,\n+            parent_id: None,\n+            goal: None,\n+            goal_file: None,\n+            inputs: HashMap::new(),\n+            labels: HashMap::new(),\n+            dry_run: None,\n+            auto_approve: None,\n+            model: None,\n+            provider: None,\n+            environment: None,\n             preserve_sandbox: None,\n             start,\n         }\nDiff in /repos/denkhaus/fabro/lib/components/fabro-tool/src/create.rs:1052:\n             retrieve_error: None,\n         });\n         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {\n-            runs: vec![\n-                create_spec_input(Some(false)),\n-                create_spec_input(None),\n-            ],\n+            runs: vec![create_spec_input(Some(false)), create_spec_input(None)],\n         })\n         .expect(\"create params should validate\");\n \n\nGATE RED\nerror: recipe `qualitygate` failed on line 128 with exit code 1\n",
+              "category": "deterministic"
+            },
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5059,
+              "active_time_ms": 5059
+            }
+          },
           "planner": {
             "status": "succeeded",
             "preferred_label": "Seed claimed",
@@ -1016,10 +1233,11 @@
             "usage": null
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "implementer",
         "node_visits": {
           "start": 1,
           "implementer": 1,
+          "tester": 1,
           "planner": 1
         }
       },
@@ -1053,220 +1271,6 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
-    "implementer@1": {
-      "first_event_seq": 121,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Stage completed: implementer",
-        "failure_reason": null,
-        "timestamp": "2026-09-05T16:48:39.721855737Z"
-      },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "low"
-      },
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-05T16:41:47.737340484Z",
-      "handler": "agent",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 376491,
-        "inference_time_ms": 159683,
-        "tool_time_ms": 216184,
-        "active_time_ms": 375867
-      },
-      "usage": {
-        "input_tokens": 32755,
-        "output_tokens": 5267,
-        "total_tokens": 600981,
-        "reasoning_tokens": 1679,
-        "cache_read_tokens": 561280,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 222328
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": true
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": true
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": true
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": true
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 32089,
-        "usage_percent": 3.0602455139160156,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-05T16:48:39.702600896Z",
-        "event_seq": 250,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 957,
-            "usage_percent": 0.09126663208007812
-          },
-          {
-            "category": "tools",
-            "tokens": 1403,
-            "usage_percent": 0.13380050659179688
-          },
-          {
-            "category": "memory",
-            "tokens": 4853,
-            "usage_percent": 0.4628181457519531
-          },
-          {
-            "category": "conversation",
-            "tokens": 24870,
-            "usage_percent": 2.3717880249023438
-          },
-          {
-            "category": "other",
-            "tokens": 6,
-            "usage_percent": 0.00057220458984375
-          }
-        ],
-        "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "start@1": {
       "first_event_seq": 19,
       "prompt": null,
@@ -1516,6 +1520,260 @@
       },
       "agent_control": "running",
       "state": "succeeded"
+    },
+    "implementer@1": {
+      "first_event_seq": 121,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-09-05T16:48:39.721855737Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-05T16:41:47.737340484Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 376491,
+        "inference_time_ms": 159683,
+        "tool_time_ms": 216184,
+        "active_time_ms": 375867
+      },
+      "usage": {
+        "input_tokens": 32755,
+        "output_tokens": 5267,
+        "total_tokens": 600981,
+        "reasoning_tokens": 1679,
+        "cache_read_tokens": 561280,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 222328
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 32089,
+        "usage_percent": 3.0602455139160156,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-05T16:48:39.702600896Z",
+        "event_seq": 250,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 957,
+            "usage_percent": 0.09126663208007812
+          },
+          {
+            "category": "tools",
+            "tokens": 1403,
+            "usage_percent": 0.13380050659179688
+          },
+          {
+            "category": "memory",
+            "tokens": 4853,
+            "usage_percent": 0.4628181457519531
+          },
+          {
+            "category": "conversation",
+            "tokens": 24870,
+            "usage_percent": 2.3717880249023438
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@1": {
+      "first_event_seq": 260,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/d6f563ce00106d39c73b826c13585c592716514c81bfe4b052c51b59ffca1b8d",
+        "exit_code": 1,
+        "duration_ms": 5059,
+        "termination": "exited",
+        "output_bytes": 3534,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 3534,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-05T16:48:44.108303226Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "running"
     }
   }
 }

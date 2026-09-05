@@ -1,0 +1,315 @@
+diff --git a/.fabro/journal/01M1S6VRWQMD56M1X8HWAXDSNN.jsonl b/.fabro/journal/01M1S6VRWQMD56M1X8HWAXDSNN.jsonl
+index 0c60bee..96e5c4f 100644
+--- a/.fabro/journal/01M1S6VRWQMD56M1X8HWAXDSNN.jsonl
++++ b/.fabro/journal/01M1S6VRWQMD56M1X8HWAXDSNN.jsonl
+@@ -1 +1,2 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1S6VRWQMD56M1X8HWAXDSNN","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-05T16:41:42Z","data":{"painpoints":[{"text":"Run-container mise config is untrusted, so the first `sd ready` call failed with 'Config files in /repos/denkhaus/fabro/.mise.toml are not trusted' and the planner burned a tool call on `mise trust` before any tracker read worked (this run, 01M1S6VRWQMD56M1X8HWAXDSNN). Already tracked as seed fabro-66db 'sandbox: pre-trust the repo mise config in run containers' — the pain recurred here, which strengthens its case."}],"observations":["Tracker holds 126 ready seeds; `sd ready --limit 200` put fabro-78ac first among High — picked it after verifying its basis is live (create-then-start `?` at lib/components/fabro-tool/src/create.rs:453-464) rather than stale.","Resolved a spec ambiguity in the brief: the seed's 'created <id>, start blocked: ...' example reads like summary text but the real fix belongs in the structured CreatedRunResult (additive JsonSchema field preferred); documented that post-failure run state is unknown, so the error must be reported verbatim, not mapped to 'pending'."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1S6VRWQMD56M1X8HWAXDSNN","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-05T16:48:39Z","data":{"painpoints":[],"observations":["Multi-line perl -0pi field insertion into four MockCreateBackend constructors in `lib/components/fabro-tool/src/create.rs` mangled two lines (captured group swallowed `Mutex::new(Vec::new())`); caught immediately by inspecting rg output and fixed with a second targeted pass, then verified by compiling tests. Risk class: regex transforms over constructor literals silently drop adjacent tokens — always re-grep the transformed lines before building."]}}
+diff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl
+index 0d277c5..56cddd4 100644
+--- a/.mulch/expertise/engine.jsonl
++++ b/.mulch/expertise/engine.jsonl
+@@ -18,3 +18,4 @@
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-04T07:24:35.820Z","evidence":{"commit":"93d52f188cc1d554207ee4b9eb823f1c5e1c2fc3"},"description":"gate script bug class: nu parse nesting + external spread word-split; exercise all paths locally","resolution":"Fixed in c0b22f39d + locally exercised gate paths; guard rule: full local gate run before pushing gate changes","id":"mx-4f583e"}
+ {"type":"convention","classification":"tactical","recorded_at":"2026-09-04T07:07:47.749Z","evidence":{"commit":"7f3dde1988d88d5a0bff32801a92ecf74e9b1cc4"},"content":"Markdown table cells in agent preambles must be sanitized single-line: newlines -> ' / ', blank/indent runs collapsed, literal '|' escaped as '\\|' (see sanitize_table_cell in lib/components/fabro-workflow/src/handler/llm/preamble.rs). Bullet-list renderings (append_filtered_context/append_large_value) intentionally keep multi-line output; only the summary:high '## Current context' table path sanitizes. Never change format_value globally.","id":"mx-26cd4f"}
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-05T16:26:48.235Z","evidence":{"commit":"74bfb5e153257c0d00e790e2ccd152259f84a465"},"name":"evidence-nu-diff-walk-included-append","description":"evidence.nu diff-walk invariant: a file is appended to 'included' as soon as git diff exits 0 — BEFORE the empty-text check — so files with zero per-seed hunks are silently skipped but never disclosed as cap-omitted. When refactoring or reusing the walk (e.g. loop-diff-section, fabro-4b57), preserve that append placement; hoisting it after the empty check would list every hunk-less file under 'hard cap hit' and change seed-section output (fabro-4b57 verified via scratch-repo scenarios: churn-only emits loop-work diff, mixed stays counts-only).","files":[".fabro/workflows/develop/prompts/reviewer.md",".fabro/workflows/develop/scripts/evidence.nu",".mulch/expertise/engine.jsonl"],"id":"mx-40abdb"}
++{"type":"pattern","classification":"tactical","recorded_at":"2026-09-05T16:48:08.570Z","evidence":{"commit":"feb8add5a9a5696262be85ccb0d2f13b8c039391"},"name":"partial-success-create-then-start","description":"Partial-success reporting for create-then-start tool calls (fabro-78ac, lib/components/fabro-tool/src/create.rs): when an operation creates a durable resource and a follow-up call fails, return Ok with the resource id plus an additive Option<String> error field (start_error) on the structured result instead of ?-propagating — the LLM caller otherwise retries and duplicates the resource. Report the failure verbatim (e.g. 'start blocked: approval_required') and use status 'unknown' rather than guessing 'pending'; keep genuine create/parent-resolution failures as Err since nothing was created. Text summary adds 'start blocked for N' so it never implies a clean start.","files":["lib/components/fabro-tool/src/create.rs"],"id":"mx-3cb781"}
+diff --git a/lib/components/fabro-tool/src/create.rs b/lib/components/fabro-tool/src/create.rs
+index da683fa..c438a85 100644
+--- a/lib/components/fabro-tool/src/create.rs
++++ b/lib/components/fabro-tool/src/create.rs
+@@ -402,6 +402,13 @@ pub struct CreatedRunResult {
+     pub workflow:        String,
+     pub start_requested: bool,
+     pub status:          String,
++    /// Set when the run was created but the follow-up start (or
++    /// retrieve, for `start = false`) failed. The run id above is
++    /// still valid: callers should poll or approve it instead of
++    /// recreating it. Carries the failure verbatim, e.g.
++    /// `start blocked: approval_required`.
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub start_error:     Option<String>,
+ }
+ 
+ #[derive(Debug, Clone, Copy, Default)]
+@@ -451,24 +458,35 @@ pub async fn create_runs_with_options(
+             .await
+             .map_err(|err| ToolError::from_anyhow(&err))?;
+         let start_requested = spec.start.unwrap_or(true);
+-        let summary = if start_requested {
+-            backend
+-                .start_run(&run_id, false)
+-                .await
+-                .map_err(|err| ToolError::from_anyhow(&err))?
++        // Partial success (fabro-78ac): a failed start (or retrieve) must
++        // not discard the created run id — otherwise callers retry and
++        // duplicate children. Only create/parent-resolution failures
++        // above return Err, since nothing was created there.
++        let (summary, start_error): (Option<fabro_types::Run>, Option<String>) = if start_requested
++        {
++            match backend.start_run(&run_id, false).await {
++                Ok(summary) => (Some(summary), None),
++                Err(err) => (None, Some(format!("start blocked: {err}"))),
++            }
+         } else {
+-            backend
+-                .retrieve_run(&run_id)
+-                .await
+-                .map_err(|err| ToolError::from_anyhow(&err))?
++            match backend.retrieve_run(&run_id).await {
++                Ok(summary) => (Some(summary), None),
++                Err(err) => (None, Some(format!("retrieve failed: {err}"))),
++            }
+         };
+         created.push(CreatedRunResult {
+-            run_id: summary.id.to_string(),
+-            parent_id: summary.parent_id.map(|parent_id| parent_id.to_string()),
+-            children_count: summary.children_count,
++            run_id: run_id.to_string(),
++            parent_id: summary
++                .as_ref()
++                .and_then(|summary| summary.parent_id.map(|parent_id| parent_id.to_string()))
++                .or_else(|| parent_id.map(|parent_id| parent_id.to_string())),
++            children_count: summary.as_ref().map_or(0, |summary| summary.children_count),
+             workflow: spec.workflow,
+             start_requested,
+-            status: summary.lifecycle.status.kind().to_string(),
++            status: summary
++                .map(|summary| summary.lifecycle.status.kind().to_string())
++                .unwrap_or_else(|| "unknown".to_string()),
++            start_error,
+         });
+     }
+     Ok(CreateRunsResult { runs: created })
+@@ -497,10 +515,19 @@ async fn resolve_parent_run_id(
+ 
+ pub fn create_runs_text(result: &CreateRunsResult) -> String {
+     let start_requested = result.runs.iter().filter(|run| run.start_requested).count();
+-    format!(
++    let start_blocked = result
++        .runs
++        .iter()
++        .filter(|run| run.start_error.is_some())
++        .count();
++    let mut text = format!(
+         "created {} Fabro run(s), start requested for {start_requested}",
+         result.runs.len()
+-    )
++    );
++    if start_blocked > 0 {
++        text.push_str(&format!(", start blocked for {start_blocked}"));
++    }
++    text
+ }
+ 
+ #[cfg(test)]
+@@ -709,6 +736,8 @@ mod tests {
+             created_parent_ids: Mutex::new(Vec::new()),
+             resolved_selectors: Mutex::new(Vec::new()),
+             started_run_ids: Mutex::new(Vec::new()),
++            start_error:      None,
++            retrieve_error: None,
+         });
+         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
+             runs: vec![
+@@ -760,6 +789,8 @@ mod tests {
+             created_parent_ids: Mutex::new(Vec::new()),
+             resolved_selectors: Mutex::new(Vec::new()),
+             started_run_ids: Mutex::new(Vec::new()),
++            start_error:      None,
++            retrieve_error: None,
+         });
+         let runs: Vec<CreateRunSpecInput> = (0..2)
+             .map(|_| {
+@@ -810,6 +841,8 @@ mod tests {
+             created_parent_ids: Mutex::new(Vec::new()),
+             resolved_selectors: Mutex::new(Vec::new()),
+             started_run_ids: Mutex::new(Vec::new()),
++            start_error:      None,
++            retrieve_error: None,
+         });
+         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
+             runs: vec![
+@@ -865,6 +898,8 @@ mod tests {
+             created_parent_ids: Mutex::new(Vec::new()),
+             resolved_selectors: Mutex::new(Vec::new()),
+             started_run_ids: Mutex::new(Vec::new()),
++            start_error:      None,
++            retrieve_error: None,
+         });
+         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
+             runs: vec![
+@@ -905,6 +940,144 @@ mod tests {
+         );
+     }
+ 
++    fn create_spec_input(start: Option<bool>) -> CreateRunSpecInput {
++        CreateRunSpec {
++            workflow_source:  None,
++            workflow:         "simple.fabro".to_string(),
++            cwd:              None,
++            parent_id:        None,
++            goal:             None,
++            goal_file:        None,
++            inputs:           HashMap::new(),
++            labels:           HashMap::new(),
++            dry_run:          None,
++            auto_approve:     None,
++            model:            None,
++            provider:         None,
++            environment:      None,
++            preserve_sandbox: None,
++            start,
++        }
++        .into()
++    }
++
++    #[tokio::test]
++    async fn create_runs_reports_partial_success_when_start_fails() {
++        let temp = tempfile::tempdir().expect("tempdir should be created");
++        let settings = temp.path().join("settings.toml");
++        let child_id = run_id("01KRBZW5C00000000000000001");
++        let parent_id = run_id("01KRBZW4DW0000000000000002");
++        let backend = Arc::new(MockCreateBackend {
++            child_id,
++            parent_id,
++            created_parent_ids: Mutex::new(Vec::new()),
++            resolved_selectors: Mutex::new(Vec::new()),
++            started_run_ids: Mutex::new(Vec::new()),
++            start_error: Some("approval_required (409)".to_string()),
++            retrieve_error: None,
++        });
++        let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
++            runs: vec![create_spec_input(None)],
++        })
++        .expect("create params should validate");
++
++        let result = create_runs(backend.clone(), temp.path(), &settings, params)
++            .await
++            .expect("created run id must survive a failed start");
++
++        assert_eq!(result.runs[0].run_id, child_id.to_string());
++        assert_eq!(result.runs[0].status, "unknown");
++        assert_eq!(
++            result.runs[0].start_error.as_deref(),
++            Some("start blocked: approval_required (409)")
++        );
++        assert_eq!(backend.started_run_ids.lock().unwrap().as_slice(), &[
++            child_id
++        ]);
++        assert_eq!(
++            create_runs_text(&result),
++            "created 1 Fabro run(s), start requested for 1, start blocked for 1"
++        );
++    }
++
++    #[tokio::test]
++    async fn create_runs_reports_partial_success_when_retrieve_fails() {
++        let temp = tempfile::tempdir().expect("tempdir should be created");
++        let settings = temp.path().join("settings.toml");
++        let child_id = run_id("01KRBZW5C00000000000000001");
++        let parent_id = run_id("01KRBZW4DW0000000000000002");
++        let backend = Arc::new(MockCreateBackend {
++            child_id,
++            parent_id,
++            created_parent_ids: Mutex::new(Vec::new()),
++            resolved_selectors: Mutex::new(Vec::new()),
++            started_run_ids: Mutex::new(Vec::new()),
++            start_error: None,
++            retrieve_error: Some("run store unavailable".to_string()),
++        });
++        let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
++            runs: vec![create_spec_input(Some(false))],
++        })
++        .expect("create params should validate");
++
++        let result = create_runs(backend.clone(), temp.path(), &settings, params)
++            .await
++            .expect("created run id must survive a failed retrieve");
++
++        assert_eq!(result.runs[0].run_id, child_id.to_string());
++        assert_eq!(result.runs[0].status, "unknown");
++        assert_eq!(
++            result.runs[0].start_error.as_deref(),
++            Some("retrieve failed: run store unavailable")
++        );
++        assert_eq!(
++            create_runs_text(&result),
++            "created 1 Fabro run(s), start requested for 0, start blocked for 1"
++        );
++    }
++
++    #[tokio::test]
++    async fn create_runs_preserves_earlier_results_when_later_sibling_start_fails() {
++        let temp = tempfile::tempdir().expect("tempdir should be created");
++        let settings = temp.path().join("settings.toml");
++        let child_id = run_id("01KRBZW5C00000000000000001");
++        let parent_id = run_id("01KRBZW4DW0000000000000002");
++        let backend = Arc::new(MockCreateBackend {
++            child_id,
++            parent_id,
++            created_parent_ids: Mutex::new(Vec::new()),
++            resolved_selectors: Mutex::new(Vec::new()),
++            started_run_ids: Mutex::new(Vec::new()),
++            start_error: Some("approval_required (409)".to_string()),
++            retrieve_error: None,
++        });
++        let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
++            runs: vec![
++                create_spec_input(Some(false)),
++                create_spec_input(None),
++            ],
++        })
++        .expect("create params should validate");
++
++        let result = create_runs(backend.clone(), temp.path(), &settings, params)
++            .await
++            .expect("batch must report partial success, not a total failure");
++
++        assert_eq!(result.runs.len(), 2);
++        assert_eq!(result.runs[0].run_id, child_id.to_string());
++        assert_eq!(result.runs[0].status, "submitted");
++        assert_eq!(result.runs[0].start_error, None);
++        assert_eq!(result.runs[1].run_id, child_id.to_string());
++        assert_eq!(
++            result.runs[1].start_error.as_deref(),
++            Some("start blocked: approval_required (409)")
++        );
++        assert_eq!(
++            create_runs_text(&result),
++            "created 2 Fabro run(s), start requested for 1, start blocked for 1"
++        );
++    }
++
+     fn run_id(raw: &str) -> RunId {
+         raw.parse().expect("test run id should parse")
+     }
+@@ -975,6 +1148,8 @@ mod tests {
+         created_parent_ids: Mutex<Vec<Option<RunId>>>,
+         resolved_selectors: Mutex<Vec<String>>,
+         started_run_ids:    Mutex<Vec<RunId>>,
++        start_error:        Option<String>,
++        retrieve_error:     Option<String>,
+     }
+ 
+     #[async_trait]
+@@ -1026,6 +1201,9 @@ mod tests {
+ 
+         async fn retrieve_run(&self, run_id: &RunId) -> anyhow::Result<Run> {
+             assert_eq!(*run_id, self.child_id);
++            if let Some(retrieve_error) = &self.retrieve_error {
++                anyhow::bail!("{retrieve_error}");
++            }
+             Ok(run(self.child_id, Some(self.parent_id), 0))
+         }
+ 
+@@ -1033,6 +1211,9 @@ mod tests {
+             assert_eq!(*run_id, self.child_id);
+             assert!(!resume);
+             self.started_run_ids.lock().unwrap().push(*run_id);
++            if let Some(start_error) = &self.start_error {
++                anyhow::bail!("{start_error}");
++            }
+             Ok(run_with_status(
+                 self.child_id,
+                 Some(self.parent_id),
