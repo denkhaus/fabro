@@ -69,7 +69,11 @@ decision, not an accident - it needs the user plus an ADR.
   skill implements directly. Delegation still runs Phases 3-6 here -
   review the run's landed diff, reflect on run evidence; the workflow
   owns implementation, not review or reflection.
-- Claim the seed: `sd update <id> --status in_progress`.
+- Claim the seed: `sd update <id> --status in_progress` — DIRECT
+  implementation only. In delegation mode the goal names the seed and
+  the RUN's planner claims it; an agent-side claim would remove it from
+  `sd ready` and the planner would find nothing (cycle-2 insight,
+  2026-09-05).
 
 ## Phase 2 - Build
 
