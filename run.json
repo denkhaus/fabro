@@ -490,7 +490,7 @@
     "denial_reason": null
   },
   "status_updated_at": "2026-09-05T17:22:01.897492002Z",
-  "last_event_at": "2026-09-05T17:29:30.596216093Z",
+  "last_event_at": "2026-09-05T17:29:36.072922547Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -913,9 +913,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 196,
       "checkpoint": {
-        "timestamp": "2026-09-05T17:29:30.844937497Z",
+        "timestamp": "2026-09-05T17:29:35.021687974Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -925,6 +925,39 @@
         ],
         "node_retries": {},
         "context_values": {
+          "last_response": "All four seeds filed (`fabro-0d56`, `fabro-e988`, `fabro-c3b4`, `fabro-1716`, all `--labels revision`, no duplicates found via pre-create searches), the marker written to `.fabro/revisions/01M1S6VRWQM",
+          "internal.retry_count.file": 0,
+          "revisor_target_title": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "internal.thread_id": "analyze",
+          "thread.select.current_node": "analyze",
+          "filed_seed_ids": [
+            "fabro-0d56",
+            "fabro-e988",
+            "fabro-c3b4",
+            "fabro-1716"
+          ],
+          "revisor_target_run_id": "01M1S6VRWQMD56M1X8HWAXDSNN",
+          "outcome": "succeeded",
+          "internal.fidelity": "compact",
+          "revisor_target_wall": "15.5 min",
+          "graph.max_node_visits": "30",
+          "thread.analyze.current_node": "file",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "fabro-0d56 (crate-scoped fmt/clippy in implementer) and fabro-e988 (qualitygate critical-first summary) compose on the same tester-gate failure class; fabro-c3b4 cross-references fabro-e4fa and fabro-1716 cross-references fabro-54f0 — neither supersedes."
+            ]
+          },
+          "internal.retry_count.analyze": 0,
+          "internal.retry_count.select": 0,
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 817,
+            "preview": "All four seeds filed (`fabro-0d56`, `fabro-e988`, `fabro-c3b4`, `fabro-1716`, all `--labels revision`, no duplicates found via pre-create searches), the marker written to `.fabro/revisions/01M1S6VRWQM"
+          },
+          "internal.work_dir": "/workspace/fabro",
           "revision_findings": [
             {
               "title": "Require crate-scoped fmt and clippy in the implementer's focused check",
@@ -947,75 +980,121 @@
               "priority": 2
             }
           ],
-          "revisor_target_run_id": "01M1S6VRWQMD56M1X8HWAXDSNN",
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "last_stage": "file",
           "response.analyze": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.analyze",
             "chars": 5080,
             "preview": "Review persisted and distillation complete: 4 of 8 recommendations survived the tracker check (the other 4 were exact duplicates of open seeds `fabro-66db`, `fabro-8d2c`, `fabro-edac`, `fabro-890d`), "
           },
-          "graph.max_node_visits": "30",
           "failure_signature": "",
-          "thread.select.current_node": "analyze",
+          "internal.retry_count.start": 0,
+          "internal.node_visit_count": 1,
+          "current_node": "file",
+          "graph.preamble_budget_kb": "24",
+          "graph.rankdir": "LR",
+          "revisor_target_workflow_version": "af625ca581c5947f51dfa5597eb67892e0bee5d71ae041130412d1a54873ce8e",
+          "revisor_target_status": "succeeded",
           "response.select": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.select",
             "chars": 1129,
             "preview": "Run selected: 01M1S6VRWQMD56M1X8HWAXDSNN — newest develop run, succeeded, `sandbox_available: true`, its `workflow_version_id` `af625ca5…` is the baseline (newest run's version), and no marker exi"
           },
-          "internal.retry_count.start": 0,
-          "internal.thread_id": "analyze",
-          "outcome": "succeeded",
-          "internal.node_visit_count": 1,
-          "last_response": "All four seeds filed (`fabro-0d56`, `fabro-e988`, `fabro-c3b4`, `fabro-1716`, all `--labels revision`, no duplicates found via pre-create searches), the marker written to `.fabro/revisions/01M1S6VRWQM",
-          "journal": {
-            "painpoints": [],
-            "observations": [
-              "fabro-0d56 (crate-scoped fmt/clippy in implementer) and fabro-e988 (qualitygate critical-first summary) compose on the same tester-gate failure class; fabro-c3b4 cross-references fabro-e4fa and fabro-1716 cross-references fabro-54f0 — neither supersedes."
-            ]
-          },
-          "graph.rankdir": "LR",
-          "last_stage": "file",
-          "preferred_label": "Staged",
+          "internal.exit_kind": "natural",
+          "failure_class": "",
           "internal.seed_cycle_anchor": "01M1S6VRWQMD56M1X8HWAXDSNN",
-          "revisor_target_workflow_version": "af625ca581c5947f51dfa5597eb67892e0bee5d71ae041130412d1a54873ce8e",
-          "internal.retry_count.select": 0,
-          "internal.retry_count.file": 0,
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "internal.fidelity": "compact",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "thread.start.current_node": "select",
+          "graph.inspects": "develop",
+          "internal.run_id": "01M1S9C1H8XVVEEB62JQKPXKY3",
+          "preferred_label": "Staged",
           "seed_cycles": {
             "select": 1,
             "analyze": 1,
             "file": 1
-          },
-          "thread.start.current_node": "select",
-          "internal.retry_count.analyze": 0,
-          "filed_seed_ids": [
-            "fabro-0d56",
-            "fabro-e988",
-            "fabro-c3b4",
-            "fabro-1716"
-          ],
-          "thread.analyze.current_node": "file",
-          "graph.inspects": "develop",
-          "failure_class": "",
-          "internal.exit_kind": "natural",
-          "graph.preamble_budget_kb": "24",
-          "revisor_target_status": "succeeded",
-          "revisor_target_wall": "15.5 min",
-          "revisor_target_title": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "internal.run_id": "01M1S9C1H8XVVEEB62JQKPXKY3",
-          "current_node": "file",
-          "internal.work_dir": "/workspace/fabro",
-          "response.file": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.file",
-            "chars": 817,
-            "preview": "All four seeds filed (`fabro-0d56`, `fabro-e988`, `fabro-c3b4`, `fabro-1716`, all `--labels revision`, no duplicates found via pre-create searches), the marker written to `.fabro/revisions/01M1S6VRWQM"
           }
         },
         "node_outcomes": {
+          "analyze": {
+            "status": "succeeded",
+            "preferred_label": "Findings ready",
+            "context_updates": {
+              "last_stage": "analyze",
+              "last_response": "Review persisted and distillation complete: 4 of 8 recommendations survived the tracker check (the other 4 were exact duplicates of open seeds `fabro-66db`, `fabro-8d2c`, `fabro-edac`, `fabro-890d`), ",
+              "response.analyze": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.analyze",
+                "chars": 5080,
+                "preview": "Review persisted and distillation complete: 4 of 8 recommendations survived the tracker check (the other 4 were exact duplicates of open seeds `fabro-66db`, `fabro-8d2c`, `fabro-edac`, `fabro-890d`), "
+              },
+              "revision_findings": [
+                {
+                  "title": "Require crate-scoped fmt and clippy in the implementer's focused check",
+                  "description": "Change step 4 of `.fabro/workflows/develop/prompts/implementer.md`: replace the 'nothing that formats, lints' prohibition with a requirement to run `cargo +<pinned-nightly> fmt -p <touched-crate>` and `cargo clippy -p <touched-crate> -D warnings` as part of the ONE focused check (still forbid full `just qualitygate`). Basis: in run `01M1S6VRWQMD56M1X8HWAXDSNN` two of three implementer→tester cycles were pure style failures (rustfmt drift at `tester@1`, two denied clippy lints at `tester@2` after an 81.6s cold-compile gate), burning ~25% of run LLM spend, ~4 min wall, and reaching `seed_cycles.tester=3` — one red from the gate-deadlock exit. Expected effect: eliminates the fmt/clippy gate-red class and keeps the tester's first gate compile-warm (~$0.13 and ~4 min saved per comparable run).",
+                  "priority": 1
+                },
+                {
+                  "title": "Print critical-first failure summary in the qualitygate script",
+                  "description": "Change `scripts/qualitygate.nu` (wired via the `qualitygate` recipe in `justfile`): on failure, print a compact summary first — failing step name plus the `^error` lines grepped from the log — before the full output. Basis: in run `01M1S6VRWQMD56M1X8HWAXDSNN`, `tester@2`'s ~10 KB failure message buried the two decisive clippy errors at the very end; `implementer@3` saw only a preview cut mid-log and had to open the blob to learn what broke. Expected effect: the re-entering implementer reads the actual error inline — faster, cheaper rework; composes with the fmt/clippy seed.",
+                  "priority": 2
+                },
+                {
+                  "title": "Use a top-N sd ready view in the planner instead of the full firehose",
+                  "description": "Change `.fabro/workflows/develop/prompts/planner.md` to instruct a top-N pick view (`sd ready --first 10` or `--priority high`), falling back to the full listing only when top candidates are unclaimable. Basis: in run `01M1S6VRWQMD56M1X8HWAXDSNN`, one `sd ready --limit 200` poured ~15 KB / 126 seed lines into the planner conversation (event 47: 15,112 output bytes, ~4k tokens) just to learn which seed is top of the queue. Expected effect: less context bloat and distraction per planning pass; composes with open seed fabro-e4fa (call economy, distinct mechanism: output volume per call, not number of calls).",
+                  "priority": 2
+                },
+                {
+                  "title": "Auto-approve parent-spawned develop runs for trusted worker subjects",
+                  "description": "Extend the server auto-approve policy to trusted worker subjects on parent-spawned develop runs, closing the idle approval window. Basis: run `01M1S6VRWQMD56M1X8HWAXDSNN` sat `pending(approval_required)` from 16:36:39 to 16:38:58 — 2m19s, ~13% of run wall, doing nothing — even though conductor auto-approve landed same-day in commit `7fda512` (16:18 UTC); verify whether that commit's subject set covers this spawn path and extend it if not. Expected effect: ~2 min saved per run and no zombie-pending risk; the approval-TTL backstop is already filed as fabro-54f0, so this seed covers only the auto-approve mechanism.",
+                  "priority": 2
+                }
+              ],
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "This revisor pass hit the exact mise-trust failure it was reviewing: the first `sd list` in the analyst sandbox died with 'Config files in `/repos/denkhaus/fabro/.mise.toml` are not trusted' until I ran `mise trust` manually — same evidence as open seed fabro-66db (sandbox prepare step or runner image should pre-trust the primary repo path / set `MISE_YES=1`)."
+                  }
+                ],
+                "observations": [
+                  "Withheld as duplicates of OPEN seeds (same concrete change, per tracker check on 2026-09-05): mise pre-trust → duplicate_of fabro-66db; preamble_budget_kb 24→32 → duplicate_of fabro-8d2c; dedupe per-visit preamble sections → duplicate_of fabro-edac (fabro-699f covers the same class); planner step '4.' renumber → duplicate_of fabro-890d.",
+                  "Analyst explicitly endorsed keeping as-is: `reasoning_effort=low` on implementer/rewriter passes, deterministic `evidence`/`closeout` nodes, per-seed diff base in the capture, and failure-signature dedup — no seeds filed for these.",
+                  "The auto-approve finding carries a built-in verification step: commit `7fda512` (conductor auto-approve, same day 16:18 UTC) may already cover part of the path; the run's 2m19s approval wait is the evidence the develop-loop spawn path was not covered."
+                ]
+              }
+            },
+            "notes": "Stage completed: analyze",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 25346,
+                    "output_tokens": 4148,
+                    "reasoning_tokens": 6237,
+                    "cache_read_tokens": 140416,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 117674
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reviews/develop/01M1S6VRWQMD56M1X8HWAXDSNN.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 182747,
+              "tool_time_ms": 128214,
+              "active_time_ms": 310961
+            }
+          },
           "select": {
             "status": "succeeded",
             "preferred_label": "Run selected",
@@ -1126,102 +1205,109 @@
               "active_time_ms": 60835
             }
           },
-          "analyze": {
-            "status": "succeeded",
-            "preferred_label": "Findings ready",
-            "context_updates": {
-              "last_stage": "analyze",
-              "last_response": "Review persisted and distillation complete: 4 of 8 recommendations survived the tracker check (the other 4 were exact duplicates of open seeds `fabro-66db`, `fabro-8d2c`, `fabro-edac`, `fabro-890d`), ",
-              "response.analyze": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.analyze",
-                "chars": 5080,
-                "preview": "Review persisted and distillation complete: 4 of 8 recommendations survived the tracker check (the other 4 were exact duplicates of open seeds `fabro-66db`, `fabro-8d2c`, `fabro-edac`, `fabro-890d`), "
-              },
-              "revision_findings": [
-                {
-                  "title": "Require crate-scoped fmt and clippy in the implementer's focused check",
-                  "description": "Change step 4 of `.fabro/workflows/develop/prompts/implementer.md`: replace the 'nothing that formats, lints' prohibition with a requirement to run `cargo +<pinned-nightly> fmt -p <touched-crate>` and `cargo clippy -p <touched-crate> -D warnings` as part of the ONE focused check (still forbid full `just qualitygate`). Basis: in run `01M1S6VRWQMD56M1X8HWAXDSNN` two of three implementer→tester cycles were pure style failures (rustfmt drift at `tester@1`, two denied clippy lints at `tester@2` after an 81.6s cold-compile gate), burning ~25% of run LLM spend, ~4 min wall, and reaching `seed_cycles.tester=3` — one red from the gate-deadlock exit. Expected effect: eliminates the fmt/clippy gate-red class and keeps the tester's first gate compile-warm (~$0.13 and ~4 min saved per comparable run).",
-                  "priority": 1
-                },
-                {
-                  "title": "Print critical-first failure summary in the qualitygate script",
-                  "description": "Change `scripts/qualitygate.nu` (wired via the `qualitygate` recipe in `justfile`): on failure, print a compact summary first — failing step name plus the `^error` lines grepped from the log — before the full output. Basis: in run `01M1S6VRWQMD56M1X8HWAXDSNN`, `tester@2`'s ~10 KB failure message buried the two decisive clippy errors at the very end; `implementer@3` saw only a preview cut mid-log and had to open the blob to learn what broke. Expected effect: the re-entering implementer reads the actual error inline — faster, cheaper rework; composes with the fmt/clippy seed.",
-                  "priority": 2
-                },
-                {
-                  "title": "Use a top-N sd ready view in the planner instead of the full firehose",
-                  "description": "Change `.fabro/workflows/develop/prompts/planner.md` to instruct a top-N pick view (`sd ready --first 10` or `--priority high`), falling back to the full listing only when top candidates are unclaimable. Basis: in run `01M1S6VRWQMD56M1X8HWAXDSNN`, one `sd ready --limit 200` poured ~15 KB / 126 seed lines into the planner conversation (event 47: 15,112 output bytes, ~4k tokens) just to learn which seed is top of the queue. Expected effect: less context bloat and distraction per planning pass; composes with open seed fabro-e4fa (call economy, distinct mechanism: output volume per call, not number of calls).",
-                  "priority": 2
-                },
-                {
-                  "title": "Auto-approve parent-spawned develop runs for trusted worker subjects",
-                  "description": "Extend the server auto-approve policy to trusted worker subjects on parent-spawned develop runs, closing the idle approval window. Basis: run `01M1S6VRWQMD56M1X8HWAXDSNN` sat `pending(approval_required)` from 16:36:39 to 16:38:58 — 2m19s, ~13% of run wall, doing nothing — even though conductor auto-approve landed same-day in commit `7fda512` (16:18 UTC); verify whether that commit's subject set covers this spawn path and extend it if not. Expected effect: ~2 min saved per run and no zombie-pending risk; the approval-TTL backstop is already filed as fabro-54f0, so this seed covers only the auto-approve mechanism.",
-                  "priority": 2
-                }
-              ],
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "This revisor pass hit the exact mise-trust failure it was reviewing: the first `sd list` in the analyst sandbox died with 'Config files in `/repos/denkhaus/fabro/.mise.toml` are not trusted' until I ran `mise trust` manually — same evidence as open seed fabro-66db (sandbox prepare step or runner image should pre-trust the primary repo path / set `MISE_YES=1`)."
-                  }
-                ],
-                "observations": [
-                  "Withheld as duplicates of OPEN seeds (same concrete change, per tracker check on 2026-09-05): mise pre-trust → duplicate_of fabro-66db; preamble_budget_kb 24→32 → duplicate_of fabro-8d2c; dedupe per-visit preamble sections → duplicate_of fabro-edac (fabro-699f covers the same class); planner step '4.' renumber → duplicate_of fabro-890d.",
-                  "Analyst explicitly endorsed keeping as-is: `reasoning_effort=low` on implementer/rewriter passes, deterministic `evidence`/`closeout` nodes, per-seed diff base in the capture, and failure-signature dedup — no seeds filed for these.",
-                  "The auto-approve finding carries a built-in verification step: commit `7fda512` (conductor auto-approve, same day 16:18 UTC) may already cover part of the path; the run's 2m19s approval wait is the evidence the develop-loop spawn path was not covered."
-                ]
-              }
-            },
-            "notes": "Stage completed: analyze",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 25346,
-                    "output_tokens": 4148,
-                    "reasoning_tokens": 6237,
-                    "cache_read_tokens": 140416,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 117674
-            },
-            "files_touched": [
-              "/workspace/fabro/.fabro/reviews/develop/01M1S6VRWQMD56M1X8HWAXDSNN.md"
-            ],
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 182747,
-              "tool_time_ms": 128214,
-              "active_time_ms": 310961
-            }
-          },
           "start": {
             "status": "succeeded",
             "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "d515afc058cadc69d5f5c52572926cc8ee3d986f",
         "node_visits": {
-          "start": 1,
-          "select": 1,
           "analyze": 1,
-          "file": 1
+          "file": 1,
+          "select": 1,
+          "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1S9C1H8XVVEEB62JQKPXKY3.jsonl b/.fabro/journal/01M1S9C1H8XVVEEB62JQKPXKY3.jsonl\nindex 39de93d..cc9ea2e 100644\n--- a/.fabro/journal/01M1S9C1H8XVVEEB62JQKPXKY3.jsonl\n+++ b/.fabro/journal/01M1S9C1H8XVVEEB62JQKPXKY3.jsonl\n@@ -1 +1,2 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1S9C1H8XVVEEB62JQKPXKY3\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T17:28:16Z\",\"data\":{\"painpoints\":[{\"text\":\"This revisor pass hit the exact mise-trust failure it was reviewing: the first `sd list` in the analyst sandbox died with 'Config files in `/repos/denkhaus/fabro/.mise.toml` are not trusted' until I ran `mise trust` manually — same evidence as open seed fabro-66db (sandbox prepare step or runner image should pre-trust the primary repo path / set `MISE_YES=1`).\"}],\"observations\":[\"Withheld as duplicates of OPEN seeds (same concrete change, per tracker check on 2026-09-05): mise pre-trust → duplicate_of fabro-66db; preamble_budget_kb 24→32 → duplicate_of fabro-8d2c; dedupe per-visit preamble sections → duplicate_of fabro-edac (fabro-699f covers the same class); planner step '4.' renumber → duplicate_of fabro-890d.\",\"Analyst explicitly endorsed keeping as-is: `reasoning_effort=low` on implementer/rewriter passes, deterministic `evidence`/`closeout` nodes, per-seed diff base in the capture, and failure-signature dedup — no seeds filed for these.\",\"The auto-approve finding carries a built-in verification step: commit `7fda512` (conductor auto-approve, same day 16:18 UTC) may already cover part of the path; the run's 2m19s approval wait is the evidence the develop-loop spawn path was not covered.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1S9C1H8XVVEEB62JQKPXKY3\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T17:29:30Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-0d56 (crate-scoped fmt/clippy in implementer) and fabro-e988 (qualitygate critical-first summary) compose on the same tester-gate failure class; fabro-c3b4 cross-references fabro-e4fa and fabro-1716 cross-references fabro-54f0 — neither supersedes.\"]}}\ndiff --git a/.fabro/revisions/01M1S6VRWQMD56M1X8HWAXDSNN.md b/.fabro/revisions/01M1S6VRWQMD56M1X8HWAXDSNN.md\nnew file mode 100644\nindex 0000000..fbaf23a\n--- /dev/null\n+++ b/.fabro/revisions/01M1S6VRWQMD56M1X8HWAXDSNN.md\n@@ -0,0 +1,29 @@\n+# Revision — run 01M1S6VRWQMD56M1X8HWAXDSNN\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M1S6VRWQMD56M1X8HWAXDSNN.md\n+- seeds filed:\n+  - fabro-0d56 Require crate-scoped fmt and clippy in the implementer's focused check\n+  - fabro-e988 Print critical-first failure summary in the qualitygate script\n+  - fabro-c3b4 Use a top-N sd ready view in the planner instead of the full firehose\n+  - fabro-1716 Auto-approve parent-spawned develop runs for trusted worker subjects\n+- basis: run 01M1S6VRWQMD56M1X8HWAXDSNN, workflow version af625ca581c5947f51dfa5597eb67892e0bee5d71ae041130412d1a54873ce8e, commit ecbd4d47c4c6d3272035e535731bc14f61a20662\n+- revised_at_commit: ecbd4d47c4c6d3272035e535731bc14f61a20662 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Require crate-scoped fmt and clippy in the implementer's focused check\n+- filed: fabro-0d56\n+- Change step 4 of `.fabro/workflows/develop/prompts/implementer.md`: replace the \"nothing that formats, lints\" prohibition with a requirement to run `cargo +<pinned-nightly> fmt -p <touched-crate>` and `cargo clippy -p <touched-crate> -D warnings` as part of the ONE focused check (still forbid full `just qualitygate`). Expected effect: eliminates the fmt/clippy gate-red class (two of three cycles in this run were pure style failures, ~25% of run LLM spend, ~4 min wall) and keeps the tester's first gate compile-warm.\n+\n+### Print critical-first failure summary in the qualitygate script\n+- filed: fabro-e988\n+- Change `scripts/qualitygate.nu`: on failure, print failing step name plus `^error` lines grepped from the log before the full output. Expected effect: the re-entering implementer reads the actual error inline (this run's ~10 KB failure message buried the decisive clippy errors at the end); composes with fabro-0d56.\n+\n+### Use a top-N sd ready view in the planner instead of the full firehose\n+- filed: fabro-c3b4\n+- Change `.fabro/workflows/develop/prompts/planner.md` to a top-N pick view (`sd ready --first 10` or `--priority high`), full listing only as fallback. Expected effect: avoids ~15 KB / 126 seed lines of context bloat per planning pass (event 47 in this run); cross-referenced with fabro-e4fa (call economy, distinct mechanism).\n+\n+### Auto-approve parent-spawned develop runs for trusted worker subjects\n+- filed: fabro-1716\n+- Extend the server auto-approve policy to trusted worker subjects on parent-spawned develop runs; verify whether commit 7fda512's subject set covers this spawn path. Expected effect: ~2 min saved per run (this run sat `pending(approval_required)` for 2m19s, ~13% of wall); the approval-TTL backstop is separately filed as fabro-54f0.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 21a4dbd..ba48a77 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -199,3 +199,7 @@\n {\"id\":\"fabro-e4ac\",\"title\":\"engine: verbose tool-argument validation errors — name the failing field and expected shape\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-09-05T16:38:13.397Z\",\"updatedAt\":\"2026-09-05T16:38:13.397Z\",\"description\":\"Tool argument validation errors currently surface the raw JSON-schema verdict ('is not valid under any of the schemas listed in the anyOf keyword') with no field name and no expected shape. LLM agents retry blind: 5 identical failed retries in conductor run 01M1S6MSV4's develop leg (2026-09-05) where the agent nested the workflow_source object inside workflow. Wanted: validation failures for tool arguments include (a) the failing property path, (b) the closest expected schema variant or a one-line shape hint. Complements the prompt-side schema discipline note (commit 51b2f81fc). Basis: run 01M1S6MSV4 events.\",\"labels\":[\"engine\",\"agent\"]}\n {\"id\":\"fabro-571e\",\"title\":\"engine: fabro_run_wait blocking tool — wait for a child run's terminal state without agent-side sleep loops\",\"status\":\"open\",\"type\":\"feature\",\"priority\":1,\"createdAt\":\"2026-09-05T16:48:27.981Z\",\"updatedAt\":\"2026-09-05T16:48:27.981Z\",\"description\":\"The conductor's legs currently poll child runs with agent-chosen shell sleep loops (observed: a self-chosen 300s timer in run 01M1S6MSV4's develop leg, 2026-09-05) — either wasting wall-clock when the child finishes early or burning LLM turns on frequent polls; the agent owns timing it cannot know. Wanted: a blocking fabro_run_wait tool {run_id, timeout_ms} mirroring the host-side CLI 'fabro wait': the backend polls/subscribes internally and returns the final status+reason (+PR link) only at terminal state or timeout. One call replaces the whole sleep/poll/turn cycle, reacts in seconds, and makes orchestration prompts trivial ('create, then wait'). Reuses the CLI wait semantics; SSE subscription could make it fully event-driven. Basis: conductor pass 01M1S6MSV4 develop leg events.\",\"labels\":[\"engine\",\"workflows\",\"agent\"]}\n {\"id\":\"fabro-94e8\",\"title\":\"engine: run-branch PRs go stale when the base moves (auto-rebase or merge-queue needed for autonomous loops)\",\"status\":\"open\",\"type\":\"feature\",\"priority\":1,\"createdAt\":\"2026-09-05T17:04:02.448Z\",\"updatedAt\":\"2026-09-05T17:04:02.448Z\",\"description\":\"When the base branch moves between run-PR open and auto-merge (e.g. tracker .seeds pushes, prompt fixes), the PR can go DIRTY/BLOCKED forever: auto-merge never fires, the conductor's tree-equality wait times out, and a human must update the branch. Observed live 2026-09-05: PR #28 stranded DIRTY after unrelated .seeds sync pushes; host-side manual repair (merge base into run branch, push) unblocked it and the dogfood-gate re-ran. Wanted: engine-side automatic run-branch PR updates when the base moves (merge base into the run branch, or a merge queue), so the autonomous line does not depend on control-function repairs. Basis: conductor pass 01M1S6MSV4, PR #28, repair commit a98db89f2.\",\"labels\":[\"engine\",\"workflows\"]}\n+{\"id\":\"fabro-0d56\",\"title\":\"Require crate-scoped fmt and clippy in the implementer's focused check\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-05T17:28:42.452Z\",\"updatedAt\":\"2026-09-05T17:28:42.452Z\",\"description\":\"Change step 4 of .fabro/workflows/develop/prompts/implementer.md: replace the 'nothing that formats, lints' prohibition with a requirement to run cargo +<pinned-nightly> fmt -p <touched-crate> and cargo clippy -p <touched-crate> -D warnings as part of the ONE focused check (still forbid full just qualitygate). Basis: in run 01M1S6VRWQMD56M1X8HWAXDSNN two of three implementer-to-tester cycles were pure style failures (rustfmt drift at tester@1, two denied clippy lints at tester@2 after an 81.6s cold-compile gate), burning ~25% of run LLM spend, ~4 min wall, and reaching seed_cycles.tester=3. Expected effect: eliminates the fmt/clippy gate-red class and keeps the tester's first gate compile-warm. Basis: run 01M1S6VRWQMD56M1X8HWAXDSNN, workflow version af625ca581c5947f51dfa5597eb67892e0bee5d71ae041130412d1a54873ce8e, commit ecbd4d47c4c6d3272035e535731bc14f61a20662\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-e988\",\"title\":\"Print critical-first failure summary in the qualitygate script\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T17:28:57.277Z\",\"updatedAt\":\"2026-09-05T17:28:57.277Z\",\"description\":\"Change scripts/qualitygate.nu (wired via the qualitygate recipe in justfile): on failure, print a compact summary first — failing step name plus the ^error lines grepped from the log — before the full output. Basis: in run 01M1S6VRWQMD56M1X8HWAXDSNN, tester@2's ~10 KB failure message buried the two decisive clippy errors at the very end; implementer@3 saw only a preview cut mid-log and had to open the blob to learn what broke. Expected effect: the re-entering implementer reads the actual error inline — faster, cheaper rework; composes with fabro-0d56. Basis: run 01M1S6VRWQMD56M1X8HWAXDSNN, workflow version af625ca581c5947f51dfa5597eb67892e0bee5d71ae041130412d1a54873ce8e, commit ecbd4d47c4c6d3272035e535731bc14f61a20662\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-c3b4\",\"title\":\"Use a top-N sd ready view in the planner instead of the full firehose\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T17:28:57.532Z\",\"updatedAt\":\"2026-09-05T17:28:57.532Z\",\"description\":\"Change .fabro/workflows/develop/prompts/planner.md to instruct a top-N pick view (sd ready --first 10 or --priority high), falling back to the full listing only when top candidates are unclaimable. Basis: in run 01M1S6VRWQMD56M1X8HWAXDSNN, one sd ready --limit 200 poured ~15 KB / 126 seed lines into the planner conversation (event 47: 15,112 output bytes, ~4k tokens) just to learn which seed is top of the queue. Expected effect: less context bloat and distraction per planning pass; composes with open seed fabro-e4fa (call economy, distinct mechanism: output volume per call, not number of calls). Basis: run 01M1S6VRWQMD56M1X8HWAXDSNN, workflow version af625ca581c5947f51dfa5597eb67892e0bee5d71ae041130412d1a54873ce8e, commit ecbd4d47c4c6d3272035e535731bc14f61a20662\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-1716\",\"title\":\"Auto-approve parent-spawned develop runs for trusted worker subjects\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T17:28:57.805Z\",\"updatedAt\":\"2026-09-05T17:28:57.805Z\",\"description\":\"Extend the server auto-approve policy to trusted worker subjects on parent-spawned develop runs, closing the idle approval window. Basis: run 01M1S6VRWQMD56M1X8HWAXDSNN sat pending(approval_required) from 16:36:39 to 16:38:58 — 2m19s, ~13% of run wall, doing nothing — even though conductor auto-approve landed same-day in commit 7fda512 (16:18 UTC); verify whether that commit's subject set covers this spawn path and extend it if not. Expected effect: ~2 min saved per run and no zombie-pending risk; the approval-TTL backstop is already filed as fabro-54f0, so this seed covers only the auto-approve mechanism. Basis: run 01M1S6VRWQMD56M1X8HWAXDSNN, workflow version af625ca581c5947f51dfa5597eb67892e0bee5d71ae041130412d1a54873ce8e, commit ecbd4d47c4c6d3272035e535731bc14f61a20662\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 85,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-05T17:29:35.090484268Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 414750,
+      "inference_time_ms": 262916,
+      "tool_time_ms": 132325,
+      "active_time_ms": 395241
+    },
+    "final_git_commit_sha": "d515afc058cadc69d5f5c52572926cc8ee3d986f",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 24044,
+          "inference_time_ms": 22263,
+          "tool_time_ms": 1182,
+          "active_time_ms": 23445
+        },
+        "billing_usd_micros": 43126,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 311540,
+          "inference_time_ms": 182747,
+          "tool_time_ms": 128214,
+          "active_time_ms": 310961
+        },
+        "billing_usd_micros": 117674,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 61616,
+          "inference_time_ms": 57906,
+          "tool_time_ms": 2929,
+          "active_time_ms": 60835
+        },
+        "billing_usd_micros": 66810,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 66753,
+      "output_tokens": 7145,
+      "total_tokens": 366424,
+      "reasoning_tokens": 6446,
+      "cache_read_tokens": 286080,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 227610
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1S9C1H8XVVEEB62JQKPXKY3.jsonl b/.fabro/journal/01M1S9C1H8XVVEEB62JQKPXKY3.jsonl\nnew file mode 100644\nindex 0000000..cc9ea2e\n--- /dev/null\n+++ b/.fabro/journal/01M1S9C1H8XVVEEB62JQKPXKY3.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1S9C1H8XVVEEB62JQKPXKY3\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T17:28:16Z\",\"data\":{\"painpoints\":[{\"text\":\"This revisor pass hit the exact mise-trust failure it was reviewing: the first `sd list` in the analyst sandbox died with 'Config files in `/repos/denkhaus/fabro/.mise.toml` are not trusted' until I ran `mise trust` manually — same evidence as open seed fabro-66db (sandbox prepare step or runner image should pre-trust the primary repo path / set `MISE_YES=1`).\"}],\"observations\":[\"Withheld as duplicates of OPEN seeds (same concrete change, per tracker check on 2026-09-05): mise pre-trust → duplicate_of fabro-66db; preamble_budget_kb 24→32 → duplicate_of fabro-8d2c; dedupe per-visit preamble sections → duplicate_of fabro-edac (fabro-699f covers the same class); planner step '4.' renumber → duplicate_of fabro-890d.\",\"Analyst explicitly endorsed keeping as-is: `reasoning_effort=low` on implementer/rewriter passes, deterministic `evidence`/`closeout` nodes, per-seed diff base in the capture, and failure-signature dedup — no seeds filed for these.\",\"The auto-approve finding carries a built-in verification step: commit `7fda512` (conductor auto-approve, same day 16:18 UTC) may already cover part of the path; the run's 2m19s approval wait is the evidence the develop-loop spawn path was not covered.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1S9C1H8XVVEEB62JQKPXKY3\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T17:29:30Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-0d56 (crate-scoped fmt/clippy in implementer) and fabro-e988 (qualitygate critical-first summary) compose on the same tester-gate failure class; fabro-c3b4 cross-references fabro-e4fa and fabro-1716 cross-references fabro-54f0 — neither supersedes.\"]}}\ndiff --git a/.fabro/reviews/develop/01M1S6VRWQMD56M1X8HWAXDSNN.md b/.fabro/reviews/develop/01M1S6VRWQMD56M1X8HWAXDSNN.md\nnew file mode 100644\nindex 0000000..e22697f\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M1S6VRWQMD56M1X8HWAXDSNN.md\n@@ -0,0 +1,50 @@\n+# Improve review — run 01M1S6VRWQMD56M1X8HWAXDSNN\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (15.5 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-05 17:25+0000 by revisor `fabro_ask`\n+\n+---\n+\n+All grounding below is from this run's stage records, events, and journals (run `01M1S6VRWQMD56M1X8HWAXDSNN`, seed `fabro-78ac`, 14 min wall, $0.515, 1.24M tokens). Ordered by expected impact.\n+\n+## 1. Let the implementer run crate-scoped `fmt` + `clippy` before handing off — the biggest waste in this run\n+**What happened:** Two of three implementer→tester cycles were burned on pure style failures. `tester@1` red = rustfmt alignment drift in new test fixtures (5s gate, then `implementer@2`: 53s, $0.044). `tester@2` red = two denied clippy lints (`map_unwrap_or`, `format_push_string`) after an 81.6s cold-compile gate, then `implementer@3`: 108s, $0.085. Rework = ~25% of run LLM spend, ~4 min wall — and `seed_cycles.tester` hit 3, i.e. **one more red would have tripped the \"Gate deadlock (3 reds, needs a human)\" exit**. The implementer's own journals say it: \"the implementer stage's instruction to skip fmt… let whitespace drift reach the deterministic gate\" and \"a cheap `cargo clippy -p <touched crate>` … would catch these pre-gate at near-zero cost (two tester cycles burned).\"\n+**Change:** `.fabro/workflows/develop/prompts/implementer.md`, step 4 — replace \"nothing that formats, lints\" with: require `cargo +<pinned-nightly> fmt -p <touched-crate>` and `cargo clippy -p <touched-crate> -D warnings` as part of the ONE focused check (still forbid the full `just qualitygate`). Bonus: clippy compiles, so the tester's first gate is always warm — `tester@2`'s 81.6s was the first compile of the tree precisely because the implementer never compiled.\n+**Effect:** Kills the fmt/clippy gate-red class entirely; this run would have been one implementer pass + one gate run (~4 min, ~$0.13 saved) and never approached the 3-red deadlock.\n+\n+## 2. Pre-trust the repo mise config in run containers (seed fabro-66db)\n+**What happened:** The planner's very first `sd ready` failed with \"Config files in `/repos/denkhaus/fabro/.mise.toml` are not trusted\" (events seq 35–36), costing one wasted LLM round-trip + tool call on `mise trust` before any tracker read worked (planner journal painpoint). Recurs every fresh container.\n+**Change:** Sandbox prepare step or runner image (`fabro-toolchain:noble` build): run `mise trust` for the primary repo path, or set `MISE_YES=1`/pre-trust in the image.\n+**Effect:** Removes one dead turn per run and the risk that an agent handles the failure ungracefully instead of recovering.\n+\n+## 3. Raise the aggregate preamble budget so the evidence capture stays inline (seed fabro-8d2c)\n+**What happened:** The 14.2 KB evidence capture (`fc3c8add…`, 14,086 bytes — *under* the reviewer's `preamble_inline_max_kb=16`) was still demoted to a blob ref because the **24 KB aggregate** budget was exceeded; the reviewer had to page it manually with `read_file` before judging (reviewer journal painpoint: \"the preamble preview truncates right before the diff body\"). Reviewer context usage was 1.55% of a 1M window — the window is not the constraint, the detour is. The graph comment in `workflow.fabro` already documents this rationale for the 12→24 raise; it wasn't enough.\n+**Change:** `.fabro/workflows/develop/workflow.fabro`, graph attr `preamble_budget_kb=24` → `32` (or engine-side: exempt `command.output` from the aggregate demote pass when under the per-key ceiling).\n+**Effect:** Most reviews start without a blob round-trip; removes the \"Verification blocked → re-capture\" retry risk and shrinks the need for the ~700-token blob-protocol paragraph the reviewer prompt carries.\n+\n+## 4. Dedupe per-visit stage sections in preambles (seed fabro-edac)\n+**What happened:** The reviewer's prompt contained the **same** \"GATE GREEN\" tester output **three times** (one section per tester visit); `implementer@3`'s prompt carried the same 10.2 KB failed-gate blob ref twice. Run total: 1.12M cache-read tokens.\n+**Change:** Engine preamble renderer (`lib/components/fabro-workflow/src/handler/llm/preamble.rs`): render only the latest visit per node (or collapse repeats to a one-line \"visited N×, latest below\").\n+**Effect:** Smaller prompts on every cyclic run, lower token cost, and no stale-duplicate confusion for the implementer deciding what still needs fixing.\n+\n+## 5. Make gate failure output critical-first\n+**What happened:** `tester@2`'s failure message was a ~10 KB compile log with the two decisive clippy errors buried at the very end; `implementer@3` saw only a preview cut mid-log and had to open the blob to learn what broke. The evidence script already solved this ordering problem (`evidence.nu` fronts the integrity header and diff); the gate hasn't.\n+**Change:** `scripts/qualitygate.nu` (via the `qualitygate` recipe in `justfile`): on failure, print a compact summary first — failing step name + the error lines (grep for `^error`) — then the full log.\n+**Effect:** The re-entering implementer reads the actual error inline; faster, cheaper rework, and it composes with #1.\n+\n+## 6. Cap the `sd ready` firehose\n+**What happened:** One `sd ready --limit 200` poured ~15 KB / 126 seed lines into the planner's conversation (event 47: 15,112 output bytes) just to learn which seed is top of the queue. Conversation tokens jumped ~4k on that single call.\n+**Change:** Planner prompt (`.fabro/workflows/develop/prompts/planner.md`) + seeds-cli: use a top-N view (`sd ready --first 10` or `--priority high`) for the pick, full listing only when the top candidates are unclaimable.\n+**Effect:** Less context bloat and distraction per planning pass; composes with open seed fabro-e4fa (sd call economy).\n+\n+## 7. Cut the human-approval idle window for spawned runs (seeds fabro-54f0 / this run's own fabro-78ac)\n+**What happened:** The run sat `pending(approval_required)` from 16:36:39 to 16:38:58 — **2m19s, ~13% of run wall, doing nothing**. This is the exact friction class this run's seed fixed at the tool layer (create-then-start swallowing run ids → conductors retrying → duplicate children).\n+**Change:** Orchestration/parent-spawned runs: `auto_approve` for trusted worker subjects (or the approval-TTL backstop of fabro-54f0 so zombies can't persist).\n+**Effect:** ~2 min saved per run; prevents duplicate-children incidents for conductor flows.\n+\n+## 8. Cosmetic: renumber the duplicated step \"4.\" in the planner prompt (seed fabro-890d)\n+The planner prompt's \"Plan the next seed\" section has two consecutive \"4.\" items (\"Claim it\" / \"Write the implementation brief\") — visible verbatim in `stage.prompt` for planner@1. Renumber in `.fabro/workflows/develop/prompts/planner.md`. Effect: removes a small spec-parse hazard for literal-minded models; near-zero cost.\n+\n+**What already worked and needs no change** (so you don't re-tune it): `reasoning_effort=low` on implementer/rewriter passes ($0.044–$0.085, 113–132 reasoning tokens, correct fixes); deterministic `evidence`/`closeout` nodes (0.4s / 0.3s); the per-seed diff base in the capture (reviewer confirmed counts matched, no re-capture needed); and the failure-signature dedup keeping repeated gate-red noise at one entry each.\ndiff --git a/.fabro/revisions/01M1S6VRWQMD56M1X8HWAXDSNN.md b/.fabro/revisions/01M1S6VRWQMD56M1X8HWAXDSNN.md\nnew file mode 100644\nindex 0000000..fbaf23a\n--- /dev/null\n+++ b/.fabro/revisions/01M1S6VRWQMD56M1X8HWAXDSNN.md\n@@ -0,0 +1,29 @@\n+# Revision — run 01M1S6VRWQMD56M1X8HWAXDSNN\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M1S6VRWQMD56M1X8HWAXDSNN.md\n+- seeds filed:\n+  - fabro-0d56 Require crate-scoped fmt and clippy in the implementer's focused check\n+  - fabro-e988 Print critical-first failure summary in the qualitygate script\n+  - fabro-c3b4 Use a top-N sd ready view in the planner instead of the full firehose\n+  - fabro-1716 Auto-approve parent-spawned develop runs for trusted worker subjects\n+- basis: run 01M1S6VRWQMD56M1X8HWAXDSNN, workflow version af625ca581c5947f51dfa5597eb67892e0bee5d71ae041130412d1a54873ce8e, commit ecbd4d47c4c6d3272035e535731bc14f61a20662\n+- revised_at_commit: ecbd4d47c4c6d3272035e535731bc14f61a20662 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Require crate-scoped fmt and clippy in the implementer's focused check\n+- filed: fabro-0d56\n+- Change step 4 of `.fabro/workflows/develop/prompts/implementer.md`: replace the \"nothing that formats, lints\" prohibition with a requirement to run `cargo +<pinned-nightly> fmt -p <touched-crate>` and `cargo clippy -p <touched-crate> -D warnings` as part of the ONE focused check (still forbid full `just qualitygate`). Expected effect: eliminates the fmt/clippy gate-red class (two of three cycles in this run were pure style failures, ~25% of run LLM spend, ~4 min wall) and keeps the tester's first gate compile-warm.\n+\n+### Print critical-first failure summary in the qualitygate script\n+- filed: fabro-e988\n+- Change `scripts/qualitygate.nu`: on failure, print failing step name plus `^error` lines grepped from the log before the full output. Expected effect: the re-entering implementer reads the actual error inline (this run's ~10 KB failure message buried the decisive clippy errors at the end); composes with fabro-0d56.\n+\n+### Use a top-N sd ready view in the planner instead of the full firehose\n+- filed: fabro-c3b4\n+- Change `.fabro/workflows/develop/prompts/planner.md` to a top-N pick view (`sd ready --first 10` or `--priority high`), full listing only as fallback. Expected effect: avoids ~15 KB / 126 seed lines of context bloat per planning pass (event 47 in this run); cross-referenced with fabro-e4fa (call economy, distinct mechanism).\n+\n+### Auto-approve parent-spawned develop runs for trusted worker subjects\n+- filed: fabro-1716\n+- Extend the server auto-approve policy to trusted worker subjects on parent-spawned develop runs; verify whether commit 7fda512's subject set covers this spawn path. Expected effect: ~2 min saved per run (this run sat `pending(approval_required)` for 2m19s, ~13% of wall); the approval-TTL backstop is separately filed as fabro-54f0.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 21a4dbd..ba48a77 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -199,3 +199,7 @@\n {\"id\":\"fabro-e4ac\",\"title\":\"engine: verbose tool-argument validation errors — name the failing field and expected shape\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-09-05T16:38:13.397Z\",\"updatedAt\":\"2026-09-05T16:38:13.397Z\",\"description\":\"Tool argument validation errors currently surface the raw JSON-schema verdict ('is not valid under any of the schemas listed in the anyOf keyword') with no field name and no expected shape. LLM agents retry blind: 5 identical failed retries in conductor run 01M1S6MSV4's develop leg (2026-09-05) where the agent nested the workflow_source object inside workflow. Wanted: validation failures for tool arguments include (a) the failing property path, (b) the closest expected schema variant or a one-line shape hint. Complements the prompt-side schema discipline note (commit 51b2f81fc). Basis: run 01M1S6MSV4 events.\",\"labels\":[\"engine\",\"agent\"]}\n {\"id\":\"fabro-571e\",\"title\":\"engine: fabro_run_wait blocking tool — wait for a child run's terminal state without agent-side sleep loops\",\"status\":\"open\",\"type\":\"feature\",\"priority\":1,\"createdAt\":\"2026-09-05T16:48:27.981Z\",\"updatedAt\":\"2026-09-05T16:48:27.981Z\",\"description\":\"The conductor's legs currently poll child runs with agent-chosen shell sleep loops (observed: a self-chosen 300s timer in run 01M1S6MSV4's develop leg, 2026-09-05) — either wasting wall-clock when the child finishes early or burning LLM turns on frequent polls; the agent owns timing it cannot know. Wanted: a blocking fabro_run_wait tool {run_id, timeout_ms} mirroring the host-side CLI 'fabro wait': the backend polls/subscribes internally and returns the final status+reason (+PR link) only at terminal state or timeout. One call replaces the whole sleep/poll/turn cycle, reacts in seconds, and makes orchestration prompts trivial ('create, then wait'). Reuses the CLI wait semantics; SSE subscription could make it fully event-driven. Basis: conductor pass 01M1S6MSV4 develop leg events.\",\"labels\":[\"engine\",\"workflows\",\"agent\"]}\n {\"id\":\"fabro-94e8\",\"title\":\"engine: run-branch PRs go stale when the base moves (auto-rebase or merge-queue needed for autonomous loops)\",\"status\":\"open\",\"type\":\"feature\",\"priority\":1,\"createdAt\":\"2026-09-05T17:04:02.448Z\",\"updatedAt\":\"2026-09-05T17:04:02.448Z\",\"description\":\"When the base branch moves between run-PR open and auto-merge (e.g. tracker .seeds pushes, prompt fixes), the PR can go DIRTY/BLOCKED forever: auto-merge never fires, the conductor's tree-equality wait times out, and a human must update the branch. Observed live 2026-09-05: PR #28 stranded DIRTY after unrelated .seeds sync pushes; host-side manual repair (merge base into run branch, push) unblocked it and the dogfood-gate re-ran. Wanted: engine-side automatic run-branch PR updates when the base moves (merge base into the run branch, or a merge queue), so the autonomous line does not depend on control-function repairs. Basis: conductor pass 01M1S6MSV4, PR #28, repair commit a98db89f2.\",\"labels\":[\"engine\",\"workflows\"]}\n+{\"id\":\"fabro-0d56\",\"title\":\"Require crate-scoped fmt and clippy in the implementer's focused check\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-05T17:28:42.452Z\",\"updatedAt\":\"2026-09-05T17:28:42.452Z\",\"description\":\"Change step 4 of .fabro/workflows/develop/prompts/implementer.md: replace the 'nothing that formats, lints' prohibition with a requirement to run cargo +<pinned-nightly> fmt -p <touched-crate> and cargo clippy -p <touched-crate> -D warnings as part of the ONE focused check (still forbid full just qualitygate). Basis: in run 01M1S6VRWQMD56M1X8HWAXDSNN two of three implementer-to-tester cycles were pure style failures (rustfmt drift at tester@1, two denied clippy lints at tester@2 after an 81.6s cold-compile gate), burning ~25% of run LLM spend, ~4 min wall, and reaching seed_cycles.tester=3. Expected effect: eliminates the fmt/clippy gate-red class and keeps the tester's first gate compile-warm. Basis: run 01M1S6VRWQMD56M1X8HWAXDSNN, workflow version af625ca581c5947f51dfa5597eb67892e0bee5d71ae041130412d1a54873ce8e, commit ecbd4d47c4c6d3272035e535731bc14f61a20662\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-e988\",\"title\":\"Print critical-first failure summary in the qualitygate script\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T17:28:57.277Z\",\"updatedAt\":\"2026-09-05T17:28:57.277Z\",\"description\":\"Change scripts/qualitygate.nu (wired via the qualitygate recipe in justfile): on failure, print a compact summary first — failing step name plus the ^error lines grepped from the log — before the full output. Basis: in run 01M1S6VRWQMD56M1X8HWAXDSNN, tester@2's ~10 KB failure message buried the two decisive clippy errors at the very end; implementer@3 saw only a preview cut mid-log and had to open the blob to learn what broke. Expected effect: the re-entering implementer reads the actual error inline — faster, cheaper rework; composes with fabro-0d56. Basis: run 01M1S6VRWQMD56M1X8HWAXDSNN, workflow version af625ca581c5947f51dfa5597eb67892e0bee5d71ae041130412d1a54873ce8e, commit ecbd4d47c4c6d3272035e535731bc14f61a20662\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-c3b4\",\"title\":\"Use a top-N sd ready view in the planner instead of the full firehose\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T17:28:57.532Z\",\"updatedAt\":\"2026-09-05T17:28:57.532Z\",\"description\":\"Change .fabro/workflows/develop/prompts/planner.md to instruct a top-N pick view (sd ready --first 10 or --priority high), falling back to the full listing only when top candidates are unclaimable. Basis: in run 01M1S6VRWQMD56M1X8HWAXDSNN, one sd ready --limit 200 poured ~15 KB / 126 seed lines into the planner conversation (event 47: 15,112 output bytes, ~4k tokens) just to learn which seed is top of the queue. Expected effect: less context bloat and distraction per planning pass; composes with open seed fabro-e4fa (call economy, distinct mechanism: output volume per call, not number of calls). Basis: run 01M1S6VRWQMD56M1X8HWAXDSNN, workflow version af625ca581c5947f51dfa5597eb67892e0bee5d71ae041130412d1a54873ce8e, commit ecbd4d47c4c6d3272035e535731bc14f61a20662\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-1716\",\"title\":\"Auto-approve parent-spawned develop runs for trusted worker subjects\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-05T17:28:57.805Z\",\"updatedAt\":\"2026-09-05T17:28:57.805Z\",\"description\":\"Extend the server auto-approve policy to trusted worker subjects on parent-spawned develop runs, closing the idle approval window. Basis: run 01M1S6VRWQMD56M1X8HWAXDSNN sat pending(approval_required) from 16:36:39 to 16:38:58 — 2m19s, ~13% of run wall, doing nothing — even though conductor auto-approve landed same-day in commit 7fda512 (16:18 UTC); verify whether that commit's subject set covers this spawn path and extend it if not. Expected effect: ~2 min saved per run and no zombie-pending risk; the approval-TTL backstop is already filed as fabro-54f0, so this seed covers only the auto-approve mechanism. Basis: run 01M1S6VRWQMD56M1X8HWAXDSNN, workflow version af625ca581c5947f51dfa5597eb67892e0bee5d71ae041130412d1a54873ce8e, commit ecbd4d47c4c6d3272035e535731bc14f61a20662\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 85,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1772,6 +1858,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 199,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-05T17:29:35.022420608Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-05T17:29:35.022122164Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
