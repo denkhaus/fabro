@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Develop child could not be created: fabro_run_create returns 'workflow not found' for .fabro/workflows/develop/workflow.toml under every cwd variant (repo root /repos/denkhaus/fabro, /workspace, /workspace/fabro), bare names, absolute paths, and both environment slugs, even though the file exists and is readable in the agent sandbox; no local fabro CLI/server fallback exists. Create tooling failed (fabro-e297 interim path-resolution gap); no child run, no seed claimed, nothing merged.",
+  "timestamp": "2026-09-05T12:22:49.556882900Z"
+}
