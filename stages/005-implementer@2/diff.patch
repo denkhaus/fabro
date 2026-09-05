@@ -1,0 +1,102 @@
+diff --git a/.fabro/journal/01M1S6VRWQMD56M1X8HWAXDSNN.jsonl b/.fabro/journal/01M1S6VRWQMD56M1X8HWAXDSNN.jsonl
+index 96e5c4f..ead0810 100644
+--- a/.fabro/journal/01M1S6VRWQMD56M1X8HWAXDSNN.jsonl
++++ b/.fabro/journal/01M1S6VRWQMD56M1X8HWAXDSNN.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1S6VRWQMD56M1X8HWAXDSNN","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-05T16:41:42Z","data":{"painpoints":[{"text":"Run-container mise config is untrusted, so the first `sd ready` call failed with 'Config files in /repos/denkhaus/fabro/.mise.toml are not trusted' and the planner burned a tool call on `mise trust` before any tracker read worked (this run, 01M1S6VRWQMD56M1X8HWAXDSNN). Already tracked as seed fabro-66db 'sandbox: pre-trust the repo mise config in run containers' — the pain recurred here, which strengthens its case."}],"observations":["Tracker holds 126 ready seeds; `sd ready --limit 200` put fabro-78ac first among High — picked it after verifying its basis is live (create-then-start `?` at lib/components/fabro-tool/src/create.rs:453-464) rather than stale.","Resolved a spec ambiguity in the brief: the seed's 'created <id>, start blocked: ...' example reads like summary text but the real fix belongs in the structured CreatedRunResult (additive JsonSchema field preferred); documented that post-failure run state is unknown, so the error must be reported verbatim, not mapped to 'pending'."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1S6VRWQMD56M1X8HWAXDSNN","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-05T16:48:39Z","data":{"painpoints":[],"observations":["Multi-line perl -0pi field insertion into four MockCreateBackend constructors in `lib/components/fabro-tool/src/create.rs` mangled two lines (captured group swallowed `Mutex::new(Vec::new())`); caught immediately by inspecting rg output and fixed with a second targeted pass, then verified by compiling tests. Risk class: regex transforms over constructor literals silently drop adjacent tokens — always re-grep the transformed lines before building."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1S6VRWQMD56M1X8HWAXDSNN","node":"implementer","visit":2,"status":"succeeded","ts":"2026-09-05T16:49:52Z","data":{"painpoints":[{"text":"Tester gate RED was formatting-only (run 01M1S6VRWQMD56M1X8HWAXDSNN, lib/components/fabro-tool/src/create.rs:942): the implementer stage's instruction to skip fmt to avoid redundant gate runs let whitespace drift reach the deterministic gate. Suggestion: allow/require implementer to run `cargo +nightly-2026-04-14 fmt -p <touched-crate>` as part of its ONE focused check — it is sub-second with a warm toolchain and would have saved a full tester cycle."}],"observations":["The gate failure was purely cosmetic (struct-literal alignment in test fixtures); the partial-success implementation and its tests were already correct, confirmed by 67/67 passing nextest run for fabro-tool."]}}
+diff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl
+index 56cddd4..5e2ec75 100644
+--- a/.mulch/expertise/engine.jsonl
++++ b/.mulch/expertise/engine.jsonl
+@@ -19,3 +19,4 @@
+ {"type":"convention","classification":"tactical","recorded_at":"2026-09-04T07:07:47.749Z","evidence":{"commit":"7f3dde1988d88d5a0bff32801a92ecf74e9b1cc4"},"content":"Markdown table cells in agent preambles must be sanitized single-line: newlines -> ' / ', blank/indent runs collapsed, literal '|' escaped as '\\|' (see sanitize_table_cell in lib/components/fabro-workflow/src/handler/llm/preamble.rs). Bullet-list renderings (append_filtered_context/append_large_value) intentionally keep multi-line output; only the summary:high '## Current context' table path sanitizes. Never change format_value globally.","id":"mx-26cd4f"}
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-05T16:26:48.235Z","evidence":{"commit":"74bfb5e153257c0d00e790e2ccd152259f84a465"},"name":"evidence-nu-diff-walk-included-append","description":"evidence.nu diff-walk invariant: a file is appended to 'included' as soon as git diff exits 0 — BEFORE the empty-text check — so files with zero per-seed hunks are silently skipped but never disclosed as cap-omitted. When refactoring or reusing the walk (e.g. loop-diff-section, fabro-4b57), preserve that append placement; hoisting it after the empty check would list every hunk-less file under 'hard cap hit' and change seed-section output (fabro-4b57 verified via scratch-repo scenarios: churn-only emits loop-work diff, mixed stays counts-only).","files":[".fabro/workflows/develop/prompts/reviewer.md",".fabro/workflows/develop/scripts/evidence.nu",".mulch/expertise/engine.jsonl"],"id":"mx-40abdb"}
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-05T16:48:08.570Z","evidence":{"commit":"feb8add5a9a5696262be85ccb0d2f13b8c039391"},"name":"partial-success-create-then-start","description":"Partial-success reporting for create-then-start tool calls (fabro-78ac, lib/components/fabro-tool/src/create.rs): when an operation creates a durable resource and a follow-up call fails, return Ok with the resource id plus an additive Option<String> error field (start_error) on the structured result instead of ?-propagating — the LLM caller otherwise retries and duplicates the resource. Report the failure verbatim (e.g. 'start blocked: approval_required') and use status 'unknown' rather than guessing 'pending'; keep genuine create/parent-resolution failures as Err since nothing was created. Text summary adds 'start blocked for N' so it never implies a clean start.","files":["lib/components/fabro-tool/src/create.rs"],"id":"mx-3cb781"}
++{"type":"failure","classification":"tactical","recorded_at":"2026-09-05T16:49:31.428Z","evidence":{"commit":"9f34e538c59569f67bca7263a0221af1dcc822cc"},"description":"Gate RED from rustfmt alignment in new test fixtures (fabro-78ac run 01M1S6VRWQMD56M1X8HWAXDSNN): hand-aligned struct-literal fields in mod tests drift from pinned-nightly rustfmt. Fix: run 'cargo +nightly-2026-04-14 fmt -p <crate>' after editing test fixtures instead of hand-aligning columns.","resolution":"Reformatted lib/components/fabro-tool with pinned nightly rustfmt; fmt --check now clean","id":"mx-85eddc"}
+diff --git a/lib/components/fabro-tool/src/create.rs b/lib/components/fabro-tool/src/create.rs
+index c438a85..e8e269f 100644
+--- a/lib/components/fabro-tool/src/create.rs
++++ b/lib/components/fabro-tool/src/create.rs
+@@ -736,7 +736,7 @@ mod tests {
+             created_parent_ids: Mutex::new(Vec::new()),
+             resolved_selectors: Mutex::new(Vec::new()),
+             started_run_ids: Mutex::new(Vec::new()),
+-            start_error:      None,
++            start_error: None,
+             retrieve_error: None,
+         });
+         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
+@@ -789,7 +789,7 @@ mod tests {
+             created_parent_ids: Mutex::new(Vec::new()),
+             resolved_selectors: Mutex::new(Vec::new()),
+             started_run_ids: Mutex::new(Vec::new()),
+-            start_error:      None,
++            start_error: None,
+             retrieve_error: None,
+         });
+         let runs: Vec<CreateRunSpecInput> = (0..2)
+@@ -841,7 +841,7 @@ mod tests {
+             created_parent_ids: Mutex::new(Vec::new()),
+             resolved_selectors: Mutex::new(Vec::new()),
+             started_run_ids: Mutex::new(Vec::new()),
+-            start_error:      None,
++            start_error: None,
+             retrieve_error: None,
+         });
+         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
+@@ -898,7 +898,7 @@ mod tests {
+             created_parent_ids: Mutex::new(Vec::new()),
+             resolved_selectors: Mutex::new(Vec::new()),
+             started_run_ids: Mutex::new(Vec::new()),
+-            start_error:      None,
++            start_error: None,
+             retrieve_error: None,
+         });
+         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
+@@ -942,19 +942,19 @@ mod tests {
+ 
+     fn create_spec_input(start: Option<bool>) -> CreateRunSpecInput {
+         CreateRunSpec {
+-            workflow_source:  None,
+-            workflow:         "simple.fabro".to_string(),
+-            cwd:              None,
+-            parent_id:        None,
+-            goal:             None,
+-            goal_file:        None,
+-            inputs:           HashMap::new(),
+-            labels:           HashMap::new(),
+-            dry_run:          None,
+-            auto_approve:     None,
+-            model:            None,
+-            provider:         None,
+-            environment:      None,
++            workflow_source: None,
++            workflow: "simple.fabro".to_string(),
++            cwd: None,
++            parent_id: None,
++            goal: None,
++            goal_file: None,
++            inputs: HashMap::new(),
++            labels: HashMap::new(),
++            dry_run: None,
++            auto_approve: None,
++            model: None,
++            provider: None,
++            environment: None,
+             preserve_sandbox: None,
+             start,
+         }
+@@ -1052,10 +1052,7 @@ mod tests {
+             retrieve_error: None,
+         });
+         let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
+-            runs: vec![
+-                create_spec_input(Some(false)),
+-                create_spec_input(None),
+-            ],
++            runs: vec![create_spec_input(Some(false)), create_spec_input(None)],
+         })
+         .expect("create params should validate");
+ 
