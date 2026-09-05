@@ -1205,13 +1205,35 @@ fn verify_run_json_field(row: &SqliteRow, run: &Run) -> Result<()> {
     let stored_json: String = row.try_get("summary_json")?;
     let stored: serde_json::Value = serde_json::from_str(&stored_json)?;
     let expected = serde_json::to_value(run)?;
-    if stored != expected {
+    // Schema-evolution tolerance (2026-09-05, ADR-0015): rows written
+    // before the workflow_version_id exposition serialize `workflow`
+    // WITHOUT that key, while the event-sourced projection now derives
+    // it for intent-based runs — byte equality would fail healthy rows
+    // and abort startup (observed live: run-history activation rejected
+    // run 01M1MGAPV4). The field rides the run.created event, so the
+    // divergence is schema, not data; new event appends refresh the row
+    // in the full shape anyway. Strip it on both sides before comparing.
+    // Remove when no supported release writes rows without the field.
+    if strip_workflow_version_id(stored) != strip_workflow_version_id(expected) {
         return Err(Error::RunSummaryMismatch {
             run_id: run.id.to_string(),
             field:  "summary_json",
         });
     }
     Ok(())
+}
+
+/// Remove `workflow.workflow_version_id` from a serialized run summary so
+/// verification compares data divergence, not projection schema era. See
+/// [`verify_run_json_field`] for the rationale.
+fn strip_workflow_version_id(mut value: serde_json::Value) -> serde_json::Value {
+    if let Some(workflow) = value
+        .get_mut("workflow")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        workflow.remove("workflow_version_id");
+    }
+    value
 }
 
 fn decode_event_row(
@@ -3171,6 +3193,66 @@ mod tests {
 
         assert!(store.get(&kept_id, created_at).await.unwrap().is_some());
         assert!(store.get(&removed_id, created_at).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn verify_tolerates_rows_written_before_workflow_version_id() {
+        use sqlx::Row as _;
+
+        use super::strip_workflow_version_id;
+
+        // Schema-evolution regression (2026-09-05): rows written before the
+        // workflow_version_id exposition lack the key in summary_json while
+        // the fresh projection derives it from the run.created event.
+        // Verification must pass (schema era, not data divergence).
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-09-04T08:00:00Z");
+        let id = run_id(created_at.timestamp_millis().cast_unsigned(), 7);
+        let mut spec_projection = projection(id, "intent run", created_at);
+        spec_projection.spec.workflow_version_id = Some(test_support::test_workflow_version_id());
+        let projected = entry(spec_projection, 3);
+        store.upsert_projection(&projected).await.unwrap();
+
+        // Simulate a row written by the pre-2026-09-05 binary: strip the
+        // key from the stored summary_json.
+        let legacy_json = {
+            let current: serde_json::Value =
+                sqlx::query("SELECT summary_json FROM runs WHERE id = ?")
+                    .bind(id.to_string())
+                    .fetch_one(store.acquire().await.unwrap().as_mut())
+                    .await
+                    .unwrap()
+                    .try_get::<String, _>("summary_json")
+                    .unwrap()
+                    .parse()
+                    .unwrap();
+            strip_workflow_version_id(current).to_string()
+        };
+        let updated = sqlx::query("UPDATE runs SET summary_json = ? WHERE id = ?")
+            .bind(&legacy_json)
+            .bind(id.to_string())
+            .execute(store.acquire().await.unwrap().as_mut())
+            .await
+            .unwrap();
+        assert_eq!(updated.rows_affected(), 1, "row must exist to rewrite");
+
+        let mut connection = store.acquire().await.unwrap();
+        RunSummaryStore::verify_current_run_on_connection(&mut connection, &projected)
+            .await
+            .expect("legacy-shape row must verify against the fresh projection");
+
+        // Control: a genuine divergence (different title inside summary_json)
+        // still fails closed.
+        let divergent_json = legacy_json.replace("intent run", "other run");
+        sqlx::query("UPDATE runs SET summary_json = ? WHERE id = ?")
+            .bind(&divergent_json)
+            .bind(id.to_string())
+            .execute(&mut *connection)
+            .await
+            .unwrap();
+        let verdict =
+            RunSummaryStore::verify_current_run_on_connection(&mut connection, &projected).await;
+        assert!(verdict.is_err(), "real divergence must fail verification");
     }
 
     #[tokio::test]
