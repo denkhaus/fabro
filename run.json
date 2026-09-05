@@ -658,7 +658,7 @@
     "denial_reason": null
   },
   "status_updated_at": "2026-09-05T16:19:16.561479719Z",
-  "last_event_at": "2026-09-05T16:22:10.549708242Z",
+  "last_event_at": "2026-09-05T16:27:14.945428106Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -705,9 +705,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 131,
       "checkpoint": {
-        "timestamp": "2026-09-05T16:22:10.901394397Z",
+        "timestamp": "2026-09-05T16:22:16.744426745Z",
         "current_node": "planner",
         "completed_nodes": [
           "start",
@@ -715,22 +715,6 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.seed_cycle_anchor": "fabro-4b57",
-          "last_response": "Seed `fabro-4b57` claimed. Basis verified: `diff-section` in `evidence.nu` diffs only `seed_rows` (non-loop paths), so churn-only dev-loop seeds render `seed-work=0 files +0/-0` with no diff, and the ",
-          "graph.preamble_budget_kb": "24",
-          "internal.fidelity": "compact",
-          "last_stage": "planner",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 3602,
-            "preview": "Seed `fabro-4b57` claimed. Basis verified: `diff-section` in `evidence.nu` diffs only `seed_rows` (non-loop paths), so churn-only dev-loop seeds render `seed-work=0 files +0/-0` with no diff, and the "
-          },
-          "current_seed_id": "fabro-4b57",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "thread.start.current_node": "planner",
-          "current_seed_brief": "fabro-4b57 — Emit a loop-work diff in evidence.nu when only churn files changed. Churn-only dev-loop seeds currently capture seed-work=0 files +0/-0 and no diff, forcing reviewers into a manual git detour; the per-seed claim-base machinery (seed-claim-base) already exists. Acceptance criteria: • New behavior in `.fabro/workflows/develop/scripts/evidence.nu`: when `seed_rows` is empty AND `churn_rows` is non-empty, emit a loop-work diff section showing `git diff -U3 $claim.base -- <file>` for each changed loop file, sorted source-before-docs via diff-sort-key. • Reuse `diff-section` mechanics exactly: `sanitize()` each diff body, skip files whose per-seed diff is empty, same HARD_CAP walk and same omitted-files disclosure on cap hit. • Placement: adjacent to the loop churn section; emission order must keep the integrity header first and the trailing duplicate integrity line last. • No behavior change when `seed_rows` is non-empty (loop churn stays counts-only) or when both lists are empty; integrity header and count-line shapes unchanged; claim-base fallback still disclosed by the existing header note. • Update `.fabro/workflows/develop/prompts/reviewer.md` (line ~11 section enumeration) to mention the loop-work diff section — the evidence.nu header says output text is contract with the reviewer prompt, so the seed's evidence.nu-only scope is resolved to include this wording change. • Verification: parse-check the script with `nu` (e.g. `nu --ide-check`), then scenario runs proving (a) churn-only change produces the loop-work diff section, (b) mixed seed-work+churn change leaves output unchanged with no loop-work diff section.",
-          "internal.work_dir": "/workspace/fabro",
           "journal": {
             "painpoints": [
               {
@@ -742,23 +726,39 @@
               "Resolved a scope contradiction in fabro-4b57: the seed names only `evidence.nu`, but that script's header declares its output sections a contract with the reviewer prompt ('change wording there too'); the brief therefore includes the `reviewer.md` section-enumeration update to avoid reviewer ping-pong."
             ]
           },
-          "current_node": "planner",
-          "failure_signature": "",
+          "last_response": "Seed `fabro-4b57` claimed. Basis verified: `diff-section` in `evidence.nu` diffs only `seed_rows` (non-loop paths), so churn-only dev-loop seeds render `seed-work=0 files +0/-0` with no diff, and the ",
+          "last_stage": "planner",
+          "internal.retry_count.start": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "thread.start.current_node": "planner",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "internal.node_visit_count": 1,
+          "outcome": "succeeded",
+          "current_node": "planner",
+          "failure_class": "",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.planner": 0,
+          "failure_signature": "",
+          "internal.seed_cycle_anchor": "fabro-4b57",
+          "current_seed_brief": "fabro-4b57 — Emit a loop-work diff in evidence.nu when only churn files changed. Churn-only dev-loop seeds currently capture seed-work=0 files +0/-0 and no diff, forcing reviewers into a manual git detour; the per-seed claim-base machinery (seed-claim-base) already exists. Acceptance criteria: • New behavior in `.fabro/workflows/develop/scripts/evidence.nu`: when `seed_rows` is empty AND `churn_rows` is non-empty, emit a loop-work diff section showing `git diff -U3 $claim.base -- <file>` for each changed loop file, sorted source-before-docs via diff-sort-key. • Reuse `diff-section` mechanics exactly: `sanitize()` each diff body, skip files whose per-seed diff is empty, same HARD_CAP walk and same omitted-files disclosure on cap hit. • Placement: adjacent to the loop churn section; emission order must keep the integrity header first and the trailing duplicate integrity line last. • No behavior change when `seed_rows` is non-empty (loop churn stays counts-only) or when both lists are empty; integrity header and count-line shapes unchanged; claim-base fallback still disclosed by the existing header note. • Update `.fabro/workflows/develop/prompts/reviewer.md` (line ~11 section enumeration) to mention the loop-work diff section — the evidence.nu header says output text is contract with the reviewer prompt, so the seed's evidence.nu-only scope is resolved to include this wording change. • Verification: parse-check the script with `nu` (e.g. `nu --ide-check`), then scenario runs proving (a) churn-only change produces the loop-work diff section, (b) mixed seed-work+churn change leaves output unchanged with no loop-work diff section.",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.run_id": "01M1S5MWDTFSQBZ833Q74AGPXB",
+          "internal.thread_id": "start",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3602,
+            "preview": "Seed `fabro-4b57` claimed. Basis verified: `diff-section` in `evidence.nu` diffs only `seed_rows` (non-loop paths), so churn-only dev-loop seeds render `seed-work=0 files +0/-0` with no diff, and the "
+          },
+          "internal.fidelity": "compact",
+          "current_seed_title": "Emit a loop-work diff in evidence.nu when only churn files changed",
+          "preferred_label": "Seed claimed",
+          "graph.rankdir": "LR",
           "seed_cycles": {
             "planner": 1
           },
-          "internal.run_id": "01M1S5MWDTFSQBZ833Q74AGPXB",
-          "current_seed_title": "Emit a loop-work diff in evidence.nu when only churn files changed",
-          "outcome": "succeeded",
-          "graph.max_node_visits": "40",
-          "graph.rankdir": "LR",
-          "internal.thread_id": "start",
-          "internal.retry_count.start": 0,
-          "preferred_label": "Seed claimed",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.retry_count.planner": 0,
-          "failure_class": ""
+          "current_seed_id": "fabro-4b57",
+          "graph.max_node_visits": "40"
         },
         "node_outcomes": {
           "start": {
@@ -823,7 +823,201 @@
           }
         },
         "next_node_id": "implementer",
+        "git_commit_sha": "74bfb5e153257c0d00e790e2ccd152259f84a465",
         "node_visits": {
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1S5MWDTFSQBZ833Q74AGPXB.jsonl b/.fabro/journal/01M1S5MWDTFSQBZ833Q74AGPXB.jsonl\nnew file mode 100644\nindex 00000000..73c5b8cf\n--- /dev/null\n+++ b/.fabro/journal/01M1S5MWDTFSQBZ833Q74AGPXB.jsonl\n@@ -0,0 +1 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1S5MWDTFSQBZ833Q74AGPXB\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-05T16:22:10Z\",\"data\":{\"painpoints\":[{\"text\":\"First `sd ready --limit 200` failed with exit 1: mise refused the untrusted config at `/repos/denkhaus/fabro/.mise.toml` (bun shim resolves through mise, so the bun-script `sd` CLI dies before running). Workaround: `mise trust /repos/denkhaus/fabro/.mise.toml`, then sd works. This burned several tool calls at session start; already tracked as seed fabro-66db (sandbox: pre-trust the repo mise config), so no new seed filed — but the painpoint reproduces in planner sessions too, not just implementer ones.\"}],\"observations\":[\"fabro-1e9f ('Diff evidence against the last seed boundary, not the run base') looks ALREADY IMPLEMENTED in the current tree: `evidence.nu` has `seed-claim-base` and `diff-section` anchored at the per-seed claim commit, exactly what its title describes — next planner should treat it as a verification-only candidate rather than fresh work.\",\"Resolved a scope contradiction in fabro-4b57: the seed names only `evidence.nu`, but that script's header declares its output sections a contract with the reviewer prompt ('change wording there too'); the brief therefore includes the `reviewer.md` section-enumeration update to avoid reviewer ping-pong.\"]}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 18c02a74..970830e5 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -155,7 +155,7 @@\n {\"id\":\"fabro-ee2c\",\"title\":\"Require ml record for implementer near-miss tool lessons\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-03T17:36:46.111Z\",\"updatedAt\":\"2026-09-03T17:36:46.111Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 6 (or the stage-journal hook), make ml record mandatory for near-miss tool lessons. implementer@1's edit_file old_string swallowed a whole test loop body in fib_test.go, was caught only by re-reading, and the lesson went into the run journal that no future session loads; implementer@2 then spent 284 s / 0.49 USD (42% of run agent cost) editing the same 1,100-line table-literal file without the guardrail. Expected effect: the next implementer inherits the scoped-old_string guardrail via ml prime --files.\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-169b\",\"title\":\"Declare lesson_capture in the implementer node's context_allow_keys\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-03T17:46:38.461Z\",\"updatedAt\":\"2026-09-05T07:56:24.008Z\",\"description\":\"Seed fabro-f831 makes lesson_capture a required key of the Implemented JSON in .fabro/workflows/develop/prompts/implementer.md, but workflow.fabro's implementer node still declares context_allow_keys=implementation_summary,journal, so the undeclared key drops as drift on every future pass (per fabro-900e comment). Change: one line in workflow.fabro implementer node — context_allow_keys=implementation_summary,lesson_capture,journal; optionally also add it to the reviewer's preamble_allow_keys. Effect: the enforced record-or-skip answer lands durably instead of being discarded.\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-05T07:56:24.008Z\",\"closeReason\":\"Closed 2026-09-05 triage: lesson_capture already declared in implementer context_allow_keys (workflow.fabro line 106).\"}\n {\"id\":\"fabro-3d2d\",\"title\":\"Add a repo-layout map to the planner prompt or AGENTS.md\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-03T17:46:38.588Z\",\"updatedAt\":\"2026-09-03T17:46:38.588Z\",\"description\":\"planner@1 burned 354.7 s / $0.219 of the $0.547 total (50,460 input tokens) on ~10 exploratory calls just to locate dev-loop assets that live at .fabro/workflows/develop/ in the same repo; planner@2 with the layout in context took 98 s / $0.064. Change: add a 5-line Repo layout section to AGENTS.md (loaded as memory into every stage) or .fabro/workflows/develop/prompts/planner.md: gofib at repo root; dev-loop assets at .fabro/workflows/develop/; reviews at .fabro/reviews/; journals at .fabro/journal/. Effect: first planner pass drops from ~6 min toward ~100 s — roughly −4.5 min wall and −$0.15 per run. Distinct from the sd call-economy seeds (fabro-e4fa/f4cd/1399): those tune tracker calls, this removes filesystem orientation calls.\",\"labels\":[\"revision\"]}\n-{\"id\":\"fabro-4b57\",\"title\":\"Emit a loop-work diff in evidence.nu when only churn files changed\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-03T17:46:44.453Z\",\"updatedAt\":\"2026-09-03T17:46:44.453Z\",\"description\":\"Seeds targeting .fabro/ paths are classified as loop churn by .fabro/workflows/develop/scripts/evidence.nu, so captures read seed-work=0 files +0/-0 and reviewers must run their own git diff. Change: in evidence.nu, when seed_rows is empty but churn_rows is not, emit the per-seed (claim-base) diff of changed loop files under a loop-work diff section — the per-seed diff-base machinery from fabro-1e9f's theme already provides the base. Effect: reviews of dev-loop seeds verify from context, removing the per-review git detour. Cross-ref: fabro-1e9f (diff against last seed boundary) is the same machinery at run level.\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-4b57\",\"title\":\"Emit a loop-work diff in evidence.nu when only churn files changed\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-03T17:46:44.453Z\",\"updatedAt\":\"2026-09-05T16:21:43.927Z\",\"description\":\"Seeds targeting .fabro/ paths are classified as loop churn by .fabro/workflows/develop/scripts/evidence.nu, so captures read seed-work=0 files +0/-0 and reviewers must run their own git diff. Change: in evidence.nu, when seed_rows is empty but churn_rows is not, emit the per-seed (claim-base) diff of changed loop files under a loop-work diff section — the per-seed diff-base machinery from fabro-1e9f's theme already provides the base. Effect: reviews of dev-loop seeds verify from context, removing the per-review git detour. Cross-ref: fabro-1e9f (diff against last seed boundary) is the same machinery at run level.\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-a5de\",\"title\":\"Ban sd prime in develop planner and implementer prompts\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-03T17:46:44.627Z\",\"updatedAt\":\"2026-09-05T07:56:35.010Z\",\"description\":\"planner@1 executed sd prime because AGENTS.md memory instructs it, pulling a 4.7 KB banner whose Session Close Protocol mandates sd close + sd sync && git push — both reserved for the deterministic Closeout; the planner journaled that an LLM skimming the banner could comply. Change: one line in .fabro/workflows/develop/prompts/planner.md and prompts/implementer.md: never run sd prime in this loop — its close/push protocol contradicts the role rules and the context brief supersedes it. Effect: removes a directly contradicting instruction from every stage context and eliminates the mis-close/push risk. Complements the AGENTS.md boilerplate fix in fabro-cc23.\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-3d04\",\"title\":\"Make the authorized-exception pattern standing in the implementer prompt\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-03T17:46:49.669Z\",\"updatedAt\":\"2026-09-03T17:46:49.669Z\",\"description\":\"Briefs carry manual override prose (fabro-f831's brief opened with CONTRADICTION RESOLVED authorizing exactly one .fabro/ file), and implementer@2 journaled that the pattern recurred across fabro-7e44 and fabro-f831 and deserves a platform-level convention. Change: in .fabro/workflows/develop/prompts/implementer.md's Platform scope section add: exception — a brief that names a specific platform file authorizes editing exactly that file. Effect: planner briefs shed roughly a third of their text and the implementer no longer reconciles a contradiction before starting.\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-50f8\",\"title\":\"Require null-path exercises when editing workflow scripts\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-03T17:46:49.774Z\",\"updatedAt\":\"2026-09-03T17:46:49.774Z\",\"description\":\"implementer@1 found a latent crash — a string-typed Nushell param rejects runtime null, which would have crashed evidence.nu's no-seed-in-progress path (mulch mx-0b966a) — surfaced only because that brief happened to demand fallback/null/empty-diff exercises; the gate's nu-check is syntax-only. Change: add to .fabro/workflows/develop/prompts/implementer.md step 2: when editing workflow scripts, exercise the null/no-seed/fallback paths via nu -c before finishing. Effect: rarely-hit paths get verified on every workflow-script seed, not only when a brief remembers to ask.\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 2,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-05T16:27:15.183751821Z",
+        "current_node": "implementer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "thread.planner.current_node": "implementer",
+          "internal.seed_cycle_anchor": "fabro-4b57",
+          "last_response": "{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Modified `.fabro/workflows/develop/scripts/evidence.nu` (extract shared `diff",
+          "graph.preamble_budget_kb": "24",
+          "internal.fidelity": "summary:high",
+          "last_stage": "implementer",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3602,
+            "preview": "Seed `fabro-4b57` claimed. Basis verified: `diff-section` in `evidence.nu` diffs only `seed_rows` (non-loop paths), so churn-only dev-loop seeds render `seed-work=0 files +0/-0` with no diff, and the "
+          },
+          "implementation_summary": "Modified `.fabro/workflows/develop/scripts/evidence.nu` (extract shared `diff-walk` from `diff-section`; new `loop-diff-section` emitted after the churn section only when seed_rows is empty and churn_rows is not) and `.fabro/workflows/develop/prompts/reviewer.md` (Input bullet now names the loop-work diff section). Lesson captured as mulch pattern `mx-40abdb`. Per-criterion report: - PASS loop-work diff section on churn-only seeds, git diff -U3 vs claim base, diff-sort-key ordering: evidence.nu `loop-diff-section` + `main` gate, proven by scenario (a). - PASS reuse of diff-section mechanics (sanitize, empty-diff skip, HARD_CAP walk, omitted-files disclosure): shared `diff-walk`, identical disclosure strings in both sections. - PASS placement adjacent to loop churn with integrity header first and trailing duplicate integrity line last: verified in scenario (a)/(b)/(c) outputs. - PASS no behavior change for mixed or empty captures, header/count-line shapes and claim-base fallback disclosure unchanged: scenario (b) diff shows no loop-work section and identical shapes; clean-tree run emits nothing. - PASS reviewer.md section enumeration mentions the loop-work diff section: Input first bullet of `.fabro/workflows/develop/prompts/reviewer.md`. - PASS nu parse-check (0 non-hint diagnostics) plus scenario runs (a) and (b) as specified.",
+          "current_seed_id": "fabro-4b57",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "thread.start.current_node": "planner",
+          "current_seed_brief": "fabro-4b57 — Emit a loop-work diff in evidence.nu when only churn files changed. Churn-only dev-loop seeds currently capture seed-work=0 files +0/-0 and no diff, forcing reviewers into a manual git detour; the per-seed claim-base machinery (seed-claim-base) already exists. Acceptance criteria: • New behavior in `.fabro/workflows/develop/scripts/evidence.nu`: when `seed_rows` is empty AND `churn_rows` is non-empty, emit a loop-work diff section showing `git diff -U3 $claim.base -- <file>` for each changed loop file, sorted source-before-docs via diff-sort-key. • Reuse `diff-section` mechanics exactly: `sanitize()` each diff body, skip files whose per-seed diff is empty, same HARD_CAP walk and same omitted-files disclosure on cap hit. • Placement: adjacent to the loop churn section; emission order must keep the integrity header first and the trailing duplicate integrity line last. • No behavior change when `seed_rows` is non-empty (loop churn stays counts-only) or when both lists are empty; integrity header and count-line shapes unchanged; claim-base fallback still disclosed by the existing header note. • Update `.fabro/workflows/develop/prompts/reviewer.md` (line ~11 section enumeration) to mention the loop-work diff section — the evidence.nu header says output text is contract with the reviewer prompt, so the seed's evidence.nu-only scope is resolved to include this wording change. • Verification: parse-check the script with `nu` (e.g. `nu --ide-check`), then scenario runs proving (a) churn-only change produces the loop-work diff section, (b) mixed seed-work+churn change leaves output unchanged with no loop-work diff section.",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2302,
+            "preview": "{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Modified `.fabro/workflows/develop/scripts/evidence.nu` (extract shared `diff"
+          },
+          "internal.work_dir": "/workspace/fabro",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Scenario-testing evidence.nu outside the real repo requires `.seeds/config.yaml` on disk — `sd list` errors with 'Not in a seeds project' from a bare issues.jsonl, which makes the script's `in-progress-seed` pipeline fail wholesale; copying the real config into the scratch repo fixed it (file: `.fabro/workflows/develop/scripts/evidence.nu`, in-progress-seed).",
+              "The original diff-section appends each file to `included` BEFORE the empty-text check (and once more after the cap check) — membership semantics, not sloppiness: dropping the early append would disclose hunk-less files as cap-omitted. The refactor preserves it; recorded as mx-40abdb so future edits don't 'clean it up'."
+            ]
+          },
+          "current_node": "implementer",
+          "internal.retry_count.implementer": 0,
+          "failure_signature": "",
+          "internal.node_visit_count": 1,
+          "lesson_capture": "mx-40abdb",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "internal.run_id": "01M1S5MWDTFSQBZ833Q74AGPXB",
+          "current_seed_title": "Emit a loop-work diff in evidence.nu when only churn files changed",
+          "outcome": "succeeded",
+          "graph.max_node_visits": "40",
+          "graph.rankdir": "LR",
+          "internal.thread_id": "planner",
+          "internal.retry_count.start": 0,
+          "preferred_label": "Implemented",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.planner": 0,
+          "failure_class": ""
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "lesson_capture": "mx-40abdb",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Scenario-testing evidence.nu outside the real repo requires `.seeds/config.yaml` on disk — `sd list` errors with 'Not in a seeds project' from a bare issues.jsonl, which makes the script's `in-progress-seed` pipeline fail wholesale; copying the real config into the scratch repo fixed it (file: `.fabro/workflows/develop/scripts/evidence.nu`, in-progress-seed).",
+                  "The original diff-section appends each file to `included` BEFORE the empty-text check (and once more after the cap check) — membership semantics, not sloppiness: dropping the early append would disclose hunk-less files as cap-omitted. The refactor preserves it; recorded as mx-40abdb so future edits don't 'clean it up'."
+                ]
+              },
+              "implementation_summary": "Modified `.fabro/workflows/develop/scripts/evidence.nu` (extract shared `diff-walk` from `diff-section`; new `loop-diff-section` emitted after the churn section only when seed_rows is empty and churn_rows is not) and `.fabro/workflows/develop/prompts/reviewer.md` (Input bullet now names the loop-work diff section). Lesson captured as mulch pattern `mx-40abdb`. Per-criterion report: - PASS loop-work diff section on churn-only seeds, git diff -U3 vs claim base, diff-sort-key ordering: evidence.nu `loop-diff-section` + `main` gate, proven by scenario (a). - PASS reuse of diff-section mechanics (sanitize, empty-diff skip, HARD_CAP walk, omitted-files disclosure): shared `diff-walk`, identical disclosure strings in both sections. - PASS placement adjacent to loop churn with integrity header first and trailing duplicate integrity line last: verified in scenario (a)/(b)/(c) outputs. - PASS no behavior change for mixed or empty captures, header/count-line shapes and claim-base fallback disclosure unchanged: scenario (b) diff shows no loop-work section and identical shapes; clean-tree run emits nothing. - PASS reviewer.md section enumeration mentions the loop-work diff section: Input first bullet of `.fabro/workflows/develop/prompts/reviewer.md`. - PASS nu parse-check (0 non-hint diagnostics) plus scenario runs (a) and (b) as specified.",
+              "last_response": "{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Modified `.fabro/workflows/develop/scripts/evidence.nu` (extract shared `diff",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2302,
+                "preview": "{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Modified `.fabro/workflows/develop/scripts/evidence.nu` (extract shared `diff"
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 38870,
+                    "output_tokens": 7219,
+                    "reasoning_tokens": 6925,
+                    "cache_read_tokens": 959552,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 366090
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 262842,
+              "tool_time_ms": 10192,
+              "active_time_ms": 273034
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "fabro-4b57 — Emit a loop-work diff in evidence.nu when only churn files changed. Churn-only dev-loop seeds currently capture seed-work=0 files +0/-0 and no diff, forcing reviewers into a manual git detour; the per-seed claim-base machinery (seed-claim-base) already exists. Acceptance criteria: • New behavior in `.fabro/workflows/develop/scripts/evidence.nu`: when `seed_rows` is empty AND `churn_rows` is non-empty, emit a loop-work diff section showing `git diff -U3 $claim.base -- <file>` for each changed loop file, sorted source-before-docs via diff-sort-key. • Reuse `diff-section` mechanics exactly: `sanitize()` each diff body, skip files whose per-seed diff is empty, same HARD_CAP walk and same omitted-files disclosure on cap hit. • Placement: adjacent to the loop churn section; emission order must keep the integrity header first and the trailing duplicate integrity line last. • No behavior change when `seed_rows` is non-empty (loop churn stays counts-only) or when both lists are empty; integrity header and count-line shapes unchanged; claim-base fallback still disclosed by the existing header note. • Update `.fabro/workflows/develop/prompts/reviewer.md` (line ~11 section enumeration) to mention the loop-work diff section — the evidence.nu header says output text is contract with the reviewer prompt, so the seed's evidence.nu-only scope is resolved to include this wording change. • Verification: parse-check the script with `nu` (e.g. `nu --ide-check`), then scenario runs proving (a) churn-only change produces the loop-work diff section, (b) mixed seed-work+churn change leaves output unchanged with no loop-work diff section.",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "First `sd ready --limit 200` failed with exit 1: mise refused the untrusted config at `/repos/denkhaus/fabro/.mise.toml` (bun shim resolves through mise, so the bun-script `sd` CLI dies before running). Workaround: `mise trust /repos/denkhaus/fabro/.mise.toml`, then sd works. This burned several tool calls at session start; already tracked as seed fabro-66db (sandbox: pre-trust the repo mise config), so no new seed filed — but the painpoint reproduces in planner sessions too, not just implementer ones."
+                  }
+                ],
+                "observations": [
+                  "fabro-1e9f ('Diff evidence against the last seed boundary, not the run base') looks ALREADY IMPLEMENTED in the current tree: `evidence.nu` has `seed-claim-base` and `diff-section` anchored at the per-seed claim commit, exactly what its title describes — next planner should treat it as a verification-only candidate rather than fresh work.",
+                  "Resolved a scope contradiction in fabro-4b57: the seed names only `evidence.nu`, but that script's header declares its output sections a contract with the reviewer prompt ('change wording there too'); the brief therefore includes the `reviewer.md` section-enumeration update to avoid reviewer ping-pong."
+                ]
+              },
+              "current_seed_id": "fabro-4b57",
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3602,
+                "preview": "Seed `fabro-4b57` claimed. Basis verified: `diff-section` in `evidence.nu` diffs only `seed_rows` (non-loop paths), so churn-only dev-loop seeds render `seed-work=0 files +0/-0` with no diff, and the "
+              },
+              "current_seed_title": "Emit a loop-work diff in evidence.nu when only churn files changed",
+              "last_response": "Seed `fabro-4b57` claimed. Basis verified: `diff-section` in `evidence.nu` diffs only `seed_rows` (non-loop paths), so churn-only dev-loop seeds render `seed-work=0 files +0/-0` with no diff, and the "
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 24596,
+                    "output_tokens": 2012,
+                    "reasoning_tokens": 4567,
+                    "cache_read_tokens": 250432,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 128477
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 153641,
+              "tool_time_ms": 3345,
+              "active_time_ms": 156986
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "node_visits": {
+          "implementer": 1,
           "start": 1,
           "planner": 1
         }
@@ -858,6 +1052,220 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "implementer@1": {
+      "first_event_seq": 134,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-09-05T16:27:14.945428106Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-05T16:22:16.761947860Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 273608,
+        "inference_time_ms": 262842,
+        "tool_time_ms": 10192,
+        "active_time_ms": 273034
+      },
+      "usage": {
+        "input_tokens": 38870,
+        "output_tokens": 7219,
+        "total_tokens": 1012566,
+        "reasoning_tokens": 6925,
+        "cache_read_tokens": 959552,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 366090
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 37701,
+        "usage_percent": 3.595447540283203,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-05T16:27:14.925968902Z",
+        "event_seq": 359,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1012,
+            "usage_percent": 0.0965118408203125
+          },
+          {
+            "category": "tools",
+            "tokens": 1463,
+            "usage_percent": 0.13952255249023438
+          },
+          {
+            "category": "memory",
+            "tokens": 5060,
+            "usage_percent": 0.4825592041015625
+          },
+          {
+            "category": "conversation",
+            "tokens": 30159,
+            "usage_percent": 2.8761863708496094
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 19,
       "prompt": null,
