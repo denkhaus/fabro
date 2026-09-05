@@ -556,14 +556,163 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M1S6MSV4GBEMPMVV6AXWWE8H",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-09-05T16:33:15.058336290Z",
+    "run_branch": "fabro/run/01M1S6MSV4GBEMPMVV6AXWWE8H",
+    "base_sha": "0a333a711760b6e2669fb85ee0a46a4569137a13"
   },
-  "status_updated_at": "2026-09-05T16:32:54.126654916Z",
-  "last_event_at": "2026-09-05T16:33:14.579180549Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-09-05T16:33:15.058411391Z",
+  "last_event_at": "2026-09-05T16:34:05.119234188Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 20,
+      "checkpoint": {
+        "timestamp": "2026-09-05T16:33:20.072295837Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "seed_cycles": {
+            "start": 1
+          },
+          "internal.run_id": "01M1S6MSV4GBEMPMVV6AXWWE8H",
+          "internal.node_visit_count": 1,
+          "outcome": "succeeded",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "failure_class": "",
+          "graph.rankdir": "LR",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "internal.fidelity": "compact",
+          "internal.thread_id": null,
+          "graph.max_node_visits": "12",
+          "internal.seed_cycle_anchor": "",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.start": 0,
+          "current_node": "start",
+          "failure_signature": "",
+          "graph.preamble_budget_kb": "12"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "survey",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-05T16:34:05.284329837Z",
+        "current_node": "survey",
+        "completed_nodes": [
+          "start",
+          "survey"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.node_visit_count": 1,
+          "graph.cycle_counter_reset_key": "pass_id",
+          "internal.thread_id": "start",
+          "current_node": "survey",
+          "preferred_label": "Work",
+          "internal.run_id": "01M1S6MSV4GBEMPMVV6AXWWE8H",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.fidelity": "compact",
+          "failure_class": "",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1
+          },
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "outcome": "succeeded",
+          "response.survey": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.survey",
+            "chars": 504,
+            "preview": "```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Work\",\n  \"journal\": \"Upstream count origin/denkhaus..upstream/main = 4 (< MIN 5). Newest upstream subject: 'Merge pull request #842 from "
+          },
+          "last_stage": "survey",
+          "thread.start.current_node": "survey",
+          "internal.retry_count.survey": 0,
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "internal.seed_cycle_anchor": "",
+          "graph.max_node_visits": "12",
+          "last_response": "```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Work\",\n  \"journal\": \"Upstream count origin/denkhaus..upstream/main = 4 (< MIN 5). Newest upstream subject: 'Merge pull request #842 from ",
+          "failure_signature": "",
+          "graph.preamble_budget_kb": "12",
+          "internal.retry_count.start": 0,
+          "graph.rankdir": "LR"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "survey": {
+            "status": "succeeded",
+            "preferred_label": "Work",
+            "context_updates": {
+              "last_response": "```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Work\",\n  \"journal\": \"Upstream count origin/denkhaus..upstream/main = 4 (< MIN 5). Newest upstream subject: 'Merge pull request #842 from ",
+              "last_stage": "survey",
+              "response.survey": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.survey",
+                "chars": 504,
+                "preview": "```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Work\",\n  \"journal\": \"Upstream count origin/denkhaus..upstream/main = 4 (< MIN 5). Newest upstream subject: 'Merge pull request #842 from "
+              }
+            },
+            "notes": "Stage completed: survey",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 21109,
+                    "output_tokens": 213,
+                    "reasoning_tokens": 18,
+                    "cache_read_tokens": 30272,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 38436
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 13246,
+              "tool_time_ms": 28236,
+              "active_time_ms": 41482
+            }
+          }
+        },
+        "next_node_id": "develop",
+        "node_visits": {
+          "survey": 1,
+          "start": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -590,5 +739,288 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "survey@1": {
+      "first_event_seq": 21,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: survey",
+        "failure_reason": null,
+        "timestamp": "2026-09-05T16:34:05.119234188Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-05T16:33:20.088082964Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 42283,
+        "inference_time_ms": 13246,
+        "tool_time_ms": 28236,
+        "active_time_ms": 41482
+      },
+      "usage": {
+        "input_tokens": 21109,
+        "output_tokens": 213,
+        "total_tokens": 51612,
+        "reasoning_tokens": 18,
+        "cache_read_tokens": 30272,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 38436
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 21050,
+        "usage_percent": 2.0074844360351562,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-05T16:34:05.099778298Z",
+        "event_seq": 44,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1461,
+            "usage_percent": 0.13933181762695312
+          },
+          {
+            "category": "tools",
+            "tokens": 2341,
+            "usage_percent": 0.22325515747070312
+          },
+          {
+            "category": "skills",
+            "tokens": 292,
+            "usage_percent": 0.0278472900390625
+          },
+          {
+            "category": "memory",
+            "tokens": 7464,
+            "usage_percent": 0.711822509765625
+          },
+          {
+            "category": "conversation",
+            "tokens": 9483,
+            "usage_percent": 0.9043693542480469
+          },
+          {
+            "category": "other",
+            "tokens": 9,
+            "usage_percent": 0.000858306884765625
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-05T16:33:19.910662336Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-05T16:33:19.895841025Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
