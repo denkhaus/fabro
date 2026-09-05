@@ -1,0 +1,13 @@
+diff --git a/.fabro/workflows/develop/prompts/implementer.md b/.fabro/workflows/develop/prompts/implementer.md
+index a69d5139..e6d22731 100644
+--- a/.fabro/workflows/develop/prompts/implementer.md
++++ b/.fabro/workflows/develop/prompts/implementer.md
+@@ -22,7 +22,7 @@ Tracker mechanics (sd is installed and authoritative):
+ 2. Implement it in the current worktree: create and edit files, keep the project's conventions (commands run through its `just` recipes).
+ 3. Write or update tests exactly as the seed demands.
+ 4. Do NOT run the quality gate — NOT `just qualitygate`, NOT its equivalent. The deterministic tester step after you owns the gate; a redundant run (observed: implementer + tester + reviewer all gating the same tree) wastes a cold cache's tens of seconds and blurs role boundaries. Your check: the project's compile check or ONE focused test — nothing that formats, lints, or runs the full suite.
+-   For behavior-preserving refactors that touch many call sites (e.g. a signature change rippling through a test file), prefer ONE scripted transform (`gofmt -r`, `sed`, a small script) plus a single verification build over per-site `edit_file` calls — measured (run `01M11P68SHFS`, implementer@2): 277 s inference against 6 s tool time, 43% of the run's LLM spend, from hand-editing ~40 call sites.
++   For repetitive, pattern-shaped changes (call-site adaptation, renames, a signature rippling through a test file), do ONE mechanical shell pass — `sed` / `perl -pi -e`, already available in the runner image — instead of N per-site `edit_file` hand edits, and verify the pass with ONE focused test. Measured (run `01M11P68SHFS`, implementer@2): 277 s inference against 6 s tool time, 43% of the run's LLM spend, from hand-editing ~40 call sites; a near-identical pass (fabro-28e8) cost $0.486 / 278 s / 51.8k tokens rewriting ~24 identical call sites one `edit_file` at a time, with 19 concurrent-write serialization warnings.
+ 5. Do NOT close the seed and do NOT review — the Reviewer decides, the deterministic Closeout closes.
+ 6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. Skip if nothing surfaced. Either way, the answer has a required home: name the mx-id (format `mx-xxxxxx`) or the literal skip text in `lesson_capture` — see 'Lesson capture' below.
+ 
