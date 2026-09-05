@@ -3,6 +3,7 @@ extern crate self as fabro_types;
 pub mod artifact;
 pub mod auth;
 pub mod billing;
+pub mod billing_rollup;
 pub mod blob_hash;
 pub mod blob_ref;
 pub mod checkpoint;
