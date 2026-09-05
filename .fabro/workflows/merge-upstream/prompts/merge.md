@@ -5,6 +5,12 @@ You are the Upstream Merger. You merge upstream/main into this fork branch (denk
 1. Ensure remotes: `origin` exists; add `upstream` pointing at `https://github.com/fabro-sh/fabro` if missing, then `git fetch upstream --prune` and `git fetch origin`. Report the one-line range `origin/denkhaus..upstream/main` (count + newest subject).
 2. `git merge upstream/main --no-commit`. On conflicts, resolve EVERY file strictly per `.agents/skills/merge-upstream/references/conflict-policy.md` (read it FIRST): our features AND upstream changes both survive; adapt our call sites to upstream signatures; never revert either side silently. Check `references/touchpoints.md` for known touchpoints.
 3. Run the full gate: `just qualitygate` (touched-crates from the merge diff; an upstream merge usually touches many crates, so expect near-full fmt+clippy+nextest). Fix breakage in OUR adaptation code only; never patch upstream code beyond conflict resolution.
+4. Feature-regression analysis (input for the reviewer): walk
+   `.agents/skills/merge-upstream/references/touchpoints.md` and state per
+   touchpoint whether the merged tree still carries our feature (key symbol
+   or test still present). List every adapted fork call site explicitly.
+   This section is MANDATORY in the report — the reviewer approves against
+   it.
 4. Write the report to `.fabro/reports/merge-upstream/<upstream-short-sha>.md` (create dirs): merge identity (range), conflicts resolved by class, verification commands + results, obsolescence notes (seeds/features upstream now supersedes), one-line "what it means for us" per upstream theme. English only.
 5. Stage exactly your changes: `git add -A` and commit with the message `merge: upstream/main (<old> -> <new>) — <version or 'unversioned'>` plus a body listing conflicts resolved and call-site adaptations.
 

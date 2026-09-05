@@ -34,7 +34,36 @@ digraph MergeUpstream {
         fabro_tools=""
     ]
 
+
+    // Reviewer (user directive 2026-09-05 evening): an upstream merge is a
+    // normal implementation and gets reviewed BEFORE it can merge — our
+    // features must survive upstream changes. The engine creates the PR
+    // only on run success, so a rejected review fails the run and NOTHING
+    // merges unreviewed. Two-agent separation: the merger never judges its
+    // own merge.
+    reviewer [
+        label="Review merge",
+        prompt="@prompts/review.md",
+        output_schema="routing",
+        output_retries=2,
+        retry_policy="standard",
+        reasoning_effort="high",
+        project_memory=false,
+        preamble_stages_ignore="merge,reviewer",
+        fs_write="",
+        fabro_tools=""
+    ]
+
     start -> merge
-    merge -> exit [label="Merged and gated", condition="outcome=succeeded"]
+    merge -> reviewer [label="Merged and gated", condition="outcome=succeeded"]
+    reviewer -> exit [label="Approved", condition="preferred_label=\"Approved\""]
+    // Review requests changes: back to the merger with the objections in
+    // review_feedback; the reviewer's verdict travels via context like
+    // develop's cycle.
+    reviewer -> merge [label="Changes requested", condition="preferred_label=\"Changes requested\""]
+    reviewer -> exit [kind="soft", label="Review blocked — manual /merge-upstream takes over", condition="preferred_label=\"Verification blocked\""]
+    // Unconditional safety net: an unrouted review outcome fails softly —
+    // nothing merges on an ambiguous verdict.
+    reviewer -> exit [kind="soft", label="Unrouted review outcome"]
     merge -> exit [kind="soft", label="Merge failed (manual /merge-upstream takes over)"]
 }
