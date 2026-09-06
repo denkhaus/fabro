@@ -74,7 +74,7 @@ use fabro_sandbox::{
     DaytonaSandboxProvider, DockerSandboxProvider, LocalSandboxProvider, Sandbox, SandboxProvider,
     SandboxProviderRegistry,
 };
-use fabro_slack::client::{PostedMessage as SlackPostedMessage, SlackClient};
+use fabro_slack::client::{PostedMessage as SlackPostedMessage, SlackApiError, SlackClient};
 use fabro_slack::config::{
     SlackCredentialResolution,
     resolve_credentials_status_with_lookup as resolve_slack_credentials_status_with_lookup,
@@ -173,6 +173,7 @@ use crate::{
 };
 
 mod approval_expiry;
+pub(crate) mod automation_breaker;
 mod automation_scheduler;
 mod handler;
 mod pull_request_supervisor;
@@ -663,6 +664,18 @@ impl SlackService {
             last_connected_at: state.last_connected_at,
             last_error:        state.last_error,
         }
+    }
+
+    /// Post the ONE aggregated automation-breaker pause message (fabro-3d97).
+    async fn post_breaker_message(
+        &self,
+        channel: &str,
+        blocks: &[serde_json::Value],
+    ) -> Result<(), SlackApiError> {
+        self.client
+            .post_message(channel, blocks, None)
+            .await
+            .map(|_| ())
     }
 
     fn status_sink(&self) -> slack_connection::ConnectionStatusSink {
@@ -1239,6 +1252,7 @@ pub struct AppState {
     shutting_down: AtomicBool,
     registry_factory_override: Option<Box<RegistryFactoryOverride>>,
     slack_service: Option<Arc<SlackService>>,
+    automation_breaker_notifier: Option<Arc<dyn automation_breaker::AutomationBreakerNotifier>>,
     slack_started: AtomicBool,
     github_webhook_secret: Option<String>,
 }
@@ -1410,6 +1424,11 @@ pub(crate) struct AppStateConfig {
     pub(crate) worker_runtime: Option<Arc<dyn WorkerRuntime>>,
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) automation_materializer_override: Option<Arc<dyn AutomationRunMaterializer>>,
+    /// Test/test-support capture sink for automation breaker pause
+    /// notifications (fabro-3d97); production uses the Slack notifier.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) automation_breaker_notifier_override:
+        Option<Arc<dyn automation_breaker::AutomationBreakerNotifier>>,
 }
 
 #[derive(Clone)]
@@ -2534,6 +2553,8 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         worker_runtime,
         #[cfg(any(test, feature = "test-support"))]
         automation_materializer_override,
+        #[cfg(any(test, feature = "test-support"))]
+        automation_breaker_notifier_override,
     } = config;
 
     let automation_migration_pool = db_pool.clone();
@@ -2636,6 +2657,19 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         }
     };
     let worker_tokens = worker_token_keys_from_server_secrets(&server_secrets)?;
+    // fabro-3d97: the automation circuit breaker posts its single aggregated
+    // pause notification through the Slack integration when it is enabled;
+    // tests can replace the sink via the config override.
+    let automation_breaker_notifier: Option<
+        Arc<dyn automation_breaker::AutomationBreakerNotifier>,
+    > = slack_service.as_ref().map(|service| {
+        Arc::new(automation_breaker::SlackBreakerNotifier::new(Arc::clone(
+            service,
+        ))) as Arc<dyn automation_breaker::AutomationBreakerNotifier>
+    });
+    #[cfg(any(test, feature = "test-support"))]
+    let automation_breaker_notifier =
+        { automation_breaker_notifier_override.or(automation_breaker_notifier) };
     let github_api_base_url = github_api_base_url.unwrap_or_else(fabro_github::github_api_base_url);
     let storage_root = PathBuf::from(&current_server_settings.server.storage.root);
     let automation_repo_cache = Arc::new(GitRepoCache::new(
@@ -2714,6 +2748,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         shutting_down: AtomicBool::new(false),
         registry_factory_override,
         slack_service,
+        automation_breaker_notifier,
         slack_started: AtomicBool::new(false),
         // Startup snapshot for the sync router build; rotating the webhook
         // secret requires a server restart.

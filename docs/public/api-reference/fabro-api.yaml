@@ -7004,11 +7004,58 @@ components:
           enum: [schedule]
         enabled:
           type: boolean
+          description: >-
+            When false the schedule never fires. The automation circuit
+            breaker sets this to false when it pauses the trigger; the
+            recorded `breaker` facts distinguish a breaker pause from a
+            manual pause (fabro-3d97).
           example: true
         expression:
           type: string
           description: Five-field cron expression evaluated in UTC.
           example: "0 3 * * *"
+        breaker_threshold:
+          type: integer
+          minimum: 1
+          description: >-
+            Consecutive same-signature parked/failed runs after which the
+            automation circuit breaker pauses this trigger (fabro-3d97).
+            Omitted uses the engine default of 3. Input-only on create and
+            replace; responses echo the configured value.
+          example: 2
+        breaker:
+          description: >-
+            Scheduler-maintained circuit-breaker facts for this trigger
+            (fabro-3d97). Present only once the breaker has processed runs;
+            `paused_at` is set exactly when the breaker disabled the trigger.
+            Read-only: submitted values are ignored. Re-enabling the trigger
+            clears the facts and resets the counter.
+          type: ["object", "null"]
+          additionalProperties: false
+          required:
+            - signature
+            - consecutive_count
+            - last_run_id
+            - paused_at
+          properties:
+            signature:
+              type: string
+              description: >-
+                Failure signature of the current consecutive run. The run's
+                failure signature when present (for example
+                `api_transient|zai|rate_limited`), else the documented
+                `park|{workflow}|{reason}` fallback key.
+            consecutive_count:
+              type: integer
+              minimum: 0
+              description: Consecutive terminal runs with that signature.
+            last_run_id:
+              type: string
+              description: Last terminal run the breaker processed.
+            paused_at:
+              type: ["string", "null"]
+              format: date-time
+              description: When the breaker paused the trigger, if it did.
 
     CreateAutomationRequest:
       description: Request body for creating an automation.

@@ -309,6 +309,68 @@ pub struct RunLifecyclePullRequest<'a> {
     pub url:    Option<&'a str>,
 }
 
+/// Data needed to render an automation breaker pause notification (fabro-3d97).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AutomationBreakerPauseBlocks<'a> {
+    pub automation_id:    &'a str,
+    pub automation_label: &'a str,
+    pub trigger_id:       &'a str,
+    pub signature:        &'a str,
+    pub consecutive:      u32,
+    pub last_run_id:      &'a str,
+    pub last_run_url:     Option<&'a str>,
+}
+
+/// The ONE aggregated notification emitted when the automation circuit
+/// breaker pauses a schedule trigger: names the failure signature, the
+/// consecutive count, and the last run, so a human can decide to re-enable.
+pub fn automation_breaker_pause_blocks(details: &AutomationBreakerPauseBlocks<'_>) -> Vec<Value> {
+    let mut blocks = vec![
+        json!({
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": "Fabro automation paused",
+                "emoji": true
+            }
+        }),
+        text_block(&format!(
+            "*{}* — schedule `{}` paused by the circuit breaker after {} consecutive runs parked/failed with the same signature.",
+            lifecycle_field(details.automation_label),
+            lifecycle_field(details.trigger_id),
+            details.consecutive
+        )),
+    ];
+    let mut fields = vec![
+        lifecycle_mrkdwn_field(
+            "Automation",
+            &format!("`{}`", lifecycle_field(details.automation_id)),
+        ),
+        lifecycle_mrkdwn_field("Consecutive failures", &details.consecutive.to_string()),
+        lifecycle_mrkdwn_field(
+            "Last run",
+            &format!("`{}`", lifecycle_field(details.last_run_id)),
+        ),
+    ];
+    let run_link = details
+        .last_run_url
+        .map(|url| format!(" — {}", slack_link(url, "Open run")));
+    fields.push(lifecycle_mrkdwn_field(
+        "Resume",
+        "Re-enable the trigger in Fabro to resume (resets the breaker).",
+    ));
+    blocks.push(json!({
+        "type": "section",
+        "fields": fields
+    }));
+    blocks.push(text_block(&format!(
+        "*Failure signature*\n`{}`{}",
+        lifecycle_field(details.signature),
+        run_link.as_deref().unwrap_or("")
+    )));
+    blocks
+}
+
 /// Data needed to render a run lifecycle notification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RunLifecycleBlocks<'a> {

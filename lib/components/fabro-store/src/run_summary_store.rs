@@ -548,6 +548,31 @@ ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms
         decode_run_rows(&rows, now)
     }
 
+    /// Terminal runs created by the given automation, newest first, bounded
+    /// by `limit` (fabro-3d97 automation circuit breaker). Callers replay
+    /// these chronologically to count consecutive same-signature failures.
+    pub async fn list_terminal_for_automation(
+        &self,
+        automation_id: &str,
+        limit: u32,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<Run>> {
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
+        query
+            .push(" WHERE automation_id = ")
+            .push_bind(automation_id.to_string())
+            .push(" AND status IN ('succeeded', 'failed', 'dead')");
+        push_order(
+            &mut query,
+            RunSummarySort::CreatedAt,
+            RunSummarySortDirection::Desc,
+            now,
+        );
+        query.push(" LIMIT ").push_bind(i64::from(limit));
+        let rows = query.build().fetch_all(&self.pool).await?;
+        decode_run_rows(&rows, now)
+    }
+
     /// Newest non-terminal run created by the given automation, if any
     /// (fabro-09ea overlap guard). Terminal statuses are exactly the
     /// immutable kinds: succeeded, failed, dead.

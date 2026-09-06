@@ -20,11 +20,38 @@
 export interface AutomationScheduleTrigger {
     'id': string;
     'type': AutomationScheduleTriggerTypeEnum;
+    /**
+     * When false the schedule never fires. The automation circuit breaker sets this to false when it pauses the trigger; the recorded `breaker` facts distinguish a breaker pause from a manual pause (fabro-3d97).
+     */
     'enabled': boolean;
     /**
      * Five-field cron expression evaluated in UTC.
      */
     'expression': string;
+    /**
+     * Consecutive same-signature parked/failed runs after which the automation circuit breaker pauses this trigger (fabro-3d97). Omitted uses the engine default of 3. Input-only on create and replace; responses echo the configured value.
+     */
+    'breaker_threshold'?: number;
+    /**
+     * Scheduler-maintained circuit-breaker facts for this trigger (fabro-3d97). Present only once the breaker has processed runs; `paused_at` is set exactly when the breaker disabled the trigger. Read-only: submitted values are ignored. Re-enabling the trigger clears the facts and resets the counter.
+     */
+    'breaker'?: AutomationScheduleTriggerBreaker | null;
+}
+
+export interface AutomationScheduleTriggerBreaker {
+    /**
+     * Failure signature of the current consecutive run. The run\'s failure signature when present (for example `api_transient|zai|rate_limited`), else the documented `park|{workflow}|{reason}` fallback key.
+     */
+    'signature': string;
+    'consecutive_count': number;
+    /**
+     * Last terminal run the breaker processed.
+     */
+    'last_run_id': string;
+    /**
+     * When the breaker paused the trigger, if it did.
+     */
+    'paused_at': string | null;
 }
 
 export const AutomationScheduleTriggerTypeEnum = {

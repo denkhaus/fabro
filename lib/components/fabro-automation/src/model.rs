@@ -248,9 +248,17 @@ impl ApiTrigger {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScheduleTrigger {
-    pub id:         AutomationTriggerId,
-    pub enabled:    bool,
-    pub expression: String,
+    pub id:                AutomationTriggerId,
+    pub enabled:           bool,
+    pub expression:        String,
+    /// Consecutive same-signature failures before the breaker pauses this
+    /// trigger (fabro-3d97). `None` uses the engine default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub breaker_threshold: Option<u32>,
+    /// Scheduler-maintained breaker facts. Read-only through the API; input
+    /// paths strip it. `Some(..)` with `paused_at` set marks a breaker pause.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub breaker:           Option<crate::ScheduleBreakerState>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -413,6 +421,11 @@ fn normalize_replace(
             AutomationTrigger::Api(_) => None,
         })
         .collect::<Vec<_>>();
+    // Breaker facts are scheduler-owned read model state; any client-supplied
+    // facts on a create/replace are dropped (fabro-3d97).
+    for schedule in &mut schedules {
+        schedule.breaker = None;
+    }
     schedules.sort_by(|left, right| left.id.cmp(&right.id));
 
     // Canonicalization renames the enabled API trigger to `manual`, which can
@@ -487,6 +500,13 @@ fn validate_triggers(triggers: &[AutomationTrigger]) -> Result<(), AutomationVal
                 has_api_trigger = true;
             }
             AutomationTrigger::Schedule(trigger) => {
+                if let Some(threshold) = trigger.breaker_threshold {
+                    if threshold == 0 {
+                        return Err(AutomationValidationError::InvalidBreakerThreshold {
+                            trigger_id: id.to_string(),
+                        });
+                    }
+                }
                 if trigger.expression.split_whitespace().count() != 5 {
                     return Err(AutomationValidationError::InvalidCronFieldCount {
                         trigger_id: id.to_string(),
@@ -544,6 +564,8 @@ mod tests {
             id: AutomationTriggerId::new(id).unwrap(),
             enabled,
             expression: cron.to_string(),
+            breaker_threshold: None,
+            breaker: None,
         })
     }
 

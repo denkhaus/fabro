@@ -40,6 +40,8 @@ fn schedule(id: &str, expression: &str, enabled: bool) -> AutomationTrigger {
         id: AutomationTriggerId::new(id).unwrap(),
         enabled,
         expression: expression.to_string(),
+        breaker_threshold: None,
+        breaker: None,
     })
 }
 
@@ -715,9 +717,11 @@ async fn on_overlap_round_trips_through_the_column() -> Result<()> {
             workflow_source: None,
             workflow:        "release".to_string(),
             triggers:        vec![AutomationTrigger::Schedule(ScheduleTrigger {
-                id:         AutomationTriggerId::new("schedule").unwrap(),
-                enabled:    true,
-                expression: "0 4 * * *".to_string(),
+                id:                AutomationTriggerId::new("schedule").unwrap(),
+                enabled:           true,
+                expression:        "0 4 * * *".to_string(),
+                breaker_threshold: None,
+                breaker:           None,
             })],
         })
         .await?;
@@ -737,13 +741,144 @@ async fn on_overlap_round_trips_through_the_column() -> Result<()> {
             workflow_source: None,
             workflow:        "release".to_string(),
             triggers:        vec![AutomationTrigger::Schedule(ScheduleTrigger {
-                id:         AutomationTriggerId::new("schedule").unwrap(),
-                enabled:    true,
-                expression: "0 4 * * *".to_string(),
+                id:                AutomationTriggerId::new("schedule").unwrap(),
+                enabled:           true,
+                expression:        "0 4 * * *".to_string(),
+                breaker_threshold: None,
+                breaker:           None,
             })],
         })
         .await?;
     assert_eq!(store.get(&cleared.id).await?.unwrap().on_overlap, None);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn schedule_breaker_facts_round_trip_and_replace_resets_them() -> Result<()> {
+    let (_dir, database) = test_database().await;
+    let store = AutomationStore::new(database.clone_pool());
+    let automation = store
+        .create(AutomationDraft {
+            on_overlap:      None,
+            id:              AutomationId::new("breakable").unwrap(),
+            name:            "Breakable".to_string(),
+            description:     None,
+            environment_id:  Some("default".to_string()),
+            target:          target(),
+            workflow_source: None,
+            workflow:        "release".to_string(),
+            triggers:        vec![AutomationTrigger::Schedule(ScheduleTrigger {
+                id:                AutomationTriggerId::new("schedule").unwrap(),
+                enabled:           true,
+                expression:        "* * * * *".to_string(),
+                breaker_threshold: Some(2),
+                breaker:           None,
+            })],
+        })
+        .await?;
+
+    // Counter facts persist and are visible on the automation surface.
+    store
+        .apply_schedule_breaker(
+            &automation.id,
+            &AutomationTriggerId::new("schedule").unwrap(),
+            Some("api_transient|zai|rate_limited"),
+            1,
+            "run-1",
+            false,
+            chrono::Utc::now(),
+        )
+        .await?;
+    let trigger = store
+        .get(&automation.id)
+        .await?
+        .unwrap()
+        .enabled_schedule_triggers()
+        .next()
+        .cloned()
+        .unwrap();
+    assert_eq!(trigger.breaker_threshold, Some(2));
+    let facts = trigger.breaker.expect("counter facts should persist");
+    assert_eq!(facts.signature, "api_transient|zai|rate_limited");
+    assert_eq!(facts.consecutive_count, 1);
+    assert_eq!(facts.last_run_id, "run-1");
+    assert_eq!(facts.paused_at, None);
+
+    // The pause compare-and-set disables the trigger exactly once.
+    let paused_at = chrono::Utc::now();
+    assert!(
+        store
+            .apply_schedule_breaker(
+                &automation.id,
+                &AutomationTriggerId::new("schedule").unwrap(),
+                Some("api_transient|zai|rate_limited"),
+                2,
+                "run-2",
+                true,
+                paused_at,
+            )
+            .await?
+    );
+    let automation = store.get(&automation.id).await?.unwrap();
+    assert!(automation.enabled_schedule_triggers().next().is_none());
+    let trigger = automation
+        .triggers
+        .iter()
+        .find_map(|trigger| match trigger {
+            AutomationTrigger::Schedule(trigger) => Some(trigger),
+            AutomationTrigger::Api(_) => None,
+        })
+        .unwrap();
+    let facts = trigger.breaker.clone().expect("pause facts should persist");
+    assert_eq!(facts.consecutive_count, 2);
+    assert_eq!(facts.last_run_id, "run-2");
+    assert_eq!(
+        facts
+            .paused_at
+            .map(|paused_at| paused_at.timestamp_millis()),
+        Some(paused_at.timestamp_millis())
+    );
+    // A second pause attempt is a no-op (single notification contract).
+    assert!(
+        !store
+            .apply_schedule_breaker(
+                &automation.id,
+                &AutomationTriggerId::new("schedule").unwrap(),
+                Some("api_transient|zai|rate_limited"),
+                2,
+                "run-2",
+                true,
+                paused_at,
+            )
+            .await?
+    );
+
+    // Re-enabling through replace clears the facts and resets the counter.
+    let replaced = store
+        .replace(&automation.id, &automation.revision, AutomationReplace {
+            on_overlap:      None,
+            name:            "Breakable".to_string(),
+            description:     None,
+            environment_id:  Some("default".to_string()),
+            target:          target(),
+            workflow_source: None,
+            workflow:        "release".to_string(),
+            triggers:        vec![AutomationTrigger::Schedule(ScheduleTrigger {
+                id:                AutomationTriggerId::new("schedule").unwrap(),
+                enabled:           true,
+                expression:        "* * * * *".to_string(),
+                breaker_threshold: None,
+                breaker:           None,
+            })],
+        })
+        .await?;
+    let trigger = replaced
+        .enabled_schedule_triggers()
+        .next()
+        .cloned()
+        .unwrap();
+    assert_eq!(trigger.breaker, None);
 
     Ok(())
 }
