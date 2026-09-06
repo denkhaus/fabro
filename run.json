@@ -1,0 +1,587 @@
+{
+  "title": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) ...",
+  "spec": {
+    "run_id": "01M1VG9NC8H2BX9WVE9H49GE6F",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged"
+        },
+        "working_dir": null,
+        "metadata": {},
+        "inputs": {},
+        "model": {
+          "provider": "zai",
+          "name": "glm-5.3",
+          "fallbacks": {},
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "steps": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt",
+          "approval_timeout_secs": 86400
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false,
+          "commit_timeout_ms": 30000
+        },
+        "clone": {
+          "enabled": true,
+          "depth": 100
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "toolchain",
+          "provider": "docker",
+          "image": {
+            "docker": "fabro-toolchain:noble",
+            "dockerfile": null
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": null
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": null
+          },
+          "labels": {
+            "purpose": "smoke-lint-test"
+          },
+          "env": {}
+        },
+        "notifications": {
+          "terminal": {
+            "enabled": true,
+            "provider": "slack",
+            "events": [
+              "run.completed",
+              "run.failed"
+            ],
+            "slack": {
+              "channel": "#dev-fabro"
+            }
+          }
+        },
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": true,
+          "mcps": {}
+        },
+        "hooks": [
+          {
+            "name": "stage-journal",
+            "event": "stage_complete",
+            "command": "nu .fabro/workflows/conductor/scripts/stage-journal.nu",
+            "matcher": null,
+            "blocking": false,
+            "timeout_ms": 10000,
+            "sandbox": true
+          }
+        ],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": null,
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {}
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "Conductor",
+      "nodes": {
+        "revise": {
+          "id": "revise",
+          "attrs": {
+            "fs_write": {
+              "String": ""
+            },
+            "fabro_tools": {
+              "String": "fabro_run_create,fabro_run_get,fabro_run_wait,fabro_runs_list"
+            },
+            "output_schema": {
+              "String": "routing"
+            },
+            "retry_policy": {
+              "String": "standard"
+            },
+            "prompt": {
+              "String": "You are the Conductor's Revise Leg. You start ONE revisor run against the develop run this pass just integrated, then wait.\n\n## Procedure\n\n1. Read `child_run_id` from context — set by the develop OR the merge leg (whichever ran this pass). If absent, route \"Revisor child failed\" with a journal note (pass continuity broken). The revisor itself picks the newest revisable run across develop AND merge-upstream.\n2. Create the child: `fabro_run_create` with ### Schema discipline (validation errors burn turns)\n\nThe create call has EXACTLY this shape — `workflow` is a STRING, the\nsource lives under its OWN key `workflow_source`; never nest the source\nobject inside `workflow` (a common misread; the validator only says\n\"not valid under any of the schemas\" and will not tell you which field\nis wrong):\n\n`{\"runs\": [{\"workflow\": \"revisor\", \"workflow_source\": {\"repo\": \"denkhaus/fabro\", \"branch\": \"denkhaus\", \"workflow\": \"revisor\"}, \"environment\": \"toolchain\", \"auto_approve\": true}]}` — the `runs` array wrapper is REQUIRED by the tool schema; the bare spec object fails validation. It revises the newest revisable run of develop OR merge-upstream (the pass child).. The revisor itself selects the newest revisable run (ADR-0015) — no goal needed.\n3. Wait terminal: ONE call `fabro_run_wait {\"run_id\": \"<child_run_id>\", \"until\": \"terminal\", \"timeout_ms\": 1800000}`; on `reached=timeout` call again (fabro-571e, no sleep loops). Route \"Cycle complete\" on any terminal state (the revisor's own soft exits are legitimate outcomes); route \"Revisor child failed\" only when the run failed hard.\n\n## Workflow addressing (fabro-e297, server-side resolution)\n\nCreate child runs with the git workflow source — the server resolves and\nregisters the workflow versions; the sandbox filesystem never participates:\n`{\"runs\": [{\"workflow\": \"<name>\", \"workflow_source\": {\"repo\": \"denkhaus/fabro\", \"branch\": \"denkhaus\", \"workflow\": \"<name>\"}, \"environment\": \"toolchain\"}]}`. The `workflow` slug is REQUIRED alongside `workflow_source` (the spec schema rejects workflow_source-only payloads).\n## Journal\n\nchild ids, statuses, seeds filed if visible.\n\n## Outcome contract\n\n- `succeeded` + \"Cycle complete\" | \"Revisor child failed\".\n- `failed`: create/poll tooling failed.\n\nHygiene: backtick every path.\n"
+            },
+            "reasoning_effort": {
+              "String": "low"
+            },
+            "preamble_stages_ignore": {
+              "String": "survey,develop,revise"
+            },
+            "project_memory": {
+              "Boolean": false
+            },
+            "output_retries": {
+              "Integer": 2
+            },
+            "label": {
+              "String": "Revise leg"
+            }
+          }
+        },
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "label": {
+              "String": "Exit"
+            },
+            "shape": {
+              "String": "Msquare"
+            }
+          }
+        },
+        "merge": {
+          "id": "merge",
+          "attrs": {
+            "fs_write": {
+              "String": ""
+            },
+            "retry_policy": {
+              "String": "standard"
+            },
+            "output_schema": {
+              "String": "routing"
+            },
+            "prompt": {
+              "String": "You are the Conductor's Merge Leg. You start ONE merge-upstream child run and wait for its integration. You never merge yourself.\n\n## Procedure\n\n1. Create the child: `fabro_run_create` with ### Schema discipline (validation errors burn turns)\n\nThe create call has EXACTLY this shape — `workflow` is a STRING, the\nsource lives under its OWN key `workflow_source`; never nest the source\nobject inside `workflow` (a common misread; the validator only says\n\"not valid under any of the schemas\" and will not tell you which field\nis wrong):\n\n`{\"runs\": [{\"workflow\": \"merge-upstream\", \"workflow_source\": {\"repo\": \"denkhaus/fabro\", \"branch\": \"denkhaus\", \"workflow\": \"merge-upstream\"}, \"environment\": \"toolchain\", \"auto_approve\": true}]}` — the `runs` array wrapper is REQUIRED by the tool schema; the bare spec object fails validation. Record the child id (context key `child_run_id`); the key exists only AFTER this create — never context_read it before.\n2. Record the child id in context key `child_run_id` (the revise leg\n   reuses it for continuity) — then wait terminal: ONE call\n   `fabro_run_wait {\"run_id\": \"<child_run_id>\", \"until\": \"terminal\", \"timeout_ms\": 2400000}`.\n   `reached=timeout` (still running): call again. Never shell-sleep poll loops (fabro-571e).\n3. If the child FAILED: route \"Merge child failed\" and journal the failure reason — the manual /merge-upstream skill owns hard conflicts. Do not retry in this pass.\n4. If the child SUCCEEDED: wait for the PR auto-merge (Dogfood Gate): `fabro_run_wait {\"run_id\": \"<child_run_id>\", \"until\": \"merged\", \"timeout_ms\": 1200000}` (fabro-571e: the server checks the PR state — no git fetch/tree diff here). `reached=merged` -> route \"Infra pass complete\". `reached=timeout` -> call again. `reached=closed_unmerged` or terminal-failed -> \"Merge child failed\" with a journal note (gate stuck; check the PR).\n\n## Workflow addressing (fabro-e297, server-side resolution)\n\nCreate child runs with the git workflow source — the server resolves and\nregisters the workflow versions; the sandbox filesystem never participates:\n`{\"runs\": [{\"workflow\": \"<name>\", \"workflow_source\": {\"repo\": \"denkhaus/fabro\", \"branch\": \"denkhaus\", \"workflow\": \"<name>\"}, \"environment\": \"toolchain\"}]}`. The `workflow` slug is REQUIRED alongside `workflow_source` (the spec schema rejects workflow_source-only payloads).\n## Journal\n\nchild id, status, gate wait duration, upstream range from the child report if visible.\n\n## Outcome contract\n\n- `succeeded` + \"Infra pass complete\" | \"Merge child failed\".\n- `failed`: the tool calls themselves failed (create/poll impossible).\n\nHygiene: backtick every path and remote URL.\n"
+            },
+            "output_retries": {
+              "Integer": 2
+            },
+            "fabro_tools": {
+              "String": "fabro_run_create,fabro_run_get,fabro_run_wait,fabro_runs_list"
+            },
+            "project_memory": {
+              "Boolean": false
+            },
+            "label": {
+              "String": "Merge leg"
+            },
+            "reasoning_effort": {
+              "String": "low"
+            },
+            "preamble_stages_ignore": {
+              "String": "survey,merge"
+            }
+          }
+        },
+        "start": {
+          "id": "start",
+          "attrs": {
+            "shape": {
+              "String": "Mdiamond"
+            },
+            "label": {
+              "String": "Start"
+            }
+          }
+        },
+        "develop": {
+          "id": "develop",
+          "attrs": {
+            "output_retries": {
+              "Integer": 2
+            },
+            "retry_policy": {
+              "String": "standard"
+            },
+            "output_schema": {
+              "String": "routing"
+            },
+            "fabro_tools": {
+              "String": "fabro_run_create,fabro_run_get,fabro_run_wait,fabro_runs_list"
+            },
+            "reasoning_effort": {
+              "String": "low"
+            },
+            "project_memory": {
+              "Boolean": false
+            },
+            "preamble_stages_ignore": {
+              "String": "survey,develop"
+            },
+            "label": {
+              "String": "Develop leg"
+            },
+            "fs_write": {
+              "String": ""
+            },
+            "prompt": {
+              "String": "You are the Conductor's Develop Leg. You start ONE develop run and wait for its integration. You never implement yourself.\n\n## Procedure\n\n1. Create the child: `fabro_run_create` with ### Schema discipline (validation errors burn turns)\n\nThe create call has EXACTLY this shape — `workflow` is a STRING, the\nsource lives under its OWN key `workflow_source`; never nest the source\nobject inside `workflow` (a common misread; the validator only says\n\"not valid under any of the schemas\" and will not tell you which field\nis wrong):\n\n`{\"runs\": [{\"workflow\": \"develop\", \"workflow_source\": {\"repo\": \"denkhaus/fabro\", \"branch\": \"denkhaus\", \"workflow\": \"develop\"}, \"environment\": \"toolchain\", \"auto_approve\": true}]}` — the `runs` array wrapper is REQUIRED by the tool schema; the bare spec object fails validation (NO goal: the planner picks the most relevant open seed; goalless = autonomous queue burn-down). Record `child_run_id`.\n2. Wait terminal: ONE call `fabro_run_wait {\"run_id\": \"<child_run_id>\", \"until\": \"terminal\", \"timeout_ms\": 3600000}` — it blocks until terminal or the 60 min deadline. `reached=timeout` (child still running): call again. Never shell-sleep poll loops (fabro-571e).\n3. Child FAILED: route \"Develop child failed\" + journal the reason (retriable causes simply end this pass; the next fire retries the seed).\n4. Child SUCCEEDED with goal \"Tracker empty\"-like completion and no PR: route \"Tracker empty\" (journal it — the queue is done; the human seeds new demand).\n5. Child SUCCEEDED: wait for PR auto-merge: `fabro_run_wait {\"run_id\": \"<child_run_id>\", \"until\": \"merged\", \"timeout_ms\": 1200000}` — `reached=merged` -> route \"Develop integrated\" (context key `child_run_id` stays for the revisor leg); `reached=timeout` -> call again; `reached=closed_unmerged` or terminal-failed -> journal it and route \"Develop child failed\".\n\n## Workflow addressing (fabro-e297, server-side resolution)\n\nCreate child runs with the git workflow source — the server resolves and\nregisters the workflow versions; the sandbox filesystem never participates:\n`{\"runs\": [{\"workflow\": \"<name>\", \"workflow_source\": {\"repo\": \"denkhaus/fabro\", \"branch\": \"denkhaus\", \"workflow\": \"<name>\"}, \"environment\": \"toolchain\"}]}`. The `workflow` slug is REQUIRED alongside `workflow_source` (the spec schema rejects workflow_source-only payloads).\n## Hard rule — exactly ONE child\n\nCreate AT MOST ONE develop child per pass. If the create call returns an\nerror, or the created child sits pending (e.g. approval_required), NEVER\ncreate a second child — poll the EXISTING one (fabro_run_get by the id\nyou recorded) or route \"Develop child failed\". A start/approval failure\nis a state to observe, not a signal to recreate (first production pass:\nthe agent recreated a child after an approval_required start error and\nproduced two parallel develops — a serialization violation cleaned up\nmanually, 2026-09-05).\n\n## Journal\n\nchild id, seed title if visible, status, gate wait.\n\n## Outcome contract\n\n- `succeeded` + \"Develop integrated\" | \"Tracker empty\" | \"Develop child failed\".\n- `failed`: create/poll tooling failed.\n\nHygiene: backtick every path.\n"
+            }
+          }
+        },
+        "survey": {
+          "id": "survey",
+          "attrs": {
+            "fs_write": {
+              "String": ""
+            },
+            "preamble_stages_ignore": {
+              "String": "survey"
+            },
+            "output_retries": {
+              "Integer": 2
+            },
+            "fabro_tools": {
+              "String": "fabro_runs_list"
+            },
+            "project_memory": {
+              "Boolean": false
+            },
+            "output_schema": {
+              "String": "routing"
+            },
+            "reasoning_effort": {
+              "String": "low"
+            },
+            "retry_policy": {
+              "String": "standard"
+            },
+            "label": {
+              "String": "Survey"
+            },
+            "prompt": {
+              "String": "You are the Conductor's Surveyor. One decision: what does THIS pass run? You never start runs here, never merge, never touch product code.\n\n## Procedure\n\n1. Upstream count (shell): ensure remote `upstream` -> `https://github.com/fabro-sh/fabro` (`git remote add upstream ...` if missing), `git fetch upstream --prune` and `git fetch origin --prune`, then `git rev-list --count origin/denkhaus..upstream/main`.\n2. Decision:\n   - count >= 5 (MIN threshold, user decision 2026-09-05: single-commit drift must not consume merge slots) -> route \"Merge needed\" (journal the count + newest upstream subject).\n   - count < 5 -> route \"Work\" (journal the count so drift stays visible; it accumulates toward the threshold).\n3. \"Nothing to do\" is RESERVED for maintenance cases you cannot handle (e.g. tools unavailable); default to \"Work\" — a cheap develop pass is fine even when the tracker turns out empty.\n\n## Journal\n\nReport through `context_updates.journal`: upstream count, newest upstream subject, anything that hurt.\n\n## Outcome contract\n\n- `succeeded` + \"Merge needed\" | \"Work\" | \"Nothing to do\".\n- `failed`: shell/git failed and the count is unknowable.\n\nHygiene: wrap absolute paths and remote URLs in backticks; never write bare slash-words.\n"
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "survey",
+          "attrs": {}
+        },
+        {
+          "from": "survey",
+          "to": "merge",
+          "attrs": {
+            "label": {
+              "String": "Merge needed"
+            },
+            "condition": {
+              "String": "preferred_label=\"Merge needed\""
+            }
+          }
+        },
+        {
+          "from": "survey",
+          "to": "develop",
+          "attrs": {
+            "label": {
+              "String": "Work"
+            },
+            "condition": {
+              "String": "preferred_label=\"Work\""
+            }
+          }
+        },
+        {
+          "from": "survey",
+          "to": "exit",
+          "attrs": {
+            "label": {
+              "String": "Nothing to do"
+            },
+            "condition": {
+              "String": "preferred_label=\"Nothing to do\""
+            }
+          }
+        },
+        {
+          "from": "survey",
+          "to": "exit",
+          "attrs": {
+            "condition": {
+              "String": "outcome=failed"
+            },
+            "label": {
+              "String": "Survey failed"
+            },
+            "kind": {
+              "String": "soft"
+            }
+          }
+        },
+        {
+          "from": "merge",
+          "to": "revise",
+          "attrs": {
+            "label": {
+              "String": "Infra merged — revise the merge run"
+            }
+          }
+        },
+        {
+          "from": "merge",
+          "to": "exit",
+          "attrs": {
+            "condition": {
+              "String": "preferred_label=\"Merge child failed\""
+            },
+            "label": {
+              "String": "Merge child failed — manual /merge-upstream"
+            },
+            "kind": {
+              "String": "soft"
+            }
+          }
+        },
+        {
+          "from": "develop",
+          "to": "revise",
+          "attrs": {
+            "condition": {
+              "String": "preferred_label=\"Develop integrated\""
+            },
+            "label": {
+              "String": "Develop integrated"
+            }
+          }
+        },
+        {
+          "from": "develop",
+          "to": "exit",
+          "attrs": {
+            "label": {
+              "String": "Tracker empty"
+            },
+            "condition": {
+              "String": "preferred_label=\"Tracker empty\""
+            }
+          }
+        },
+        {
+          "from": "develop",
+          "to": "exit",
+          "attrs": {
+            "condition": {
+              "String": "preferred_label=\"Develop child failed\""
+            },
+            "label": {
+              "String": "Develop child failed"
+            },
+            "kind": {
+              "String": "soft"
+            }
+          }
+        },
+        {
+          "from": "revise",
+          "to": "exit",
+          "attrs": {
+            "label": {
+              "String": "Cycle complete"
+            }
+          }
+        },
+        {
+          "from": "revise",
+          "to": "exit",
+          "attrs": {
+            "kind": {
+              "String": "soft"
+            },
+            "condition": {
+              "String": "preferred_label=\"Revisor child failed\""
+            },
+            "label": {
+              "String": "Revisor child failed"
+            }
+          }
+        },
+        {
+          "from": "survey",
+          "to": "exit",
+          "attrs": {
+            "label": {
+              "String": "Unrouted survey outcome"
+            },
+            "kind": {
+              "String": "soft"
+            }
+          }
+        },
+        {
+          "from": "merge",
+          "to": "exit",
+          "attrs": {
+            "label": {
+              "String": "Unrouted merge outcome"
+            },
+            "kind": {
+              "String": "soft"
+            }
+          }
+        },
+        {
+          "from": "develop",
+          "to": "exit",
+          "attrs": {
+            "label": {
+              "String": "Unrouted develop outcome"
+            },
+            "kind": {
+              "String": "soft"
+            }
+          }
+        },
+        {
+          "from": "revise",
+          "to": "exit",
+          "attrs": {
+            "label": {
+              "String": "Unrouted revise outcome"
+            },
+            "kind": {
+              "String": "soft"
+            }
+          }
+        }
+      ],
+      "attrs": {
+        "inspects": {
+          "String": "develop,merge-upstream,revisor"
+        },
+        "max_node_visits": {
+          "Integer": 12
+        },
+        "cycle_counter_reset_key": {
+          "String": "pass_id"
+        },
+        "preamble_budget_kb": {
+          "Integer": 12
+        },
+        "rankdir": {
+          "String": "LR"
+        },
+        "goal": {
+          "String": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged"
+        }
+      }
+    },
+    "graph_source": "digraph Conductor {\n    graph [\n        goal=\"Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged\",\n        inspects=\"develop,merge-upstream,revisor\",\n        rankdir=LR,\n        max_node_visits=12,\n        preamble_budget_kb=12,\n        cycle_counter_reset_key=\"pass_id\"\n    ]\n\n    start [shape=Mdiamond, label=\"Start\"]\n    exit  [shape=Msquare, label=\"Exit\"]\n\n    // Survey (cheap): count unrevised upstream commits. MIN threshold\n    // 5 (user decision 2026-09-05): single-commit upstream drifts must\n    // not consume merge slots that product cycles need.\n    survey [\n        label=\"Survey\",\n        prompt=\"@prompts/survey.md\",\n        output_schema=\"routing\",\n        output_retries=2,\n        retry_policy=\"standard\",\n        reasoning_effort=\"low\",\n        project_memory=false,\n        preamble_stages_ignore=\"survey\",\n        fs_write=\"\",\n        fabro_tools=\"fabro_runs_list\"\n    ]\n\n    // Merge leg: create the merge-upstream child, wait terminal, wait\n    // PR merge (tree equality). Infra pass: no develop this fire.\n    merge [\n        label=\"Merge leg\",\n        prompt=\"@prompts/merge-leg.md\",\n        output_schema=\"routing\",\n        output_retries=2,\n        retry_policy=\"standard\",\n        reasoning_effort=\"low\",\n        project_memory=false,\n        preamble_stages_ignore=\"survey,merge\",\n        fs_write=\"\",\n        fabro_tools=\"fabro_run_create,fabro_run_get,fabro_run_wait,fabro_runs_list\"\n    ]\n\n    // Develop leg: one seed implementation through gate+review+PR.\n    develop [\n        label=\"Develop leg\",\n        prompt=\"@prompts/develop-leg.md\",\n        output_schema=\"routing\",\n        output_retries=2,\n        retry_policy=\"standard\",\n        reasoning_effort=\"low\",\n        project_memory=false,\n        preamble_stages_ignore=\"survey,develop\",\n        fs_write=\"\",\n        fabro_tools=\"fabro_run_create,fabro_run_get,fabro_run_wait,fabro_runs_list\"\n    ]\n\n    // Revise leg: revisor revises the newest develop run.\n    revise [\n        label=\"Revise leg\",\n        prompt=\"@prompts/revise-leg.md\",\n        output_schema=\"routing\",\n        output_retries=2,\n        retry_policy=\"standard\",\n        reasoning_effort=\"low\",\n        project_memory=false,\n        preamble_stages_ignore=\"survey,develop,revise\",\n        fs_write=\"\",\n        fabro_tools=\"fabro_run_create,fabro_run_get,fabro_run_wait,fabro_runs_list\"\n    ]\n\n    start -> survey\n    survey -> merge   [label=\"Merge needed\", condition=\"preferred_label=\\\"Merge needed\\\"\"]\n    survey -> develop [label=\"Work\", condition=\"preferred_label=\\\"Work\\\"\"]\n    survey -> exit    [label=\"Nothing to do\", condition=\"preferred_label=\\\"Nothing to do\\\"\"]\n    survey -> exit    [kind=\"soft\", label=\"Survey failed\", condition=\"outcome=failed\"]\n    // Infra pass: after a merge, develop waits for the NEXT fire — but\n    // the REVISE leg still runs: the merge-upstream run itself carries\n    // painpoints worth filing (user directive 2026-09-05; first\n    // autonomous merge 01M1SR27KEJGNQ hit an fs-policy wall worth a seed).\n    merge -> revise [label=\"Infra merged — revise the merge run\"]\n    merge -> exit [kind=\"soft\", label=\"Merge child failed — manual /merge-upstream\", condition=\"preferred_label=\\\"Merge child failed\\\"\"]\n    develop -> revise [label=\"Develop integrated\", condition=\"preferred_label=\\\"Develop integrated\\\"\"]\n    develop -> exit   [label=\"Tracker empty\", condition=\"preferred_label=\\\"Tracker empty\\\"\"]\n    develop -> exit   [kind=\"soft\", label=\"Develop child failed\", condition=\"preferred_label=\\\"Develop child failed\\\"\"]\n    revise -> exit [label=\"Cycle complete\"]\n    revise -> exit [kind=\"soft\", label=\"Revisor child failed\", condition=\"preferred_label=\\\"Revisor child failed\\\"\"]\n    // Unconditional safety nets (validator rule all_conditional_edges):\n    // an unrouted outcome ends the pass softly — the next cron fire\n    // re-enters cleanly; nothing merges on an ambiguous state.\n    survey -> exit [kind=\"soft\", label=\"Unrouted survey outcome\"]\n    merge -> exit [kind=\"soft\", label=\"Unrouted merge outcome\"]\n    develop -> exit [kind=\"soft\", label=\"Unrouted develop outcome\"]\n    revise -> exit [kind=\"soft\", label=\"Unrouted revise outcome\"]\n}\n",
+    "workflow_slug": "conductor",
+    "workflow_version_id": "396672e3e7b28292e331e718fe142687a137c5de34a659b5afebad16461727bc",
+    "target": {
+      "kind": "git",
+      "repo": "denkhaus/fabro",
+      "branch": "denkhaus",
+      "sha": "11caeba290c81ac8d7646a9b86842c0d71c74e3b"
+    },
+    "automation": {
+      "id": "conductor",
+      "name": "Conductor",
+      "trigger_id": "schedule"
+    },
+    "source_directory": "/workspace",
+    "provenance": {
+      "server": {
+        "version": "0.347.0-nightly.0"
+      },
+      "subject": {
+        "kind": "system",
+        "system_kind": "engine"
+      }
+    },
+    "definition_blob": "4ef9874d2f846d2d14f3f1190e7d58649f28086c81cc740b2e63ef1f744a88ac",
+    "spec_blob": "2ee167519110aa0008fa2edbc39fe025f84603b0c36a8a3556a9d4117ca0ca9e",
+    "git": {
+      "origin_url": "https://github.com/denkhaus/fabro",
+      "branch": "denkhaus",
+      "sha": "11caeba290c81ac8d7646a9b86842c0d71c74e3b",
+      "dirty": "clean"
+    }
+  },
+  "web_url": "http://127.0.0.1:32276/runs/01M1VG9NC8H2BX9WVE9H49GE6F",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-09-06T14:00:04.411165561Z",
+  "last_event_at": "2026-09-06T14:00:15.710552249Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "docker",
+      "image": "fabro-toolchain:noble"
+    },
+    "instance": {
+      "provider": "docker",
+      "image": "fabro-toolchain:noble",
+      "runtime": {
+        "id": "ab4dfeab725406a342fd74a56f00642ca5dbbfd88ca48bfc2bcad8569fbd136b",
+        "working_directory": "/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/denkhaus/fabro",
+        "clone_branch": "denkhaus",
+        "workspace_root": "/workspace",
+        "repos_root": "/repos",
+        "primary_repo_path": "/repos/denkhaus/fabro",
+        "primary_repo_link": "/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
