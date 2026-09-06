@@ -186,6 +186,31 @@ async fn merged_wait_without_pull_request_returns_404() {
 }
 
 #[tokio::test]
+async fn out_of_range_timeout_ms_returns_400() {
+    let (app, _store) = wait_app().await;
+    let run_id = RunId::new();
+    for timeout_ms in [0u64, 3_600_001] {
+        let req = Request::builder()
+            .method("GET")
+            .uri(api(&format!(
+                "/runs/{run_id}/wait?until=terminal&timeout_ms={timeout_ms}"
+            )))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        response_status(
+            resp,
+            StatusCode::BAD_REQUEST,
+            format!(
+                "GET /api/v1/runs/{id}/wait timeout_ms={timeout_ms}",
+                id = run_id
+            ),
+        )
+        .await;
+    }
+}
+
+#[tokio::test]
 async fn unknown_until_value_returns_400() {
     let (app, _store) = wait_app().await;
     let run_id = RunId::new();

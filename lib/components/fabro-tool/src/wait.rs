@@ -57,7 +57,7 @@ impl TryFrom<FabroRunWaitParams> for ValidatedRunWait {
         }
         if params.timeout_ms > MAX_WAIT_TIMEOUT_MS {
             return Err(ToolError::message(format!(
-                "timeout_ms must be no more than {MAX_WAIT_TIMEOUT_MS}; split longer waits into                  repeated calls"
+                "timeout_ms must be no more than {MAX_WAIT_TIMEOUT_MS}; split longer waits into repeated calls"
             )));
         }
         Ok(Self {
