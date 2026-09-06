@@ -653,7 +653,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-06T18:31:33.739469584Z",
-  "last_event_at": "2026-09-06T18:33:22.245182379Z",
+  "last_event_at": "2026-09-06T19:31:55.838477409Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -700,9 +700,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 110,
       "checkpoint": {
-        "timestamp": "2026-09-06T18:33:22.544781495Z",
+        "timestamp": "2026-09-06T18:33:27.160127952Z",
         "current_node": "planner",
         "completed_nodes": [
           "start",
@@ -710,15 +710,28 @@
         ],
         "node_retries": {},
         "context_values": {
-          "failure_signature": "",
-          "seed_cycles": {
-            "planner": 1
-          },
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "thread.start.current_node": "planner",
-          "internal.seed_cycle_anchor": "fabro-3d97",
-          "internal.node_visit_count": 1,
+          "current_seed_brief": "Automation scheduler keeps firing on cadence even when every run parks with the same failure; add a cross-run circuit breaker. Anchors: fire loop and tests in `lib/apps/fabro-server/src/server/automation_scheduler.rs` (see `spawn_automation_scheduler`, `run_due_schedules_once`, `fire_scheduled_automation_run`, `TestAutomationRunMaterializer`), automation model/store in `lib/components/fabro-automation/src/model.rs` + `store.rs` (per-trigger `enabled`, `last_error`), run outcomes queryable via automation_id in `lib/components/fabro-store/src/run_summary_store.rs`, Slack lifecycle in fabro-slack / server. Acceptance criteria: - Consecutive-failure tracking per automation schedule trigger: count consecutive automation-fired runs that end parked/failed with the SAME failure signature; a succeeded run or a different signature resets the count. - Signature scheme (spec offered two readings; chosen): use the run's existing failure signature (e.g. `api_transient|zai|rate_limited`, same concept as the run-level breaker) when present, else derive a stable fallback key from (workflow, park reason); one consistent documented scheme. - Threshold: default N=3 consecutive same-signature parks, configurable per automation or trigger with a sane default. - On threshold: scheduler stops firing that schedule trigger; the paused state is visible through existing automation surfaces (equivalent to the pause button / `enabled=false` path) and distinguishable as breaker-caused by recorded breaker facts (signature, count, last run id, paused-at). - Notification: exactly ONE aggregated Slack lifecycle notification at pause time naming signature, consecutive count, and last run — not N individual failed-run pings for that event. - Resume: a human re-enables deliberately via the existing enable path; resume resets the breaker counter; paused state persists across server restarts (store-backed, not in-memory only). - Tests: unit tests for counter semantics (same-signature N-times pauses; different signature resets; success resets; resume resets; threshold override) plus scheduler integration tests following the existing materializer patterns proving no further runs fire after pause and exactly one aggregated notification is emitted.",
           "failure_class": "",
+          "internal.retry_count.start": 0,
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.max_node_visits": "40",
+          "internal.thread_id": "start",
+          "internal.run_id": "01M1VZTJSZ551NFPHPXD429MG0",
+          "internal.work_dir": "/workspace/fabro",
+          "last_response": "Claimed `fabro-3d97`. The basis verified against the current tree: `lib/apps/fabro-server/src/server/automation_scheduler.rs` fires scheduled runs but never observes their outcomes — only scheduler-",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "last_stage": "planner",
+          "preferred_label": "Seed claimed",
+          "failure_signature": "",
+          "graph.preamble_budget_kb": "24",
+          "outcome": "succeeded",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 4199,
+            "preview": "Claimed `fabro-3d97`. The basis verified against the current tree: `lib/apps/fabro-server/src/server/automation_scheduler.rs` fires scheduled runs but never observes their outcomes — only scheduler-"
+          },
+          "current_node": "planner",
           "journal": {
             "painpoints": [
               "Session start hit untrusted mise config: first `sd ready` exited 1 with 'Config files in /repos/denkhaus/fabro/.mise.toml are not trusted', burning a call on `mise trust` before any tracker work (this run, planner stage). Seed fabro-66db tracks pre-trusting mise in run containers; the same fix would cover agent stages here."
@@ -729,30 +742,17 @@
               "140 ready seeds; High-priority backlog is deep (fabro-de4d, fabro-94e8 next) — later runs have plenty to claim."
             ]
           },
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 4199,
-            "preview": "Claimed `fabro-3d97`. The basis verified against the current tree: `lib/apps/fabro-server/src/server/automation_scheduler.rs` fires scheduled runs but never observes their outcomes — only scheduler-"
+          "thread.start.current_node": "planner",
+          "seed_cycles": {
+            "planner": 1
           },
           "internal.retry_count.planner": 0,
-          "graph.rankdir": "LR",
           "current_seed_title": "engine: automation circuit breaker — pause the schedule after N consecutive identical failure signatures",
-          "graph.cycle_counter_reset_key": "current_seed_id",
           "internal.fidelity": "compact",
-          "internal.thread_id": "start",
+          "internal.node_visit_count": 1,
+          "internal.seed_cycle_anchor": "fabro-3d97",
           "current_seed_id": "fabro-3d97",
-          "internal.run_id": "01M1VZTJSZ551NFPHPXD429MG0",
-          "internal.retry_count.start": 0,
-          "current_seed_brief": "Automation scheduler keeps firing on cadence even when every run parks with the same failure; add a cross-run circuit breaker. Anchors: fire loop and tests in `lib/apps/fabro-server/src/server/automation_scheduler.rs` (see `spawn_automation_scheduler`, `run_due_schedules_once`, `fire_scheduled_automation_run`, `TestAutomationRunMaterializer`), automation model/store in `lib/components/fabro-automation/src/model.rs` + `store.rs` (per-trigger `enabled`, `last_error`), run outcomes queryable via automation_id in `lib/components/fabro-store/src/run_summary_store.rs`, Slack lifecycle in fabro-slack / server. Acceptance criteria: - Consecutive-failure tracking per automation schedule trigger: count consecutive automation-fired runs that end parked/failed with the SAME failure signature; a succeeded run or a different signature resets the count. - Signature scheme (spec offered two readings; chosen): use the run's existing failure signature (e.g. `api_transient|zai|rate_limited`, same concept as the run-level breaker) when present, else derive a stable fallback key from (workflow, park reason); one consistent documented scheme. - Threshold: default N=3 consecutive same-signature parks, configurable per automation or trigger with a sane default. - On threshold: scheduler stops firing that schedule trigger; the paused state is visible through existing automation surfaces (equivalent to the pause button / `enabled=false` path) and distinguishable as breaker-caused by recorded breaker facts (signature, count, last run id, paused-at). - Notification: exactly ONE aggregated Slack lifecycle notification at pause time naming signature, consecutive count, and last run — not N individual failed-run pings for that event. - Resume: a human re-enables deliberately via the existing enable path; resume resets the breaker counter; paused state persists across server restarts (store-backed, not in-memory only). - Tests: unit tests for counter semantics (same-signature N-times pauses; different signature resets; success resets; resume resets; threshold override) plus scheduler integration tests following the existing materializer patterns proving no further runs fire after pause and exactly one aggregated notification is emitted.",
-          "preferred_label": "Seed claimed",
-          "last_stage": "planner",
-          "internal.work_dir": "/workspace/fabro",
-          "graph.preamble_budget_kb": "24",
-          "graph.max_node_visits": "40",
-          "outcome": "succeeded",
-          "last_response": "Claimed `fabro-3d97`. The basis verified against the current tree: `lib/apps/fabro-server/src/server/automation_scheduler.rs` fires scheduled runs but never observes their outcomes — only scheduler-",
-          "current_node": "planner"
+          "graph.rankdir": "LR"
         },
         "node_outcomes": {
           "planner": {
@@ -816,9 +816,227 @@
           }
         },
         "next_node_id": "implementer",
+        "git_commit_sha": "b44d4f24371d8ff1edc4195e14f9431e00c6b192",
         "node_visits": {
           "planner": 1,
           "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1VZTJSZ551NFPHPXD429MG0.jsonl b/.fabro/journal/01M1VZTJSZ551NFPHPXD429MG0.jsonl\nnew file mode 100644\nindex 00000000..31e12e73\n--- /dev/null\n+++ b/.fabro/journal/01M1VZTJSZ551NFPHPXD429MG0.jsonl\n@@ -0,0 +1 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1VZTJSZ551NFPHPXD429MG0\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-06T18:33:22Z\",\"data\":{\"painpoints\":[\"Session start hit untrusted mise config: first `sd ready` exited 1 with 'Config files in /repos/denkhaus/fabro/.mise.toml are not trusted', burning a call on `mise trust` before any tracker work (this run, planner stage). Seed fabro-66db tracks pre-trusting mise in run containers; the same fix would cover agent stages here.\"],\"observations\":[\"fabro-3d97 (top High, ready) has no literal `Basis:` line but was created 2026-09-06 and its claim verified in-tree: `lib/apps/fabro-server/src/server/automation_scheduler.rs` never observes fired-run outcomes, and the existing circuit breaker in `lib/components/fabro-workflow/src/lifecycle/circuit_breaker.rs` is per-run loop-scoped — different layer, no collision.\",\"Spec ambiguity resolved in the brief: 'keyed on failure.signature OR (workflow, park-reason)' — brief pins failure.signature primary with (workflow, park-reason) as fallback key, so the reviewer judges one scheme.\",\"140 ready seeds; High-priority backlog is deep (fabro-de4d, fabro-94e8 next) — later runs have plenty to claim.\"]}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 40b1cf71..81213f41 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -214,6 +214,6 @@\n {\"id\":\"fabro-528b\",\"title\":\"fabro_run_create: accept workflow_source-only specs (derive the slug) and reject slug/source mismatch verbosely\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-09-06T12:26:01.016Z\",\"updatedAt\":\"2026-09-06T12:26:01.016Z\",\"description\":\"User design review 2026-09-06 after two consecutive conductor passes burned 6+9 fabro_run_create calls on payload validation: when callers systematically drop required fields, that is a boundary problem (payload validation + verbose errors + contract ergonomics), not a prompt problem. The prompt fixes (56a982d34, 462d033b3) were stopgaps; this seed is the durable fix. Wanted: (1) CreateRunSpec accepts workflow_source-ONLY payloads — the server derives the workflow slug from workflow_source.workflow (it already resolves the source server-side; mx-e21031); (2) when BOTH workflow and workflow_source are present and disagree, reject with an error naming both values (kills the drift class); (3) validation errors name the exact property path and expected shape (overlaps fabro-e4ac — implement together); (4) conductor leg prompts simplify back to the workflow_source-only form once accepted. Rationale: the natural caller payload is valid; redundancy invites drift; every future orchestration agent benefits. Basis: passes 01M1V7Q00XGJ merge@1 (11:30, 6 attempts), 01M1V9DXW8 merge@1 (12:00, 9 attempts), CreateRunSpec.workflow required vs workflow_source optional (create.rs:191-194).\",\"labels\":[\"engine\",\"workflows\"]}\n {\"id\":\"fabro-de4d\",\"title\":\"engine: routing output_schema must constrain preferred_label to the node's outgoing edge labels\",\"status\":\"open\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-06T13:22:37.088Z\",\"updatedAt\":\"2026-09-06T13:22:37.088Z\",\"description\":\"INCIDENT 2026-09-06, merge-upstream run 01M1V7XSV75BE92JZ0135SHQXK: the reviewer APPROVED (verdict text, merge commit 401e3ceb7 verified) but emitted preferred_label='deploy' — a value no outgoing edge knows. All conditional edges missed, the unconditional soft fallback 'Unrouted review outcome' fired, and the run parked failed(soft_stop) with ~50 min of reviewed merge work stranded on the run branch. output_schema='routing' accepts free-form preferred_label. Wanted: the routing schema validates preferred_label (and any label fields) against the node's outgoing edge labels; on an unknown label, fail the OUTPUT (not the run) with output_retries, error naming the offending value AND the allowed labels — the boundary-first principle (fabro-e4ac class): systematic agent misuse = validation gap, not prompt material. The prompt stopgap (review.md strict routing) landed same day; this seed is the durable fix. Also consider: an unconditional edge without kind should be a graph-validation warning when it is the only unrouted-label catcher (a silent soft park is the most expensive routing failure).\",\"labels\":[\"engine\",\"workflows\"]}\n {\"id\":\"fabro-8cd3\",\"title\":\"web: run status header should render soft_stop (and deadlock/cancelled) distinctly, not plain 'failed'\",\"status\":\"open\",\"type\":\"bug\",\"priority\":3,\"createdAt\":\"2026-09-06T13:22:37.212Z\",\"updatedAt\":\"2026-09-06T14:08:09.175Z\",\"description\":\"User observation 2026-09-06 on run 01M1V7XSV75BE92JZ0135SHQXK: the status header shows 'failed' although the run parked at a kind=soft exit (reason=soft_stop, work preserved, next pass re-enters autonomously) — indistinguishable at a glance from a hard failure. Wanted: status chip/title renders soft_stop as amber 'soft-stopped' (and deadlock as 'parked — needs human', cancelled distinct from failed), with the failure reason visible without opening the log. ALSO (spec review of fabro-54f0): make failed(approval_timeout) runs visible in the pending/failed list surface — the 54f0 seed's 'surfaced in the UI pending list' requirement was API-side only; this seed owns the web rendering including approval_timeout.\",\"labels\":[\"web\",\"ux\"]}\n-{\"id\":\"fabro-3d97\",\"title\":\"engine: automation circuit breaker — pause the schedule after N consecutive identical failure signatures\",\"status\":\"open\",\"type\":\"feature\",\"priority\":1,\"createdAt\":\"2026-09-06T13:37:52.532Z\",\"updatedAt\":\"2026-09-06T13:37:52.532Z\",\"description\":\"Autonomous-operation gap observed 2026-09-06: three conductor passes parked soft_stop in a row (12:00, 12:30, 13:00 — first a merge routing park, then 2x zai 429 quota exhaustion) and nothing stopped the 30-min cadence. Nothing counts repeated parks; the line happily repeats work or burns sandbox spin-ups all night. Wanted: per-automation consecutive-failure tracking keyed on failure.signature (e.g. api_transient|zai|rate_limited) or (workflow, park-reason); when the SAME signature parks N consecutive automation runs (default e.g. 3), the scheduler pauses the schedule (visible state, like the pause button) and emits ONE aggregated notification (Slack lifecycle exists) naming signature, count, and last run — instead of N single failed-run notifications. A human resumes deliberately; resuming resets the counter. This is the autonomous line's blast-radius limiter for every unknown park cause (routing defects, provider outages, sandbox issues).\",\"labels\":[\"engine\",\"workflows\"]}\n+{\"id\":\"fabro-3d97\",\"title\":\"engine: automation circuit breaker — pause the schedule after N consecutive identical failure signatures\",\"status\":\"in_progress\",\"type\":\"feature\",\"priority\":1,\"createdAt\":\"2026-09-06T13:37:52.532Z\",\"updatedAt\":\"2026-09-06T18:33:06.025Z\",\"description\":\"Autonomous-operation gap observed 2026-09-06: three conductor passes parked soft_stop in a row (12:00, 12:30, 13:00 — first a merge routing park, then 2x zai 429 quota exhaustion) and nothing stopped the 30-min cadence. Nothing counts repeated parks; the line happily repeats work or burns sandbox spin-ups all night. Wanted: per-automation consecutive-failure tracking keyed on failure.signature (e.g. api_transient|zai|rate_limited) or (workflow, park-reason); when the SAME signature parks N consecutive automation runs (default e.g. 3), the scheduler pauses the schedule (visible state, like the pause button) and emits ONE aggregated notification (Slack lifecycle exists) naming signature, count, and last run — instead of N single failed-run notifications. A human resumes deliberately; resuming resets the counter. This is the autonomous line's blast-radius limiter for every unknown park cause (routing defects, provider outages, sandbox issues).\",\"labels\":[\"engine\",\"workflows\"]}\n {\"id\":\"fabro-1f70\",\"title\":\"engine: automation honors provider rate-limit reset windows (skip fires until quota reset)\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-09-06T13:37:52.655Z\",\"updatedAt\":\"2026-09-06T13:37:52.655Z\",\"description\":\"Observed 2026-09-06: zai 429 code 1308 'Usage limit reached for 5 hour. Your limit will reset at 2026-09-06 21:11:07' — the reset timestamp rides the raw error body, yet the conductor automation kept firing every 30 min and parking in survey until reset. Cheap (429 fails at open, zero LLM tokens) but pure noise: failed runs, sandbox spin-ups, alert spam. Wanted: when a run parks with a provider rate_limit signature carrying a reset timestamp (parse from detail.raw), the automation scheduler suppresses fires until reset+grace (state visible in the automation); first fire after the window resumes normally. Complements the circuit-breaker seed (this is the KNOWN-cause fast path with an exact ETA).\",\"labels\":[\"engine\"]}\n {\"id\":\"fabro-b887\",\"title\":\"merge-upstream: reuse a parked reviewed merge branch instead of re-merging from scratch\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-09-06T13:37:52.764Z\",\"updatedAt\":\"2026-09-06T13:37:52.764Z\",\"description\":\"Observed 2026-09-06 (run 01M1V7XSV75B): ~50 min of merge+gate+review work (commit 401e3ceb7, reviewer approved all 13 touchpoints) parked on the run branch because the routing label missed (fabro-de4d). The next pass would REDO the entire merge — repeated nightly, each redo burns 40-60 min LLM for identical, already-reviewed output. Wanted (defense in depth beyond de4d): (a) the merge-upstream graph opens the run PR as PART of the approved exit path (before/independent of the final routing), so an approved merge always reaches auto-merge even if later routing parks; and/or (b) the merge stage's prompt starts by checking for an existing parked run branch of the same workflow whose reviewer approved (checkpoint/event evidence) and reuses/promotes that branch (PR) instead of re-merging. Either way: approved work never silently repeats.\",\"labels\":[\"workflows\",\"engine\"]}\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 2,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-06T19:31:56.145221746Z",
+        "current_node": "implementer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_signature": "",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "thread.start.current_node": "planner",
+          "internal.seed_cycle_anchor": "fabro-3d97",
+          "internal.node_visit_count": 1,
+          "failure_class": "",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "`bun run generate` for lib/packages/fabro-api-client fails in this sandbox: openapi-generator-cli needs `java`, which is not installed (run 01M1VZTJSZ551NFPHPXD429MG0). I hand-edited the generated automation-schedule-trigger.ts to mirror generator output. Fix idea: gate doc or provide a java-less generator path (e.g. hey-api/openapi-ts via bun) so client regen is hermetic."
+              }
+            ],
+            "observations": [
+              "run_summaries.list_all and the new list_terminal_for_automation return runs NEWEST-FIRST; scheduler tests that index runs by fire order must sort by created_at or they park the wrong run (surfaced as 'invalid status transition: failed -> starting').",
+              "cfg(any(test, test-support)) fields on AppStateConfig must also be initialized in serve.rs because the lib-test build sets cfg(test) crate-wide — the compiler only surfaces this under cargo test, not cargo build."
+            ]
+          },
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 4199,
+            "preview": "Claimed `fabro-3d97`. The basis verified against the current tree: `lib/apps/fabro-server/src/server/automation_scheduler.rs` fires scheduled runs but never observes their outcomes — only scheduler-"
+          },
+          "internal.retry_count.planner": 0,
+          "thread.planner.current_node": "implementer",
+          "graph.rankdir": "LR",
+          "current_seed_title": "engine: automation circuit breaker — pause the schedule after N consecutive identical failure signatures",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.fidelity": "summary:high",
+          "internal.thread_id": "planner",
+          "current_seed_id": "fabro-3d97",
+          "internal.run_id": "01M1VZTJSZ551NFPHPXD429MG0",
+          "internal.retry_count.start": 0,
+          "current_seed_brief": "Automation scheduler keeps firing on cadence even when every run parks with the same failure; add a cross-run circuit breaker. Anchors: fire loop and tests in `lib/apps/fabro-server/src/server/automation_scheduler.rs` (see `spawn_automation_scheduler`, `run_due_schedules_once`, `fire_scheduled_automation_run`, `TestAutomationRunMaterializer`), automation model/store in `lib/components/fabro-automation/src/model.rs` + `store.rs` (per-trigger `enabled`, `last_error`), run outcomes queryable via automation_id in `lib/components/fabro-store/src/run_summary_store.rs`, Slack lifecycle in fabro-slack / server. Acceptance criteria: - Consecutive-failure tracking per automation schedule trigger: count consecutive automation-fired runs that end parked/failed with the SAME failure signature; a succeeded run or a different signature resets the count. - Signature scheme (spec offered two readings; chosen): use the run's existing failure signature (e.g. `api_transient|zai|rate_limited`, same concept as the run-level breaker) when present, else derive a stable fallback key from (workflow, park reason); one consistent documented scheme. - Threshold: default N=3 consecutive same-signature parks, configurable per automation or trigger with a sane default. - On threshold: scheduler stops firing that schedule trigger; the paused state is visible through existing automation surfaces (equivalent to the pause button / `enabled=false` path) and distinguishable as breaker-caused by recorded breaker facts (signature, count, last run id, paused-at). - Notification: exactly ONE aggregated Slack lifecycle notification at pause time naming signature, consecutive count, and last run — not N individual failed-run pings for that event. - Resume: a human re-enables deliberately via the existing enable path; resume resets the breaker counter; paused state persists across server restarts (store-backed, not in-memory only). - Tests: unit tests for counter semantics (same-signature N-times pauses; different signature resets; success resets; resume resets; threshold override) plus scheduler integration tests following the existing materializer patterns proving no further runs fire after pause and exactly one aggregated notification is emitted.",
+          "preferred_label": "Implemented",
+          "internal.retry_count.implementer": 0,
+          "last_stage": "implementer",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.preamble_budget_kb": "24",
+          "implementation_summary": "Circuit breaker implemented across fabro-automation (pure counter + facts + store persistence + SQL migration), fabro-store (terminal-runs-for-automation query), fabro-slack (aggregated pause blocks), and fabro-server (evaluation module, scheduler wiring, Slack/test notifiers, OpenAPI + clients). Lesson captured as mx-6cddf3.\nPer-criterion verification:\n- PASS Consecutive same-signature tracking per trigger: automation_breaker.rs evaluate_trigger + store high-water mark; tests same_signature_parks_pause_the_schedule_with_one_aggregated_notification, breaker unit tests.\n- PASS One documented signature scheme: breaker.rs breaker_signature (failure-detail signature verbatim, else park|{workflow}|{reason}); tests signature_uses_failure_detail_signature_verbatim / signature_falls_back_to_workflow_and_park_reason.\n- PASS Threshold default 3, per-trigger override: DEFAULT_SCHEDULE_BREAKER_THRESHOLD + ScheduleTrigger.breaker_threshold (validated ≥1, API-exposed); test threshold_override_trips_earlier_and_later.\n- PASS Pause visible like enabled=false with breaker facts (signature, count, last run id, paused-at): apply_schedule_breaker sets enabled=0 + facts; surfaced via automation GET/API schema; test asserts facts + round-trip test automation_response_round_trips_breaker_paused_schedule_trigger.\n- PASS Exactly ONE aggregated Slack notification naming signature/count/last run: SlackBreakerNotifier + pause compare-and-set; test asserts captured.len()==1 and field values.\n- PASS Resume via existing enable path resets counter, persists across restarts: replace clears trigger rows (facts reset), store-backed state; tests re_enabling_the_trigger_resumes_firing_with_a_reset_counter, schedule_breaker_facts_round_trip_and_replace_resets_them.\n- PASS Unit + scheduler integration tests per materializer patterns: breaker.rs 10 unit tests, 3 scheduler integration tests; all listed suites green, crate-scoped fmt/clippy clean.",
+          "lesson_capture": "mx-6cddf3",
+          "graph.max_node_visits": "40",
+          "outcome": "succeeded",
+          "last_response": "Implementation complete. Summary of what was built for seed fabro-3d97 (automation circuit breaker):\n\n**Files touched**\n- `lib/components/fabro-automation/src/breaker.rs` (new): pure counter semantics",
+          "current_node": "implementer",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5525,
+            "preview": "Implementation complete. Summary of what was built for seed fabro-3d97 (automation circuit breaker):\n\n**Files touched**\n- `lib/components/fabro-automation/src/breaker.rs` (new): pure counter semantics"
+          }
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Automation scheduler keeps firing on cadence even when every run parks with the same failure; add a cross-run circuit breaker. Anchors: fire loop and tests in `lib/apps/fabro-server/src/server/automation_scheduler.rs` (see `spawn_automation_scheduler`, `run_due_schedules_once`, `fire_scheduled_automation_run`, `TestAutomationRunMaterializer`), automation model/store in `lib/components/fabro-automation/src/model.rs` + `store.rs` (per-trigger `enabled`, `last_error`), run outcomes queryable via automation_id in `lib/components/fabro-store/src/run_summary_store.rs`, Slack lifecycle in fabro-slack / server. Acceptance criteria: - Consecutive-failure tracking per automation schedule trigger: count consecutive automation-fired runs that end parked/failed with the SAME failure signature; a succeeded run or a different signature resets the count. - Signature scheme (spec offered two readings; chosen): use the run's existing failure signature (e.g. `api_transient|zai|rate_limited`, same concept as the run-level breaker) when present, else derive a stable fallback key from (workflow, park reason); one consistent documented scheme. - Threshold: default N=3 consecutive same-signature parks, configurable per automation or trigger with a sane default. - On threshold: scheduler stops firing that schedule trigger; the paused state is visible through existing automation surfaces (equivalent to the pause button / `enabled=false` path) and distinguishable as breaker-caused by recorded breaker facts (signature, count, last run id, paused-at). - Notification: exactly ONE aggregated Slack lifecycle notification at pause time naming signature, consecutive count, and last run — not N individual failed-run pings for that event. - Resume: a human re-enables deliberately via the existing enable path; resume resets the breaker counter; paused state persists across server restarts (store-backed, not in-memory only). - Tests: unit tests for counter semantics (same-signature N-times pauses; different signature resets; success resets; resume resets; threshold override) plus scheduler integration tests following the existing materializer patterns proving no further runs fire after pause and exactly one aggregated notification is emitted.",
+              "journal": {
+                "painpoints": [
+                  "Session start hit untrusted mise config: first `sd ready` exited 1 with 'Config files in /repos/denkhaus/fabro/.mise.toml are not trusted', burning a call on `mise trust` before any tracker work (this run, planner stage). Seed fabro-66db tracks pre-trusting mise in run containers; the same fix would cover agent stages here."
+                ],
+                "observations": [
+                  "fabro-3d97 (top High, ready) has no literal `Basis:` line but was created 2026-09-06 and its claim verified in-tree: `lib/apps/fabro-server/src/server/automation_scheduler.rs` never observes fired-run outcomes, and the existing circuit breaker in `lib/components/fabro-workflow/src/lifecycle/circuit_breaker.rs` is per-run loop-scoped — different layer, no collision.",
+                  "Spec ambiguity resolved in the brief: 'keyed on failure.signature OR (workflow, park-reason)' — brief pins failure.signature primary with (workflow, park-reason) as fallback key, so the reviewer judges one scheme.",
+                  "140 ready seeds; High-priority backlog is deep (fabro-de4d, fabro-94e8 next) — later runs have plenty to claim."
+                ]
+              },
+              "current_seed_id": "fabro-3d97",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 4199,
+                "preview": "Claimed `fabro-3d97`. The basis verified against the current tree: `lib/apps/fabro-server/src/server/automation_scheduler.rs` fires scheduled runs but never observes their outcomes — only scheduler-"
+              },
+              "last_response": "Claimed `fabro-3d97`. The basis verified against the current tree: `lib/apps/fabro-server/src/server/automation_scheduler.rs` fires scheduled runs but never observes their outcomes — only scheduler-",
+              "last_stage": "planner",
+              "current_seed_title": "engine: automation circuit breaker — pause the schedule after N consecutive identical failure signatures"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 33192,
+                    "output_tokens": 1974,
+                    "reasoning_tokens": 3714,
+                    "cache_read_tokens": 278208,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 143815
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 95633,
+              "tool_time_ms": 2689,
+              "active_time_ms": 98322
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "Circuit breaker implemented across fabro-automation (pure counter + facts + store persistence + SQL migration), fabro-store (terminal-runs-for-automation query), fabro-slack (aggregated pause blocks), and fabro-server (evaluation module, scheduler wiring, Slack/test notifiers, OpenAPI + clients). Lesson captured as mx-6cddf3.\nPer-criterion verification:\n- PASS Consecutive same-signature tracking per trigger: automation_breaker.rs evaluate_trigger + store high-water mark; tests same_signature_parks_pause_the_schedule_with_one_aggregated_notification, breaker unit tests.\n- PASS One documented signature scheme: breaker.rs breaker_signature (failure-detail signature verbatim, else park|{workflow}|{reason}); tests signature_uses_failure_detail_signature_verbatim / signature_falls_back_to_workflow_and_park_reason.\n- PASS Threshold default 3, per-trigger override: DEFAULT_SCHEDULE_BREAKER_THRESHOLD + ScheduleTrigger.breaker_threshold (validated ≥1, API-exposed); test threshold_override_trips_earlier_and_later.\n- PASS Pause visible like enabled=false with breaker facts (signature, count, last run id, paused-at): apply_schedule_breaker sets enabled=0 + facts; surfaced via automation GET/API schema; test asserts facts + round-trip test automation_response_round_trips_breaker_paused_schedule_trigger.\n- PASS Exactly ONE aggregated Slack notification naming signature/count/last run: SlackBreakerNotifier + pause compare-and-set; test asserts captured.len()==1 and field values.\n- PASS Resume via existing enable path resets counter, persists across restarts: replace clears trigger rows (facts reset), store-backed state; tests re_enabling_the_trigger_resumes_firing_with_a_reset_counter, schedule_breaker_facts_round_trip_and_replace_resets_them.\n- PASS Unit + scheduler integration tests per materializer patterns: breaker.rs 10 unit tests, 3 scheduler integration tests; all listed suites green, crate-scoped fmt/clippy clean.",
+              "last_response": "Implementation complete. Summary of what was built for seed fabro-3d97 (automation circuit breaker):\n\n**Files touched**\n- `lib/components/fabro-automation/src/breaker.rs` (new): pure counter semantics",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "`bun run generate` for lib/packages/fabro-api-client fails in this sandbox: openapi-generator-cli needs `java`, which is not installed (run 01M1VZTJSZ551NFPHPXD429MG0). I hand-edited the generated automation-schedule-trigger.ts to mirror generator output. Fix idea: gate doc or provide a java-less generator path (e.g. hey-api/openapi-ts via bun) so client regen is hermetic."
+                  }
+                ],
+                "observations": [
+                  "run_summaries.list_all and the new list_terminal_for_automation return runs NEWEST-FIRST; scheduler tests that index runs by fire order must sort by created_at or they park the wrong run (surfaced as 'invalid status transition: failed -> starting').",
+                  "cfg(any(test, test-support)) fields on AppStateConfig must also be initialized in serve.rs because the lib-test build sets cfg(test) crate-wide — the compiler only surfaces this under cargo test, not cargo build."
+                ]
+              },
+              "last_stage": "implementer",
+              "lesson_capture": "mx-6cddf3",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5525,
+                "preview": "Implementation complete. Summary of what was built for seed fabro-3d97 (automation circuit breaker):\n\n**Files touched**\n- `lib/components/fabro-automation/src/breaker.rs` (new): pure counter semantics"
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 179351,
+                    "output_tokens": 38161,
+                    "reasoning_tokens": 25224,
+                    "cache_read_tokens": 23901248,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 6744063
+            },
+            "files_touched": [
+              "/workspace/fabro/docs/public/api-reference/fabro-api.yaml",
+              "/workspace/fabro/lib/apps/fabro-server/src/server.rs",
+              "/workspace/fabro/lib/apps/fabro-server/src/server/automation_breaker.rs",
+              "/workspace/fabro/lib/apps/fabro-server/src/server/automation_scheduler.rs",
+              "/workspace/fabro/lib/apps/fabro-server/src/test_support.rs",
+              "/workspace/fabro/lib/components/fabro-automation/src/breaker.rs",
+              "/workspace/fabro/lib/components/fabro-automation/src/error.rs",
+              "/workspace/fabro/lib/components/fabro-automation/src/lib.rs",
+              "/workspace/fabro/lib/components/fabro-automation/src/model.rs",
+              "/workspace/fabro/lib/components/fabro-automation/src/store.rs",
+              "/workspace/fabro/lib/components/fabro-slack/src/blocks.rs",
+              "/workspace/fabro/lib/components/fabro-store/src/run_summary_store.rs",
+              "/workspace/fabro/lib/foundation/fabro-api/tests/automation_round_trip.rs",
+              "/workspace/fabro/lib/foundation/fabro-db/migrations/2026090601_automation_schedule_breaker.sql",
+              "/workspace/fabro/lib/packages/fabro-api-client/src/models/automation-schedule-trigger.ts"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 1087943,
+              "tool_time_ms": 2205239,
+              "active_time_ms": 3293182
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "node_visits": {
+          "planner": 1,
+          "start": 1,
+          "implementer": 1
         }
       },
       "diff": {}
@@ -851,6 +1069,262 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "implementer@1": {
+      "first_event_seq": 113,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-09-06T19:31:55.838477409Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-06T18:33:27.176126322Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 3294445,
+        "inference_time_ms": 1087943,
+        "tool_time_ms": 2205239,
+        "active_time_ms": 3293182
+      },
+      "usage": {
+        "input_tokens": 179351,
+        "output_tokens": 38161,
+        "total_tokens": 24143984,
+        "reasoning_tokens": 25224,
+        "cache_read_tokens": 23901248,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 6744063
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "todos": {
+        "kind": "openai_plan",
+        "list_id": "openai_plan:bf5eed39-b374-41e7-bd9d-b884d6a32cbb",
+        "items": [
+          {
+            "id": "cdc659ec29ec1985",
+            "status": "completed",
+            "order": 0,
+            "subject": "fabro-automation: breaker model, pure counter semantics + unit tests"
+          },
+          {
+            "id": "2434fe8d2968c3da",
+            "status": "completed",
+            "order": 1,
+            "subject": "SQL migration + store persistence for breaker facts"
+          },
+          {
+            "id": "d25ae75ff7d16c6d",
+            "status": "completed",
+            "order": 2,
+            "subject": "fabro-store: terminal runs query for automation"
+          },
+          {
+            "id": "6cc93246cfdc218f",
+            "status": "completed",
+            "order": 3,
+            "subject": "fabro-server: breaker evaluation module + Slack notification wiring"
+          },
+          {
+            "id": "d29bf9c1c691ca32",
+            "status": "completed",
+            "order": 4,
+            "subject": "Scheduler integration + tests (pause, single notification, resume)"
+          },
+          {
+            "id": "5180ac9132e3e5af",
+            "status": "completed",
+            "order": 5,
+            "subject": "OpenAPI spec + client regen, crate-scoped fmt/clippy, focused tests"
+          }
+        ]
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 173174,
+        "usage_percent": 16.515159606933594,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-06T19:31:55.809523381Z",
+        "event_seq": 1250,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 889,
+            "usage_percent": 0.08478164672851562
+          },
+          {
+            "category": "tools",
+            "tokens": 1230,
+            "usage_percent": 0.11730194091796875
+          },
+          {
+            "category": "memory",
+            "tokens": 4253,
+            "usage_percent": 0.4055976867675781
+          },
+          {
+            "category": "conversation",
+            "tokens": 166798,
+            "usage_percent": 15.907096862792969
+          },
+          {
+            "category": "other",
+            "tokens": 4,
+            "usage_percent": 0.0003814697265625
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 17,
       "prompt": null,
