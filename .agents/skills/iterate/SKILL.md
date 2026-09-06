@@ -186,6 +186,12 @@ decision, not an accident - it needs the user plus an ADR.
   (including untracked files - stash ^3 parent carries them) BEFORE a
   clean-tree control, and re-run the lint on the clean tree before
   believing the failure.
+- Tool-call misuse by agents is BOUNDARY evidence, not prompt material (user
+  review 2026-09-06): when an agent repeatedly drops required fields or
+  guesses payload shapes, fix the boundary first — verbose validation errors
+  naming property paths (fabro-e4ac) and contract ergonomics that accept the
+  natural payload (fabro-528b: workflow_source-only specs). Prompt example
+  fixes are stopgaps only; the boundary seed is filed in the same session.
 - REVISE THE AUTONOMOUS WORKFLOWS (user directive 2026-09-05, extended
   same day): after every delegated cycle or conductor pass, inspect the
   journals and stage outcomes of the AUTONOMOUS runs themselves —
