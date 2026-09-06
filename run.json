@@ -558,7 +558,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-06T12:30:26.454798621Z",
-  "last_event_at": "2026-09-06T12:33:33.626186774Z",
+  "last_event_at": "2026-09-06T12:33:38.650579473Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -606,9 +606,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 124,
       "checkpoint": {
-        "timestamp": "2026-09-06T12:33:33.645281571Z",
+        "timestamp": "2026-09-06T12:33:38.650242250Z",
         "current_node": "survey",
         "completed_nodes": [
           "start",
@@ -618,32 +618,36 @@
           "survey": 4
         },
         "context_values": {
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "internal.fidelity": "compact",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "graph.cycle_counter_reset_key": "pass_id",
-          "graph.preamble_budget_kb": "12",
-          "internal.thread_id": "start",
-          "graph.max_node_visits": "12",
-          "outcome": "failed",
-          "internal.seed_cycle_anchor": "",
-          "internal.exit_kind": "soft",
-          "internal.node_visit_count": 1,
-          "current_node": "survey",
-          "internal.retry_count.start": 0,
-          "failure_class": "transient_infra",
           "failure_signature": "survey|transient_infra|api_transient|zai|rate_limited",
           "seed_cycles": {
             "start": 1,
             "survey": 1
           },
-          "thread.start.current_node": "survey",
-          "internal.retry_count.survey": 4,
-          "internal.run_id": "01M1VB4VQCZQ43VV51S5BQXZW0",
+          "internal.seed_cycle_anchor": "",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "graph.preamble_budget_kb": "12",
+          "outcome": "failed",
+          "internal.node_visit_count": 1,
           "internal.work_dir": "/workspace/fabro",
-          "graph.rankdir": "LR"
+          "thread.start.current_node": "survey",
+          "current_node": "survey",
+          "graph.rankdir": "LR",
+          "internal.fidelity": "compact",
+          "failure_class": "transient_infra",
+          "internal.retry_count.start": 0,
+          "graph.max_node_visits": "12",
+          "internal.run_id": "01M1VB4VQCZQ43VV51S5BQXZW0",
+          "internal.thread_id": "start",
+          "internal.exit_kind": "soft",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "internal.retry_count.survey": 4,
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged"
         },
         "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "survey": {
             "status": "failed",
             "failure": {
@@ -652,22 +656,75 @@
               "signature": "api_transient|zai|rate_limited"
             },
             "usage": null
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "3397c57e0e919f45e0f818554b6dbfe4a658d4df",
         "node_visits": {
-          "survey": 1,
-          "start": 1
+          "start": 1,
+          "survey": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-06T12:33:38.689019072Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 191808,
+      "inference_time_ms": 0,
+      "tool_time_ms": 0,
+      "active_time_ms": 0
+    },
+    "failure": {
+      "reason": "soft_stop",
+      "detail": {
+        "message": "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; the next run re-enters autonomously",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "3397c57e0e919f45e0f818554b6dbfe4a658d4df",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 8010,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 3
+      }
+    ],
+    "total_retries": 3,
+    "diff": {
+      "summary": {
+        "files_changed": 0,
+        "additions": 0,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "soft"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -734,7 +791,12 @@
       "first_event_seq": 21,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "failed",
+        "notes": null,
+        "failure_reason": "LLM error: Rate limited by zai: Usage limit reached for 5 hour. Your limit will reset at 2026-09-06 21:11:07",
+        "timestamp": "2026-09-06T12:33:33.644864222Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -749,7 +811,12 @@
       "started_at": "2026-09-06T12:33:25.620546152Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 7461,
+      "timing": {
+        "wall_time_ms": 8010,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -915,7 +982,43 @@
         }
       ],
       "agent_control": "running",
-      "state": "running"
+      "state": "failed"
+    },
+    "exit@1": {
+      "first_event_seq": 127,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-06T12:33:38.650579473Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-06T12:33:38.650522892Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
     }
   }
 }
