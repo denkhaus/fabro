@@ -44,6 +44,38 @@ const DOC_EXTENSIONS = ["md" "markdown" "txt" "rst" "adoc" "ad"]
 # helpers — resolve facts
 # ---------------------------------------------------------------------------
 
+# Pipe-safe emission (fabro-ad23): a single `print` of a string larger than
+# the pipe buffer (64KiB on Linux) can hit EAGAIN ("Operation would block")
+# when the stage reader lags — the 01M1VZTJSZ5 run died exactly there
+# printing a 100KiB+ diff. Emit in line-aligned chunks well under the pipe
+# capacity so every write fits the buffer; over-long single lines are split
+# at character boundaries (nu substring is codepoint-safe, UTF-8 survives).
+def emit [text: string]: nothing -> nothing {
+    const EMIT_BUDGET = 30000
+    if ($text | str length) <= $EMIT_BUDGET {
+        print $text
+        return
+    }
+    mut buf = ""
+    for line in ($text | lines) {
+        mut piece = $line
+        # Pathological single line (minified blob): split by characters.
+        while ($piece | str length) > $EMIT_BUDGET {
+            print --no-newline ($piece | str substring 0..<$EMIT_BUDGET)
+            $piece = ($piece | str substring ($EMIT_BUDGET)..)
+        }
+        if ($buf | str length) + ($piece | str length) + 1 > $EMIT_BUDGET {
+            print $buf
+            $buf = ""
+        }
+        $buf = $buf + $piece + "
+"
+    }
+    if ($buf | is-not-empty) {
+        print --no-newline $buf
+    }
+}
+
 # Wrap bare " /word " tokens in backticks: agent nodes treat them as skill
 # references ("Unknown skill" crash). Two passes catch consecutive tokens
 # (a /b /c d) — the trailing space of match one is the leading of match two.
@@ -385,14 +417,14 @@ def main []: nothing -> nothing {
 
     # Critical-first emission. No size games: a large capture is the
     # engine's to demote (blobref link) and the agent reviewer's to read.
-    print ($no_base_note | str trim -r -c "\n")
-    print $integrity
-    print $spec
-    print $files
-    print $diff
-    print $churn
-    if ($loop_diff | is-not-empty) { print $loop_diff }
-    print $worktree
+    emit ($no_base_note | str trim -r -c "\n")
+    emit $integrity
+    emit $spec
+    emit $files
+    emit $diff
+    emit $churn
+    if ($loop_diff | is-not-empty) { emit $loop_diff }
+    emit $worktree
     # Duplicate of the header line: survives a tail-anchored truncation too.
     print ""
     print (integrity-line $base.short $seed_desc $diff_desc)

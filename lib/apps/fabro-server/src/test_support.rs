@@ -39,6 +39,7 @@ use crate::interp::process_env_var;
 use crate::jwt_auth::{AuthMode, ConfiguredAuth};
 #[cfg(test)]
 use crate::principal_middleware::{AuthContextSlot, RequestAuthContext};
+use crate::server::automation_breaker::AutomationBreakerNotifier;
 use crate::server::{
     self, AppState, AppStateConfig, EnvLookup, RegistryFactoryOverride, ResolvedAppStateSettings,
     RouterOptions, build_app_state,
@@ -102,8 +103,7 @@ pub struct TestAppStateBuilder {
     env_lookup:                   EnvLookup,
     llm_catalog_settings:         LlmCatalogSettings,
     automation_materializer:      Option<TestAutomationRunMaterializer>,
-    automation_breaker_notifier:
-        Option<Arc<dyn crate::server::automation_breaker::AutomationBreakerNotifier>>,
+    automation_breaker_notifier:  Option<Arc<dyn AutomationBreakerNotifier>>,
     #[cfg(test)]
     worker_runtime:               Option<Arc<dyn WorkerRuntime>>,
 }
@@ -191,10 +191,12 @@ impl TestAppStateBuilder {
     }
 
     /// Capture automation breaker pause notifications instead of posting to
-    /// Slack (fabro-3d97).
+    /// Slack (fabro-3d97). Test-only builder: the only callers are cfg(test)
+    /// scheduler tests.
+    #[cfg(test)]
     pub(crate) fn automation_breaker_notifier(
         mut self,
-        notifier: std::sync::Arc<dyn crate::server::automation_breaker::AutomationBreakerNotifier>,
+        notifier: Arc<dyn AutomationBreakerNotifier>,
     ) -> Self {
         self.automation_breaker_notifier = Some(notifier);
         self
