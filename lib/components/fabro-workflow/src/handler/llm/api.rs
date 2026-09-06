@@ -29,6 +29,7 @@ use fabro_types::{FailoverProps, PermissionLevel, RunId, SessionCapability, Stag
 use serde::de::DeserializeOwned;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use tokio::time::{MissedTickBehavior, interval};
 use tokio_util::sync::CancellationToken;
 
 use super::super::agent::{
@@ -495,11 +496,33 @@ where
 /// Shared state for tracking file modifications from agent tool calls.
 struct FileTracking {
     /// Maps tool_call_id → file_path for in-flight write/edit calls.
-    pending: HashMap<String, String>,
+    pending:   HashMap<String, String>,
     /// Set of all file paths successfully written/edited.
-    touched: HashSet<String>,
+    touched:   HashSet<String>,
     /// Most recently modified file path.
-    last:    Option<String>,
+    last:      Option<String>,
+    /// Tool calls started but not yet completed, by id — including
+    /// sub-agent calls. In-flight tools are legitimate activity: the
+    /// stall watchdog keep-alive below feeds on this count.
+    in_flight: HashSet<String>,
+}
+
+impl FileTracking {
+    fn track_tool_flight(&mut self, event: &AgentEvent) {
+        match event {
+            AgentEvent::ToolCallStarted { tool_call_id, .. } => {
+                self.in_flight.insert(tool_call_id.clone());
+            }
+            AgentEvent::ToolCallCompleted { tool_call_id, .. } => {
+                self.in_flight.remove(tool_call_id);
+            }
+            _ => {}
+        }
+    }
+
+    fn tools_in_flight(&self) -> bool {
+        !self.in_flight.is_empty()
+    }
 }
 
 fn track_file_event(event: &AgentEvent, state: &mut FileTracking) {
@@ -649,6 +672,10 @@ impl Drop for EventForwarder {
     }
 }
 
+/// How often the event forwarder touches the stall watchdog while a tool
+/// call is in flight (fabro-571e integration fix; see spawn_event_forwarder).
+const TOOL_KEEP_ALIVE_INTERVAL: Duration = Duration::from_mins(5);
+
 fn spawn_event_forwarder(
     session: &Session,
     node_id: String,
@@ -661,7 +688,32 @@ fn spawn_event_forwarder(
     let (processing_end_tx, processing_end_rx) = mpsc::unbounded_channel();
     let (session_end_tx, session_end_rx) = mpsc::unbounded_channel();
     let task = tokio::spawn(async move {
-        while let Ok(event) = rx.recv().await {
+        // In-flight tool keep-alive (fabro-571e integration fix): a
+        // blocking tool call emits no agent events while it runs, so a
+        // long `fabro_run_wait` (up to 60 min) starved the stall watchdog
+        // and killed healthy nodes ("no activity for 1800s", conductor pass
+        // 01M1VZR3AAWY). While any tool is in flight, periodically touch
+        // the emitter so the watchdog sees activity. Truly idle stages
+        // (no started tool) keep the old semantics and still time out.
+        let mut keep_alive = interval(TOOL_KEEP_ALIVE_INTERVAL);
+        keep_alive.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        loop {
+            let event = tokio::select! {
+                maybe = rx.recv() => {
+                    let Ok(event) = maybe else { break };
+                    event
+                }
+                _ = keep_alive.tick() => {
+                    if file_tracking
+                        .lock()
+                        .expect("file_tracking mutex is never poisoned")
+                        .tools_in_flight()
+                    {
+                        emitter.touch();
+                    }
+                    continue;
+                }
+            };
             let is_root_processing_end = event.session_id == root_session_id
                 && event.parent_session_id.is_none()
                 && matches!(&event.event, AgentEvent::ProcessingEnd);
@@ -672,13 +724,15 @@ fn spawn_event_forwarder(
             // Reset watchdog on every event, including streaming deltas
             emitter.touch();
 
-            // Track file changes from tool calls (including sub-agent events)
-            track_file_event(
-                &event.event,
-                &mut file_tracking.lock().expect(
+            // Track file changes and in-flight tool counts (including
+            // sub-agent events)
+            {
+                let mut state = file_tracking.lock().expect(
                     "file_tracking mutex is never poisoned: no code panics while holding this lock",
-                ),
-            );
+                );
+                state.track_tool_flight(&event.event);
+                track_file_event(&event.event, &mut state);
+            }
 
             // Forward non-streaming agent events to pipeline
             if !event.event.is_streaming_noise()
@@ -1802,9 +1856,10 @@ impl CodergenBackend for AgentApiBackend {
 
         // File change tracking: shared between spawned task and main fn.
         let file_tracking = Arc::new(Mutex::new(FileTracking {
-            pending: HashMap::new(),
-            touched: HashSet::new(),
-            last:    None,
+            pending:   HashMap::new(),
+            touched:   HashSet::new(),
+            last:      None,
+            in_flight: HashSet::new(),
         }));
         let stage_scope = StageScope::for_handler(request.context, &node.id);
         self.emit_fallback_plan_notices(&fallback_notices, emitter, &stage_scope);
@@ -3419,9 +3474,10 @@ reasoning = false
 
     fn new_file_tracking() -> FileTracking {
         FileTracking {
-            pending: HashMap::new(),
-            touched: HashSet::new(),
-            last:    None,
+            pending:   HashMap::new(),
+            touched:   HashSet::new(),
+            last:      None,
+            in_flight: HashSet::new(),
         }
     }
 
@@ -4693,9 +4749,10 @@ enabled = true
         let context = Context::new();
         let scope = StageScope::for_handler(&context, "code");
         let file_tracking = Arc::new(Mutex::new(FileTracking {
-            pending: HashMap::new(),
-            touched: HashSet::new(),
-            last:    None,
+            pending:   HashMap::new(),
+            touched:   HashSet::new(),
+            last:      None,
+            in_flight: HashSet::new(),
         }));
         let mut forwarder = spawn_event_forwarder(
             &session,
