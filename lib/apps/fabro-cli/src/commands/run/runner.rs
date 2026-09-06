@@ -1018,7 +1018,7 @@ impl RunStoreBackend for HttpRunStore {
             async move { client.append_run_event(&run_id, &event).await }
         }))
         .await?;
-        self.apply_acknowledged_event(seq, event).await
+        Box::pin(self.apply_acknowledged_event(seq, event)).await
     }
 
     async fn write_blob(&self, data: &[u8]) -> Result<BlobHash> {

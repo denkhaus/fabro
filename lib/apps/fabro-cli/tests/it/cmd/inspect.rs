@@ -144,7 +144,8 @@ fn inspect_resolves_selector_via_server_endpoint() {
               },
               "execution": {
                 "mode": "normal",
-                "approval": "prompt"
+                "approval": "prompt",
+                "approval_timeout_secs": null
               },
               "checkpoint": {
                 "exclude_globs": [],

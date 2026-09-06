@@ -155,3 +155,24 @@ upstream's new signatures; never revert upstream, never drop our features.
   import; the one real use in the file was fully qualified (futures_util).
   Lesson: after a conflict-free auto-merge, still grep the 7-ish both-touched
   files for imports whose only users lived in upstream-deleted code.
+
+## 2026-09-06 (v0.348.0-nightly.0, merge of 2f326a13c)
+
+- Squash-divergence class (new): the fork landed v0.347 content via a
+  SQUASH merge (PR #30, single-parent commit) — upstream commits were not
+  ancestors, so the next `git merge upstream/main` re-counted them. If the
+  post-merge tree delta vs HEAD is versions-only, that is why; the merge
+  still has value (restores true ancestry + version alignment). Check with
+  `git diff HEAD --stat` before resolving.
+- Compile-only gate debt (new class): when a previous squash merge gated
+  with `cargo check --workspace` only, the NEXT merge's full clippy+nextest
+  surfaces pre-existing fork lint/snapshot failures (verify at pre-merge
+  HEAD in a temp worktree before calling them regressions). This pass:
+  large_futures Box::pin at runner.rs call site (fork-grown future over
+  upstream's threshold — pin at the call site, matching the file's local
+  pattern), unused_async in fork-only test helper, and two inline snapshots
+  missing `approval_timeout_secs` from the fabro-54f0 TTL commit.
+- Stale-nextest-binary trap (new, tooling): after edit_file-based snapshot
+  fixes, `cargo nextest run` can reuse a stale binary (mtime granularity) —
+  the same failure reappears with unchanged line numbers. `touch <file>`
+  forces the rebuild; only trust a rerun after it.

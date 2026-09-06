@@ -177,3 +177,15 @@ Upstream directions that may supersede our work — re-evaluate per merge:
 - 2026-09-05 (v0.346): Client::list_environments() is now available for
   engine-side use — candidate infra for fabro-8d30 part a (availability
   probe UX), watch when that seed is picked up.
+
+## 2026-09-06 (v0.348.0-nightly.0, merge 2f326a13c)
+
+- All touchpoints re-verified green post-merge (see
+  `.fabro/reports/merge-upstream/2f326a13c.md`); none superseded.
+- fabro-54f0 (approval TTL backstop) had landed WITHOUT updating the attach
+  and inspect inline snapshots (`approval_timeout_secs` 86400/null) — fixed
+  during this merge's gate. Future features that add run-spec settings
+  fields must sweep `fabro-cli` it-test snapshots in the same commit.
+- lab-check.yml is RETIRED (lab restructure): the auto-merge wiring
+  touchpoint now resolves to `.github/workflows/dogfood-gate.yml` + branch
+  protection (engine-owned).
