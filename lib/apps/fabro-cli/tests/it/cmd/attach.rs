@@ -954,6 +954,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
               },
               "execution": {
                 "approval": "prompt",
+                "approval_timeout_secs": 86400,
                 "mode": "normal"
               },
               "git": {
