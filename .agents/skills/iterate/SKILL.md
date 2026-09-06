@@ -56,19 +56,19 @@ decision, not an accident - it needs the user plus an ADR.
   must satisfy (newtypes, enums-vs-traits, error taxonomy, async task
   lifecycle, ...). A design that must deviate is itself a pivotal fork -
   put it to the user in the grill session, never drift silently.
-- Executor decision (ADR-0013 dogfooding + ADR-0015, 2026-09-05): WHO
-  implements the seed? Product seeds (workflow assets, product-world
-  code the develop workflow can build) are delegated to the workflow -
-  the AGENT starts `just run develop --goal "'implement <seed-id>:
-  <title>'"` for one leg, or `just cycle` for a full qualification
-  cycle (develop + revisor back to back), background + heartbeat per
-  the standing directive. Invocation model (user directive 2026-09-05):
-  /iterate and /merge-upstream are the USER's entry points; the just
-  targets are the agent-facing surface (until the revisor goes cron on
-  the 24/7 host). Engine/platform seeds and pivotal design work: this
-  skill implements directly. Delegation still runs Phases 3-6 here -
-  review the run's landed diff, reflect on run evidence; the workflow
-  owns implementation, not review or reflection.
+- Executor decision (user directive 2026-09-06, extends ADR-0013
+  dogfooding + ADR-0015): the agent implements NO seeds itself anymore
+  - product AND engine/platform seeds alike go to the autonomous line.
+  The conductor is cron-activated and drives the develop workflow; it
+  picks, claims, and implements seeds on its own schedule. Manual
+  `just run develop` / `just cycle` starts are repair actions only,
+  when the autonomous line is down, and with the user's knowledge.
+  This agent's /iterate job: orient and monitor the autonomous line,
+  grill pivotal design forks with the user and write the agreed
+  design INTO the seed BEFORE the workflow implements it, review
+  landed diffs, revise the autonomous workflows themselves (standing
+  directive), reflect, and report. The workflow owns implementation,
+  not review or reflection.
 - Claim the seed: `sd update <id> --status in_progress` — DIRECT
   implementation only. In delegation mode the goal names the seed and
   the RUN's planner claims it; an agent-side claim would remove it from
@@ -87,9 +87,12 @@ decision, not an accident - it needs the user plus an ADR.
   `workflows/new-rust-project.md` when creating or configuring a crate.
   Write code that conforms from the start; do not retrofit style after
   review.
-- Platform change: implement directly on the current branch per
-  AGENTS.md (build/test commands, API workflow, strategy docs - read
-  the relevant doc before changing covered areas).
+- Platform/engine change: ALSO delegated to the autonomous line
+  (user directive 2026-09-06) - PR #28 (fabro-tool, b1b6df41f) proved
+  the develop workflow ships engine Rust. This agent feeds the seed
+  with pointers (files, trait seams, guideline pages) instead of
+  writing the code. Direct code edits happen only when the user
+  explicitly assigns them to this agent in chat.
 - Product/lab change or engine+workflow validation: run the develop
   workflow via the wrapper (`just run <workflow> ...`, or `just cycle`
   for develop+revisor; ADR-0015: the wrapper no longer runs an ask
