@@ -55,6 +55,7 @@ pub(crate) const KNOWN_FABRO_RUN_TOOL_NAMES: &[&str] = &[
     "fabro_run_logs",
     "fabro_run_pair",
     "fabro_run_search",
+    "fabro_run_wait",
     "fabro_runs_list",
 ];
 
