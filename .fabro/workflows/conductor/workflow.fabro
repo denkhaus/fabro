@@ -39,7 +39,7 @@ digraph Conductor {
         project_memory=false,
         preamble_stages_ignore="survey,merge",
         fs_write="",
-        fabro_tools="fabro_run_create,fabro_run_get,fabro_runs_list"
+        fabro_tools="fabro_run_create,fabro_run_get,fabro_run_wait,fabro_runs_list"
     ]
 
     // Develop leg: one seed implementation through gate+review+PR.
@@ -53,7 +53,7 @@ digraph Conductor {
         project_memory=false,
         preamble_stages_ignore="survey,develop",
         fs_write="",
-        fabro_tools="fabro_run_create,fabro_run_get,fabro_runs_list"
+        fabro_tools="fabro_run_create,fabro_run_get,fabro_run_wait,fabro_runs_list"
     ]
 
     // Revise leg: revisor revises the newest develop run.
@@ -67,7 +67,7 @@ digraph Conductor {
         project_memory=false,
         preamble_stages_ignore="survey,develop,revise",
         fs_write="",
-        fabro_tools="fabro_run_create,fabro_run_get,fabro_runs_list"
+        fabro_tools="fabro_run_create,fabro_run_get,fabro_run_wait,fabro_runs_list"
     ]
 
     start -> survey

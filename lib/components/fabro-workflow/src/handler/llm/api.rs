@@ -274,6 +274,16 @@ async fn execute_fabro_run_tool(
             let summary = fabro_tool::create_runs_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_RUN_WAIT_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroRunWaitParams>(name, args)?;
+            let result = fabro_tool::run_wait(
+                Arc::clone(&services.backend),
+                fabro_tool::ValidatedRunWait::try_from(params)?,
+            )
+            .await?;
+            let summary = fabro_tool::run_wait_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_RUN_SEARCH_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroRunSearchParams>(name, args)?;
             let result = fabro_tool::search_runs(
@@ -2064,7 +2074,7 @@ mod tests {
     use chrono::TimeZone;
     use fabro_agent::subagent::SessionFactory;
     use fabro_agent::{AgentProfile, LocalSandbox, ToolRegistry};
-    use fabro_api::types;
+    use fabro_api::types::{self, RunWaitResultReached};
     use fabro_auth::{VaultCredentialSource, test_support as auth_test_support};
     use fabro_llm::provider::{ProviderAdapter, StreamEventStream};
     use fabro_llm::{Error as LlmError, ProviderErrorDetail, ProviderErrorKind};
@@ -2542,6 +2552,7 @@ reasoning = false
             fabro_tool::FABRO_RUN_LOG_TOOL_NAME,
             fabro_tool::FABRO_RUN_PAIR_TOOL_NAME,
             fabro_tool::FABRO_RUN_SEARCH_TOOL_NAME,
+            fabro_tool::FABRO_RUN_WAIT_TOOL_NAME,
         ]);
 
         // The inspects-gated tools (fabro_ask, fabro_runs_list) stay
@@ -2765,6 +2776,37 @@ reasoning = false
                 .get(fabro_tool::FABRO_RUNS_LIST_TOOL_NAME)
                 .is_some()
         );
+    }
+
+    #[tokio::test]
+    async fn fabro_run_wait_dispatches_validated_wait_to_backend() {
+        let (services, backend) = fabro_run_tool_services();
+        let mut registry = ToolRegistry::new();
+        register_fabro_run_tools(&mut registry, &services);
+        let tool = registry
+            .get(fabro_tool::FABRO_RUN_WAIT_TOOL_NAME)
+            .expect("wait tool should be registered without inspects scope");
+
+        let output = (tool.executor)(
+            serde_json::json!({
+                "run_id":     child_run_id().to_string(),
+                "until":      "merged",
+                "timeout_ms": 2_400_000
+            }),
+            tool_context(),
+        )
+        .await
+        .expect("wait dispatch should succeed");
+
+        assert!(output.contains("returned terminal"), "{output}");
+        assert!(output.contains("\"reached\": \"terminal\""), "{output}");
+        assert!(output.contains("01KRBZW5C00000000000000002"), "{output}");
+        let waited = backend.waited_runs.lock().unwrap();
+        assert_eq!(waited.as_slice(), [(
+            child_run_id(),
+            fabro_tool::RunWaitUntil::Merged,
+            2_400_000
+        )]);
     }
 
     #[tokio::test]
@@ -3006,6 +3048,8 @@ reasoning = false
 
     fn fabro_run_tool_services() -> (FabroRunToolServices, Arc<MockRunToolBackend>) {
         let backend = Arc::new(MockRunToolBackend {
+            waited_runs:           Mutex::new(Vec::new()),
+            wait_reached:          RunWaitResultReached::Terminal,
             child_id:              child_run_id(),
             created_parent_ids:    Mutex::new(Vec::new()),
             started_run_ids:       Mutex::new(Vec::new()),
@@ -3045,6 +3089,8 @@ reasoning = false
             listed_workflows:      Mutex::new(Vec::new()),
             runs_to_list:          Vec::new(),
             existing_sandboxes:    None,
+            waited_runs:           Mutex::new(Vec::new()),
+            wait_reached:          RunWaitResultReached::Terminal,
         }
     }
 
@@ -3150,6 +3196,8 @@ reasoning = false
         listed_workflows:      Mutex<Vec<(String, Option<chrono::DateTime<chrono::Utc>>)>>,
         runs_to_list:          Vec<Run>,
         existing_sandboxes:    Option<std::collections::HashSet<String>>,
+        waited_runs:           Mutex<Vec<(RunId, fabro_tool::RunWaitUntil, u64)>>,
+        wait_reached:          RunWaitResultReached,
     }
 
     #[async_trait]
@@ -3175,6 +3223,26 @@ reasoning = false
         async fn retrieve_run(&self, run_id: &RunId) -> anyhow::Result<Run> {
             assert_eq!(*run_id, self.child_id);
             Ok(run(self.child_id, Some(current_run_id()), 0))
+        }
+
+        async fn wait_run(
+            &self,
+            run_id: &RunId,
+            until: fabro_tool::RunWaitUntil,
+            timeout_ms: u64,
+        ) -> anyhow::Result<types::RunWaitResult> {
+            self.waited_runs
+                .lock()
+                .unwrap()
+                .push((*run_id, until, timeout_ms));
+            Ok(types::RunWaitResult {
+                run_id:       run_id.to_string(),
+                reached:      self.wait_reached,
+                status:       fabro_workflow::run_status::RunStatus::Succeeded {
+                    reason: fabro_workflow::run_status::SuccessReason::Completed,
+                },
+                pull_request: None,
+            })
         }
 
         async fn create_ask_session(&self, run_id: &RunId, _title: &str) -> anyhow::Result<String> {

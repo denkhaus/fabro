@@ -1594,6 +1594,70 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/runs/{id}/wait:
+    get:
+      operationId: waitRun
+      tags: [Runs]
+      summary: Wait for Run
+      description: >
+        Long-poll until the run reaches a terminal state (`until=terminal`)
+        or its pull request merges (`until=merged`). A single blocking call
+        replaces agent-side sleep/poll loops. Hitting the `timeout_ms`
+        deadline is a structured `reached=timeout` result carrying the
+        current status, not an error; callers may call again to continue
+        waiting. With `until=merged`, a pull request that closed without
+        merging reports `reached=closed_unmerged`, and a run that fails
+        hard while waiting reports `reached=terminal`.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - name: until
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [terminal, merged]
+          description: Wait condition — terminal run state or merged pull request.
+        - name: timeout_ms
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 3600000
+          description: >
+            Deadline in milliseconds. The server holds the request open until
+            the condition is met or this deadline expires, whichever comes
+            first.
+      responses:
+        "200":
+          description: Wait outcome; `reached` names which condition ended the wait
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunWaitResult"
+        "404":
+          description: Run not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "`until=merged` requested but the run has no linked pull request"
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/runs/{id}/parent:
     put:
       operationId: linkRunParent
@@ -9039,6 +9103,37 @@ components:
           $ref: "#/components/schemas/PaginationMeta"
 
     # ── Run Schemas ──────────────────────────────────────────────────────
+
+    RunWaitResult:
+      description: Outcome of a run long-poll wait. `timeout` carries the
+        current status so callers can re-wait or route without guessing.
+      type: object
+      required:
+        - run_id
+        - reached
+        - status
+      properties:
+        run_id:
+          type: string
+        reached:
+          type: string
+          enum:
+            - terminal
+            - merged
+            - closed_unmerged
+            - timeout
+          description: >
+            Which condition ended the wait: the run reached a terminal state,
+            the pull request merged, the pull request closed without merging
+            (until=merged only), or the timeout_ms deadline expired.
+        status:
+          $ref: "#/components/schemas/RunStatus"
+        pull_request:
+          description: >
+            Linked pull request, present for reached=merged and
+            reached=closed_unmerged responses.
+          allOf:
+            - $ref: "#/components/schemas/PullRequestLink"
 
     RunStatus:
       description: >

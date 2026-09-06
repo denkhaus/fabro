@@ -12,10 +12,11 @@ is wrong):
 
 `{"workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "merge-upstream"}, "environment": "toolchain", "auto_approve": true}`. Record the child id (context key `child_run_id`).
 2. Record the child id in context key `child_run_id` (the revise leg
-   reuses it for continuity) — then wait terminal: poll `fabro_run_get`
-   for the child roughly every 60s (shell `sleep 60` between polls; up to 40 min). Terminal statuses end the wait.
+   reuses it for continuity) — then wait terminal: ONE call
+   `fabro_run_wait {"run_id": "<child_run_id>", "until": "terminal", "timeout_ms": 2400000}`.
+   `reached=timeout` (still running): call again. Never shell-sleep poll loops (fabro-571e).
 3. If the child FAILED: route "Merge child failed" and journal the failure reason — the manual /merge-upstream skill owns hard conflicts. Do not retry in this pass.
-4. If the child SUCCEEDED: wait for the PR auto-merge (Dogfood Gate): shell — `git fetch origin denkhaus` and compare trees `git diff --quiet origin/fabro/run/<child_id> origin/denkhaus`; repeat ~every 30s up to 20 min. Merged (equal trees) -> route "Infra pass complete". Timeout -> "Merge child failed" with a journal note (gate stuck; check the PR).
+4. If the child SUCCEEDED: wait for the PR auto-merge (Dogfood Gate): `fabro_run_wait {"run_id": "<child_run_id>", "until": "merged", "timeout_ms": 1200000}` (fabro-571e: the server checks the PR state — no git fetch/tree diff here). `reached=merged` -> route "Infra pass complete". `reached=timeout` -> call again. `reached=closed_unmerged` or terminal-failed -> "Merge child failed" with a journal note (gate stuck; check the PR).
 
 ## Workflow addressing (fabro-e297, server-side resolution)
 

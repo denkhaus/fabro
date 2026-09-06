@@ -36,9 +36,18 @@ This exposes the same Fabro run tools available through [MCP](/agents/mcp):
 | `fabro_run_search` | Search runs, including direct children by `parent_id` |
 | `fabro_run_get` | Inspect a run without mutating it |
 | `fabro_run_interact` | Start, message, interrupt, cancel, archive, unarchive, link, unlink, inspect, or answer questions |
-| `fabro_run_gather` | Wait for runs to reach terminal states |
+| `fabro_run_gather` | Wait for many runs (fan-in) to reach terminal states — short bounded waits |
+| `fabro_run_wait` | Block on one run until it is terminal or its pull request merges — server-side long-poll, up to 60 minutes |
 | `fabro_run_events` | Read stored events for a run |
 | `fabro_run_pair` | Pair with an active API-mode agent stage |
+
+### Two wait tools — which one?
+
+`fabro_run_wait` and `fabro_run_gather` overlap on purpose and split by
+consumer (ADR-0016): `fabro_run_wait` waits on ONE run for up to an hour,
+including pull-request merge integration, on a single server-side
+long-poll. `fabro_run_gather` fans in over MANY runs with short, bounded
+waits. Pick by shape of the wait, not by name.
 
 ### Inspects scope — reading other workflows
 

@@ -86,7 +86,13 @@ decision, not an accident - it needs the user plus an ADR.
   skill FIRST - `guidelines.md` plus only the pages the task needs, and
   `workflows/new-rust-project.md` when creating or configuring a crate.
   Write code that conforms from the start; do not retrofit style after
-  review.
+  review. MECHANICAL GATE (user directive 2026-09-06, after the wait.rs
+  rework round): reading SKILL.md + the TOC is NOT enough - the actual
+  guideline PAGES for the diff (async, errors, logging, naming, testing,
+  ...) are read in the SAME turn as the design, BEFORE the first Rust
+  edit cell, and their names go into the session notes for the cycle
+  report. A Rust edit without prior page load is a process defect even
+  when tests pass.
 - Platform/engine change: ALSO delegated to the autonomous line
   (user directive 2026-09-06) - PR #28 (fabro-tool, b1b6df41f) proved
   the develop workflow ships engine Rust. This agent feeds the seed

@@ -426,6 +426,7 @@ models/run-superseded-by-props.ts
 models/run-target.ts
 models/run-timestamps.ts
 models/run-timing.ts
+models/run-wait-result.ts
 models/run.ts
 models/sandbox-details.ts
 models/sandbox-file-entry.ts

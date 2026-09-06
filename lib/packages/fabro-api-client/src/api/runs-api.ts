@@ -74,6 +74,8 @@ import type { Run } from '../models';
 // @ts-ignore
 import type { RunManifest } from '../models';
 // @ts-ignore
+import type { RunWaitResult } from '../models';
+// @ts-ignore
 import type { StartRunRequest } from '../models';
 // @ts-ignore
 import type { TimelineEntryResponse } from '../models';
@@ -1588,6 +1590,60 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
                 options: localVarRequestOptions,
             };
         },
+        /**
+         * Long-poll until the run reaches a terminal state (`until=terminal`) or its pull request merges (`until=merged`). A single blocking call replaces agent-side sleep/poll loops. Hitting the `timeout_ms` deadline is a structured `reached=timeout` result carrying the current status, not an error; callers may call again to continue waiting. With `until=merged`, a pull request that closed without merging reports `reached=closed_unmerged`, and a run that fails hard while waiting reports `reached=terminal`.
+         * @summary Wait for Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {WaitRunUntilEnum} until Wait condition — terminal run state or merged pull request.
+         * @param {number} timeoutMs Deadline in milliseconds. The server holds the request open until the condition is met or this deadline expires, whichever comes first.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        waitRun: async (id: string, until: WaitRunUntilEnum, timeoutMs: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('waitRun', 'id', id)
+            // verify required parameter 'until' is not null or undefined
+            assertParamExists('waitRun', 'until', until)
+            // verify required parameter 'timeoutMs' is not null or undefined
+            assertParamExists('waitRun', 'timeoutMs', timeoutMs)
+            const localVarPath = `/api/v1/runs/{id}/wait`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (until !== undefined) {
+                localVarQueryParameter['until'] = until;
+            }
+
+            if (timeoutMs !== undefined) {
+                localVarQueryParameter['timeout_ms'] = timeoutMs;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
     }
 };
 
@@ -2071,6 +2127,21 @@ export const RunsApiFp = function(configuration?: Configuration) {
             const localVarOperationServerBasePath = operationServerMap['RunsApi.validateRunManifest']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
+        /**
+         * Long-poll until the run reaches a terminal state (`until=terminal`) or its pull request merges (`until=merged`). A single blocking call replaces agent-side sleep/poll loops. Hitting the `timeout_ms` deadline is a structured `reached=timeout` result carrying the current status, not an error; callers may call again to continue waiting. With `until=merged`, a pull request that closed without merging reports `reached=closed_unmerged`, and a run that fails hard while waiting reports `reached=terminal`.
+         * @summary Wait for Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {WaitRunUntilEnum} until Wait condition — terminal run state or merged pull request.
+         * @param {number} timeoutMs Deadline in milliseconds. The server holds the request open until the condition is met or this deadline expires, whichever comes first.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async waitRun(id: string, until: WaitRunUntilEnum, timeoutMs: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunWaitResult>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.waitRun(id, until, timeoutMs, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.waitRun']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
     }
 };
 
@@ -2448,6 +2519,18 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
          */
         validateRunManifest(runManifest: RunManifest, options?: RawAxiosRequestConfig): AxiosPromise<ValidateResponse> {
             return localVarFp.validateRunManifest(runManifest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Long-poll until the run reaches a terminal state (`until=terminal`) or its pull request merges (`until=merged`). A single blocking call replaces agent-side sleep/poll loops. Hitting the `timeout_ms` deadline is a structured `reached=timeout` result carrying the current status, not an error; callers may call again to continue waiting. With `until=merged`, a pull request that closed without merging reports `reached=closed_unmerged`, and a run that fails hard while waiting reports `reached=terminal`.
+         * @summary Wait for Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {WaitRunUntilEnum} until Wait condition — terminal run state or merged pull request.
+         * @param {number} timeoutMs Deadline in milliseconds. The server holds the request open until the condition is met or this deadline expires, whichever comes first.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        waitRun(id: string, until: WaitRunUntilEnum, timeoutMs: number, options?: RawAxiosRequestConfig): AxiosPromise<RunWaitResult> {
+            return localVarFp.waitRun(id, until, timeoutMs, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -2859,6 +2942,19 @@ export class RunsApi extends BaseAPI {
     public validateRunManifest(runManifest: RunManifest, options?: RawAxiosRequestConfig) {
         return RunsApiFp(this.configuration).validateRunManifest(runManifest, options).then((request) => request(this.axios, this.basePath));
     }
+
+    /**
+     * Long-poll until the run reaches a terminal state (`until=terminal`) or its pull request merges (`until=merged`). A single blocking call replaces agent-side sleep/poll loops. Hitting the `timeout_ms` deadline is a structured `reached=timeout` result carrying the current status, not an error; callers may call again to continue waiting. With `until=merged`, a pull request that closed without merging reports `reached=closed_unmerged`, and a run that fails hard while waiting reports `reached=terminal`.
+     * @summary Wait for Run
+     * @param {string} id Unique run identifier (ULID).
+     * @param {WaitRunUntilEnum} until Wait condition — terminal run state or merged pull request.
+     * @param {number} timeoutMs Deadline in milliseconds. The server holds the request open until the condition is met or this deadline expires, whichever comes first.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public waitRun(id: string, until: WaitRunUntilEnum, timeoutMs: number, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).waitRun(id, until, timeoutMs, options).then((request) => request(this.axios, this.basePath));
+    }
 }
 
 export const ListRunsSortEnum = {
@@ -2885,3 +2981,8 @@ export const RetrieveRunGraphDirectionEnum = {
     RL: 'RL'
 } as const;
 export type RetrieveRunGraphDirectionEnum = typeof RetrieveRunGraphDirectionEnum[keyof typeof RetrieveRunGraphDirectionEnum];
+export const WaitRunUntilEnum = {
+    TERMINAL: 'terminal',
+    MERGED: 'merged'
+} as const;
+export type WaitRunUntilEnum = typeof WaitRunUntilEnum[keyof typeof WaitRunUntilEnum];

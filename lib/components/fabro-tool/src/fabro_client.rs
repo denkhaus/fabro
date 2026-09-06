@@ -106,6 +106,22 @@ impl FabroToolBackend for ClientBackend {
         self.client.retrieve_run(run_id).await
     }
 
+    async fn wait_run(
+        &self,
+        run_id: &RunId,
+        until: crate::RunWaitUntil,
+        timeout_ms: u64,
+    ) -> anyhow::Result<types::RunWaitResult> {
+        self.ensure_run_scope(run_id)?;
+        let until = match until {
+            crate::RunWaitUntil::Terminal => types::WaitRunUntil::Terminal,
+            crate::RunWaitUntil::Merged => types::WaitRunUntil::Merged,
+        };
+        let timeout_ms = std::num::NonZeroU64::new(timeout_ms.max(1))
+            .expect("timeout_ms is clamped to at least 1");
+        self.client.wait_run(run_id, until, timeout_ms).await
+    }
+
     async fn start_run(&self, run_id: &RunId, resume: bool) -> anyhow::Result<Run> {
         self.ensure_run_scope(run_id)?;
         self.client.start_run(run_id, resume).await

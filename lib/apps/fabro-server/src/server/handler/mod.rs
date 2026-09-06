@@ -28,6 +28,7 @@ mod sessions;
 mod steer;
 pub(in crate::server) mod system;
 mod variables;
+mod wait;
 mod worker_control;
 mod workflow_versions;
 
@@ -207,6 +208,7 @@ pub(super) fn real_routes() -> Router<Arc<AppState>> {
         .route("/insights/execute", post(not_implemented))
         .route("/insights/history", get(not_implemented))
         .merge(runs::routes())
+        .merge(wait::routes())
         .merge(events::routes())
         .merge(billing::routes())
         .merge(pull_requests::routes())

@@ -451,6 +451,7 @@ mod tests {
 
     use async_trait::async_trait;
     use chrono::{TimeZone, Utc};
+    use fabro_api::types::RunWaitResult as ApiRunWaitResult;
     use fabro_types::{
         EventEnvelope, FailureReason, Run, RunId, RunLifecycle, RunLinks, RunOrigin, RunProjection,
         RunStatus, RunTimestamps, WorkflowRef, test_support,
@@ -743,6 +744,15 @@ mod tests {
 
     #[async_trait]
     impl FabroToolBackend for MockInteractBackend {
+        async fn wait_run(
+            &self,
+            _run_id: &RunId,
+            _until: crate::RunWaitUntil,
+            _timeout_ms: u64,
+        ) -> anyhow::Result<ApiRunWaitResult> {
+            anyhow::bail!("run waits are not supported by this mock")
+        }
+
         async fn create_ask_session(
             &self,
             _run_id: &RunId,

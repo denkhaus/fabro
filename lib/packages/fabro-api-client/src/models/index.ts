@@ -397,6 +397,7 @@ export * from './run-superseded-by-props';
 export * from './run-target';
 export * from './run-timestamps';
 export * from './run-timing';
+export * from './run-wait-result';
 export * from './sandbox-details';
 export * from './sandbox-file-entry';
 export * from './sandbox-file-list-response';

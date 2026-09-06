@@ -18,6 +18,7 @@ mod manifest;
 mod pair;
 mod runs_list;
 mod search;
+mod wait;
 
 pub use ask::{
     AskResult, AskTurnCollector, AskTurnOutcome, AskTurnStatus, FabroAskParams, ValidatedAsk,
@@ -27,8 +28,8 @@ pub use common::{
     FABRO_ASK_TOOL_NAME, FABRO_RUN_CREATE_TOOL_NAME, FABRO_RUN_EVENTS_TOOL_NAME,
     FABRO_RUN_GATHER_TOOL_NAME, FABRO_RUN_GET_TOOL_NAME, FABRO_RUN_INTERACT_TOOL_NAME,
     FABRO_RUN_LOG_TOOL_NAME, FABRO_RUN_PAIR_TOOL_NAME, FABRO_RUN_SEARCH_TOOL_NAME,
-    FABRO_RUNS_LIST_TOOL_NAME, FabroToolBackend, RunManifestBuilder, RunSummaryResult,
-    ToolDefinition, ToolError, ToolResult, tool_definitions,
+    FABRO_RUN_WAIT_TOOL_NAME, FABRO_RUNS_LIST_TOOL_NAME, FabroToolBackend, RunManifestBuilder,
+    RunSummaryResult, ToolDefinition, ToolError, ToolResult, tool_definitions,
 };
 pub use create::{
     CreateRunOptions, CreateRunSpec, CreateRunSpecInput, CreateRunsResult, CreatedRunResult,
@@ -61,4 +62,8 @@ pub use runs_list::{
 pub use search::{
     FabroRunSearchParams, SearchRunSummaryResult, SearchRunsResult, ValidatedSearchRuns,
     search_runs, search_runs_text,
+};
+pub use wait::{
+    FabroRunWaitParams, MAX_WAIT_TIMEOUT_MS, RunWaitOutcome, RunWaitReached, RunWaitUntil,
+    ValidatedRunWait, run_wait, run_wait_text,
 };

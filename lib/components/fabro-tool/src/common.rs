@@ -94,6 +94,18 @@ pub trait FabroToolBackend: Send + Sync {
         question: &str,
     ) -> anyhow::Result<crate::AskTurnOutcome>;
 
+    /// Wait for one run's terminal state or merged pull request using the
+    /// server-side long-poll endpoint (fabro-571e, ADR-0016). `timeout_ms`
+    /// bounds the wait; implementations may clamp it to 1..=3_600_000.
+    /// Blocking: callers should expect this future to resolve only at the
+    /// condition or the deadline.
+    async fn wait_run(
+        &self,
+        run_id: &RunId,
+        until: crate::RunWaitUntil,
+        timeout_ms: u64,
+    ) -> anyhow::Result<types::RunWaitResult>;
+
     /// Enumerate runs of one workflow, newest first.
     async fn list_runs_of_workflow(
         &self,
@@ -224,6 +236,7 @@ pub const FABRO_RUN_INTERACT_TOOL_NAME: &str = "fabro_run_interact";
 pub const FABRO_RUN_GATHER_TOOL_NAME: &str = "fabro_run_gather";
 pub const FABRO_RUN_EVENTS_TOOL_NAME: &str = "fabro_run_events";
 pub const FABRO_RUN_LOG_TOOL_NAME: &str = "fabro_run_logs";
+pub const FABRO_RUN_WAIT_TOOL_NAME: &str = "fabro_run_wait";
 pub const FABRO_RUN_PAIR_TOOL_NAME: &str = "fabro_run_pair";
 pub const FABRO_ASK_TOOL_NAME: &str = "fabro_ask";
 pub const FABRO_RUNS_LIST_TOOL_NAME: &str = "fabro_runs_list";
@@ -248,7 +261,11 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         ),
         tool_definition::<crate::FabroRunGatherParams>(
             FABRO_RUN_GATHER_TOOL_NAME,
-            "Wait for Fabro runs to reach terminal states, returning current state on timeout.",
+            "Wait for MANY Fabro runs (fan-in) to reach terminal states — short bounded waits (<=600s), tool-side polling. For one run, long waits, or pull-request merge integration use fabro_run_wait instead (ADR-0016).",
+        ),
+        tool_definition::<crate::FabroRunWaitParams>(
+            FABRO_RUN_WAIT_TOOL_NAME,
+            "Block until ONE Fabro run reaches a terminal state (until=terminal) or its pull request merges (until=merged). Server-side long-poll, one call up to 3600000ms; a timeout returns reached=timeout with the current status so callers can re-wait. For multi-run fan-in with short bounds use fabro_run_gather instead (ADR-0016).",
         ),
         tool_definition::<crate::FabroRunPairParams>(
             FABRO_RUN_PAIR_TOOL_NAME,
@@ -396,6 +413,7 @@ mod tests {
             FABRO_RUN_GET_TOOL_NAME,
             FABRO_RUN_INTERACT_TOOL_NAME,
             FABRO_RUN_GATHER_TOOL_NAME,
+            FABRO_RUN_WAIT_TOOL_NAME,
             FABRO_RUN_PAIR_TOOL_NAME,
             FABRO_RUN_EVENTS_TOOL_NAME,
             FABRO_RUN_LOG_TOOL_NAME,

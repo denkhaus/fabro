@@ -10,6 +10,7 @@ mod install_openai_compatible;
 mod mcp_servers;
 mod routing;
 mod run_files;
+mod run_wait;
 mod runs;
 mod sandbox_vnc;
 mod sessions;

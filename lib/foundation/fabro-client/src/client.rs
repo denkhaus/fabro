@@ -435,6 +435,46 @@ impl Client {
         }
     }
 
+    /// [`Self::send_api`] without the client-side request timeout.
+    ///
+    /// Keep the body in sync with `send_api`; only the timeout wrapper
+    /// differs. Used by long-poll waits (fabro-571e) whose own `timeout_ms`
+    /// deadline is the operation boundary — a control-plane request timeout
+    /// would preempt it.
+    async fn send_api_long_poll<T, E, F, Fut>(
+        &self,
+        request: F,
+    ) -> Result<progenitor_client::ResponseValue<T>>
+    where
+        F: FnOnce(fabro_api::ApiClient) -> Fut + Clone,
+        Fut: Future<
+            Output = std::result::Result<
+                progenitor_client::ResponseValue<T>,
+                progenitor_client::Error<E>,
+            >,
+        >,
+        E: serde::Serialize + std::fmt::Debug + Send + Sync + 'static,
+    {
+        let state = self.current_state();
+        match request.clone()(state.client.clone()).await {
+            Ok(response) => Ok(response),
+            Err(err) => {
+                let mapped = classify_api_error(err).await;
+                if self.should_refresh(mapped.failure.as_ref()) {
+                    if let Some(failed_token) = state.bearer_token.as_deref() {
+                        self.refresh_access_token(failed_token).await?;
+                        let state = self.current_state();
+                        return match request(state.client).await {
+                            Ok(response) => Ok(response),
+                            Err(err) => Err(classify_api_error(err).await.error),
+                        };
+                    }
+                }
+                Err(mapped.error)
+            }
+        }
+    }
+
     fn should_refresh(&self, failure: Option<&ApiFailure>) -> bool {
         self.oauth_session.is_some()
             && failure.is_some_and(|failure| {
@@ -1519,6 +1559,30 @@ impl Client {
             )
             .await?;
         convert_type(response.into_inner())
+    }
+
+    /// Long-poll wait for one run (fabro-571e, ADR-0016). The server holds
+    /// the request open until the run condition is met or `timeout_ms`
+    /// expires; no client-side request timeout applies because the wait
+    /// deadline is the operation boundary.
+    pub async fn wait_run(
+        &self,
+        run_id: &RunId,
+        until: types::WaitRunUntil,
+        timeout_ms: NonZeroU64,
+    ) -> Result<types::RunWaitResult> {
+        let response = self
+            .send_api_long_poll(|client| async move {
+                client
+                    .wait_run()
+                    .id(run_id.to_string())
+                    .until(until)
+                    .timeout_ms(timeout_ms)
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
     }
 
     pub async fn resolve_run(&self, selector: &str) -> Result<Run> {

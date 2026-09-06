@@ -11,10 +11,10 @@ object inside `workflow` (a common misread; the validator only says
 is wrong):
 
 `{"workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "develop"}, "environment": "toolchain", "auto_approve": true}` (NO goal: the planner picks the most relevant open seed; goalless = autonomous queue burn-down). Record `child_run_id`.
-2. Wait terminal: poll `fabro_run_get` ~every 90s (shell `sleep 90`; up to 60 min — Rust seeds gate longer).
+2. Wait terminal: ONE call `fabro_run_wait {"run_id": "<child_run_id>", "until": "terminal", "timeout_ms": 3600000}` — it blocks until terminal or the 60 min deadline. `reached=timeout` (child still running): call again. Never shell-sleep poll loops (fabro-571e).
 3. Child FAILED: route "Develop child failed" + journal the reason (retriable causes simply end this pass; the next fire retries the seed).
 4. Child SUCCEEDED with goal "Tracker empty"-like completion and no PR: route "Tracker empty" (journal it — the queue is done; the human seeds new demand).
-5. Child SUCCEEDED: wait for PR auto-merge as in the merge leg (tree equality, ~30s polls, 20 min cap) -> route "Develop integrated" (context key `child_run_id` stays for the revisor leg).
+5. Child SUCCEEDED: wait for PR auto-merge: `fabro_run_wait {"run_id": "<child_run_id>", "until": "merged", "timeout_ms": 1200000}` — `reached=merged` -> route "Develop integrated" (context key `child_run_id` stays for the revisor leg); `reached=timeout` -> call again; `reached=closed_unmerged` or terminal-failed -> journal it and route "Develop child failed".
 
 ## Workflow addressing (fabro-e297, server-side resolution)
 
