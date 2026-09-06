@@ -558,7 +558,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-06T13:30:30.344132099Z",
-  "last_event_at": "2026-09-06T13:31:54.085538995Z",
+  "last_event_at": "2026-09-06T13:40:05.073383647Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -606,9 +606,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 49,
       "checkpoint": {
-        "timestamp": "2026-09-06T13:31:54.298073940Z",
+        "timestamp": "2026-09-06T13:31:59.473335558Z",
         "current_node": "survey",
         "completed_nodes": [
           "start",
@@ -616,39 +616,39 @@
         ],
         "node_retries": {},
         "context_values": {
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1
+          },
+          "last_stage": "survey",
+          "graph.cycle_counter_reset_key": "pass_id",
           "failure_signature": "",
+          "current_node": "survey",
+          "graph.preamble_budget_kb": "12",
+          "graph.rankdir": "LR",
+          "failure_class": "",
+          "internal.node_visit_count": 1,
+          "internal.run_id": "01M1VEJQJ7G39ZN9975V9P91BJ",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "internal.retry_count.survey": 0,
+          "preferred_label": "Merge needed",
+          "internal.thread_id": "start",
+          "last_response": "{\"preferred_next_label\":\"Merge needed\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":\"Upstream drift count: 7 commits on `upstream/main` not in `origin",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "internal.retry_count.start": 0,
+          "internal.seed_cycle_anchor": "",
+          "outcome": "succeeded",
+          "thread.start.current_node": "survey",
+          "journal": "Upstream drift count: 7 commits on `upstream/main` not in `origin/denkhaus` (>= 5 threshold, user decision 2026-09-05). Newest upstream subject: 'Bump version to 0.348.0-nightly.0'. Remote `upstream` -> `https://github.com/fabro-sh/fabro` was missing locally and was added before fetching. Routing this pass to the infra-only upstream merge; no develop+revisor cycle this pass. Nothing else hurt: both fetches completed cleanly, exit code 0.",
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 579,
             "preview": "{\"preferred_next_label\":\"Merge needed\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":\"Upstream drift count: 7 commits on `upstream/main` not in `origin"
           },
-          "graph.cycle_counter_reset_key": "pass_id",
-          "graph.max_node_visits": "12",
-          "outcome": "succeeded",
-          "last_stage": "survey",
-          "internal.thread_id": "start",
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "internal.fidelity": "compact",
-          "journal": "Upstream drift count: 7 commits on `upstream/main` not in `origin/denkhaus` (>= 5 threshold, user decision 2026-09-05). Newest upstream subject: 'Bump version to 0.348.0-nightly.0'. Remote `upstream` -> `https://github.com/fabro-sh/fabro` was missing locally and was added before fetching. Routing this pass to the infra-only upstream merge; no develop+revisor cycle this pass. Nothing else hurt: both fetches completed cleanly, exit code 0.",
-          "internal.seed_cycle_anchor": "",
-          "preferred_label": "Merge needed",
           "internal.work_dir": "/workspace/fabro",
-          "internal.run_id": "01M1VEJQJ7G39ZN9975V9P91BJ",
-          "failure_class": "",
-          "thread.start.current_node": "survey",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "graph.preamble_budget_kb": "12",
-          "internal.retry_count.start": 0,
-          "graph.rankdir": "LR",
-          "seed_cycles": {
-            "start": 1,
-            "survey": 1
-          },
-          "internal.retry_count.survey": 0,
-          "current_node": "survey",
-          "last_response": "{\"preferred_next_label\":\"Merge needed\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":\"Upstream drift count: 7 commits on `upstream/main` not in `origin",
-          "internal.node_visit_count": 1
+          "graph.max_node_visits": "12",
+          "internal.fidelity": "compact"
         },
         "node_outcomes": {
           "survey": {
@@ -700,7 +700,176 @@
           }
         },
         "next_node_id": "merge",
+        "git_commit_sha": "f2758092a456c836a903d90219a24246d10e2482",
         "node_visits": {
+          "start": 1,
+          "survey": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-06T13:40:05.307246962Z",
+        "current_node": "merge",
+        "completed_nodes": [
+          "start",
+          "survey",
+          "merge"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_signature": "",
+          "response.survey": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.survey",
+            "chars": 579,
+            "preview": "{\"preferred_next_label\":\"Merge needed\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":\"Upstream drift count: 7 commits on `upstream/main` not in `origin"
+          },
+          "graph.cycle_counter_reset_key": "pass_id",
+          "graph.max_node_visits": "12",
+          "outcome": "succeeded",
+          "thread.survey.current_node": "merge",
+          "last_stage": "merge",
+          "internal.thread_id": "survey",
+          "response.merge": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.merge",
+            "chars": 814,
+            "preview": "```json\n{\n  \"preferred_next_label\": \"Merge child failed\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"Merge child run 01M1VEPNK13BEVTFZP7TPMXRW3 failed: status kind=failed, reason=cancelled; no pul"
+          },
+          "gate_wait_duration": "0s (never started; no PR)",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "internal.fidelity": "compact",
+          "journal": "Upstream drift count: 7 commits on `upstream/main` not in `origin/denkhaus` (>= 5 threshold, user decision 2026-09-05). Newest upstream subject: 'Bump version to 0.348.0-nightly.0'. Remote `upstream` -> `https://github.com/fabro-sh/fabro` was missing locally and was added before fetching. Routing this pass to the infra-only upstream merge; no develop+revisor cycle this pass. Nothing else hurt: both fetches completed cleanly, exit code 0.",
+          "merge_child_status": "failed (cancelled)",
+          "internal.seed_cycle_anchor": "",
+          "preferred_label": "Merge child failed",
+          "child_run_id": "01M1VEPNK13BEVTFZP7TPMXRW3",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.run_id": "01M1VEJQJ7G39ZN9975V9P91BJ",
+          "internal.retry_count.merge": 0,
+          "failure_class": "",
+          "thread.start.current_node": "survey",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "graph.preamble_budget_kb": "12",
+          "internal.retry_count.start": 0,
+          "graph.rankdir": "LR",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "merge": 1
+          },
+          "internal.retry_count.survey": 0,
+          "current_node": "merge",
+          "last_response": "```json\n{\n  \"preferred_next_label\": \"Merge child failed\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"Merge child run 01M1VEPNK13BEVTFZP7TPMXRW3 failed: status kind=failed, reason=cancelled; no pul",
+          "internal.exit_kind": "soft",
+          "internal.node_visit_count": 1
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "merge": {
+            "status": "succeeded",
+            "preferred_label": "Merge child failed",
+            "context_updates": {
+              "child_run_id": "01M1VEPNK13BEVTFZP7TPMXRW3",
+              "gate_wait_duration": "0s (never started; no PR)",
+              "response.merge": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.merge",
+                "chars": 814,
+                "preview": "```json\n{\n  \"preferred_next_label\": \"Merge child failed\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"Merge child run 01M1VEPNK13BEVTFZP7TPMXRW3 failed: status kind=failed, reason=cancelled; no pul"
+              },
+              "last_response": "```json\n{\n  \"preferred_next_label\": \"Merge child failed\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"Merge child run 01M1VEPNK13BEVTFZP7TPMXRW3 failed: status kind=failed, reason=cancelled; no pul",
+              "merge_child_status": "failed (cancelled)",
+              "last_stage": "merge"
+            },
+            "notes": "Stage completed: merge",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 11364,
+                    "output_tokens": 333,
+                    "reasoning_tokens": 7,
+                    "cache_read_tokens": 22208,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 23178
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 17356,
+              "tool_time_ms": 464946,
+              "active_time_ms": 482302
+            }
+          },
+          "survey": {
+            "status": "succeeded",
+            "preferred_label": "Merge needed",
+            "context_updates": {
+              "last_response": "{\"preferred_next_label\":\"Merge needed\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":\"Upstream drift count: 7 commits on `upstream/main` not in `origin",
+              "last_stage": "survey",
+              "journal": "Upstream drift count: 7 commits on `upstream/main` not in `origin/denkhaus` (>= 5 threshold, user decision 2026-09-05). Newest upstream subject: 'Bump version to 0.348.0-nightly.0'. Remote `upstream` -> `https://github.com/fabro-sh/fabro` was missing locally and was added before fetching. Routing this pass to the infra-only upstream merge; no develop+revisor cycle this pass. Nothing else hurt: both fetches completed cleanly, exit code 0.",
+              "response.survey": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.survey",
+                "chars": 579,
+                "preview": "{\"preferred_next_label\":\"Merge needed\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":\"Upstream drift count: 7 commits on `upstream/main` not in `origin"
+              }
+            },
+            "notes": "Stage completed: survey",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 21435,
+                    "output_tokens": 447,
+                    "reasoning_tokens": 46,
+                    "cache_read_tokens": 30400,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 40078
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 20344,
+              "tool_time_ms": 59392,
+              "active_time_ms": 79736
+            }
+          }
+        },
+        "next_node_id": "exit",
+        "node_visits": {
+          "merge": 1,
           "survey": 1,
           "start": 1
         }
@@ -735,6 +904,279 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "merge@1": {
+      "first_event_seq": 52,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: merge",
+        "failure_reason": null,
+        "timestamp": "2026-09-06T13:40:05.073383647Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-06T13:31:59.490125586Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 482881,
+        "inference_time_ms": 17356,
+        "tool_time_ms": 464946,
+        "active_time_ms": 482302
+      },
+      "usage": {
+        "input_tokens": 11364,
+        "output_tokens": 333,
+        "total_tokens": 33912,
+        "reasoning_tokens": 7,
+        "cache_read_tokens": 22208,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 23178
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_create",
+          "description": "Create one or more Fabro workflow runs, optionally under a parent run, starting them by default.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "fabro_run_get",
+          "description": "Read-only inspection of a Fabro run: returns its summary, projection, and pending questions without mutating state.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_wait",
+          "description": "Block until ONE Fabro run reaches a terminal state (until=terminal) or its pull request merges (until=merged). Server-side long-poll, one call up to 3600000ms; a timeout returns reached=timeout with the current status so callers can re-wait. For multi-run fan-in with short bounds use fabro_run_gather instead (ADR-0016).",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": false
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 11344,
+        "usage_percent": 1.08184814453125,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-06T13:40:05.041888494Z",
+        "event_seq": 73,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1186,
+            "usage_percent": 0.11310577392578125
+          },
+          {
+            "category": "tools",
+            "tokens": 2804,
+            "usage_percent": 0.2674102783203125
+          },
+          {
+            "category": "skills",
+            "tokens": 227,
+            "usage_percent": 0.021648406982421875
+          },
+          {
+            "category": "memory",
+            "tokens": 5786,
+            "usage_percent": 0.5517959594726562
+          },
+          {
+            "category": "conversation",
+            "tokens": 1334,
+            "usage_percent": 0.12722015380859375
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 17,
       "prompt": null,
