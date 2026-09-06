@@ -10,7 +10,7 @@ object inside `workflow` (a common misread; the validator only says
 "not valid under any of the schemas" and will not tell you which field
 is wrong):
 
-`{"workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "merge-upstream"}, "environment": "toolchain", "auto_approve": true}`. Record the child id (context key `child_run_id`).
+`{"runs": [{"workflow": "merge-upstream", "workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "merge-upstream"}, "environment": "toolchain", "auto_approve": true}]}` — the `runs` array wrapper is REQUIRED by the tool schema; the bare spec object fails validation. Record the child id (context key `child_run_id`); the key exists only AFTER this create — never context_read it before.
 2. Record the child id in context key `child_run_id` (the revise leg
    reuses it for continuity) — then wait terminal: ONE call
    `fabro_run_wait {"run_id": "<child_run_id>", "until": "terminal", "timeout_ms": 2400000}`.
@@ -22,7 +22,7 @@ is wrong):
 
 Create child runs with the git workflow source — the server resolves and
 registers the workflow versions; the sandbox filesystem never participates:
-`{"workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "<name>"}, "environment": "toolchain"}`.
+`{"runs": [{"workflow": "<name>", "workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "<name>"}, "environment": "toolchain"}]}`. The `workflow` slug is REQUIRED alongside `workflow_source` (the spec schema rejects workflow_source-only payloads).
 ## Journal
 
 child id, status, gate wait duration, upstream range from the child report if visible.

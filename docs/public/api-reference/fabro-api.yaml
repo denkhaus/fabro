@@ -1640,16 +1640,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/RunWaitResult"
         "404":
-          description: Run not found
-          headers:
-            x-request-id:
-              $ref: "#/components/headers/XRequestId"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: "`until=merged` requested but the run has no linked pull request"
+          description: Run not found, or `until=merged` requested without a linked pull request
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"

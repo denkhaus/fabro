@@ -16,8 +16,7 @@ use fabro_store::RunProjection;
 use fabro_types::RunId;
 use fabro_types::settings::run::RunExecutionSettings;
 use fabro_types::status::{FailureReason, PendingReason, RunStatus, RunStatusKind};
-use fabro_workflow::Error as WorkflowError;
-use fabro_workflow::event::{Event, append_event_if};
+use fabro_workflow::{Error as WorkflowError, event};
 use tokio::task::JoinHandle;
 use tokio::time::{MissedTickBehavior, interval};
 
@@ -64,21 +63,32 @@ pub(crate) async fn expire_pending_approvals(
             continue;
         }
         let id = summary.id;
-        let settings = match run_execution_settings(state, &id).await {
-            Ok(settings) => settings,
+        let context = match run_expiry_context(state, &id).await {
+            Ok(context) => context,
             Err(err) => {
                 tracing::warn!(run_id = ?id, error = ?err, "loading run settings for approval expiry failed");
                 continue;
             }
         };
-        let window =
-            chrono::Duration::seconds(settings.effective_approval_timeout_secs().cast_signed());
-        // Measured from creation: a lower bound of pending-since, so the
-        // expiry never fires early for runs started long after creation.
-        if now < summary.timestamps.created_at + window {
+        let window = chrono::Duration::seconds(
+            context
+                .settings
+                .effective_approval_timeout_secs()
+                .cast_signed(),
+        );
+        // Anchored at the projection's status timestamp (the moment the run
+        // entered pending), so a run that starts pending long after creation
+        // gets its full window (spec review finding, fabro-54f0).
+        if now < context.pending_since + window {
             continue;
         }
-        match expire_run(state, &id, settings.effective_approval_timeout_secs(), now).await {
+        match expire_run(
+            state,
+            &id,
+            context.settings.effective_approval_timeout_secs(),
+        )
+        .await
+        {
             Ok(()) => expired += 1,
             Err(err) => {
                 tracing::warn!(
@@ -92,46 +102,40 @@ pub(crate) async fn expire_pending_approvals(
     Ok(expired)
 }
 
-async fn run_execution_settings(
-    state: &AppState,
-    id: &RunId,
-) -> anyhow::Result<RunExecutionSettings> {
+struct RunExpiryContext {
+    settings:      RunExecutionSettings,
+    /// When the run entered its current (pending) status — the TTL anchor.
+    pending_since: DateTime<Utc>,
+}
+
+async fn run_expiry_context(state: &AppState, id: &RunId) -> anyhow::Result<RunExpiryContext> {
     let projection = state
         .stores
         .runs
         .load_run_projection(id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("run projection vanished while expiring approval"))?;
-    Ok(projection.spec.settings.run.execution.clone())
+    Ok(RunExpiryContext {
+        settings:      projection.spec.settings.run.execution.clone(),
+        pending_since: projection.status_updated_at,
+    })
 }
 
-async fn expire_run(
-    state: &AppState,
-    id: &RunId,
-    timeout_secs: u64,
-    _now: DateTime<Utc>,
-) -> anyhow::Result<()> {
+async fn expire_run(state: &AppState, id: &RunId, timeout_secs: u64) -> anyhow::Result<()> {
     let run_store = state.stores.runs.open_run(id).await?;
     let still_pending = |projection: &RunProjection| {
         matches!(projection.status, RunStatus::Pending {
             reason: PendingReason::ApprovalRequired,
         })
     };
+    // No synthetic RunDenied: the timeout is not a human decision — the
+    // failure event alone records the expiry (spec review finding,
+    // fabro-54f0).
     let message = format!("approval window expired after {timeout_secs}s");
-    append_event_if(
+    event::append_event_if(
         &run_store,
         id,
-        &Event::RunDenied {
-            reason: Some(message.clone()),
-            actor:  None,
-        },
-        still_pending,
-    )
-    .await?;
-    append_event_if(
-        &run_store,
-        id,
-        &Event::workflow_run_failed_from_error(
+        &event::Event::workflow_run_failed_from_error(
             &WorkflowError::engine(message),
             fabro_types::RunTiming::default(),
             FailureReason::ApprovalTimeout,

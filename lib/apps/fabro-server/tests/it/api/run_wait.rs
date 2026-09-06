@@ -113,7 +113,7 @@ async fn append_run(store: &Database, run_id: &RunId, completed: bool) {
     }
 }
 
-fn wait_app() -> (axum::Router, Arc<Database>) {
+async fn wait_app() -> (axum::Router, Arc<Database>) {
     let settings = test_settings();
     let (store, artifact_store) = store_bundle();
     let state = test_app_state_with_store(
@@ -129,7 +129,7 @@ fn wait_app() -> (axum::Router, Arc<Database>) {
 
 #[tokio::test]
 async fn terminal_run_returns_terminal_immediately() {
-    let (app, store) = wait_app();
+    let (app, store) = wait_app().await;
     let run_id = RunId::new();
     append_run(&store, &run_id, true).await;
     let req = Request::builder()
@@ -148,7 +148,7 @@ async fn terminal_run_returns_terminal_immediately() {
 
 #[tokio::test]
 async fn running_run_returns_structured_timeout_with_current_status() {
-    let (app, store) = wait_app();
+    let (app, store) = wait_app().await;
     let run_id = RunId::new();
     append_run(&store, &run_id, false).await;
     let req = Request::builder()
@@ -166,7 +166,7 @@ async fn running_run_returns_structured_timeout_with_current_status() {
 
 #[tokio::test]
 async fn merged_wait_without_pull_request_returns_404() {
-    let (app, store) = wait_app();
+    let (app, store) = wait_app().await;
     let run_id = RunId::new();
     append_run(&store, &run_id, false).await;
     let req = Request::builder()
@@ -186,8 +186,33 @@ async fn merged_wait_without_pull_request_returns_404() {
 }
 
 #[tokio::test]
+async fn out_of_range_timeout_ms_returns_400() {
+    let (app, _store) = wait_app().await;
+    let run_id = RunId::new();
+    for timeout_ms in [0u64, 3_600_001] {
+        let req = Request::builder()
+            .method("GET")
+            .uri(api(&format!(
+                "/runs/{run_id}/wait?until=terminal&timeout_ms={timeout_ms}"
+            )))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        response_status(
+            resp,
+            StatusCode::BAD_REQUEST,
+            format!(
+                "GET /api/v1/runs/{id}/wait timeout_ms={timeout_ms}",
+                id = run_id
+            ),
+        )
+        .await;
+    }
+}
+
+#[tokio::test]
 async fn unknown_until_value_returns_400() {
-    let (app, _store) = wait_app();
+    let (app, _store) = wait_app().await;
     let run_id = RunId::new();
     let req = Request::builder()
         .method("GET")

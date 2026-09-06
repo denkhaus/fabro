@@ -820,7 +820,7 @@ where
     spawn_automation_scheduler(Arc::clone(&state));
     let pull_request_creation_supervisor =
         spawn_pull_request_creation_supervisor(Arc::clone(&state));
-    spawn_approval_expiry_supervisor(Arc::clone(&state));
+    let approval_expiry_supervisor = spawn_approval_expiry_supervisor(Arc::clone(&state));
     let router = build_router_with_options(Arc::clone(&state), &auth_mode, RouterOptions {
         web_enabled,
         #[cfg(debug_assertions)]
@@ -991,10 +991,16 @@ where
     } else {
         cleanup_handle.abort();
         pull_request_creation_supervisor.abort();
+        approval_expiry_supervisor.abort();
     }
     if let Err(join_err) = pull_request_creation_supervisor.await {
         if !join_err.is_cancelled() {
             warn!(error = %join_err, "Pull request creation supervisor task panicked");
+        }
+    }
+    if let Err(join_err) = approval_expiry_supervisor.await {
+        if !join_err.is_cancelled() {
+            warn!(error = %join_err, "Approval expiry supervisor task panicked");
         }
     }
 

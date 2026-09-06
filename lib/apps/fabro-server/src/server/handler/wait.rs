@@ -24,9 +24,7 @@ use tokio::time::{sleep, timeout};
 use crate::error::ApiError;
 use crate::principal_middleware::RequireRunManagementTarget;
 use crate::server::AppState;
-use crate::server::handler::pull_requests::{
-    PullRequestGithubContext, load_pull_request_github_context, server_github_context,
-};
+use crate::server::handler::pull_requests::{self, PullRequestGithubContext};
 
 /// Longest single wait a caller may request. Longer waits re-issue the
 /// call; this keeps held connections and in-flight work bounded when a
@@ -70,7 +68,14 @@ async fn wait_run(
     State(state): State<Arc<AppState>>,
     Query(params): Query<WaitRunParams>,
 ) -> Response {
-    let timeout = Duration::from_millis(params.timeout_ms.clamp(1, MAX_TIMEOUT_MS));
+    // Boundary validation, not silent reshaping: the documented contract
+    // (OpenAPI minimum/maximum) rejects out-of-range deadlines with 400 so
+    // callers learn their input was wrong (standards review finding).
+    if params.timeout_ms == 0 || params.timeout_ms > MAX_TIMEOUT_MS {
+        return ApiError::bad_request(format!("timeout_ms must be between 1 and {MAX_TIMEOUT_MS}"))
+            .into_response();
+    }
+    let timeout = Duration::from_millis(params.timeout_ms);
     let deadline = Instant::now() + timeout;
 
     match params.until {
@@ -78,7 +83,7 @@ async fn wait_run(
         WaitUntil::Merged => {
             // Precondition: a stored PR link and GitHub credentials. Failing
             // fast beats holding a doomed wait.
-            match load_pull_request_github_context(&state, &id).await {
+            match pull_requests::load_pull_request_github_context(&state, &id).await {
                 Ok(ctx) => wait_until_merged(&state, &id, &ctx, deadline).await,
                 Err(err) => err.into_response(),
             }
@@ -110,7 +115,7 @@ async fn wait_until_merged(
     ctx: &PullRequestGithubContext,
     deadline: Instant,
 ) -> Response {
-    let github = match server_github_context(state, &ctx.creds) {
+    let github = match pull_requests::server_github_context(state, &ctx.creds) {
         Ok(github) => github,
         Err(err) => return err.into_response(),
     };
