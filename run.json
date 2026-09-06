@@ -558,7 +558,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-06T12:00:28.796513515Z",
-  "last_event_at": "2026-09-06T12:01:54.276096855Z",
+  "last_event_at": "2026-09-06T12:30:09.288434555Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -606,13 +606,123 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 55,
       "checkpoint": {
-        "timestamp": "2026-09-06T12:01:54.485923569Z",
+        "timestamp": "2026-09-06T12:01:59.787416549Z",
         "current_node": "survey",
         "completed_nodes": [
           "start",
           "survey"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "last_response": "{\n  \"preferred_next_label\": \"Merge needed\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": \"Upstream drift count: 7 (origin/denkhau",
+          "journal": "Upstream drift count: 7 (origin/denkhaus..upstream/main), >= 5 threshold met. Newest upstream subject: 'Bump version to 0.348.0-nightly.0'. Added missing `upstream` remote -> `https://github.com/fabro-sh/fabro`; both fetches (upstream + origin) clean, tags through `v0.347.0-nightly.0` and new origin branches observed. Route: Merge needed — infra-only merge pass, no develop cycle this pass. Nothing that hurt.",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1
+          },
+          "internal.retry_count.survey": 0,
+          "internal.retry_count.start": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "preferred_label": "Merge needed",
+          "outcome": "succeeded",
+          "current_node": "survey",
+          "graph.preamble_budget_kb": "12",
+          "last_stage": "survey",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "response.survey": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.survey",
+            "chars": 582,
+            "preview": "{\n  \"preferred_next_label\": \"Merge needed\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": \"Upstream drift count: 7 (origin/denkhau"
+          },
+          "internal.thread_id": "start",
+          "graph.max_node_visits": "12",
+          "internal.seed_cycle_anchor": "",
+          "failure_signature": "",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "internal.run_id": "01M1V9DXW8K4JG0AF6VGSJHVMQ",
+          "internal.node_visit_count": 1,
+          "failure_class": "",
+          "internal.fidelity": "compact",
+          "thread.start.current_node": "survey",
+          "graph.rankdir": "LR"
+        },
+        "node_outcomes": {
+          "survey": {
+            "status": "succeeded",
+            "preferred_label": "Merge needed",
+            "context_updates": {
+              "journal": "Upstream drift count: 7 (origin/denkhaus..upstream/main), >= 5 threshold met. Newest upstream subject: 'Bump version to 0.348.0-nightly.0'. Added missing `upstream` remote -> `https://github.com/fabro-sh/fabro`; both fetches (upstream + origin) clean, tags through `v0.347.0-nightly.0` and new origin branches observed. Route: Merge needed — infra-only merge pass, no develop cycle this pass. Nothing that hurt.",
+              "last_stage": "survey",
+              "last_response": "{\n  \"preferred_next_label\": \"Merge needed\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": \"Upstream drift count: 7 (origin/denkhau",
+              "response.survey": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.survey",
+                "chars": 582,
+                "preview": "{\n  \"preferred_next_label\": \"Merge needed\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": \"Upstream drift count: 7 (origin/denkhau"
+              }
+            },
+            "notes": "Stage completed: survey",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 10222,
+                    "output_tokens": 465,
+                    "reasoning_tokens": 21,
+                    "cache_read_tokens": 28864,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 23950
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 22863,
+              "tool_time_ms": 58955,
+              "active_time_ms": 81818
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "merge",
+        "git_commit_sha": "646555cf45dffe0e767bb3b531d1813d3393d317",
+        "node_visits": {
+          "survey": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-06T12:30:09.466870396Z",
+        "current_node": "merge",
+        "completed_nodes": [
+          "start",
+          "survey",
+          "merge"
         ],
         "node_retries": {},
         "context_values": {
@@ -622,13 +732,34 @@
           "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
           "internal.run_id": "01M1V9DXW8K4JG0AF6VGSJHVMQ",
           "internal.node_visit_count": 1,
-          "last_stage": "survey",
+          "last_stage": "merge",
           "internal.retry_count.survey": 0,
-          "current_node": "survey",
-          "internal.thread_id": "start",
+          "response.merge": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.merge",
+            "chars": 2675,
+            "preview": "The child reached terminal state: **failed (soft_stop)** — the reviewer approved but emitted `preferred_next_label: \"deploy\"`, a label the MergeUpstream graph has no edge for, so the run parked at t"
+          },
+          "internal.exit_kind": "soft",
+          "current_node": "merge",
+          "internal.thread_id": "survey",
+          "internal.retry_count.merge": 0,
           "graph.max_node_visits": "12",
-          "journal": "Upstream drift count: 7 (origin/denkhaus..upstream/main), >= 5 threshold met. Newest upstream subject: 'Bump version to 0.348.0-nightly.0'. Added missing `upstream` remote -> `https://github.com/fabro-sh/fabro`; both fetches (upstream + origin) clean, tags through `v0.347.0-nightly.0` and new origin branches observed. Route: Merge needed — infra-only merge pass, no develop cycle this pass. Nothing that hurt.",
+          "journal": {
+            "painpoints": [
+              "fabro_run_create could NOT resolve merge-upstream by any form (slug, slug@version, .fabro/workflows/merge-upstream/workflow.toml with cwd /workspace and /workspace/fabro) — 'workflow not found' every time, so the leg adopted the already-running in-flight child 01M1V7XSV75BE92JZ0135SHQXK from the prior pass (serialization preserved: no second merge child created)",
+              "Merge child unrouted-exit defect: the reviewer prompt contract allows only Approved/Changes requested/Verification blocked but the model returned preferred_next_label=\"deploy\"; the graph's 'Unrouted review outcome' soft edge caught it — merge commit 401e3ceb7 (v0.348.0-nightly.0, 7 upstream commits, gate green 4465/4465) is stranded unpushed; merge-upstream reviewer prompt needs a label constraint or the graph needs an Approved->deploy-free route",
+              "Conductor create-by-slug gap: develop/merge-upstream runs exist server-side but fabro_run_create rejects the slug — child creation from conductor passes currently only works via whatever source the prior passes used"
+            ],
+            "observations": {
+              "child_status": "failed (soft_stop), completed 2026-09-06T12:29:45Z",
+              "gate_wait_duration": "n/a — no PR was created; Dogfood Gate never started",
+              "upstream_range": "origin/denkhaus..upstream/main = 7 commits, newest 'Bump version to 0.348.0-nightly.0' (old head 5b44e25c7 -> new head 2f326a13c); merge commit 401e3ceb7 on branch fabro/run/01M1V7XSV75BE92JZ0135SHQXK, report at `.fabro/reports/merge-upstream/2f326a13c.md`",
+              "recovery_hint": "merge work itself is done and approved; rerun/resume path or manual /merge-upstream can push the existing run branch — conflicts are NOT the blocker here"
+            }
+          },
           "thread.start.current_node": "survey",
+          "child_run_id": "01M1V7XSV75BE92JZ0135SHQXK",
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
@@ -638,19 +769,77 @@
           "failure_signature": "",
           "seed_cycles": {
             "start": 1,
-            "survey": 1
+            "survey": 1,
+            "merge": 1
           },
-          "preferred_label": "Merge needed",
+          "preferred_label": "Merge child failed",
           "graph.rankdir": "LR",
           "internal.work_dir": "/workspace/fabro",
+          "thread.survey.current_node": "merge",
           "internal.seed_cycle_anchor": "",
           "internal.retry_count.start": 0,
-          "last_response": "{\n  \"preferred_next_label\": \"Merge needed\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": \"Upstream drift count: 7 (origin/denkhau",
+          "last_response": "The child reached terminal state: **failed (soft_stop)** — the reviewer approved but emitted `preferred_next_label: \"deploy\"`, a label the MergeUpstream graph has no edge for, so the run parked at t",
           "graph.preamble_budget_kb": "12",
           "graph.inspects": "develop,merge-upstream,revisor",
           "failure_class": ""
         },
         "node_outcomes": {
+          "merge": {
+            "status": "succeeded",
+            "preferred_label": "Merge child failed",
+            "context_updates": {
+              "response.merge": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.merge",
+                "chars": 2675,
+                "preview": "The child reached terminal state: **failed (soft_stop)** — the reviewer approved but emitted `preferred_next_label: \"deploy\"`, a label the MergeUpstream graph has no edge for, so the run parked at t"
+              },
+              "last_response": "The child reached terminal state: **failed (soft_stop)** — the reviewer approved but emitted `preferred_next_label: \"deploy\"`, a label the MergeUpstream graph has no edge for, so the run parked at t",
+              "last_stage": "merge",
+              "child_run_id": "01M1V7XSV75BE92JZ0135SHQXK",
+              "journal": {
+                "painpoints": [
+                  "fabro_run_create could NOT resolve merge-upstream by any form (slug, slug@version, .fabro/workflows/merge-upstream/workflow.toml with cwd /workspace and /workspace/fabro) — 'workflow not found' every time, so the leg adopted the already-running in-flight child 01M1V7XSV75BE92JZ0135SHQXK from the prior pass (serialization preserved: no second merge child created)",
+                  "Merge child unrouted-exit defect: the reviewer prompt contract allows only Approved/Changes requested/Verification blocked but the model returned preferred_next_label=\"deploy\"; the graph's 'Unrouted review outcome' soft edge caught it — merge commit 401e3ceb7 (v0.348.0-nightly.0, 7 upstream commits, gate green 4465/4465) is stranded unpushed; merge-upstream reviewer prompt needs a label constraint or the graph needs an Approved->deploy-free route",
+                  "Conductor create-by-slug gap: develop/merge-upstream runs exist server-side but fabro_run_create rejects the slug — child creation from conductor passes currently only works via whatever source the prior passes used"
+                ],
+                "observations": {
+                  "child_status": "failed (soft_stop), completed 2026-09-06T12:29:45Z",
+                  "gate_wait_duration": "n/a — no PR was created; Dogfood Gate never started",
+                  "upstream_range": "origin/denkhaus..upstream/main = 7 commits, newest 'Bump version to 0.348.0-nightly.0' (old head 5b44e25c7 -> new head 2f326a13c); merge commit 401e3ceb7 on branch fabro/run/01M1V7XSV75BE92JZ0135SHQXK, report at `.fabro/reports/merge-upstream/2f326a13c.md`",
+                  "recovery_hint": "merge work itself is done and approved; rerun/resume path or manual /merge-upstream can push the existing run branch — conflicts are NOT the blocker here"
+                }
+              }
+            },
+            "notes": "Stage completed: merge",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 85208,
+                    "output_tokens": 1902,
+                    "reasoning_tokens": 1547,
+                    "cache_read_tokens": 376576,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 232345
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 134175,
+              "tool_time_ms": 1551949,
+              "active_time_ms": 1686124
+            }
+          },
           "start": {
             "status": "succeeded",
             "usage": null
@@ -699,8 +888,9 @@
             }
           }
         },
-        "next_node_id": "merge",
+        "next_node_id": "exit",
         "node_visits": {
+          "merge": 1,
           "start": 1,
           "survey": 1
         }
@@ -974,6 +1164,279 @@
             "category": "other",
             "tokens": 8,
             "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "merge@1": {
+      "first_event_seq": 58,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: merge",
+        "failure_reason": null,
+        "timestamp": "2026-09-06T12:30:09.288434555Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-06T12:01:59.811091975Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 1687021,
+        "inference_time_ms": 134175,
+        "tool_time_ms": 1551949,
+        "active_time_ms": 1686124
+      },
+      "usage": {
+        "input_tokens": 85208,
+        "output_tokens": 1902,
+        "total_tokens": 465233,
+        "reasoning_tokens": 1547,
+        "cache_read_tokens": 376576,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 232345
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_create",
+          "description": "Create one or more Fabro workflow runs, optionally under a parent run, starting them by default.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "fabro_run_get",
+          "description": "Read-only inspection of a Fabro run: returns its summary, projection, and pending questions without mutating state.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "fabro_run_wait",
+          "description": "Block until ONE Fabro run reaches a terminal state (until=terminal) or its pull request merges (until=merged). Server-side long-poll, one call up to 3600000ms; a timeout returns reached=timeout with the current status so callers can re-wait. For multi-run fan-in with short bounds use fabro_run_gather instead (ADR-0016).",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 84676,
+        "usage_percent": 8.075332641601562,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-06T12:30:09.268276146Z",
+        "event_seq": 192,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1249,
+            "usage_percent": 0.11911392211914062
+          },
+          {
+            "category": "tools",
+            "tokens": 3012,
+            "usage_percent": 0.2872467041015625
+          },
+          {
+            "category": "skills",
+            "tokens": 243,
+            "usage_percent": 0.023174285888671875
+          },
+          {
+            "category": "memory",
+            "tokens": 6216,
+            "usage_percent": 0.592803955078125
+          },
+          {
+            "category": "conversation",
+            "tokens": 73947,
+            "usage_percent": 7.052135467529297
+          },
+          {
+            "category": "other",
+            "tokens": 9,
+            "usage_percent": 0.000858306884765625
           }
         ],
         "warnings": []
