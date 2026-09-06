@@ -558,7 +558,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-06T14:00:16.511885378Z",
-  "last_event_at": "2026-09-06T14:16:22.449387015Z",
+  "last_event_at": "2026-09-06T14:16:27.514945053Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -715,9 +715,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 80,
       "checkpoint": {
-        "timestamp": "2026-09-06T14:16:22.690849142Z",
+        "timestamp": "2026-09-06T14:16:27.514619994Z",
         "current_node": "merge",
         "completed_nodes": [
           "start",
@@ -726,58 +726,97 @@
         ],
         "node_retries": {},
         "context_values": {
-          "failure_class": "",
-          "gate_wait": "not reached (child failed pre-PR)",
+          "graph.max_node_visits": "12",
+          "internal.thread_id": "survey",
+          "graph.preamble_budget_kb": "12",
+          "internal.retry_count.survey": 0,
+          "internal.fidelity": "compact",
+          "last_stage": "merge",
           "response.merge": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.merge",
             "chars": 925,
             "preview": "The merge child `01M1VGCE2AJ1DAP7DECVSYY9GC` reached terminal state as **failed (reason: cancelled)** with no pull request. Per procedure step 3: no retry in this pass — the manual `/merge-upstream`"
           },
-          "graph.rankdir": "LR",
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "journal": "Merge leg: child 01M1VGCE2AJ1DAP7DECVSYY9GC cancelled before PR creation; upstream drift 7 commits ahead of origin/denkhaus (threshold 5) remains unmerged. Route manual /merge-upstream.",
-          "internal.node_visit_count": 1,
-          "last_response": "The merge child `01M1VGCE2AJ1DAP7DECVSYY9GC` reached terminal state as **failed (reason: cancelled)** with no pull request. Per procedure step 3: no retry in this pass — the manual `/merge-upstream`",
-          "internal.thread_id": "survey",
-          "thread.survey.current_node": "merge",
-          "current_node": "merge",
-          "internal.retry_count.start": 0,
-          "child_run_id": "01M1VGCE2AJ1DAP7DECVSYY9GC",
-          "graph.max_node_visits": "12",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.fidelity": "compact",
-          "seed_cycles": {
-            "start": 1,
-            "survey": 1,
-            "merge": 1
-          },
-          "internal.retry_count.survey": 0,
-          "merge_child_pr": null,
-          "thread.start.current_node": "survey",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "internal.run_id": "01M1VG9NC8H2BX9WVE9H49GE6F",
-          "graph.cycle_counter_reset_key": "pass_id",
-          "last_stage": "merge",
-          "internal.seed_cycle_anchor": "",
-          "merge_child_status": "failed:cancelled",
-          "outcome": "succeeded",
-          "internal.exit_kind": "soft",
-          "preferred_label": "Merge child failed",
+          "failure_class": "",
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 451,
             "preview": "{\n  \"preferred_next_label\": \"Merge needed\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": \"Upstream drift count: 7 commits ahead o"
           },
-          "graph.preamble_budget_kb": "12",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "merge": 1
+          },
+          "merge_child_status": "failed:cancelled",
+          "gate_wait": "not reached (child failed pre-PR)",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "internal.node_visit_count": 1,
+          "outcome": "succeeded",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "journal": "Merge leg: child 01M1VGCE2AJ1DAP7DECVSYY9GC cancelled before PR creation; upstream drift 7 commits ahead of origin/denkhaus (threshold 5) remains unmerged. Route manual /merge-upstream.",
+          "child_run_id": "01M1VGCE2AJ1DAP7DECVSYY9GC",
+          "current_node": "merge",
+          "graph.rankdir": "LR",
+          "merge_child_pr": null,
+          "internal.seed_cycle_anchor": "",
+          "thread.start.current_node": "survey",
+          "thread.survey.current_node": "merge",
+          "last_response": "The merge child `01M1VGCE2AJ1DAP7DECVSYY9GC` reached terminal state as **failed (reason: cancelled)** with no pull request. Per procedure step 3: no retry in this pass — the manual `/merge-upstream`",
+          "internal.exit_kind": "soft",
+          "internal.retry_count.merge": 0,
+          "preferred_label": "Merge child failed",
           "failure_signature": "",
-          "internal.retry_count.merge": 0
+          "internal.run_id": "01M1VG9NC8H2BX9WVE9H49GE6F",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.start": 0
         },
         "node_outcomes": {
-          "start": {
+          "survey": {
             "status": "succeeded",
-            "usage": null
+            "preferred_label": "Merge needed",
+            "context_updates": {
+              "last_stage": "survey",
+              "last_response": "{\n  \"preferred_next_label\": \"Merge needed\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": \"Upstream drift count: 7 commits ahead o",
+              "response.survey": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.survey",
+                "chars": 451,
+                "preview": "{\n  \"preferred_next_label\": \"Merge needed\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": \"Upstream drift count: 7 commits ahead o"
+              },
+              "journal": "Upstream drift count: 7 commits ahead of `origin/denkhaus` (threshold 5 met, per user decision 2026-09-05). Newest upstream subject: 'Bump version to 0.348.0-nightly.0' on `upstream/main`. Fetches of `upstream` and `origin` both clean. Nothing hurt. Route: Merge needed (infra-only)."
+            },
+            "notes": "Stage completed: survey",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 10000,
+                    "output_tokens": 397,
+                    "reasoning_tokens": 0,
+                    "cache_read_tokens": 19008,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 20686
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 17104,
+              "tool_time_ms": 37713,
+              "active_time_ms": 54817
+            }
           },
           "merge": {
             "status": "succeeded",
@@ -826,61 +865,101 @@
               "active_time_ms": 881001
             }
           },
-          "survey": {
+          "start": {
             "status": "succeeded",
-            "preferred_label": "Merge needed",
-            "context_updates": {
-              "last_stage": "survey",
-              "last_response": "{\n  \"preferred_next_label\": \"Merge needed\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": \"Upstream drift count: 7 commits ahead o",
-              "response.survey": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.survey",
-                "chars": 451,
-                "preview": "{\n  \"preferred_next_label\": \"Merge needed\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": \"Upstream drift count: 7 commits ahead o"
-              },
-              "journal": "Upstream drift count: 7 commits ahead of `origin/denkhaus` (threshold 5 met, per user decision 2026-09-05). Newest upstream subject: 'Bump version to 0.348.0-nightly.0' on `upstream/main`. Fetches of `upstream` and `origin` both clean. Nothing hurt. Route: Merge needed (infra-only)."
-            },
-            "notes": "Stage completed: survey",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 10000,
-                    "output_tokens": 397,
-                    "reasoning_tokens": 0,
-                    "cache_read_tokens": 19008,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 20686
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 17104,
-              "tool_time_ms": 37713,
-              "active_time_ms": 54817
-            }
+            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "33ace5847aa3dc024fcfcefa589a2bce21752541",
         "node_visits": {
-          "merge": 1,
           "start": 1,
-          "survey": 1
+          "survey": 1,
+          "merge": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-06T14:16:27.548514258Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 950438,
+      "inference_time_ms": 50440,
+      "tool_time_ms": 885378,
+      "active_time_ms": 935818
+    },
+    "failure": {
+      "reason": "soft_stop",
+      "detail": {
+        "message": "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; the next run re-enters autonomously",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "33ace5847aa3dc024fcfcefa589a2bce21752541",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 55558,
+          "inference_time_ms": 17104,
+          "tool_time_ms": 37713,
+          "active_time_ms": 54817
+        },
+        "billing_usd_micros": 20686,
+        "retries": 0
+      },
+      {
+        "stage_id": "merge",
+        "stage_label": "merge",
+        "timing": {
+          "wall_time_ms": 881652,
+          "inference_time_ms": 33336,
+          "tool_time_ms": 847665,
+          "active_time_ms": 881001
+        },
+        "billing_usd_micros": 23627,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 21396,
+      "output_tokens": 809,
+      "total_tokens": 63321,
+      "reasoning_tokens": 28,
+      "cache_read_tokens": 41088,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 44313
+    },
+    "total_retries": 0,
+    "diff": {
+      "summary": {
+        "files_changed": 0,
+        "additions": 0,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "soft"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -907,6 +986,42 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 83,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-06T14:16:27.514945053Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-06T14:16:27.514912727Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 17,
       "prompt": null,
