@@ -381,7 +381,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-06T11:34:04.125610965Z",
-  "last_event_at": "2026-09-06T12:29:37.886733704Z",
+  "last_event_at": "2026-09-06T12:29:43.215613224Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -623,9 +623,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 621,
       "checkpoint": {
-        "timestamp": "2026-09-06T12:29:38.110893462Z",
+        "timestamp": "2026-09-06T12:29:43.215251541Z",
         "current_node": "reviewer",
         "completed_nodes": [
           "start",
@@ -634,37 +634,14 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.node_visit_count": 1,
-          "internal.retry_count.reviewer": 0,
-          "internal.fidelity": "compact",
+          "internal.seed_cycle_anchor": "",
+          "current_node": "reviewer",
           "response.merge": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.merge",
             "chars": 3894,
             "preview": "{\n  \"preferred_next_label\": \"review\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"merge\": {\n      \"merge_commit\": \"401e3ceb7\",\n      \"rang"
           },
-          "last_stage": "reviewer",
-          "thread.merge.current_node": "reviewer",
-          "response.reviewer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.reviewer",
-            "chars": 6739,
-            "preview": "{\n  \"preferred_next_label\": \"deploy\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"verdict\": \"Approved. Merge commit `401e3ceb7` is a true two-parent merge (`2c2dce"
-          },
-          "seed_cycles": {
-            "start": 1,
-            "merge": 1,
-            "reviewer": 1
-          },
-          "graph.rankdir": "LR",
-          "internal.retry_count.merge": 0,
-          "internal.retry_count.start": 0,
-          "internal.run_id": "01M1V7XSV75BE92JZ0135SHQXK",
-          "internal.exit_kind": "soft",
-          "current_node": "reviewer",
-          "failure_signature": "",
-          "graph.goal": "Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; deploy is host-side",
-          "failure_class": "",
           "journal": {
             "painpoints": [
               "Report cited finalize.rs INTERNAL_EXIT_KIND at :587/:1137 but merged tree has :584/:1134 — same sites after a 3-line import-block shift; harmless but report line cites should be re-checked against the final tree",
@@ -679,12 +656,24 @@
               "policy_compliance": "finalize.rs resolution is the textbook import-widening class: our wider import kept, upstream additions present via squash-absorbed content; diff vs upstream head shows only fork features — both-sides-survive satisfied"
             }
           },
+          "failure_class": "",
           "last_response": "{\n  \"preferred_next_label\": \"deploy\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"verdict\": \"Approved. Merge commit `401e3ceb7` is a true two-parent merge (`2c2dce",
-          "graph.preamble_budget_kb": "12",
-          "internal.seed_cycle_anchor": "",
-          "graph.max_node_visits": "6",
+          "internal.retry_count.merge": 0,
+          "internal.node_visit_count": 1,
+          "graph.goal": "Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; deploy is host-side",
+          "failure_signature": "",
+          "internal.exit_kind": "soft",
+          "thread.start.current_node": "merge",
+          "graph.cycle_counter_reset_key": "merge_target_sha",
+          "internal.fidelity": "compact",
           "internal.work_dir": "/workspace/fabro",
-          "internal.thread_id": "merge",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 6739,
+            "preview": "{\n  \"preferred_next_label\": \"deploy\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"verdict\": \"Approved. Merge commit `401e3ceb7` is a true two-parent merge (`2c2dce"
+          },
+          "thread.merge.current_node": "reviewer",
           "merge": {
             "merge_commit": "401e3ceb7",
             "range": "origin/denkhaus..upstream/main = 7 commits, newest 'Bump version to 0.348.0-nightly.0'",
@@ -711,12 +700,83 @@
             "feature_regression": "All touchpoints carried (publish-blocked taxonomy, boundary exit kind, PR retry, PR model, aggregate budget, seed_cycles, spa_refresh, ask render, attach, scripts, dogfood-gate wiring); no seed superseded; fabro-b7c4 upstream PR offer still valid",
             "deploy": "NOT performed — host-side per contract; branch push/PR left to engine"
           },
+          "internal.thread_id": "merge",
+          "graph.max_node_visits": "6",
+          "internal.retry_count.reviewer": 0,
+          "graph.rankdir": "LR",
+          "internal.retry_count.start": 0,
+          "last_stage": "reviewer",
           "preferred_label": "deploy",
-          "graph.cycle_counter_reset_key": "merge_target_sha",
+          "internal.run_id": "01M1V7XSV75BE92JZ0135SHQXK",
+          "seed_cycles": {
+            "start": 1,
+            "merge": 1,
+            "reviewer": 1
+          },
           "outcome": "succeeded",
-          "thread.start.current_node": "merge"
+          "graph.preamble_budget_kb": "12"
         },
         "node_outcomes": {
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "deploy",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  "Report cited finalize.rs INTERNAL_EXIT_KIND at :587/:1137 but merged tree has :584/:1134 — same sites after a 3-line import-block shift; harmless but report line cites should be re-checked against the final tree",
+                  "touchpoints.md 'run_workflow.nu pipeline' row still names scripts/prompts/improve.md, retired by the fork pre-merge per ADR-0015 — stale doc cell, flagged for engine, not a regression",
+                  "Web app lives at apps/fabro-web/app (React Router layout), not apps/fabro-web/src — grep paths in older touchpoint rows assume src/"
+                ],
+                "observations": {
+                  "review_time": "~6 min read-only verification; no gate re-run (per contract, Merger's evidence was sufficient and internally consistent with the tree delta)",
+                  "merge_identity_verified": "401e3ceb7 parents = 2c2dce695 (fork) + 2f326a13c (upstream); git diff 401e3ceb7^1..HEAD --stat = version bumps + exactly 4 gate-repair files + bookkeeping — matches report 1:1, corroborating the squash-divergence claim",
+                  "touchpoints_checked": "13/13 present: publish_blocked taxonomy (8 code sites incl. web header.tsx:258), boundary exit kind, PR retry, PR model, spa_refresh lock, ask render_event, attach, aggregate budget (11 artifact.rs refs), justfile/smoke/wait-healthy, run_workflow.nu, dogfood-gate.yml, seed_cycles after_record, b7c4 legacy import",
+                  "upstream_themes": "conclusion-summaries rebuild (PR #842) now lives in fabro-types billing_rollup — future fork billing work docks there; secret-migration removal (PR #844) closed an upstream lifecycle with no fork coupling; no obsolescence flags raised",
+                  "policy_compliance": "finalize.rs resolution is the textbook import-widening class: our wider import kept, upstream additions present via squash-absorbed content; diff vs upstream head shows only fork features — both-sides-survive satisfied"
+                }
+              },
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 6739,
+                "preview": "{\n  \"preferred_next_label\": \"deploy\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"verdict\": \"Approved. Merge commit `401e3ceb7` is a true two-parent merge (`2c2dce"
+              },
+              "last_stage": "reviewer",
+              "last_response": "{\n  \"preferred_next_label\": \"deploy\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"verdict\": \"Approved. Merge commit `401e3ceb7` is a true two-parent merge (`2c2dce"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 37831,
+                    "output_tokens": 5663,
+                    "reasoning_tokens": 6084,
+                    "cache_read_tokens": 289536,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 179913
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 176546,
+              "tool_time_ms": 1783,
+              "active_time_ms": 178329
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "merge": {
             "status": "succeeded",
             "preferred_label": "review",
@@ -807,79 +867,100 @@
               "tool_time_ms": 2409994,
               "active_time_ms": 3140727
             }
-          },
-          "reviewer": {
-            "status": "succeeded",
-            "preferred_label": "deploy",
-            "context_updates": {
-              "journal": {
-                "painpoints": [
-                  "Report cited finalize.rs INTERNAL_EXIT_KIND at :587/:1137 but merged tree has :584/:1134 — same sites after a 3-line import-block shift; harmless but report line cites should be re-checked against the final tree",
-                  "touchpoints.md 'run_workflow.nu pipeline' row still names scripts/prompts/improve.md, retired by the fork pre-merge per ADR-0015 — stale doc cell, flagged for engine, not a regression",
-                  "Web app lives at apps/fabro-web/app (React Router layout), not apps/fabro-web/src — grep paths in older touchpoint rows assume src/"
-                ],
-                "observations": {
-                  "review_time": "~6 min read-only verification; no gate re-run (per contract, Merger's evidence was sufficient and internally consistent with the tree delta)",
-                  "merge_identity_verified": "401e3ceb7 parents = 2c2dce695 (fork) + 2f326a13c (upstream); git diff 401e3ceb7^1..HEAD --stat = version bumps + exactly 4 gate-repair files + bookkeeping — matches report 1:1, corroborating the squash-divergence claim",
-                  "touchpoints_checked": "13/13 present: publish_blocked taxonomy (8 code sites incl. web header.tsx:258), boundary exit kind, PR retry, PR model, spa_refresh lock, ask render_event, attach, aggregate budget (11 artifact.rs refs), justfile/smoke/wait-healthy, run_workflow.nu, dogfood-gate.yml, seed_cycles after_record, b7c4 legacy import",
-                  "upstream_themes": "conclusion-summaries rebuild (PR #842) now lives in fabro-types billing_rollup — future fork billing work docks there; secret-migration removal (PR #844) closed an upstream lifecycle with no fork coupling; no obsolescence flags raised",
-                  "policy_compliance": "finalize.rs resolution is the textbook import-widening class: our wider import kept, upstream additions present via squash-absorbed content; diff vs upstream head shows only fork features — both-sides-survive satisfied"
-                }
-              },
-              "response.reviewer": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.reviewer",
-                "chars": 6739,
-                "preview": "{\n  \"preferred_next_label\": \"deploy\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"verdict\": \"Approved. Merge commit `401e3ceb7` is a true two-parent merge (`2c2dce"
-              },
-              "last_stage": "reviewer",
-              "last_response": "{\n  \"preferred_next_label\": \"deploy\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"verdict\": \"Approved. Merge commit `401e3ceb7` is a true two-parent merge (`2c2dce"
-            },
-            "notes": "Stage completed: reviewer",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 37831,
-                    "output_tokens": 5663,
-                    "reasoning_tokens": 6084,
-                    "cache_read_tokens": 289536,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 179913
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 176546,
-              "tool_time_ms": 1783,
-              "active_time_ms": 178329
-            }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "900c708398dbf0b2eff59dde083573d3b967d038",
         "node_visits": {
           "reviewer": 1,
-          "merge": 1,
-          "start": 1
+          "start": 1,
+          "merge": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1V7XSV75BE92JZ0135SHQXK.jsonl b/.fabro/journal/01M1V7XSV75BE92JZ0135SHQXK.jsonl\nindex 6b7cbf757..87f73771c 100644\n--- a/.fabro/journal/01M1V7XSV75BE92JZ0135SHQXK.jsonl\n+++ b/.fabro/journal/01M1V7XSV75BE92JZ0135SHQXK.jsonl\n@@ -1 +1,2 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1V7XSV75BE92JZ0135SHQXK\",\"node\":\"merge\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-06T12:26:31Z\",\"data\":{\"painpoints\":[\"Fork had absorbed v0.347 upstream content via squash merge (PR #30), so git re-counted 7 upstream commits while the effective tree delta was version-bump-only — verified via 'git diff HEAD --stat' before resolving; merge still restores true ancestry\",\"Previous squash merge gated compile-only, so full clippy+nextest surfaced pre-existing fork debt (large_futures, unused_async, two stale snapshots) — reproduced at pre-merge HEAD in a temp worktree to prove non-regression before fixing\",\"nextest reused stale test binaries after edit_file-based snapshot fixes (identical failure line numbers); 'touch <file>' forced rebuild — recorded in mulch and .agents/skills/merge-upstream/references/conflict-policy.md\",\"sd/ml prime initially failed on untrusted mise config at /repos/denkhaus/fabro/.mise.toml — fixed with 'mise trust'; 'sd prime --format' unsupported in this sd version\"],\"observations\":{\"upstream_commit_count\":\"7 (efa0d1658 bump 0.347; a7ed03e17 conclusion summaries; 6cf027282 inspect snapshots; b6482910e+5d290a609 secret-migration removal; 2f326a13c bump 0.348)\",\"conflict_classes_seen\":\"version bump (Cargo.toml/lock), import-block widening (finalize.rs), plus 3 non-conflict gate-debt classes: large_futures at fork-grown upstream call site, unused_async fork test helper, missed inline snapshot field\",\"gate_duration\":\"clippy workspace all-targets 340s cold + 18s re-run; just qualitygate 123s; targeted feature tests ~594s incl. builds; final 5-crate nextest 84s — total gate wall-clock ~25 min\"}}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1V7XSV75BE92JZ0135SHQXK\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-06T12:29:38Z\",\"data\":{\"painpoints\":[\"Report cited finalize.rs INTERNAL_EXIT_KIND at :587/:1137 but merged tree has :584/:1134 — same sites after a 3-line import-block shift; harmless but report line cites should be re-checked against the final tree\",\"touchpoints.md 'run_workflow.nu pipeline' row still names scripts/prompts/improve.md, retired by the fork pre-merge per ADR-0015 — stale doc cell, flagged for engine, not a regression\",\"Web app lives at apps/fabro-web/app (React Router layout), not apps/fabro-web/src — grep paths in older touchpoint rows assume src/\"],\"observations\":{\"review_time\":\"~6 min read-only verification; no gate re-run (per contract, Merger's evidence was sufficient and internally consistent with the tree delta)\",\"merge_identity_verified\":\"401e3ceb7 parents = 2c2dce695 (fork) + 2f326a13c (upstream); git diff 401e3ceb7^1..HEAD --stat = version bumps + exactly 4 gate-repair files + bookkeeping — matches report 1:1, corroborating the squash-divergence claim\",\"touchpoints_checked\":\"13/13 present: publish_blocked taxonomy (8 code sites incl. web header.tsx:258), boundary exit kind, PR retry, PR model, spa_refresh lock, ask render_event, attach, aggregate budget (11 artifact.rs refs), justfile/smoke/wait-healthy, run_workflow.nu, dogfood-gate.yml, seed_cycles after_record, b7c4 legacy import\",\"upstream_themes\":\"conclusion-summaries rebuild (PR #842) now lives in fabro-types billing_rollup — future fork billing work docks there; secret-migration removal (PR #844) closed an upstream lifecycle with no fork coupling; no obsolescence flags raised\",\"policy_compliance\":\"finalize.rs resolution is the textbook import-widening class: our wider import kept, upstream additions present via squash-absorbed content; diff vs upstream head shows only fork features — both-sides-survive satisfied\"}}}\n",
+        "summary": {
+          "files_changed": 11,
+          "additions": 215,
+          "deletions": 60
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-06T12:29:43.361816787Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 3335292,
+      "inference_time_ms": 907279,
+      "tool_time_ms": 2411777,
+      "active_time_ms": 3319056
+    },
+    "failure": {
+      "reason": "soft_stop",
+      "detail": {
+        "message": "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; the next run re-enters autonomously",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "900c708398dbf0b2eff59dde083573d3b967d038",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "merge",
+        "stage_label": "merge",
+        "timing": {
+          "wall_time_ms": 3141541,
+          "inference_time_ms": 730733,
+          "tool_time_ms": 2409994,
+          "active_time_ms": 3140727
+        },
+        "billing_usd_micros": 1060720,
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 178933,
+          "inference_time_ms": 176546,
+          "tool_time_ms": 1783,
+          "active_time_ms": 178329
+        },
+        "billing_usd_micros": 179913,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 108432,
+      "output_tokens": 21049,
+      "total_tokens": 3571629,
+      "reasoning_tokens": 24484,
+      "cache_read_tokens": 3417664,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 1240633
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.agents/skills/merge-upstream/references/conflict-policy.md b/.agents/skills/merge-upstream/references/conflict-policy.md\nindex 5accd7535..baa84628b 100644\n--- a/.agents/skills/merge-upstream/references/conflict-policy.md\n+++ b/.agents/skills/merge-upstream/references/conflict-policy.md\n@@ -155,3 +155,24 @@ upstream's new signatures; never revert upstream, never drop our features.\n   import; the one real use in the file was fully qualified (futures_util).\n   Lesson: after a conflict-free auto-merge, still grep the 7-ish both-touched\n   files for imports whose only users lived in upstream-deleted code.\n+\n+## 2026-09-06 (v0.348.0-nightly.0, merge of 2f326a13c)\n+\n+- Squash-divergence class (new): the fork landed v0.347 content via a\n+  SQUASH merge (PR #30, single-parent commit) — upstream commits were not\n+  ancestors, so the next `git merge upstream/main` re-counted them. If the\n+  post-merge tree delta vs HEAD is versions-only, that is why; the merge\n+  still has value (restores true ancestry + version alignment). Check with\n+  `git diff HEAD --stat` before resolving.\n+- Compile-only gate debt (new class): when a previous squash merge gated\n+  with `cargo check --workspace` only, the NEXT merge's full clippy+nextest\n+  surfaces pre-existing fork lint/snapshot failures (verify at pre-merge\n+  HEAD in a temp worktree before calling them regressions). This pass:\n+  large_futures Box::pin at runner.rs call site (fork-grown future over\n+  upstream's threshold — pin at the call site, matching the file's local\n+  pattern), unused_async in fork-only test helper, and two inline snapshots\n+  missing `approval_timeout_secs` from the fabro-54f0 TTL commit.\n+- Stale-nextest-binary trap (new, tooling): after edit_file-based snapshot\n+  fixes, `cargo nextest run` can reuse a stale binary (mtime granularity) —\n+  the same failure reappears with unchanged line numbers. `touch <file>`\n+  forces the rebuild; only trust a rerun after it.\ndiff --git a/.agents/skills/merge-upstream/references/touchpoints.md b/.agents/skills/merge-upstream/references/touchpoints.md\nindex a81b756bb..a8af5458d 100644\n--- a/.agents/skills/merge-upstream/references/touchpoints.md\n+++ b/.agents/skills/merge-upstream/references/touchpoints.md\n@@ -177,3 +177,15 @@ Upstream directions that may supersede our work — re-evaluate per merge:\n - 2026-09-05 (v0.346): Client::list_environments() is now available for\n   engine-side use — candidate infra for fabro-8d30 part a (availability\n   probe UX), watch when that seed is picked up.\n+\n+## 2026-09-06 (v0.348.0-nightly.0, merge 2f326a13c)\n+\n+- All touchpoints re-verified green post-merge (see\n+  `.fabro/reports/merge-upstream/2f326a13c.md`); none superseded.\n+- fabro-54f0 (approval TTL backstop) had landed WITHOUT updating the attach\n+  and inspect inline snapshots (`approval_timeout_secs` 86400/null) — fixed\n+  during this merge's gate. Future features that add run-spec settings\n+  fields must sweep `fabro-cli` it-test snapshots in the same commit.\n+- lab-check.yml is RETIRED (lab restructure): the auto-merge wiring\n+  touchpoint now resolves to `.github/workflows/dogfood-gate.yml` + branch\n+  protection (engine-owned).\ndiff --git a/.fabro/journal/01M1V7XSV75BE92JZ0135SHQXK.jsonl b/.fabro/journal/01M1V7XSV75BE92JZ0135SHQXK.jsonl\nnew file mode 100644\nindex 000000000..87f73771c\n--- /dev/null\n+++ b/.fabro/journal/01M1V7XSV75BE92JZ0135SHQXK.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1V7XSV75BE92JZ0135SHQXK\",\"node\":\"merge\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-06T12:26:31Z\",\"data\":{\"painpoints\":[\"Fork had absorbed v0.347 upstream content via squash merge (PR #30), so git re-counted 7 upstream commits while the effective tree delta was version-bump-only — verified via 'git diff HEAD --stat' before resolving; merge still restores true ancestry\",\"Previous squash merge gated compile-only, so full clippy+nextest surfaced pre-existing fork debt (large_futures, unused_async, two stale snapshots) — reproduced at pre-merge HEAD in a temp worktree to prove non-regression before fixing\",\"nextest reused stale test binaries after edit_file-based snapshot fixes (identical failure line numbers); 'touch <file>' forced rebuild — recorded in mulch and .agents/skills/merge-upstream/references/conflict-policy.md\",\"sd/ml prime initially failed on untrusted mise config at /repos/denkhaus/fabro/.mise.toml — fixed with 'mise trust'; 'sd prime --format' unsupported in this sd version\"],\"observations\":{\"upstream_commit_count\":\"7 (efa0d1658 bump 0.347; a7ed03e17 conclusion summaries; 6cf027282 inspect snapshots; b6482910e+5d290a609 secret-migration removal; 2f326a13c bump 0.348)\",\"conflict_classes_seen\":\"version bump (Cargo.toml/lock), import-block widening (finalize.rs), plus 3 non-conflict gate-debt classes: large_futures at fork-grown upstream call site, unused_async fork test helper, missed inline snapshot field\",\"gate_duration\":\"clippy workspace all-targets 340s cold + 18s re-run; just qualitygate 123s; targeted feature tests ~594s incl. builds; final 5-crate nextest 84s — total gate wall-clock ~25 min\"}}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1V7XSV75BE92JZ0135SHQXK\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-06T12:29:38Z\",\"data\":{\"painpoints\":[\"Report cited finalize.rs INTERNAL_EXIT_KIND at :587/:1137 but merged tree has :584/:1134 — same sites after a 3-line import-block shift; harmless but report line cites should be re-checked against the final tree\",\"touchpoints.md 'run_workflow.nu pipeline' row still names scripts/prompts/improve.md, retired by the fork pre-merge per ADR-0015 — stale doc cell, flagged for engine, not a regression\",\"Web app lives at apps/fabro-web/app (React Router layout), not apps/fabro-web/src — grep paths in older touchpoint rows assume src/\"],\"observations\":{\"review_time\":\"~6 min read-only verification; no gate re-run (per contract, Merger's evidence was sufficient and internally consistent with the tree delta)\",\"merge_identity_verified\":\"401e3ceb7 parents = 2c2dce695 (fork) + 2f326a13c (upstream); git diff 401e3ceb7^1..HEAD --stat = version bumps + exactly 4 gate-repair files + bookkeeping — matches report 1:1, corroborating the squash-divergence claim\",\"touchpoints_checked\":\"13/13 present: publish_blocked taxonomy (8 code sites incl. web header.tsx:258), boundary exit kind, PR retry, PR model, spa_refresh lock, ask render_event, attach, aggregate budget (11 artifact.rs refs), justfile/smoke/wait-healthy, run_workflow.nu, dogfood-gate.yml, seed_cycles after_record, b7c4 legacy import\",\"upstream_themes\":\"conclusion-summaries rebuild (PR #842) now lives in fabro-types billing_rollup — future fork billing work docks there; secret-migration removal (PR #844) closed an upstream lifecycle with no fork coupling; no obsolescence flags raised\",\"policy_compliance\":\"finalize.rs resolution is the textbook import-widening class: our wider import kept, upstream additions present via squash-absorbed content; diff vs upstream head shows only fork features — both-sides-survive satisfied\"}}}\ndiff --git a/.fabro/reports/merge-upstream/2f326a13c.md b/.fabro/reports/merge-upstream/2f326a13c.md\nnew file mode 100644\nindex 000000000..caad6cd8d\n--- /dev/null\n+++ b/.fabro/reports/merge-upstream/2f326a13c.md\n@@ -0,0 +1,116 @@\n+# Upstream merge report — 2f326a13c (v0.348.0-nightly.0)\n+\n+**Date:** 2026-09-06 · **Branch:** `fabro/run/01M1V7XSV75BE92JZ0135SHQXK` (== `origin/denkhaus` at start)\n+\n+## Merge identity\n+\n+- Range: `origin/denkhaus..upstream/main` = **7 commits**, newest subject\n+  `Bump version to 0.348.0-nightly.0`.\n+- Old upstream head: `5b44e25c7cc05f54bcf340be0b669a92ae59fc64` (v0.346,\n+  PR #841 — previous merge base).\n+- New upstream head: `2f326a13c4c04e5f655d8d7c35a065653a411999`\n+  (v0.348.0-nightly.0, 2026-09-06T09:29Z).\n+- **Squash-divergence note:** fork commit `c8615fd72` (\"Merge upstream/main\n+  (v0.347.0-nightly.0, 6 commits) into denkhaus (#30)\") landed the v0.347 +\n+  secret-migration-removal content as a *squash* — the upstream commits were\n+  NOT ancestors, so git counted them again here. Effective tree delta of this\n+  merge vs pre-merge HEAD: **only `Cargo.toml`/`Cargo.lock` version bumps\n+  (0.347 → 0.348)** plus re-parenting upstream history back into our\n+  ancestry (restores a real merge base for future merges).\n+\n+## Conflicts resolved (by class)\n+\n+| File | Class | Resolution |\n+|---|---|---|\n+| `Cargo.toml` | version bump | Took upstream `0.348.0-nightly.0` |\n+| `Cargo.lock` | version bump + fork deps | Took upstream, then `cargo metadata` re-reconciled fork-manifest deps upstream's lock lacks (`strum` in `fabro-automation`, `bytes`/docker in `fabro-sandbox`, `fabro-redact` in `fabro-tool`, extras in `fabro-validate`) |\n+| `lib/components/fabro-workflow/src/pipeline/finalize.rs` | import-block widening (known class, 2026-08-31) | Kept our `use crate::context::keys;`; upstream's side had nothing there. Usages `keys::INTERNAL_EXIT_KIND` at lines 587/1137 survived auto-merge; `context::keys` module untouched upstream |\n+\n+## Gate repairs (pre-existing fork debt, NOT merge regressions)\n+\n+The last squash merge's gate was compile-only (`cargo check --workspace`),\n+so these never ran clippy/nextest on current code. Confirmed pre-existing by\n+reproducing `attach` failure at pre-merge HEAD in a temp worktree.\n+\n+1. `lib/apps/fabro-cli/src/commands/run/runner.rs:1021` —\n+   `Box::pin(self.apply_acknowledged_event(seq, event)).await`. Fork-added\n+   fields (`inspects` plumbing etc.) grew the future past the 16 KB\n+   `large_futures` threshold; upstream's copy stays under. Matches the\n+   file's own `Box::pin` pattern at line 1014.\n+2. `lib/apps/fabro-server/tests/it/api/run_wait.rs` — `async fn wait_app()`\n+   had no awaits (`unused_async`, fork-only file, fabro-571e tests);\n+   de-async'd fn + 4 callers.\n+3. `lib/apps/fabro-cli/tests/it/cmd/attach.rs` + `tests/it/cmd/inspect.rs`\n+   inline snapshots — added `approval_timeout_secs` (86400 / null): fork\n+   commit `816daf4` (approval TTL backstop, fabro-54f0) landed without\n+   snapshot updates.\n+\n+## Feature-regression analysis (touchpoints walk)\n+\n+| Touchpoint | Status | Evidence in merged tree |\n+|---|---|---|\n+| Publish-blocked taxonomy (fabro-67e5, closed) | ✅ carries | `PublishBlocked` refs in `status.rs` (2) + `finalize.rs` (7); `pipeline::finalize` 26/26 PASS; `fabro-server` slack publish_blocked lifecycle 2/2 PASS |\n+| Boundary exit kind (fabro-08b4, closed) | ✅ carries | `apply_boundary_upgrade` + `INTERNAL_EXIT_KIND` in `finalize.rs` (conflict kept the import); boundary tests 5/5 PASS |\n+| PR create retry (fabro-67e5, closed) | ✅ carries | `create_pull_request_with_attempts` (pull_request.rs, 13 refs), `CreatePullRequestError` (fabro-github, 16 refs); 5/5 PASS |\n+| PR model plumbing (fabro-890b, closed) | ✅ carries | `resolve_pr_model` in `operations/start.rs` (2 refs) |\n+| spa_refresh mirror race (fabro-332e, OPEN) | ✅ present | `lib/foundation/fabro-dev/src/commands/spa_refresh.rs` untouched (no upstream overlap); `just smoke` is deploy-side |\n+| ask duplication (fabro-bd6c, OPEN) | ✅ present | `render_event` in `commands/run/ask.rs`; untouched |\n+| attach replay (fabro-204e, OPEN) | ✅ present | `tests/it/cmd/attach.rs` intact (snapshot updated, see repairs); full attach suite PASS |\n+| Preamble aggregate budget (fabro-a85b, OPEN) | ✅ carries | `demote_large_values_for_prompt` in `artifact.rs` (11 refs); artifact tests 42/42 PASS |\n+| just-up lock + smoke (landed) | ✅ present | `justfile`, `scripts/smoke.nu`, `scripts/wait-healthy.nu` untouched |\n+| run_workflow.nu pipeline (landed) | ✅ present | `scripts/run_workflow.nu` untouched |\n+| Auto-merge wiring (fabro-ab2c, closed) | ✅ present | lab-check.yml retired with lab restructure; wiring lives in `.github/workflows/dogfood-gate.yml` + repo branch protection (engine-owned) |\n+| seed_cycles (fabro-45d0) | ✅ carries | `after_record` update intact in `lifecycle/mod.rs`; `seed_cycles` tests 4/4 PASS |\n+| b7c4 legacy-catalog fix (PR offer pending) | ✅ still local | `legacy_run_history_import.rs` + `key_segments` present; upstream range contains no equivalent — offer still valid |\n+\n+**Adapted fork call sites (explicit list):**\n+\n+1. `lib/components/fabro-workflow/src/pipeline/finalize.rs` — import kept\n+   (`crate::context::keys`); no body changes needed (auto-merge was\n+   sufficient once the import survived).\n+2. `Cargo.lock` — fork-only manifest deps re-attached via `cargo metadata`.\n+3. `lib/apps/fabro-server/tests/it/api/run_wait.rs` — `wait_app()` sync + 4\n+   call sites (`:132`, `:151`, `:169`, `:190`).\n+4. `lib/apps/fabro-cli/src/commands/run/runner.rs:1021` — `Box::pin`\n+   wrapper.\n+5. `lib/apps/fabro-cli/tests/it/cmd/attach.rs:957`,\n+   `lib/apps/fabro-cli/tests/it/cmd/inspect.rs:148` — snapshot fields.\n+\n+## Verification commands + results\n+\n+| Command | Result |\n+|---|---|\n+| `cargo +nightly-2026-04-14 fmt --check --all` | clean |\n+| `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings` | clean (340s cold first pass, 2 fork-debt fixes, 18s green re-run) |\n+| `just qualitygate` | **GATE GREEN** (123s; root-manifest path: fmt + workspace `cargo check`) |\n+| `cargo nextest run -p fabro-types -p fabro-store -p fabro-workflow -p fabro-server -p fabro-cli --retries 1 --no-fail-fast` | **4465/4465 passed** (84s) |\n+| Targeted: `pipeline::finalize`, `seed_cycles`, `boundary`, `artifact`, `publish_blocked`, `pull_request` | 26+4+5+42+2+5 all PASS |\n+\n+## Obsolescence notes\n+\n+- No fork feature superseded by this upstream batch; no seeds closed.\n+- fabro-b7c4 (5-segment legacy catalog keys): upstream still lacks the fix —\n+  PR offer remains valid.\n+- Upstream's expired-secret-migration removal (PR #844) matches our\n+  `docs/internal/migrations-strategy.md` lifecycle; no fork dependency on\n+  the deleted 2026-05 migrations.\n+\n+## Upstream themes — what it means for us\n+\n+- **Conclusion-stage summaries rebuilt from run events (PR #842, a7ed03e17\n+  + snapshot updates):** replayed/recovered runs now keep accurate per-stage\n+  conclusion summaries — our finalize/billing surface already carries it\n+  via the v0.347 squash; billing-rollup types now live in `fabro-types`.\n+- **Expired startup secret migrations removed (PR #844, b6482910e):**\n+  slimmer startup path; strategy docs auto-merged; nothing to port.\n+- **Version bumps 0.347 → 0.348.0-nightly.0:** alignment only; restores true\n+  upstream ancestry after the fork's squash merge.\n+\n+## Operational observations\n+\n+- nextest reused a stale test binary after `edit_file` changes (mtime\n+  granularity) — a `touch <file>` forced the rebuild and flipped two\n+  \"failures\" to green. Worth remembering when a snapshot fix \"doesn't take\".\n+- Compile-only gates (workspace `cargo check`) hide lint and snapshot debt;\n+  merges should keep running clippy `--all-targets` + nextest on touched\n+  crates as this pass did.\ndiff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl\nindex a41fb592c..54644a497 100644\n--- a/.mulch/expertise/engine.jsonl\n+++ b/.mulch/expertise/engine.jsonl\n@@ -23,3 +23,5 @@\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-05T16:52:47.078Z\",\"evidence\":{\"commit\":\"94851071d9f2eafdcd3560c58fe2de3547419cf7\"},\"description\":\"fabro-tool clippy gate red: nightly clippy denies map_unwrap_or and format_push_string; use map_or_else and write! into the String (std::fmt::Write) instead of push_str(&format!(..)) — seen in create.rs partial-success fix, run 01M1S6VRWQMD56M1X8HWAXDSNN\",\"resolution\":\"rewrote both sites; clippy -D warnings and all 67 fabro-tool tests green\",\"id\":\"mx-9cf439\"}\n {\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-06T09:46:27.614Z\",\"evidence\":{\"seeds\":\"fabro-571e\",\"commit\":\"35a3b441930b6f66906e3120c435d8454f6c47de\"},\"name\":\"long-poll-client-bypasses-control-plane-timeout\",\"description\":\"Pattern: transport-level exceptions to the shared request timeout get their own send variant — send_api_long_poll in lib/foundation/fabro-client/src/client.rs mirrors send_api (classification + token refresh) minus the timeout wrapper; documented 'keep in sync with send_api'. Client::wait_run is the only caller. If another long-poll endpoint appears, reuse the variant rather than bypassing timeouts ad hoc.\",\"files\":[\".seeds/issues.jsonl\"],\"id\":\"mx-5b150d\"}\n {\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-06T10:40:06.609Z\",\"evidence\":{\"seeds\":\"fabro-54f0\",\"commit\":\"6650ec0a022dd2a8c84c3ed98b14d9602b058e01\"},\"name\":\"pending-approval-expiry-transition-table\",\"description\":\"When introducing a new terminal failure reason: (1) add the enum variant, (2) EXTEND can_transition_to in fabro-types status.rs for every source status that can reach it, (3) update the contract test that pins per-reason transition expectations, (4) align the OpenAPI FailureReason enum (it had drifted: deadlock/soft_stop were missing). Symptom of a missed arm: append_event rejects with 'invalid status transition'.\",\"files\":[\"apps/fabro-web/tsconfig.json\",\"docs/public/api-reference/fabro-api.yaml\",\"lib/apps/fabro-server/src/serve.rs\",\"lib/apps/fabro-server/src/server.rs\",\"lib/components/fabro-manifest/src/lib.rs\",\"lib/foundation/fabro-config/src/builders.rs\",\"lib/foundation/fabro-config/src/defaults.toml\",\"lib/foundation/fabro-config/src/layers/combine.rs\",\"lib/foundation/fabro-config/src/layers/run.rs\",\"lib/foundation/fabro-config/src/resolve/run.rs\",\"lib/foundation/fabro-types/src/settings/run.rs\",\"lib/foundation/fabro-types/src/status.rs\",\"lib/packages/fabro-api-client/src/models/failure-reason.ts\"],\"id\":\"mx-219069\"}\n+{\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-06T12:25:21.083Z\",\"evidence\":{\"commit\":\"2c2dce69505ed231be0469fdd7ed60a4eef0bb5d\"},\"description\":\"Upstream merges must gate with clippy --all-targets + nextest on touched crates, not the qualitygate's compile-only workspace fallback: the v0.347 squash-merge gate (cargo check only) let fork lint/snapshot debt through (large_futures at runner.rs:1021, unused_async in run_wait.rs, missing approval_timeout_secs in attach/inspect snapshots), which surfaced on the next merge.\",\"resolution\":\"v0.348 merge pass fixed all three debt items and ran the full gate (clippy workspace all-targets clean, 4465/4465 nextest green); conflict-policy.md 2026-09-06 section codifies running the deeper gate every merge\",\"id\":\"mx-85b870\"}\n+{\"type\":\"convention\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-06T12:25:30.403Z\",\"evidence\":{\"commit\":\"2c2dce69505ed231be0469fdd7ed60a4eef0bb5d\"},\"content\":\"Rerun nextest only after 'touch <changed-file>' when a snapshot or test-source fix appears not to take effect; identical failure line numbers across runs indicate a stale binary, not a bad fix. Observed twice in the v0.348.0-nightly.0 upstream merge (attach.rs, inspect.rs).\",\"id\":\"mx-31683e\"}\ndiff --git a/Cargo.lock b/Cargo.lock\nindex 3411ab62b..32aebf45d 100644\n--- a/Cargo.lock\n+++ b/Cargo.lock\n@@ -2257,7 +2257,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-acp\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"agent-client-protocol\",\n  \"agent-client-protocol-tokio\",\n@@ -2276,7 +2276,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-agent\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"async-trait\",\n@@ -2323,7 +2323,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-api\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"chrono\",\n  \"fabro-automation\",\n@@ -2346,7 +2346,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-auth\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"async-trait\",\n@@ -2371,7 +2371,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-automation\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"chrono\",\n@@ -2393,11 +2393,11 @@ dependencies = [\n \n [[package]]\n name = \"fabro-build-support\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n \n [[package]]\n name = \"fabro-checkpoint\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"chrono\",\n  \"fabro-config\",\n@@ -2413,7 +2413,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-cli\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"assert_cmd\",\n@@ -2515,7 +2515,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-client\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"bytes\",\n@@ -2544,7 +2544,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-config\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"chrono\",\n@@ -2574,7 +2574,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-core\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"async-trait\",\n  \"fabro-types\",\n@@ -2590,7 +2590,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-db\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"chrono\",\n@@ -2603,7 +2603,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-dev\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"assert_cmd\",\n@@ -2622,7 +2622,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-dump\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"bytes\",\n@@ -2636,7 +2636,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-environment\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"chrono\",\n@@ -2658,7 +2658,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-github\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"async-trait\",\n@@ -2683,7 +2683,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-graphviz\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"fabro-types\",\n@@ -2698,7 +2698,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-hooks\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"async-trait\",\n  \"fabro-agent\",\n@@ -2721,7 +2721,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-http\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"fabro-static\",\n  \"http 1.4.0\",\n@@ -2731,7 +2731,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-install\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"base64\",\n@@ -2750,7 +2750,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-interview\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"async-trait\",\n  \"dialoguer\",\n@@ -2765,7 +2765,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-llm\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"async-trait\",\n@@ -2807,7 +2807,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-macros\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"clap\",\n  \"fabro-options-metadata\",\n@@ -2818,7 +2818,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-manifest\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"fabro-api\",\n@@ -2842,7 +2842,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-mcp\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"axum\",\n@@ -2862,7 +2862,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-mcp-server\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"chrono\",\n@@ -2890,7 +2890,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-mcp-store\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"chrono\",\n  \"fabro-db\",\n@@ -2908,7 +2908,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-model\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"clap\",\n  \"fabro-static\",\n@@ -2925,7 +2925,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-oauth\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"axum\",\n@@ -2947,7 +2947,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-options-metadata\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"serde\",\n  \"serde_json\",\n@@ -2955,7 +2955,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-proc\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"cc\",\n  \"libc\",\n@@ -2964,7 +2964,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-redact\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"aho-corasick\",\n  \"ref-cast\",\n@@ -2980,7 +2980,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-sandbox\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"async-trait\",\n@@ -3025,7 +3025,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-server\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"async-trait\",\n@@ -3121,7 +3121,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-slack\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"fabro-http\",\n  \"fabro-interview\",\n@@ -3143,18 +3143,18 @@ dependencies = [\n \n [[package]]\n name = \"fabro-spa\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"rust-embed\",\n ]\n \n [[package]]\n name = \"fabro-static\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n \n [[package]]\n name = \"fabro-store\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"async-trait\",\n  \"bytes\",\n@@ -3185,7 +3185,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-telemetry\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"base64\",\n@@ -3211,7 +3211,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-template\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"fabro-types\",\n@@ -3225,7 +3225,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-test\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"assert_cmd\",\n@@ -3250,7 +3250,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-tool\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"async-trait\",\n@@ -3272,7 +3272,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-tracker\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"async-trait\",\n@@ -3286,7 +3286,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-types\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"chrono\",\n  \"clap\",\n@@ -3309,7 +3309,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-util\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"console 0.15.11\",\n@@ -3332,7 +3332,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-validate\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"fabro-acp\",\n  \"fabro-agent\",\n@@ -3350,7 +3350,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-variable\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"chrono\",\n@@ -3367,7 +3367,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-vault\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"chrono\",\n@@ -3386,7 +3386,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-workflow\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"assert_cmd\",\n@@ -3456,7 +3456,7 @@ dependencies = [\n \n [[package]]\n name = \"fabro-workflow-version\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"fabro-config\",\n  \"fabro-graphviz\",\n@@ -8613,7 +8613,7 @@ dependencies = [\n \n [[package]]\n name = \"twin-github\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"axum\",\n  \"base64\",\n@@ -8632,7 +8632,7 @@ dependencies = [\n \n [[package]]\n name = \"twin-openai\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n dependencies = [\n  \"anyhow\",\n  \"async-stream\",\ndiff --git a/Cargo.toml b/Cargo.toml\nindex d44b7713d..c642467a5 100644\n--- a/Cargo.toml\n+++ b/Cargo.toml\n@@ -11,7 +11,7 @@ resolver = \"2\"\n \n [workspace.package]\n edition = \"2021\"\n-version = \"0.347.0-nightly.0\"\n+version = \"0.348.0-nightly.0\"\n license = \"MIT\"\n \n [workspace.dependencies]\ndiff --git a/lib/apps/fabro-cli/src/commands/run/runner.rs b/lib/apps/fabro-cli/src/commands/run/runner.rs\nindex 30a089aa8..8ce89ca3e 100644\n--- a/lib/apps/fabro-cli/src/commands/run/runner.rs\n+++ b/lib/apps/fabro-cli/src/commands/run/runner.rs\n@@ -1018,7 +1018,7 @@ impl RunStoreBackend for HttpRunStore {\n             async move { client.append_run_event(&run_id, &event).await }\n         }))\n         .await?;\n-        self.apply_acknowledged_event(seq, event).await\n+        Box::pin(self.apply_acknowledged_event(seq, event)).await\n     }\n \n     async fn write_blob(&self, data: &[u8]) -> Result<BlobHash> {\ndiff --git a/lib/apps/fabro-cli/tests/it/cmd/attach.rs b/lib/apps/fabro-cli/tests/it/cmd/attach.rs\nindex 4d279727d..a83c0d1b8 100644\n--- a/lib/apps/fabro-cli/tests/it/cmd/attach.rs\n+++ b/lib/apps/fabro-cli/tests/it/cmd/attach.rs\n@@ -954,6 +954,7 @@ fn attach_json_errors_without_prompting_for_human_input() {\n               },\n               \"execution\": {\n                 \"approval\": \"prompt\",\n+                \"approval_timeout_secs\": 86400,\n                 \"mode\": \"normal\"\n               },\n               \"git\": {\ndiff --git a/lib/apps/fabro-cli/tests/it/cmd/inspect.rs b/lib/apps/fabro-cli/tests/it/cmd/inspect.rs\nindex 0943f2230..02fa9a28d 100644\n--- a/lib/apps/fabro-cli/tests/it/cmd/inspect.rs\n+++ b/lib/apps/fabro-cli/tests/it/cmd/inspect.rs\n@@ -144,7 +144,8 @@ fn inspect_resolves_selector_via_server_endpoint() {\n               },\n               \"execution\": {\n                 \"mode\": \"normal\",\n-                \"approval\": \"prompt\"\n+                \"approval\": \"prompt\",\n+                \"approval_timeout_secs\": null\n               },\n               \"checkpoint\": {\n                 \"exclude_globs\": [],\ndiff --git a/lib/apps/fabro-server/tests/it/api/run_wait.rs b/lib/apps/fabro-server/tests/it/api/run_wait.rs\nindex 1af86c25a..6fb12db8a 100644\n--- a/lib/apps/fabro-server/tests/it/api/run_wait.rs\n+++ b/lib/apps/fabro-server/tests/it/api/run_wait.rs\n@@ -113,7 +113,7 @@ async fn append_run(store: &Database, run_id: &RunId, completed: bool) {\n     }\n }\n \n-async fn wait_app() -> (axum::Router, Arc<Database>) {\n+fn wait_app() -> (axum::Router, Arc<Database>) {\n     let settings = test_settings();\n     let (store, artifact_store) = store_bundle();\n     let state = test_app_state_with_store(\n@@ -129,7 +129,7 @@ async fn wait_app() -> (axum::Router, Arc<Database>) {\n \n #[tokio::test]\n async fn terminal_run_returns_terminal_immediately() {\n-    let (app, store) = wait_app().await;\n+    let (app, store) = wait_app();\n     let run_id = RunId::new();\n     append_run(&store, &run_id, true).await;\n     let req = Request::builder()\n@@ -148,7 +148,7 @@ async fn terminal_run_returns_terminal_immediately() {\n \n #[tokio::test]\n async fn running_run_returns_structured_timeout_with_current_status() {\n-    let (app, store) = wait_app().await;\n+    let (app, store) = wait_app();\n     let run_id = RunId::new();\n     append_run(&store, &run_id, false).await;\n     let req = Request::builder()\n@@ -166,7 +166,7 @@ async fn running_run_returns_structured_timeout_with_current_status() {\n \n #[tokio::test]\n async fn merged_wait_without_pull_request_returns_404() {\n-    let (app, store) = wait_app().await;\n+    let (app, store) = wait_app();\n     let run_id = RunId::new();\n     append_run(&store, &run_id, false).await;\n     let req = Request::builder()\n@@ -187,7 +187,7 @@ async fn merged_wait_without_pull_request_returns_404() {\n \n #[tokio::test]\n async fn unknown_until_value_returns_400() {\n-    let (app, _store) = wait_app().await;\n+    let (app, _store) = wait_app();\n     let run_id = RunId::new();\n     let req = Request::builder()\n         .method(\"GET\")\n",
+      "summary": {
+        "files_changed": 11,
+        "additions": 215,
+        "deletions": 60
+      }
+    },
+    "exit_kind": "soft"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -906,6 +987,42 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 624,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-06T12:29:43.215613224Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-06T12:29:43.215557885Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "merge@1": {
       "first_event_seq": 21,
       "prompt": null,
