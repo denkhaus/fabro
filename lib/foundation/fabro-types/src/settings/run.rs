@@ -1021,18 +1021,40 @@ impl PreparedStep {
     }
 }
 
+/// Fallback approval window when a run sets no explicit
+/// `approval_timeout_secs` (fabro-54f0).
+pub const DEFAULT_APPROVAL_TIMEOUT_SECS: u64 = 86_400;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunExecutionSettings {
-    pub mode:     RunMode,
-    pub approval: ApprovalMode,
+    pub mode:                  RunMode,
+    pub approval:              ApprovalMode,
+    /// Wall-clock seconds a pending `approval_required` run may wait
+    /// before the server expires it as failed `approval_timeout`
+    /// (fabro-54f0). `None` falls back to
+    /// [`DEFAULT_APPROVAL_TIMEOUT_SECS`]. Measured from run creation as a
+    /// safe lower bound of pending-since.
+    #[serde(default)]
+    pub approval_timeout_secs: Option<std::num::NonZeroU64>,
 }
 
 impl Default for RunExecutionSettings {
     fn default() -> Self {
         Self {
-            mode:     RunMode::Normal,
-            approval: ApprovalMode::Prompt,
+            mode:                  RunMode::Normal,
+            approval:              ApprovalMode::Prompt,
+            approval_timeout_secs: None,
         }
+    }
+}
+
+impl RunExecutionSettings {
+    /// The approval window in effect for a run: the explicit setting or
+    /// the 24h fallback (fabro-54f0).
+    #[must_use]
+    pub fn effective_approval_timeout_secs(&self) -> u64 {
+        self.approval_timeout_secs
+            .map_or(DEFAULT_APPROVAL_TIMEOUT_SECS, std::num::NonZeroU64::get)
     }
 }
 

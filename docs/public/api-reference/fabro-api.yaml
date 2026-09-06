@@ -9323,6 +9323,9 @@ components:
         - launch_failed
         - bootstrap_failed
         - sandbox_init_failed
+        - deadlock
+        - soft_stop
+        - approval_timeout
 
     PendingReason:
       description: Reason a pre-execution run is pending instead of runnable.

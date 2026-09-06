@@ -28,7 +28,10 @@ export const FailureReason = {
     BUDGET_EXHAUSTED: 'budget_exhausted',
     LAUNCH_FAILED: 'launch_failed',
     BOOTSTRAP_FAILED: 'bootstrap_failed',
-    SANDBOX_INIT_FAILED: 'sandbox_init_failed'
+    SANDBOX_INIT_FAILED: 'sandbox_init_failed',
+    DEADLOCK: 'deadlock',
+    SOFT_STOP: 'soft_stop',
+    APPROVAL_TIMEOUT: 'approval_timeout'
 } as const;
 
 export type FailureReason = typeof FailureReason[keyof typeof FailureReason];

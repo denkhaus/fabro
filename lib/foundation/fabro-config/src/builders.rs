@@ -750,8 +750,9 @@ command = ["demo-mcp"]
                     controls:  None,
                 }),
                 execution: Some(RunExecutionLayer {
-                    mode:     Some(RunMode::DryRun),
+                    mode: Some(RunMode::DryRun),
                     approval: Some(ApprovalMode::Auto),
+                    ..RunExecutionLayer::default()
                 }),
                 ..RunLayer::default()
             })

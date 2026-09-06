@@ -168,7 +168,7 @@ impl RunStatus {
                     reason: FailureReason::Cancelled,
                 })
                 | (Self::Pending { .. }, Self::Failed {
-                    reason: FailureReason::ApprovalDenied,
+                    reason: FailureReason::ApprovalDenied | FailureReason::ApprovalTimeout,
                 })
                 | (
                     Self::Starting | Self::Paused { .. } | Self::Blocked { .. },
@@ -335,6 +335,11 @@ pub enum FailureReason {
     /// finish (e.g. evidence capture) but the loop can re-enter next run
     /// without human intervention on the code itself (fabro-b907).
     SoftStop,
+    /// The approval TTL expired without approve or deny (fabro-54f0): a
+    /// pending `approval_required` run was cleaned up by the server.
+    /// Distinct from `ApprovalDenied` (a human decision) so automation
+    /// may re-trigger the run instead of respecting a human no.
+    ApprovalTimeout,
 }
 
 impl FailureReason {
@@ -356,6 +361,7 @@ impl FailureReason {
             | Self::BootstrapFailed => true,
             Self::PublishFailed
             | Self::ApprovalDenied
+            | Self::ApprovalTimeout
             | Self::TransientInfra
             | Self::BudgetExhausted
             | Self::SandboxInitFailed
@@ -523,7 +529,10 @@ mod tests {
                         reason: PendingReason::ApprovalRequired,
                     }
                     .can_transition_to(failed),
-                    reason == FailureReason::ApprovalDenied,
+                    matches!(
+                        reason,
+                        FailureReason::ApprovalDenied | FailureReason::ApprovalTimeout
+                    ),
                     "Pending -> {reason}"
                 );
             }

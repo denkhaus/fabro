@@ -337,12 +337,13 @@ fn resolve_execution(execution: Option<&RunExecutionLayer>) -> RunExecutionSetti
     let execution = execution.expect("defaults.toml should provide run.execution defaults");
 
     RunExecutionSettings {
-        mode:     execution
+        mode:                  execution
             .mode
             .expect("defaults.toml should provide run.execution.mode"),
-        approval: execution
+        approval:              execution
             .approval
             .expect("defaults.toml should provide run.execution.approval"),
+        approval_timeout_secs: execution.approval_timeout_secs,
     }
 }
 

@@ -172,12 +172,14 @@ use crate::{
     canonical_host, demo, diagnostics, run_manifest, security_headers, static_files, web_auth,
 };
 
+mod approval_expiry;
 mod automation_scheduler;
 mod handler;
 mod pull_request_supervisor;
 pub(crate) mod resource_sampler;
 mod session_runtime;
 
+pub(crate) use approval_expiry::spawn_approval_expiry_supervisor;
 pub(crate) use automation_scheduler::spawn_automation_scheduler;
 pub(crate) use handler::events::EventListParams;
 #[cfg(test)]

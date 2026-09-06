@@ -8,6 +8,9 @@ graph = "workflow.fabro"
 [run.execution]
 mode = "normal"
 approval = "prompt"
+# Approval TTL backstop (fabro-54f0): pending approval_required runs older
+# than this fail with reason approval_timeout.
+approval_timeout_secs = 86400
 
 [run.prepare]
 timeout = "5m"

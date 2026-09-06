@@ -290,9 +290,13 @@ pub struct PrepareStep {
 #[serde(deny_unknown_fields)]
 pub struct RunExecutionLayer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mode:     Option<RunMode>,
+    pub mode:                  Option<RunMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub approval: Option<ApprovalMode>,
+    pub approval:              Option<ApprovalMode>,
+    /// `[run.execution] approval_timeout_secs` — approval TTL backstop
+    /// (fabro-54f0); `None` keeps the 24h fallback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_timeout_secs: Option<std::num::NonZeroU64>,
 }
 
 /// `[run.checkpoint]` — checkpoint policy.

@@ -97,7 +97,7 @@ pub fn build_run_overrides(input: RunOverrideInput<'_>) -> RunLayer {
         });
     let execution =
         (input.dry_run.is_some() || input.auto_approve.is_some()).then(|| RunExecutionLayer {
-            mode:     input.dry_run.map(|dry_run| {
+            mode: input.dry_run.map(|dry_run| {
                 if dry_run {
                     RunMode::DryRun
                 } else {
@@ -111,6 +111,7 @@ pub fn build_run_overrides(input: RunOverrideInput<'_>) -> RunLayer {
                     ApprovalMode::Prompt
                 }
             }),
+            ..RunExecutionLayer::default()
         });
 
     RunLayer {

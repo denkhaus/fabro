@@ -161,6 +161,7 @@ impl_combine_self!(
     ServerApiLayer,
     ServerAuthGithubLayer,
     ServerListenLayer,
+    std::num::NonZeroU64,
 );
 
 impl Combine for RunCheckpointLayer {
