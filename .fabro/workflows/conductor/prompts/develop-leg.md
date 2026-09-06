@@ -10,7 +10,7 @@ object inside `workflow` (a common misread; the validator only says
 "not valid under any of the schemas" and will not tell you which field
 is wrong):
 
-`{"runs": [{"workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "develop"}, "environment": "toolchain", "auto_approve": true}]}` — the `runs` array wrapper is REQUIRED by the tool schema; the bare spec object fails validation (NO goal: the planner picks the most relevant open seed; goalless = autonomous queue burn-down). Record `child_run_id`.
+`{"runs": [{"workflow": "develop", "workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "develop"}, "environment": "toolchain", "auto_approve": true}]}` — the `runs` array wrapper is REQUIRED by the tool schema; the bare spec object fails validation (NO goal: the planner picks the most relevant open seed; goalless = autonomous queue burn-down). Record `child_run_id`.
 2. Wait terminal: ONE call `fabro_run_wait {"run_id": "<child_run_id>", "until": "terminal", "timeout_ms": 3600000}` — it blocks until terminal or the 60 min deadline. `reached=timeout` (child still running): call again. Never shell-sleep poll loops (fabro-571e).
 3. Child FAILED: route "Develop child failed" + journal the reason (retriable causes simply end this pass; the next fire retries the seed).
 4. Child SUCCEEDED with goal "Tracker empty"-like completion and no PR: route "Tracker empty" (journal it — the queue is done; the human seeds new demand).
@@ -20,7 +20,7 @@ is wrong):
 
 Create child runs with the git workflow source — the server resolves and
 registers the workflow versions; the sandbox filesystem never participates:
-`{"runs": [{"workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "<name>"}, "environment": "toolchain"}]}`.
+`{"runs": [{"workflow": "<name>", "workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "<name>"}, "environment": "toolchain"}]}`. The `workflow` slug is REQUIRED alongside `workflow_source` (the spec schema rejects workflow_source-only payloads).
 ## Hard rule — exactly ONE child
 
 Create AT MOST ONE develop child per pass. If the create call returns an
