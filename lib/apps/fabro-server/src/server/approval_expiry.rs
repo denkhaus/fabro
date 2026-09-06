@@ -28,12 +28,17 @@ const EXPIRY_PASS_INTERVAL: Duration = Duration::from_mins(1);
 
 pub(crate) fn spawn_approval_expiry_supervisor(state: Arc<AppState>) -> JoinHandle<()> {
     tokio::spawn(async move {
+        // Canonical supervisor loop (pull_request_supervisor pattern): race
+        // the pass interval against the shutdown token so serve.rs can join
+        // this handle promptly on `server stop` — a polled shutdown flag
+        // after a long tick regressed the server exit code (gate run 4).
+        let shutdown = state.shutdown_token();
         let mut ticker = interval(EXPIRY_PASS_INTERVAL);
-        ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
         loop {
-            ticker.tick().await;
-            if state.is_shutting_down() {
-                break;
+            tokio::select! {
+                _ = ticker.tick() => {},
+                () = shutdown.cancelled() => break,
             }
             if let Err(err) = expire_pending_approvals(state.as_ref(), Utc::now()).await {
                 tracing::warn!(error = ?err, "approval expiry pass failed");
