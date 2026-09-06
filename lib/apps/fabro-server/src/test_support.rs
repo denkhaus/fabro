@@ -102,6 +102,8 @@ pub struct TestAppStateBuilder {
     env_lookup:                   EnvLookup,
     llm_catalog_settings:         LlmCatalogSettings,
     automation_materializer:      Option<TestAutomationRunMaterializer>,
+    automation_breaker_notifier:
+        Option<Arc<dyn crate::server::automation_breaker::AutomationBreakerNotifier>>,
     #[cfg(test)]
     worker_runtime:               Option<Arc<dyn WorkerRuntime>>,
 }
@@ -124,6 +126,7 @@ impl Default for TestAppStateBuilder {
             env_lookup:                   default_env_lookup(),
             llm_catalog_settings:         LlmCatalogSettings::default(),
             automation_materializer:      None,
+            automation_breaker_notifier:  None,
             #[cfg(test)]
             worker_runtime:               None,
         }
@@ -184,6 +187,16 @@ impl TestAppStateBuilder {
 
     pub fn automation_materializer(mut self, materializer: TestAutomationRunMaterializer) -> Self {
         self.automation_materializer = Some(materializer);
+        self
+    }
+
+    /// Capture automation breaker pause notifications instead of posting to
+    /// Slack (fabro-3d97).
+    pub(crate) fn automation_breaker_notifier(
+        mut self,
+        notifier: std::sync::Arc<dyn crate::server::automation_breaker::AutomationBreakerNotifier>,
+    ) -> Self {
+        self.automation_breaker_notifier = Some(notifier);
         self
     }
 
@@ -312,6 +325,7 @@ impl TestAppStateBuilder {
             #[cfg(test)]
             worker_runtime: self.worker_runtime,
             automation_materializer_override,
+            automation_breaker_notifier_override: self.automation_breaker_notifier,
         })
     }
 }

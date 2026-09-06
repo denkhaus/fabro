@@ -46,7 +46,46 @@ fn automation_response_round_trips_public_json_shape() {
                 "id": "nightly",
                 "type": "schedule",
                 "enabled": true,
-                "expression": "0 3 * * *"
+                "expression": "0 3 * * *",
+                "breaker_threshold": 2
+            }
+        ]
+    });
+
+    let api: ApiAutomation = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(serde_json::to_value(api).unwrap(), value);
+}
+
+/// fabro-3d97: the breaker-paused schedule trigger shape round-trips — the
+/// paused state is visible through the automation surface with the recorded
+/// breaker facts (signature, count, last run, paused-at).
+#[test]
+fn automation_response_round_trips_breaker_paused_schedule_trigger() {
+    let value = json!({
+        "id": "nightly-deps",
+        "revision": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "name": "Nightly dependency update",
+        "description": null,
+        "environment_id": "daytona-smoke",
+        "last_error": null,
+        "target": {
+            "kind": "git",
+            "repo": "fabro-sh/fabro",
+            "branch": "main"
+        },
+        "workflow": "dependency-update",
+        "triggers": [
+            {
+                "id": "nightly",
+                "type": "schedule",
+                "enabled": false,
+                "expression": "0 3 * * *",
+                "breaker": {
+                    "signature": "api_transient|zai|rate_limited",
+                    "consecutive_count": 3,
+                    "last_run_id": "01M1VZTJSZ551NFPHPXD429MG0",
+                    "paused_at": "2026-09-06T13:00:00Z"
+                }
             }
         ]
     });

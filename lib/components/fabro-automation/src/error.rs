@@ -13,6 +13,8 @@ pub enum AutomationValidationError {
     InvalidAutomationId { value: String },
     #[error("automation trigger id {value:?} must match [a-z0-9][a-z0-9_-]{{0,62}}")]
     InvalidAutomationTriggerId { value: String },
+    #[error("schedule trigger {trigger_id:?} breaker threshold must be at least 1")]
+    InvalidBreakerThreshold { trigger_id: String },
     #[error("automation name must not be empty")]
     EmptyName,
     #[error("automation environment is required")]

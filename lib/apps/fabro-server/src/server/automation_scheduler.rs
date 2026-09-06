@@ -194,6 +194,25 @@ pub(crate) fn spawn_automation_scheduler(state: Arc<AppState>) {
                 }
             };
             let now = Utc::now();
+            // Circuit breaker first (fabro-3d97): a trigger that just tripped
+            // must not fire on this very tick, so reload when anything paused.
+            let automations = if super::automation_breaker::update_automation_breakers(
+                state.as_ref(),
+                &automations,
+                now,
+            )
+            .await
+            {
+                match state.automation_store().list().await {
+                    Ok(automations) => automations,
+                    Err(err) => {
+                        error!(error = ?err, "Failed to reload automations after breaker pause");
+                        Vec::new()
+                    }
+                }
+            } else {
+                automations
+            };
             for due in planner.tick(&automations, now) {
                 let state = Arc::clone(&state);
                 let span = info_span!(
@@ -416,6 +435,23 @@ fn run_due_schedules_once<'a>(
             .list()
             .await
             .expect("test automations should load");
+        // Mirror the production loop: the breaker runs before due triggers
+        // fire, with a reload when anything paused (fabro-3d97).
+        let automations = if super::automation_breaker::update_automation_breakers(
+            state.as_ref(),
+            &automations,
+            now,
+        )
+        .await
+        {
+            state
+                .automation_store()
+                .list()
+                .await
+                .expect("test automations should reload after breaker pause")
+        } else {
+            automations
+        };
         for trigger in planner.tick(&automations, now) {
             Box::pin(fire_scheduled_automation_run(
                 Arc::clone(&state),
@@ -435,7 +471,9 @@ mod tests {
     };
     use fabro_static::EnvVars;
     use fabro_types::{GitRunTarget, ResolvedAutomationGitWorkflowSource, RunStatus, RunTarget};
+    use fabro_workflow::event as workflow_event;
 
+    use super::super::automation_breaker;
     use super::*;
     use crate::test_support::{TestAppStateBuilder, TestAutomationRunMaterializer};
 
@@ -463,6 +501,8 @@ mod tests {
             id: AutomationTriggerId::new(id).expect("test trigger id should be valid"),
             enabled,
             expression: expression.to_string(),
+            breaker_threshold: None,
+            breaker: None,
         })
     }
 
@@ -547,6 +587,13 @@ mod tests {
             .list_all(Utc::now())
             .await
             .expect("stored runs should list")
+    }
+
+    /// Stored runs oldest-first, so index `minute - 1` is the newest fire.
+    async fn stored_runs_chronological(state: &AppState) -> Vec<fabro_types::Run> {
+        let mut runs = stored_runs(state).await;
+        runs.sort_by_key(|run| run.timestamps.created_at);
+        runs
     }
 
     fn prime_time() -> DateTime<Utc> {
@@ -955,6 +1002,346 @@ mod tests {
 
         assert!(stored_runs(state.as_ref()).await.is_empty());
         assert_eq!(materializer.captured_inputs().len(), 2);
+    }
+
+    // --- fabro-3d97: automation circuit breaker integration tests ---
+
+    /// Capturing sink for breaker-pause notifications.
+    #[derive(Clone, Default)]
+    struct CapturedBreakerNotices(
+        std::sync::Arc<std::sync::Mutex<Vec<automation_breaker::BreakerPauseNotice>>>,
+    );
+
+    #[async_trait::async_trait]
+    impl automation_breaker::AutomationBreakerNotifier for CapturedBreakerNotices {
+        async fn notify_breaker_pause(&self, notice: &automation_breaker::BreakerPauseNotice) {
+            self.0
+                .lock()
+                .expect("captured notices lock should not be poisoned")
+                .push(notice.clone());
+        }
+    }
+
+    fn breaker_test_state(
+        materializer: TestAutomationRunMaterializer,
+    ) -> (Arc<AppState>, CapturedBreakerNotices) {
+        let notices = CapturedBreakerNotices::default();
+        let state = TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .automation_materializer(materializer)
+            .automation_breaker_notifier(std::sync::Arc::new(notices.clone()))
+            .build();
+        (state, notices)
+    }
+
+    fn schedule_trigger_with_breaker(
+        id: &str,
+        expression: &str,
+        threshold: Option<u32>,
+    ) -> AutomationTrigger {
+        AutomationTrigger::Schedule(ScheduleTrigger {
+            id:                AutomationTriggerId::new(id)
+                .expect("test trigger id should be valid"),
+            enabled:           true,
+            expression:        expression.to_string(),
+            breaker_threshold: threshold,
+            breaker:           None,
+        })
+    }
+
+    async fn create_breakable_automation(
+        state: &AppState,
+        id: &str,
+        threshold: Option<u32>,
+    ) -> Automation {
+        state
+            .automation_store()
+            .create(AutomationDraft {
+                on_overlap:      None,
+                id:              AutomationId::new(id).expect("test automation id should be valid"),
+                name:            "Breakable".to_string(),
+                description:     None,
+                environment_id:  Some("default".to_string()),
+                target:          target(),
+                workflow_source: None,
+                workflow:        "workflow.fabro".to_string(),
+                triggers:        vec![schedule_trigger_with_breaker(
+                    "schedule",
+                    "* * * * *",
+                    threshold,
+                )],
+            })
+            .await
+            .expect("test automation should be created")
+    }
+
+    /// Drive one terminal failure onto a fired run, with a failure-detail
+    /// signature exactly like the run-level breaker records.
+    async fn park_run_with_signature(state: &AppState, run_id: &RunId, signature: &str) {
+        append_run_lifecycle_prefix(state, run_id).await;
+        let run_store = state.stores.runs.open_run(run_id).await.unwrap();
+        let mut detail = fabro_types::FailureDetail::new(
+            "zai quota exhausted",
+            fabro_types::FailureCategory::TransientInfra,
+        );
+        detail.signature = Some(fabro_types::FailureSignature(signature.to_string()));
+        workflow_event::append_event(
+            &run_store,
+            run_id,
+            &workflow_event::Event::WorkflowRunFailed {
+                failure:              fabro_types::RunFailure {
+                    reason: fabro_types::FailureReason::SoftStop,
+                    detail,
+                },
+                timing:               fabro_types::RunTiming::wall_only(1_000),
+                final_git_commit_sha: None,
+                final_patch:          None,
+                diff_summary:         None,
+                billing:              None,
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    /// Drive one terminal success onto a fired run.
+    async fn succeed_run(state: &AppState, run_id: &RunId) {
+        append_run_lifecycle_prefix(state, run_id).await;
+        let run_store = state.stores.runs.open_run(run_id).await.unwrap();
+        workflow_event::append_event(
+            &run_store,
+            run_id,
+            &workflow_event::Event::WorkflowRunCompleted {
+                timing:               fabro_types::RunTiming::wall_only(1_000),
+                artifact_count:       0,
+                status:               "succeeded".to_string(),
+                reason:               fabro_types::SuccessReason::Completed,
+                failure:              None,
+                total_usd_micros:     None,
+                final_git_commit_sha: None,
+                final_patch:          None,
+                diff_summary:         None,
+                billing:              None,
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    async fn append_run_lifecycle_prefix(state: &AppState, run_id: &RunId) {
+        let run_store = state.stores.runs.open_run(run_id).await.unwrap();
+        workflow_event::append_event(&run_store, run_id, &workflow_event::Event::RunStarting)
+            .await
+            .unwrap();
+        workflow_event::append_event(&run_store, run_id, &workflow_event::Event::RunRunning)
+            .await
+            .unwrap();
+    }
+
+    fn stored_breaker_trigger(automation: &Automation) -> fabro_automation::ScheduleTrigger {
+        automation
+            .triggers
+            .iter()
+            .find_map(|trigger| match trigger {
+                AutomationTrigger::Schedule(trigger) => Some(trigger.clone()),
+                AutomationTrigger::Api(_) => None,
+            })
+            .expect("automation should keep its schedule trigger")
+    }
+
+    fn due_minute(minute: u32) -> DateTime<Utc> {
+        dt(&format!("2026-05-29T00:{minute:02}:00Z"))
+    }
+
+    #[tokio::test]
+    async fn same_signature_parks_pause_the_schedule_with_one_aggregated_notification() {
+        let materializer = succeeding_materializer();
+        let (state, notices) = breaker_test_state(materializer);
+        create_breakable_automation(state.as_ref(), "breakable", Some(2)).await;
+        let mut planner = AutomationSchedulePlanner::default();
+        let signature = "api_transient|zai|rate_limited";
+
+        // Prime, then fire run 1 and park it.
+        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(1)).await;
+        let runs = stored_runs_chronological(state.as_ref()).await;
+        assert_eq!(runs.len(), 1);
+        park_run_with_signature(state.as_ref(), &runs[0].id, signature).await;
+
+        // Pass 2: baseline absorbs run 1; run 2 fires and parks the same way.
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(2)).await;
+        let runs = stored_runs_chronological(state.as_ref()).await;
+        assert_eq!(runs.len(), 2);
+        park_run_with_signature(state.as_ref(), &runs[1].id, signature).await;
+
+        // Pass 3: run 2 counts (1 < 2); run 3 fires and parks.
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(3)).await;
+        let runs = stored_runs_chronological(state.as_ref()).await;
+        assert_eq!(runs.len(), 3);
+        park_run_with_signature(state.as_ref(), &runs[2].id, signature).await;
+
+        // Pass 4: run 3 counts (2 = threshold) — the breaker pauses the
+        // trigger BEFORE the due fire, so run 4 never exists.
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(4)).await;
+        let runs = stored_runs_chronological(state.as_ref()).await;
+        assert_eq!(runs.len(), 3);
+
+        // Further passes fire nothing and notify nothing more.
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(5)).await;
+        assert_eq!(stored_runs(state.as_ref()).await.len(), 3);
+
+        // The paused state is visible through the automation surface with
+        // recorded breaker facts.
+        let automation = state
+            .automation_store()
+            .get(&AutomationId::new("breakable").unwrap())
+            .await
+            .unwrap()
+            .expect("automation should exist");
+        assert!(automation.enabled_schedule_triggers().next().is_none());
+        let trigger = stored_breaker_trigger(&automation);
+        assert!(!trigger.enabled);
+        let facts = trigger.breaker.expect("pause facts should be recorded");
+        assert_eq!(facts.signature, signature);
+        assert_eq!(facts.consecutive_count, 2);
+        assert_eq!(facts.last_run_id, runs[2].id.to_string());
+        assert!(facts.paused_at.is_some());
+
+        // Exactly ONE aggregated notification, naming the signature, the
+        // consecutive count, and the last run.
+        let captured = notices
+            .0
+            .lock()
+            .expect("captured notices lock should not be poisoned");
+        assert_eq!(captured.len(), 1, "exactly one aggregated notification");
+        let notice = &captured[0];
+        assert_eq!(notice.signature, signature);
+        assert_eq!(notice.consecutive, 2);
+        assert_eq!(notice.last_run_id, runs[2].id.to_string());
+        assert_eq!(notice.trigger_id.as_str(), "schedule");
+    }
+
+    #[tokio::test]
+    async fn succeeded_run_resets_the_breaker_count() {
+        let materializer = succeeding_materializer();
+        let (state, _notices) = breaker_test_state(materializer);
+        create_breakable_automation(state.as_ref(), "resettable", Some(2)).await;
+        let mut planner = AutomationSchedulePlanner::default();
+        let signature = "api_transient|zai|rate_limited";
+
+        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
+        // Runs 1..5: park(baseline), park(count 1), succeed(reset), park
+        // (count 1), park (count 2 -> pause). Without the reset the breaker
+        // would pause while processing run 3.
+        for minute in 1..=5u32 {
+            run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(minute)).await;
+            let runs = stored_runs_chronological(state.as_ref()).await;
+            assert_eq!(runs.len(), usize::try_from(minute).unwrap());
+            let run_id = runs[runs.len() - 1].id;
+            match minute {
+                3 => succeed_run(state.as_ref(), &run_id).await,
+                _ => park_run_with_signature(state.as_ref(), &run_id, signature).await,
+            }
+        }
+
+        // The next pass processes run 5 (count 2 = threshold) and pauses
+        // before firing anything further.
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(6)).await;
+        assert_eq!(stored_runs(state.as_ref()).await.len(), 5);
+        let automation = state
+            .automation_store()
+            .get(&AutomationId::new("resettable").unwrap())
+            .await
+            .unwrap()
+            .expect("automation should exist");
+        let trigger = stored_breaker_trigger(&automation);
+        assert!(!trigger.enabled);
+        let facts = trigger.breaker.expect("pause facts should be recorded");
+        assert_eq!(facts.consecutive_count, 2);
+        assert_eq!(
+            facts.last_run_id,
+            stored_runs_chronological(state.as_ref()).await[4]
+                .id
+                .to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn re_enabling_the_trigger_resumes_firing_with_a_reset_counter() {
+        let materializer = succeeding_materializer();
+        let (state, notices) = breaker_test_state(materializer);
+        let automation = create_breakable_automation(state.as_ref(), "resumable", Some(1)).await;
+        let mut planner = AutomationSchedulePlanner::default();
+        let signature = "api_transient|zai|rate_limited";
+
+        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
+        // Threshold 1: run 1 is the baseline, run 2 parks and pauses.
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(1)).await;
+        let runs = stored_runs(state.as_ref()).await;
+        park_run_with_signature(state.as_ref(), &runs[0].id, signature).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(2)).await;
+        let runs = stored_runs_chronological(state.as_ref()).await;
+        assert_eq!(runs.len(), 2);
+        park_run_with_signature(state.as_ref(), &runs[1].id, signature).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(3)).await;
+        assert_eq!(stored_runs(state.as_ref()).await.len(), 2);
+        let paused = state
+            .automation_store()
+            .get(&automation.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!stored_breaker_trigger(&paused).enabled);
+
+        // A human resumes through the existing enable path (replace); the
+        // facts clear and the schedule fires again even though the run
+        // history still ends with the same-signature park.
+        let resumed = state
+            .automation_store()
+            .replace(
+                &paused.id,
+                &paused.revision,
+                fabro_automation::AutomationReplace {
+                    on_overlap:      None,
+                    name:            paused.name.clone(),
+                    description:     None,
+                    environment_id:  Some("default".to_string()),
+                    target:          target(),
+                    workflow_source: None,
+                    workflow:        "workflow.fabro".to_string(),
+                    triggers:        vec![schedule_trigger_with_breaker(
+                        "schedule",
+                        "* * * * *",
+                        Some(1),
+                    )],
+                },
+            )
+            .await
+            .expect("resume replace should succeed");
+        let trigger = stored_breaker_trigger(&resumed);
+        assert!(trigger.enabled);
+        assert_eq!(trigger.breaker, None, "resume resets the breaker counter");
+
+        // The replace rewrote the trigger row, so the planner recreates its
+        // cursor at the next occurrence after the resume pass.
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(4)).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(5)).await;
+        assert_eq!(
+            stored_runs(state.as_ref()).await.len(),
+            3,
+            "resumed schedule fires again"
+        );
+        // Still exactly one notification: the resume itself does not notify,
+        // and the fresh baseline absorbs the parked history.
+        assert_eq!(
+            notices
+                .0
+                .lock()
+                .expect("captured notices lock should not be poisoned")
+                .len(),
+            1
+        );
     }
 
     #[tokio::test]

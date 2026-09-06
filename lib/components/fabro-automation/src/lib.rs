@@ -1,9 +1,14 @@
+mod breaker;
 mod error;
 mod id;
 mod migrations;
 mod model;
 mod store;
 
+pub use breaker::{
+    BreakerCounter, DEFAULT_SCHEDULE_BREAKER_THRESHOLD, ScheduleBreakerState, breaker_signature,
+    counts_as_breaker_failure,
+};
 pub use error::{AutomationStoreError, AutomationValidationError};
 pub use fabro_types::GitHubRepositorySlug;
 pub use id::{AutomationId, AutomationRevision, AutomationRevisionParseError, AutomationTriggerId};
