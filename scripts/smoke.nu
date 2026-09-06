@@ -13,6 +13,8 @@
 #   4. /runs              — SPA deep route falls back to the index
 #   5. <cli> ps           — authenticated API roundtrip through the
 #                            installed CLI
+#   6. /api/v1/automations — authenticated automations list (dev token
+#                            from the CLI auth store; skipped when absent)
 #
 # ANY red check prints an ALARM block and exits 1, so `just up` aborts
 # instead of shipping a broken instance.
@@ -74,6 +76,41 @@ def main [port: string = "32276", cli: string = "~/.fabro/bin/fabro"]: nothing -
         ok: ($ps.exit_code == 0)
         detail: ($ps.stderr | str trim | if ($in | is-empty) { "exit ($ps.exit_code)" } else { $"exit ($ps.exit_code): ($in)" })
     })
+
+    # 6. Automations API answers (authenticated). Regression born
+    # 2026-09-06: deploy #5 was healthy and `fabro ps` roundtripped while
+    # /api/v1/automations 500'd (schema migration missing in the binary) —
+    # the automations tab was dead and no probe noticed. The CLI has no
+    # automations command yet (fabro-fe35), so this reads the local dev
+    # token from the CLI auth store directly. No stored token for this
+    # server => SKIPPED (gray), not red.
+    let auth_path = ($env.HOME | path join ".fabro" "auth.json")
+    let server_key = $"http://127.0.0.1:($port)"
+    let token = (if ($auth_path | path exists) {
+        open $auth_path
+        | get -o servers
+        | default {}
+        | get -o $server_key
+        | default {}
+        | get -o token
+        | default ""
+    } else {
+        ""
+    })
+    if ($token | str trim | is-not-empty) {
+        let bearer = ($token | str trim)
+        let res = (do {
+            ^curl -sS -m 5 -o /dev/null -w "%{http_code}" -H $"Authorization: Bearer ($bearer)" $"($base)/api/v1/automations"
+        } | complete)
+        let status = ($res.stdout | str trim)
+        $results = ($results | append {
+            name: "Automations API (authenticated)"
+            ok: ($res.exit_code == 0 and $status == "200")
+            detail: $"/api/v1/automations -> ($status)"
+        })
+    } else {
+        print $"smoke: - automations API probe skipped (no stored token for ($server_key))"
+    }
 
     # verdict
     let failed = ($results | where not $it.ok)
