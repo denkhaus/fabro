@@ -59,9 +59,27 @@ interface AutomationRow {
   environmentId: string | null;
   workflowSource?: string;
   schedule?: string;
+  scheduleEnabled: boolean;
   apiEnabled: boolean;
   icon: ComponentType<{ className?: string }>;
   color: string;
+  /** Raw API automation; the schedule toggle PUTs it back with the
+   *  schedule trigger's enabled flag flipped. */
+  raw: Automation;
+}
+
+function scheduleToggleBody(automation: Automation, enabled: boolean) {
+  return {
+    name:        automation.name,
+    description: automation.description,
+    environment_id: automation.environment_id,
+    target:      automation.target,
+    workflow:    automation.workflow,
+    workflow_source: automation.workflow_source,
+    triggers:    automation.triggers.map((trigger) =>
+      trigger.type === "schedule" ? { ...trigger, enabled } : trigger,
+    ),
+  };
 }
 
 const slugIconMap: Record<string, ComponentType<{ className?: string }>> = {
@@ -103,9 +121,11 @@ function mapAutomations(result: AutomationListResponse | undefined): AutomationR
         ? workflowSourceSummary(a.workflow_source)
         : undefined,
       schedule:   findScheduleTrigger(a)?.expression,
+      scheduleEnabled: findScheduleTrigger(a)?.enabled === true,
       apiEnabled: hasEnabledApiTrigger(a),
       icon:       slugIconMap[a.workflow] ?? CodeBracketIcon,
       color:      slugColorMap[a.workflow] ?? "var(--color-teal-500)",
+      raw:        a,
     };
   });
 }
@@ -122,13 +142,17 @@ function AutomationCard({
   automation,
   busy,
   running,
+  togglingSchedule,
   onRun,
+  onToggleSchedule,
   onDelete,
 }: {
   automation: AutomationRow;
   busy: boolean;
   running: boolean;
+  togglingSchedule: boolean;
   onRun: () => void;
+  onToggleSchedule: () => void;
   onDelete: () => void;
 }) {
   const Icon = automation.icon;
@@ -148,9 +172,16 @@ function AutomationCard({
             <span className="text-sm font-medium text-fg-2 group-hover:text-fg">{automation.name}</span>
             <span className="font-mono text-xs text-fg-muted">{automation.workflow}</span>
             {automation.schedule && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-teal-500/10 border border-teal-500/20 px-2 py-0.5 text-[11px] font-medium text-teal-300">
+              <span
+                className={
+                  automation.scheduleEnabled
+                    ? "inline-flex items-center gap-1 rounded-full bg-teal-500/10 border border-teal-500/20 px-2 py-0.5 text-[11px] font-medium text-teal-300"
+                    : "inline-flex items-center gap-1 rounded-full bg-amber/10 border border-amber/20 px-2 py-0.5 text-[11px] font-medium text-amber"
+                }
+              >
                 <ClockIcon className="size-3" />
                 {automation.schedule}
+                {!automation.scheduleEnabled && " · paused"}
               </span>
             )}
           </div>
@@ -169,10 +200,23 @@ function AutomationCard({
       {automation.schedule ? (
         <button
           type="button"
-          title="Pause schedule"
-          className="flex size-8 shrink-0 items-center justify-center rounded-full border border-amber/20 text-amber transition-colors hover:border-amber/50 hover:bg-amber/10 hover:text-fg"
+          onClick={onToggleSchedule}
+          disabled={busy || togglingSchedule}
+          aria-label={automation.scheduleEnabled ? "Pause schedule" : "Resume schedule"}
+          title={automation.scheduleEnabled ? "Pause schedule" : "Resume schedule"}
+          className={
+            automation.scheduleEnabled
+              ? "flex size-8 shrink-0 items-center justify-center rounded-full border border-amber/20 text-amber transition-colors hover:border-amber/50 hover:bg-amber/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-60"
+              : "flex size-8 shrink-0 items-center justify-center rounded-full border border-mint/20 text-mint transition-colors hover:border-mint/50 hover:bg-mint/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-60"
+          }
         >
-          <PauseIcon className="size-3.5" />
+          {togglingSchedule ? (
+            <ArrowPathIcon className="size-3.5 animate-spin [animation-duration:450ms]" aria-hidden="true" />
+          ) : automation.scheduleEnabled ? (
+            <PauseIcon className="size-3.5" />
+          ) : (
+            <PlayIcon className="size-3.5" />
+          )}
         </button>
       ) : (
         <button
@@ -272,6 +316,7 @@ export default function Automations() {
   const [pendingDelete, setPendingDelete] = useState<AutomationRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [runningId, setRunningId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   async function runAutomation(automation: AutomationRow) {
     if (runningId) return;
@@ -303,6 +348,35 @@ export default function Automations() {
         a.repository.toLowerCase().includes(lowerQuery) ||
         a.workflowSource?.toLowerCase().includes(lowerQuery)),
   );
+
+  async function toggleSchedule(automation: AutomationRow) {
+    if (togglingId) return;
+    setTogglingId(automation.id);
+    const nextEnabled = !automation.scheduleEnabled;
+    try {
+      await apiData(() =>
+        automationsApi.replaceAutomation(
+          automation.id,
+          automation.revision,
+          scheduleToggleBody(automation.raw, nextEnabled),
+        ),
+      );
+      await mutate(queryKeys.automations.list());
+      toast.push({
+        message: `Schedule for “${automation.name}” ${nextEnabled ? "resumed" : "paused"}.`,
+      });
+      setTogglingId(null);
+    } catch (cause) {
+      toast.push({
+        tone: "error",
+        message:
+          cause instanceof ApiError && cause.message
+            ? cause.message
+            : "Couldn't toggle the schedule. Please try again.",
+      });
+      setTogglingId(null);
+    }
+  }
 
   async function confirmDelete() {
     if (!pendingDelete) return;
@@ -378,9 +452,15 @@ export default function Automations() {
               <AutomationCard
                 key={automation.id}
                 automation={automation}
-                busy={deleting || (runningId !== null && runningId !== automation.id)}
+                busy={
+                  deleting ||
+                  (runningId !== null && runningId !== automation.id) ||
+                  (togglingId !== null && togglingId !== automation.id)
+                }
                 running={runningId === automation.id}
+                togglingSchedule={togglingId === automation.id}
                 onRun={() => runAutomation(automation)}
+                onToggleSchedule={() => toggleSchedule(automation)}
                 onDelete={() => setPendingDelete(automation)}
               />
             ))}
