@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1XVTQNZH6WXMR33KC5EPEVH.jsonl b/.fabro/journal/01M1XVTQNZH6WXMR33KC5EPEVH.jsonl
+new file mode 100644
+index 000000000..34ed28fcd
+--- /dev/null
++++ b/.fabro/journal/01M1XVTQNZH6WXMR33KC5EPEVH.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1XVTQNZH6WXMR33KC5EPEVH","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T12:00:24Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1XVTQNZH6WXMR33KC5EPEVH","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-07T12:01:16Z","data":"Surveyor pass (seed_cycles start=1): remote `upstream` -> `https://github.com/fabro-sh/fabro` confirmed; fetched `upstream` and `origin` with --prune. `git rev-list --count origin/denkhaus..upstream/main` = 0 (< 5 MIN threshold), so no merge slot is consumed; drift journal: count 0, newest upstream subject 'Bump version to 0.348.0-nightly.0'. Routing to 'Work' (develop+revisor cycle). Friction: fetch output was extremely verbose (hundreds of new remote-tracking run/meta branches), but exit code 0 and the count is reliable."}
