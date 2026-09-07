@@ -1,0 +1,2 @@
+{"$schema":"fabro-journal-v1","run_id":"01M1Y2SMEVDHAFB59GZV9B84CQ","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T14:02:03Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M1Y2SMEVDHAFB59GZV9B84CQ","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-07T14:02:51Z","data":{"painpoints":[],"observations":["fabro-513e was top of 152 ready seeds; sd ready worked fine with --limit 200","Basis line verified: run 01M1XVXF3MJHD0DXVCA7YXDH9G, justfile and fabro-validate/src/rules/unresolved_file_ref.rs both present in current tree"]}}
