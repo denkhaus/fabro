@@ -485,7 +485,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T12:34:24.115307724Z",
-  "last_event_at": "2026-09-07T12:41:10.797164011Z",
+  "last_event_at": "2026-09-07T12:41:16.437821003Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -913,9 +913,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 195,
       "checkpoint": {
-        "timestamp": "2026-09-07T12:41:11.000423404Z",
+        "timestamp": "2026-09-07T12:41:15.478495899Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -925,26 +925,12 @@
         ],
         "node_retries": {},
         "context_values": {
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "internal.fidelity": "compact",
-          "internal.run_id": "01M1XXS4T13GQS8XKA3FX25D8D",
-          "response.file": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.file",
-            "chars": 906,
-            "preview": "Filed five seeds (`fabro-513e`, `fabro-43ba`, `fabro-fb19`, `fabro-21c0`, `fabro-59b0`) after per-theme searches found no duplicates; thematic overlaps with `fabro-93a7`, `fabro-1e9f`, and closed `fab"
-          },
-          "filed_seed_ids": [
-            "fabro-513e",
-            "fabro-43ba",
-            "fabro-fb19",
-            "fabro-21c0",
-            "fabro-59b0"
-          ],
+          "internal.retry_count.start": 0,
+          "internal.thread_id": "analyze",
           "internal.retry_count.file": 0,
-          "graph.max_node_visits": "30",
-          "graph.inspects": "develop,merge-upstream",
+          "outcome": "succeeded",
           "internal.node_visit_count": 1,
+          "graph.rankdir": "LR",
           "revision_findings": [
             {
               "title": "Add a just validate-workflows recipe for graph-only validation without a Rust cold build",
@@ -972,45 +958,30 @@
               "priority": 2
             }
           ],
-          "seed_cycles": {
-            "select": 1,
-            "analyze": 1,
-            "file": 1
-          },
-          "revisor_target_title": "Develop one seed per run: claim next open seed, implement, gate, review, exit",
-          "preferred_label": "Staged",
+          "last_stage": "file",
+          "internal.fidelity": "compact",
+          "internal.seed_cycle_anchor": "01M1XVXF3MJHD0DXVCA7YXDH9G",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "revisor_target_run_id": "01M1XVXF3MJHD0DXVCA7YXDH9G",
+          "graph.inspects": "develop,merge-upstream",
+          "graph.max_node_visits": "30",
           "response.select": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.select",
             "chars": 1399,
             "preview": "Selected the newest qualifying run: develop run `01M1XVXF3MJHD0DXVCA7YXDH9G` (created 2026-09-07T12:01:32Z, succeeded, `sandbox_available` true, version `8afe037f...` matches the develop baseline, no "
           },
-          "internal.retry_count.analyze": 0,
-          "internal.thread_id": "analyze",
-          "thread.analyze.current_node": "file",
-          "failure_class": "",
-          "response.analyze": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "chars": 6349,
-            "preview": "Tracker check complete. Cross-referencing each recommendation against open/closed seeds: rec 2 (both preamble caps) duplicates open seeds `fabro-cf3e` + `fabro-8d2c`; rec 6 (top-N sd ready) duplicates"
-          },
-          "internal.exit_kind": "natural",
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "thread.select.current_node": "analyze",
           "thread.start.current_node": "select",
-          "graph.preamble_budget_kb": "24",
-          "internal.retry_count.start": 0,
-          "internal.seed_cycle_anchor": "01M1XVXF3MJHD0DXVCA7YXDH9G",
-          "revisor_target_status": "succeeded",
-          "revisor_target_wall": "31.2 min",
-          "internal.retry_count.select": 0,
+          "internal.work_dir": "/workspace/fabro",
           "current_node": "file",
-          "revisor_target_run_id": "01M1XVXF3MJHD0DXVCA7YXDH9G",
-          "graph.rankdir": "LR",
-          "failure_signature": "",
-          "last_response": "Filed five seeds (`fabro-513e`, `fabro-43ba`, `fabro-fb19`, `fabro-21c0`, `fabro-59b0`) after per-theme searches found no duplicates; thematic overlaps with `fabro-93a7`, `fabro-1e9f`, and closed `fab",
-          "revisor_target_workflow_version": "8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98",
+          "filed_seed_ids": [
+            "fabro-513e",
+            "fabro-43ba",
+            "fabro-fb19",
+            "fabro-21c0",
+            "fabro-59b0"
+          ],
+          "internal.retry_count.select": 0,
           "journal": {
             "painpoints": [],
             "observations": [
@@ -1018,15 +989,40 @@
               "finding 2 cross-references fabro-93a7/fabro-1e9f and finding 5 cross-references closed fabro-37a6 as complementary, so the develop planner may bundle those pairs"
             ]
           },
-          "internal.work_dir": "/workspace/fabro",
-          "outcome": "succeeded",
-          "last_stage": "file"
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 906,
+            "preview": "Filed five seeds (`fabro-513e`, `fabro-43ba`, `fabro-fb19`, `fabro-21c0`, `fabro-59b0`) after per-theme searches found no duplicates; thematic overlaps with `fabro-93a7`, `fabro-1e9f`, and closed `fab"
+          },
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.analyze": 0,
+          "internal.exit_kind": "natural",
+          "internal.run_id": "01M1XXS4T13GQS8XKA3FX25D8D",
+          "preferred_label": "Staged",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "thread.analyze.current_node": "file",
+          "last_response": "Filed five seeds (`fabro-513e`, `fabro-43ba`, `fabro-fb19`, `fabro-21c0`, `fabro-59b0`) after per-theme searches found no duplicates; thematic overlaps with `fabro-93a7`, `fabro-1e9f`, and closed `fab",
+          "thread.select.current_node": "analyze",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 6349,
+            "preview": "Tracker check complete. Cross-referencing each recommendation against open/closed seeds: rec 2 (both preamble caps) duplicates open seeds `fabro-cf3e` + `fabro-8d2c`; rec 6 (top-N sd ready) duplicates"
+          },
+          "revisor_target_status": "succeeded",
+          "revisor_target_wall": "31.2 min",
+          "failure_signature": "",
+          "revisor_target_title": "Develop one seed per run: claim next open seed, implement, gate, review, exit",
+          "failure_class": "",
+          "revisor_target_workflow_version": "8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98"
         },
         "node_outcomes": {
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "analyze": {
             "status": "succeeded",
             "preferred_label": "Findings ready",
@@ -1107,6 +1103,10 @@
               "tool_time_ms": 130837,
               "active_time_ms": 244608
             }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
           },
           "file": {
             "status": "succeeded",
@@ -1222,17 +1222,103 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "f593d57d70b84e814a1be119e4a109c45c5535d6",
         "node_visits": {
-          "select": 1,
           "start": 1,
+          "select": 1,
           "analyze": 1,
           "file": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1XXS4T13GQS8XKA3FX25D8D.jsonl b/.fabro/journal/01M1XXS4T13GQS8XKA3FX25D8D.jsonl\nindex bcca8c9..5a7877a 100644\n--- a/.fabro/journal/01M1XXS4T13GQS8XKA3FX25D8D.jsonl\n+++ b/.fabro/journal/01M1XXS4T13GQS8XKA3FX25D8D.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XXS4T13GQS8XKA3FX25D8D\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T12:34:26Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XXS4T13GQS8XKA3FX25D8D\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T12:34:46Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Backlog after this pass: 5 more unrevised fresh live-sandbox develop runs (01M1XE69..., 01M1XCHJT..., 01M1W38BM9..., 01M1W1HHCE..., 01M1VZTJSZ...) plus 4 merge-upstream baseline runs (newest 01M1VJ4TE...); ~20 develop runs stale-evidence (version drift or pre-intent), 16 older develop runs no live sandbox (fabro-8d30a)\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XXS4T13GQS8XKA3FX25D8D\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T12:39:21Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Duplicates withheld from filing (tracker check per fabro-7461 fix): analyst rec 2 (raise preamble_inline_max_kb 16→32 AND preamble_budget_kb 24→32) duplicate_of open seeds fabro-cf3e + fabro-8d2c — exact same knobs already tracked; analyst rec 6 (top-N sd ready listing) duplicate_of open seed fabro-c3b4 — exact match.\",\"Analyst rec 3 (churn annotation) kept despite overlap: different mechanism than open fabro-1e9f (diff base change) and open fabro-93a7 (seed-work classification); closed fabro-4b57 covered only the empty-loop-work-diff case.\",\"The top finding (just validate-workflows) was already present in the target run's implementer journal under observations, not painpoints — surviving finding 4 (workaround-is-a-painpoint clause) fixes that intake gap upstream.\",\"Backlog after this pass: 4 more unrevised fresh live-sandbox develop runs (01M1XE69..., 01M1XCHJT..., 01M1W38BM9..., 01M1W1HHCE...) plus 01M1VZTJSZ... and 4 merge-upstream baseline runs (newest 01M1VJ4TE...); ~20 develop runs still stale-evidence, 16 older runs no live sandbox (fabro-8d30a).\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XXS4T13GQS8XKA3FX25D8D\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T12:41:10Z\",\"data\":{\"painpoints\":[],\"observations\":[\"sd search returned empty output (no match lines) for all six theme queries — treat exit 0 with empty stdout as no matches, not a failure\",\"finding 2 cross-references fabro-93a7/fabro-1e9f and finding 5 cross-references closed fabro-37a6 as complementary, so the develop planner may bundle those pairs\"]}}\ndiff --git a/.fabro/revisions/01M1XVXF3MJHD0DXVCA7YXDH9G.md b/.fabro/revisions/01M1XVXF3MJHD0DXVCA7YXDH9G.md\nnew file mode 100644\nindex 0000000..d492dd5\n--- /dev/null\n+++ b/.fabro/revisions/01M1XVXF3MJHD0DXVCA7YXDH9G.md\n@@ -0,0 +1,34 @@\n+# Revision — run 01M1XVXF3MJHD0DXVCA7YXDH9G\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M1XVXF3MJHD0DXVCA7YXDH9G.md\n+- seeds filed: fabro-513e (just validate-workflows recipe), fabro-43ba (transient churn annotation in evidence.nu), fabro-fb19 (planner briefs inline engine facts), fabro-21c0 (workaround-is-a-painpoint clause in implementer prompt), fabro-59b0 (mechanical-edit rule for comment blocks + Evidence node phrase fix)\n+- basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\n+- revised_at_commit: 9655d15457db349b4920de1f37eb76338e43eab9 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Add a just validate-workflows recipe for graph-only validation without a Rust cold build\n+- filed: fabro-513e (priority 1)\n+- Change: `just validate-workflows` recipe (justfile + small nu wrapper around fabro-validate) that resolves workflow-relative `@`-refs or scopes out `unresolved_file_ref`, so pure graph edits verify in seconds.\n+- Expected effect: eliminates the ~7.1-min cold build and the temp-test file dance (427s of the 445s implementer tool time, ~25% of run wall); implementer wall drops ~30% on platform-targeting seeds.\n+\n+### Mark no-net-diff churn entries as transient in the develop evidence capture\n+- filed: fabro-43ba (priority 2)\n+- Change: `.fabro/workflows/develop/scripts/evidence.nu` annotates churn entries whose net diff vs the claim base is empty with \"(transient, no net diff)\" or drops them.\n+- Expected effect: removes the reviewer's manual `git diff` fallback on `.seeds/issues.jsonl` and the risk of a Verification-blocked cycle. Complements fabro-93a7 (seed-work classification); different mechanism from fabro-1e9f (diff base) — cross-referenced, nothing closed.\n+\n+### Require planner briefs to inline load-bearing engine facts instead of citing source paths\n+- filed: fabro-fb19 (priority 2)\n+- Change: `.fabro/workflows/develop/prompts/planner.md` step 5 gains a brief-shaping rule: when a brief depends on verified engine mechanics, inline 2–3 exact facts (attribute names + constraints like brace-free stderr, `output.<node_id>` convention).\n+- Expected effect: implementer re-exploration replaced by inlined facts; direct cut into the costliest stage (86% of run cost, $1.084 of $1.256).\n+\n+### Port the workaround-is-a-painpoint clause to the implementer prompt's journal section\n+- filed: fabro-21c0 (priority 2)\n+- Change: `.fabro/workflows/develop/prompts/implementer.md` Journal section adds the reviewer prompt's clause \"a workaround you performed is a painpoint, not an observation\".\n+- Expected effect: cost-bearing friction reliably lands as painpoints; fix ideas like fabro-513e get filed at correct priority without a human rereading observations.\n+\n+### Extend the mechanical-edit rule to comment blocks and fix the duplicated phrase in the Evidence node comment\n+- filed: fabro-59b0 (priority 2)\n+- Change: fix the one-word duplication in `.fabro/workflows/develop/workflow.fabro` (Evidence node comment) with the next loop-touching seed; extend `.fabro/workflows/develop/prompts/implementer.md` step 4 so comment-block rewrites get the same one-pass sed + grep-anchor check.\n+- Expected effect: recurrence of hand-edit slips in large comment rewrites prevented at negligible cost. Closed seed fabro-37a6's mechanical-transform rule covers code only — complementary, nothing superseded.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 8a7c017..f02b7a5 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -234,3 +234,8 @@\n {\"id\":\"fabro-919b\",\"title\":\"SENTINEL (do not close): manual grill-session gate — permanently blocked by design\",\"status\":\"open\",\"type\":\"task\",\"priority\":4,\"createdAt\":\"2026-09-07T12:05:25.947Z\",\"updatedAt\":\"2026-09-07T12:06:11.357Z\",\"description\":\"Permanent blocker gate for grill-session seeds that must NOT be autonomously implemented (user directive 2026-09-07). Mechanics: this sentinel is mutually blocked by its lock partner fabro-80cc (sd silently rejects self-dependencies, verified 2026-09-07), so both stay out of 'sd ready' forever. Any seed depending on this sentinel is likewise hidden from the planner until its dependency edge is removed. DO NOT close this sentinel, DO NOT remove any sentinel-pair edge. Usage: grill-session seeds add 'sd dep add <id> fabro-919b'; when the session concludes: 'sd dep remove <session-id> fabro-919b', file outcome seeds, close the session seed. Reusable for future grill sessions.\",\"labels\":[\"grill\",\"needs-user\",\"sentinel\"],\"blocks\":[\"fabro-b11a\",\"fabro-80cc\"],\"blockedBy\":[\"fabro-80cc\"]}\n {\"id\":\"fabro-80cc\",\"title\":\"SENTINEL LOCK PARTNER (do not close): mutual blocker for fabro-919b grill gate\",\"status\":\"open\",\"type\":\"task\",\"priority\":4,\"createdAt\":\"2026-09-07T12:06:01.751Z\",\"updatedAt\":\"2026-09-07T12:06:05.649Z\",\"description\":\"Permanent lock partner for fabro-919b. These two sentinels block EACH OTHER (mutual dependency cycle), so both are permanently hidden from 'sd ready' and can never be picked by the develop workflow. sd silently rejects self-dependencies (verified 2026-09-07), which is why the gate needs a partner seed instead. DO NOT close either sentinel, DO NOT remove either dependency edge. Grill-session seeds depend on fabro-919b; when a session concludes, only remove the SESSION seed's edge (sd dep remove <session-seed> fabro-919b) — the sentinel pair stays locked forever and is reusable for future grill sessions.\",\"labels\":[\"grill\",\"needs-user\",\"sentinel\"],\"blocks\":[\"fabro-919b\"],\"blockedBy\":[\"fabro-919b\"]}\n {\"id\":\"fabro-5e09\",\"title\":\"Develop planner: pick only seeds assigned to fabro (sd ready --assignee fabro) — deterministic line/user ownership split\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T12:16:32.837Z\",\"updatedAt\":\"2026-09-07T12:26:40.545Z\",\"assignee\":\"fabro\",\"description\":\"USER CORRECTION 2026-09-07 (governance): the LINE implements only the MECHANISM; WHICH seeds belong to the line is a USER decision, never a bulk heuristic run by the line itself.\\n\\nMECHANISM (line implements): (1) develop planner prompt (.fabro/workflows/develop/prompts/planner.md) candidate source becomes 'sd ready --assignee fabro --limit 200' — CLI pre-filters, the LLM never sees seeds not assigned to fabro (data-level determinism); (2) goal fast-path honors a named seed id ONLY when assignee is fabro; (3) claim step: 'sd update <id> --status in_progress --assignee fabro'; (4) Tracker-empty on the FILTERED view = legitimate end of work (park), not a broken tracker — FAIL-CLOSED: while the backlog is unassigned the line does nothing rather than something; (5) docs/agents/issue-tracker.md documents the convention: assignee is the ownership switch; filers assign at creation; the user can reassign/unassign anytime as veto.\\n\\nOWNERSHIP (user decides, NOT this seed's implementer): the existing backlog assignment list is prepared by the agent as a proposal, reviewed and approved by the USER in chat (or the pending grill session), then applied from the user side. NO bulk-assign by the develop run. The sentinel pair (fabro-919b/fabro-80cc) stays in place until the mechanism lands AND the user has curated the backlog; retiring it is part of the user-approved migration, not this implementation.\\n\\nAcceptance: planner prompt ships the filtered command; a user-assigned open seed never appears in a develop run's candidates; empty filtered view parks; docs updated; ownership list untouched by the implementer.\",\"labels\":[\"workflows\",\"revision\"]}\n+{\"id\":\"fabro-513e\",\"title\":\"Add a just validate-workflows recipe for graph-only validation without a Rust cold build\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T12:40:03.195Z\",\"updatedAt\":\"2026-09-07T12:40:03.195Z\",\"description\":\"In run 01M1XVXF3MJHD0DXVCA7YXDH9G the implementer verified a pure workflow-graph edit by writing a temp integration test lib/components/fabro-validate/tests/tmp_validate_develop.rs and running it: 427,565 ms (~7.1 min cold build), one failure on unresolved_file_ref (@prompts refs), warm re-run 2.9s, then manual deletion — 427s of the 445s implementer tool time (~25% of run wall). Add a just validate-workflows recipe (justfile + small nu wrapper around fabro-validate) that resolves workflow-relative @-refs or scopes out unresolved_file_ref so graph edits verify in seconds. Expected effect: ~7 min and the temp-file dance eliminated on every platform-targeting seed (most of the tracker's High queue); implementer wall drops ~30% on that seed class. Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-43ba\",\"title\":\"Mark no-net-diff churn entries as transient in the develop evidence capture\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T12:40:09.830Z\",\"updatedAt\":\"2026-09-07T12:40:09.830Z\",\"description\":\"The loop-work diff omitted .seeds/issues.jsonl (+1/-1 churn), so the reviewer ran its own git diff <claim-base> -- .seeds/issues.jsonl and found it empty (reviewer journal obs 2); every run churns issues.jsonl on claim/close so this manual fallback fires constantly. Change .fabro/workflows/develop/scripts/evidence.nu to annotate churn entries whose net diff vs the claim base is empty with '(transient, no net diff)' or drop them. Expected effect: removes the reviewer's manual git-diff fallback and the risk it escalates to a Verification-blocked cycle. Complements open seed fabro-93a7 (seed-work classification) and is a different mechanism from fabro-1e9f (diff base). Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-fb19\",\"title\":\"Require planner briefs to inline load-bearing engine facts instead of citing source paths\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T12:40:15.961Z\",\"updatedAt\":\"2026-09-07T12:40:15.961Z\",\"description\":\"The planner spent ~4 min verifying engine mechanics (stdin_source resolution, command.output, output.* keys — reading command.rs, context_keys.rs), recorded them as terse path-citing observations, and the implementer re-derived the same mechanics anyway (seq 147-226, minutes of its 15-min inference) — in the stage consuming 86% of run cost (.084 of .256). Change .fabro/workflows/develop/prompts/planner.md step 5 (brief-shaping rule): when a brief depends on verified engine mechanics, inline 2-3 exact facts (attribute names + constraints like brace-free stderr, output.<node_id> convention). Expected effect: implementer re-exploration replaced by inlined facts; direct cut into the costliest stage. Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-21c0\",\"title\":\"Port the workaround-is-a-painpoint clause to the implementer prompt's journal section\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T12:40:23.778Z\",\"updatedAt\":\"2026-09-07T12:40:23.778Z\",\"description\":\"The run's single most expensive friction (the 7.1-min validation cold build) was journaled under observations with a complete fix idea, not under painpoints — the improve loop that scans journals missed it as a result. The reviewer prompt already says 'a workaround you performed is a painpoint, not an observation'; the implementer prompt's journal definition ('dev-loop friction in platform assets') lacks the clause. Change .fabro/workflows/develop/prompts/implementer.md Journal section to add the same clause. Expected effect: cost-bearing friction reliably lands as painpoints; fix ideas like the validate-workflows recipe (fabro-513e) get filed at correct priority without a human rereading observations. Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-59b0\",\"title\":\"Extend the mechanical-edit rule to comment blocks and fix the duplicated phrase in the Evidence node comment\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T12:40:35.095Z\",\"updatedAt\":\"2026-09-07T12:40:35.095Z\",\"description\":\"The diff introduced a duplicated phrase in the Evidence node comment ('…what the read-only reviewer needs. of what the read-only reviewer needs.'), flagged as a non-blocking nit and shipped (reviewer journal obs 3) — a hand-edit slip in a large comment rewrite; closed seed fabro-37a6's mechanical-transform rule covers code only. Fix the one-word duplication in .fabro/workflows/develop/workflow.fabro (Evidence node comment) with the next loop-touching seed, and extend .fabro/workflows/develop/prompts/implementer.md step 4 so comment-block rewrites get the same one-pass sed + grep-anchor check. Expected effect: recurrence prevented at negligible cost. Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 85,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T12:41:15.535372513Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 373384,
+      "inference_time_ms": 219955,
+      "tool_time_ms": 135333,
+      "active_time_ms": 355288
+    },
+    "final_git_commit_sha": "f593d57d70b84e814a1be119e4a109c45c5535d6",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 18608,
+          "inference_time_ms": 16082,
+          "tool_time_ms": 1823,
+          "active_time_ms": 17905
+        },
+        "billing_usd_micros": 44429,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 245137,
+          "inference_time_ms": 113771,
+          "tool_time_ms": 130837,
+          "active_time_ms": 244608
+        },
+        "billing_usd_micros": 81570,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 93326,
+          "inference_time_ms": 90102,
+          "tool_time_ms": 2673,
+          "active_time_ms": 92775
+        },
+        "billing_usd_micros": 88867,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 65929,
+      "output_tokens": 7850,
+      "total_tokens": 334543,
+      "reasoning_tokens": 4892,
+      "cache_read_tokens": 255872,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 214866
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1XXS4T13GQS8XKA3FX25D8D.jsonl b/.fabro/journal/01M1XXS4T13GQS8XKA3FX25D8D.jsonl\nnew file mode 100644\nindex 0000000..5a7877a\n--- /dev/null\n+++ b/.fabro/journal/01M1XXS4T13GQS8XKA3FX25D8D.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XXS4T13GQS8XKA3FX25D8D\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T12:34:26Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XXS4T13GQS8XKA3FX25D8D\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T12:34:46Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Backlog after this pass: 5 more unrevised fresh live-sandbox develop runs (01M1XE69..., 01M1XCHJT..., 01M1W38BM9..., 01M1W1HHCE..., 01M1VZTJSZ...) plus 4 merge-upstream baseline runs (newest 01M1VJ4TE...); ~20 develop runs stale-evidence (version drift or pre-intent), 16 older develop runs no live sandbox (fabro-8d30a)\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XXS4T13GQS8XKA3FX25D8D\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T12:39:21Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Duplicates withheld from filing (tracker check per fabro-7461 fix): analyst rec 2 (raise preamble_inline_max_kb 16→32 AND preamble_budget_kb 24→32) duplicate_of open seeds fabro-cf3e + fabro-8d2c — exact same knobs already tracked; analyst rec 6 (top-N sd ready listing) duplicate_of open seed fabro-c3b4 — exact match.\",\"Analyst rec 3 (churn annotation) kept despite overlap: different mechanism than open fabro-1e9f (diff base change) and open fabro-93a7 (seed-work classification); closed fabro-4b57 covered only the empty-loop-work-diff case.\",\"The top finding (just validate-workflows) was already present in the target run's implementer journal under observations, not painpoints — surviving finding 4 (workaround-is-a-painpoint clause) fixes that intake gap upstream.\",\"Backlog after this pass: 4 more unrevised fresh live-sandbox develop runs (01M1XE69..., 01M1XCHJT..., 01M1W38BM9..., 01M1W1HHCE...) plus 01M1VZTJSZ... and 4 merge-upstream baseline runs (newest 01M1VJ4TE...); ~20 develop runs still stale-evidence, 16 older runs no live sandbox (fabro-8d30a).\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XXS4T13GQS8XKA3FX25D8D\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T12:41:10Z\",\"data\":{\"painpoints\":[],\"observations\":[\"sd search returned empty output (no match lines) for all six theme queries — treat exit 0 with empty stdout as no matches, not a failure\",\"finding 2 cross-references fabro-93a7/fabro-1e9f and finding 5 cross-references closed fabro-37a6 as complementary, so the develop planner may bundle those pairs\"]}}\ndiff --git a/.fabro/reviews/develop/01M1XVXF3MJHD0DXVCA7YXDH9G.md b/.fabro/reviews/develop/01M1XVXF3MJHD0DXVCA7YXDH9G.md\nnew file mode 100644\nindex 0000000..1635d56\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M1XVXF3MJHD0DXVCA7YXDH9G.md\n@@ -0,0 +1,42 @@\n+# Improve review — run 01M1XVXF3MJHD0DXVCA7YXDH9G\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (31.2 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-07 12:37+0000 by revisor `fabro_ask`\n+\n+---\n+\n+All evidence below is from this run's events, stage transcripts, and stage journals (run 01M1XVXF3MJHD0DXVCA7YXDH9G, seed fabro-56f4, succeeded in 28m15s active / $1.256 total; implementer = 22.5m wall and $1.084 — 86% of run cost; planner $0.119/220s; reviewer $0.053/80s; tester 5.7s; evidence 0.4s; closeout 0.3s; zero retries, zero warn/error log lines).\n+\n+## Recommendations, by expected impact\n+\n+**1. Add a `just validate-workflows` recipe (graph parse+lint without a Rust cold build) — file: `justfile` + a small nu wrapper around fabro-validate**\n+What happened: to verify a pure workflow-graph edit, the implementer wrote a temporary integration test `lib/components/fabro-validate/tests/tmp_validate_develop.rs` and ran it — that single shell call took **427,565 ms (~7.1 min cold build)**, failed once on `unresolved_file_ref` (`@prompts/*.md` refs aren't resolved by raw parse+lint), got special-cased, re-run (2.9s warm), then deleted (from run events, seq 382–394). That one call is 427s of the stage's 445s tool time — ~25% of total run wall time — and it created a temp artifact that had to be manually removed. This exact fix was already proposed in the implementer journal but filed under `observations`, so the actionable step is: file it as a seed (or land it directly). The recipe must resolve workflow-relative `@`-refs (or scope out `unresolved_file_ref`) — that's the trap the temp test hit.\n+Expected effect: ~7 minutes and the temp-file dance eliminated on every platform-targeting seed (most of the current tracker's High queue); implementer wall drops ~30% on this seed class.\n+\n+**2. Raise both inline caps together: reviewer `preamble_inline_max_kb` 16→32 AND graph `preamble_budget_kb` 24→32 — file: `.fabro/workflows/develop/workflow.fabro` (reviewer node + graph attrs; open seeds fabro-cf3e + fabro-8d2c)**\n+What happened: this run's evidence capture was **20,932 bytes** and was demoted to a blob ref (`Output (21.1 KB; full value: /tmp/fabro/runtime/blobs/31b00…json)` in the reviewer's stage prompt, from run events). The reviewer had to burn a `read_file` round trip before judging (reviewer journal: \"Verified all … from the blob evidence\"). Raising only the per-node knob to 32 won't help while the aggregate budget stays 24 KB — a 21 KB capture plus the other preamble sections still trips the aggregate demote.\n+Expected effect: captures up to ~30 KB arrive inline; one fewer tool round trip per review and the \"unread blob ref → Verification blocked\" rejection class disappears (that route costs a full evidence re-cycle when it fires).\n+\n+**3. Annotate no-net-diff churn files in the evidence capture — file: `.fabro/workflows/develop/scripts/evidence.nu`**\n+What happened: the loop-work diff omitted `.seeds/issues.jsonl` (+1/−1 churn), so the reviewer ran `git diff 31f7b88 -- .seeds/issues.jsonl` itself and found it empty — transient tracker status churn (reviewer journal, observation 2). Every run churns `issues.jsonl` on claim and close, so this manual fallback fires constantly.\n+Expected effect: churn entries whose net diff vs the claim base is empty get marked \"(transient, no net diff)\" or dropped — removes the reviewer's manual git-diff fallback and the chance it escalates to a Verification-blocked cycle. (Complements open seed fabro-93a7, the seed-work side of the same classification problem.)\n+\n+**4. Planner briefs should inline load-bearing engine facts instead of citing file paths — file: `.fabro/workflows/develop/prompts/planner.md` (brief-shaping rule, step 5)**\n+What happened: the planner spent ~4 minutes verifying engine mechanics (`stdin_source` ref resolution, `command.output`, custom `output.*` keys — reading `command.rs`, `context_keys.rs`; run events seq 65–91), then recorded them as two terse observations citing source paths. The implementer **re-derived the same mechanics anyway** (grep/read of `command.rs`, `graph.rs`, `preamble_allow_keys_exist.rs`, `context_keys.rs` at seq 147–226, minutes of the 15-minute inference), and only at the end distilled them into lesson mx-2eb2e0. The facts that mattered were narrow and stable: attr names, the brace-free-stderr constraint, the `output.<node_id>` key convention.\n+Expected effect: when a brief depends on verified engine mechanics, 2–3 inlined facts (exact attribute names + constraints) replace the implementer's re-exploration — a direct cut into the stage that consumes 86% of run cost.\n+\n+**5. Port the \"workaround = painpoint\" clause to the implementer prompt — file: `.fabro/workflows/develop/prompts/implementer.md` (Journal section)**\n+What happened: the single most expensive friction of the run (the 7-minute validation build, recommendation 1) was reported under `observations` with a complete fix idea, not under `painpoints`. The reviewer prompt explicitly says \"a workaround you performed is a painpoint, not an observation\"; the implementer prompt's definition (\"dev-loop friction in platform assets\") lacks that clause — and the implementer performed exactly that kind of workaround.\n+Expected effect: the improve loop that scans journals reliably receives cost-bearing friction as painpoints; seeds like `validate-workflows` get filed with correct priority instead of depending on a human rereading observations.\n+\n+**6. Top-N the planner's seed listing — file: `.fabro/workflows/develop/prompts/planner.md` (sd command table; open seed fabro-c3b4)**\n+What happened: `sd ready --limit 200` returned a ~12.3 KB firehose (100+ seeds, output truncated by the agent's own `head -100`; run events seq 33–34) — and the planner picked the **first** entry. The `--limit 200` rule exists to defeat truncation of *lower-priority* seeds, but the planner only ever needs the top few of a priority-ordered list.\n+Expected effect: `sd ready --limit 200 | head -40` (documented in the prompt table) halves the planner's tracker context and trims its 220s/$0.119 pass without changing pick quality.\n+\n+**7. Fold the shipped cosmetic nit into the next loop-touching seed and extend the mechanical-edit rule to comment blocks — file: `.fabro/workflows/develop/workflow.fabro` (Evidence node comment) + `prompts/implementer.md` step 4**\n+What happened: the diff introduced a duplicated phrase in the Evidence node comment (\"…what the read-only reviewer needs. of what the read-only reviewer needs.\"), flagged by the reviewer as a non-blocking nit and shipped anyway (reviewer journal, observation 3) — a hand-edit slip in a large comment rewrite, the same class the mechanical-transform rule already guards for code.\n+Expected effect: one-word fix lands with the next platform seed; the prompt tweak (\"comment-block rewrites get the same one-pass sed + grep-anchor check\") prevents recurrence at negligible cost.\n+\n+**What's already working (don't touch):** deterministic nodes are effectively free (tester 5.7s warm, evidence 0.4s, closeout 0.3s); first-pass approval with zero retries across all stages; the reviewer's inline PASS/FAIL report let it approve mostly from context (80s total). The cost and time concentration is entirely in the implementer stage — recommendations 1 and 4 are where the leverage is.\ndiff --git a/.fabro/revisions/01M1XVXF3MJHD0DXVCA7YXDH9G.md b/.fabro/revisions/01M1XVXF3MJHD0DXVCA7YXDH9G.md\nnew file mode 100644\nindex 0000000..d492dd5\n--- /dev/null\n+++ b/.fabro/revisions/01M1XVXF3MJHD0DXVCA7YXDH9G.md\n@@ -0,0 +1,34 @@\n+# Revision — run 01M1XVXF3MJHD0DXVCA7YXDH9G\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M1XVXF3MJHD0DXVCA7YXDH9G.md\n+- seeds filed: fabro-513e (just validate-workflows recipe), fabro-43ba (transient churn annotation in evidence.nu), fabro-fb19 (planner briefs inline engine facts), fabro-21c0 (workaround-is-a-painpoint clause in implementer prompt), fabro-59b0 (mechanical-edit rule for comment blocks + Evidence node phrase fix)\n+- basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\n+- revised_at_commit: 9655d15457db349b4920de1f37eb76338e43eab9 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Add a just validate-workflows recipe for graph-only validation without a Rust cold build\n+- filed: fabro-513e (priority 1)\n+- Change: `just validate-workflows` recipe (justfile + small nu wrapper around fabro-validate) that resolves workflow-relative `@`-refs or scopes out `unresolved_file_ref`, so pure graph edits verify in seconds.\n+- Expected effect: eliminates the ~7.1-min cold build and the temp-test file dance (427s of the 445s implementer tool time, ~25% of run wall); implementer wall drops ~30% on platform-targeting seeds.\n+\n+### Mark no-net-diff churn entries as transient in the develop evidence capture\n+- filed: fabro-43ba (priority 2)\n+- Change: `.fabro/workflows/develop/scripts/evidence.nu` annotates churn entries whose net diff vs the claim base is empty with \"(transient, no net diff)\" or drops them.\n+- Expected effect: removes the reviewer's manual `git diff` fallback on `.seeds/issues.jsonl` and the risk of a Verification-blocked cycle. Complements fabro-93a7 (seed-work classification); different mechanism from fabro-1e9f (diff base) — cross-referenced, nothing closed.\n+\n+### Require planner briefs to inline load-bearing engine facts instead of citing source paths\n+- filed: fabro-fb19 (priority 2)\n+- Change: `.fabro/workflows/develop/prompts/planner.md` step 5 gains a brief-shaping rule: when a brief depends on verified engine mechanics, inline 2–3 exact facts (attribute names + constraints like brace-free stderr, `output.<node_id>` convention).\n+- Expected effect: implementer re-exploration replaced by inlined facts; direct cut into the costliest stage (86% of run cost, $1.084 of $1.256).\n+\n+### Port the workaround-is-a-painpoint clause to the implementer prompt's journal section\n+- filed: fabro-21c0 (priority 2)\n+- Change: `.fabro/workflows/develop/prompts/implementer.md` Journal section adds the reviewer prompt's clause \"a workaround you performed is a painpoint, not an observation\".\n+- Expected effect: cost-bearing friction reliably lands as painpoints; fix ideas like fabro-513e get filed at correct priority without a human rereading observations.\n+\n+### Extend the mechanical-edit rule to comment blocks and fix the duplicated phrase in the Evidence node comment\n+- filed: fabro-59b0 (priority 2)\n+- Change: fix the one-word duplication in `.fabro/workflows/develop/workflow.fabro` (Evidence node comment) with the next loop-touching seed; extend `.fabro/workflows/develop/prompts/implementer.md` step 4 so comment-block rewrites get the same one-pass sed + grep-anchor check.\n+- Expected effect: recurrence of hand-edit slips in large comment rewrites prevented at negligible cost. Closed seed fabro-37a6's mechanical-transform rule covers code only — complementary, nothing superseded.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 8a7c017..f02b7a5 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -234,3 +234,8 @@\n {\"id\":\"fabro-919b\",\"title\":\"SENTINEL (do not close): manual grill-session gate — permanently blocked by design\",\"status\":\"open\",\"type\":\"task\",\"priority\":4,\"createdAt\":\"2026-09-07T12:05:25.947Z\",\"updatedAt\":\"2026-09-07T12:06:11.357Z\",\"description\":\"Permanent blocker gate for grill-session seeds that must NOT be autonomously implemented (user directive 2026-09-07). Mechanics: this sentinel is mutually blocked by its lock partner fabro-80cc (sd silently rejects self-dependencies, verified 2026-09-07), so both stay out of 'sd ready' forever. Any seed depending on this sentinel is likewise hidden from the planner until its dependency edge is removed. DO NOT close this sentinel, DO NOT remove any sentinel-pair edge. Usage: grill-session seeds add 'sd dep add <id> fabro-919b'; when the session concludes: 'sd dep remove <session-id> fabro-919b', file outcome seeds, close the session seed. Reusable for future grill sessions.\",\"labels\":[\"grill\",\"needs-user\",\"sentinel\"],\"blocks\":[\"fabro-b11a\",\"fabro-80cc\"],\"blockedBy\":[\"fabro-80cc\"]}\n {\"id\":\"fabro-80cc\",\"title\":\"SENTINEL LOCK PARTNER (do not close): mutual blocker for fabro-919b grill gate\",\"status\":\"open\",\"type\":\"task\",\"priority\":4,\"createdAt\":\"2026-09-07T12:06:01.751Z\",\"updatedAt\":\"2026-09-07T12:06:05.649Z\",\"description\":\"Permanent lock partner for fabro-919b. These two sentinels block EACH OTHER (mutual dependency cycle), so both are permanently hidden from 'sd ready' and can never be picked by the develop workflow. sd silently rejects self-dependencies (verified 2026-09-07), which is why the gate needs a partner seed instead. DO NOT close either sentinel, DO NOT remove either dependency edge. Grill-session seeds depend on fabro-919b; when a session concludes, only remove the SESSION seed's edge (sd dep remove <session-seed> fabro-919b) — the sentinel pair stays locked forever and is reusable for future grill sessions.\",\"labels\":[\"grill\",\"needs-user\",\"sentinel\"],\"blocks\":[\"fabro-919b\"],\"blockedBy\":[\"fabro-919b\"]}\n {\"id\":\"fabro-5e09\",\"title\":\"Develop planner: pick only seeds assigned to fabro (sd ready --assignee fabro) — deterministic line/user ownership split\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T12:16:32.837Z\",\"updatedAt\":\"2026-09-07T12:26:40.545Z\",\"assignee\":\"fabro\",\"description\":\"USER CORRECTION 2026-09-07 (governance): the LINE implements only the MECHANISM; WHICH seeds belong to the line is a USER decision, never a bulk heuristic run by the line itself.\\n\\nMECHANISM (line implements): (1) develop planner prompt (.fabro/workflows/develop/prompts/planner.md) candidate source becomes 'sd ready --assignee fabro --limit 200' — CLI pre-filters, the LLM never sees seeds not assigned to fabro (data-level determinism); (2) goal fast-path honors a named seed id ONLY when assignee is fabro; (3) claim step: 'sd update <id> --status in_progress --assignee fabro'; (4) Tracker-empty on the FILTERED view = legitimate end of work (park), not a broken tracker — FAIL-CLOSED: while the backlog is unassigned the line does nothing rather than something; (5) docs/agents/issue-tracker.md documents the convention: assignee is the ownership switch; filers assign at creation; the user can reassign/unassign anytime as veto.\\n\\nOWNERSHIP (user decides, NOT this seed's implementer): the existing backlog assignment list is prepared by the agent as a proposal, reviewed and approved by the USER in chat (or the pending grill session), then applied from the user side. NO bulk-assign by the develop run. The sentinel pair (fabro-919b/fabro-80cc) stays in place until the mechanism lands AND the user has curated the backlog; retiring it is part of the user-approved migration, not this implementation.\\n\\nAcceptance: planner prompt ships the filtered command; a user-assigned open seed never appears in a develop run's candidates; empty filtered view parks; docs updated; ownership list untouched by the implementer.\",\"labels\":[\"workflows\",\"revision\"]}\n+{\"id\":\"fabro-513e\",\"title\":\"Add a just validate-workflows recipe for graph-only validation without a Rust cold build\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T12:40:03.195Z\",\"updatedAt\":\"2026-09-07T12:40:03.195Z\",\"description\":\"In run 01M1XVXF3MJHD0DXVCA7YXDH9G the implementer verified a pure workflow-graph edit by writing a temp integration test lib/components/fabro-validate/tests/tmp_validate_develop.rs and running it: 427,565 ms (~7.1 min cold build), one failure on unresolved_file_ref (@prompts refs), warm re-run 2.9s, then manual deletion — 427s of the 445s implementer tool time (~25% of run wall). Add a just validate-workflows recipe (justfile + small nu wrapper around fabro-validate) that resolves workflow-relative @-refs or scopes out unresolved_file_ref so graph edits verify in seconds. Expected effect: ~7 min and the temp-file dance eliminated on every platform-targeting seed (most of the tracker's High queue); implementer wall drops ~30% on that seed class. Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-43ba\",\"title\":\"Mark no-net-diff churn entries as transient in the develop evidence capture\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T12:40:09.830Z\",\"updatedAt\":\"2026-09-07T12:40:09.830Z\",\"description\":\"The loop-work diff omitted .seeds/issues.jsonl (+1/-1 churn), so the reviewer ran its own git diff <claim-base> -- .seeds/issues.jsonl and found it empty (reviewer journal obs 2); every run churns issues.jsonl on claim/close so this manual fallback fires constantly. Change .fabro/workflows/develop/scripts/evidence.nu to annotate churn entries whose net diff vs the claim base is empty with '(transient, no net diff)' or drop them. Expected effect: removes the reviewer's manual git-diff fallback and the risk it escalates to a Verification-blocked cycle. Complements open seed fabro-93a7 (seed-work classification) and is a different mechanism from fabro-1e9f (diff base). Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-fb19\",\"title\":\"Require planner briefs to inline load-bearing engine facts instead of citing source paths\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T12:40:15.961Z\",\"updatedAt\":\"2026-09-07T12:40:15.961Z\",\"description\":\"The planner spent ~4 min verifying engine mechanics (stdin_source resolution, command.output, output.* keys — reading command.rs, context_keys.rs), recorded them as terse path-citing observations, and the implementer re-derived the same mechanics anyway (seq 147-226, minutes of its 15-min inference) — in the stage consuming 86% of run cost (.084 of .256). Change .fabro/workflows/develop/prompts/planner.md step 5 (brief-shaping rule): when a brief depends on verified engine mechanics, inline 2-3 exact facts (attribute names + constraints like brace-free stderr, output.<node_id> convention). Expected effect: implementer re-exploration replaced by inlined facts; direct cut into the costliest stage. Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-21c0\",\"title\":\"Port the workaround-is-a-painpoint clause to the implementer prompt's journal section\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T12:40:23.778Z\",\"updatedAt\":\"2026-09-07T12:40:23.778Z\",\"description\":\"The run's single most expensive friction (the 7.1-min validation cold build) was journaled under observations with a complete fix idea, not under painpoints — the improve loop that scans journals missed it as a result. The reviewer prompt already says 'a workaround you performed is a painpoint, not an observation'; the implementer prompt's journal definition ('dev-loop friction in platform assets') lacks the clause. Change .fabro/workflows/develop/prompts/implementer.md Journal section to add the same clause. Expected effect: cost-bearing friction reliably lands as painpoints; fix ideas like the validate-workflows recipe (fabro-513e) get filed at correct priority without a human rereading observations. Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-59b0\",\"title\":\"Extend the mechanical-edit rule to comment blocks and fix the duplicated phrase in the Evidence node comment\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T12:40:35.095Z\",\"updatedAt\":\"2026-09-07T12:40:35.095Z\",\"description\":\"The diff introduced a duplicated phrase in the Evidence node comment ('…what the read-only reviewer needs. of what the read-only reviewer needs.'), flagged as a non-blocking nit and shipped (reviewer journal obs 3) — a hand-edit slip in a large comment rewrite; closed seed fabro-37a6's mechanical-transform rule covers code only. Fix the one-word duplication in .fabro/workflows/develop/workflow.fabro (Evidence node comment) with the next loop-touching seed, and extend .fabro/workflows/develop/prompts/implementer.md step 4 so comment-block rewrites get the same one-pass sed + grep-anchor check. Expected effect: recurrence prevented at negligible cost. Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 85,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1837,6 +1923,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 198,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T12:41:15.479539451Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T12:41:15.479311835Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
