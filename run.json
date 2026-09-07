@@ -558,7 +558,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T14:00:21.309645540Z",
-  "last_event_at": "2026-09-07T14:39:28.334548870Z",
+  "last_event_at": "2026-09-07T14:39:33.019929097Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -716,9 +716,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 96,
       "checkpoint": {
-        "timestamp": "2026-09-07T14:39:28.597552072Z",
+        "timestamp": "2026-09-07T14:39:33.019513003Z",
         "current_node": "develop",
         "completed_nodes": [
           "start",
@@ -727,95 +727,52 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.run_id": "01M1Y2PF7V04Z003BDBDRZ1TGP",
-          "thread.start.current_node": "survey",
-          "internal.exit_kind": "soft",
-          "internal.node_visit_count": 1,
-          "child_run_id": "01M1Y2SMEVDHAFB59GZV9B84CQ",
+          "graph.cycle_counter_reset_key": "pass_id",
           "failure_class": "",
-          "graph.preamble_budget_kb": "12",
-          "thread.survey.current_node": "develop",
-          "current_node": "develop",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "last_response": "Journal: child `01M1Y2SMEVDHAFB59GZV9B84CQ` (seed `fabro-513e` \"Add a just validate-workflows recipe\") succeeded and PR #41 was opened, but the merge gate returned `reached=blocked` on the merged-wait",
-          "internal.retry_count.survey": 0,
+          "internal.thread_id": "survey",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "develop": 1
+          },
+          "internal.exit_kind": "soft",
+          "internal.seed_cycle_anchor": "",
+          "internal.work_dir": "/workspace/fabro",
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 461,
             "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": \"survey: upstream count 0 (`origin/denkhaus`..`upstream/main`), "
           },
-          "internal.seed_cycle_anchor": "",
-          "internal.retry_count.start": 0,
+          "internal.fidelity": "compact",
+          "current_node": "develop",
           "last_stage": "develop",
+          "child_run_id": "01M1Y2SMEVDHAFB59GZV9B84CQ",
           "graph.rankdir": "LR",
-          "seed_cycles": {
-            "start": 1,
-            "survey": 1,
-            "develop": 1
-          },
-          "journal": "develop child 01M1Y2SMEVDHAFB59GZV9B84CQ succeeded (seed fabro-513e closed, PR #41) but PR auto-merge blocked; needs human/revisory attention on the merge gate",
+          "outcome": "succeeded",
+          "internal.run_id": "01M1Y2PF7V04Z003BDBDRZ1TGP",
+          "last_response": "Journal: child `01M1Y2SMEVDHAFB59GZV9B84CQ` (seed `fabro-513e` \"Add a just validate-workflows recipe\") succeeded and PR #41 was opened, but the merge gate returned `reached=blocked` on the merged-wait",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "internal.retry_count.start": 0,
+          "graph.max_node_visits": "12",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.survey": 0,
+          "internal.retry_count.develop": 0,
           "failure_signature": "",
+          "journal": "develop child 01M1Y2SMEVDHAFB59GZV9B84CQ succeeded (seed fabro-513e closed, PR #41) but PR auto-merge blocked; needs human/revisory attention on the merge gate",
+          "preferred_label": "Develop child failed",
           "response.develop": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.develop",
             "chars": 882,
             "preview": "Journal: child `01M1Y2SMEVDHAFB59GZV9B84CQ` (seed `fabro-513e` \"Add a just validate-workflows recipe\") succeeded and PR #41 was opened, but the merge gate returned `reached=blocked` on the merged-wait"
           },
+          "thread.survey.current_node": "develop",
           "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "graph.cycle_counter_reset_key": "pass_id",
-          "internal.thread_id": "survey",
-          "internal.retry_count.develop": 0,
-          "internal.fidelity": "compact",
-          "graph.max_node_visits": "12",
-          "outcome": "succeeded",
-          "preferred_label": "Develop child failed",
-          "internal.work_dir": "/workspace/fabro"
+          "graph.preamble_budget_kb": "12",
+          "thread.start.current_node": "survey"
         },
         "node_outcomes": {
-          "survey": {
-            "status": "succeeded",
-            "preferred_label": "Work",
-            "context_updates": {
-              "journal": "survey: upstream count 0 (`origin/denkhaus`..`upstream/main`), below MIN threshold 5 → route Work. No newest upstream subject (zero drift). Remotes `upstream` -> `https://github.com/fabro-sh/fabro` and `origin` both fetched with --prune; huge volume of new remote-tracking branches made output noisy but nothing failed.",
-              "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": \"survey: upstream count 0 (`origin/denkhaus`..`upstream/main`), ",
-              "response.survey": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.survey",
-                "chars": 461,
-                "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": \"survey: upstream count 0 (`origin/denkhaus`..`upstream/main`), "
-              },
-              "last_stage": "survey"
-            },
-            "notes": "Stage completed: survey",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 21674,
-                    "output_tokens": 394,
-                    "reasoning_tokens": 8,
-                    "cache_read_tokens": 40256,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 42573
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 25018,
-              "tool_time_ms": 34205,
-              "active_time_ms": 59223
-            }
-          },
           "start": {
             "status": "succeeded",
             "usage": null
@@ -863,19 +820,143 @@
               "tool_time_ms": 2014053,
               "active_time_ms": 2047263
             }
+          },
+          "survey": {
+            "status": "succeeded",
+            "preferred_label": "Work",
+            "context_updates": {
+              "journal": "survey: upstream count 0 (`origin/denkhaus`..`upstream/main`), below MIN threshold 5 → route Work. No newest upstream subject (zero drift). Remotes `upstream` -> `https://github.com/fabro-sh/fabro` and `origin` both fetched with --prune; huge volume of new remote-tracking branches made output noisy but nothing failed.",
+              "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": \"survey: upstream count 0 (`origin/denkhaus`..`upstream/main`), ",
+              "response.survey": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.survey",
+                "chars": 461,
+                "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": \"survey: upstream count 0 (`origin/denkhaus`..`upstream/main`), "
+              },
+              "last_stage": "survey"
+            },
+            "notes": "Stage completed: survey",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 21674,
+                    "output_tokens": 394,
+                    "reasoning_tokens": 8,
+                    "cache_read_tokens": 40256,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 42573
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 25018,
+              "tool_time_ms": 34205,
+              "active_time_ms": 59223
+            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "8667f8b1685f32b4c039b0484a4b78a906fec673",
         "node_visits": {
-          "survey": 1,
           "develop": 1,
+          "survey": 1,
           "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1Y2PF7V04Z003BDBDRZ1TGP.jsonl b/.fabro/journal/01M1Y2PF7V04Z003BDBDRZ1TGP.jsonl\nindex b3eb44a89..c00552fce 100644\n--- a/.fabro/journal/01M1Y2PF7V04Z003BDBDRZ1TGP.jsonl\n+++ b/.fabro/journal/01M1Y2PF7V04Z003BDBDRZ1TGP.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y2PF7V04Z003BDBDRZ1TGP\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T14:00:23Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y2PF7V04Z003BDBDRZ1TGP\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T14:01:30Z\",\"data\":\"survey: upstream count 0 (`origin/denkhaus`..`upstream/main`), below MIN threshold 5 → route Work. No newest upstream subject (zero drift). Remotes `upstream` -> `https://github.com/fabro-sh/fabro` and `origin` both fetched with --prune; huge volume of new remote-tracking branches made output noisy but nothing failed.\"}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y2PF7V04Z003BDBDRZ1TGP\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T14:39:28Z\",\"data\":\"develop child 01M1Y2SMEVDHAFB59GZV9B84CQ succeeded (seed fabro-513e closed, PR #41) but PR auto-merge blocked; needs human/revisory attention on the merge gate\"}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 3,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T14:39:33.072258970Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 2119810,
+      "inference_time_ms": 58228,
+      "tool_time_ms": 2048258,
+      "active_time_ms": 2106486
+    },
+    "failure": {
+      "reason": "soft_stop",
+      "detail": {
+        "message": "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; the next run re-enters autonomously",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "8667f8b1685f32b4c039b0484a4b78a906fec673",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 59778,
+          "inference_time_ms": 25018,
+          "tool_time_ms": 34205,
+          "active_time_ms": 59223
+        },
+        "billing_usd_micros": 42573,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 2047802,
+          "inference_time_ms": 33210,
+          "tool_time_ms": 2014053,
+          "active_time_ms": 2047263
+        },
+        "billing_usd_micros": 210594,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 141597,
+      "output_tokens": 939,
+      "total_tokens": 336425,
+      "reasoning_tokens": 97,
+      "cache_read_tokens": 193792,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 253167
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1Y2PF7V04Z003BDBDRZ1TGP.jsonl b/.fabro/journal/01M1Y2PF7V04Z003BDBDRZ1TGP.jsonl\nnew file mode 100644\nindex 000000000..c00552fce\n--- /dev/null\n+++ b/.fabro/journal/01M1Y2PF7V04Z003BDBDRZ1TGP.jsonl\n@@ -0,0 +1,3 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y2PF7V04Z003BDBDRZ1TGP\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T14:00:23Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y2PF7V04Z003BDBDRZ1TGP\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T14:01:30Z\",\"data\":\"survey: upstream count 0 (`origin/denkhaus`..`upstream/main`), below MIN threshold 5 → route Work. No newest upstream subject (zero drift). Remotes `upstream` -> `https://github.com/fabro-sh/fabro` and `origin` both fetched with --prune; huge volume of new remote-tracking branches made output noisy but nothing failed.\"}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y2PF7V04Z003BDBDRZ1TGP\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T14:39:28Z\",\"data\":\"develop child 01M1Y2SMEVDHAFB59GZV9B84CQ succeeded (seed fabro-513e closed, PR #41) but PR auto-merge blocked; needs human/revisory attention on the merge gate\"}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 3,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "soft"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1417,6 +1498,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 99,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T14:39:33.019929097Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T14:39:33.019863207Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
