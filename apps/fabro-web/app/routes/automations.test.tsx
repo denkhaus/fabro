@@ -50,7 +50,7 @@ mock.module("swr", () => ({
   useSWRConfig: () => ({ mutate: swrMutateMock }),
 }));
 
-function scheduledAutomation(enabled: boolean) {
+function scheduledAutomation(enabled: boolean, onOverlap?: "fire" | "skip") {
   return {
     id:            "auto_conductor",
     revision:      "32ea7dfb",
@@ -64,6 +64,7 @@ function scheduledAutomation(enabled: boolean) {
     },
     workflow:      "conductor",
     workflow_source: null,
+    on_overlap:    onOverlap,
     triggers:      [
       { id: "t_sched", type: "schedule", enabled, expression: "*/30 * * * *" },
     ],
@@ -127,6 +128,21 @@ describe("automation schedule pause/resume", () => {
     expect(ifMatch).toBe("32ea7dfb");
     expect(body.triggers[0]?.enabled).toBe(false);
     expect(body.triggers[0]?.type).toBe("schedule");
+    // The toggle PUT always carries the overlap policy so a pause/resume
+    // never resets it (fabro-fb16); untagged resolves to skip.
+    expect(body.on_overlap).toBe("skip");
+  });
+
+  test("pause preserves an API-set fire overlap policy", async () => {
+    currentAutomations = [scheduledAutomation(true, "fire")];
+    const renderer = await renderAutomations();
+    const pause = buttonByTitle(renderer, "Pause schedule");
+    await act(async () => {
+      pause.props.onClick();
+    });
+    expect(replaceAutomationMock).toHaveBeenCalledTimes(1);
+    const [, , body] = replaceAutomationMock.mock.calls[0];
+    expect(body.on_overlap).toBe("fire");
   });
 
   test("resume sends PUT with schedule enabled:true", async () => {

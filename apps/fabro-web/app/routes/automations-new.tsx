@@ -139,6 +139,7 @@ function AutomationCreateForm({
           target:      targetFromFormValues(values),
           workflow:    values.workflow.trim(),
           workflow_source: workflowSourceFromFormValues(values),
+          on_overlap: values.onOverlap,
           triggers: triggersFromFormValues(values),
         }),
       );

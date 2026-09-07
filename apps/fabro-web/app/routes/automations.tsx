@@ -76,6 +76,9 @@ function scheduleToggleBody(automation: Automation, enabled: boolean) {
     target:      automation.target,
     workflow:    automation.workflow,
     workflow_source: automation.workflow_source,
+    // Always carry the overlap policy so pausing/resuming a schedule never
+    // resets an API-set policy (fabro-fb16); untagged resolves to skip.
+    on_overlap:  automation.on_overlap ?? "skip",
     triggers:    automation.triggers.map((trigger) =>
       trigger.type === "schedule" ? { ...trigger, enabled } : trigger,
     ),

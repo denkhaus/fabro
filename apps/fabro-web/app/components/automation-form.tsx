@@ -40,6 +40,9 @@ export interface AutomationFormValues {
   manualEnabled: boolean;
   scheduleEnabled: boolean;
   cron: string;
+  /** Effective overlap policy sent on every create/replace so a UI save
+   *  never resets an API-set policy. Default "skip" (fabro-fb16). */
+  onOverlap: "skip" | "fire";
 }
 
 export const EMPTY_AUTOMATION_FORM: AutomationFormValues = {
@@ -60,6 +63,7 @@ export const EMPTY_AUTOMATION_FORM: AutomationFormValues = {
   manualEnabled:             true,
   scheduleEnabled:           false,
   cron:                      "0 9 * * 1-5",
+  onOverlap:                 "skip",
 };
 
 const CRON_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
@@ -92,6 +96,7 @@ export function automationToFormValues(automation: Automation): AutomationFormVa
     manualEnabled:             apiTrigger?.enabled ?? false,
     scheduleEnabled:           scheduleTrigger?.enabled ?? false,
     cron:                      scheduleTrigger?.expression ?? "0 9 * * 1-5",
+    onOverlap:                 automation.on_overlap ?? "skip",
   };
 }
 
@@ -614,49 +619,67 @@ export function AutomationFormFields({
           />
         </Row>
         {values.scheduleEnabled ? (
-          <Row
-            title="Cron expression"
-            help={
-              <>
-                Five-field POSIX cron in UTC. Next run:{" "}
-                <span className="text-fg-2">{describeCron(values.cron)}</span>
-              </>
-            }
-          >
-            <div className="space-y-2">
-              <input
-                type="text"
-                name="cron"
-                aria-label="Cron expression"
-                value={values.cron}
-                onChange={(e) => patch({ cron: e.target.value })}
-                placeholder="0 9 * * 1-5"
-                autoComplete="off"
-                spellCheck={false}
-                className={`${INPUT_CLASS} font-mono`}
-              />
-              <div className="flex flex-wrap gap-1.5">
-                {CRON_PRESETS.map((preset) => {
-                  const active = preset.value === values.cron;
-                  return (
-                    <button
-                      key={preset.value}
-                      type="button"
-                      onClick={() => patch({ cron: preset.value })}
-                      aria-pressed={active}
-                      className={`rounded-full px-2.5 py-1 text-xs transition-colors ${
-                        active
-                          ? "bg-teal-500/15 text-teal-300 outline-1 -outline-offset-1 outline-teal-500/40"
-                          : "bg-overlay text-fg-3 hover:bg-overlay-strong hover:text-fg-2"
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  );
-                })}
+          <>
+            <Row
+              title="Cron expression"
+              help={
+                <>
+                  Five-field POSIX cron in UTC. Next run:{" "}
+                  <span className="text-fg-2">{describeCron(values.cron)}</span>
+                </>
+              }
+            >
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  name="cron"
+                  aria-label="Cron expression"
+                  value={values.cron}
+                  onChange={(e) => patch({ cron: e.target.value })}
+                  placeholder="0 9 * * 1-5"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className={`${INPUT_CLASS} font-mono`}
+                />
+                <div className="flex flex-wrap gap-1.5">
+                  {CRON_PRESETS.map((preset) => {
+                    const active = preset.value === values.cron;
+                    return (
+                      <button
+                        key={preset.value}
+                        type="button"
+                        onClick={() => patch({ cron: preset.value })}
+                        aria-pressed={active}
+                        className={`rounded-full px-2.5 py-1 text-xs transition-colors ${
+                          active
+                            ? "bg-teal-500/15 text-teal-300 outline-1 -outline-offset-1 outline-teal-500/40"
+                            : "bg-overlay text-fg-3 hover:bg-overlay-strong hover:text-fg-2"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          </Row>
+            </Row>
+            <Row
+              title="Overlap policy"
+              help="What a scheduled fire does while a previous run of this automation is still running, queued, or blocked at a gate. Skipping is the safe default; firing a new pass requires an explicit choice."
+            >
+              <select
+                name="on_overlap"
+                aria-label="Overlap policy"
+                value={values.onOverlap}
+                onChange={(event) =>
+                  patch({ onOverlap: event.target.value === "fire" ? "fire" : "skip" })}
+                className={`${INPUT_CLASS} font-mono`}
+              >
+                <option value="skip">Skip while a run is active</option>
+                <option value="fire">Fire even if a run is active</option>
+              </select>
+            </Row>
+          </>
         ) : null}
       </Panel>
     </>

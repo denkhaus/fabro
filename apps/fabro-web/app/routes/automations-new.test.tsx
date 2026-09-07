@@ -356,6 +356,31 @@ describe("AutomationsNew", () => {
     });
   });
 
+  test("creation payload always carries on_overlap — skip default, fire when selected", async () => {
+    const { renderer } = await renderAutomationsNew("/automations/new");
+    changeField(renderer, "Automation name", "Nightly");
+    changeField(renderer, "Run target repository", "fabro-sh/fabro");
+    changeField(renderer, "Workflow slug", "hello");
+    changeField(renderer, "Automation environment", "default");
+    act(() => {
+      byLabel(renderer, "Enable scheduled triggers").props.onChange(true);
+    });
+
+    // Enabling the schedule reveals the overlap selector, defaulting to
+    // the safe skip policy (fabro-fb16).
+    expect(fieldValue(renderer, "Overlap policy")).toBe("skip");
+    changeField(renderer, "Overlap policy", "fire");
+
+    await act(async () => {
+      await renderer.root.findByType("form").props.onSubmit({ preventDefault() {} });
+    });
+
+    expect(createAutomationMock).toHaveBeenCalledTimes(1);
+    expect(createAutomationMock.mock.calls[0]?.[0]).toMatchObject({
+      on_overlap: "fire",
+    });
+  });
+
   test("workflow slug input normalizes to kebab-case and preserves dashes", async () => {
     const { renderer } = await renderAutomationsNew("/automations/new");
 

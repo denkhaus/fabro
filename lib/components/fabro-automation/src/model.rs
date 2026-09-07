@@ -33,7 +33,9 @@ pub fn parse_schedule_expression(expression: &str) -> Result<Cron, CronError> {
 
 /// What a scheduled fire does when a previous run of the same automation
 /// is still non-terminal (running, queued, or blocked — a human gate can
-/// wait indefinitely). `Fire` is the unchanged default.
+/// wait indefinitely). An untagged policy resolves to `Skip` at scheduled
+/// fire time, so overlapping scheduled passes are impossible by default;
+/// `Fire` must be an explicit choice.
 #[derive(
     Debug,
     Clone,
@@ -49,11 +51,13 @@ pub fn parse_schedule_expression(expression: &str) -> Result<Cron, CronError> {
 #[serde(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase")]
 pub enum AutomationOverlapPolicy {
-    /// Fire regardless of an overlapping run (default).
+    /// Fire regardless of an overlapping run. Explicit user intent only:
+    /// an untagged policy never resolves to `Fire`.
     Fire,
     /// Skip the fire while a previous run of this automation is
     /// non-terminal; the next tick retries. Unattended runs never pile
-    /// up behind a gate that is waiting for a human.
+    /// up behind a gate that is waiting for a human. This is the
+    /// effective default for scheduled fires.
     Skip,
 }
 
@@ -74,7 +78,9 @@ pub struct Automation {
     pub workflow:        String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow_source: Option<AutomationGitWorkflowSource>,
-    /// Overlap policy for scheduled fires (fabro-09ea). `None` = `Fire`.
+    /// Overlap policy for scheduled fires (fabro-09ea). `None` (untagged)
+    /// resolves to `Skip` at scheduled fire time — see
+    /// `effective_scheduled_overlap_policy`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on_overlap:      Option<AutomationOverlapPolicy>,
     pub triggers:        Vec<AutomationTrigger>,
@@ -106,6 +112,16 @@ impl Automation {
     ) -> Result<Self, AutomationValidationError> {
         let value = normalize_replace(value, false)?;
         Ok(Self::from_validated_replace(id, revision, value))
+    }
+
+    /// Effective overlap policy for a scheduled fire (fabro-fb16). An
+    /// untagged (`None`) policy resolves to `Skip`, so an untagged
+    /// automation can never fire overlapping scheduled passes; an
+    /// explicit `Fire` is honored as user intent. Manual/API-triggered
+    /// runs are unconditional and do not consult this policy.
+    #[must_use]
+    pub fn effective_scheduled_overlap_policy(&self) -> AutomationOverlapPolicy {
+        self.on_overlap.unwrap_or(AutomationOverlapPolicy::Skip)
     }
 
     /// Returns the enabled API trigger if the automation has one.
@@ -595,6 +611,41 @@ mod tests {
             workflow_source,
             triggers: vec![api_trigger("manual")],
         }
+    }
+
+    #[test]
+    fn untagged_overlap_policy_resolves_to_skip_for_scheduled_fires() {
+        use crate::{AutomationOverlapPolicy, AutomationRevision};
+
+        let automation = |on_overlap: Option<AutomationOverlapPolicy>| Automation {
+            id: AutomationId::new("nightly").unwrap(),
+            revision: AutomationRevision::from_bytes(b"nightly"),
+            name: "Nightly".to_string(),
+            description: None,
+            environment_id: Some("default".to_string()),
+            last_error: None,
+            target: target(),
+            workflow: "release".to_string(),
+            workflow_source: None,
+            on_overlap,
+            triggers: vec![schedule_trigger("schedule", "0 9 * * *")],
+        };
+
+        // fabro-fb16: the untagged policy resolves to Skip so overlapping
+        // scheduled passes are impossible by default; explicit policies are
+        // honored as user intent.
+        assert_eq!(
+            automation(None).effective_scheduled_overlap_policy(),
+            AutomationOverlapPolicy::Skip
+        );
+        assert_eq!(
+            automation(Some(AutomationOverlapPolicy::Skip)).effective_scheduled_overlap_policy(),
+            AutomationOverlapPolicy::Skip
+        );
+        assert_eq!(
+            automation(Some(AutomationOverlapPolicy::Fire)).effective_scheduled_overlap_policy(),
+            AutomationOverlapPolicy::Fire
+        );
     }
 
     #[test]
