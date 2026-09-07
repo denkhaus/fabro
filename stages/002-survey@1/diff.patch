@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1Y0ZE7K9TB5YF7C68J9DXEN.jsonl b/.fabro/journal/01M1Y0ZE7K9TB5YF7C68J9DXEN.jsonl
+new file mode 100644
+index 000000000..5d41a6d8a
+--- /dev/null
++++ b/.fabro/journal/01M1Y0ZE7K9TB5YF7C68J9DXEN.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1Y0ZE7K9TB5YF7C68J9DXEN","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T13:30:22Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Y0ZE7K9TB5YF7C68J9DXEN","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-07T13:31:21Z","data":"Survey: upstream count = 0 (origin/denkhaus..upstream/main), below MIN threshold 5. Newest upstream subject: none (no drift). Remotes fetched and pruned: upstream -> https://github.com/fabro-sh/fabro, origin -> https://github.com/denkhaus/fabro. Nothing hurt; first fetch was noisy (hundreds of new remote-tracking refs from a fresh clone) but completed cleanly. Route: Work — one develop+revisor cycle this pass."}
