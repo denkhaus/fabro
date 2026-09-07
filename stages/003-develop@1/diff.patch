@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1Y0ZE7K9TB5YF7C68J9DXEN.jsonl b/.fabro/journal/01M1Y0ZE7K9TB5YF7C68J9DXEN.jsonl
+index 5d41a6d8a..453c123f4 100644
+--- a/.fabro/journal/01M1Y0ZE7K9TB5YF7C68J9DXEN.jsonl
++++ b/.fabro/journal/01M1Y0ZE7K9TB5YF7C68J9DXEN.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1Y0ZE7K9TB5YF7C68J9DXEN","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T13:30:22Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Y0ZE7K9TB5YF7C68J9DXEN","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-07T13:31:21Z","data":"Survey: upstream count = 0 (origin/denkhaus..upstream/main), below MIN threshold 5. Newest upstream subject: none (no drift). Remotes fetched and pruned: upstream -> https://github.com/fabro-sh/fabro, origin -> https://github.com/denkhaus/fabro. Nothing hurt; first fetch was noisy (hundreds of new remote-tracking refs from a fresh clone) but completed cleanly. Route: Work — one develop+revisor cycle this pass."}
++{"$schema":"fabro-journal-v1","run_id":"01M1Y0ZE7K9TB5YF7C68J9DXEN","node":"develop","visit":1,"status":"succeeded","ts":"2026-09-07T13:42:41Z","data":"child_run_id=01M1Y12A93HSB4VDZN55HZYNYS | seed=fabro-bbbb 'Develop planner: drop reasoning_effort from high to low for first-pass claims' | status=succeeded(completed) | PR #40 auto-merge WAIT returned reached=blocked (merge gate stuck: required checks failed or dirty/blocked base) at first poll after terminal (13:42Z). NOT re-waited (fabro-bde4). Note: the child's develop work is fully done and the seed is closed — only integration is stuck; treat the blocked PR as revisor/human follow-up, not a seed retry."}

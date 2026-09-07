@@ -558,7 +558,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T13:30:20.561626665Z",
-  "last_event_at": "2026-09-07T13:42:41.646906002Z",
+  "last_event_at": "2026-09-07T13:42:46.381753721Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -716,9 +716,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 92,
       "checkpoint": {
-        "timestamp": "2026-09-07T13:42:41.868330786Z",
+        "timestamp": "2026-09-07T13:42:46.381346009Z",
         "current_node": "develop",
         "completed_nodes": [
           "start",
@@ -727,50 +727,50 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.seed_cycle_anchor": "",
-          "last_response": "Merge gate returned `blocked` on PR #40 — per procedure (fabro-bde4) I do not re-wait. Routing \"Develop child failed\" with the journal.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Develop chi",
-          "internal.retry_count.survey": 0,
-          "last_stage": "develop",
-          "preferred_label": "Develop child failed",
-          "seed_cycles": {
-            "start": 1,
-            "survey": 1,
-            "develop": 1
-          },
+          "internal.fidelity": "compact",
           "internal.exit_kind": "soft",
-          "internal.retry_count.develop": 0,
-          "outcome": "succeeded",
-          "internal.node_visit_count": 1,
-          "graph.preamble_budget_kb": "12",
-          "internal.work_dir": "/workspace/fabro",
-          "graph.cycle_counter_reset_key": "pass_id",
-          "journal": "child_run_id=01M1Y12A93HSB4VDZN55HZYNYS | seed=fabro-bbbb 'Develop planner: drop reasoning_effort from high to low for first-pass claims' | status=succeeded(completed) | PR #40 auto-merge WAIT returned reached=blocked (merge gate stuck: required checks failed or dirty/blocked base) at first poll after terminal (13:42Z). NOT re-waited (fabro-bde4). Note: the child's develop work is fully done and the seed is closed — only integration is stuck; treat the blocked PR as revisor/human follow-up, not a seed retry.",
-          "failure_class": "",
-          "graph.max_node_visits": "12",
-          "internal.run_id": "01M1Y0ZE7K9TB5YF7C68J9DXEN",
-          "thread.survey.current_node": "develop",
+          "last_stage": "develop",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "graph.rankdir": "LR",
           "response.develop": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.develop",
             "chars": 1343,
             "preview": "Merge gate returned `blocked` on PR #40 — per procedure (fabro-bde4) I do not re-wait. Routing \"Develop child failed\" with the journal.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Develop chi"
           },
-          "internal.retry_count.start": 0,
-          "graph.rankdir": "LR",
           "graph.inspects": "develop,merge-upstream,revisor",
-          "thread.start.current_node": "survey",
-          "internal.thread_id": "survey",
-          "internal.fidelity": "compact",
-          "failure_signature": "",
+          "graph.preamble_budget_kb": "12",
+          "internal.node_visit_count": 1,
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 677,
             "preview": "The upstream count is **0** — `origin/denkhaus` is fully caught up with `upstream/main`. Threshold (>= 5) not met, so route is **\"Work\"**.\n\n```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_labe"
           },
-          "current_node": "develop",
           "child_run_id": "01M1Y12A93HSB4VDZN55HZYNYS",
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged"
+          "journal": "child_run_id=01M1Y12A93HSB4VDZN55HZYNYS | seed=fabro-bbbb 'Develop planner: drop reasoning_effort from high to low for first-pass claims' | status=succeeded(completed) | PR #40 auto-merge WAIT returned reached=blocked (merge gate stuck: required checks failed or dirty/blocked base) at first poll after terminal (13:42Z). NOT re-waited (fabro-bde4). Note: the child's develop work is fully done and the seed is closed — only integration is stuck; treat the blocked PR as revisor/human follow-up, not a seed retry.",
+          "graph.max_node_visits": "12",
+          "outcome": "succeeded",
+          "internal.retry_count.start": 0,
+          "thread.survey.current_node": "develop",
+          "internal.retry_count.survey": 0,
+          "internal.run_id": "01M1Y0ZE7K9TB5YF7C68J9DXEN",
+          "preferred_label": "Develop child failed",
+          "current_node": "develop",
+          "internal.work_dir": "/workspace/fabro",
+          "failure_signature": "",
+          "internal.thread_id": "survey",
+          "thread.start.current_node": "survey",
+          "failure_class": "",
+          "internal.retry_count.develop": 0,
+          "internal.seed_cycle_anchor": "",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "last_response": "Merge gate returned `blocked` on PR #40 — per procedure (fabro-bde4) I do not re-wait. Routing \"Develop child failed\" with the journal.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Develop chi",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "develop": 1
+          }
         },
         "node_outcomes": {
           "start": {
@@ -866,16 +866,97 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "b6caaa374abb7138aaa79ff7a4067bd9b4e54c18",
         "node_visits": {
           "survey": 1,
           "develop": 1,
           "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1Y0ZE7K9TB5YF7C68J9DXEN.jsonl b/.fabro/journal/01M1Y0ZE7K9TB5YF7C68J9DXEN.jsonl\nindex 5d41a6d8a..453c123f4 100644\n--- a/.fabro/journal/01M1Y0ZE7K9TB5YF7C68J9DXEN.jsonl\n+++ b/.fabro/journal/01M1Y0ZE7K9TB5YF7C68J9DXEN.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y0ZE7K9TB5YF7C68J9DXEN\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:30:22Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y0ZE7K9TB5YF7C68J9DXEN\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:31:21Z\",\"data\":\"Survey: upstream count = 0 (origin/denkhaus..upstream/main), below MIN threshold 5. Newest upstream subject: none (no drift). Remotes fetched and pruned: upstream -> https://github.com/fabro-sh/fabro, origin -> https://github.com/denkhaus/fabro. Nothing hurt; first fetch was noisy (hundreds of new remote-tracking refs from a fresh clone) but completed cleanly. Route: Work — one develop+revisor cycle this pass.\"}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y0ZE7K9TB5YF7C68J9DXEN\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:42:41Z\",\"data\":\"child_run_id=01M1Y12A93HSB4VDZN55HZYNYS | seed=fabro-bbbb 'Develop planner: drop reasoning_effort from high to low for first-pass claims' | status=succeeded(completed) | PR #40 auto-merge WAIT returned reached=blocked (merge gate stuck: required checks failed or dirty/blocked base) at first poll after terminal (13:42Z). NOT re-waited (fabro-bde4). Note: the child's develop work is fully done and the seed is closed — only integration is stuck; treat the blocked PR as revisor/human follow-up, not a seed retry.\"}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 3,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T13:42:46.433242767Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 675887,
+      "inference_time_ms": 48972,
+      "tool_time_ms": 613577,
+      "active_time_ms": 662549
+    },
+    "failure": {
+      "reason": "soft_stop",
+      "detail": {
+        "message": "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; the next run re-enters autonomously",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "b6caaa374abb7138aaa79ff7a4067bd9b4e54c18",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 52082,
+          "inference_time_ms": 16187,
+          "tool_time_ms": 35324,
+          "active_time_ms": 51511
+        },
+        "billing_usd_micros": 36214,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 611624,
+          "inference_time_ms": 32785,
+          "tool_time_ms": 578253,
+          "active_time_ms": 611038
+        },
+        "billing_usd_micros": 185302,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 125763,
+      "output_tokens": 914,
+      "total_tokens": 284111,
+      "reasoning_tokens": 122,
+      "cache_read_tokens": 157312,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 221516
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1Y0ZE7K9TB5YF7C68J9DXEN.jsonl b/.fabro/journal/01M1Y0ZE7K9TB5YF7C68J9DXEN.jsonl\nnew file mode 100644\nindex 000000000..453c123f4\n--- /dev/null\n+++ b/.fabro/journal/01M1Y0ZE7K9TB5YF7C68J9DXEN.jsonl\n@@ -0,0 +1,3 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y0ZE7K9TB5YF7C68J9DXEN\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:30:22Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y0ZE7K9TB5YF7C68J9DXEN\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:31:21Z\",\"data\":\"Survey: upstream count = 0 (origin/denkhaus..upstream/main), below MIN threshold 5. Newest upstream subject: none (no drift). Remotes fetched and pruned: upstream -> https://github.com/fabro-sh/fabro, origin -> https://github.com/denkhaus/fabro. Nothing hurt; first fetch was noisy (hundreds of new remote-tracking refs from a fresh clone) but completed cleanly. Route: Work — one develop+revisor cycle this pass.\"}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y0ZE7K9TB5YF7C68J9DXEN\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:42:41Z\",\"data\":\"child_run_id=01M1Y12A93HSB4VDZN55HZYNYS | seed=fabro-bbbb 'Develop planner: drop reasoning_effort from high to low for first-pass claims' | status=succeeded(completed) | PR #40 auto-merge WAIT returned reached=blocked (merge gate stuck: required checks failed or dirty/blocked base) at first poll after terminal (13:42Z). NOT re-waited (fabro-bde4). Note: the child's develop work is fully done and the seed is closed — only integration is stuck; treat the blocked PR as revisor/human follow-up, not a seed retry.\"}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 3,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "soft"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -920,6 +1001,42 @@
       "output": null,
       "started_at": "2026-09-07T13:30:22.750665105Z",
       "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 95,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T13:42:46.381753721Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T13:42:46.381713339Z",
+      "handler": "exit",
       "graph_visit": 1,
       "timing": {
         "wall_time_ms": 0,
