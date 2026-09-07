@@ -24,9 +24,9 @@ work lives in seeds.
 `assignee` decides who owns a seed — it is the switch that splits work
 between the develop line and the user:
 
-- **Filers assign at creation.** When filing a seed meant for the develop
-  line, set `--assignee fabro` (or assign it right after with
-  `sd update <id> --assignee fabro`).
+- **Filers file UNASSIGNED.** Agents that file seeds (the revisor, any
+  agent-originated filing) create them without `--assignee`: filing is
+  their job, ownership is not — new seeds land unassigned in the backlog.
 - **The develop line only works on seeds assigned to `fabro`.** The planner
   lists candidates with `sd ready --assignee fabro --limit 200` and claims
   with `sd update <id> --status in_progress --assignee fabro`; seeds not
@@ -34,8 +34,10 @@ between the develop line and the user:
 - **The user can reassign or unassign anytime — that is a veto.** Unassigning
   (or reassigning) a seed removes it from the line's candidate pool on the
   next run; an empty filtered view parks the line rather than falling back
-  to unassigned seeds. Assignment is a user decision, never bulk-applied by
-  the line itself.
+  to unassigned seeds. Assignment is a joint user+agent decision recorded
+  in the cycle report (the agent's `--assignee fabro` is a proposal the
+  user approves or vetoes by reassigning), never bulk-applied by the
+  line itself.
 
 ## Upstream PRs
 
