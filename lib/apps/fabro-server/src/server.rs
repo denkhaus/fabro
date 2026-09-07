@@ -189,6 +189,7 @@ pub(crate) use handler::graph::render_graph_bytes;
 #[cfg(test)]
 pub(in crate::server) use handler::graph::{
     RenderSubprocessError, render_dot_subprocess, render_graph_bytes_with_exe_override,
+    render_graph_subprocess_available,
 };
 #[cfg(test)]
 pub(in crate::server) use handler::system::validate_github_slug;

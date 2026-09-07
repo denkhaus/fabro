@@ -16703,8 +16703,19 @@ async fn active_acp_steerable_marker_clears_on_terminal_paths() {
     }
 }
 
+#[expect(
+    clippy::print_stderr,
+    reason = "skip notice for the cold-sandbox no-renderer-binary case"
+)]
 #[tokio::test]
 async fn get_graph_returns_svg() {
+    if !render_graph_subprocess_available() {
+        eprintln!(
+            "skipping: no `fabro` renderer binary resolvable from this target dir \
+             (cold sandbox); build fabro-cli to exercise the real render path"
+        );
+        return;
+    }
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
 
@@ -16816,8 +16827,19 @@ async fn get_graph_source_returns_dot() {
     assert_eq!(dot, MINIMAL_DOT);
 }
 
+#[expect(
+    clippy::print_stderr,
+    reason = "skip notice for the cold-sandbox no-renderer-binary case"
+)]
 #[tokio::test]
 async fn render_graph_from_manifest_returns_svg() {
+    if !render_graph_subprocess_available() {
+        eprintln!(
+            "skipping: no `fabro` renderer binary resolvable from this target dir \
+             (cold sandbox); build fabro-cli to exercise the real render path"
+        );
+        return;
+    }
     let app = test_app_with();
 
     let req = Request::builder()
@@ -16867,8 +16889,19 @@ async fn render_graph_from_manifest_returns_svg() {
     );
 }
 
+#[expect(
+    clippy::print_stderr,
+    reason = "skip notice for the cold-sandbox no-renderer-binary case"
+)]
 #[tokio::test]
 async fn render_graph_from_manifest_accepts_fabro_dotted_attributes() {
+    if !render_graph_subprocess_available() {
+        eprintln!(
+            "skipping: no `fabro` renderer binary resolvable from this target dir \
+             (cold sandbox); build fabro-cli to exercise the real render path"
+        );
+        return;
+    }
     let app = test_app_with();
     let dot_source = r#"digraph X {
   start [shape=Mdiamond]
