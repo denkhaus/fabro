@@ -694,7 +694,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T13:02:39.578497794Z",
-  "last_event_at": "2026-09-07T13:04:14.868748352Z",
+  "last_event_at": "2026-09-07T13:05:29.558161292Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -741,9 +741,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 78,
       "checkpoint": {
-        "timestamp": "2026-09-07T13:04:15.071030064Z",
+        "timestamp": "2026-09-07T13:04:19.705329244Z",
         "current_node": "planner",
         "completed_nodes": [
           "start",
@@ -752,13 +752,21 @@
         "node_retries": {},
         "context_values": {
           "last_stage": "planner",
-          "internal.run_id": "01M1XZCWNBR33BZGHQXNRA80J9",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "thread.start.current_node": "planner",
-          "graph.preamble_budget_kb": "24",
-          "internal.retry_count.planner": 0,
           "current_seed_title": "Develop planner: pick only seeds assigned to fabro (sd ready --assignee fabro) — deterministic line/user ownership split",
-          "graph.rankdir": "LR",
+          "outcome": "succeeded",
+          "graph.preamble_budget_kb": "24",
+          "graph.max_node_visits": "40",
+          "internal.thread_id": "start",
+          "failure_signature": "",
+          "internal.node_visit_count": 1,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "last_response": "Claimed `fabro-5e09` (explicitly assigned to this line, High priority; basis verified against the current tree — planner prompt, docs, and CLI all lack/differ from the target state).\n\n{\"outcome\": \"s",
+          "current_node": "planner",
+          "internal.seed_cycle_anchor": "fabro-5e09",
+          "failure_class": "",
+          "thread.start.current_node": "planner",
+          "current_seed_id": "fabro-5e09",
+          "internal.fidelity": "compact",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -767,31 +775,23 @@
               "sd ready ordering within one priority tier is opaque (fabro-513e sorted above fabro-5e09 despite later creation); do not treat listing order as a ranking signal"
             ]
           },
-          "outcome": "succeeded",
-          "internal.seed_cycle_anchor": "fabro-5e09",
+          "internal.run_id": "01M1XZCWNBR33BZGHQXNRA80J9",
+          "graph.rankdir": "LR",
           "seed_cycles": {
             "planner": 1
           },
-          "failure_class": "",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "failure_signature": "",
-          "graph.max_node_visits": "40",
-          "internal.fidelity": "compact",
           "current_seed_brief": "Implement the MECHANISM only; ownership stays a user decision. Edit sites verified in current tree: `.fabro/workflows/develop/prompts/planner.md` (lines ~25-28 command table, ~33 fast-path, ~36 claim, ~46 tracker-empty) and `docs/agents/issue-tracker.md`. Acceptance criteria: - Candidate source: planner prompt's listing command becomes `sd ready --assignee fabro --limit 200` (keep the `--limit 200` rule and the no-`--format` caveat on `sd update`); the LLM never sees seeds not assigned to fabro - Fast-path: a goal-named seed id is honored ONLY when its assignee is fabro (verify via `sd show <id> --format json`); named-but-unassigned or assigned-to-another seed must NOT be claimed — fall through to the filtered list (resolved ambiguity: this is the fail-closed reading of 'ONLY when assignee is fabro') - Claim step: `sd update <id> --status in_progress --assignee fabro` (CLI supports `--assignee`; verified) - Tracker-empty semantics: empty FILTERED view = legitimate park, route Tracker empty — never fall back to unassigned seeds, never invent work (FAIL-CLOSED: while backlog is unassigned the line does nothing rather than something) - Docs: `docs/agents/issue-tracker.md` documents assignee as the ownership switch: filers assign at creation, user can reassign/unassign anytime as veto - Untouched: NO bulk-assign of the backlog by the implementer; sentinel pair fabro-919b/fabro-80cc stays in place - Implementer prompt's informational `sd ready` note (line 15) is out of scope, do not change it",
-          "current_node": "planner",
-          "last_response": "Claimed `fabro-5e09` (explicitly assigned to this line, High priority; basis verified against the current tree — planner prompt, docs, and CLI all lack/differ from the target state).\n\n{\"outcome\": \"s",
-          "current_seed_id": "fabro-5e09",
-          "internal.node_visit_count": 1,
-          "preferred_label": "Seed claimed",
-          "internal.thread_id": "start",
-          "internal.work_dir": "/workspace/fabro",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
             "chars": 2656,
             "preview": "Claimed `fabro-5e09` (explicitly assigned to this line, High priority; basis verified against the current tree — planner prompt, docs, and CLI all lack/differ from the target state).\n\n{\"outcome\": \"s"
           },
-          "internal.retry_count.start": 0
+          "preferred_label": "Seed claimed",
+          "internal.retry_count.planner": 0,
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.start": 0,
+          "internal.work_dir": "/workspace/fabro"
         },
         "node_outcomes": {
           "start": {
@@ -853,8 +853,200 @@
           }
         },
         "next_node_id": "implementer",
+        "git_commit_sha": "c3cfb01902e222353fff6c1aae9b58aebbeeedd4",
         "node_visits": {
           "planner": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1XZCWNBR33BZGHQXNRA80J9.jsonl b/.fabro/journal/01M1XZCWNBR33BZGHQXNRA80J9.jsonl\nnew file mode 100644\nindex 0000000..cda196d\n--- /dev/null\n+++ b/.fabro/journal/01M1XZCWNBR33BZGHQXNRA80J9.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XZCWNBR33BZGHQXNRA80J9\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:02:41Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XZCWNBR33BZGHQXNRA80J9\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:04:15Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-5e09 was assigned to @fabro explicitly (governance correction) — that assignment was the tie-break over equally-High unassigned seeds; next planner passes should check assignee first\",\"sd ready --assignee fabro currently returns ONLY fabro-5e09 itself, so once this mechanism lands the next develop run will park (Tracker empty) until the user curates backlog assignment — that is the intended fail-closed design, not a broken tracker\",\"sd ready ordering within one priority tier is opaque (fabro-513e sorted above fabro-5e09 despite later creation); do not treat listing order as a ranking signal\"]}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex f02b7a5..01a70f2 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -233,7 +233,7 @@\n {\"id\":\"fabro-b11a\",\"title\":\"GRILL SESSION: how should fabro use the Chisel artifacts (cartography codebase map + quality calibration)? NOT for autonomous implementation\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T12:05:11.894Z\",\"updatedAt\":\"2026-09-07T12:05:30.211Z\",\"description\":\"This seed schedules a grill-with-docs session with the USER (user + agent). It must NEVER be picked by the develop workflow — it is blocked by the sentinel fabro-grill-gate (see below), so it stays out of 'sd ready'.\\n\\nContext: .chisel/ contains two artifact sets committed by upstream maintainer Bryan Helmkamp (2026-07-27, pre-world-merger): (1) cartography/ — an evidence-cited component map of the whole codebase (2256 files, purpose/paths/entry points/ownership/dependencies per component, codebase-map.md + .json + work/ analyses); (2) calibration/ — a 4-lens quality scoring (ownership/boundaries, simplicity, domain model, duplication of knowledge) run by 3 independent GPT-5 Codex reviewers + adjudication. Chisel itself is a private/unreleased tool (research 2026-09-07: no public repo/product found).\\n\\nGrill questions (to be worked in session with evidence: .chisel artifacts, ADRs 0009-0017, revisor reviews, codebase-design vocabulary):\\nQ1 Should the cartography map feed the revisor/deepening phases as a structural input (replacing re-derivation), given it is pre-merger stale?\\nQ2 Should we re-run/refresh the map (manually? via what tooling, since Chisel is not public?) or treat it as a point-in-time reference only?\\nQ3 Do the calibration scores (fabro-workflow 2s on simplicity/duplication) set priorities for improve-codebase-architecture cycles?\\nQ4 Lifecycle: keep upstream-synced (refresh on upstream merges), or fork-local ownership in .chisel/?\\nQ5 Does any of this change how OUR reviews work (rust-style-guide axis vs chisel lenses)?\\n\\nOutcome of the session: decisions recorded (ADR if pivotal), separate implementation seeds filed for whatever is actionable, this seed closed, and the sentinel dependency removed. DO NOT IMPLEMENT ANYTHING from this seed in the autonomous line before the session happened.\",\"labels\":[\"grill\",\"needs-user\",\"decision\"],\"blockedBy\":[\"fabro-919b\"]}\n {\"id\":\"fabro-919b\",\"title\":\"SENTINEL (do not close): manual grill-session gate — permanently blocked by design\",\"status\":\"open\",\"type\":\"task\",\"priority\":4,\"createdAt\":\"2026-09-07T12:05:25.947Z\",\"updatedAt\":\"2026-09-07T12:06:11.357Z\",\"description\":\"Permanent blocker gate for grill-session seeds that must NOT be autonomously implemented (user directive 2026-09-07). Mechanics: this sentinel is mutually blocked by its lock partner fabro-80cc (sd silently rejects self-dependencies, verified 2026-09-07), so both stay out of 'sd ready' forever. Any seed depending on this sentinel is likewise hidden from the planner until its dependency edge is removed. DO NOT close this sentinel, DO NOT remove any sentinel-pair edge. Usage: grill-session seeds add 'sd dep add <id> fabro-919b'; when the session concludes: 'sd dep remove <session-id> fabro-919b', file outcome seeds, close the session seed. Reusable for future grill sessions.\",\"labels\":[\"grill\",\"needs-user\",\"sentinel\"],\"blocks\":[\"fabro-b11a\",\"fabro-80cc\"],\"blockedBy\":[\"fabro-80cc\"]}\n {\"id\":\"fabro-80cc\",\"title\":\"SENTINEL LOCK PARTNER (do not close): mutual blocker for fabro-919b grill gate\",\"status\":\"open\",\"type\":\"task\",\"priority\":4,\"createdAt\":\"2026-09-07T12:06:01.751Z\",\"updatedAt\":\"2026-09-07T12:06:05.649Z\",\"description\":\"Permanent lock partner for fabro-919b. These two sentinels block EACH OTHER (mutual dependency cycle), so both are permanently hidden from 'sd ready' and can never be picked by the develop workflow. sd silently rejects self-dependencies (verified 2026-09-07), which is why the gate needs a partner seed instead. DO NOT close either sentinel, DO NOT remove either dependency edge. Grill-session seeds depend on fabro-919b; when a session concludes, only remove the SESSION seed's edge (sd dep remove <session-seed> fabro-919b) — the sentinel pair stays locked forever and is reusable for future grill sessions.\",\"labels\":[\"grill\",\"needs-user\",\"sentinel\"],\"blocks\":[\"fabro-919b\"],\"blockedBy\":[\"fabro-919b\"]}\n-{\"id\":\"fabro-5e09\",\"title\":\"Develop planner: pick only seeds assigned to fabro (sd ready --assignee fabro) — deterministic line/user ownership split\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T12:16:32.837Z\",\"updatedAt\":\"2026-09-07T12:26:40.545Z\",\"assignee\":\"fabro\",\"description\":\"USER CORRECTION 2026-09-07 (governance): the LINE implements only the MECHANISM; WHICH seeds belong to the line is a USER decision, never a bulk heuristic run by the line itself.\\n\\nMECHANISM (line implements): (1) develop planner prompt (.fabro/workflows/develop/prompts/planner.md) candidate source becomes 'sd ready --assignee fabro --limit 200' — CLI pre-filters, the LLM never sees seeds not assigned to fabro (data-level determinism); (2) goal fast-path honors a named seed id ONLY when assignee is fabro; (3) claim step: 'sd update <id> --status in_progress --assignee fabro'; (4) Tracker-empty on the FILTERED view = legitimate end of work (park), not a broken tracker — FAIL-CLOSED: while the backlog is unassigned the line does nothing rather than something; (5) docs/agents/issue-tracker.md documents the convention: assignee is the ownership switch; filers assign at creation; the user can reassign/unassign anytime as veto.\\n\\nOWNERSHIP (user decides, NOT this seed's implementer): the existing backlog assignment list is prepared by the agent as a proposal, reviewed and approved by the USER in chat (or the pending grill session), then applied from the user side. NO bulk-assign by the develop run. The sentinel pair (fabro-919b/fabro-80cc) stays in place until the mechanism lands AND the user has curated the backlog; retiring it is part of the user-approved migration, not this implementation.\\n\\nAcceptance: planner prompt ships the filtered command; a user-assigned open seed never appears in a develop run's candidates; empty filtered view parks; docs updated; ownership list untouched by the implementer.\",\"labels\":[\"workflows\",\"revision\"]}\n+{\"id\":\"fabro-5e09\",\"title\":\"Develop planner: pick only seeds assigned to fabro (sd ready --assignee fabro) — deterministic line/user ownership split\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T12:16:32.837Z\",\"updatedAt\":\"2026-09-07T13:04:02.166Z\",\"assignee\":\"fabro\",\"description\":\"USER CORRECTION 2026-09-07 (governance): the LINE implements only the MECHANISM; WHICH seeds belong to the line is a USER decision, never a bulk heuristic run by the line itself.\\n\\nMECHANISM (line implements): (1) develop planner prompt (.fabro/workflows/develop/prompts/planner.md) candidate source becomes 'sd ready --assignee fabro --limit 200' — CLI pre-filters, the LLM never sees seeds not assigned to fabro (data-level determinism); (2) goal fast-path honors a named seed id ONLY when assignee is fabro; (3) claim step: 'sd update <id> --status in_progress --assignee fabro'; (4) Tracker-empty on the FILTERED view = legitimate end of work (park), not a broken tracker — FAIL-CLOSED: while the backlog is unassigned the line does nothing rather than something; (5) docs/agents/issue-tracker.md documents the convention: assignee is the ownership switch; filers assign at creation; the user can reassign/unassign anytime as veto.\\n\\nOWNERSHIP (user decides, NOT this seed's implementer): the existing backlog assignment list is prepared by the agent as a proposal, reviewed and approved by the USER in chat (or the pending grill session), then applied from the user side. NO bulk-assign by the develop run. The sentinel pair (fabro-919b/fabro-80cc) stays in place until the mechanism lands AND the user has curated the backlog; retiring it is part of the user-approved migration, not this implementation.\\n\\nAcceptance: planner prompt ships the filtered command; a user-assigned open seed never appears in a develop run's candidates; empty filtered view parks; docs updated; ownership list untouched by the implementer.\",\"labels\":[\"workflows\",\"revision\"]}\n {\"id\":\"fabro-513e\",\"title\":\"Add a just validate-workflows recipe for graph-only validation without a Rust cold build\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T12:40:03.195Z\",\"updatedAt\":\"2026-09-07T12:40:03.195Z\",\"description\":\"In run 01M1XVXF3MJHD0DXVCA7YXDH9G the implementer verified a pure workflow-graph edit by writing a temp integration test lib/components/fabro-validate/tests/tmp_validate_develop.rs and running it: 427,565 ms (~7.1 min cold build), one failure on unresolved_file_ref (@prompts refs), warm re-run 2.9s, then manual deletion — 427s of the 445s implementer tool time (~25% of run wall). Add a just validate-workflows recipe (justfile + small nu wrapper around fabro-validate) that resolves workflow-relative @-refs or scopes out unresolved_file_ref so graph edits verify in seconds. Expected effect: ~7 min and the temp-file dance eliminated on every platform-targeting seed (most of the tracker's High queue); implementer wall drops ~30% on that seed class. Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-43ba\",\"title\":\"Mark no-net-diff churn entries as transient in the develop evidence capture\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T12:40:09.830Z\",\"updatedAt\":\"2026-09-07T12:40:09.830Z\",\"description\":\"The loop-work diff omitted .seeds/issues.jsonl (+1/-1 churn), so the reviewer ran its own git diff <claim-base> -- .seeds/issues.jsonl and found it empty (reviewer journal obs 2); every run churns issues.jsonl on claim/close so this manual fallback fires constantly. Change .fabro/workflows/develop/scripts/evidence.nu to annotate churn entries whose net diff vs the claim base is empty with '(transient, no net diff)' or drop them. Expected effect: removes the reviewer's manual git-diff fallback and the risk it escalates to a Verification-blocked cycle. Complements open seed fabro-93a7 (seed-work classification) and is a different mechanism from fabro-1e9f (diff base). Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-fb19\",\"title\":\"Require planner briefs to inline load-bearing engine facts instead of citing source paths\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T12:40:15.961Z\",\"updatedAt\":\"2026-09-07T12:40:15.961Z\",\"description\":\"The planner spent ~4 min verifying engine mechanics (stdin_source resolution, command.output, output.* keys — reading command.rs, context_keys.rs), recorded them as terse path-citing observations, and the implementer re-derived the same mechanics anyway (seq 147-226, minutes of its 15-min inference) — in the stage consuming 86% of run cost (.084 of .256). Change .fabro/workflows/develop/prompts/planner.md step 5 (brief-shaping rule): when a brief depends on verified engine mechanics, inline 2-3 exact facts (attribute names + constraints like brace-free stderr, output.<node_id> convention). Expected effect: implementer re-exploration replaced by inlined facts; direct cut into the costliest stage. Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 3,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-07T13:05:29.757001989Z",
+        "current_node": "implementer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "last_stage": "implementer",
+          "internal.run_id": "01M1XZCWNBR33BZGHQXNRA80J9",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "thread.start.current_node": "planner",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.planner": 0,
+          "current_seed_title": "Develop planner: pick only seeds assigned to fabro (sd ready --assignee fabro) — deterministic line/user ownership split",
+          "graph.rankdir": "LR",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "`sd ready --assignee fabro` and `sd ready --assignee <nonexistent>` both exit 0 with 'No ready issues.' — the filter works but an empty result is indistinguishable from a typo'd assignee string; the planner prompt now treats empty as park, so a future rename of the fabro account would silently park the line forever. Worth a user-side periodic check that the filter still matches at least one open seed after any account rename."
+            ]
+          },
+          "outcome": "succeeded",
+          "lesson_capture": "nothing durable — skipped",
+          "internal.seed_cycle_anchor": "fabro-5e09",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "failure_class": "",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "failure_signature": "",
+          "graph.max_node_visits": "40",
+          "internal.fidelity": "summary:high",
+          "current_seed_brief": "Implement the MECHANISM only; ownership stays a user decision. Edit sites verified in current tree: `.fabro/workflows/develop/prompts/planner.md` (lines ~25-28 command table, ~33 fast-path, ~36 claim, ~46 tracker-empty) and `docs/agents/issue-tracker.md`. Acceptance criteria: - Candidate source: planner prompt's listing command becomes `sd ready --assignee fabro --limit 200` (keep the `--limit 200` rule and the no-`--format` caveat on `sd update`); the LLM never sees seeds not assigned to fabro - Fast-path: a goal-named seed id is honored ONLY when its assignee is fabro (verify via `sd show <id> --format json`); named-but-unassigned or assigned-to-another seed must NOT be claimed — fall through to the filtered list (resolved ambiguity: this is the fail-closed reading of 'ONLY when assignee is fabro') - Claim step: `sd update <id> --status in_progress --assignee fabro` (CLI supports `--assignee`; verified) - Tracker-empty semantics: empty FILTERED view = legitimate park, route Tracker empty — never fall back to unassigned seeds, never invent work (FAIL-CLOSED: while backlog is unassigned the line does nothing rather than something) - Docs: `docs/agents/issue-tracker.md` documents assignee as the ownership switch: filers assign at creation, user can reassign/unassign anytime as veto - Untouched: NO bulk-assign of the backlog by the implementer; sentinel pair fabro-919b/fabro-80cc stays in place - Implementer prompt's informational `sd ready` note (line 15) is out of scope, do not change it",
+          "current_node": "implementer",
+          "last_response": "All edits verified. Quick check on acceptance criteria that involve non-interference — I made zero `sd` writes (only `sd show`/`sd ready` reads), so the backlog and sentinel pair are untouched, and ",
+          "thread.planner.current_node": "implementer",
+          "internal.retry_count.implementer": 0,
+          "current_seed_id": "fabro-5e09",
+          "internal.node_visit_count": 1,
+          "preferred_label": "Implemented",
+          "internal.thread_id": "planner",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5408,
+            "preview": "All edits verified. Quick check on acceptance criteria that involve non-interference — I made zero `sd` writes (only `sd show`/`sd ready` reads), so the backlog and sentinel pair are untouched, and "
+          },
+          "internal.work_dir": "/workspace/fabro",
+          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/planner.md` (via shell, fs_hide carve-out) so the candidate source is `sd ready --assignee fabro --limit 200` everywhere (table, fast-path fallback, tracker-empty check), the `sd list` fallback is equally filtered, the fast-path honors a goal-named id only when its JSON assignee is exactly fabro (fail-closed fall-through), the claim is `sd update <id> --status in_progress --assignee fabro`, and empty filtered view routes Tracker empty FAIL-CLOSED; added an 'Assignee: the ownership switch' section to `docs/agents/issue-tracker.md`; smoke-tested the CLI flag live; lesson capture: nothing durable — skipped. Per-criterion report: PASS listing command filtered with --limit 200 and no-format caveat kept (planner.md table); PASS LLM never sees non-fabro seeds (sd ready + sd list rows and both fallback call sites); PASS fast-path assignee gate via `sd show <id> --format json` with fail-closed fall-through (planner.md step 1); PASS claim form `sd update <id> --status in_progress --assignee fabro` (planner.md step 4 + table row, flag verified live); PASS tracker-empty parks on empty FILTERED view, no unassigned fallback (planner.md closing paragraph); PASS docs document ownership switch + veto (`docs/agents/issue-tracker.md`); PASS no bulk-assign and sentinel pair fabro-919b/fabro-80cc untouched (zero sd writes this pass); PASS implementer prompt line 15 note untouched.",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2656,
+            "preview": "Claimed `fabro-5e09` (explicitly assigned to this line, High priority; basis verified against the current tree — planner prompt, docs, and CLI all lack/differ from the target state).\n\n{\"outcome\": \"s"
+          },
+          "internal.retry_count.start": 0
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "lesson_capture": "nothing durable — skipped",
+              "last_stage": "implementer",
+              "last_response": "All edits verified. Quick check on acceptance criteria that involve non-interference — I made zero `sd` writes (only `sd show`/`sd ready` reads), so the backlog and sentinel pair are untouched, and ",
+              "implementation_summary": "Edited `.fabro/workflows/develop/prompts/planner.md` (via shell, fs_hide carve-out) so the candidate source is `sd ready --assignee fabro --limit 200` everywhere (table, fast-path fallback, tracker-empty check), the `sd list` fallback is equally filtered, the fast-path honors a goal-named id only when its JSON assignee is exactly fabro (fail-closed fall-through), the claim is `sd update <id> --status in_progress --assignee fabro`, and empty filtered view routes Tracker empty FAIL-CLOSED; added an 'Assignee: the ownership switch' section to `docs/agents/issue-tracker.md`; smoke-tested the CLI flag live; lesson capture: nothing durable — skipped. Per-criterion report: PASS listing command filtered with --limit 200 and no-format caveat kept (planner.md table); PASS LLM never sees non-fabro seeds (sd ready + sd list rows and both fallback call sites); PASS fast-path assignee gate via `sd show <id> --format json` with fail-closed fall-through (planner.md step 1); PASS claim form `sd update <id> --status in_progress --assignee fabro` (planner.md step 4 + table row, flag verified live); PASS tracker-empty parks on empty FILTERED view, no unassigned fallback (planner.md closing paragraph); PASS docs document ownership switch + veto (`docs/agents/issue-tracker.md`); PASS no bulk-assign and sentinel pair fabro-919b/fabro-80cc untouched (zero sd writes this pass); PASS implementer prompt line 15 note untouched.",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "`sd ready --assignee fabro` and `sd ready --assignee <nonexistent>` both exit 0 with 'No ready issues.' — the filter works but an empty result is indistinguishable from a typo'd assignee string; the planner prompt now treats empty as park, so a future rename of the fabro account would silently park the line forever. Worth a user-side periodic check that the filter still matches at least one open seed after any account rename."
+                ]
+              },
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5408,
+                "preview": "All edits verified. Quick check on acceptance criteria that involve non-interference — I made zero `sd` writes (only `sd show`/`sd ready` reads), so the backlog and sentinel pair are untouched, and "
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 20507,
+                    "output_tokens": 3195,
+                    "reasoning_tokens": 769,
+                    "cache_read_tokens": 76608,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 66061
+            },
+            "files_touched": [
+              "/workspace/fabro/docs/agents/issue-tracker.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 61929,
+              "tool_time_ms": 1131,
+              "active_time_ms": 63060
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_id": "fabro-5e09",
+              "current_seed_title": "Develop planner: pick only seeds assigned to fabro (sd ready --assignee fabro) — deterministic line/user ownership split",
+              "current_seed_brief": "Implement the MECHANISM only; ownership stays a user decision. Edit sites verified in current tree: `.fabro/workflows/develop/prompts/planner.md` (lines ~25-28 command table, ~33 fast-path, ~36 claim, ~46 tracker-empty) and `docs/agents/issue-tracker.md`. Acceptance criteria: - Candidate source: planner prompt's listing command becomes `sd ready --assignee fabro --limit 200` (keep the `--limit 200` rule and the no-`--format` caveat on `sd update`); the LLM never sees seeds not assigned to fabro - Fast-path: a goal-named seed id is honored ONLY when its assignee is fabro (verify via `sd show <id> --format json`); named-but-unassigned or assigned-to-another seed must NOT be claimed — fall through to the filtered list (resolved ambiguity: this is the fail-closed reading of 'ONLY when assignee is fabro') - Claim step: `sd update <id> --status in_progress --assignee fabro` (CLI supports `--assignee`; verified) - Tracker-empty semantics: empty FILTERED view = legitimate park, route Tracker empty — never fall back to unassigned seeds, never invent work (FAIL-CLOSED: while backlog is unassigned the line does nothing rather than something) - Docs: `docs/agents/issue-tracker.md` documents assignee as the ownership switch: filers assign at creation, user can reassign/unassign anytime as veto - Untouched: NO bulk-assign of the backlog by the implementer; sentinel pair fabro-919b/fabro-80cc stays in place - Implementer prompt's informational `sd ready` note (line 15) is out of scope, do not change it",
+              "last_response": "Claimed `fabro-5e09` (explicitly assigned to this line, High priority; basis verified against the current tree — planner prompt, docs, and CLI all lack/differ from the target state).\n\n{\"outcome\": \"s",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-5e09 was assigned to @fabro explicitly (governance correction) — that assignment was the tie-break over equally-High unassigned seeds; next planner passes should check assignee first",
+                  "sd ready --assignee fabro currently returns ONLY fabro-5e09 itself, so once this mechanism lands the next develop run will park (Tracker empty) until the user curates backlog assignment — that is the intended fail-closed design, not a broken tracker",
+                  "sd ready ordering within one priority tier is opaque (fabro-513e sorted above fabro-5e09 despite later creation); do not treat listing order as a ranking signal"
+                ]
+              },
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2656,
+                "preview": "Claimed `fabro-5e09` (explicitly assigned to this line, High priority; basis verified against the current tree — planner prompt, docs, and CLI all lack/differ from the target state).\n\n{\"outcome\": \"s"
+              },
+              "last_stage": "planner"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 23066,
+                    "output_tokens": 1217,
+                    "reasoning_tokens": 4469,
+                    "cache_read_tokens": 88384,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 80283
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 81495,
+              "tool_time_ms": 1595,
+              "active_time_ms": 83090
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "node_visits": {
+          "planner": 1,
+          "implementer": 1,
           "start": 1
         }
       },
@@ -1126,6 +1318,220 @@
             "category": "conversation",
             "tokens": 14287,
             "usage_percent": 1.3625144958496094
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "implementer@1": {
+      "first_event_seq": 81,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T13:05:29.558161292Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T13:04:19.723708962Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 63573,
+        "inference_time_ms": 61929,
+        "tool_time_ms": 1131,
+        "active_time_ms": 63060
+      },
+      "usage": {
+        "input_tokens": 20507,
+        "output_tokens": 3195,
+        "total_tokens": 101079,
+        "reasoning_tokens": 769,
+        "cache_read_tokens": 76608,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 66061
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 20318,
+        "usage_percent": 1.9376754760742188,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-07T13:05:29.539676664Z",
+        "event_seq": 129,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1036,
+            "usage_percent": 0.0988006591796875
+          },
+          {
+            "category": "tools",
+            "tokens": 1527,
+            "usage_percent": 0.14562606811523438
+          },
+          {
+            "category": "memory",
+            "tokens": 5366,
+            "usage_percent": 0.5117416381835938
+          },
+          {
+            "category": "conversation",
+            "tokens": 12382,
+            "usage_percent": 1.1808395385742188
           },
           {
             "category": "other",
