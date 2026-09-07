@@ -1841,6 +1841,13 @@ fn build_single_file_tar(file_name: &str, bytes: &[u8], mode: u32) -> crate::Res
             .map_err(|_| crate::Error::message("file is too large for tar header"))?,
     );
     header.set_mode(mode);
+    // A zero mtime makes the extracted file land at 1970-01-01, so build
+    // systems (cargo) treat the source as older than cached artifacts and
+    // skip recompiles. Stamp the current wall clock instead.
+    let mtime = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| crate::Error::context("system clock is before the epoch", e))?;
+    header.set_mtime(mtime.as_secs());
     header.set_cksum();
     tar_builder
         .append(&header, bytes)
@@ -3360,6 +3367,28 @@ mod tests {
         let mut content = String::new();
         entry.read_to_string(&mut content).unwrap();
         assert_eq!(content, "hello");
+    }
+
+    #[test]
+    fn single_file_tar_sets_current_mtime() {
+        let before = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let bytes = build_single_file_tar("stale.rs", b"fn main() {}", 0o644).unwrap();
+        let after = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut archive = tar::Archive::new(Cursor::new(bytes));
+        let mut entries = archive.entries().unwrap();
+        let entry = entries.next().unwrap().unwrap();
+        let mtime = entry.header().mtime().unwrap();
+        assert_ne!(mtime, 0, "tar header mtime must not default to epoch 0");
+        assert!(
+            mtime >= before && mtime <= after,
+            "tar header mtime {mtime} should be within [{before}, {after}] of wall clock"
+        );
     }
 
     #[test]
