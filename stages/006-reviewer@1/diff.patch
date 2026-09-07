@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M1YQD03JZJCGRJ53SNRBTM8P.jsonl b/.fabro/journal/01M1YQD03JZJCGRJ53SNRBTM8P.jsonl
+index e86b08d..460fdea 100644
+--- a/.fabro/journal/01M1YQD03JZJCGRJ53SNRBTM8P.jsonl
++++ b/.fabro/journal/01M1YQD03JZJCGRJ53SNRBTM8P.jsonl
+@@ -3,3 +3,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1YQD03JZJCGRJ53SNRBTM8P","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-07T20:03:49Z","data":{"painpoints":[],"observations":["The planner.md numbered list had two steps both numbered '4.' (claim and brief) before this change — the renumber in this pass fixed it incidentally; future prompt edits should keep an eye on list numbering drift in `.fabro/workflows/develop/prompts/planner.md`."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YQD03JZJCGRJ53SNRBTM8P","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-07T20:03:59Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YQD03JZJCGRJ53SNRBTM8P","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-07T20:04:04Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YQD03JZJCGRJ53SNRBTM8P","node":"reviewer","visit":1,"status":"succeeded","ts":"2026-09-07T20:04:30Z","data":{"painpoints":[],"observations":["Verified planner.md in the worktree against the evidence loop-work diff — byte-identical intent, all 7 acceptance criteria pass. The git stat shows `.fabro/journal/<run>.jsonl +3` beyond the evidence churn list; that is engine journal output written after the evidence capture, not seed work — no action needed, but the evidence churn filter might exclude it explicitly for cleanliness.","The renumbering to steps 5–7 incidentally fixed the file's pre-existing duplicate '4.' numbering (steps 4 and 4 both existed before) — a harmless, in-scope side effect of the insertion."]}}
