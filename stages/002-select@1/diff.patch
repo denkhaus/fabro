@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1YSCK72V0HKCD5Z1VGDQ2KP.jsonl b/.fabro/journal/01M1YSCK72V0HKCD5Z1VGDQ2KP.jsonl
+new file mode 100644
+index 0000000..a88ae71
+--- /dev/null
++++ b/.fabro/journal/01M1YSCK72V0HKCD5Z1VGDQ2KP.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1YSCK72V0HKCD5Z1VGDQ2KP","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T20:36:52Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YSCK72V0HKCD5Z1VGDQ2KP","node":"select","visit":1,"status":"succeeded","ts":"2026-09-07T20:37:10Z","data":{"painpoints":[],"observations":["Selected newest develop run 01M1YS4NJH27NS7CQ02AWM9BNE (baseline version ae2869ac, live sandbox, terminal); 67 develop runs total — most older ones stale-evidence via version drift (4ff76f32, 8afe037f, and earlier) or pre-intent (absent version), ~20 sandbox false; 4 unrevised merge-upstream runs sit on baseline 5a4438be but are all older than the selected develop run; no active develop run observed"]}}
