@@ -49,6 +49,19 @@ line could arm its own sandboxes.
    as review findings that block approval until the user decision is
    recorded.
 
+6. **The sandbox stays credential-free** (user decision 2026-09-08,
+   escalation): agent-authored configuration must not be able to GRANT
+   credentials. The line's agents write their own workflow configs
+   (`.fabro/workflows/**`) via PRs; a `[run.integrations.github]`
+   permissions block in agent-authored config is self-escalation -
+   especially combined with exfiltration channels (curl, web_fetch).
+   The engine therefore honors token-minting ONLY for runs created by
+   a User principal; Worker/System/Webhook/Slack-originated runs get
+   the no-token path regardless of what their workflow config declares
+   (enforcement seed filed). The sandbox offers access to repo contents
+   only; any credential inside it (including clone-URL embedded tokens)
+   is a defect to be engineered away.
+
 ## Consequences
 
 - `gh` is removed from the toolchain image (fabro-06e0); the in-flight PR

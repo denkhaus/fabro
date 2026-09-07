@@ -175,6 +175,7 @@ use crate::{
 mod approval_expiry;
 pub(crate) mod automation_breaker;
 mod automation_scheduler;
+pub(crate) mod capability_gate;
 mod handler;
 mod pull_request_supervisor;
 pub(crate) mod resource_sampler;
@@ -4290,7 +4291,14 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
         .github
         .resolve_integration()
     {
-        Ok(integration) => integration,
+        // ADR-0019.6 (credential-free sandbox): only a human User principal
+        // may resolve a GitHub integration; agent-side principals
+        // (Worker/Agent/Webhook/Slack/System) get the no-token path even
+        // when their workflow config declares permissions.
+        Ok(integration) => capability_gate::gate_github_integration(
+            &persisted.run_spec().provenance.subject,
+            integration,
+        ),
         Err(err) => {
             tracing::error!(
                 run_id = %run_id,

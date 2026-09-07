@@ -301,6 +301,14 @@ decision, not an accident - it needs the user plus an ADR.
 
 ## Standing rules
 
+- Security-hole closures are DIRECT agent work (user directive
+  2026-09-08): seeds that CLOSE security holes (capability gating,
+  credential removal, sandbox hardening) are assigned to `agent`,
+  NEVER to fabro - the fixer must not stand in the trust circle the
+  holes could compromise, and the line's agents write the very configs
+  being gated. The agent implements them with the full mechanical
+  gate (guide pages first, tests, clippy/fmt) like any bootstrapping
+  exception.
 - Capability gate (ADR-0019, user decision 2026-09-08): agent
   sandboxes get ONLY what the task minimally requires (least
   privilege). All GitHub writes are ENGINE-mediated (fabro-github
