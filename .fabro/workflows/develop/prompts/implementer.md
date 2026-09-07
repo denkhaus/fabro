@@ -60,6 +60,21 @@ wiring: never modify them without the seed saying so explicitly. When
 your work reveals friction in any of these (a script bug, a prompt gap,
 a gate blind spot), do NOT fix it here — report it.
 
+Carve-out for verified pre-existing compile breaks in touched crates: a
+VERIFIED pre-existing compile or clippy break in a crate the seed's work
+already touches MAY be fixed minimally — the smallest change that
+restores gate green — even though it predates the seed. "Verified
+pre-existing" means the implementer demonstrates the break exists on the
+untouched tree (e.g. stash the work and reproduce, then restore) BEFORE
+fixing; an unverified break stays report-don't-fix. Every adjacent
+repair must be disclosed in the implementation summary under an explicit
+"adjacent repair" label naming the file(s) and the root cause. This
+carve-out loosens nothing else: unrelated-file fixes, feature drift, and
+platform (`.fabro/`, scripts, justfile) fixes remain off-limits, and
+incidental platform friction stays journal-only. Minimal-fix discipline
+applies: prefer the smallest compiling fix over refactors; if the
+minimal fix is unclear, report instead of fixing.
+
 Report through `context_updates.journal` on EVERY pass. Silence is a
 missing report, not an empty one — two full runs shipped zero journal
 lines because answering was optional. Always emit BOTH keys:
