@@ -10,7 +10,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 use tokio::fs;
 #[cfg(unix)]
 use tokio::task::spawn_blocking;
-use tracing::info;
+use tracing::{debug, info};
 
 pub type DbPool = sqlx::SqlitePool;
 
@@ -82,7 +82,11 @@ impl Database {
             .map(|migration| migration.version)
             .max()
             .unwrap_or_default();
-        info!("newest embedded migration version {newest_embedded}");
+        // DEBUG, not INFO (PR #33 gate lesson): foreground `server start`
+        // must keep stdout silent on the rejection path (server-secrets
+        // strategy); an INFO line here leaks into that stdout because
+        // migrate() runs before startup validation rejects the config.
+        debug!("newest embedded migration version {newest_embedded}");
         let applied = applied_migration_versions(&self.pool).await?;
         self.preflight_session_owner_index(&applied)
             .await
