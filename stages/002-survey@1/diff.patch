@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1XMYZFB4XGE8TJ0XVEXK0X0.jsonl b/.fabro/journal/01M1XMYZFB4XGE8TJ0XVEXK0X0.jsonl
+new file mode 100644
+index 000000000..487a1db22
+--- /dev/null
++++ b/.fabro/journal/01M1XMYZFB4XGE8TJ0XVEXK0X0.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1XMYZFB4XGE8TJ0XVEXK0X0","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T10:00:23Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1XMYZFB4XGE8TJ0XVEXK0X0","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-07T10:01:26Z","data":"Survey pass 1 (seed_cycles start=1): upstream count = 0 (`git rev-list --count origin/denkhaus..upstream/main` after fetching `upstream` -> `https://github.com/fabro-sh/fabro` and `origin`, both pruned). Threshold is >= 5, so no merge needed; drift is zero — `origin/denkhaus` is even with `upstream/main`. Newest upstream subject: \"Bump version to 0.348.0-nightly.0\". Routing to \"Work\": one develop+revisor cycle. Friction: first fetch on this clone pulled hundreds of new remote-tracking branches (very verbose stderr), otherwise clean."}
