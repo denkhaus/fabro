@@ -84,15 +84,18 @@ digraph Develop {
         retry_policy="standard",
         preamble_stages_ignore="planner,reviewer,implementer",
         // fabro-e47c pattern, closed on the implementer 2026-09-03: the ##
-        // Context section is a strict input contract — exactly the seed trio
-        // the prompt names (review feedback rides INSIDE the brief the
-        // planner writes; gate log arrives via the kept tester SECTION, not
-        // a key). Deliberately OUT: `journal` and `implementation_summary`
-        // (the implementer's OWN outputs echoing back), review_verdict
-        // (planner input), seed_cycles (planner/gate input) — and with them
-        // the planner's painpoints, which never were implementer inputs
-        // (stage_ignore alone cannot filter ## Context).
-        preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief",
+        // Context section is a strict input contract — the seed trio the
+        // prompt names (review feedback rides INSIDE the brief the planner
+        // writes; gate log arrives via the kept tester SECTION, not a key)
+        // plus fabro-56f4's `output.gate_known_bug_hits` — INLINE known-bug
+        // seed bodies matched deterministically from the gate failure tail
+        // on a red bounce (absent on first visits and green runs; additive
+        // enrichment, never a blob ref). Deliberately OUT: `journal` and
+        // `implementation_summary` (the implementer's OWN outputs echoing
+        // back), review_verdict (planner input), seed_cycles (planner/gate
+        // input) — and with them the planner's painpoints, which never were
+        // implementer inputs (stage_ignore alone cannot filter ## Context).
+        preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief,output.gate_known_bug_hits",
         // fabro-1dae: same platform scope as the planner — hidden means no
         // read, no discovery, no write through file tools. fs_write stays
         // unset: hidden paths are unwritable anyway, and product seeds may
@@ -120,7 +123,35 @@ digraph Develop {
         max_retries=1
     ]
 
-    // Evidence: deterministic capture of what the read-only reviewer needs.
+    // Gate-bounce known-bug enrichment (fabro-56f4): DETERMINISTIC script
+    // node on the Gate red path — never an LLM. Run 01M1XN2KWG6T0PHRTJWZ8R0AZX
+    // implementer@2 re-derived fabro-febd's root cause from a 186 KB log blob
+    // (704 s, $0.38); this pre-step matches the failure tail against OPEN
+    // workflows-labelled seeds so bounce passes start at the root cause.
+    // Delivery is the command-node output_schema mechanism: the script prints
+    // bounded JSON, the engine validates it and stores it under
+    // `output.gate_known_bug_hits`, which the implementer's
+    // preamble_allow_keys renders INLINE in ## Context (no blob round-trip).
+    // stdin_source="command.output": the tester's captured output ref, still
+    // the last command output when this node starts (present on both the
+    // success and fail paths of the tester). Best-effort: the script exits 0
+    // with empty hits on any internal failure — the bounce must never be
+    // stranded; the unconditional edge below is the fallback either way.
+    // Complements fabro-febd (the build fix); this node does NOT fix the gate.
+    gatebounce [
+        label="Gate bounce: known-bug match",
+        shape=parallelogram,
+        script="nu .fabro/workflows/develop/scripts/gate-bounce.nu",
+        stdin_source="command.output",
+        output_schema="@schemas/gate-known-bug-hits.schema.json",
+        // fabro-900e producer declaration: declares `output.gate_known_bug_hits`
+        // for the preamble_allow_keys lint on the implementer node.
+        context_allow_keys="output.gate_known_bug_hits",
+        timeout="1m",
+        max_retries=1
+    ]
+
+    // Evidence: deterministic capture of what the read-only reviewer needs. of what the read-only reviewer needs.
     // Compact and critical-first (integrity header, seed-work file list,
     // complete seed-work diff, then loop-churn counts and worktree): at the
     // default `compact` fidelity a downstream node renders only the FIRST
@@ -260,7 +291,11 @@ digraph Develop {
     // Structural gate-guard (fabro-6baf): third consecutive red routes to
     // the human instead of another implementer round.
     tester -> exit [kind="deadlock", label="Gate deadlock (3 reds, needs a human)", condition="seed_cycles.tester >= 3"]
-    tester -> implementer [label="Gate red"]
+    // fabro-56f4: the red bounce passes through the deterministic
+    // gatebounce node first (edge pre-step idiom — the engine has no edge
+    // pre-steps, the closeout-pattern node is the established way).
+    tester -> gatebounce [label="Gate red"]
+    gatebounce -> implementer [label="Bounce (known-bug hits attached, if any)"]
 
     evidence -> reviewer [label="Evidence ready", condition="outcome=succeeded"]
     // Explicit outcome condition: an unconditional fallback edge makes the

@@ -15,6 +15,7 @@ Tracker mechanics (sd is installed and authoritative):
 - `sd ready` lists only OPEN unblocked seeds — it will NOT show your seed. Use `sd show <id>`, never `sd ready`, to look up your seed.
 - Never parse `.seeds/issues.jsonl` by hand (python/jq/cat): `sd show <id> --format json` is the supported path; raw-file parsing wastes calls and drifts from the tool's data model.
 - If the brief carries review feedback, fixing those deviations IS this pass's job.
+- Gate-red bounce: when the `## Context` section carries `output.gate_known_bug_hits` (open known-bug seeds deterministically matched against the gate failure tail), read those hits BEFORE re-deriving root cause from the gate logs — the tail already matched them.
 
 ## Your job this pass
 
