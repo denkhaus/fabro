@@ -485,7 +485,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T18:53:24.773364219Z",
-  "last_event_at": "2026-09-07T18:58:46.674348249Z",
+  "last_event_at": "2026-09-07T18:58:52.031330660Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -920,9 +920,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 150,
       "checkpoint": {
-        "timestamp": "2026-09-07T18:58:46.984744809Z",
+        "timestamp": "2026-09-07T18:58:51.047427905Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -932,9 +932,45 @@
         ],
         "node_retries": {},
         "context_values": {
+          "internal.retry_count.file": 0,
+          "filed_seed_ids": [
+            "fabro-2254",
+            "fabro-c381",
+            "fabro-8194",
+            "fabro-56db",
+            "fabro-c841"
+          ],
+          "graph.inspects": "develop,merge-upstream",
+          "current_node": "file",
+          "internal.retry_count.select": 0,
+          "last_stage": "file",
+          "preferred_label": "Staged",
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 1580,
+            "preview": "The newest develop run `01M1YJ8R820R7ZMSN55GJGMZ4A` (created 2026-09-07T18:32, succeeded, live sandbox, version `4ff76f32…` which is the develop baseline from that same newest run) has no marker in "
+          },
+          "revisor_target_run_id": "01M1YJ8R820R7ZMSN55GJGMZ4A",
+          "thread.select.current_node": "analyze",
+          "failure_class": "",
+          "outcome": "succeeded",
+          "failure_signature": "",
+          "revisor_target_status": "succeeded",
+          "graph.preamble_budget_kb": "24",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.node_visit_count": 1,
+          "graph.max_node_visits": "30",
+          "revisor_target_workflow_version": "4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10",
+          "internal.retry_count.start": 0,
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "thread.analyze.current_node": "file",
+          "internal.seed_cycle_anchor": "01M1YJ8R820R7ZMSN55GJGMZ4A",
           "thread.start.current_node": "select",
-          "revisor_target_wall": "19.7 min",
-          "revisor_target_title": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "revision_findings": [
             {
               "title": "Mirror the gate's default-features clippy in the implementer's pre-gate check",
@@ -962,73 +998,124 @@
               "priority": 2
             }
           ],
-          "filed_seed_ids": [
-            "fabro-2254",
-            "fabro-c381",
-            "fabro-8194",
-            "fabro-56db",
-            "fabro-c841"
-          ],
-          "graph.inspects": "develop,merge-upstream",
-          "internal.run_id": "01M1YKF77A13ZDVQZP9HSXVVHY",
-          "journal": {
-            "painpoints": [],
-            "observations": [
-              "All five findings searched clean before creation; findings 1 and 3 explicitly cross-referenced closed/open seeds (fabro-0d56, fabro-6a78) as distinct mechanisms, so nothing was superseded or closed."
-            ]
-          },
-          "response.select": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.select",
-            "chars": 1580,
-            "preview": "The newest develop run `01M1YJ8R820R7ZMSN55GJGMZ4A` (created 2026-09-07T18:32, succeeded, live sandbox, version `4ff76f32…` which is the develop baseline from that same newest run) has no marker in "
-          },
-          "revisor_target_workflow_version": "4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10",
-          "response.analyze": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "chars": 5185,
-            "preview": "Review persisted to `.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md`. Tracker check: rec 5 (preamble inline floor / budget raise) duplicates open `fabro-b568`/`fabro-8d2c`/`fabro-cf3e`; rec 7 (p"
-          },
-          "current_node": "file",
-          "failure_class": "",
-          "preferred_label": "Staged",
-          "internal.exit_kind": "natural",
-          "internal.retry_count.start": 0,
-          "graph.preamble_budget_kb": "24",
+          "revisor_target_wall": "19.7 min",
           "response.file": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.file",
             "chars": 763,
             "preview": "All five findings were dedup-checked (no matches), filed as seeds `fabro-2254`, `fabro-c381`, `fabro-8194`, `fabro-56db`, `fabro-c841` with basis lines, the revision marker was written to `/workspace/"
           },
-          "internal.node_visit_count": 1,
-          "seed_cycles": {
-            "select": 1,
-            "analyze": 1,
-            "file": 1
-          },
-          "revisor_target_run_id": "01M1YJ8R820R7ZMSN55GJGMZ4A",
-          "failure_signature": "",
-          "last_stage": "file",
-          "internal.fidelity": "compact",
-          "graph.max_node_visits": "30",
-          "internal.work_dir": "/workspace/fabro",
-          "outcome": "succeeded",
-          "internal.retry_count.file": 0,
           "internal.retry_count.analyze": 0,
-          "graph.rankdir": "LR",
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "internal.seed_cycle_anchor": "01M1YJ8R820R7ZMSN55GJGMZ4A",
-          "revisor_target_status": "succeeded",
-          "internal.retry_count.select": 0,
           "last_response": "All five findings were dedup-checked (no matches), filed as seeds `fabro-2254`, `fabro-c381`, `fabro-8194`, `fabro-56db`, `fabro-c841` with basis lines, the revision marker was written to `/workspace/",
+          "internal.run_id": "01M1YKF77A13ZDVQZP9HSXVVHY",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "revisor_target_title": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "internal.thread_id": "analyze",
-          "thread.analyze.current_node": "file",
-          "thread.select.current_node": "analyze",
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement"
+          "internal.exit_kind": "natural",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 5185,
+            "preview": "Review persisted to `.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md`. Tracker check: rec 5 (preamble inline floor / budget raise) duplicates open `fabro-b568`/`fabro-8d2c`/`fabro-cf3e`; rec 7 (p"
+          },
+          "graph.rankdir": "LR",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "All five findings searched clean before creation; findings 1 and 3 explicitly cross-referenced closed/open seeds (fabro-0d56, fabro-6a78) as distinct mechanisms, so nothing was superseded or closed."
+            ]
+          },
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "internal.fidelity": "compact"
         },
         "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "analyze": {
+            "status": "succeeded",
+            "preferred_label": "Findings ready",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Ask-Fabro improve answers re-propose already-filed changes: 2 of 7 recommendations for run 01M1YJ8R820R7ZMSN55GJGMZ4A duplicated open seeds (preamble inline floor/budget → fabro-b568/fabro-8d2c/fabro-cf3e; progress denominator → fabro-a0e3/fabro-45bf), forcing manual merge-away. Fix idea: inject the revision-label seed titles into the Ask-Fabro improve prompt as an exclusion list."
+                  }
+                ],
+                "observations": [
+                  "Review persisted to `.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md`. Dropped duplicates: rec 5 duplicate_of open fabro-b568/fabro-8d2c/fabro-cf3e; rec 7 duplicate_of open fabro-a0e3/fabro-45bf. Five findings survive, targeting the run's single avoidable gate-red bounce ($0.642 total run cost, implementer stages 84%, bounce ~$0.41/64%).",
+                  "Selected run implemented seed fabro-22e4 (mtime transport fix) which is still open pending merge; its own journal documents the bug sabotaging its own fix — the qualitygate normalization finding is the in-gate mitigation until that merge ships."
+                ]
+              },
+              "last_stage": "analyze",
+              "last_response": "Review persisted to `.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md`. Tracker check: rec 5 (preamble inline floor / budget raise) duplicates open `fabro-b568`/`fabro-8d2c`/`fabro-cf3e`; rec 7 (p",
+              "response.analyze": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.analyze",
+                "chars": 5185,
+                "preview": "Review persisted to `.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md`. Tracker check: rec 5 (preamble inline floor / budget raise) duplicates open `fabro-b568`/`fabro-8d2c`/`fabro-cf3e`; rec 7 (p"
+              },
+              "revision_findings": [
+                {
+                  "title": "Mirror the gate's default-features clippy in the implementer's pre-gate check",
+                  "description": "In `.fabro/workflows/develop/prompts/implementer.md` step 4, require the literal gate invocation `cargo clippy -p <crate> --all-targets -- -D warnings` (default features) on every touched crate in addition to any feature-scoped checks, and make a known default-features break FAIL the 'gate passes' criterion. In run 01M1YJ8R820R7ZMSN55GJGMZ4A the implementer verified only under `--features docker` while the default-features E0432 it had itself diagnosed red-lined the tester 11s in, forcing a full second cycle (~8 min, ~$0.41, 64% of run cost). Distinct from closed fabro-0d56 (crate scoping): this is feature-set parity.",
+                  "priority": 1
+                },
+                {
+                  "title": "Allow minimal adjacent repair of pre-existing compile breaks in touched crates",
+                  "description": "Add a carve-out to `implementer.md`: a verified pre-existing compile/clippy break in a touched crate may be fixed minimally to keep the gate green, disclosed in `implementation_summary` as adjacent repair. In this run implementer@1 root-caused the pre-existing E0432 via stash-reproduce and knew the 3-line fix, but report-don't-fix scope pushed it to a painpoint and the gate bounced the whole run; the reviewer journal already treats compile-repair as not scope creep.",
+                  "priority": 1
+                },
+                {
+                  "title": "Carry the implementer's prior diagnosis into gate-red bounce prompts",
+                  "description": "In `workflow.fabro` implementer node, add `implementation_summary` to `preamble_allow_keys` (or inject the previous pass's painpoints as a `gate_bounce_notes` key on the bounce path). In this run implementer@2's prompt excluded the node's own prior outputs, so it re-derived from scratch what implementer@1 had root-caused 90s earlier — 305s inference, 6,997 reasoning tokens, $0.405 (73% of the run's reasoning spend). Different mechanism from open fabro-6a78 (compact fidelity): this is the node allow-key/bounce injection path.",
+                  "priority": 2
+                },
+                {
+                  "title": "Normalize stale mtimes at qualitygate start until the transport fix ships",
+                  "description": "In `scripts/qualitygate.nu`, at start run `find lib -name '*.rs' ! -newermt 2000-01-01 -exec touch {} +` and mirror the one-liner in `implementer.md` step 4, until the fabro-22e4 sandbox transport fix is deployed everywhere. In this run edit_file-written `push_credentials.rs` carried mtime 1970-01-01 and cargo replayed stale dead-code warnings with wrong line numbers, forcing a manual touch detour; zero-LLM-cost mitigation, complementary to the open root-cause seed.",
+                  "priority": 2
+                },
+                {
+                  "title": "Tighten gate-bounce known-bug matching to error signatures",
+                  "description": "In `.fabro/workflows/develop/scripts/gate-bounce.nu`, require token overlap with the failure's error code/crate/file path instead of label-level matching, and emit `{\"hits\":[]}` when nothing real matches. In this run an E0432 cargo failure falsely matched prompt-refactoring seed fabro-4814, injecting ~1.4 KB of noise into implementer@2's and the reviewer's preambles. New iteration on the shipped fabro-56f4 mechanism (match precision, not match existence).",
+                  "priority": 2
+                }
+              ]
+            },
+            "notes": "Stage completed: analyze",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 21820,
+                    "output_tokens": 3645,
+                    "reasoning_tokens": 5769,
+                    "cache_read_tokens": 41856,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 82847
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 101513,
+              "tool_time_ms": 116248,
+              "active_time_ms": 217761
+            }
+          },
           "file": {
             "status": "succeeded",
             "preferred_label": "Staged",
@@ -1140,107 +1227,106 @@
               "tool_time_ms": 2149,
               "active_time_ms": 15574
             }
-          },
-          "analyze": {
-            "status": "succeeded",
-            "preferred_label": "Findings ready",
-            "context_updates": {
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "Ask-Fabro improve answers re-propose already-filed changes: 2 of 7 recommendations for run 01M1YJ8R820R7ZMSN55GJGMZ4A duplicated open seeds (preamble inline floor/budget → fabro-b568/fabro-8d2c/fabro-cf3e; progress denominator → fabro-a0e3/fabro-45bf), forcing manual merge-away. Fix idea: inject the revision-label seed titles into the Ask-Fabro improve prompt as an exclusion list."
-                  }
-                ],
-                "observations": [
-                  "Review persisted to `.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md`. Dropped duplicates: rec 5 duplicate_of open fabro-b568/fabro-8d2c/fabro-cf3e; rec 7 duplicate_of open fabro-a0e3/fabro-45bf. Five findings survive, targeting the run's single avoidable gate-red bounce ($0.642 total run cost, implementer stages 84%, bounce ~$0.41/64%).",
-                  "Selected run implemented seed fabro-22e4 (mtime transport fix) which is still open pending merge; its own journal documents the bug sabotaging its own fix — the qualitygate normalization finding is the in-gate mitigation until that merge ships."
-                ]
-              },
-              "last_stage": "analyze",
-              "last_response": "Review persisted to `.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md`. Tracker check: rec 5 (preamble inline floor / budget raise) duplicates open `fabro-b568`/`fabro-8d2c`/`fabro-cf3e`; rec 7 (p",
-              "response.analyze": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.analyze",
-                "chars": 5185,
-                "preview": "Review persisted to `.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md`. Tracker check: rec 5 (preamble inline floor / budget raise) duplicates open `fabro-b568`/`fabro-8d2c`/`fabro-cf3e`; rec 7 (p"
-              },
-              "revision_findings": [
-                {
-                  "title": "Mirror the gate's default-features clippy in the implementer's pre-gate check",
-                  "description": "In `.fabro/workflows/develop/prompts/implementer.md` step 4, require the literal gate invocation `cargo clippy -p <crate> --all-targets -- -D warnings` (default features) on every touched crate in addition to any feature-scoped checks, and make a known default-features break FAIL the 'gate passes' criterion. In run 01M1YJ8R820R7ZMSN55GJGMZ4A the implementer verified only under `--features docker` while the default-features E0432 it had itself diagnosed red-lined the tester 11s in, forcing a full second cycle (~8 min, ~$0.41, 64% of run cost). Distinct from closed fabro-0d56 (crate scoping): this is feature-set parity.",
-                  "priority": 1
-                },
-                {
-                  "title": "Allow minimal adjacent repair of pre-existing compile breaks in touched crates",
-                  "description": "Add a carve-out to `implementer.md`: a verified pre-existing compile/clippy break in a touched crate may be fixed minimally to keep the gate green, disclosed in `implementation_summary` as adjacent repair. In this run implementer@1 root-caused the pre-existing E0432 via stash-reproduce and knew the 3-line fix, but report-don't-fix scope pushed it to a painpoint and the gate bounced the whole run; the reviewer journal already treats compile-repair as not scope creep.",
-                  "priority": 1
-                },
-                {
-                  "title": "Carry the implementer's prior diagnosis into gate-red bounce prompts",
-                  "description": "In `workflow.fabro` implementer node, add `implementation_summary` to `preamble_allow_keys` (or inject the previous pass's painpoints as a `gate_bounce_notes` key on the bounce path). In this run implementer@2's prompt excluded the node's own prior outputs, so it re-derived from scratch what implementer@1 had root-caused 90s earlier — 305s inference, 6,997 reasoning tokens, $0.405 (73% of the run's reasoning spend). Different mechanism from open fabro-6a78 (compact fidelity): this is the node allow-key/bounce injection path.",
-                  "priority": 2
-                },
-                {
-                  "title": "Normalize stale mtimes at qualitygate start until the transport fix ships",
-                  "description": "In `scripts/qualitygate.nu`, at start run `find lib -name '*.rs' ! -newermt 2000-01-01 -exec touch {} +` and mirror the one-liner in `implementer.md` step 4, until the fabro-22e4 sandbox transport fix is deployed everywhere. In this run edit_file-written `push_credentials.rs` carried mtime 1970-01-01 and cargo replayed stale dead-code warnings with wrong line numbers, forcing a manual touch detour; zero-LLM-cost mitigation, complementary to the open root-cause seed.",
-                  "priority": 2
-                },
-                {
-                  "title": "Tighten gate-bounce known-bug matching to error signatures",
-                  "description": "In `.fabro/workflows/develop/scripts/gate-bounce.nu`, require token overlap with the failure's error code/crate/file path instead of label-level matching, and emit `{\"hits\":[]}` when nothing real matches. In this run an E0432 cargo failure falsely matched prompt-refactoring seed fabro-4814, injecting ~1.4 KB of noise into implementer@2's and the reviewer's preambles. New iteration on the shipped fabro-56f4 mechanism (match precision, not match existence).",
-                  "priority": 2
-                }
-              ]
-            },
-            "notes": "Stage completed: analyze",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 21820,
-                    "output_tokens": 3645,
-                    "reasoning_tokens": 5769,
-                    "cache_read_tokens": 41856,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 82847
-            },
-            "files_touched": [
-              "/workspace/fabro/.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md"
-            ],
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 101513,
-              "tool_time_ms": 116248,
-              "active_time_ms": 217761
-            }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "e49a701658131e45c56a7b3659709a00f50e5d83",
         "node_visits": {
-          "analyze": 1,
           "select": 1,
           "file": 1,
-          "start": 1
+          "start": 1,
+          "analyze": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1YKF77A13ZDVQZP9HSXVVHY.jsonl b/.fabro/journal/01M1YKF77A13ZDVQZP9HSXVVHY.jsonl\nindex 35bea5f..35d7094 100644\n--- a/.fabro/journal/01M1YKF77A13ZDVQZP9HSXVVHY.jsonl\n+++ b/.fabro/journal/01M1YKF77A13ZDVQZP9HSXVVHY.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YKF77A13ZDVQZP9HSXVVHY\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:53:27Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YKF77A13ZDVQZP9HSXVVHY\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:53:46Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected newest unrevised develop run; ~40 older develop runs are stale-evidence (version drift or absent version) and ~15 more lack a live sandbox — they stay unrevised until engine provisions fresh analyst sandboxes\",\"3 merge-upstream runs match the current merge baseline but are older than the selected develop run; merge revision value remains unharvested\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YKF77A13ZDVQZP9HSXVVHY\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:57:53Z\",\"data\":{\"painpoints\":[{\"text\":\"Ask-Fabro improve answers re-propose already-filed changes: 2 of 7 recommendations for run 01M1YJ8R820R7ZMSN55GJGMZ4A duplicated open seeds (preamble inline floor/budget → fabro-b568/fabro-8d2c/fabro-cf3e; progress denominator → fabro-a0e3/fabro-45bf), forcing manual merge-away. Fix idea: inject the revision-label seed titles into the Ask-Fabro improve prompt as an exclusion list.\"}],\"observations\":[\"Review persisted to `.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md`. Dropped duplicates: rec 5 duplicate_of open fabro-b568/fabro-8d2c/fabro-cf3e; rec 7 duplicate_of open fabro-a0e3/fabro-45bf. Five findings survive, targeting the run's single avoidable gate-red bounce ($0.642 total run cost, implementer stages 84%, bounce ~$0.41/64%).\",\"Selected run implemented seed fabro-22e4 (mtime transport fix) which is still open pending merge; its own journal documents the bug sabotaging its own fix — the qualitygate normalization finding is the in-gate mitigation until that merge ships.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YKF77A13ZDVQZP9HSXVVHY\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:58:46Z\",\"data\":{\"painpoints\":[],\"observations\":[\"All five findings searched clean before creation; findings 1 and 3 explicitly cross-referenced closed/open seeds (fabro-0d56, fabro-6a78) as distinct mechanisms, so nothing was superseded or closed.\"]}}\ndiff --git a/.fabro/revisions/01M1YJ8R820R7ZMSN55GJGMZ4A.md b/.fabro/revisions/01M1YJ8R820R7ZMSN55GJGMZ4A.md\nnew file mode 100644\nindex 0000000..60f9829\n--- /dev/null\n+++ b/.fabro/revisions/01M1YJ8R820R7ZMSN55GJGMZ4A.md\n@@ -0,0 +1,24 @@\n+# Revision — run 01M1YJ8R820R7ZMSN55GJGMZ4A\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md\n+- seeds filed: fabro-2254 (default-features clippy parity in implementer pre-gate check), fabro-c381 (minimal adjacent repair of pre-existing compile breaks in touched crates), fabro-8194 (carry implementer's prior diagnosis into gate-red bounce prompts), fabro-56db (normalize stale mtimes at qualitygate start), fabro-c841 (tighten gate-bounce known-bug matching to error signatures)\n+- basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\n+- revised_at_commit: b1dbce3b713540dc605bec39d9ac09c17a224cb4 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Mirror the gate's default-features clippy in the implementer's pre-gate check — filed fabro-2254\n+Require the literal gate invocation `cargo clippy -p <crate> --all-targets -- -D warnings` (default features) on every touched crate in `.fabro/workflows/develop/prompts/implementer.md` step 4. Expected effect: no more second cycles from feature-scoped-only verification (this run: ~8 min, ~$0.41, 64% of run cost wasted).\n+\n+### Allow minimal adjacent repair of pre-existing compile breaks in touched crates — filed fabro-c381\n+Carve-out in `implementer.md` for minimal, disclosed repair of verified pre-existing breaks in touched crates. Expected effect: the 3-line fix gets applied instead of bouncing the whole run through a painpoint→gate-red loop.\n+\n+### Carry the implementer's prior diagnosis into gate-red bounce prompts — filed fabro-8194\n+Add `implementation_summary` to `preamble_allow_keys` (or inject a `gate_bounce_notes` key) on the implementer node bounce path in `workflow.fabro`. Expected effect: implementer@2 stops re-deriving implementer@1's root cause (305s inference, $0.405, 73% of reasoning spend).\n+\n+### Normalize stale mtimes at qualitygate start until the transport fix ships — filed fabro-56db\n+One-liner `find lib -name '*.rs' ! -newermt 2000-01-01 -exec touch {} +` at `scripts/qualitygate.nu` start, mirrored in `implementer.md` step 4, until fabro-22e4 ships. Expected effect: no stale-warning replay from 1970-epoch mtimes; zero LLM cost.\n+\n+### Tighten gate-bounce known-bug matching to error signatures — filed fabro-c841\n+Require token overlap with error code/crate/file path in `.fabro/workflows/develop/scripts/gate-bounce.nu` instead of label matching; emit `{\"hits\":[]}` when nothing matches. Expected effect: E0432 failures stop pulling in ~1.4 KB of unrelated known-bug noise (false match on fabro-4814).\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 60e2c8e..e6426ce 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -248,3 +248,8 @@\n {\"id\":\"fabro-22e4\",\"title\":\"agent: edit-tool file writes land with mtime 1970-01-01 — cargo skips recompiles, edits silently lag until manual touch\",\"status\":\"open\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T18:30:04.569Z\",\"updatedAt\":\"2026-09-07T18:30:04.569Z\",\"assignee\":\"fabro\",\"description\":\"From unreviewed run 01M1Y2SMEVDHAFB59GZV9B84CQ (PR #41 implementer; recovered via journal sweep 2026-09-07 after the run aged out of revisor freshness): edit-tool file writes landed with mtime 1970-01-01 (e.g. lib/components/fabro-validate/src/file_refs.rs), so cargo considered the sources older than cached rlibs and silently skipped recompiles — a just-added pub fn was reported missing and behavior lagged the edits until a manual touch. This is silent cache poisoning of the build loop: any agent edit can produce a stale-binary diagnosis that costs implementer revisits. Fix direction: the platform's file-write path (edit tool / sandbox write transport) must set a real mtime — utimensat/write-with-times after creating or replacing the file so downstream build systems see fresh sources. Acceptance: an edit-tool write produces mtime == wall clock (unit test on the write path); a before/after cargo check in a scratch crate recompiles after an agent edit without manual touch.\",\"labels\":[\"engine\",\"agent\"]}\n {\"id\":\"fabro-b8ed\",\"title\":\"develop: verification-only briefs must not assert 'criteria satisfied' — derive per-criterion checks instead\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:30:04.670Z\",\"updatedAt\":\"2026-09-07T18:30:04.670Z\",\"assignee\":\"fabro\",\"description\":\"From unreviewed run 01M1Y852BN91NSVSHFWNWTW5ST (PR #42; journal sweep 2026-09-07): the verification-only brief asserted 'acceptance criteria appear already satisfied', but criterion 5 of fabro-5e09 was materially unmet in the worktree — docs/agents/issue-tracker.md still said 'Filers assign at creation' and 'Assignment is a user decision', contradicting the seed's D2/D3 decisions from the same day. The pass only converged because the implementer re-checked; a lazier one would have closed the seed on the brief's word. Fix direction: the planner's verification-only brief generation must not carry satisfaction assertions — instead list each acceptance criterion with an instruction to verify it against the CURRENT worktree and report per-criterion status in the summary. Related: fabro-578a (different aspect: allowed command level in verification-only briefs).\",\"labels\":[\"workflows\",\"revision\"]}\n {\"id\":\"fabro-52a9\",\"title\":\"conductor survey: reword misleading 'burns the backlog down' claim — backlog journal is visibility-only, drain needs the revisor's newest-first rule to change\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-07T18:30:04.771Z\",\"updatedAt\":\"2026-09-07T18:30:04.771Z\",\"assignee\":\"fabro\",\"description\":\"PR #45's survey prompt says 'the revisor revises the newest revisable run, so each subsequent pass burns the backlog down one run at a time' — but the revise leg creates the revisor without a goal and the revisor's select rule picks the NEWEST unrevised fresh run (which is always the current pass's own child), so the backlog NEVER drains; additionally the freshness rule (ADR-0015) makes older runs stale-evidence the moment the workflow version drifts, permanently disqualifying them. The journal line is dead-letter optimism (user + agent analysis 2026-09-07). Fix: reword survey.md to state the truth — the backlog entry is VISIBILITY-only (unreviewed run ids stay observable), runs are only revisable while fresh, and a real drain would need the revise leg to pass an explicit backlog run id in the goal (a decision not made). Do not promise behavior the graph cannot deliver.\",\"labels\":[\"workflows\",\"revision\"]}\n+{\"id\":\"fabro-2254\",\"title\":\"Mirror the gate's default-features clippy in the implementer's pre-gate check\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T18:58:15.104Z\",\"updatedAt\":\"2026-09-07T18:58:15.104Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, require the literal gate invocation cargo clippy -p <crate> --all-targets -- -D warnings (default features) on every touched crate in addition to any feature-scoped checks, and make a known default-features break FAIL the 'gate passes' criterion. In run 01M1YJ8R820R7ZMSN55GJGMZ4A the implementer verified only under --features docker while the default-features E0432 it had itself diagnosed red-lined the tester 11s in, forcing a full second cycle (~8 min, ~$0.41, 64% of run cost). Distinct from closed fabro-0d56 (crate scoping): this is feature-set parity. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-c381\",\"title\":\"Allow minimal adjacent repair of pre-existing compile breaks in touched crates\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T18:58:15.217Z\",\"updatedAt\":\"2026-09-07T18:58:15.217Z\",\"description\":\"Add a carve-out to implementer.md: a verified pre-existing compile/clippy break in a touched crate may be fixed minimally to keep the gate green, disclosed in implementation_summary as adjacent repair. In this run implementer@1 root-caused the pre-existing E0432 via stash-reproduce and knew the 3-line fix, but report-don't-fix scope pushed it to a painpoint and the gate bounced the whole run; the reviewer journal already treats compile-repair as not scope creep. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-8194\",\"title\":\"Carry the implementer's prior diagnosis into gate-red bounce prompts\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:15.338Z\",\"updatedAt\":\"2026-09-07T18:58:15.338Z\",\"description\":\"In workflow.fabro implementer node, add implementation_summary to preamble_allow_keys (or inject the previous pass's painpoints as a gate_bounce_notes key on the bounce path). In this run implementer@2's prompt excluded the node's own prior outputs, so it re-derived from scratch what implementer@1 had root-caused 90s earlier - 305s inference, 6,997 reasoning tokens, $0.405 (73% of the run's reasoning spend). Different mechanism from open fabro-6a78 (compact fidelity): this is the node allow-key/bounce injection path. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-56db\",\"title\":\"Normalize stale mtimes at qualitygate start until the transport fix ships\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:21.984Z\",\"updatedAt\":\"2026-09-07T18:58:21.984Z\",\"description\":\"In scripts/qualitygate.nu, at start run: find lib -name '*.rs' ! -newermt 2000-01-01 -exec touch {} + and mirror the one-liner in implementer.md step 4, until the fabro-22e4 sandbox transport fix is deployed everywhere. In this run edit_file-written push_credentials.rs carried mtime 1970-01-01 and cargo replayed stale dead-code warnings with wrong line numbers, forcing a manual touch detour; zero-LLM-cost mitigation, complementary to the open root-cause seed fabro-22e4. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-c841\",\"title\":\"Tighten gate-bounce known-bug matching to error signatures\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:22.097Z\",\"updatedAt\":\"2026-09-07T18:58:22.097Z\",\"description\":\"In .fabro/workflows/develop/scripts/gate-bounce.nu, require token overlap with the failure's error code/crate/file path instead of label-level matching, and emit {\\\"hits\\\":[]} when nothing real matches. In this run an E0432 cargo failure falsely matched prompt-refactoring seed fabro-4814, injecting ~1.4 KB of noise into implementer@2's and the reviewer's preambles. New iteration on the shipped fabro-56f4 mechanism (match precision, not match existence). Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 84,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T18:58:51.097283444Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 292929,
+      "inference_time_ms": 155471,
+      "tool_time_ms": 119986,
+      "active_time_ms": 275457
+    },
+    "final_git_commit_sha": "e49a701658131e45c56a7b3659709a00f50e5d83",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 16187,
+          "inference_time_ms": 13425,
+          "tool_time_ms": 2149,
+          "active_time_ms": 15574
+        },
+        "billing_usd_micros": 47167,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 218314,
+          "inference_time_ms": 101513,
+          "tool_time_ms": 116248,
+          "active_time_ms": 217761
+        },
+        "billing_usd_micros": 82847,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 42698,
+          "inference_time_ms": 40533,
+          "tool_time_ms": 1589,
+          "active_time_ms": 42122
+        },
+        "billing_usd_micros": 55118,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 68660,
+      "output_tokens": 6559,
+      "total_tokens": 210955,
+      "reasoning_tokens": 6008,
+      "cache_read_tokens": 129728,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 185132
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1YKF77A13ZDVQZP9HSXVVHY.jsonl b/.fabro/journal/01M1YKF77A13ZDVQZP9HSXVVHY.jsonl\nnew file mode 100644\nindex 0000000..35d7094\n--- /dev/null\n+++ b/.fabro/journal/01M1YKF77A13ZDVQZP9HSXVVHY.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YKF77A13ZDVQZP9HSXVVHY\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:53:27Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YKF77A13ZDVQZP9HSXVVHY\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:53:46Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected newest unrevised develop run; ~40 older develop runs are stale-evidence (version drift or absent version) and ~15 more lack a live sandbox — they stay unrevised until engine provisions fresh analyst sandboxes\",\"3 merge-upstream runs match the current merge baseline but are older than the selected develop run; merge revision value remains unharvested\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YKF77A13ZDVQZP9HSXVVHY\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:57:53Z\",\"data\":{\"painpoints\":[{\"text\":\"Ask-Fabro improve answers re-propose already-filed changes: 2 of 7 recommendations for run 01M1YJ8R820R7ZMSN55GJGMZ4A duplicated open seeds (preamble inline floor/budget → fabro-b568/fabro-8d2c/fabro-cf3e; progress denominator → fabro-a0e3/fabro-45bf), forcing manual merge-away. Fix idea: inject the revision-label seed titles into the Ask-Fabro improve prompt as an exclusion list.\"}],\"observations\":[\"Review persisted to `.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md`. Dropped duplicates: rec 5 duplicate_of open fabro-b568/fabro-8d2c/fabro-cf3e; rec 7 duplicate_of open fabro-a0e3/fabro-45bf. Five findings survive, targeting the run's single avoidable gate-red bounce ($0.642 total run cost, implementer stages 84%, bounce ~$0.41/64%).\",\"Selected run implemented seed fabro-22e4 (mtime transport fix) which is still open pending merge; its own journal documents the bug sabotaging its own fix — the qualitygate normalization finding is the in-gate mitigation until that merge ships.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YKF77A13ZDVQZP9HSXVVHY\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:58:46Z\",\"data\":{\"painpoints\":[],\"observations\":[\"All five findings searched clean before creation; findings 1 and 3 explicitly cross-referenced closed/open seeds (fabro-0d56, fabro-6a78) as distinct mechanisms, so nothing was superseded or closed.\"]}}\ndiff --git a/.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md b/.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md\nnew file mode 100644\nindex 0000000..fcf649c\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md\n@@ -0,0 +1,51 @@\n+# Improve review — run 01M1YJ8R820R7ZMSN55GJGMZ4A\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (19.7 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-07 18:56+0000 by revisor `fabro_ask`\n+\n+---\n+\n+## What this run was\n+\n+Seed `fabro-22e4` (tar-upload mtime = 1970 bug), one full develop cycle with **one gate-red bounce**: planner 43.8s/$0.061 → implementer@1 411s/$0.135 → tester RED (11s) → gatebounce → implementer@2 464s/$0.405 → tester GREEN (41s) → evidence → reviewer 35.7s/$0.040 → closeout. Total ~17.5 min active, **$0.642, of which the implementer stages were $0.54 (84%)** (all figures from the run's conclusion/billing in run events).\n+\n+## Recommendations, ordered by expected impact\n+\n+**1. Make the implementer's mandated pre-gate clippy mirror the gate's feature set.**\n+*What happened:* The prompt (`.fabro/workflows/develop/prompts/implementer.md`, step 4) mandates `cargo clippy -p <touched-crate> --all-targets -- -D warnings` — default features, exactly what the gate runs. The implementer instead verified only under `--features docker` (its summary: \"compile check via `cargo nextest run -p fabro-sandbox --features docker`… clippy shows only two pre-existing errors in provider.rs/sandbox_spec.rs\" — docker-only lints). The default-features E0432 (`managed_labels`) it had *already diagnosed in its own journal painpoint* then red-lined the tester 11 seconds in.\n+*Change:* In `implementer.md` step 4, add: \"Run the literal gate invocation (`cargo clippy -p <crate> --all-targets -- -D warnings`, default features) on every touched crate, in addition to any feature-scoped checks for feature-gated code; a known default-features break in a touched crate makes criterion 'gate passes' FAIL, not PASS-under-features.\"\n+*Expected effect:* This exact class of bounce (green self-check, red gate) is caught pre-submit. Here it would have saved the entire second cycle — ~8 min wall and ~$0.41, i.e. 64% of run cost.\n+\n+**2. Permit (and require disclosing) minimal repair of pre-existing compile breaks in touched crates.**\n+*What happened:* implementer@1 verified the E0432 was pre-existing (stash-reproduce on planner commit `1e3f7fc`), knew the exact fix (\"move the cfg gate onto the pub use\"), but \"nothing more, nothing less\" scope plus report-don't-fix pushed it to a painpoint instead of a 3-line fix — and the gate punished the whole run for it.\n+*Change:* Same file, `implementer.md`: add a carve-out — \"A verified pre-existing compile/clippy break **in a touched crate** may be fixed minimally to keep the gate green; name it in `implementation_summary` as adjacent repair.\"\n+*Expected effect:* Gate-blocking latent rot gets fixed in-pass instead of burning a bounce cycle; reviewers already accept this pattern (reviewer journal: \"compile-repair… not scope creep\").\n+\n+**3. Stop dropping the implementer's own prior diagnosis on gate-red bounces.**\n+*What happened:* implementer@2's prompt (visible in stage events) carried the tester failure tail and gatebounce hits, but **not** `implementation_summary` or `journal` — the node's `preamble_allow_keys` deliberately excludes them (\"the implementer's OWN outputs echoing back\"). So the bounce pass re-derived from scratch what implementer@1 had root-caused 90 seconds earlier, at 305s inference / 6,997 reasoning tokens / $0.405 — 73% of the run's entire reasoning spend.\n+*Change:* In `workflow.fabro`, implementer node: add `implementation_summary` to `preamble_allow_keys` (or have the bounce path inject the previous pass's painpoints as a `gate_bounce_notes` key).\n+*Expected effect:* Bounce passes start at the known root cause instead of re-diagnosing; on this run that's roughly half of implementer@2's inference.\n+\n+**4. Normalize stale mtimes deterministically until the transport fix ships.**\n+*What happened:* The seed's own bug sabotaged its own fix — implementer@2's journal: after `edit_file` writes, `push_credentials.rs` carried mtime 1970-01-01, \"cargo check replayed stale dead-code warnings… line numbers that no longer matched the source,\" forcing a manual `touch` detour (lesson `mx-c28106`; same class previously produced wrong test failures in run `01M1YBBXR99PNME6Y8ZED4Y2NN`).\n+*Change:* `scripts/qualitygate.nu`: at start, `find lib -name '*.rs' ! -newermt 2000-01-01 -exec touch {} +` (and mirror the one-liner in `implementer.md` step 4) until the rebuilt sandbox binary is everywhere.\n+*Expected effect:* Zero-LLM-cost elimination of stale-fingerprint false diagnoses — the failure mode this seed exists to fix, still live in every run container.\n+\n+**5. Give the evidence capture an inline floor in the preamble demote pass.**\n+*What happened:* The 8.6 KB capture was blob-ref'd to the reviewer despite `preamble_inline_max_kb=16` — because the 24 KB aggregate budget was consumed by **duplicate** content: the green tester output rendered twice, plus an irrelevant 1.4 KB gatebounce hit (reviewer's own painpoint: \"had to be paged manually before judging\"). Open seeds `fabro-b568`/`fabro-8d2c`/`fabro-cf3e` already point here.\n+*Change:* Engine preamble demote pass (or graph `preamble_budget_kb` 24→32 plus dedupe per `fabro-edac`): `command.output` on the reviewer node is demoted last / never while it fits `preamble_inline_max_kb`.\n+*Expected effect:* Small captures review inline — one fewer tool round-trip per review and removal of the unread-blob → \"Verification blocked\" failure mode.\n+\n+**6. Tighten gate-bounce matching to error signatures.**\n+*What happened:* The E0432/cargo failure matched known-bug seed `fabro-4814` (\"purge retired two-worlds framing\" — a prompt-refactoring task, utterly unrelated), injecting ~1.4 KB of noise into both implementer@2's and the reviewer's preambles.\n+*Change:* `.fabro/workflows/develop/scripts/gate-bounce.nu`: require token overlap with the failure's error code/crate/file path, not label-level matching; emit `{\"hits\":[]}` when nothing real matches.\n+*Expected effect:* Bounce context carries only signal; less misdirection for the next implementer, budget back for the evidence that matters.\n+\n+**7. Fix the \"Pipeline progress: X of 7\" denominator.**\n+*What happened:* implementer@1's prompt read \"Pipeline progress: 0 of 7 stages completed\" *after* the planner completed; the terminal view says \"9 of 7\" (seeds `fabro-45bf`/`fabro-a0e3`/`38f4`).\n+*Change:* Engine stage-prompt builder: count unique completed nodes, not stage-section count.\n+*Expected effect:* Stage prompts stop contradicting reality — cosmetic, but it's the first line every agent reads.\n+\n+The common thread: this run's cost and duration were dominated not by the seed work (implementer@1 was clean and cheap) but by **one avoidable gate-red bounce** — recs 1–3 attack it from the check side, the scope side, and the context side; 4–7 remove the residual friction the journal documented in the run's own words.\ndiff --git a/.fabro/revisions/01M1YJ8R820R7ZMSN55GJGMZ4A.md b/.fabro/revisions/01M1YJ8R820R7ZMSN55GJGMZ4A.md\nnew file mode 100644\nindex 0000000..60f9829\n--- /dev/null\n+++ b/.fabro/revisions/01M1YJ8R820R7ZMSN55GJGMZ4A.md\n@@ -0,0 +1,24 @@\n+# Revision — run 01M1YJ8R820R7ZMSN55GJGMZ4A\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md\n+- seeds filed: fabro-2254 (default-features clippy parity in implementer pre-gate check), fabro-c381 (minimal adjacent repair of pre-existing compile breaks in touched crates), fabro-8194 (carry implementer's prior diagnosis into gate-red bounce prompts), fabro-56db (normalize stale mtimes at qualitygate start), fabro-c841 (tighten gate-bounce known-bug matching to error signatures)\n+- basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\n+- revised_at_commit: b1dbce3b713540dc605bec39d9ac09c17a224cb4 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Mirror the gate's default-features clippy in the implementer's pre-gate check — filed fabro-2254\n+Require the literal gate invocation `cargo clippy -p <crate> --all-targets -- -D warnings` (default features) on every touched crate in `.fabro/workflows/develop/prompts/implementer.md` step 4. Expected effect: no more second cycles from feature-scoped-only verification (this run: ~8 min, ~$0.41, 64% of run cost wasted).\n+\n+### Allow minimal adjacent repair of pre-existing compile breaks in touched crates — filed fabro-c381\n+Carve-out in `implementer.md` for minimal, disclosed repair of verified pre-existing breaks in touched crates. Expected effect: the 3-line fix gets applied instead of bouncing the whole run through a painpoint→gate-red loop.\n+\n+### Carry the implementer's prior diagnosis into gate-red bounce prompts — filed fabro-8194\n+Add `implementation_summary` to `preamble_allow_keys` (or inject a `gate_bounce_notes` key) on the implementer node bounce path in `workflow.fabro`. Expected effect: implementer@2 stops re-deriving implementer@1's root cause (305s inference, $0.405, 73% of reasoning spend).\n+\n+### Normalize stale mtimes at qualitygate start until the transport fix ships — filed fabro-56db\n+One-liner `find lib -name '*.rs' ! -newermt 2000-01-01 -exec touch {} +` at `scripts/qualitygate.nu` start, mirrored in `implementer.md` step 4, until fabro-22e4 ships. Expected effect: no stale-warning replay from 1970-epoch mtimes; zero LLM cost.\n+\n+### Tighten gate-bounce known-bug matching to error signatures — filed fabro-c841\n+Require token overlap with error code/crate/file path in `.fabro/workflows/develop/scripts/gate-bounce.nu` instead of label matching; emit `{\"hits\":[]}` when nothing matches. Expected effect: E0432 failures stop pulling in ~1.4 KB of unrelated known-bug noise (false match on fabro-4814).\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 60e2c8e..e6426ce 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -248,3 +248,8 @@\n {\"id\":\"fabro-22e4\",\"title\":\"agent: edit-tool file writes land with mtime 1970-01-01 — cargo skips recompiles, edits silently lag until manual touch\",\"status\":\"open\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T18:30:04.569Z\",\"updatedAt\":\"2026-09-07T18:30:04.569Z\",\"assignee\":\"fabro\",\"description\":\"From unreviewed run 01M1Y2SMEVDHAFB59GZV9B84CQ (PR #41 implementer; recovered via journal sweep 2026-09-07 after the run aged out of revisor freshness): edit-tool file writes landed with mtime 1970-01-01 (e.g. lib/components/fabro-validate/src/file_refs.rs), so cargo considered the sources older than cached rlibs and silently skipped recompiles — a just-added pub fn was reported missing and behavior lagged the edits until a manual touch. This is silent cache poisoning of the build loop: any agent edit can produce a stale-binary diagnosis that costs implementer revisits. Fix direction: the platform's file-write path (edit tool / sandbox write transport) must set a real mtime — utimensat/write-with-times after creating or replacing the file so downstream build systems see fresh sources. Acceptance: an edit-tool write produces mtime == wall clock (unit test on the write path); a before/after cargo check in a scratch crate recompiles after an agent edit without manual touch.\",\"labels\":[\"engine\",\"agent\"]}\n {\"id\":\"fabro-b8ed\",\"title\":\"develop: verification-only briefs must not assert 'criteria satisfied' — derive per-criterion checks instead\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:30:04.670Z\",\"updatedAt\":\"2026-09-07T18:30:04.670Z\",\"assignee\":\"fabro\",\"description\":\"From unreviewed run 01M1Y852BN91NSVSHFWNWTW5ST (PR #42; journal sweep 2026-09-07): the verification-only brief asserted 'acceptance criteria appear already satisfied', but criterion 5 of fabro-5e09 was materially unmet in the worktree — docs/agents/issue-tracker.md still said 'Filers assign at creation' and 'Assignment is a user decision', contradicting the seed's D2/D3 decisions from the same day. The pass only converged because the implementer re-checked; a lazier one would have closed the seed on the brief's word. Fix direction: the planner's verification-only brief generation must not carry satisfaction assertions — instead list each acceptance criterion with an instruction to verify it against the CURRENT worktree and report per-criterion status in the summary. Related: fabro-578a (different aspect: allowed command level in verification-only briefs).\",\"labels\":[\"workflows\",\"revision\"]}\n {\"id\":\"fabro-52a9\",\"title\":\"conductor survey: reword misleading 'burns the backlog down' claim — backlog journal is visibility-only, drain needs the revisor's newest-first rule to change\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-07T18:30:04.771Z\",\"updatedAt\":\"2026-09-07T18:30:04.771Z\",\"assignee\":\"fabro\",\"description\":\"PR #45's survey prompt says 'the revisor revises the newest revisable run, so each subsequent pass burns the backlog down one run at a time' — but the revise leg creates the revisor without a goal and the revisor's select rule picks the NEWEST unrevised fresh run (which is always the current pass's own child), so the backlog NEVER drains; additionally the freshness rule (ADR-0015) makes older runs stale-evidence the moment the workflow version drifts, permanently disqualifying them. The journal line is dead-letter optimism (user + agent analysis 2026-09-07). Fix: reword survey.md to state the truth — the backlog entry is VISIBILITY-only (unreviewed run ids stay observable), runs are only revisable while fresh, and a real drain would need the revise leg to pass an explicit backlog run id in the goal (a decision not made). Do not promise behavior the graph cannot deliver.\",\"labels\":[\"workflows\",\"revision\"]}\n+{\"id\":\"fabro-2254\",\"title\":\"Mirror the gate's default-features clippy in the implementer's pre-gate check\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T18:58:15.104Z\",\"updatedAt\":\"2026-09-07T18:58:15.104Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, require the literal gate invocation cargo clippy -p <crate> --all-targets -- -D warnings (default features) on every touched crate in addition to any feature-scoped checks, and make a known default-features break FAIL the 'gate passes' criterion. In run 01M1YJ8R820R7ZMSN55GJGMZ4A the implementer verified only under --features docker while the default-features E0432 it had itself diagnosed red-lined the tester 11s in, forcing a full second cycle (~8 min, ~$0.41, 64% of run cost). Distinct from closed fabro-0d56 (crate scoping): this is feature-set parity. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-c381\",\"title\":\"Allow minimal adjacent repair of pre-existing compile breaks in touched crates\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T18:58:15.217Z\",\"updatedAt\":\"2026-09-07T18:58:15.217Z\",\"description\":\"Add a carve-out to implementer.md: a verified pre-existing compile/clippy break in a touched crate may be fixed minimally to keep the gate green, disclosed in implementation_summary as adjacent repair. In this run implementer@1 root-caused the pre-existing E0432 via stash-reproduce and knew the 3-line fix, but report-don't-fix scope pushed it to a painpoint and the gate bounced the whole run; the reviewer journal already treats compile-repair as not scope creep. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-8194\",\"title\":\"Carry the implementer's prior diagnosis into gate-red bounce prompts\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:15.338Z\",\"updatedAt\":\"2026-09-07T18:58:15.338Z\",\"description\":\"In workflow.fabro implementer node, add implementation_summary to preamble_allow_keys (or inject the previous pass's painpoints as a gate_bounce_notes key on the bounce path). In this run implementer@2's prompt excluded the node's own prior outputs, so it re-derived from scratch what implementer@1 had root-caused 90s earlier - 305s inference, 6,997 reasoning tokens, $0.405 (73% of the run's reasoning spend). Different mechanism from open fabro-6a78 (compact fidelity): this is the node allow-key/bounce injection path. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-56db\",\"title\":\"Normalize stale mtimes at qualitygate start until the transport fix ships\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:21.984Z\",\"updatedAt\":\"2026-09-07T18:58:21.984Z\",\"description\":\"In scripts/qualitygate.nu, at start run: find lib -name '*.rs' ! -newermt 2000-01-01 -exec touch {} + and mirror the one-liner in implementer.md step 4, until the fabro-22e4 sandbox transport fix is deployed everywhere. In this run edit_file-written push_credentials.rs carried mtime 1970-01-01 and cargo replayed stale dead-code warnings with wrong line numbers, forcing a manual touch detour; zero-LLM-cost mitigation, complementary to the open root-cause seed fabro-22e4. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-c841\",\"title\":\"Tighten gate-bounce known-bug matching to error signatures\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:22.097Z\",\"updatedAt\":\"2026-09-07T18:58:22.097Z\",\"description\":\"In .fabro/workflows/develop/scripts/gate-bounce.nu, require token overlap with the failure's error code/crate/file path instead of label-level matching, and emit {\\\"hits\\\":[]} when nothing real matches. In this run an E0432 cargo failure falsely matched prompt-refactoring seed fabro-4814, injecting ~1.4 KB of noise into implementer@2's and the reviewer's preambles. New iteration on the shipped fabro-56f4 mechanism (match precision, not match existence). Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 84,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1635,6 +1721,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 153,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T18:58:51.048325345Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T18:58:51.048176505Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
