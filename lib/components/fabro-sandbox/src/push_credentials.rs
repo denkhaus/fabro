@@ -7,9 +7,13 @@
 //! providers. The token cache itself sits below the providers, in
 //! [`fabro_github::token_source::InstallationTokenSource`].
 
+// `Future`, `GitHubCredentials`, and `RefreshOutcome` serve the
+// clone-transport constructor/refresh path gated below.
+#[cfg(any(feature = "docker", feature = "daytona", test))]
 use std::future::Future;
 use std::sync::Arc;
 
+#[cfg(any(feature = "docker", feature = "daytona", test))]
 use fabro_github::GitHubCredentials;
 use fabro_github::token_source::{InstallationTokenSource, ResolvedToken, TokenSnapshot};
 use fabro_redact::DisplaySafeUrl;
@@ -17,13 +21,19 @@ pub use fabro_types::run_event::GitCredentialRefreshError as RefreshErrorKind;
 use tokio::sync::{Mutex, MutexGuard};
 
 use crate::redact;
-use crate::sandbox::{RefreshOutcome, RemoteCredentialAction};
+#[cfg(any(feature = "docker", feature = "daytona", test))]
+use crate::sandbox::RefreshOutcome;
+use crate::sandbox::RemoteCredentialAction;
 
 /// Build the shared installation-token source for a clone-based sandbox.
 ///
 /// Returns `None` when there are no managed credentials or no GitHub origin
 /// to scope them to. Minted tokens carry the same `contents: write`
 /// permission the clone token uses.
+// Clone-based transports (and unit tests) are the only callers; gating
+// keeps default-feature builds warning-free while `PushCredentialState`
+// stays compiled for the shared lease plumbing in `sandbox.rs`.
+#[cfg(any(feature = "docker", feature = "daytona", test))]
 pub(crate) fn build_token_source(
     github_app: Option<&GitHubCredentials>,
     clone_origin_url: Option<&str>,
@@ -66,6 +76,10 @@ pub(crate) struct PushCredentialState {
     embedded: Mutex<Option<ResolvedToken>>,
 }
 
+// Constructing and refreshing state is clone-transport behavior (docker,
+// daytona) exercised by unit tests; the lease path below stays compiled
+// unconditionally because `sandbox.rs` push planning references it.
+#[cfg(any(feature = "docker", feature = "daytona", test))]
 impl PushCredentialState {
     pub(crate) fn new(source: Option<Arc<InstallationTokenSource>>) -> Self {
         Self {

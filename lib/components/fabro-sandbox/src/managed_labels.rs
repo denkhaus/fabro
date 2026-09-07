@@ -1,8 +1,16 @@
+// Everything except RUN_ID_LABEL is provider-label plumbing used only by
+// the docker/daytona transports (and unit tests); gating the items keeps
+// the module compilable (and warning-free) under default features, where
+// the pub re-export of RUN_ID_LABEL must still resolve (fabro-22e4 gate).
+#[cfg(any(feature = "docker", feature = "daytona", test))]
 use std::collections::HashMap;
 
+#[cfg(any(feature = "docker", feature = "daytona", test))]
 use fabro_types::RunId;
 
+#[cfg(any(feature = "docker", feature = "daytona", test))]
 pub(crate) const MANAGED_LABEL: &str = "sh.fabro.managed";
+#[cfg(any(feature = "docker", feature = "daytona", test))]
 pub(crate) const MANAGED_LABEL_VALUE: &str = "true";
 /// Public because server handlers read the run id off provider inventory
 /// entries (sandbox-availability probe, fabro-8d30a); the label is part
@@ -32,6 +40,7 @@ pub(crate) fn merge_for_run(
     labels
 }
 
+#[cfg(any(feature = "docker", feature = "daytona", test))]
 fn insert_for_run(labels: &mut HashMap<String, String>, run_id: Option<&RunId>) {
     labels.insert(MANAGED_LABEL.to_string(), MANAGED_LABEL_VALUE.to_string());
     if let Some(run_id) = run_id {
