@@ -653,7 +653,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T07:33:34.087871271Z",
-  "last_event_at": "2026-09-07T07:46:09.809428289Z",
+  "last_event_at": "2026-09-07T07:46:17.563993453Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -2266,9 +2266,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 434,
       "checkpoint": {
-        "timestamp": "2026-09-07T07:46:11.785656197Z",
+        "timestamp": "2026-09-07T07:46:16.090120377Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -2283,62 +2283,55 @@
         ],
         "node_retries": {},
         "context_values": {
-          "thread.planner.current_node": "implementer",
-          "failure_class": "",
-          "graph.preamble_budget_kb": "24",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "thread.implementer.current_node": "tester",
-          "thread.reviewer.current_node": "closeout",
-          "graph.rankdir": "LR",
           "internal.retry_count.implementer": 0,
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 3065,
-            "preview": "Claimed `fabro-bc9b`. Basis verified live against the tree (`sqlx::migrate!(\"./migrations\")` at `lib/foundation/fabro-db/src/lib.rs:17`, no `build.rs`, migration `2026090601` present), so no stale-bas"
-          },
-          "internal.node_visit_count": 1,
-          "internal.work_dir": "/workspace/fabro",
-          "response.reviewer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.reviewer",
-            "chars": 2257,
-            "preview": "Verification complete. All four acceptance criteria are met and confirmed against the actual code:\n\n1. **build.rs** — emits `cargo:rerun-if-changed=migrations` and `cargo:rerun-if-changed=build.rs` "
-          },
-          "internal.retry_count.tester": 0,
-          "current_seed_title": "fabro-db: emit cargo rerun-if-changed for the migrations dir — sqlx::migrate! embeds silently stale in cached builds",
-          "last_stage": "reviewer",
-          "outcome": "succeeded",
-          "last_response": "Verification complete. All four acceptance criteria are met and confirmed against the actual code:\n\n1. **build.rs** — emits `cargo:rerun-if-changed=migrations` and `cargo:rerun-if-changed=build.rs` ",
           "lesson_capture": "mx-39bda9",
-          "internal.retry_count.start": 0,
-          "seed_cycles": {
-            "planner": 1,
-            "implementer": 2,
-            "tester": 2,
-            "evidence": 1,
-            "reviewer": 1,
-            "closeout": 1
-          },
-          "current_seed_id": "fabro-bc9b",
-          "internal.exit_kind": "natural",
-          "command.output": "blob://sha256/1edd9807812e57108d98037c5736e041fe422f697ea2e2e90788c6a824ccf83c",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "current_node": "closeout",
-          "graph.max_node_visits": "40",
           "current_seed_brief": "Bug in `lib/foundation/fabro-db`: adding/removing files under `migrations/` does not reliably invalidate the crate fingerprint in local-target and docker-volume caches, so `sqlx::migrate!` embeds a stale MIGRATOR (broke nextest with 'no column breaker_threshold' and caused production deploy #5's /api/v1/automations 500s while health stayed green). Acceptance criteria: - new `lib/foundation/fabro-db/build.rs` that prints `cargo:rerun-if-changed=migrations` and `cargo:rerun-if-changed=build.rs` so any migration change forces recompilation and re-expansion of `sqlx::migrate!` (build scripts run with CWD at the crate root; keep paths relative) - `migrate()` in `lib/foundation/fabro-db/src/lib.rs` gains a defense-in-depth log line stating the NEWEST embedded migration version (derive from `MIGRATOR.iter()`, e.g. tracing info 'newest embedded migration version 2026090601') so logs prove which set ran; do not change migration ordering, preflight, or snapshot logic - test: a unit test in fabro-db asserting the embedded MIGRATOR's max version equals the highest version parsed from the on-disk `migrations/` dir (via `env!(\"CARGO_MANIFEST_DIR\")`), guarding embed/dir drift - gate: `cargo nextest run -p fabro-db` plus a workspace build/check; follow repo Rust style (no glob imports, anyhow Context conventions); keep the change minimal — no unrelated refactors",
+          "failure_class": "",
+          "outcome": "succeeded",
+          "internal.retry_count.tester": 0,
+          "thread.tester.current_node": "evidence",
+          "graph.preamble_budget_kb": "24",
+          "current_seed_id": "fabro-bc9b",
+          "internal.retry_count.evidence": 0,
+          "thread.evidence.current_node": "reviewer",
+          "thread.implementer.current_node": "tester",
+          "implementation_summary": "No new product code was needed: the full seed implementation from commit 7842df99 was already present and correct — `lib/foundation/fabro-db/build.rs` (rerun-if-changed directives), the `migrate()` newest-embedded-version log line, and the embed/dir drift unit test in `lib/foundation/fabro-db/src/lib.rs`. The tester stage had failed solely on 'mise config not trusted', an environment issue I fixed by running `mise trust /repos/denkhaus/fabro/.mise.toml` (lesson captured as mx-39bda9; the sqlx rerun-if-changed pattern itself was already recorded as mx-87c249). Verified: `cargo nextest run -p fabro-db` — 20/20 passed; `cargo +nightly-2026-04-14 fmt -p fabro-db -- --check` clean; `cargo +nightly-2026-04-14 clippy -p fabro-db --all-targets -- -D warnings` clean. Worktree contains only the new mulch record, no build artifacts. Per-criterion report: - PASS build.rs emits rerun-if-changed for migrations and build.rs with relative paths: `lib/foundation/fabro-db/build.rs`; - PASS migrate() logs newest embedded migration version derived from MIGRATOR.iter(): `lib/foundation/fabro-db/src/lib.rs` migrate() info!(\"newest embedded migration version {newest_embedded}\"), ordering/preflight/snapshot logic untouched; - PASS unit test asserts embedded MIGRATOR max version equals highest on-disk migrations/ version via CARGO_MANIFEST_DIR: `embedded_migrations_tests::newest_embedded_migration_matches_migrations_dir`, passing in the 20/20 run; - PASS gate check: `cargo nextest run -p fabro-db` green plus crate-scoped fmt/clippy clean, repo style followed (no glob imports, anyhow Context), no unrelated refactors.",
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.implementer",
             "chars": 2952,
             "preview": "All done. The seed's implementation was already fully in place from commit 7842df99; the tester failure was purely environmental (mise config distrust), which I resolved with `mise trust` and captured"
           },
-          "internal.retry_count.evidence": 0,
-          "implementation_summary": "No new product code was needed: the full seed implementation from commit 7842df99 was already present and correct — `lib/foundation/fabro-db/build.rs` (rerun-if-changed directives), the `migrate()` newest-embedded-version log line, and the embed/dir drift unit test in `lib/foundation/fabro-db/src/lib.rs`. The tester stage had failed solely on 'mise config not trusted', an environment issue I fixed by running `mise trust /repos/denkhaus/fabro/.mise.toml` (lesson captured as mx-39bda9; the sqlx rerun-if-changed pattern itself was already recorded as mx-87c249). Verified: `cargo nextest run -p fabro-db` — 20/20 passed; `cargo +nightly-2026-04-14 fmt -p fabro-db -- --check` clean; `cargo +nightly-2026-04-14 clippy -p fabro-db --all-targets -- -D warnings` clean. Worktree contains only the new mulch record, no build artifacts. Per-criterion report: - PASS build.rs emits rerun-if-changed for migrations and build.rs with relative paths: `lib/foundation/fabro-db/build.rs`; - PASS migrate() logs newest embedded migration version derived from MIGRATOR.iter(): `lib/foundation/fabro-db/src/lib.rs` migrate() info!(\"newest embedded migration version {newest_embedded}\"), ordering/preflight/snapshot logic untouched; - PASS unit test asserts embedded MIGRATOR max version equals highest on-disk migrations/ version via CARGO_MANIFEST_DIR: `embedded_migrations_tests::newest_embedded_migration_matches_migrations_dir`, passing in the 20/20 run; - PASS gate check: `cargo nextest run -p fabro-db` green plus crate-scoped fmt/clippy clean, repo style followed (no glob imports, anyhow Context), no unrelated refactors.",
-          "internal.fidelity": "compact",
-          "internal.retry_count.reviewer": 0,
-          "internal.seed_cycle_anchor": "fabro-bc9b",
+          "internal.node_visit_count": 1,
+          "thread.start.current_node": "planner",
           "failure_signature": "",
+          "internal.retry_count.reviewer": 0,
+          "internal.exit_kind": "natural",
+          "current_node": "closeout",
+          "review_verdict": "approved",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "last_response": "Verification complete. All four acceptance criteria are met and confirmed against the actual code:\n\n1. **build.rs** — emits `cargo:rerun-if-changed=migrations` and `cargo:rerun-if-changed=build.rs` ",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.closeout": 0,
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3065,
+            "preview": "Claimed `fabro-bc9b`. Basis verified live against the tree (`sqlx::migrate!(\"./migrations\")` at `lib/foundation/fabro-db/src/lib.rs:17`, no `build.rs`, migration `2026090601` present), so no stale-bas"
+          },
+          "internal.retry_count.planner": 0,
+          "internal.seed_cycle_anchor": "fabro-bc9b",
+          "last_stage": "reviewer",
+          "preferred_label": "Approved",
+          "internal.thread_id": "reviewer",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2257,
+            "preview": "Verification complete. All four acceptance criteria are met and confirmed against the actual code:\n\n1. **build.rs** — emits `cargo:rerun-if-changed=migrations` and `cargo:rerun-if-changed=build.rs` "
+          },
+          "command.output": "blob://sha256/1edd9807812e57108d98037c5736e041fe422f697ea2e2e90788c6a824ccf83c",
+          "graph.rankdir": "LR",
           "journal": {
             "painpoints": [
               {
@@ -2349,15 +2342,22 @@
               "Verified all four seed criteria directly in build.rs and src/lib.rs rather than relying on the truncated capture; confirmed diff scope (+9/+58 across exactly two files) matches the evidence header and that migrate()'s preflight/snapshot ordering is unchanged."
             ]
           },
-          "internal.thread_id": "reviewer",
-          "review_verdict": "approved",
-          "thread.tester.current_node": "evidence",
-          "internal.retry_count.planner": 0,
-          "internal.retry_count.closeout": 0,
-          "thread.evidence.current_node": "reviewer",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.fidelity": "compact",
+          "graph.max_node_visits": "40",
           "internal.run_id": "01M1XCHJTDBJKZ31VFMY1KD61Q",
-          "thread.start.current_node": "planner",
-          "preferred_label": "Approved"
+          "internal.retry_count.start": 0,
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 2,
+            "tester": 2,
+            "evidence": 1,
+            "reviewer": 1,
+            "closeout": 1
+          },
+          "thread.planner.current_node": "implementer",
+          "thread.reviewer.current_node": "closeout",
+          "current_seed_title": "fabro-db: emit cargo rerun-if-changed for the migrations dir — sqlx::migrate! embeds silently stale in cached builds"
         },
         "node_outcomes": {
           "closeout": {
@@ -2374,18 +2374,18 @@
               "active_time_ms": 277
             }
           },
-          "tester": {
+          "evidence": {
             "status": "succeeded",
             "context_updates": {
-              "command.output": "blob://sha256/2977c65c35557222d108a04122cc7f81f9794f88ceea5ef7792385c64d597d36"
+              "command.output": "blob://sha256/35fdc87dece0e0283d004a1e370e86c503514d43c55e167d6f0205d6df4639c5"
             },
-            "notes": "Script completed: just qualitygate",
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
             "usage": null,
             "timing": {
               "wall_time_ms": 0,
               "inference_time_ms": 0,
-              "tool_time_ms": 7606,
-              "active_time_ms": 7606
+              "tool_time_ms": 376,
+              "active_time_ms": 376
             }
           },
           "planner": {
@@ -2443,64 +2443,6 @@
               "active_time_ms": 162425
             }
           },
-          "implementer": {
-            "status": "succeeded",
-            "preferred_label": "Implemented",
-            "context_updates": {
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "Tester stage of run 01M1XCHJTDBJKZ31VFMY1KD61Q failed before running any code: `just qualitygate` died on 'mise ERROR Config files in /repos/denkhaus/fabro/.mise.toml are not trusted'. Recycled sandboxes lose mise trust state. Fix idea: stage bootstrap (or justfile preamble) should export MISE_YES=1 or run `mise trust` before mise-dependent recipes. I ran `mise trust /repos/denkhaus/fabro/.mise.toml` this session so the next tester attempt should proceed."
-                  }
-                ],
-                "observations": [
-                  "The tester failure was environmental, not code: the seed implementation from commit 7842df99 was complete and all 20 fabro-db tests plus crate-scoped fmt/clippy pass on this tree, so the retry should gate green if mise trust persists for the tester's environment."
-                ]
-              },
-              "implementation_summary": "No new product code was needed: the full seed implementation from commit 7842df99 was already present and correct — `lib/foundation/fabro-db/build.rs` (rerun-if-changed directives), the `migrate()` newest-embedded-version log line, and the embed/dir drift unit test in `lib/foundation/fabro-db/src/lib.rs`. The tester stage had failed solely on 'mise config not trusted', an environment issue I fixed by running `mise trust /repos/denkhaus/fabro/.mise.toml` (lesson captured as mx-39bda9; the sqlx rerun-if-changed pattern itself was already recorded as mx-87c249). Verified: `cargo nextest run -p fabro-db` — 20/20 passed; `cargo +nightly-2026-04-14 fmt -p fabro-db -- --check` clean; `cargo +nightly-2026-04-14 clippy -p fabro-db --all-targets -- -D warnings` clean. Worktree contains only the new mulch record, no build artifacts. Per-criterion report: - PASS build.rs emits rerun-if-changed for migrations and build.rs with relative paths: `lib/foundation/fabro-db/build.rs`; - PASS migrate() logs newest embedded migration version derived from MIGRATOR.iter(): `lib/foundation/fabro-db/src/lib.rs` migrate() info!(\"newest embedded migration version {newest_embedded}\"), ordering/preflight/snapshot logic untouched; - PASS unit test asserts embedded MIGRATOR max version equals highest on-disk migrations/ version via CARGO_MANIFEST_DIR: `embedded_migrations_tests::newest_embedded_migration_matches_migrations_dir`, passing in the 20/20 run; - PASS gate check: `cargo nextest run -p fabro-db` green plus crate-scoped fmt/clippy clean, repo style followed (no glob imports, anyhow Context), no unrelated refactors.",
-              "last_stage": "implementer",
-              "response.implementer": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.implementer",
-                "chars": 2952,
-                "preview": "All done. The seed's implementation was already fully in place from commit 7842df99; the tester failure was purely environmental (mise config distrust), which I resolved with `mise trust` and captured"
-              },
-              "last_response": "All done. The seed's implementation was already fully in place from commit 7842df99; the tester failure was purely environmental (mise config distrust), which I resolved with `mise trust` and captured",
-              "lesson_capture": "mx-39bda9"
-            },
-            "notes": "Stage completed: implementer",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 23494,
-                    "output_tokens": 1853,
-                    "reasoning_tokens": 1023,
-                    "cache_read_tokens": 178816,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 92027
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 118369,
-              "tool_time_ms": 4965,
-              "active_time_ms": 123334
-            }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "reviewer": {
             "status": "succeeded",
             "preferred_label": "Approved",
@@ -2554,36 +2496,216 @@
               "active_time_ms": 47351
             }
           },
-          "evidence": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
             "status": "succeeded",
             "context_updates": {
-              "command.output": "blob://sha256/35fdc87dece0e0283d004a1e370e86c503514d43c55e167d6f0205d6df4639c5"
+              "command.output": "blob://sha256/2977c65c35557222d108a04122cc7f81f9794f88ceea5ef7792385c64d597d36"
             },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "notes": "Script completed: just qualitygate",
             "usage": null,
             "timing": {
               "wall_time_ms": 0,
               "inference_time_ms": 0,
-              "tool_time_ms": 376,
-              "active_time_ms": 376
+              "tool_time_ms": 7606,
+              "active_time_ms": 7606
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Tester stage of run 01M1XCHJTDBJKZ31VFMY1KD61Q failed before running any code: `just qualitygate` died on 'mise ERROR Config files in /repos/denkhaus/fabro/.mise.toml are not trusted'. Recycled sandboxes lose mise trust state. Fix idea: stage bootstrap (or justfile preamble) should export MISE_YES=1 or run `mise trust` before mise-dependent recipes. I ran `mise trust /repos/denkhaus/fabro/.mise.toml` this session so the next tester attempt should proceed."
+                  }
+                ],
+                "observations": [
+                  "The tester failure was environmental, not code: the seed implementation from commit 7842df99 was complete and all 20 fabro-db tests plus crate-scoped fmt/clippy pass on this tree, so the retry should gate green if mise trust persists for the tester's environment."
+                ]
+              },
+              "implementation_summary": "No new product code was needed: the full seed implementation from commit 7842df99 was already present and correct — `lib/foundation/fabro-db/build.rs` (rerun-if-changed directives), the `migrate()` newest-embedded-version log line, and the embed/dir drift unit test in `lib/foundation/fabro-db/src/lib.rs`. The tester stage had failed solely on 'mise config not trusted', an environment issue I fixed by running `mise trust /repos/denkhaus/fabro/.mise.toml` (lesson captured as mx-39bda9; the sqlx rerun-if-changed pattern itself was already recorded as mx-87c249). Verified: `cargo nextest run -p fabro-db` — 20/20 passed; `cargo +nightly-2026-04-14 fmt -p fabro-db -- --check` clean; `cargo +nightly-2026-04-14 clippy -p fabro-db --all-targets -- -D warnings` clean. Worktree contains only the new mulch record, no build artifacts. Per-criterion report: - PASS build.rs emits rerun-if-changed for migrations and build.rs with relative paths: `lib/foundation/fabro-db/build.rs`; - PASS migrate() logs newest embedded migration version derived from MIGRATOR.iter(): `lib/foundation/fabro-db/src/lib.rs` migrate() info!(\"newest embedded migration version {newest_embedded}\"), ordering/preflight/snapshot logic untouched; - PASS unit test asserts embedded MIGRATOR max version equals highest on-disk migrations/ version via CARGO_MANIFEST_DIR: `embedded_migrations_tests::newest_embedded_migration_matches_migrations_dir`, passing in the 20/20 run; - PASS gate check: `cargo nextest run -p fabro-db` green plus crate-scoped fmt/clippy clean, repo style followed (no glob imports, anyhow Context), no unrelated refactors.",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2952,
+                "preview": "All done. The seed's implementation was already fully in place from commit 7842df99; the tester failure was purely environmental (mise config distrust), which I resolved with `mise trust` and captured"
+              },
+              "last_response": "All done. The seed's implementation was already fully in place from commit 7842df99; the tester failure was purely environmental (mise config distrust), which I resolved with `mise trust` and captured",
+              "lesson_capture": "mx-39bda9"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 23494,
+                    "output_tokens": 1853,
+                    "reasoning_tokens": 1023,
+                    "cache_read_tokens": 178816,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 92027
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 118369,
+              "tool_time_ms": 4965,
+              "active_time_ms": 123334
             }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "3fd64e1d799ade5788cc600bb2a177b74552d6c6",
+        "loop_failure_signatures": {
+          "tester|deterministic|script failed with exit code: <n> ## output mise error error parsing config file: /repos/denkhaus/fabro/.mise.toml mise error config files in /repos/denkhaus/fabro/.mise.toml are not trusted. trust them with `mise trust`. see https://mise.j": 1
+        },
         "node_visits": {
-          "start": 1,
-          "tester": 2,
-          "evidence": 1,
-          "reviewer": 1,
-          "closeout": 1,
           "planner": 1,
-          "implementer": 2
+          "start": 1,
+          "implementer": 2,
+          "closeout": 1,
+          "tester": 2,
+          "reviewer": 1,
+          "evidence": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1XCHJTDBJKZ31VFMY1KD61Q.jsonl b/.fabro/journal/01M1XCHJTDBJKZ31VFMY1KD61Q.jsonl\nindex 76f3f372..c83cb3bf 100644\n--- a/.fabro/journal/01M1XCHJTDBJKZ31VFMY1KD61Q.jsonl\n+++ b/.fabro/journal/01M1XCHJTDBJKZ31VFMY1KD61Q.jsonl\n@@ -2,3 +2,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XCHJTDBJKZ31VFMY1KD61Q\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T07:45:03Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XCHJTDBJKZ31VFMY1KD61Q\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T07:45:10Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XCHJTDBJKZ31VFMY1KD61Q\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T07:46:05Z\",\"data\":{\"painpoints\":[{\"text\":\"The preamble's evidence stage output was marked '(68 lines omitted)' without a blob-ref path, so I had to reconstruct the review scope from direct file reads and `git diff d0589219 -- lib/foundation/fabro-db` (run 01M1XCHJTDBJKZ31VFMY1KD61Q). Workable but it means trusting the worktree over the capture; emitting the blob-ref marker per the documented fallback would make the capture self-contained.\"}],\"observations\":[\"Verified all four seed criteria directly in build.rs and src/lib.rs rather than relying on the truncated capture; confirmed diff scope (+9/+58 across exactly two files) matches the evidence header and that migrate()'s preflight/snapshot ordering is unchanged.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XCHJTDBJKZ31VFMY1KD61Q\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T07:46:10Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex fff8f057..2eaf5a8c 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -221,5 +221,5 @@\n {\"id\":\"fabro-81b7\",\"title\":\"develop: implementer (and reviewer) must load and validate against the rust-style-guide skill\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-06T19:04:15.238Z\",\"updatedAt\":\"2026-09-06T19:04:15.238Z\",\"description\":\"User review 2026-09-06: does the develop implementer use the rust-style-guide? Facts: (1) ACCESS EXISTS — run sandboxes discover the skill (agent.skills.discovered lists rust-style-guide from /workspace/fabro/.fabro/skills); (2) the implementer prompt NEVER mentions it (no occurrence of style.guide in .fabro/workflows/develop/prompts/implementer.md); neither does the reviewer prompt — the binding Rust policy is invisible to the whole develop pipeline. The 2026-08-27 fabro_run_logs lesson (agent-side): a skipped guide load shipped two logic bugs that a guide-first pass would have caught at design time; the local iterate skill got a mechanical gate for exactly this — the develop workflow needs the same. Wanted: (a) implementer prompt: BEFORE the first Rust edit, read the skill's guidelines.md index and the pages covering the diff (name the pages in the summary as proof-of-work); validate the implementation against them; deviations are findings, not accidents; (b) reviewer prompt: the standards axis IS the rust-style-guide — load workflows/code-review-refactor.md plus the pages covering the diff under review; (c) keep it cheap: pages-on-demand only, no full-guide reads. Basis: implementer.md/reviewer.md grep (zero mentions), sandbox skill discovery events (e.g. merge run 01M1V7XSV75B seq 25), iterate-skill mechanical-gate precedent, fabro_run_logs postmortem.\",\"labels\":[\"workflows\",\"revision\"]}\n {\"id\":\"fabro-fb16\",\"title\":\"engine: make Skip the safe default for scheduled automations + audit the untagged scheduler run path + surface on_overlap in the web UI\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-06T19:09:33.140Z\",\"updatedAt\":\"2026-09-06T21:42:19.600Z\",\"description\":\"Follow-ups from the dd7e stacking incident (2026-09-06, fixed live by setting on_overlap=skip): (1) DEFAULT: on_overlap currently defaults to Fire — an unattended scheduled line stacks passes whenever nobody sets Skip (three parallel conductor passes while one ran). Make Skip the default for schedule triggers (or require explicit choice at creation) + test: scheduler tick with active tagged run creates NO second run. (2) AUDIT: stacked pass 01M1W1HHCE1M carried NO automation tag while sibling 01M1W1EZ5WZ did — find the creation path that drops it. (3) WEB — UPGRADED TO DATA-LOSS PREVENTION (user finding same evening): the automation edit dialog has NO on_overlap control AND its replaceAutomation payload omits the field entirely, so ANY save in the dialog silently resets a live on_overlap=skip back to default Fire (verified in automations-edit.tsx:107-115 vs ReplaceAutomation model). Wanted: an overlap toggle (Skip/Fire) in the form that round-trips the current value; visible posture next to the schedule badge on cards. Interim warning until landed: do not edit the conductor via the dialog.\",\"labels\":[\"engine\",\"workflows\",\"web\"]}\n {\"id\":\"fabro-ad23\",\"title\":\"develop: evidence.nu dies printing large diffs — stdout write would-block kills the evidence stage\",\"status\":\"open\",\"type\":\"bug\",\"priority\":2,\"createdAt\":\"2026-09-06T20:01:09.189Z\",\"updatedAt\":\"2026-09-06T20:57:17.800Z\",\"description\":\"Develop runs die in the evidence stage when evidence.nu prints large payloads: run 01M1VZTJSZ551NFPHPD429MG0 failed at scripts/evidence.nu:392 'print $diff' with 'I/O error: Writing to stdout failed: Operation would block' (nu print blocks when the piped stdout buffer fills with a 100KiB+ diff; script exit 1 -> soft 'Capture failed' exit, 67 min of work parked with no PR). STDOUT CAUSE FIXED in PR #32 (emit helper: line-aligned chunks under pipe capacity, pathological lines split at codepoints; smoke-tested with 200KB payload). REMAINING: (a) park reasons should carry the failed stage's output tail (exec_stdout_tail_bytes=0 — the diagnosis lived only in worker logs); (b) consider the same pipe-safe emission pattern for other stage scripts that print payloads.\",\"labels\":[\"workflows\"]}\n-{\"id\":\"fabro-bc9b\",\"title\":\"fabro-db: emit cargo rerun-if-changed for the migrations dir — sqlx::migrate! embeds silently stale in cached builds\",\"status\":\"in_progress\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-06T21:19:49.947Z\",\"updatedAt\":\"2026-09-07T07:35:42.215Z\",\"description\":\"TWO instances on 2026-09-06: (1) local nextest: 'no column breaker_threshold' — the test binary linked a stale fabro-db rlib whose sqlx::migrate!-embedded MIGRATOR predated migrations/2026090601; cargo clean -p fabro-db fixed it. (2) PRODUCTION deploy #5 (just up, docker cargo-target volume cache): migrate() returned Ok but the binary's migrator lacked 2026090601 — /api/v1/automations 500'd while /health and fabro ps stayed green (caught only by the new smoke probe). Adding/removing files under lib/foundation/fabro-db/migrations/ does NOT reliably invalidate the fabro-db crate fingerprint in every cache context (local target + docker volume). Wanted: a build.rs in fabro-db emitting cargo:rerun-if-changed=migrations/ (and cargo:rerun-if-changed=build.rs) so ANY migration change forces recompilation of the crate and re-expansion of sqlx::migrate!; plus a defense-in-depth startup assertion comparing the embedded migration list against a version marker (e.g. log the newest embedded version at migrate() so logs prove which set ran).\",\"labels\":[\"engine\",\"ci\"]}\n+{\"id\":\"fabro-bc9b\",\"title\":\"fabro-db: emit cargo rerun-if-changed for the migrations dir — sqlx::migrate! embeds silently stale in cached builds\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-06T21:19:49.947Z\",\"updatedAt\":\"2026-09-07T07:46:09.708Z\",\"description\":\"TWO instances on 2026-09-06: (1) local nextest: 'no column breaker_threshold' — the test binary linked a stale fabro-db rlib whose sqlx::migrate!-embedded MIGRATOR predated migrations/2026090601; cargo clean -p fabro-db fixed it. (2) PRODUCTION deploy #5 (just up, docker cargo-target volume cache): migrate() returned Ok but the binary's migrator lacked 2026090601 — /api/v1/automations 500'd while /health and fabro ps stayed green (caught only by the new smoke probe). Adding/removing files under lib/foundation/fabro-db/migrations/ does NOT reliably invalidate the fabro-db crate fingerprint in every cache context (local target + docker volume). Wanted: a build.rs in fabro-db emitting cargo:rerun-if-changed=migrations/ (and cargo:rerun-if-changed=build.rs) so ANY migration change forces recompilation of the crate and re-expansion of sqlx::migrate!; plus a defense-in-depth startup assertion comparing the embedded migration list against a version marker (e.g. log the newest embedded version at migrate() so logs prove which set ran).\",\"labels\":[\"engine\",\"ci\"],\"closedAt\":\"2026-09-07T07:46:09.708Z\"}\n {\"id\":\"fabro-0195\",\"title\":\"engine: declarative automation definitions in the repo (config/automations/*.toml) with on_overlap + breaker_threshold as code\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-09-06T21:41:21.610Z\",\"updatedAt\":\"2026-09-06T21:41:21.610Z\",\"description\":\"User review 2026-09-06 ('warum ist der skip nicht in der workflow def gesetzt?'): the conductor automation exists ONLY as live DB state — hand-created via UI/API, on_overlap never set (default Fire caused the three-pass stacking night), breaker_threshold likewise unset. Nothing versioned declares the line's safety posture; a DB reset or re-created automation silently loses skip/threshold and re-exposes the stacking + breaker-less behavior. The legacy import path (import_legacy_directory_once, dir = <config>/automations) exists but the repo ships no files there and import is one-shot legacy-shaped. Wanted: declarative automation definitions (e.g. config/automations/conductor.toml: target, workflow, environment, schedule expression, on_overlap=skip, breaker_threshold) that are (a) reviewed in PRs, (b) reconciled on server start (upsert by id; live pause state PRESERVED — enabled flag stays operator-owned, like today's resume flow), (c) surfaced in the web UI as 'managed from repo'. The workflow.fabro itself cannot carry on_overlap (scheduler-scope, not graph-scope) — the seed is about the automation layer getting its own source of truth. Interim (applied live 2026-09-06): on_overlap=skip set via API on the conductor.\",\"labels\":[\"engine\",\"workflows\"]}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 75,
+          "deletions": 1
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T07:46:16.329886657Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 723150,
+      "inference_time_ms": 544658,
+      "tool_time_ms": 135800,
+      "active_time_ms": 680458
+    },
+    "final_git_commit_sha": "3fd64e1d799ade5788cc600bb2a177b74552d6c6",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 163082,
+          "inference_time_ms": 159835,
+          "tool_time_ms": 2590,
+          "active_time_ms": 162425
+        },
+        "billing_usd_micros": 86074,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 463465,
+          "inference_time_ms": 337906,
+          "tool_time_ms": 124329,
+          "active_time_ms": 462235
+        },
+        "billing_usd_micros": 280069,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 7807,
+          "inference_time_ms": 0,
+          "tool_time_ms": 7794,
+          "active_time_ms": 7794
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 381,
+          "inference_time_ms": 0,
+          "tool_time_ms": 376,
+          "active_time_ms": 376
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 47876,
+          "inference_time_ms": 46917,
+          "tool_time_ms": 434,
+          "active_time_ms": 47351
+        },
+        "billing_usd_micros": 35374,
+        "retries": 0
+      },
+      {
+        "stage_id": "closeout",
+        "stage_label": "closeout",
+        "timing": {
+          "wall_time_ms": 282,
+          "inference_time_ms": 0,
+          "tool_time_ms": 277,
+          "active_time_ms": 277
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 83409,
+      "output_tokens": 8233,
+      "total_tokens": 956507,
+      "reasoning_tokens": 5729,
+      "cache_read_tokens": 859136,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 401517
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1XCHJTDBJKZ31VFMY1KD61Q.jsonl b/.fabro/journal/01M1XCHJTDBJKZ31VFMY1KD61Q.jsonl\nnew file mode 100644\nindex 00000000..c83cb3bf\n--- /dev/null\n+++ b/.fabro/journal/01M1XCHJTDBJKZ31VFMY1KD61Q.jsonl\n@@ -0,0 +1,5 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XCHJTDBJKZ31VFMY1KD61Q\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T07:44:51Z\",\"data\":{\"painpoints\":[{\"text\":\"Tester stage of run 01M1XCHJTDBJKZ31VFMY1KD61Q failed before running any code: `just qualitygate` died on 'mise ERROR Config files in /repos/denkhaus/fabro/.mise.toml are not trusted'. Recycled sandboxes lose mise trust state. Fix idea: stage bootstrap (or justfile preamble) should export MISE_YES=1 or run `mise trust` before mise-dependent recipes. I ran `mise trust /repos/denkhaus/fabro/.mise.toml` this session so the next tester attempt should proceed.\"}],\"observations\":[\"The tester failure was environmental, not code: the seed implementation from commit 7842df99 was complete and all 20 fabro-db tests plus crate-scoped fmt/clippy pass on this tree, so the retry should gate green if mise trust persists for the tester's environment.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XCHJTDBJKZ31VFMY1KD61Q\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T07:45:03Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XCHJTDBJKZ31VFMY1KD61Q\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T07:45:10Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XCHJTDBJKZ31VFMY1KD61Q\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T07:46:05Z\",\"data\":{\"painpoints\":[{\"text\":\"The preamble's evidence stage output was marked '(68 lines omitted)' without a blob-ref path, so I had to reconstruct the review scope from direct file reads and `git diff d0589219 -- lib/foundation/fabro-db` (run 01M1XCHJTDBJKZ31VFMY1KD61Q). Workable but it means trusting the worktree over the capture; emitting the blob-ref marker per the documented fallback would make the capture self-contained.\"}],\"observations\":[\"Verified all four seed criteria directly in build.rs and src/lib.rs rather than relying on the truncated capture; confirmed diff scope (+9/+58 across exactly two files) matches the evidence header and that migrate()'s preflight/snapshot ordering is unchanged.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XCHJTDBJKZ31VFMY1KD61Q\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T07:46:10Z\",\"data\":{}}\ndiff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl\nindex d2bce0a0..f361c325 100644\n--- a/.mulch/expertise/engine.jsonl\n+++ b/.mulch/expertise/engine.jsonl\n@@ -29,3 +29,5 @@\n {\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-06T19:31:08.323Z\",\"evidence\":{\"commit\":\"b44d4f24371d8ff1edc4195e14f9431e00c6b192\"},\"dir_anchors\":[\"lib/apps/fabro-server/src\",\"lib/components/fabro-automation/src\"],\"name\":\"automation-breaker-high-water-baseline\",\"description\":\"Automation circuit breaker (fabro-3d97): per-trigger counters are store-backed with a last-processed-run high-water mark (automation_triggers.breaker_* columns); on first observation or after a replace (the enable path rewrites trigger rows) the newest terminal run becomes the baseline WITHOUT counting, which is what makes 'resume resets the counter' work — a stateless tail-count would instantly re-pause after re-enable. Also: run_summaries.list_all/list_terminal_for_automation return NEWEST-FIRST; scheduler tests must sort by created_at before indexing runs by fire order.\",\"files\":[\"docs/public/api-reference/fabro-api.yaml\",\"lib/apps/fabro-server/src/serve.rs\",\"lib/apps/fabro-server/src/server.rs\",\"lib/apps/fabro-server/src/server/automation_scheduler.rs\",\"lib/apps/fabro-server/src/server/tests.rs\",\"lib/apps/fabro-server/src/test_support.rs\",\"lib/components/fabro-automation/src/error.rs\",\"lib/components/fabro-automation/src/lib.rs\",\"lib/components/fabro-automation/src/model.rs\",\"lib/components/fabro-automation/src/store.rs\",\"lib/components/fabro-automation/tests/store.rs\",\"lib/components/fabro-slack/src/blocks.rs\",\"lib/components/fabro-store/src/run_summary_store.rs\",\"lib/foundation/fabro-api/tests/automation_round_trip.rs\",\"lib/packages/fabro-api-client/src/models/automation-schedule-trigger.ts\"],\"id\":\"mx-6cddf3\"}\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-06T19:41:07.953Z\",\"evidence\":{\"commit\":\"95621c0649c636f966af89e9810965b5214beb38\"},\"description\":\"fabro-server graph-render unit tests (server::tests::get_graph_returns_svg, render_graph_from_manifest_*) spawn 'fabro __render-graph' resolved via current_exe().parent().parent()/fabro (target/debug/fabro). The touched-crates qualitygate (scripts/qualitygate.nu) only builds/clippies touched crates, so when a run touches fabro-server without fabro-cli the binary is absent and these 3 tests fail deterministically (run 01M1VZTJSZ551NFPHPXD429MG0, tester stage).\",\"resolution\":\"Build 'cargo build -p fabro-cli --bin fabro' before gating fabro-server; root fix belongs in the gate (build the fabro bin when fabro-server is touched).\",\"id\":\"mx-a62008\"}\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-06T21:19:50.314Z\",\"evidence\":{\"seeds\":\"fabro-3d97\",\"commit\":\"b7e74fc417d463f3c5ff8ee43e5f8291421e7500\"},\"description\":\"Whenever a migration file is added on a branch switch or cache reuse and behavior says 'column/migration missing': suspect the embedded MIGRATOR, not the DB. Diagnosis: query _sqlx_migrations (with -wal!) for the newest version. Mitigations: touch lib/foundation/fabro-db/src/lib.rs before just up after migration changes (until fabro-db gains rerun-if-changed in build.rs, filed as seed); cargo clean -p fabro-db for local test binaries. Deep lesson: /health + one API roundtrip is not deploy verification — the new automations smoke probe exists because the broken surface had no probe.\",\"resolution\":\"Smoke probe landed (authenticated automations check, live-proofed red on the broken deploy); build.rs hardening filed as P1 seed; deploy-watch-5 verifies the volume-cache rebuild.\",\"id\":\"mx-99d245\"}\n+{\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-07T07:41:54.972Z\",\"evidence\":{\"commit\":\"d0589219c2369c0112404572e8de20fe2728c399\"},\"name\":\"sqlx-migrate-rerun-if-changed\",\"description\":\"Crates embedding sqlx::migrate! need a build.rs emitting cargo:rerun-if-changed=migrations (and =build.rs); cargo fingerprints do not reliably invalidate on migration file add/remove under local-target and docker-volume caches, shipping a stale MIGRATOR (fabro-bc9b). Pair with a unit test asserting max(MIGRATOR versions) equals max version parsed from the on-disk migrations dir via CARGO_MANIFEST_DIR, and log the newest embedded version at migrate() startup.\",\"files\":[\"lib/foundation/fabro-db/src/lib.rs\"],\"id\":\"mx-87c249\"}\n+{\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-07T07:44:19.123Z\",\"evidence\":{\"commit\":\"88f072b4\"},\"description\":\"Run-stage scripts invoking mise-wrapped commands (just qualitygate, sd) fail with 'Config files in /repos/denkhaus/fabro/.mise.toml are not trusted' whenever the sandbox/home is recycled or .mise.toml changes, killing the whole stage before any code runs (run 01M1XCHJTDBJKZ31VFMY1KD61Q tester stage).\",\"resolution\":\"Immediate: 'mise trust /repos/denkhaus/fabro/.mise.toml' once per environment (done this session). Durable: stage bootstrap or justfile entry should export MISE_YES=1 or pre-trust before invoking mise-dependent recipes.\",\"id\":\"mx-39bda9\"}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 223a0319..2eaf5a8c 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -221,5 +221,5 @@\n {\"id\":\"fabro-81b7\",\"title\":\"develop: implementer (and reviewer) must load and validate against the rust-style-guide skill\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-06T19:04:15.238Z\",\"updatedAt\":\"2026-09-06T19:04:15.238Z\",\"description\":\"User review 2026-09-06: does the develop implementer use the rust-style-guide? Facts: (1) ACCESS EXISTS — run sandboxes discover the skill (agent.skills.discovered lists rust-style-guide from /workspace/fabro/.fabro/skills); (2) the implementer prompt NEVER mentions it (no occurrence of style.guide in .fabro/workflows/develop/prompts/implementer.md); neither does the reviewer prompt — the binding Rust policy is invisible to the whole develop pipeline. The 2026-08-27 fabro_run_logs lesson (agent-side): a skipped guide load shipped two logic bugs that a guide-first pass would have caught at design time; the local iterate skill got a mechanical gate for exactly this — the develop workflow needs the same. Wanted: (a) implementer prompt: BEFORE the first Rust edit, read the skill's guidelines.md index and the pages covering the diff (name the pages in the summary as proof-of-work); validate the implementation against them; deviations are findings, not accidents; (b) reviewer prompt: the standards axis IS the rust-style-guide — load workflows/code-review-refactor.md plus the pages covering the diff under review; (c) keep it cheap: pages-on-demand only, no full-guide reads. Basis: implementer.md/reviewer.md grep (zero mentions), sandbox skill discovery events (e.g. merge run 01M1V7XSV75B seq 25), iterate-skill mechanical-gate precedent, fabro_run_logs postmortem.\",\"labels\":[\"workflows\",\"revision\"]}\n {\"id\":\"fabro-fb16\",\"title\":\"engine: make Skip the safe default for scheduled automations + audit the untagged scheduler run path + surface on_overlap in the web UI\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-06T19:09:33.140Z\",\"updatedAt\":\"2026-09-06T21:42:19.600Z\",\"description\":\"Follow-ups from the dd7e stacking incident (2026-09-06, fixed live by setting on_overlap=skip): (1) DEFAULT: on_overlap currently defaults to Fire — an unattended scheduled line stacks passes whenever nobody sets Skip (three parallel conductor passes while one ran). Make Skip the default for schedule triggers (or require explicit choice at creation) + test: scheduler tick with active tagged run creates NO second run. (2) AUDIT: stacked pass 01M1W1HHCE1M carried NO automation tag while sibling 01M1W1EZ5WZ did — find the creation path that drops it. (3) WEB — UPGRADED TO DATA-LOSS PREVENTION (user finding same evening): the automation edit dialog has NO on_overlap control AND its replaceAutomation payload omits the field entirely, so ANY save in the dialog silently resets a live on_overlap=skip back to default Fire (verified in automations-edit.tsx:107-115 vs ReplaceAutomation model). Wanted: an overlap toggle (Skip/Fire) in the form that round-trips the current value; visible posture next to the schedule badge on cards. Interim warning until landed: do not edit the conductor via the dialog.\",\"labels\":[\"engine\",\"workflows\",\"web\"]}\n {\"id\":\"fabro-ad23\",\"title\":\"develop: evidence.nu dies printing large diffs — stdout write would-block kills the evidence stage\",\"status\":\"open\",\"type\":\"bug\",\"priority\":2,\"createdAt\":\"2026-09-06T20:01:09.189Z\",\"updatedAt\":\"2026-09-06T20:57:17.800Z\",\"description\":\"Develop runs die in the evidence stage when evidence.nu prints large payloads: run 01M1VZTJSZ551NFPHPD429MG0 failed at scripts/evidence.nu:392 'print $diff' with 'I/O error: Writing to stdout failed: Operation would block' (nu print blocks when the piped stdout buffer fills with a 100KiB+ diff; script exit 1 -> soft 'Capture failed' exit, 67 min of work parked with no PR). STDOUT CAUSE FIXED in PR #32 (emit helper: line-aligned chunks under pipe capacity, pathological lines split at codepoints; smoke-tested with 200KB payload). REMAINING: (a) park reasons should carry the failed stage's output tail (exec_stdout_tail_bytes=0 — the diagnosis lived only in worker logs); (b) consider the same pipe-safe emission pattern for other stage scripts that print payloads.\",\"labels\":[\"workflows\"]}\n-{\"id\":\"fabro-bc9b\",\"title\":\"fabro-db: emit cargo rerun-if-changed for the migrations dir — sqlx::migrate! embeds silently stale in cached builds\",\"status\":\"open\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-06T21:19:49.947Z\",\"updatedAt\":\"2026-09-06T21:19:49.947Z\",\"description\":\"TWO instances on 2026-09-06: (1) local nextest: 'no column breaker_threshold' — the test binary linked a stale fabro-db rlib whose sqlx::migrate!-embedded MIGRATOR predated migrations/2026090601; cargo clean -p fabro-db fixed it. (2) PRODUCTION deploy #5 (just up, docker cargo-target volume cache): migrate() returned Ok but the binary's migrator lacked 2026090601 — /api/v1/automations 500'd while /health and fabro ps stayed green (caught only by the new smoke probe). Adding/removing files under lib/foundation/fabro-db/migrations/ does NOT reliably invalidate the fabro-db crate fingerprint in every cache context (local target + docker volume). Wanted: a build.rs in fabro-db emitting cargo:rerun-if-changed=migrations/ (and cargo:rerun-if-changed=build.rs) so ANY migration change forces recompilation of the crate and re-expansion of sqlx::migrate!; plus a defense-in-depth startup assertion comparing the embedded migration list against a version marker (e.g. log the newest embedded version at migrate() so logs prove which set ran).\",\"labels\":[\"engine\",\"ci\"]}\n+{\"id\":\"fabro-bc9b\",\"title\":\"fabro-db: emit cargo rerun-if-changed for the migrations dir — sqlx::migrate! embeds silently stale in cached builds\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-06T21:19:49.947Z\",\"updatedAt\":\"2026-09-07T07:46:09.708Z\",\"description\":\"TWO instances on 2026-09-06: (1) local nextest: 'no column breaker_threshold' — the test binary linked a stale fabro-db rlib whose sqlx::migrate!-embedded MIGRATOR predated migrations/2026090601; cargo clean -p fabro-db fixed it. (2) PRODUCTION deploy #5 (just up, docker cargo-target volume cache): migrate() returned Ok but the binary's migrator lacked 2026090601 — /api/v1/automations 500'd while /health and fabro ps stayed green (caught only by the new smoke probe). Adding/removing files under lib/foundation/fabro-db/migrations/ does NOT reliably invalidate the fabro-db crate fingerprint in every cache context (local target + docker volume). Wanted: a build.rs in fabro-db emitting cargo:rerun-if-changed=migrations/ (and cargo:rerun-if-changed=build.rs) so ANY migration change forces recompilation of the crate and re-expansion of sqlx::migrate!; plus a defense-in-depth startup assertion comparing the embedded migration list against a version marker (e.g. log the newest embedded version at migrate() so logs prove which set ran).\",\"labels\":[\"engine\",\"ci\"],\"closedAt\":\"2026-09-07T07:46:09.708Z\"}\n {\"id\":\"fabro-0195\",\"title\":\"engine: declarative automation definitions in the repo (config/automations/*.toml) with on_overlap + breaker_threshold as code\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-09-06T21:41:21.610Z\",\"updatedAt\":\"2026-09-06T21:41:21.610Z\",\"description\":\"User review 2026-09-06 ('warum ist der skip nicht in der workflow def gesetzt?'): the conductor automation exists ONLY as live DB state — hand-created via UI/API, on_overlap never set (default Fire caused the three-pass stacking night), breaker_threshold likewise unset. Nothing versioned declares the line's safety posture; a DB reset or re-created automation silently loses skip/threshold and re-exposes the stacking + breaker-less behavior. The legacy import path (import_legacy_directory_once, dir = <config>/automations) exists but the repo ships no files there and import is one-shot legacy-shaped. Wanted: declarative automation definitions (e.g. config/automations/conductor.toml: target, workflow, environment, schedule expression, on_overlap=skip, breaker_threshold) that are (a) reviewed in PRs, (b) reconciled on server start (upsert by id; live pause state PRESERVED — enabled flag stays operator-owned, like today's resume flow), (c) surfaced in the web UI as 'managed from repo'. The workflow.fabro itself cannot carry on_overlap (scheduler-scope, not graph-scope) — the seed is about the automation layer getting its own source of truth. Interim (applied live 2026-09-06): on_overlap=skip set via API on the conductor.\",\"labels\":[\"engine\",\"workflows\"]}\ndiff --git a/lib/foundation/fabro-db/build.rs b/lib/foundation/fabro-db/build.rs\nnew file mode 100644\nindex 00000000..2be46faa\n--- /dev/null\n+++ b/lib/foundation/fabro-db/build.rs\n@@ -0,0 +1,9 @@\n+fn main() {\n+    // Build scripts run with the crate root as their working directory, so\n+    // relative paths are correct here. Without these directives, cargo does\n+    // not reliably invalidate the crate fingerprint when migration files are\n+    // added or removed under local-target and docker-volume caches, and\n+    // `sqlx::migrate!` keeps embedding a stale MIGRATOR.\n+    println!(\"cargo:rerun-if-changed=migrations\");\n+    println!(\"cargo:rerun-if-changed=build.rs\");\n+}\ndiff --git a/lib/foundation/fabro-db/src/lib.rs b/lib/foundation/fabro-db/src/lib.rs\nindex a921ec7e..e7516b9a 100644\n--- a/lib/foundation/fabro-db/src/lib.rs\n+++ b/lib/foundation/fabro-db/src/lib.rs\n@@ -73,6 +73,16 @@ impl Database {\n     }\n \n     pub async fn migrate(&self) -> anyhow::Result<()> {\n+        // Defense in depth against stale embeds: if the binary was built from\n+        // a cached artifact whose MIGRATOR predates a new migration, this log\n+        // makes the mismatch visible in server logs without changing ordering\n+        // or snapshot behavior.\n+        let newest_embedded = MIGRATOR\n+            .iter()\n+            .map(|migration| migration.version)\n+            .max()\n+            .unwrap_or_default();\n+        info!(\"newest embedded migration version {newest_embedded}\");\n         let applied = applied_migration_versions(&self.pool).await?;\n         self.preflight_session_owner_index(&applied)\n             .await\n@@ -508,6 +518,54 @@ async fn prepare_private_database_file(path: &Path) -> anyhow::Result<()> {\n     Ok(())\n }\n \n+/// Guards against embed/dir drift: `sqlx::migrate!` embeds the migrations\n+/// directory at compile time, and a stale cache can otherwise ship a binary\n+/// whose MIGRATOR predates the newest on-disk migration.\n+#[cfg(test)]\n+mod embedded_migrations_tests {\n+    use super::MIGRATOR;\n+\n+    #[test]\n+    #[expect(\n+        clippy::disallowed_methods,\n+        reason = \"test-only sync enumeration of the compile-time migrations directory\"\n+    )]\n+    fn newest_embedded_migration_matches_migrations_dir() {\n+        let dir = std::path::Path::new(env!(\"CARGO_MANIFEST_DIR\")).join(\"migrations\");\n+        let mut newest_on_disk: Option<i64> = None;\n+        for entry in std::fs::read_dir(&dir).expect(\"reading the migrations directory\") {\n+            let entry = entry.expect(\"reading a migrations directory entry\");\n+            let file_name = entry.file_name();\n+            let Some(name) = file_name.to_str() else {\n+                continue;\n+            };\n+            if !std::path::Path::new(name)\n+                .extension()\n+                .is_some_and(|ext| ext.eq_ignore_ascii_case(\"sql\"))\n+            {\n+                continue;\n+            }\n+            let version: i64 = name\n+                .split('_')\n+                .next()\n+                .unwrap_or_default()\n+                .parse()\n+                .unwrap_or_else(|error| panic!(\"parsing migration version from {name}: {error}\"));\n+            newest_on_disk = Some(newest_on_disk.map_or(version, |seen| seen.max(version)));\n+        }\n+        let newest_on_disk = newest_on_disk.expect(\"the migrations directory to contain SQL files\");\n+        let newest_embedded = MIGRATOR\n+            .iter()\n+            .map(|migration| migration.version)\n+            .max()\n+            .expect(\"the embedded MIGRATOR to be non-empty\");\n+        assert_eq!(\n+            newest_embedded, newest_on_disk,\n+            \"embedded MIGRATOR is stale: recompile fabro-db so sqlx::migrate! re-embeds migrations/\"\n+        );\n+    }\n+}\n+\n #[cfg(all(test, unix))]\n mod tests {\n     use std::os::unix::fs::PermissionsExt as _;\n",
+      "summary": {
+        "files_changed": 5,
+        "additions": 75,
+        "deletions": 1
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -3365,6 +3487,42 @@
         "inference_time_ms": 0,
         "tool_time_ms": 277,
         "active_time_ms": 277
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 437,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T07:46:16.090630684Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T07:46:16.090576799Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
       },
       "usage": {
         "input_tokens": 0,
