@@ -694,7 +694,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T20:32:35.422756478Z",
-  "last_event_at": "2026-09-07T20:35:09.424471358Z",
+  "last_event_at": "2026-09-07T20:35:14.986479041Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1778,9 +1778,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 190,
       "checkpoint": {
-        "timestamp": "2026-09-07T20:35:09.632965977Z",
+        "timestamp": "2026-09-07T20:35:13.887830732Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -1793,50 +1793,9 @@
         ],
         "node_retries": {},
         "context_values": {
-          "preferred_label": "Approved",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 2679,
-            "preview": "Claimed fabro-c381 (top High-priority candidate; basis verified against `.fabro/workflows/develop/prompts/implementer.md` — no adjacent-repair carve-out exists yet). `gh` is unavailable, so the in-f"
-          },
-          "thread.implementer.current_node": "tester",
-          "graph.max_node_visits": "40",
-          "internal.node_visit_count": 1,
-          "command.output": "blob://sha256/59dec88a21d949dabe4ef04d50ef74c65d5e284f4e1c55c33e38efc3514653e7",
           "internal.retry_count.closeout": 0,
-          "graph.rankdir": "LR",
-          "response.implementer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 3425,
-            "preview": "Implemented `.fabro/workflows/develop/prompts/implementer.md` only: added a 15-line carve-out paragraph directly after the platform-targeting carve-out / report-don't-fix block, permitting minimal rep"
-          },
-          "internal.retry_count.tester": 0,
-          "internal.exit_kind": "natural",
-          "implementation_summary": "Added a 15-line carve-out paragraph to `.fabro/workflows/develop/prompts/implementer.md` immediately after the platform-scope/report-don't-fix block: a VERIFIED pre-existing compile/clippy break in a crate the seed already touches may be fixed minimally (smallest change restoring gate green); verification means reproducing on the untouched tree (stash/reproduce) before fixing; repairs disclosed in implementation_summary under an explicit 'adjacent repair' label naming files and root cause; all other scope rules (unrelated files, feature drift, platform fixes, journal-only platform friction) unchanged; minimal-fix discipline with report-if-unclear fallback. Only this file changed. Lesson capture: nothing durable — skipped. Per-criterion: PASS carve-out clause added near report-don't-fix section (implementer.md new paragraph); PASS verified-pre-existing defined as stash/reproduce-before-fix, unverified stays report-don't-fix (sentence 3); PASS adjacent-repair disclosure label naming files+root cause required (sentence 4); PASS no other scope rule loosened, platform stays journal-only (sentence 5); PASS minimal fix discipline stated with report-if-unclear (sentences 2+6); PASS no other prompts/files changed (git diff --stat: implementer.md +15 only).",
-          "lesson_capture": "nothing durable — skipped",
-          "outcome": "succeeded",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "thread.tester.current_node": "evidence",
-          "internal.run_id": "01M1YS4NJH27NS7CQ02AWM9BNE",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "journal": {
-            "painpoints": [],
-            "observations": [
-              "Verified the churn-only loop-work diff line-by-line against all six brief criteria and re-read implementer.md on disk (lines 63-76) to confirm the paragraph placement and that the on-disk file matches the captured diff; confirmed via git diff --stat against claim base c5c75eb that only implementer.md (+15) changed apart from expected tracker churn in .seeds/issues.jsonl. No truncation, no untracked artifacts, gate output consistent with a docs-only seed."
-            ]
-          },
-          "last_response": "Verification complete. The evidence capture was inline and complete for this churn-only seed; I confirmed the on-disk file matches the diff and that the scope is exactly one file.\n\n**Requirements chec",
+          "last_stage": "reviewer",
           "failure_signature": "",
-          "graph.preamble_budget_kb": "24",
-          "thread.planner.current_node": "implementer",
-          "internal.retry_count.evidence": 0,
-          "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/implementer.md` (platform-targeting seed: use shell for reads/writes to `.fabro/**`). Acceptance criteria: - Add a carve-out clause near the platform-scope/report-don't-fix section: a VERIFIED pre-existing compile or clippy break in a crate the seed's work already touches may be fixed minimally (smallest change that restores gate green), even though it predates the seed. - 'Verified pre-existing' must be defined: the implementer demonstrates the break exists on the untouched tree (e.g. stash/reproduce) BEFORE fixing — an unverified break stays report-don't-fix. - Adjacent repairs must be disclosed in the implementation summary under an explicit 'adjacent repair' label naming the file(s) and the root cause. - The clause must NOT loosen any other scope rule: unrelated-file fixes, feature drift, or platform (`.fabro/`, scripts, justfile) fixes remain off-limits; incidental platform friction stays journal-only. - Minimal fix discipline stated: prefer the smallest compiling fix over refactors; if the minimal fix is unclear, report instead of fixing. - No other prompts (reviewer.md/planner.md) or files change in this seed. Context: run 01M1YJ8R820R7ZMSN55GJGMZ4A hit this — implementer root-caused pre-existing E0432 with a known 3-line fix but report-don't-fix forced a painpoint and a gate bounce. Spec contradiction check: none found — the carve-out intentionally narrows the report-don't-fix rule for verified pre-existing breaks only; the brief makes that boundary explicit so the reviewer does not read it as a general scope loosening.",
-          "internal.work_dir": "/workspace/fabro",
-          "thread.evidence.current_node": "reviewer",
-          "internal.thread_id": "reviewer",
-          "review_verdict": "approved",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -1845,77 +1804,108 @@
             "reviewer": 1,
             "closeout": 1
           },
-          "internal.retry_count.planner": 0,
+          "review_verdict": "approved",
+          "thread.start.current_node": "planner",
+          "internal.seed_cycle_anchor": "fabro-c381",
+          "internal.retry_count.implementer": 0,
+          "lesson_capture": "nothing durable — skipped",
+          "thread.implementer.current_node": "tester",
+          "internal.node_visit_count": 1,
+          "internal.exit_kind": "natural",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3425,
+            "preview": "Implemented `.fabro/workflows/develop/prompts/implementer.md` only: added a 15-line carve-out paragraph directly after the platform-targeting carve-out / report-don't-fix block, permitting minimal rep"
+          },
+          "thread.evidence.current_node": "reviewer",
+          "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/implementer.md` (platform-targeting seed: use shell for reads/writes to `.fabro/**`). Acceptance criteria: - Add a carve-out clause near the platform-scope/report-don't-fix section: a VERIFIED pre-existing compile or clippy break in a crate the seed's work already touches may be fixed minimally (smallest change that restores gate green), even though it predates the seed. - 'Verified pre-existing' must be defined: the implementer demonstrates the break exists on the untouched tree (e.g. stash/reproduce) BEFORE fixing — an unverified break stays report-don't-fix. - Adjacent repairs must be disclosed in the implementation summary under an explicit 'adjacent repair' label naming the file(s) and the root cause. - The clause must NOT loosen any other scope rule: unrelated-file fixes, feature drift, or platform (`.fabro/`, scripts, justfile) fixes remain off-limits; incidental platform friction stays journal-only. - Minimal fix discipline stated: prefer the smallest compiling fix over refactors; if the minimal fix is unclear, report instead of fixing. - No other prompts (reviewer.md/planner.md) or files change in this seed. Context: run 01M1YJ8R820R7ZMSN55GJGMZ4A hit this — implementer root-caused pre-existing E0432 with a known 3-line fix but report-don't-fix forced a painpoint and a gate bounce. Spec contradiction check: none found — the carve-out intentionally narrows the report-don't-fix rule for verified pre-existing breaks only; the brief makes that boundary explicit so the reviewer does not read it as a general scope loosening.",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.evidence": 0,
+          "current_node": "closeout",
+          "internal.retry_count.start": 0,
+          "thread.tester.current_node": "evidence",
+          "last_response": "Verification complete. The evidence capture was inline and complete for this churn-only seed; I confirmed the on-disk file matches the diff and that the scope is exactly one file.\n\n**Requirements chec",
+          "internal.thread_id": "reviewer",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.rankdir": "LR",
+          "preferred_label": "Approved",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "current_seed_title": "Allow minimal adjacent repair of pre-existing compile breaks in touched crates",
+          "internal.work_dir": "/workspace/fabro",
           "response.reviewer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.reviewer",
             "chars": 2442,
             "preview": "Verification complete. The evidence capture was inline and complete for this churn-only seed; I confirmed the on-disk file matches the diff and that the scope is exactly one file.\n\n**Requirements chec"
           },
-          "current_node": "closeout",
-          "internal.retry_count.reviewer": 0,
-          "thread.reviewer.current_node": "closeout",
-          "current_seed_title": "Allow minimal adjacent repair of pre-existing compile breaks in touched crates",
-          "failure_class": "",
-          "current_seed_id": "fabro-c381",
+          "implementation_summary": "Added a 15-line carve-out paragraph to `.fabro/workflows/develop/prompts/implementer.md` immediately after the platform-scope/report-don't-fix block: a VERIFIED pre-existing compile/clippy break in a crate the seed already touches may be fixed minimally (smallest change restoring gate green); verification means reproducing on the untouched tree (stash/reproduce) before fixing; repairs disclosed in implementation_summary under an explicit 'adjacent repair' label naming files and root cause; all other scope rules (unrelated files, feature drift, platform fixes, journal-only platform friction) unchanged; minimal-fix discipline with report-if-unclear fallback. Only this file changed. Lesson capture: nothing durable — skipped. Per-criterion: PASS carve-out clause added near report-don't-fix section (implementer.md new paragraph); PASS verified-pre-existing defined as stash/reproduce-before-fix, unverified stays report-don't-fix (sentence 3); PASS adjacent-repair disclosure label naming files+root cause required (sentence 4); PASS no other scope rule loosened, platform stays journal-only (sentence 5); PASS minimal fix discipline stated with report-if-unclear (sentences 2+6); PASS no other prompts/files changed (git diff --stat: implementer.md +15 only).",
           "internal.fidelity": "compact",
-          "thread.start.current_node": "planner",
-          "last_stage": "reviewer",
-          "internal.retry_count.start": 0,
-          "internal.retry_count.implementer": 0,
-          "internal.seed_cycle_anchor": "fabro-c381"
+          "internal.retry_count.tester": 0,
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Verified the churn-only loop-work diff line-by-line against all six brief criteria and re-read implementer.md on disk (lines 63-76) to confirm the paragraph placement and that the on-disk file matches the captured diff; confirmed via git diff --stat against claim base c5c75eb that only implementer.md (+15) changed apart from expected tracker churn in .seeds/issues.jsonl. No truncation, no untracked artifacts, gate output consistent with a docs-only seed."
+            ]
+          },
+          "thread.planner.current_node": "implementer",
+          "internal.retry_count.planner": 0,
+          "internal.run_id": "01M1YS4NJH27NS7CQ02AWM9BNE",
+          "command.output": "blob://sha256/59dec88a21d949dabe4ef04d50ef74c65d5e284f4e1c55c33e38efc3514653e7",
+          "thread.reviewer.current_node": "closeout",
+          "failure_class": "",
+          "graph.max_node_visits": "40",
+          "current_seed_id": "fabro-c381",
+          "outcome": "succeeded",
+          "internal.retry_count.reviewer": 0,
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2679,
+            "preview": "Claimed fabro-c381 (top High-priority candidate; basis verified against `.fabro/workflows/develop/prompts/implementer.md` — no adjacent-repair carve-out exists yet). `gh` is unavailable, so the in-f"
+          }
         },
         "node_outcomes": {
-          "planner": {
+          "closeout": {
             "status": "succeeded",
-            "preferred_label": "Seed claimed",
             "context_updates": {
-              "response.planner": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.planner",
-                "chars": 2679,
-                "preview": "Claimed fabro-c381 (top High-priority candidate; basis verified against `.fabro/workflows/develop/prompts/implementer.md` — no adjacent-repair carve-out exists yet). `gh` is unavailable, so the in-f"
-              },
-              "current_seed_id": "fabro-c381",
-              "last_stage": "planner",
-              "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/implementer.md` (platform-targeting seed: use shell for reads/writes to `.fabro/**`). Acceptance criteria: - Add a carve-out clause near the platform-scope/report-don't-fix section: a VERIFIED pre-existing compile or clippy break in a crate the seed's work already touches may be fixed minimally (smallest change that restores gate green), even though it predates the seed. - 'Verified pre-existing' must be defined: the implementer demonstrates the break exists on the untouched tree (e.g. stash/reproduce) BEFORE fixing — an unverified break stays report-don't-fix. - Adjacent repairs must be disclosed in the implementation summary under an explicit 'adjacent repair' label naming the file(s) and the root cause. - The clause must NOT loosen any other scope rule: unrelated-file fixes, feature drift, or platform (`.fabro/`, scripts, justfile) fixes remain off-limits; incidental platform friction stays journal-only. - Minimal fix discipline stated: prefer the smallest compiling fix over refactors; if the minimal fix is unclear, report instead of fixing. - No other prompts (reviewer.md/planner.md) or files change in this seed. Context: run 01M1YJ8R820R7ZMSN55GJGMZ4A hit this — implementer root-caused pre-existing E0432 with a known 3-line fix but report-don't-fix forced a painpoint and a gate bounce. Spec contradiction check: none found — the carve-out intentionally narrows the report-don't-fix rule for verified pre-existing breaks only; the brief makes that boundary explicit so the reviewer does not read it as a general scope loosening.",
-              "last_response": "Claimed fabro-c381 (top High-priority candidate; basis verified against `.fabro/workflows/develop/prompts/implementer.md` — no adjacent-repair carve-out exists yet). `gh` is unavailable, so the in-f",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "gh CLI is not installed in this environment — in-flight PR check degraded to 'no data' per fail-open rule; future runs on this host cannot audit PR double-picks (run 01M1YS4NJH27NS7CQ02AWM9BNE)",
-                  "Basis of fabro-c381 verified fresh: `.fabro/workflows/develop/prompts/implementer.md` has no adjacent-repair carve-out as of this run (grep only finds the report-don't-fix line at implementer.md:56)"
-                ]
-              },
-              "current_seed_title": "Allow minimal adjacent repair of pre-existing compile breaks in touched crates"
+              "command.output": "blob://sha256/59dec88a21d949dabe4ef04d50ef74c65d5e284f4e1c55c33e38efc3514653e7"
             },
-            "notes": "Stage completed: planner",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 19521,
-                    "output_tokens": 1058,
-                    "reasoning_tokens": 350,
-                    "cache_read_tokens": 120960,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 64963
-            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 43410,
-              "tool_time_ms": 2503,
-              "active_time_ms": 45913
+              "inference_time_ms": 0,
+              "tool_time_ms": 274,
+              "active_time_ms": 274
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 6086,
+              "active_time_ms": 6086
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/b3f0b69099a7ed61ca94eb4d9cd3ef64d14cf92821bfd6543f71f327f6105059"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 371,
+              "active_time_ms": 371
             }
           },
           "implementer": {
@@ -1968,52 +1958,6 @@
               "active_time_ms": 36183
             }
           },
-          "evidence": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/b3f0b69099a7ed61ca94eb4d9cd3ef64d14cf92821bfd6543f71f327f6105059"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 371,
-              "active_time_ms": 371
-            }
-          },
-          "tester": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
-            },
-            "notes": "Script completed: just qualitygate",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 6086,
-              "active_time_ms": 6086
-            }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
-          "closeout": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/59dec88a21d949dabe4ef04d50ef74c65d5e284f4e1c55c33e38efc3514653e7"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 274,
-              "active_time_ms": 274
-            }
-          },
           "reviewer": {
             "status": "succeeded",
             "preferred_label": "Approved",
@@ -2062,23 +2006,198 @@
               "tool_time_ms": 180,
               "active_time_ms": 23523
             }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2679,
+                "preview": "Claimed fabro-c381 (top High-priority candidate; basis verified against `.fabro/workflows/develop/prompts/implementer.md` — no adjacent-repair carve-out exists yet). `gh` is unavailable, so the in-f"
+              },
+              "current_seed_id": "fabro-c381",
+              "last_stage": "planner",
+              "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/implementer.md` (platform-targeting seed: use shell for reads/writes to `.fabro/**`). Acceptance criteria: - Add a carve-out clause near the platform-scope/report-don't-fix section: a VERIFIED pre-existing compile or clippy break in a crate the seed's work already touches may be fixed minimally (smallest change that restores gate green), even though it predates the seed. - 'Verified pre-existing' must be defined: the implementer demonstrates the break exists on the untouched tree (e.g. stash/reproduce) BEFORE fixing — an unverified break stays report-don't-fix. - Adjacent repairs must be disclosed in the implementation summary under an explicit 'adjacent repair' label naming the file(s) and the root cause. - The clause must NOT loosen any other scope rule: unrelated-file fixes, feature drift, or platform (`.fabro/`, scripts, justfile) fixes remain off-limits; incidental platform friction stays journal-only. - Minimal fix discipline stated: prefer the smallest compiling fix over refactors; if the minimal fix is unclear, report instead of fixing. - No other prompts (reviewer.md/planner.md) or files change in this seed. Context: run 01M1YJ8R820R7ZMSN55GJGMZ4A hit this — implementer root-caused pre-existing E0432 with a known 3-line fix but report-don't-fix forced a painpoint and a gate bounce. Spec contradiction check: none found — the carve-out intentionally narrows the report-don't-fix rule for verified pre-existing breaks only; the brief makes that boundary explicit so the reviewer does not read it as a general scope loosening.",
+              "last_response": "Claimed fabro-c381 (top High-priority candidate; basis verified against `.fabro/workflows/develop/prompts/implementer.md` — no adjacent-repair carve-out exists yet). `gh` is unavailable, so the in-f",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "gh CLI is not installed in this environment — in-flight PR check degraded to 'no data' per fail-open rule; future runs on this host cannot audit PR double-picks (run 01M1YS4NJH27NS7CQ02AWM9BNE)",
+                  "Basis of fabro-c381 verified fresh: `.fabro/workflows/develop/prompts/implementer.md` has no adjacent-repair carve-out as of this run (grep only finds the report-don't-fix line at implementer.md:56)"
+                ]
+              },
+              "current_seed_title": "Allow minimal adjacent repair of pre-existing compile breaks in touched crates"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19521,
+                    "output_tokens": 1058,
+                    "reasoning_tokens": 350,
+                    "cache_read_tokens": 120960,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 64963
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 43410,
+              "tool_time_ms": 2503,
+              "active_time_ms": 45913
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "afbab5a3eff9bbb43485e45ef7a720cf27cda80d",
         "node_visits": {
-          "evidence": 1,
           "reviewer": 1,
-          "closeout": 1,
-          "planner": 1,
+          "start": 1,
           "tester": 1,
+          "closeout": 1,
           "implementer": 1,
-          "start": 1
+          "evidence": 1,
+          "planner": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1YS4NJH27NS7CQ02AWM9BNE.jsonl b/.fabro/journal/01M1YS4NJH27NS7CQ02AWM9BNE.jsonl\nindex 1544e16..7530449 100644\n--- a/.fabro/journal/01M1YS4NJH27NS7CQ02AWM9BNE.jsonl\n+++ b/.fabro/journal/01M1YS4NJH27NS7CQ02AWM9BNE.jsonl\n@@ -4,3 +4,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS4NJH27NS7CQ02AWM9BNE\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:34:28Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS4NJH27NS7CQ02AWM9BNE\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:34:32Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS4NJH27NS7CQ02AWM9BNE\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:35:04Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified the churn-only loop-work diff line-by-line against all six brief criteria and re-read implementer.md on disk (lines 63-76) to confirm the paragraph placement and that the on-disk file matches the captured diff; confirmed via git diff --stat against claim base c5c75eb that only implementer.md (+15) changed apart from expected tracker churn in .seeds/issues.jsonl. No truncation, no untracked artifacts, gate output consistent with a docs-only seed.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS4NJH27NS7CQ02AWM9BNE\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:35:09Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex b3ba103..19f0baa 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -249,7 +249,7 @@\n {\"id\":\"fabro-b8ed\",\"title\":\"develop: verification-only briefs must not assert 'criteria satisfied' — derive per-criterion checks instead\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:30:04.670Z\",\"updatedAt\":\"2026-09-07T18:30:04.670Z\",\"assignee\":\"fabro\",\"description\":\"From unreviewed run 01M1Y852BN91NSVSHFWNWTW5ST (PR #42; journal sweep 2026-09-07): the verification-only brief asserted 'acceptance criteria appear already satisfied', but criterion 5 of fabro-5e09 was materially unmet in the worktree — docs/agents/issue-tracker.md still said 'Filers assign at creation' and 'Assignment is a user decision', contradicting the seed's D2/D3 decisions from the same day. The pass only converged because the implementer re-checked; a lazier one would have closed the seed on the brief's word. Fix direction: the planner's verification-only brief generation must not carry satisfaction assertions — instead list each acceptance criterion with an instruction to verify it against the CURRENT worktree and report per-criterion status in the summary. Related: fabro-578a (different aspect: allowed command level in verification-only briefs).\",\"labels\":[\"workflows\",\"revision\"]}\n {\"id\":\"fabro-52a9\",\"title\":\"conductor survey: reword misleading 'burns the backlog down' claim — backlog journal is visibility-only, drain needs the revisor's newest-first rule to change\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-07T18:30:04.771Z\",\"updatedAt\":\"2026-09-07T18:30:04.771Z\",\"assignee\":\"fabro\",\"description\":\"PR #45's survey prompt says 'the revisor revises the newest revisable run, so each subsequent pass burns the backlog down one run at a time' — but the revise leg creates the revisor without a goal and the revisor's select rule picks the NEWEST unrevised fresh run (which is always the current pass's own child), so the backlog NEVER drains; additionally the freshness rule (ADR-0015) makes older runs stale-evidence the moment the workflow version drifts, permanently disqualifying them. The journal line is dead-letter optimism (user + agent analysis 2026-09-07). Fix: reword survey.md to state the truth — the backlog entry is VISIBILITY-only (unreviewed run ids stay observable), runs are only revisable while fresh, and a real drain would need the revise leg to pass an explicit backlog run id in the goal (a decision not made). Do not promise behavior the graph cannot deliver.\",\"labels\":[\"workflows\",\"revision\"]}\n {\"id\":\"fabro-2254\",\"title\":\"Mirror the gate's default-features clippy in the implementer's pre-gate check\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T18:58:15.104Z\",\"updatedAt\":\"2026-09-07T19:19:56.648Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, require the literal gate invocation cargo clippy -p <crate> --all-targets -- -D warnings (default features) on every touched crate in addition to any feature-scoped checks, and make a known default-features break FAIL the 'gate passes' criterion. In run 01M1YJ8R820R7ZMSN55GJGMZ4A the implementer verified only under --features docker while the default-features E0432 it had itself diagnosed red-lined the tester 11s in, forcing a full second cycle (~8 min, ~$0.41, 64% of run cost). Distinct from closed fabro-0d56 (crate scoping): this is feature-set parity. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-c381\",\"title\":\"Allow minimal adjacent repair of pre-existing compile breaks in touched crates\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T18:58:15.217Z\",\"updatedAt\":\"2026-09-07T20:33:15.914Z\",\"description\":\"Add a carve-out to implementer.md: a verified pre-existing compile/clippy break in a touched crate may be fixed minimally to keep the gate green, disclosed in implementation_summary as adjacent repair. In this run implementer@1 root-caused the pre-existing E0432 via stash-reproduce and knew the 3-line fix, but report-don't-fix scope pushed it to a painpoint and the gate bounced the whole run; the reviewer journal already treats compile-repair as not scope creep. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-c381\",\"title\":\"Allow minimal adjacent repair of pre-existing compile breaks in touched crates\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T18:58:15.217Z\",\"updatedAt\":\"2026-09-07T20:35:09.322Z\",\"description\":\"Add a carve-out to implementer.md: a verified pre-existing compile/clippy break in a touched crate may be fixed minimally to keep the gate green, disclosed in implementation_summary as adjacent repair. In this run implementer@1 root-caused the pre-existing E0432 via stash-reproduce and knew the 3-line fix, but report-don't-fix scope pushed it to a painpoint and the gate bounced the whole run; the reviewer journal already treats compile-repair as not scope creep. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-07T20:35:09.322Z\"}\n {\"id\":\"fabro-8194\",\"title\":\"Carry the implementer's prior diagnosis into gate-red bounce prompts\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:15.338Z\",\"updatedAt\":\"2026-09-07T19:19:56.855Z\",\"description\":\"In workflow.fabro implementer node, add implementation_summary to preamble_allow_keys (or inject the previous pass's painpoints as a gate_bounce_notes key on the bounce path). In this run implementer@2's prompt excluded the node's own prior outputs, so it re-derived from scratch what implementer@1 had root-caused 90s earlier - 305s inference, 6,997 reasoning tokens, $0.405 (73% of the run's reasoning spend). Different mechanism from open fabro-6a78 (compact fidelity): this is the node allow-key/bounce injection path. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-56db\",\"title\":\"Normalize stale mtimes at qualitygate start until the transport fix ships\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:21.984Z\",\"updatedAt\":\"2026-09-07T19:19:56.962Z\",\"description\":\"In scripts/qualitygate.nu, at start run: find lib -name '*.rs' ! -newermt 2000-01-01 -exec touch {} + and mirror the one-liner in implementer.md step 4, until the fabro-22e4 sandbox transport fix is deployed everywhere. In this run edit_file-written push_credentials.rs carried mtime 1970-01-01 and cargo replayed stale dead-code warnings with wrong line numbers, forcing a manual touch detour; zero-LLM-cost mitigation, complementary to the open root-cause seed fabro-22e4. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-c841\",\"title\":\"Tighten gate-bounce known-bug matching to error signatures\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:22.097Z\",\"updatedAt\":\"2026-09-07T19:19:57.075Z\",\"description\":\"In .fabro/workflows/develop/scripts/gate-bounce.nu, require token overlap with the failure's error code/crate/file path instead of label-level matching, and emit {\\\"hits\\\":[]} when nothing real matches. In this run an E0432 cargo failure falsely matched prompt-refactoring seed fabro-4814, injecting ~1.4 KB of noise into implementer@2's and the reviewer's preambles. New iteration on the shipped fabro-56f4 mechanism (match precision, not match existence). Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 23,
+          "deletions": 1
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T20:35:13.952246917Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 145125,
+      "inference_time_ms": 102074,
+      "tool_time_ms": 10276,
+      "active_time_ms": 112350
+    },
+    "final_git_commit_sha": "afbab5a3eff9bbb43485e45ef7a720cf27cda80d",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 46485,
+          "inference_time_ms": 43410,
+          "tool_time_ms": 2503,
+          "active_time_ms": 45913
+        },
+        "billing_usd_micros": 64963,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 36854,
+          "inference_time_ms": 35321,
+          "tool_time_ms": 862,
+          "active_time_ms": 36183
+        },
+        "billing_usd_micros": 39664,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 6091,
+          "inference_time_ms": 0,
+          "tool_time_ms": 6086,
+          "active_time_ms": 6086
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 377,
+          "inference_time_ms": 0,
+          "tool_time_ms": 371,
+          "active_time_ms": 371
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 24064,
+          "inference_time_ms": 23343,
+          "tool_time_ms": 180,
+          "active_time_ms": 23523
+        },
+        "billing_usd_micros": 28074,
+        "retries": 0
+      },
+      {
+        "stage_id": "closeout",
+        "stage_label": "closeout",
+        "timing": {
+          "wall_time_ms": 280,
+          "inference_time_ms": 0,
+          "tool_time_ms": 274,
+          "active_time_ms": 274
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 46960,
+      "output_tokens": 3048,
+      "total_tokens": 234527,
+      "reasoning_tokens": 1351,
+      "cache_read_tokens": 183168,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 132701
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1YS4NJH27NS7CQ02AWM9BNE.jsonl b/.fabro/journal/01M1YS4NJH27NS7CQ02AWM9BNE.jsonl\nnew file mode 100644\nindex 0000000..7530449\n--- /dev/null\n+++ b/.fabro/journal/01M1YS4NJH27NS7CQ02AWM9BNE.jsonl\n@@ -0,0 +1,7 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS4NJH27NS7CQ02AWM9BNE\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:32:37Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS4NJH27NS7CQ02AWM9BNE\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:33:28Z\",\"data\":{\"painpoints\":[],\"observations\":[\"gh CLI is not installed in this environment — in-flight PR check degraded to 'no data' per fail-open rule; future runs on this host cannot audit PR double-picks (run 01M1YS4NJH27NS7CQ02AWM9BNE)\",\"Basis of fabro-c381 verified fresh: `.fabro/workflows/develop/prompts/implementer.md` has no adjacent-repair carve-out as of this run (grep only finds the report-don't-fix line at implementer.md:56)\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS4NJH27NS7CQ02AWM9BNE\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:34:17Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fs_hide blocked read_file/edit_file on the platform prompt as designed; the shell carve-out path (sed reads + python3 heredoc replace) worked cleanly for this platform-targeting seed — the existing carve-out guidance functioned exactly as intended, no friction.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS4NJH27NS7CQ02AWM9BNE\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:34:28Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS4NJH27NS7CQ02AWM9BNE\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:34:32Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS4NJH27NS7CQ02AWM9BNE\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:35:04Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified the churn-only loop-work diff line-by-line against all six brief criteria and re-read implementer.md on disk (lines 63-76) to confirm the paragraph placement and that the on-disk file matches the captured diff; confirmed via git diff --stat against claim base c5c75eb that only implementer.md (+15) changed apart from expected tracker churn in .seeds/issues.jsonl. No truncation, no untracked artifacts, gate output consistent with a docs-only seed.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS4NJH27NS7CQ02AWM9BNE\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:35:09Z\",\"data\":{}}\ndiff --git a/.fabro/workflows/develop/prompts/implementer.md b/.fabro/workflows/develop/prompts/implementer.md\nindex 2a00a1c..b8819e0 100644\n--- a/.fabro/workflows/develop/prompts/implementer.md\n+++ b/.fabro/workflows/develop/prompts/implementer.md\n@@ -60,6 +60,21 @@ wiring: never modify them without the seed saying so explicitly. When\n your work reveals friction in any of these (a script bug, a prompt gap,\n a gate blind spot), do NOT fix it here — report it.\n \n+Carve-out for verified pre-existing compile breaks in touched crates: a\n+VERIFIED pre-existing compile or clippy break in a crate the seed's work\n+already touches MAY be fixed minimally — the smallest change that\n+restores gate green — even though it predates the seed. \"Verified\n+pre-existing\" means the implementer demonstrates the break exists on the\n+untouched tree (e.g. stash the work and reproduce, then restore) BEFORE\n+fixing; an unverified break stays report-don't-fix. Every adjacent\n+repair must be disclosed in the implementation summary under an explicit\n+\"adjacent repair\" label naming the file(s) and the root cause. This\n+carve-out loosens nothing else: unrelated-file fixes, feature drift, and\n+platform (`.fabro/`, scripts, justfile) fixes remain off-limits, and\n+incidental platform friction stays journal-only. Minimal-fix discipline\n+applies: prefer the smallest compiling fix over refactors; if the\n+minimal fix is unclear, report instead of fixing.\n+\n Report through `context_updates.journal` on EVERY pass. Silence is a\n missing report, not an empty one — two full runs shipped zero journal\n lines because answering was optional. Always emit BOTH keys:\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex a788c37..19f0baa 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -249,7 +249,7 @@\n {\"id\":\"fabro-b8ed\",\"title\":\"develop: verification-only briefs must not assert 'criteria satisfied' — derive per-criterion checks instead\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:30:04.670Z\",\"updatedAt\":\"2026-09-07T18:30:04.670Z\",\"assignee\":\"fabro\",\"description\":\"From unreviewed run 01M1Y852BN91NSVSHFWNWTW5ST (PR #42; journal sweep 2026-09-07): the verification-only brief asserted 'acceptance criteria appear already satisfied', but criterion 5 of fabro-5e09 was materially unmet in the worktree — docs/agents/issue-tracker.md still said 'Filers assign at creation' and 'Assignment is a user decision', contradicting the seed's D2/D3 decisions from the same day. The pass only converged because the implementer re-checked; a lazier one would have closed the seed on the brief's word. Fix direction: the planner's verification-only brief generation must not carry satisfaction assertions — instead list each acceptance criterion with an instruction to verify it against the CURRENT worktree and report per-criterion status in the summary. Related: fabro-578a (different aspect: allowed command level in verification-only briefs).\",\"labels\":[\"workflows\",\"revision\"]}\n {\"id\":\"fabro-52a9\",\"title\":\"conductor survey: reword misleading 'burns the backlog down' claim — backlog journal is visibility-only, drain needs the revisor's newest-first rule to change\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-07T18:30:04.771Z\",\"updatedAt\":\"2026-09-07T18:30:04.771Z\",\"assignee\":\"fabro\",\"description\":\"PR #45's survey prompt says 'the revisor revises the newest revisable run, so each subsequent pass burns the backlog down one run at a time' — but the revise leg creates the revisor without a goal and the revisor's select rule picks the NEWEST unrevised fresh run (which is always the current pass's own child), so the backlog NEVER drains; additionally the freshness rule (ADR-0015) makes older runs stale-evidence the moment the workflow version drifts, permanently disqualifying them. The journal line is dead-letter optimism (user + agent analysis 2026-09-07). Fix: reword survey.md to state the truth — the backlog entry is VISIBILITY-only (unreviewed run ids stay observable), runs are only revisable while fresh, and a real drain would need the revise leg to pass an explicit backlog run id in the goal (a decision not made). Do not promise behavior the graph cannot deliver.\",\"labels\":[\"workflows\",\"revision\"]}\n {\"id\":\"fabro-2254\",\"title\":\"Mirror the gate's default-features clippy in the implementer's pre-gate check\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T18:58:15.104Z\",\"updatedAt\":\"2026-09-07T19:19:56.648Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, require the literal gate invocation cargo clippy -p <crate> --all-targets -- -D warnings (default features) on every touched crate in addition to any feature-scoped checks, and make a known default-features break FAIL the 'gate passes' criterion. In run 01M1YJ8R820R7ZMSN55GJGMZ4A the implementer verified only under --features docker while the default-features E0432 it had itself diagnosed red-lined the tester 11s in, forcing a full second cycle (~8 min, ~$0.41, 64% of run cost). Distinct from closed fabro-0d56 (crate scoping): this is feature-set parity. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-c381\",\"title\":\"Allow minimal adjacent repair of pre-existing compile breaks in touched crates\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T18:58:15.217Z\",\"updatedAt\":\"2026-09-07T19:19:56.752Z\",\"description\":\"Add a carve-out to implementer.md: a verified pre-existing compile/clippy break in a touched crate may be fixed minimally to keep the gate green, disclosed in implementation_summary as adjacent repair. In this run implementer@1 root-caused the pre-existing E0432 via stash-reproduce and knew the 3-line fix, but report-don't-fix scope pushed it to a painpoint and the gate bounced the whole run; the reviewer journal already treats compile-repair as not scope creep. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-c381\",\"title\":\"Allow minimal adjacent repair of pre-existing compile breaks in touched crates\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T18:58:15.217Z\",\"updatedAt\":\"2026-09-07T20:35:09.322Z\",\"description\":\"Add a carve-out to implementer.md: a verified pre-existing compile/clippy break in a touched crate may be fixed minimally to keep the gate green, disclosed in implementation_summary as adjacent repair. In this run implementer@1 root-caused the pre-existing E0432 via stash-reproduce and knew the 3-line fix, but report-don't-fix scope pushed it to a painpoint and the gate bounced the whole run; the reviewer journal already treats compile-repair as not scope creep. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-07T20:35:09.322Z\"}\n {\"id\":\"fabro-8194\",\"title\":\"Carry the implementer's prior diagnosis into gate-red bounce prompts\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:15.338Z\",\"updatedAt\":\"2026-09-07T19:19:56.855Z\",\"description\":\"In workflow.fabro implementer node, add implementation_summary to preamble_allow_keys (or inject the previous pass's painpoints as a gate_bounce_notes key on the bounce path). In this run implementer@2's prompt excluded the node's own prior outputs, so it re-derived from scratch what implementer@1 had root-caused 90s earlier - 305s inference, 6,997 reasoning tokens, $0.405 (73% of the run's reasoning spend). Different mechanism from open fabro-6a78 (compact fidelity): this is the node allow-key/bounce injection path. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-56db\",\"title\":\"Normalize stale mtimes at qualitygate start until the transport fix ships\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:21.984Z\",\"updatedAt\":\"2026-09-07T19:19:56.962Z\",\"description\":\"In scripts/qualitygate.nu, at start run: find lib -name '*.rs' ! -newermt 2000-01-01 -exec touch {} + and mirror the one-liner in implementer.md step 4, until the fabro-22e4 sandbox transport fix is deployed everywhere. In this run edit_file-written push_credentials.rs carried mtime 1970-01-01 and cargo replayed stale dead-code warnings with wrong line numbers, forcing a manual touch detour; zero-LLM-cost mitigation, complementary to the open root-cause seed fabro-22e4. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-c841\",\"title\":\"Tighten gate-bounce known-bug matching to error signatures\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:22.097Z\",\"updatedAt\":\"2026-09-07T19:19:57.075Z\",\"description\":\"In .fabro/workflows/develop/scripts/gate-bounce.nu, require token overlap with the failure's error code/crate/file path instead of label-level matching, and emit {\\\"hits\\\":[]} when nothing real matches. In this run an E0432 cargo failure falsely matched prompt-refactoring seed fabro-4814, injecting ~1.4 KB of noise into implementer@2's and the reviewer's preambles. New iteration on the shipped fabro-56f4 mechanism (match precision, not match existence). Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n",
+      "summary": {
+        "files_changed": 3,
+        "additions": 23,
+        "deletions": 1
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2105,45 +2224,295 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
-    "closeout@1": {
-      "first_event_seq": 183,
+    "planner@1": {
+      "first_event_seq": 21,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "notes": "Stage completed: planner",
         "failure_reason": null,
-        "timestamp": "2026-09-07T20:35:09.424471358Z"
+        "timestamp": "2026-09-07T20:33:27.560164204Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T20:32:37.699253578Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 46485,
+        "inference_time_ms": 43410,
+        "tool_time_ms": 2503,
+        "active_time_ms": 45913
+      },
+      "usage": {
+        "input_tokens": 19521,
+        "output_tokens": 1058,
+        "total_tokens": 141889,
+        "reasoning_tokens": 350,
+        "cache_read_tokens": 120960,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 64963
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 19337,
+        "usage_percent": 1.8441200256347656,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-07T20:33:27.493725602Z",
+        "event_seq": 76,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1160,
+            "usage_percent": 0.110626220703125
+          },
+          {
+            "category": "tools",
+            "tokens": 1658,
+            "usage_percent": 0.15811920166015625
+          },
+          {
+            "category": "memory",
+            "tokens": 5824,
+            "usage_percent": 0.555419921875
+          },
+          {
+            "category": "conversation",
+            "tokens": 10689,
+            "usage_percent": 1.0193824768066406
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@1": {
+      "first_event_seq": 134,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T20:34:27.916466938Z"
       },
       "provider_used": null,
       "diff": null,
       "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
         "language": "shell",
-        "timeout_ms": 60000
+        "timeout_ms": 1200000
       },
       "script_timing": {
-        "output": "blob://sha256/59dec88a21d949dabe4ef04d50ef74c65d5e284f4e1c55c33e38efc3514653e7",
+        "output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
         "exit_code": 0,
-        "duration_ms": 274,
+        "duration_ms": 6086,
         "termination": "exited",
-        "output_bytes": 58,
+        "output_bytes": 87,
         "live_streaming": true
       },
       "parallel_results": null,
       "output": null,
-      "output_bytes": 58,
+      "output_bytes": 87,
       "live_streaming": true,
       "termination": "exited",
-      "started_at": "2026-09-07T20:35:09.131199155Z",
+      "started_at": "2026-09-07T20:34:21.811953214Z",
       "handler": "command",
       "graph_visit": 1,
       "timing": {
-        "wall_time_ms": 280,
+        "wall_time_ms": 6091,
         "inference_time_ms": 0,
-        "tool_time_ms": 274,
-        "active_time_ms": 274
+        "tool_time_ms": 6086,
+        "active_time_ms": 6086
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 193,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T20:35:13.888185192Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T20:35:13.888158777Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
       },
       "usage": {
         "input_tokens": 0,
@@ -2406,259 +2775,45 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "planner@1": {
-      "first_event_seq": 21,
+    "closeout@1": {
+      "first_event_seq": 183,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": "Stage completed: planner",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
         "failure_reason": null,
-        "timestamp": "2026-09-07T20:33:27.560164204Z"
-      },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "low"
-      },
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-07T20:32:37.699253578Z",
-      "handler": "agent",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 46485,
-        "inference_time_ms": 43410,
-        "tool_time_ms": 2503,
-        "active_time_ms": 45913
-      },
-      "usage": {
-        "input_tokens": 19521,
-        "output_tokens": 1058,
-        "total_tokens": 141889,
-        "reasoning_tokens": 350,
-        "cache_read_tokens": 120960,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 64963
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": true
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": true
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 19337,
-        "usage_percent": 1.8441200256347656,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-07T20:33:27.493725602Z",
-        "event_seq": 76,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1160,
-            "usage_percent": 0.110626220703125
-          },
-          {
-            "category": "tools",
-            "tokens": 1658,
-            "usage_percent": 0.15811920166015625
-          },
-          {
-            "category": "memory",
-            "tokens": 5824,
-            "usage_percent": 0.555419921875
-          },
-          {
-            "category": "conversation",
-            "tokens": 10689,
-            "usage_percent": 1.0193824768066406
-          },
-          {
-            "category": "other",
-            "tokens": 6,
-            "usage_percent": 0.00057220458984375
-          }
-        ],
-        "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "tester@1": {
-      "first_event_seq": 134,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Script completed: just qualitygate",
-        "failure_reason": null,
-        "timestamp": "2026-09-07T20:34:27.916466938Z"
+        "timestamp": "2026-09-07T20:35:09.424471358Z"
       },
       "provider_used": null,
       "diff": null,
       "script_invocation": {
-        "script": "just qualitygate",
-        "command": "exec 2>&1\njust qualitygate",
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
         "language": "shell",
-        "timeout_ms": 1200000
+        "timeout_ms": 60000
       },
       "script_timing": {
-        "output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+        "output": "blob://sha256/59dec88a21d949dabe4ef04d50ef74c65d5e284f4e1c55c33e38efc3514653e7",
         "exit_code": 0,
-        "duration_ms": 6086,
+        "duration_ms": 274,
         "termination": "exited",
-        "output_bytes": 87,
+        "output_bytes": 58,
         "live_streaming": true
       },
       "parallel_results": null,
       "output": null,
-      "output_bytes": 87,
+      "output_bytes": 58,
       "live_streaming": true,
       "termination": "exited",
-      "started_at": "2026-09-07T20:34:21.811953214Z",
+      "started_at": "2026-09-07T20:35:09.131199155Z",
       "handler": "command",
       "graph_visit": 1,
       "timing": {
-        "wall_time_ms": 6091,
+        "wall_time_ms": 280,
         "inference_time_ms": 0,
-        "tool_time_ms": 6086,
-        "active_time_ms": 6086
+        "tool_time_ms": 274,
+        "active_time_ms": 274
       },
       "usage": {
         "input_tokens": 0,
