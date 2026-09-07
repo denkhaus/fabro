@@ -30,12 +30,19 @@ line could arm its own sandboxes.
    with token, no token-bearing curl, no API keys in agent shells.
    Read-only exceptions require explicit user approval recorded on the
    seed.
-3. **Capability additions are user decisions.** Any seed or PR that adds,
+3. **Direct agent tools are read-only at most** (user sharpening,
+   2026-09-08): an agent-facing tool may expose derived READ data through
+   the engine (e.g. run lists, PR state via `fabro_runs_list` /
+   purpose-built read-only tools), never credentials or general clients.
+   Every forge WRITE stays engine-side — the agent expresses intent
+   (create run, wait for merge), the engine executes under its own
+   governance.
+4. **Capability additions are user decisions.** Any seed or PR that adds,
    removes, or changes a tool, credential, or permission in an
    agent-reachable surface (Dockerfiles, environment env, tool
    allowlists, hook configs) is labelled `needs-user` and stays
    unassigned until the user approves it (ADR-0018 D3 ceremony).
-4. **Reviewers watch for capability deltas.** The develop reviewer and
+5. **Reviewers watch for capability deltas.** The develop reviewer and
    the line-watch monitor treat tool/credential changes in agent surfaces
    as review findings that block approval until the user decision is
    recorded.
