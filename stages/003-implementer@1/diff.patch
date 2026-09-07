@@ -1,0 +1,64 @@
+diff --git a/.fabro/journal/01M1YJ8R820R7ZMSN55GJGMZ4A.jsonl b/.fabro/journal/01M1YJ8R820R7ZMSN55GJGMZ4A.jsonl
+index bccac88..e29534b 100644
+--- a/.fabro/journal/01M1YJ8R820R7ZMSN55GJGMZ4A.jsonl
++++ b/.fabro/journal/01M1YJ8R820R7ZMSN55GJGMZ4A.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1YJ8R820R7ZMSN55GJGMZ4A","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T18:32:26Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YJ8R820R7ZMSN55GJGMZ4A","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-07T18:33:17Z","data":{"painpoints":[],"observations":["fabro-22e4 basis resolved precisely: mtime-1970 writes come from build_single_file_tar in lib/components/fabro-sandbox/src/docker.rs never calling header.set_mtime; callers are the Dockerfile upload (~796) and upload_file (~1323) paths","sd ready returned 153 ready seeds; fabro-22e4 was top High-priority bug and unblocked"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YJ8R820R7ZMSN55GJGMZ4A","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-07T18:40:59Z","data":{"painpoints":[{"text":"Pre-existing compile break: `cargo nextest run -p fabro-sandbox` with default features fails at lib/components/fabro-sandbox/src/lib.rs:18 — `pub use managed_labels::RUN_ID_LABEL;` lacks the `#[cfg(any(feature=\"docker\", feature=\"daytona\", test))]` gate its module has, so integration-test builds hit E0432. Reproduced on planner commit 1e3f7fc with changes stashed (run 01M1YJ8R820R7ZMSN55GJGMZ4A). Any tester gate that compiles fabro-sandbox without the docker feature will go red on this. Fix: move the cfg gate onto the pub use or make the module unconditional."}],"observations":["fabro-sandbox clippy with `--features docker --all-targets -D warnings` already fails pre-existing on `large size difference between variants` in provider.rs:25 and sandbox_spec.rs:24 (Docker variants only compiled under the feature); verified identical with my change stashed — a tester running clippy this way will need to attribute these correctly.","docker.rs is entirely feature-gated, so the required clippy/fmt scope for changes there must include `--features docker`; default-feature builds never compile the file."]}}
+diff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl
+index dd1e7ed..f9b1af3 100644
+--- a/.mulch/expertise/engine.jsonl
++++ b/.mulch/expertise/engine.jsonl
+@@ -36,3 +36,4 @@
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-07T14:32:34.243Z","evidence":{"commit":"8287d73911db242d75e4134cb326035fe4a9a0e9"},"description":"Edit-tool writes can land with epoch-0 (1970-01-01) mtimes; cargo then considers the source older than cached artifacts and silently skips recompiles, so binary behavior lags source edits (hit while iterating the fabro-validate bin in run 01M1Y2SMEVDHAFB59GZV9B84CQ: import of a just-added pub fn failed until manually touching the file). After surprising stale-behavior, touch the edited .rs files before rebuilding.","resolution":"Touch edited source files before rebuild when a just-added symbol is reported missing or behavior seems stale.","id":"mx-ee9245"}
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-07T14:32:51.757Z","evidence":{"seeds":"fabro-513e","commit":"8287d73911db242d75e4134cb326035fe4a9a0e9"},"name":"standalone-graph-lint-preprocessing","description":"Standalone workflow-graph linting (scripts/validate-workflows.nu + fabro-validate bin, seed fabro-513e): raw graphs must be preprocessed exactly like the runtime pipeline before lint rules run — resolve @-prefixed prompt/goal refs against the graph dir (missing files left for unresolved_file_ref) and blank template-syntax model_stylesheet (runtime renders it before stylesheet_syntax; raw MiniJinja source is unlintable). Any new pre-render transform added to the pipeline needs a matching preprocessing step here or the standalone gate false-positives.","files":[".mulch/expertise/engine.jsonl","Cargo.lock","justfile","lib/components/fabro-validate/Cargo.toml","lib/components/fabro-validate/src/lib.rs","lib/components/fabro-validate/src/rules/mod.rs","lib/components/fabro-validate/src/rules/unresolved_file_ref.rs"],"id":"mx-8562ab"}
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-07T17:02:15.526Z","evidence":{"commit":"fc5635470d988ee4adac87e9c2ca2a4e738e83f6"},"dir_anchors":["apps/fabro-web/app/routes","lib/packages/fabro-api-client/src/models"],"description":"Stale cargo test binary after edit_file changes: nextest reused a prior compile whose fingerprints did not register the edit (run 01M1YBBXR99PNME6Y8ZED4Y2NN, fabro-fb16) — panic line numbers pointed 7-14 lines away from the actual asserts and two tests failed on a code path the source no longer contained.","resolution":"touch the edited file (or cargo test --no-run) to force recompilation before trusting a failure diagnosis; after the forced rebuild both tests passed unchanged.","id":"mx-46b756"}
++{"type":"pattern","classification":"tactical","recorded_at":"2026-09-07T18:40:29.825Z","evidence":{"seeds":"fabro-22e4","commit":"1e3f7fca5f6c4df1d90247b7fa5a847a699bc9be"},"name":"tar-upload-mtime","description":"Docker sandbox single-file tar uploads (build_single_file_tar in lib/components/fabro-sandbox/src/docker.rs) must set header mtime via SystemTime::now before set_cksum; a zero/epoch mtime makes extracted container files land at 1970-01-01 so cargo treats sources as older than cached rlibs and silently skips recompiles after agent edits (fabro-22e4).","files":["lib/components/fabro-sandbox/src/docker.rs"],"id":"mx-d8c4ed"}
+diff --git a/lib/components/fabro-sandbox/src/docker.rs b/lib/components/fabro-sandbox/src/docker.rs
+index a69ebf2..22de963 100644
+--- a/lib/components/fabro-sandbox/src/docker.rs
++++ b/lib/components/fabro-sandbox/src/docker.rs
+@@ -1841,6 +1841,13 @@ fn build_single_file_tar(file_name: &str, bytes: &[u8], mode: u32) -> crate::Res
+             .map_err(|_| crate::Error::message("file is too large for tar header"))?,
+     );
+     header.set_mode(mode);
++    // A zero mtime makes the extracted file land at 1970-01-01, so build
++    // systems (cargo) treat the source as older than cached artifacts and
++    // skip recompiles. Stamp the current wall clock instead.
++    let mtime = SystemTime::now()
++        .duration_since(UNIX_EPOCH)
++        .map_err(|e| crate::Error::context("system clock is before the epoch", e))?;
++    header.set_mtime(mtime.as_secs());
+     header.set_cksum();
+     tar_builder
+         .append(&header, bytes)
+@@ -3362,6 +3369,28 @@ mod tests {
+         assert_eq!(content, "hello");
+     }
+ 
++    #[test]
++    fn single_file_tar_sets_current_mtime() {
++        let before = SystemTime::now()
++            .duration_since(UNIX_EPOCH)
++            .unwrap()
++            .as_secs();
++        let bytes = build_single_file_tar("stale.rs", b"fn main() {}", 0o644).unwrap();
++        let after = SystemTime::now()
++            .duration_since(UNIX_EPOCH)
++            .unwrap()
++            .as_secs();
++        let mut archive = tar::Archive::new(Cursor::new(bytes));
++        let mut entries = archive.entries().unwrap();
++        let entry = entries.next().unwrap().unwrap();
++        let mtime = entry.header().mtime().unwrap();
++        assert_ne!(mtime, 0, "tar header mtime must not default to epoch 0");
++        assert!(
++            mtime >= before && mtime <= after,
++            "tar header mtime {mtime} should be within [{before}, {after}] of wall clock"
++        );
++    }
++
+     #[test]
+     fn single_file_tar_applies_private_mode() {
+         let bytes = build_single_file_tar("blob.json", b"{}", 0o600).unwrap();
