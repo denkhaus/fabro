@@ -1,0 +1,47 @@
+diff --git a/.fabro/Dockerfile.toolchain b/.fabro/Dockerfile.toolchain
+index d777d1f..de90207 100644
+--- a/.fabro/Dockerfile.toolchain
++++ b/.fabro/Dockerfile.toolchain
+@@ -75,10 +75,24 @@ RUN set -eux; \
+         aqua:nushell/nushell@0.115.0 \
+         just@1.58.0 \
+         aqua:BurntSushi/ripgrep@15.2.0 \
++        aqua:cli/cli@v2.100.0 \
+     && bun --version \
+     && nu --version \
+     && just --version \
+-    && rg --version
++    && rg --version \
++    && gh --version
++
++# gh (fabro-05d0): the develop planner's in-flight-PR guard runs
++# `gh pr list --state open` inside the run container; without the binary the
++# check degraded fail-open (exit 127, run 01M1YS4NJH27NS7CQ02AWM9BNE),
++# structurally disabling the double-pick audit from fabro-d0c7. Pin rides the
++# mise toolset (aqua:cli/cli); the lab image (.fabro/Dockerfile) installs gh
++# via the github-cli apt repo instead. AUTH: no token is baked into the image
++# -- the workflow engine already injects a freshly minted GITHUB_TOKEN into
++# the agent tool env for every shell call (fabro-workflow services.rs
++# resolve_workflow_env + fabro-agent ToolEnvProvider), and gh reads
++# GITHUB_TOKEN natively, so `gh pr list` authenticates without image-side
++# credentials.
+ 
+ # Repo agent tooling: AGENTS.md asks agents to run `sd prime` / `ml prime` at
+ # session start; without these binaries every run wastes turns on failures.
+diff --git a/.fabro/journal/01M1YTVK73YEJXW4542MWDX4BJ.jsonl b/.fabro/journal/01M1YTVK73YEJXW4542MWDX4BJ.jsonl
+index 9a52b87..781cc53 100644
+--- a/.fabro/journal/01M1YTVK73YEJXW4542MWDX4BJ.jsonl
++++ b/.fabro/journal/01M1YTVK73YEJXW4542MWDX4BJ.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1YTVK73YEJXW4542MWDX4BJ","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T21:02:34Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YTVK73YEJXW4542MWDX4BJ","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-07T21:03:48Z","data":{"painpoints":[{"text":"gh CLI missing from THIS run environment too — the mandated in-flight PR check degraded fail-open again this pass (run on branch fabro/run/01M1YTVK73YEJXW4542MWDX4BJ), exactly the behavior fabro-05d0 was filed against; implementing that seed is the fix."}],"observations":["Seed fabro-05d0 names `.fabro/Dockerfile` as the fix target, but that file already installs gh since commit 98ed9f1 (2026-09-05); the live toolchain image is `.fabro/Dockerfile.toolchain` (no gh). Brief corrects the target file — basis otherwise fresh.","Auth is the hidden half of this seed: without GH_TOKEN in run containers the guard still fails after the binary lands; brief requires the implementer to verify token plumbing before declaring done."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YTVK73YEJXW4542MWDX4BJ","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-07T21:05:45Z","data":{"painpoints":[{"text":"The seed brief (and revisions/01M1YS4NJH27NS7CQ02AWM9BNE.md) names `.fabro/Dockerfile` as the fix target, but the live develop toolchain image is `.fabro/Dockerfile.toolchain` — the planner's spec correction caught this, yet the seed body and revision doc still carry the stale path. Suggest `sd update` on fabro-05d0's description to name Dockerfile.toolchain so future readers don't re-derive the contradiction."}],"observations":["The auth question in the brief was answerable from code alone: `resolve_workflow_env` in lib/components/fabro-workflow/src/services.rs merges a freshly minted GITHUB_TOKEN into the tool env per shell call, so gh needs only the binary, no image-side token (run 01M1YTVK73YEJXW4542MWDX4BJ, fabro-05d0).","Host validation substitute for Docker: running `mise use -g aqua:cli/cli@v2.100.0` on the same mise version the image pins (2026.8.10) exercised the identical registry/checksum/shim path as the RUN layer — a usable build-smoke proxy when docker is absent."]}}
+diff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl
+index 4a194b8..d8a94b4 100644
+--- a/.mulch/expertise/engine.jsonl
++++ b/.mulch/expertise/engine.jsonl
+@@ -38,3 +38,4 @@
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-07T17:02:15.526Z","evidence":{"commit":"fc5635470d988ee4adac87e9c2ca2a4e738e83f6"},"dir_anchors":["apps/fabro-web/app/routes","lib/packages/fabro-api-client/src/models"],"description":"Stale cargo test binary after edit_file changes: nextest reused a prior compile whose fingerprints did not register the edit (run 01M1YBBXR99PNME6Y8ZED4Y2NN, fabro-fb16) — panic line numbers pointed 7-14 lines away from the actual asserts and two tests failed on a code path the source no longer contained.","resolution":"touch the edited file (or cargo test --no-run) to force recompilation before trusting a failure diagnosis; after the forced rebuild both tests passed unchanged.","id":"mx-46b756"}
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-07T18:40:29.825Z","evidence":{"seeds":"fabro-22e4","commit":"1e3f7fca5f6c4df1d90247b7fa5a847a699bc9be"},"name":"tar-upload-mtime","description":"Docker sandbox single-file tar uploads (build_single_file_tar in lib/components/fabro-sandbox/src/docker.rs) must set header mtime via SystemTime::now before set_cksum; a zero/epoch mtime makes extracted container files land at 1970-01-01 so cargo treats sources as older than cached rlibs and silently skips recompiles after agent edits (fabro-22e4).","files":["lib/components/fabro-sandbox/src/docker.rs"],"id":"mx-d8c4ed"}
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-07T18:49:39.652Z","evidence":{"seeds":"fabro-22e4","commit":"2778c8238330fd9ffb7b1ace6919ad856fb6df10"},"dir_anchors":["lib/components/fabro-sandbox/src"],"description":"Seed fabro-22e4's mtime-0 bug is live in the agent tooling itself: after edit_file writes, lib/components/fabro-sandbox/src/push_credentials.rs carried mtime 1970-01-01, so cargo check replayed stale dead-code warnings from the cached fingerprint instead of recompiling (run 01M1YJ8R820R7ZMSN55GJGMZ4A, implementer re-pass). Symptom: warnings citing line numbers that no longer match edited source. Workaround while the docker transport fix propagates: touch touched .rs files (or find lib -name '*.rs' ! -newermt 2000-01-01) before cargo check/clippy. Also fixed the gate-blocking default-feature compile: mod managed_labels was cfg-gated behind docker/daytona/test while pub use managed_labels::RUN_ID_LABEL stayed ungated (introduced 4c1ca7e); push_credentials.rs needed matching cfg gates on build_token_source, the first PushCredentialState impl, and three imports to satisfy -D warnings under default features.","resolution":"Docker transport fix landed in e6ae814 (build_single_file_tar stamps wall-clock mtime); until the rebuilt binary reaches every sandbox, touch edited sources before cargo invocations to force recompilation.","id":"mx-c28106"}
++{"type":"pattern","classification":"tactical","recorded_at":"2026-09-07T21:05:17.640Z","evidence":{"commit":"4a3d61fab128f729b3b7fd2e6ff20d192dcb2dfc"},"name":"gh-auth-via-tool-env-not-image","description":"gh auth in run containers needs no image-side credentials: fabro-workflow services.rs resolve_workflow_env injects a freshly minted GITHUB_TOKEN into the agent tool env per shell call (fabro-agent ToolEnvProvider), and gh reads GITHUB_TOKEN natively — so baking the gh binary into fabro-toolchain (aqua:cli/cli pin in .fabro/Dockerfile.toolchain, fabro-05d0) is sufficient for the planner's 'gh pr list --state open' in-flight-PR guard.","files":[".fabro/Dockerfile.toolchain"],"id":"mx-f5b44b"}

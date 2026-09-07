@@ -694,7 +694,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T21:02:29.468407405Z",
-  "last_event_at": "2026-09-07T21:05:45.713245240Z",
+  "last_event_at": "2026-09-07T21:06:01.339115110Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -875,9 +875,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 194,
       "checkpoint": {
-        "timestamp": "2026-09-07T21:05:45.930730667Z",
+        "timestamp": "2026-09-07T21:05:55.396882206Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -886,10 +886,214 @@
         ],
         "node_retries": {},
         "context_values": {
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3308,
+            "preview": "The seed's named file is slightly off: the live develop toolchain image is `.fabro/Dockerfile.toolchain` (the old `.fabro/Dockerfile` already has gh but is the lab/GUI image). The basis still resolves"
+          },
+          "failure_signature": "",
+          "failure_class": "",
+          "preferred_label": "Implemented",
+          "graph.rankdir": "LR",
+          "internal.node_visit_count": 1,
+          "journal": {
+            "painpoints": [
+              {
+                "text": "The seed brief (and revisions/01M1YS4NJH27NS7CQ02AWM9BNE.md) names `.fabro/Dockerfile` as the fix target, but the live develop toolchain image is `.fabro/Dockerfile.toolchain` — the planner's spec correction caught this, yet the seed body and revision doc still carry the stale path. Suggest `sd update` on fabro-05d0's description to name Dockerfile.toolchain so future readers don't re-derive the contradiction."
+              }
+            ],
+            "observations": [
+              "The auth question in the brief was answerable from code alone: `resolve_workflow_env` in lib/components/fabro-workflow/src/services.rs merges a freshly minted GITHUB_TOKEN into the tool env per shell call, so gh needs only the binary, no image-side token (run 01M1YTVK73YEJXW4542MWDX4BJ, fabro-05d0).",
+              "Host validation substitute for Docker: running `mise use -g aqua:cli/cli@v2.100.0` on the same mise version the image pins (2026.8.10) exercised the identical registry/checksum/shim path as the RUN layer — a usable build-smoke proxy when docker is absent."
+            ]
+          },
+          "internal.retry_count.planner": 0,
+          "internal.run_id": "01M1YTVK73YEJXW4542MWDX4BJ",
+          "current_node": "implementer",
+          "implementation_summary": "Added `aqua:cli/cli@v2.100.0` to the mise toolset in `/workspace/fabro/.fabro/Dockerfile.toolchain` with a `gh --version` check in the same RUN layer, plus a comment block documenting the fabro-05d0 rationale and the auth path. Investigation proved the seed's feared auth gap does not exist: `GITHUB_TOKEN` is already injected into every agent shell call via `resolve_workflow_env` (fabro-workflow services.rs) + `ToolEnvProvider` (fabro-agent tools.rs), and gh reads that env var natively, so the bare binary fully restores the in-flight-PR guard. Docker is unavailable in this sandbox so no image build ran; instead the exact pin was validated on host mise 2026.8.10 (same version as the image): aqua resolved, checksum-verified, installed, `gh --version` → 2.100.0. Lesson capture: mx-f5b44b. Per-criterion: PASS gh via mise toolset pattern (Dockerfile.toolchain mise RUN block, pin validated on-host); PASS auth — token reaches containers via tool env, no fallback needed, documented in image comment; PASS rebuild validation via on-host mise/aqua resolution (Docker unavailable, stated); PASS `.fabro/Dockerfile` untouched; PASS no tests applicable, no unrelated churn (1 file, 15+/1-).",
+          "internal.fidelity": "summary:high",
+          "last_stage": "implementer",
+          "lesson_capture": "mx-f5b44b",
+          "current_seed_brief": "Make the planner's mandated in-flight-PR guard (`gh pr list --state open`) actually functional inside develop run containers. SPEC CORRECTION (resolved contradiction): the seed names `.fabro/Dockerfile`, but that is the old lab/GUI image and ALREADY installs gh; the live develop toolchain image is `/workspace/fabro/.fabro/Dockerfile.toolchain` and has no gh — the fix belongs there. Acceptance criteria: (1) `gh` binary is available in the toolchain image via the existing mise toolset pattern (add `aqua:cli/cli@<pin>` to the `mise use -g` list, pin consistent with host-installed version) with a `gh --version` check in the same RUN layer, following the image's existing style/comments. (2) AUTH: a bare binary only changes exit 127 into exit 1 — investigate whether run containers already receive a GitHub token via the server environment store / env config (the engine creates PRs, so credentials exist engine-side); if a token (GH_TOKEN/GITHUB_TOKEN) reaches the container, verify `gh pr list --state open` succeeds from a container; if it does NOT and cannot be plumbed without engine changes beyond this seed's scope, implement the seed's stated alternative minimally: keep the binary install AND document (image comment + journal observation) that token plumbing is the follow-up, rather than dead-ending. (3) Rebuild instructions: verify the image builds (`docker build` or the project's documented build path for `fabro-toolchain`); a build smoke proving `gh --version` resolves in the built image is required — if Docker is unavailable in this sandbox, validate via the Dockerfile changes plus `mise use` dry reasoning and say so explicitly. (4) No changes to `.fabro/Dockerfile` (lab image already has gh). (5) Tests: none applicable (infra file); gate should stay green with no unrelated churn.",
+          "internal.retry_count.start": 0,
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "graph.max_node_visits": "40",
+          "internal.seed_cycle_anchor": "fabro-05d0",
+          "internal.retry_count.implementer": 0,
+          "outcome": "succeeded",
+          "current_seed_id": "fabro-05d0",
+          "current_seed_title": "Bake gh into the develop toolchain image (or check open PRs engine-side) so the in-flight-PR guard functions",
+          "last_response": "Implementation complete. Summary of the pass:\n\n**What changed** — `.fabro/Dockerfile.toolchain` only (15 insertions, 1 deletion): added `aqua:cli/cli@v2.100.0` to the existing `mise use -g` list wit",
+          "thread.planner.current_node": "implementer",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.start.current_node": "planner",
+          "graph.preamble_budget_kb": "24",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.thread_id": "planner",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 4976,
+            "preview": "Implementation complete. Summary of the pass:\n\n**What changed** — `.fabro/Dockerfile.toolchain` only (15 insertions, 1 deletion): added `aqua:cli/cli@v2.100.0` to the existing `mise use -g` list wit"
+          }
+        },
+        "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 4976,
+                "preview": "Implementation complete. Summary of the pass:\n\n**What changed** — `.fabro/Dockerfile.toolchain` only (15 insertions, 1 deletion): added `aqua:cli/cli@v2.100.0` to the existing `mise use -g` list wit"
+              },
+              "last_response": "Implementation complete. Summary of the pass:\n\n**What changed** — `.fabro/Dockerfile.toolchain` only (15 insertions, 1 deletion): added `aqua:cli/cli@v2.100.0` to the existing `mise use -g` list wit",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "The seed brief (and revisions/01M1YS4NJH27NS7CQ02AWM9BNE.md) names `.fabro/Dockerfile` as the fix target, but the live develop toolchain image is `.fabro/Dockerfile.toolchain` — the planner's spec correction caught this, yet the seed body and revision doc still carry the stale path. Suggest `sd update` on fabro-05d0's description to name Dockerfile.toolchain so future readers don't re-derive the contradiction."
+                  }
+                ],
+                "observations": [
+                  "The auth question in the brief was answerable from code alone: `resolve_workflow_env` in lib/components/fabro-workflow/src/services.rs merges a freshly minted GITHUB_TOKEN into the tool env per shell call, so gh needs only the binary, no image-side token (run 01M1YTVK73YEJXW4542MWDX4BJ, fabro-05d0).",
+                  "Host validation substitute for Docker: running `mise use -g aqua:cli/cli@v2.100.0` on the same mise version the image pins (2026.8.10) exercised the identical registry/checksum/shim path as the RUN layer — a usable build-smoke proxy when docker is absent."
+                ]
+              },
+              "lesson_capture": "mx-f5b44b",
+              "implementation_summary": "Added `aqua:cli/cli@v2.100.0` to the mise toolset in `/workspace/fabro/.fabro/Dockerfile.toolchain` with a `gh --version` check in the same RUN layer, plus a comment block documenting the fabro-05d0 rationale and the auth path. Investigation proved the seed's feared auth gap does not exist: `GITHUB_TOKEN` is already injected into every agent shell call via `resolve_workflow_env` (fabro-workflow services.rs) + `ToolEnvProvider` (fabro-agent tools.rs), and gh reads that env var natively, so the bare binary fully restores the in-flight-PR guard. Docker is unavailable in this sandbox so no image build ran; instead the exact pin was validated on host mise 2026.8.10 (same version as the image): aqua resolved, checksum-verified, installed, `gh --version` → 2.100.0. Lesson capture: mx-f5b44b. Per-criterion: PASS gh via mise toolset pattern (Dockerfile.toolchain mise RUN block, pin validated on-host); PASS auth — token reaches containers via tool env, no fallback needed, documented in image comment; PASS rebuild validation via on-host mise/aqua resolution (Docker unavailable, stated); PASS `.fabro/Dockerfile` untouched; PASS no tests applicable, no unrelated churn (1 file, 15+/1-)."
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 24286,
+                    "output_tokens": 3094,
+                    "reasoning_tokens": 1148,
+                    "cache_read_tokens": 246208,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 116665
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 91364,
+              "tool_time_ms": 10216,
+              "active_time_ms": 101580
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "The seed's named file is slightly off: the live develop toolchain image is `.fabro/Dockerfile.toolchain` (the old `.fabro/Dockerfile` already has gh but is the lab/GUI image). The basis still resolves",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3308,
+                "preview": "The seed's named file is slightly off: the live develop toolchain image is `.fabro/Dockerfile.toolchain` (the old `.fabro/Dockerfile` already has gh but is the lab/GUI image). The basis still resolves"
+              },
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "gh CLI missing from THIS run environment too — the mandated in-flight PR check degraded fail-open again this pass (run on branch fabro/run/01M1YTVK73YEJXW4542MWDX4BJ), exactly the behavior fabro-05d0 was filed against; implementing that seed is the fix."
+                  }
+                ],
+                "observations": [
+                  "Seed fabro-05d0 names `.fabro/Dockerfile` as the fix target, but that file already installs gh since commit 98ed9f1 (2026-09-05); the live toolchain image is `.fabro/Dockerfile.toolchain` (no gh). Brief corrects the target file — basis otherwise fresh.",
+                  "Auth is the hidden half of this seed: without GH_TOKEN in run containers the guard still fails after the binary lands; brief requires the implementer to verify token plumbing before declaring done."
+                ]
+              },
+              "current_seed_id": "fabro-05d0",
+              "current_seed_title": "Bake gh into the develop toolchain image (or check open PRs engine-side) so the in-flight-PR guard functions",
+              "current_seed_brief": "Make the planner's mandated in-flight-PR guard (`gh pr list --state open`) actually functional inside develop run containers. SPEC CORRECTION (resolved contradiction): the seed names `.fabro/Dockerfile`, but that is the old lab/GUI image and ALREADY installs gh; the live develop toolchain image is `/workspace/fabro/.fabro/Dockerfile.toolchain` and has no gh — the fix belongs there. Acceptance criteria: (1) `gh` binary is available in the toolchain image via the existing mise toolset pattern (add `aqua:cli/cli@<pin>` to the `mise use -g` list, pin consistent with host-installed version) with a `gh --version` check in the same RUN layer, following the image's existing style/comments. (2) AUTH: a bare binary only changes exit 127 into exit 1 — investigate whether run containers already receive a GitHub token via the server environment store / env config (the engine creates PRs, so credentials exist engine-side); if a token (GH_TOKEN/GITHUB_TOKEN) reaches the container, verify `gh pr list --state open` succeeds from a container; if it does NOT and cannot be plumbed without engine changes beyond this seed's scope, implement the seed's stated alternative minimally: keep the binary install AND document (image comment + journal observation) that token plumbing is the follow-up, rather than dead-ending. (3) Rebuild instructions: verify the image builds (`docker build` or the project's documented build path for `fabro-toolchain`); a build smoke proving `gh --version` resolves in the built image is required — if Docker is unavailable in this sandbox, validate via the Dockerfile changes plus `mise use` dry reasoning and say so explicitly. (4) No changes to `.fabro/Dockerfile` (lab image already has gh). (5) Tests: none applicable (infra file); gate should stay green with no unrelated churn.",
+              "last_stage": "planner"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 26145,
+                    "output_tokens": 1511,
+                    "reasoning_tokens": 1072,
+                    "cache_read_tokens": 187136,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 96611
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 64415,
+              "tool_time_ms": 2078,
+              "active_time_ms": 66493
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "ed9a38e26030e08c65c30f4598ae1fe45b22db9a",
+        "node_visits": {
+          "start": 1,
+          "planner": 1,
+          "implementer": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/Dockerfile.toolchain b/.fabro/Dockerfile.toolchain\nindex d777d1f..de90207 100644\n--- a/.fabro/Dockerfile.toolchain\n+++ b/.fabro/Dockerfile.toolchain\n@@ -75,10 +75,24 @@ RUN set -eux; \\\n         aqua:nushell/nushell@0.115.0 \\\n         just@1.58.0 \\\n         aqua:BurntSushi/ripgrep@15.2.0 \\\n+        aqua:cli/cli@v2.100.0 \\\n     && bun --version \\\n     && nu --version \\\n     && just --version \\\n-    && rg --version\n+    && rg --version \\\n+    && gh --version\n+\n+# gh (fabro-05d0): the develop planner's in-flight-PR guard runs\n+# `gh pr list --state open` inside the run container; without the binary the\n+# check degraded fail-open (exit 127, run 01M1YS4NJH27NS7CQ02AWM9BNE),\n+# structurally disabling the double-pick audit from fabro-d0c7. Pin rides the\n+# mise toolset (aqua:cli/cli); the lab image (.fabro/Dockerfile) installs gh\n+# via the github-cli apt repo instead. AUTH: no token is baked into the image\n+# -- the workflow engine already injects a freshly minted GITHUB_TOKEN into\n+# the agent tool env for every shell call (fabro-workflow services.rs\n+# resolve_workflow_env + fabro-agent ToolEnvProvider), and gh reads\n+# GITHUB_TOKEN natively, so `gh pr list` authenticates without image-side\n+# credentials.\n \n # Repo agent tooling: AGENTS.md asks agents to run `sd prime` / `ml prime` at\n # session start; without these binaries every run wastes turns on failures.\ndiff --git a/.fabro/journal/01M1YTVK73YEJXW4542MWDX4BJ.jsonl b/.fabro/journal/01M1YTVK73YEJXW4542MWDX4BJ.jsonl\nindex 9a52b87..781cc53 100644\n--- a/.fabro/journal/01M1YTVK73YEJXW4542MWDX4BJ.jsonl\n+++ b/.fabro/journal/01M1YTVK73YEJXW4542MWDX4BJ.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YTVK73YEJXW4542MWDX4BJ\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:02:34Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YTVK73YEJXW4542MWDX4BJ\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:03:48Z\",\"data\":{\"painpoints\":[{\"text\":\"gh CLI missing from THIS run environment too — the mandated in-flight PR check degraded fail-open again this pass (run on branch fabro/run/01M1YTVK73YEJXW4542MWDX4BJ), exactly the behavior fabro-05d0 was filed against; implementing that seed is the fix.\"}],\"observations\":[\"Seed fabro-05d0 names `.fabro/Dockerfile` as the fix target, but that file already installs gh since commit 98ed9f1 (2026-09-05); the live toolchain image is `.fabro/Dockerfile.toolchain` (no gh). Brief corrects the target file — basis otherwise fresh.\",\"Auth is the hidden half of this seed: without GH_TOKEN in run containers the guard still fails after the binary lands; brief requires the implementer to verify token plumbing before declaring done.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YTVK73YEJXW4542MWDX4BJ\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:05:45Z\",\"data\":{\"painpoints\":[{\"text\":\"The seed brief (and revisions/01M1YS4NJH27NS7CQ02AWM9BNE.md) names `.fabro/Dockerfile` as the fix target, but the live develop toolchain image is `.fabro/Dockerfile.toolchain` — the planner's spec correction caught this, yet the seed body and revision doc still carry the stale path. Suggest `sd update` on fabro-05d0's description to name Dockerfile.toolchain so future readers don't re-derive the contradiction.\"}],\"observations\":[\"The auth question in the brief was answerable from code alone: `resolve_workflow_env` in lib/components/fabro-workflow/src/services.rs merges a freshly minted GITHUB_TOKEN into the tool env per shell call, so gh needs only the binary, no image-side token (run 01M1YTVK73YEJXW4542MWDX4BJ, fabro-05d0).\",\"Host validation substitute for Docker: running `mise use -g aqua:cli/cli@v2.100.0` on the same mise version the image pins (2026.8.10) exercised the identical registry/checksum/shim path as the RUN layer — a usable build-smoke proxy when docker is absent.\"]}}\ndiff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl\nindex 4a194b8..d8a94b4 100644\n--- a/.mulch/expertise/engine.jsonl\n+++ b/.mulch/expertise/engine.jsonl\n@@ -38,3 +38,4 @@\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-07T17:02:15.526Z\",\"evidence\":{\"commit\":\"fc5635470d988ee4adac87e9c2ca2a4e738e83f6\"},\"dir_anchors\":[\"apps/fabro-web/app/routes\",\"lib/packages/fabro-api-client/src/models\"],\"description\":\"Stale cargo test binary after edit_file changes: nextest reused a prior compile whose fingerprints did not register the edit (run 01M1YBBXR99PNME6Y8ZED4Y2NN, fabro-fb16) — panic line numbers pointed 7-14 lines away from the actual asserts and two tests failed on a code path the source no longer contained.\",\"resolution\":\"touch the edited file (or cargo test --no-run) to force recompilation before trusting a failure diagnosis; after the forced rebuild both tests passed unchanged.\",\"id\":\"mx-46b756\"}\n {\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-07T18:40:29.825Z\",\"evidence\":{\"seeds\":\"fabro-22e4\",\"commit\":\"1e3f7fca5f6c4df1d90247b7fa5a847a699bc9be\"},\"name\":\"tar-upload-mtime\",\"description\":\"Docker sandbox single-file tar uploads (build_single_file_tar in lib/components/fabro-sandbox/src/docker.rs) must set header mtime via SystemTime::now before set_cksum; a zero/epoch mtime makes extracted container files land at 1970-01-01 so cargo treats sources as older than cached rlibs and silently skips recompiles after agent edits (fabro-22e4).\",\"files\":[\"lib/components/fabro-sandbox/src/docker.rs\"],\"id\":\"mx-d8c4ed\"}\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-07T18:49:39.652Z\",\"evidence\":{\"seeds\":\"fabro-22e4\",\"commit\":\"2778c8238330fd9ffb7b1ace6919ad856fb6df10\"},\"dir_anchors\":[\"lib/components/fabro-sandbox/src\"],\"description\":\"Seed fabro-22e4's mtime-0 bug is live in the agent tooling itself: after edit_file writes, lib/components/fabro-sandbox/src/push_credentials.rs carried mtime 1970-01-01, so cargo check replayed stale dead-code warnings from the cached fingerprint instead of recompiling (run 01M1YJ8R820R7ZMSN55GJGMZ4A, implementer re-pass). Symptom: warnings citing line numbers that no longer match edited source. Workaround while the docker transport fix propagates: touch touched .rs files (or find lib -name '*.rs' ! -newermt 2000-01-01) before cargo check/clippy. Also fixed the gate-blocking default-feature compile: mod managed_labels was cfg-gated behind docker/daytona/test while pub use managed_labels::RUN_ID_LABEL stayed ungated (introduced 4c1ca7e); push_credentials.rs needed matching cfg gates on build_token_source, the first PushCredentialState impl, and three imports to satisfy -D warnings under default features.\",\"resolution\":\"Docker transport fix landed in e6ae814 (build_single_file_tar stamps wall-clock mtime); until the rebuilt binary reaches every sandbox, touch edited sources before cargo invocations to force recompilation.\",\"id\":\"mx-c28106\"}\n+{\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-07T21:05:17.640Z\",\"evidence\":{\"commit\":\"4a3d61fab128f729b3b7fd2e6ff20d192dcb2dfc\"},\"name\":\"gh-auth-via-tool-env-not-image\",\"description\":\"gh auth in run containers needs no image-side credentials: fabro-workflow services.rs resolve_workflow_env injects a freshly minted GITHUB_TOKEN into the agent tool env per shell call (fabro-agent ToolEnvProvider), and gh reads GITHUB_TOKEN natively — so baking the gh binary into fabro-toolchain (aqua:cli/cli pin in .fabro/Dockerfile.toolchain, fabro-05d0) is sufficient for the planner's 'gh pr list --state open' in-flight-PR guard.\",\"files\":[\".fabro/Dockerfile.toolchain\"],\"id\":\"mx-f5b44b\"}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 20,
+          "deletions": 2
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-07T21:06:01.564112051Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
           "internal.retry_count.implementer": 0,
           "graph.max_node_visits": "40",
           "current_seed_brief": "Make the planner's mandated in-flight-PR guard (`gh pr list --state open`) actually functional inside develop run containers. SPEC CORRECTION (resolved contradiction): the seed names `.fabro/Dockerfile`, but that is the old lab/GUI image and ALREADY installs gh; the live develop toolchain image is `/workspace/fabro/.fabro/Dockerfile.toolchain` and has no gh — the fix belongs there. Acceptance criteria: (1) `gh` binary is available in the toolchain image via the existing mise toolset pattern (add `aqua:cli/cli@<pin>` to the `mise use -g` list, pin consistent with host-installed version) with a `gh --version` check in the same RUN layer, following the image's existing style/comments. (2) AUTH: a bare binary only changes exit 127 into exit 1 — investigate whether run containers already receive a GitHub token via the server environment store / env config (the engine creates PRs, so credentials exist engine-side); if a token (GH_TOKEN/GITHUB_TOKEN) reaches the container, verify `gh pr list --state open` succeeds from a container; if it does NOT and cannot be plumbed without engine changes beyond this seed's scope, implement the seed's stated alternative minimally: keep the binary install AND document (image comment + journal observation) that token plumbing is the follow-up, rather than dead-ending. (3) Rebuild instructions: verify the image builds (`docker build` or the project's documented build path for `fabro-toolchain`); a build smoke proving `gh --version` resolves in the built image is required — if Docker is unavailable in this sandbox, validate via the Dockerfile changes plus `mise use` dry reasoning and say so explicitly. (4) No changes to `.fabro/Dockerfile` (lab image already has gh). (5) Tests: none applicable (infra file); gate should stay green with no unrelated churn.",
           "failure_signature": "",
+          "internal.retry_count.tester": 0,
           "internal.work_dir": "/workspace/fabro",
           "graph.rankdir": "LR",
           "failure_class": "",
@@ -898,22 +1102,25 @@
           "implementation_summary": "Added `aqua:cli/cli@v2.100.0` to the mise toolset in `/workspace/fabro/.fabro/Dockerfile.toolchain` with a `gh --version` check in the same RUN layer, plus a comment block documenting the fabro-05d0 rationale and the auth path. Investigation proved the seed's feared auth gap does not exist: `GITHUB_TOKEN` is already injected into every agent shell call via `resolve_workflow_env` (fabro-workflow services.rs) + `ToolEnvProvider` (fabro-agent tools.rs), and gh reads that env var natively, so the bare binary fully restores the in-flight-PR guard. Docker is unavailable in this sandbox so no image build ran; instead the exact pin was validated on host mise 2026.8.10 (same version as the image): aqua resolved, checksum-verified, installed, `gh --version` → 2.100.0. Lesson capture: mx-f5b44b. Per-criterion: PASS gh via mise toolset pattern (Dockerfile.toolchain mise RUN block, pin validated on-host); PASS auth — token reaches containers via tool env, no fallback needed, documented in image comment; PASS rebuild validation via on-host mise/aqua resolution (Docker unavailable, stated); PASS `.fabro/Dockerfile` untouched; PASS no tests applicable, no unrelated churn (1 file, 15+/1-).",
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
           "last_response": "Implementation complete. Summary of the pass:\n\n**What changed** — `.fabro/Dockerfile.toolchain` only (15 insertions, 1 deletion): added `aqua:cli/cli@v2.100.0` to the existing `mise use -g` list wit",
           "outcome": "succeeded",
           "thread.start.current_node": "planner",
           "last_stage": "implementer",
-          "internal.fidelity": "summary:high",
-          "current_node": "implementer",
+          "internal.fidelity": "compact",
+          "current_node": "tester",
           "preferred_label": "Implemented",
           "graph.cycle_counter_reset_key": "current_seed_id",
           "lesson_capture": "mx-f5b44b",
           "current_seed_title": "Bake gh into the develop toolchain image (or check open PRs engine-side) so the in-flight-PR guard functions",
           "internal.node_visit_count": 1,
+          "thread.implementer.current_node": "tester",
           "internal.retry_count.start": 0,
+          "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
           "internal.seed_cycle_anchor": "fabro-05d0",
-          "internal.thread_id": "planner",
+          "internal.thread_id": "implementer",
           "journal": {
             "painpoints": [
               {
@@ -1002,6 +1209,20 @@
             "status": "succeeded",
             "usage": null
           },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5891,
+              "active_time_ms": 5891
+            }
+          },
           "planner": {
             "status": "succeeded",
             "preferred_label": "Seed claimed",
@@ -1059,8 +1280,9 @@
             }
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
+          "tester": 1,
           "planner": 1,
           "start": 1,
           "implementer": 1
@@ -1096,6 +1318,220 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "implementer@1": {
+      "first_event_seq": 96,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T21:05:45.713245240Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T21:03:53.541444797Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 102156,
+        "inference_time_ms": 91364,
+        "tool_time_ms": 10216,
+        "active_time_ms": 101580
+      },
+      "usage": {
+        "input_tokens": 24286,
+        "output_tokens": 3094,
+        "total_tokens": 274736,
+        "reasoning_tokens": 1148,
+        "cache_read_tokens": 246208,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 116665
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 23871,
+        "usage_percent": 2.2765159606933594,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-07T21:05:45.695668091Z",
+        "event_seq": 187,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1081,
+            "usage_percent": 0.10309219360351562
+          },
+          {
+            "category": "tools",
+            "tokens": 1566,
+            "usage_percent": 0.14934539794921875
+          },
+          {
+            "category": "memory",
+            "tokens": 5502,
+            "usage_percent": 0.5247116088867188
+          },
+          {
+            "category": "conversation",
+            "tokens": 15715,
+            "usage_percent": 1.4986991882324219
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 17,
       "prompt": null,
@@ -1346,216 +1782,53 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "implementer@1": {
-      "first_event_seq": 96,
+    "tester@1": {
+      "first_event_seq": 197,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": "Stage completed: implementer",
+        "notes": "Script completed: just qualitygate",
         "failure_reason": null,
-        "timestamp": "2026-09-07T21:05:45.713245240Z"
+        "timestamp": "2026-09-07T21:06:01.339115110Z"
       },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "low"
-      },
+      "provider_used": null,
       "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+        "exit_code": 0,
+        "duration_ms": 5891,
+        "termination": "exited",
+        "output_bytes": 87,
+        "live_streaming": true
+      },
       "parallel_results": null,
       "output": null,
-      "started_at": "2026-09-07T21:03:53.541444797Z",
-      "handler": "agent",
+      "output_bytes": 87,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-07T21:05:55.428001828Z",
+      "handler": "command",
       "graph_visit": 1,
       "timing": {
-        "wall_time_ms": 102156,
-        "inference_time_ms": 91364,
-        "tool_time_ms": 10216,
-        "active_time_ms": 101580
+        "wall_time_ms": 5898,
+        "inference_time_ms": 0,
+        "tool_time_ms": 5891,
+        "active_time_ms": 5891
       },
       "usage": {
-        "input_tokens": 24286,
-        "output_tokens": 3094,
-        "total_tokens": 274736,
-        "reasoning_tokens": 1148,
-        "cache_read_tokens": 246208,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 116665
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": true
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": true
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 23871,
-        "usage_percent": 2.2765159606933594,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-07T21:05:45.695668091Z",
-        "event_seq": 187,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1081,
-            "usage_percent": 0.10309219360351562
-          },
-          {
-            "category": "tools",
-            "tokens": 1566,
-            "usage_percent": 0.14934539794921875
-          },
-          {
-            "category": "memory",
-            "tokens": 5502,
-            "usage_percent": 0.5247116088867188
-          },
-          {
-            "category": "conversation",
-            "tokens": 15715,
-            "usage_percent": 1.4986991882324219
-          },
-          {
-            "category": "other",
-            "tokens": 7,
-            "usage_percent": 0.000667572021484375
-          }
-        ],
-        "warnings": []
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
