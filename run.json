@@ -653,7 +653,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T12:01:44.944082468Z",
-  "last_event_at": "2026-09-07T12:05:47.761730624Z",
+  "last_event_at": "2026-09-07T12:30:41.280037914Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -700,9 +700,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 108,
       "checkpoint": {
-        "timestamp": "2026-09-07T12:05:47.974394307Z",
+        "timestamp": "2026-09-07T12:05:55.926288470Z",
         "current_node": "planner",
         "completed_nodes": [
           "start",
@@ -710,9 +710,137 @@
         ],
         "node_retries": {},
         "context_values": {
-          "current_node": "planner",
+          "graph.max_node_visits": "40",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.node_visit_count": 1,
+          "internal.work_dir": "/workspace/fabro",
+          "preferred_label": "Seed claimed",
+          "thread.start.current_node": "planner",
+          "internal.run_id": "01M1XVXF3MJHD0DXVCA7YXDH9G",
+          "last_response": "Claimed fabro-56f4: add a deterministic known-bug matcher on the develop workflow's Gate red bounce so implementers start from filed root causes instead of re-deriving them from the 186 KB gate log. A",
+          "last_stage": "planner",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.seed_cycle_anchor": "fabro-56f4",
+          "graph.rankdir": "LR",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.planner": 0,
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "fabro-56f4 basis verified fresh against the current tree: `tester -> implementer [label=\"Gate red\"]` exists at `.fabro/workflows/develop/workflow.fabro:263`, referenced known-bug seed fabro-febd is still open, and no seed-matching mechanism exists anywhere in the develop workflow.",
+              "Engine primitives for this seed already exist and need no engine changes: command nodes store stdout in context (default `command.output`, custom `output.*` keys via structured output, see `lib/components/fabro-workflow/src/handler/command.rs`), and a later script node can read a prior node's output via `stdin_source` + ref resolution (closeout pattern)."
+            ]
+          },
           "seed_cycles": {
             "planner": 1
+          },
+          "current_seed_title": "Develop: match gate-red failure tails against open known-bug seeds before the tester→implementer bounce",
+          "internal.fidelity": "compact",
+          "outcome": "succeeded",
+          "current_node": "planner",
+          "failure_signature": "",
+          "current_seed_brief": "In `.fabro/workflows/develop/workflow.fabro`, make the tester→implementer Gate red bounce carry known-bug context, deterministically (no LLM). Evidence: run 01M1XN2KWG6T0PHRTJWZ8R0AZX implementer@2 re-derived fabro-febd's root cause from a 186 KB log blob (704 s, $0.38). Acceptance criteria: • Graph: insert a deterministic script node (e.g. `gatebounce`) on the Gate red path — `tester -> gatebounce [label=\"Gate red\"]` then `gatebounce -> implementer` (unconditional) — leaving the `seed_cycles.tester >= 3` deadlock exit and the Gate green edge on `tester` untouched. • Script: new `.fabro/workflows/develop/scripts/gate-bounce.nu` (nushell, modeled on `scripts/closeout.nu`, including the non-tty `cat | str join` stdin pattern) that reads the gate failure tail via `stdin_source=\"command.output\"` (the tester's captured output ref, present on both success and fail paths), runs `sd list --format json --limit 200`, selects OPEN seeds carrying the `workflows` label, and matches the failure tail against seed title+description via deterministic case-insensitive matching on distinctive tokens. • Output bounded: at most 3 matching seeds, ~4 KB total, printed as seed id + title + full description; empty output when nothing matches. • Best-effort semantics: internal failures (sd unavailable, unreadable tail) print a warning and exit 0 — the bounce must never be stranded; enrichment is additive. • Implementer delivery: the hits must appear INLINE in the implementer's ## Context (not a blob ref needing a tool round-trip) under a dedicated key (e.g. via the command-node custom output key mechanism, `output.gate_known_bug_hits`), the key added to implementer `preamble_allow_keys`, plus one short line in `.fabro/workflows/develop/prompts/implementer.md`: when known-bug hits are present, read them BEFORE re-deriving root cause from gate logs. • Node attrs: `timeout=\"1m\"`, `max_retries=1`, mirroring closeout. • Proof: a dry-run of the script against a fabricated tail containing the fabro-febd signature (missing `target/debug/fabro` / SVG-render tests) selects fabro-febd's body; a no-match tail yields empty; plus whatever engine unit tests are needed if any command-handler mechanics change (prefer none — pure workflow/script change). • Scope guard: this complements fabro-febd, do NOT fix the gate build issue itself. Spec annotations: 'edge pre-step' is implemented as a node insertion because the engine has no edge pre-steps (closeout-pattern node is the idiom); 'attach to the implementer brief' is delivered as a dedicated context key rather than mutating the planner's `current_seed_brief`, keeping provenance and the planner's `context_allow_keys` contract clean.",
+          "internal.thread_id": "start",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 4327,
+            "preview": "Claimed fabro-56f4: add a deterministic known-bug matcher on the develop workflow's Gate red bounce so implementers start from filed root causes instead of re-deriving them from the 186 KB gate log. A"
+          },
+          "current_seed_id": "fabro-56f4",
+          "failure_class": "",
+          "internal.retry_count.start": 0
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_id": "fabro-56f4",
+              "current_seed_title": "Develop: match gate-red failure tails against open known-bug seeds before the tester→implementer bounce",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-56f4 basis verified fresh against the current tree: `tester -> implementer [label=\"Gate red\"]` exists at `.fabro/workflows/develop/workflow.fabro:263`, referenced known-bug seed fabro-febd is still open, and no seed-matching mechanism exists anywhere in the develop workflow.",
+                  "Engine primitives for this seed already exist and need no engine changes: command nodes store stdout in context (default `command.output`, custom `output.*` keys via structured output, see `lib/components/fabro-workflow/src/handler/command.rs`), and a later script node can read a prior node's output via `stdin_source` + ref resolution (closeout pattern)."
+                ]
+              },
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 4327,
+                "preview": "Claimed fabro-56f4: add a deterministic known-bug matcher on the develop workflow's Gate red bounce so implementers start from filed root causes instead of re-deriving them from the 186 KB gate log. A"
+              },
+              "current_seed_brief": "In `.fabro/workflows/develop/workflow.fabro`, make the tester→implementer Gate red bounce carry known-bug context, deterministically (no LLM). Evidence: run 01M1XN2KWG6T0PHRTJWZ8R0AZX implementer@2 re-derived fabro-febd's root cause from a 186 KB log blob (704 s, $0.38). Acceptance criteria: • Graph: insert a deterministic script node (e.g. `gatebounce`) on the Gate red path — `tester -> gatebounce [label=\"Gate red\"]` then `gatebounce -> implementer` (unconditional) — leaving the `seed_cycles.tester >= 3` deadlock exit and the Gate green edge on `tester` untouched. • Script: new `.fabro/workflows/develop/scripts/gate-bounce.nu` (nushell, modeled on `scripts/closeout.nu`, including the non-tty `cat | str join` stdin pattern) that reads the gate failure tail via `stdin_source=\"command.output\"` (the tester's captured output ref, present on both success and fail paths), runs `sd list --format json --limit 200`, selects OPEN seeds carrying the `workflows` label, and matches the failure tail against seed title+description via deterministic case-insensitive matching on distinctive tokens. • Output bounded: at most 3 matching seeds, ~4 KB total, printed as seed id + title + full description; empty output when nothing matches. • Best-effort semantics: internal failures (sd unavailable, unreadable tail) print a warning and exit 0 — the bounce must never be stranded; enrichment is additive. • Implementer delivery: the hits must appear INLINE in the implementer's ## Context (not a blob ref needing a tool round-trip) under a dedicated key (e.g. via the command-node custom output key mechanism, `output.gate_known_bug_hits`), the key added to implementer `preamble_allow_keys`, plus one short line in `.fabro/workflows/develop/prompts/implementer.md`: when known-bug hits are present, read them BEFORE re-deriving root cause from gate logs. • Node attrs: `timeout=\"1m\"`, `max_retries=1`, mirroring closeout. • Proof: a dry-run of the script against a fabricated tail containing the fabro-febd signature (missing `target/debug/fabro` / SVG-render tests) selects fabro-febd's body; a no-match tail yields empty; plus whatever engine unit tests are needed if any command-handler mechanics change (prefer none — pure workflow/script change). • Scope guard: this complements fabro-febd, do NOT fix the gate build issue itself. Spec annotations: 'edge pre-step' is implemented as a node insertion because the engine has no edge pre-steps (closeout-pattern node is the idiom); 'attach to the implementer brief' is delivered as a dedicated context key rather than mutating the planner's `current_seed_brief`, keeping provenance and the planner's `context_allow_keys` contract clean.",
+              "last_response": "Claimed fabro-56f4: add a deterministic known-bug matcher on the develop workflow's Gate red bounce so implementers start from filed root causes instead of re-deriving them from the 186 KB gate log. A"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 27487,
+                    "output_tokens": 2137,
+                    "reasoning_tokens": 5014,
+                    "cache_read_tokens": 188224,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 118872
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 216964,
+              "tool_time_ms": 2265,
+              "active_time_ms": 219229
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "implementer",
+        "git_commit_sha": "31f7b88292c34d05ae38fa083d6e041b2d248212",
+        "node_visits": {
+          "planner": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1XVXF3MJHD0DXVCA7YXDH9G.jsonl b/.fabro/journal/01M1XVXF3MJHD0DXVCA7YXDH9G.jsonl\nnew file mode 100644\nindex 0000000..ac08907\n--- /dev/null\n+++ b/.fabro/journal/01M1XVXF3MJHD0DXVCA7YXDH9G.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XVXF3MJHD0DXVCA7YXDH9G\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T12:01:47Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XVXF3MJHD0DXVCA7YXDH9G\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T12:05:47Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-56f4 basis verified fresh against the current tree: `tester -> implementer [label=\\\"Gate red\\\"]` exists at `.fabro/workflows/develop/workflow.fabro:263`, referenced known-bug seed fabro-febd is still open, and no seed-matching mechanism exists anywhere in the develop workflow.\",\"Engine primitives for this seed already exist and need no engine changes: command nodes store stdout in context (default `command.output`, custom `output.*` keys via structured output, see `lib/components/fabro-workflow/src/handler/command.rs`), and a later script node can read a prior node's output via `stdin_source` + ref resolution (closeout pattern).\"]}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 5feb98e..29cf35f 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -227,6 +227,6 @@\n {\"id\":\"fabro-febd\",\"title\":\"qualitygate: fabro-server graph-render tests need target/debug/fabro — gate only builds touched crates and fails 3 tests deterministically\",\"status\":\"open\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T07:49:03.612Z\",\"updatedAt\":\"2026-09-07T07:49:03.612Z\",\"description\":\"Evidence (develop run 01M1VZTJSZ551NFPHPXD429MG0, tester stage, 2026-09-06): scripts/qualitygate.nu gates only the touched crates, but fabro-server graph-render unit tests (server::tests::get_graph_returns_svg, render_graph_from_manifest_*) invoke target/debug/fabro. When a run touches fabro-server WITHOUT fabro-cli in the touched set, the binary is missing and the gate fails 3 tests deterministically — the 01M1VZTJSZ55 run burned a whole implementer revisit on this. Fix directions: (a) qualitygate builds 'cargo build -p fabro-cli --bin fabro' whenever fabro-server is in the touched set (make the dependency explicit in the gate recipe), or (b) the tests skip with a clear skip message when the binary is absent (worse: hides real regressions), or (c) decouple the tests from the CLI binary via a test-support builder. Prefer (a).\",\"labels\":[\"workflows\",\"revision\"]}\n {\"id\":\"fabro-bde4\",\"title\":\"engine: fabro_run_wait until=merged needs a gate-failure signal — OPEN PR with failed checks must not loop timeouts forever\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":1,\"createdAt\":\"2026-09-07T09:42:18.217Z\",\"updatedAt\":\"2026-09-07T10:49:42.591Z\",\"description\":\"Incident 2026-09-07 (conductor pass 01M1XCC9SP1YH38326ZCVJZT3J, develop child 01M1XCHJTDBJKZ31VFMY1KD61Q, PR #33): the develop child merged its work and enabled auto-merge, but the dogfood gate FAILED and a later base push made the PR DIRTY. The conductor leg waits with fabro_run_wait until=merged; ADR-0016 wait results are terminal|merged|closed_unmerged|timeout — a PR that is OPEN with failed checks (or DIRTY) matches NONE of them, so every wait returns timeout and the agent re-waits: 5 chained fabro_run_wait calls over 2+ hours with zero routing until manual repair (debug!-level fix + base merge pushed to the run branch, 09:3x UTC). Wanted: (a) the wait result gains a distinct reached value (e.g. 'blocked' or 'checks_failed') when the linked PR is open but its required checks concluded FAILURE, or its merge state is DIRTY/BLOCKED for a sustained window; (b) conductor prompts route that value to a repair child or park with a clear reason instead of re-waiting; (c) regression test: open PR + failed checks + until=merged returns the new value, not timeout. Related: fabro-94e8 (auto-rebase for stale bases), fabro-6a77 (branch-pushed-PR-failed completion semantics), ADR-0016.\",\"labels\":[\"engine\",\"workflows\"],\"closedAt\":\"2026-09-07T10:49:42.591Z\"}\n {\"id\":\"fabro-4815\",\"title\":\"Qualitygate: exit with a status that distinguishes deterministic failures from transient infra\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T11:14:51.580Z\",\"updatedAt\":\"2026-09-07T11:14:51.580Z\",\"description\":\"In scripts/qualitygate.nu, make red exits distinguishable (e.g. a dedicated exit status for deterministic misses vs infra flake) so engine checkpoint classification stops recording deterministic failures as failure_class: \\\"transient_infra\\\". Evidence from run 01M1XN2KWG6T0PHRTJWZ8R0AZX: the checkpoint classified the fabro-febd deterministic failure as transient_infra even though the tracker documents it as deterministic. Expected effect: deterministic bugs stop being treated as retryable noise and the Gate-red bounce can prefer known-bug matching over retry. Distinct from open seed fabro-e988, which only prints a critical-first failure summary.\\nBasis: run 01M1XN2KWG6T0PHRTJWZ8R0AZX, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 5ff61b59afe4f2afa5fbcf28bb4730bc8ccfb83d\",\"labels\":[\"revision\"]}\n-{\"id\":\"fabro-56f4\",\"title\":\"Develop: match gate-red failure tails against open known-bug seeds before the tester→implementer bounce\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T11:14:51.696Z\",\"updatedAt\":\"2026-09-07T11:14:51.696Z\",\"description\":\"In the develop workflow.fabro graph, give the 'tester -> implementer [label=\\\"Gate red\\\"]' edge a deterministic pre-step that matches the failure tail against open workflows-labelled seeds and attaches any matching seed body to the implementer brief. Evidence from run 01M1XN2KWG6T0PHRTJWZ8R0AZX: tester@1 went red at 10:34 on exactly the deterministic failure already filed as seed fabro-febd (missing target/debug/fabro, 3 SVG-render tests — the planner had read that seed at 10:02), yet implementer@2 (events 672–910) re-derived the root cause from a 186 KB log blob: 704 s wall, $0.38, the same whole-revisit waste as run 01M1VZTJSZ55. Expected effect: bounce passes start at the root cause instead of the log tail, eliminating the recurring whole-implementer-revisit class (~12 min + ~$0.38 per occurrence, observed twice). Complements fabro-febd's build fix; not a duplicate of it.\\nBasis: run 01M1XN2KWG6T0PHRTJWZ8R0AZX, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 5ff61b59afe4f2afa5fbcf28bb4730bc8ccfb83d\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-56f4\",\"title\":\"Develop: match gate-red failure tails against open known-bug seeds before the tester→implementer bounce\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T11:14:51.696Z\",\"updatedAt\":\"2026-09-07T12:05:20.788Z\",\"description\":\"In the develop workflow.fabro graph, give the 'tester -> implementer [label=\\\"Gate red\\\"]' edge a deterministic pre-step that matches the failure tail against open workflows-labelled seeds and attaches any matching seed body to the implementer brief. Evidence from run 01M1XN2KWG6T0PHRTJWZ8R0AZX: tester@1 went red at 10:34 on exactly the deterministic failure already filed as seed fabro-febd (missing target/debug/fabro, 3 SVG-render tests — the planner had read that seed at 10:02), yet implementer@2 (events 672–910) re-derived the root cause from a 186 KB log blob: 704 s wall, $0.38, the same whole-revisit waste as run 01M1VZTJSZ55. Expected effect: bounce passes start at the root cause instead of the log tail, eliminating the recurring whole-implementer-revisit class (~12 min + ~$0.38 per occurrence, observed twice). Complements fabro-febd's build fix; not a duplicate of it.\\nBasis: run 01M1XN2KWG6T0PHRTJWZ8R0AZX, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 5ff61b59afe4f2afa5fbcf28bb4730bc8ccfb83d\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-93a7\",\"title\":\"Develop evidence.nu: classify seed-spec-cited paths as seed-work\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T11:14:51.710Z\",\"updatedAt\":\"2026-09-07T11:14:51.710Z\",\"description\":\"In .fabro/workflows/develop/scripts/evidence.nu, classify a changed file as seed-work when its path is named in the seed spec/brief, even under .fabro/ or docs/. Evidence from run 01M1XN2KWG6T0PHRTJWZ8R0AZX (reviewer journal painpoint): docs/public/api-reference/fabro-api.yaml (+11/−3) and .fabro/workflows/conductor/prompts/develop-leg.md + merge-leg.md — three of eight acceptance criteria — were bucketed as loop churn (counts only, no diffs), forcing the reviewer to run git diff 422fbb0..HEAD itself to verify them. Expected effect: the reviewer verifies all criteria from the capture; removes the manual git-diff fallback and the risk of a 'Verification blocked' route on the same gap. Broader than closed seed fabro-2992 (which keyed off seed target paths); this keys off any seed-brief-named path.\\nBasis: run 01M1XN2KWG6T0PHRTJWZ8R0AZX, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 5ff61b59afe4f2afa5fbcf28bb4730bc8ccfb83d\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-cf3e\",\"title\":\"Develop reviewer node: raise preamble_inline_max_kb from 16 to 32\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T11:14:51.741Z\",\"updatedAt\":\"2026-09-07T11:14:51.741Z\",\"description\":\"In the develop workflow.fabro, reviewer node: preamble_inline_max_kb=16 → 32. Complements open seed fabro-8d2c (graph preamble_budget_kb 24 → 32), which does not cover the per-node knob; the knob itself was implemented by closed seed fabro-9467. Evidence from run 01M1XN2KWG6T0PHRTJWZ8R0AZX: the 25.8 KB evidence capture was demoted to a blob ref by the 16 KB per-node cap while the reviewer's context window stood at 2.1% of 1M — costing one extra read_file round trip and risking the standing unread-blob rejection rule. Expected effect: captures of this size arrive inline; one fewer tool round trip per review and the unread-blob rejection class disappears.\\nBasis: run 01M1XN2KWG6T0PHRTJWZ8R0AZX, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 5ff61b59afe4f2afa5fbcf28bb4730bc8ccfb83d\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 3,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-07T12:30:41.504745905Z",
+        "current_node": "implementer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "current_node": "implementer",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
           },
           "thread.start.current_node": "planner",
           "current_seed_id": "fabro-56f4",
@@ -725,25 +853,35 @@
             "preview": "Claimed fabro-56f4: add a deterministic known-bug matcher on the develop workflow's Gate red bounce so implementers start from filed root causes instead of re-deriving them from the 186 KB gate log. A"
           },
           "graph.preamble_budget_kb": "24",
-          "preferred_label": "Seed claimed",
+          "preferred_label": "Implemented",
+          "thread.planner.current_node": "implementer",
           "current_seed_brief": "In `.fabro/workflows/develop/workflow.fabro`, make the tester→implementer Gate red bounce carry known-bug context, deterministically (no LLM). Evidence: run 01M1XN2KWG6T0PHRTJWZ8R0AZX implementer@2 re-derived fabro-febd's root cause from a 186 KB log blob (704 s, $0.38). Acceptance criteria: • Graph: insert a deterministic script node (e.g. `gatebounce`) on the Gate red path — `tester -> gatebounce [label=\"Gate red\"]` then `gatebounce -> implementer` (unconditional) — leaving the `seed_cycles.tester >= 3` deadlock exit and the Gate green edge on `tester` untouched. • Script: new `.fabro/workflows/develop/scripts/gate-bounce.nu` (nushell, modeled on `scripts/closeout.nu`, including the non-tty `cat | str join` stdin pattern) that reads the gate failure tail via `stdin_source=\"command.output\"` (the tester's captured output ref, present on both success and fail paths), runs `sd list --format json --limit 200`, selects OPEN seeds carrying the `workflows` label, and matches the failure tail against seed title+description via deterministic case-insensitive matching on distinctive tokens. • Output bounded: at most 3 matching seeds, ~4 KB total, printed as seed id + title + full description; empty output when nothing matches. • Best-effort semantics: internal failures (sd unavailable, unreadable tail) print a warning and exit 0 — the bounce must never be stranded; enrichment is additive. • Implementer delivery: the hits must appear INLINE in the implementer's ## Context (not a blob ref needing a tool round-trip) under a dedicated key (e.g. via the command-node custom output key mechanism, `output.gate_known_bug_hits`), the key added to implementer `preamble_allow_keys`, plus one short line in `.fabro/workflows/develop/prompts/implementer.md`: when known-bug hits are present, read them BEFORE re-deriving root cause from gate logs. • Node attrs: `timeout=\"1m\"`, `max_retries=1`, mirroring closeout. • Proof: a dry-run of the script against a fabricated tail containing the fabro-febd signature (missing `target/debug/fabro` / SVG-render tests) selects fabro-febd's body; a no-match tail yields empty; plus whatever engine unit tests are needed if any command-handler mechanics change (prefer none — pure workflow/script change). • Scope guard: this complements fabro-febd, do NOT fix the gate build issue itself. Spec annotations: 'edge pre-step' is implemented as a node insertion because the engine has no edge pre-steps (closeout-pattern node is the idiom); 'attach to the implementer brief' is delivered as a dedicated context key rather than mutating the planner's `current_seed_brief`, keeping provenance and the planner's `context_allow_keys` contract clean.",
-          "last_stage": "planner",
+          "last_stage": "implementer",
           "internal.node_visit_count": 1,
           "internal.retry_count.planner": 0,
-          "last_response": "Claimed fabro-56f4: add a deterministic known-bug matcher on the develop workflow's Gate red bounce so implementers start from filed root causes instead of re-deriving them from the 186 KB gate log. A",
+          "last_response": "All done. Final state: four platform files changed/added, no Rust crates touched, temp verification test removed, worktree clean of artifacts, lesson recorded as `mx-2eb2e0`.\n\nImplemented:\n{\n  \"outcom",
+          "lesson_capture": "mx-2eb2e0",
           "internal.seed_cycle_anchor": "fabro-56f4",
           "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.thread_id": "start",
-          "internal.fidelity": "compact",
+          "internal.thread_id": "planner",
+          "internal.fidelity": "summary:high",
+          "internal.retry_count.implementer": 0,
           "internal.work_dir": "/workspace/fabro",
           "outcome": "succeeded",
           "failure_class": "",
           "journal": {
             "painpoints": [],
             "observations": [
-              "fabro-56f4 basis verified fresh against the current tree: `tester -> implementer [label=\"Gate red\"]` exists at `.fabro/workflows/develop/workflow.fabro:263`, referenced known-bug seed fabro-febd is still open, and no seed-matching mechanism exists anywhere in the develop workflow.",
-              "Engine primitives for this seed already exist and need no engine changes: command nodes store stdout in context (default `command.output`, custom `output.*` keys via structured output, see `lib/components/fabro-workflow/src/handler/command.rs`), and a later script node can read a prior node's output via `stdin_source` + ref resolution (closeout pattern)."
+              "There is no cheap host-side way to validate an edited `.fabro` graph: no `fabro` binary on PATH and no test that parses the repo's own workflows, so verifying `workflow.fabro` after an edit required writing a temporary integration test in `lib/components/fabro-validate` (cold build ~7 min) and deleting it after. A `just validate-workflows` recipe (parse + built_in_rules over `.fabro/workflows/**/*.fabro`) would make every platform seed's graph edits cheaply checkable and would have caught nothing-but-syntax drift here in seconds.",
+              "Matching-generics pitfall measured while tuning gate-bounce.nu: counting bare alphabetic tokens ≥6 chars (`server`, `target`, `render`, `returns`) from seed prose produced 2 false-positive seed matches against an unrelated fabro-febd tail (fabro-5453, fabro-0195); restricting to separator/digit-bearing compounds (or words ≥12 chars) eliminated all false positives while keeping fabro-febd's signature match — relevant for any future deterministic-log-matching heuristic."
             ]
+          },
+          "implementation_summary": "Pure platform change per the fabro-56f4 brief: (1) new deterministic nushell script `.fabro/workflows/develop/scripts/gate-bounce.nu` (closeout.nu-modeled, `cat`-based non-tty stdin, brace-free stderr warnings) that reads the tester's captured tail via `stdin_source=\"command.output\"`, runs `sd list --format json --limit 200`, filters OPEN `workflows`-labelled seeds, and matches distinctive compounds (separator/digit-bearing tokens ≥6 chars or rare words ≥12, stopworded generics — bare words like `server`/`target` proved to false-positive and were excluded after a measured test against all 27 open seeds) with a ≥2-compound threshold, printing bounded JSON (≤3 hits, description capped at 1200 chars ≈ ~4 KB total, id+title+full-ish description, `{\"hits\":[]}` on no match; every internal failure warns and exits 0 — verified with empty stdin and sd-off-PATH dry runs). (2) New schema `.fabro/workflows/develop/schemas/gate-known-bug-hits.schema.json`. (3) `workflow.fabro`: inserted the `gatebounce` parallelogram node (`timeout=\"1m\"`, `max_retries=1`, `output_schema=\"@schemas/gate-known-bug-hits.schema.json\"`, `context_allow_keys=\"output.gate_known_bug_hits\"` producer declaration) and rewired `tester -> gatebounce [label=\"Gate red\"]` → `gatebounce -> implementer` unconditional; the `seed_cycles.tester >= 3` deadlock exit, the Gate green edge, and the planner's contract are untouched; implementer `preamble_allow_keys` now includes `output.gate_known_bug_hits`. (4) One line added to `prompts/implementer.md` telling the implementer to read known-bug hits BEFORE re-deriving root cause from gate logs. Verified via a temporary fabro-validate integration test (graph parses; `preamble_allow_keys_exist` lint does NOT fire; no Error diagnostics) which was then deleted; dry-run proofs: febd-signature tail selects fabro-febd, no-match tail yields empty. No engine code changed, no engine tests needed. Lesson captured as mx-2eb2e0.\n- PASS Graph: deterministic script node on Gate red path, unconditional bounce edge, deadlock exit and green edge untouched: `.fabro/workflows/develop/workflow.fabro` (tester->gatebounce->implementer rewiring, verified by temp parse+lint test)\n- PASS Script `.fabro/workflows/develop/scripts/gate-bounce.nu` (nushell, closeout-modeled incl. `cat | str join` stdin, stdin_source=\"command.output\", sd list --format json --limit 200, OPEN+workflows filter, deterministic case-insensitive distinctive-token matching on title+description)\n- PASS Output bounded: MAX_HITS=3, ~4 KB cap (description truncated at 1200 chars with marker), id+title+description, empty hits on no match (dry-run: 1034 bytes for febd hit; `{\"hits\":[]}` for unrelated tail)\n- PASS Best-effort semantics: sd-unavailable and empty-stdin dry runs print a warning and exit 0 with `{\"hits\":[]}`; unconditional edge also guarantees the bounce\n- PASS Implementer delivery INLINE under `output.gate_known_bug_hits` via command-node output_schema mechanism (plain JSON value, not a blob ref); key added to implementer `preamble_allow_keys`; prompt line added to `.fabro/workflows/develop/prompts/implementer.md` (read hits BEFORE re-deriving root cause)\n- PASS Node attrs `timeout=\"1m\"`, `max_retries=1` mirroring closeout: `workflow.fabro` gatebounce node\n- PASS Proof: fabricated fabro-febd-signature tail (target/debug/fabro + get_graph_returns_svg/render_graph_from_manifest) selects fabro-febd; no-match tail yields empty; no command-handler mechanics changed (prefer-none honored — zero Rust edits)\n- PASS Scope guard: the fabro-febd gate build issue itself was NOT fixed — no changes outside the four enrichment files",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5146,
+            "preview": "All done. Final state: four platform files changed/added, no Rust crates touched, temp verification test removed, worktree clean of artifacts, lesson recorded as `mx-2eb2e0`.\n\nImplemented:\n{\n  \"outcom"
           },
           "internal.retry_count.start": 0,
           "graph.rankdir": "LR",
@@ -807,11 +945,63 @@
           "start": {
             "status": "succeeded",
             "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "Pure platform change per the fabro-56f4 brief: (1) new deterministic nushell script `.fabro/workflows/develop/scripts/gate-bounce.nu` (closeout.nu-modeled, `cat`-based non-tty stdin, brace-free stderr warnings) that reads the tester's captured tail via `stdin_source=\"command.output\"`, runs `sd list --format json --limit 200`, filters OPEN `workflows`-labelled seeds, and matches distinctive compounds (separator/digit-bearing tokens ≥6 chars or rare words ≥12, stopworded generics — bare words like `server`/`target` proved to false-positive and were excluded after a measured test against all 27 open seeds) with a ≥2-compound threshold, printing bounded JSON (≤3 hits, description capped at 1200 chars ≈ ~4 KB total, id+title+full-ish description, `{\"hits\":[]}` on no match; every internal failure warns and exits 0 — verified with empty stdin and sd-off-PATH dry runs). (2) New schema `.fabro/workflows/develop/schemas/gate-known-bug-hits.schema.json`. (3) `workflow.fabro`: inserted the `gatebounce` parallelogram node (`timeout=\"1m\"`, `max_retries=1`, `output_schema=\"@schemas/gate-known-bug-hits.schema.json\"`, `context_allow_keys=\"output.gate_known_bug_hits\"` producer declaration) and rewired `tester -> gatebounce [label=\"Gate red\"]` → `gatebounce -> implementer` unconditional; the `seed_cycles.tester >= 3` deadlock exit, the Gate green edge, and the planner's contract are untouched; implementer `preamble_allow_keys` now includes `output.gate_known_bug_hits`. (4) One line added to `prompts/implementer.md` telling the implementer to read known-bug hits BEFORE re-deriving root cause from gate logs. Verified via a temporary fabro-validate integration test (graph parses; `preamble_allow_keys_exist` lint does NOT fire; no Error diagnostics) which was then deleted; dry-run proofs: febd-signature tail selects fabro-febd, no-match tail yields empty. No engine code changed, no engine tests needed. Lesson captured as mx-2eb2e0.\n- PASS Graph: deterministic script node on Gate red path, unconditional bounce edge, deadlock exit and green edge untouched: `.fabro/workflows/develop/workflow.fabro` (tester->gatebounce->implementer rewiring, verified by temp parse+lint test)\n- PASS Script `.fabro/workflows/develop/scripts/gate-bounce.nu` (nushell, closeout-modeled incl. `cat | str join` stdin, stdin_source=\"command.output\", sd list --format json --limit 200, OPEN+workflows filter, deterministic case-insensitive distinctive-token matching on title+description)\n- PASS Output bounded: MAX_HITS=3, ~4 KB cap (description truncated at 1200 chars with marker), id+title+description, empty hits on no match (dry-run: 1034 bytes for febd hit; `{\"hits\":[]}` for unrelated tail)\n- PASS Best-effort semantics: sd-unavailable and empty-stdin dry runs print a warning and exit 0 with `{\"hits\":[]}`; unconditional edge also guarantees the bounce\n- PASS Implementer delivery INLINE under `output.gate_known_bug_hits` via command-node output_schema mechanism (plain JSON value, not a blob ref); key added to implementer `preamble_allow_keys`; prompt line added to `.fabro/workflows/develop/prompts/implementer.md` (read hits BEFORE re-deriving root cause)\n- PASS Node attrs `timeout=\"1m\"`, `max_retries=1` mirroring closeout: `workflow.fabro` gatebounce node\n- PASS Proof: fabricated fabro-febd-signature tail (target/debug/fabro + get_graph_returns_svg/render_graph_from_manifest) selects fabro-febd; no-match tail yields empty; no command-handler mechanics changed (prefer-none honored — zero Rust edits)\n- PASS Scope guard: the fabro-febd gate build issue itself was NOT fixed — no changes outside the four enrichment files",
+              "last_stage": "implementer",
+              "last_response": "All done. Final state: four platform files changed/added, no Rust crates touched, temp verification test removed, worktree clean of artifacts, lesson recorded as `mx-2eb2e0`.\n\nImplemented:\n{\n  \"outcom",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5146,
+                "preview": "All done. Final state: four platform files changed/added, no Rust crates touched, temp verification test removed, worktree clean of artifacts, lesson recorded as `mx-2eb2e0`.\n\nImplemented:\n{\n  \"outcom"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "There is no cheap host-side way to validate an edited `.fabro` graph: no `fabro` binary on PATH and no test that parses the repo's own workflows, so verifying `workflow.fabro` after an edit required writing a temporary integration test in `lib/components/fabro-validate` (cold build ~7 min) and deleting it after. A `just validate-workflows` recipe (parse + built_in_rules over `.fabro/workflows/**/*.fabro`) would make every platform seed's graph edits cheaply checkable and would have caught nothing-but-syntax drift here in seconds.",
+                  "Matching-generics pitfall measured while tuning gate-bounce.nu: counting bare alphabetic tokens ≥6 chars (`server`, `target`, `render`, `returns`) from seed prose produced 2 false-positive seed matches against an unrelated fabro-febd tail (fabro-5453, fabro-0195); restricting to separator/digit-bearing compounds (or words ≥12 chars) eliminated all false positives while keeping fabro-febd's signature match — relevant for any future deterministic-log-matching heuristic."
+                ]
+              },
+              "lesson_capture": "mx-2eb2e0"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 86623,
+                    "output_tokens": 10742,
+                    "reasoning_tokens": 18059,
+                    "cache_read_tokens": 3215104,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 1083853
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 905621,
+              "tool_time_ms": 445059,
+              "active_time_ms": 1350680
+            }
           }
         },
-        "next_node_id": "implementer",
+        "next_node_id": "tester",
         "node_visits": {
           "planner": 1,
+          "implementer": 1,
           "start": 1
         }
       },
@@ -1047,6 +1237,220 @@
             "category": "conversation",
             "tokens": 19024,
             "usage_percent": 1.81427001953125
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "implementer@1": {
+      "first_event_seq": 111,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T12:30:41.280037914Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T12:05:55.944878805Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 1351350,
+        "inference_time_ms": 905621,
+        "tool_time_ms": 445059,
+        "active_time_ms": 1350680
+      },
+      "usage": {
+        "input_tokens": 86623,
+        "output_tokens": 10742,
+        "total_tokens": 3330528,
+        "reasoning_tokens": 18059,
+        "cache_read_tokens": 3215104,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 1083853
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 84649,
+        "usage_percent": 8.072757720947266,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-07T12:30:41.258023551Z",
+        "event_seq": 447,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 998,
+            "usage_percent": 0.09517669677734375
+          },
+          {
+            "category": "tools",
+            "tokens": 1464,
+            "usage_percent": 0.139617919921875
+          },
+          {
+            "category": "memory",
+            "tokens": 5144,
+            "usage_percent": 0.490570068359375
+          },
+          {
+            "category": "conversation",
+            "tokens": 77036,
+            "usage_percent": 7.3467254638671875
           },
           {
             "category": "other",
