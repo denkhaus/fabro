@@ -30,7 +30,11 @@ decision, not an accident - it needs the user plus an ADR.
   cycle` process). Serialization principle (ADR-0015): while the
   develop/revisor workflow works the tracker, this agent session does
   NOT claim seeds - one line, one executor. Wait for terminal state or
-  ask the user.
+  ask the user. The line's work queue is the @fabro-assigned view
+  (`sd ready --assignee fabro`, ADR-0018): a running pass plus an
+  empty queue is fine (fail-closed park between cycles); a parked pass
+  with a NON-empty queue, a parallel pass, or a lost on_overlap are
+  incidents (see standing rules).
 - Interrupted cycle? Reconstruct BEFORE selecting: `git status` (uncommitted
   diff is the interrupted operation) + `sd list --status in_progress` tell
   you what was mid-flight; continue that work instead of picking a new seed.
@@ -225,6 +229,19 @@ decision, not an accident - it needs the user plus an ADR.
 
 - Commit and push. Deploy/smoke where the domain requires it
   (platform: `just up`; lab: run_workflow integration).
+- DEPLOY WINDOWS (user directive 2026-09-07): `just up` ONLY while no
+  conductor pass runs. Pause the line first (PUT automation replace
+  with schedule enabled:false - PRESERVE on_overlap, replaces and UI
+  edits can wipe it), deploy nonblocking, verify smoke (health, ps,
+  authenticated automations probe), then re-enable the schedule with
+  on_overlap=skip again. A heartbeat (~5m) monitors the deploy and
+  performs the resume.
+- PUSH/PR COORDINATION: pushing to denkhaus while a run PR is open can
+  turn it DIRTY and stall auto-merge. Check open run PRs before
+  pushing; if one goes dirty with a green gate, update its branch
+  (union-resolve .seeds/.mulch JSONL conflicts, keep both sides, no
+  duplicate ids). reached=blocked (PR #34) surfaces stuck gates in the
+  wait, but the branch update itself stays manual until fabro-94e8.
 - Close or update seeds (`sd close` / `sd update`), write an ADR when a
   decision crystallized, `sd sync` + push.
 
@@ -251,7 +268,12 @@ decision, not an accident - it needs the user plus an ADR.
    create` - most autonomous-line failures already have a seed
    (rate-limit windows, watchdog, journal hook, mise trust all did).
    When covered, extend THAT seed with the fresh run evidence
-   instead of filing a duplicate.
+   instead of filing a duplicate. OWNERSHIP ON FILING (ADR-0018):
+   seeds land unassigned by default; assign `@fabro` immediately ONLY
+   for clearly-line work (it is a proposal, vetoable by reassignment);
+   design forks, grill topics, and user-decisions get `needs-user`.
+   Every unassigned seed appears in the report's ASSIGNMENT PENDING
+   section (step 5).
 4. **Open forks ahead**: note uncertainties and upcoming pivotal
    decisions for the next grill-with-docs; the user makes weichenstellende
    calls.
@@ -267,6 +289,22 @@ decision, not an accident - it needs the user plus an ADR.
 
 ## Standing rules
 
+- Ownership boundary (ADR-0018, user decisions 2026-09-07): the
+  autonomous line works ONLY on seeds assigned to `fabro`
+  (`sd ready --assignee fabro` is the planner's sole candidate source,
+  fail-closed). The revisor files seeds UNASSIGNED - reviewing is not
+  owning. The agent's `@fabro` assignment is a proposal; user + agent
+  decide execution ownership jointly (cycle report = standing forum,
+  ASSIGNMENT PENDING section). User-owned seeds (grill sessions,
+  design forks like fabro-3b1b, upstream-posture) stay unassigned.
+  Emergencies bypass the picker entirely: line down -> agent repairs
+  directly with the user's knowledge, seed filed retroactively.
+- Line-health watchpoints during monitoring: verify on_overlap=skip
+  survived any automation change (UI/replace wipes it, fabro-fb16
+  class); a parallel conductor pass means the policy was lost; a
+  pass parked on Tracker-empty with a non-empty backlog means the
+  assignment queue ran dry - surface it in the report, never
+  bulk-assign behind the user's back.
 - Tool-agnostic engine (ADR-0017, user decision 2026-09-07): fabro
   engine components (sandbox providers, workflow engine, server, CLI)
   never reference project-scope tooling by name or behavior (mise,
