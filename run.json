@@ -694,7 +694,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T22:32:57.667297012Z",
-  "last_event_at": "2026-09-07T22:36:38.125445513Z",
+  "last_event_at": "2026-09-07T22:36:42.892869104Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1511,9 +1511,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 215,
       "checkpoint": {
-        "timestamp": "2026-09-07T22:36:38.380824745Z",
+        "timestamp": "2026-09-07T22:36:42.377583894Z",
         "current_node": "reviewer",
         "completed_nodes": [
           "start",
@@ -1522,6 +1522,313 @@
           "tester",
           "evidence",
           "reviewer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "current_seed_title": "revisor + reviewer must become security-affine (ADR-0019): capability-affecting ideas get shot down at filing and review time",
+          "thread.evidence.current_node": "reviewer",
+          "internal.retry_count.implementer": 0,
+          "graph.max_node_visits": "40",
+          "internal.fidelity": "summary:high",
+          "thread.planner.current_node": "implementer",
+          "thread.tester.current_node": "evidence",
+          "current_node": "reviewer",
+          "current_seed_brief": "Make the two autonomous gates enforce ADR-0019 themselves, so capability-affecting ideas (adding/changing/removing tools, credentials, or permissions on agent-reachable surfaces) cannot pass without an explicit user decision. Context: PR #53 baked a forge client into the toolchain image; a follow-up seed proposed GH_TOKEN provisioning — harmless only by luck (no credentials in sandboxes). Acceptance criteria: (1) `.fabro/workflows/revisor/prompts/file.md` seed-intake rules gain a capability clause: a finding/fix that would ADD/CHANGE/REMOVE a tool, credential, or permission in agent-reachable surfaces (Dockerfiles, environment env, tool allowlists, hook configs, new binaries) MUST be filed with labels needs-user + revision, must cite ADR-0019 with 'implementation awaits explicit user approval', and the revisor NEVER proposes raw authenticated clients or token provisioning — only engine-mediated, read-only, extend-existing-tools vocabulary (ADR-0019.2/.3). (2) `.fabro/workflows/develop/prompts/reviewer.md` checklist gains a CAPABILITY DELTA axis: if the diff touches `.fabro/Dockerfile*`, env/credential provisioning, tool allowlists, hook configs, or adds binaries/secrets to agent surfaces, verify the seed records an explicit user decision (ADR-0019 citation + approval note); missing → blocking finding, route Changes requested naming ADR-0019 (merged capability changes without user decision get reverted). Capability REDUCTIONS (least-privilege narrowing) must NOT be blocked — only verify they cite their basis. (3) Provide a demonstration that the reviewer axis blocks a capability delta without recorded approval (test or staged verification documented in the PR). Keep edits textually consistent with each prompt's existing style; these are prompt-file changes, so the gate can be scoped accordingly.",
+          "command.output": "blob://sha256/810919efda513863635f007e4a7d47007aa696bf606f79b92455a2233f334680",
+          "preferred_label": "Approved",
+          "lesson_capture": "nothing durable — skipped",
+          "outcome": "succeeded",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1
+          },
+          "internal.retry_count.reviewer": 0,
+          "internal.thread_id": "evidence",
+          "implementation_summary": "Added a 'Capability gate (ADR-0019)' section plus a matching hard rule to the revisor bookkeeper prompt (`.fabro/workflows/revisor/prompts/file.md`): capability-affecting findings MUST be filed `--labels needs-user,revision`, cite ADR-0019, state `implementation awaits explicit user approval`, and only ever propose engine-mediated, read-only, extend-existing-tools fix directions (ADR-0019.2/.3) — never raw authenticated clients or token provisioning. Added item 5 'CAPABILITY DELTA axis (ADR-0019)' to the develop reviewer checklist (`.fabro/workflows/develop/prompts/reviewer.md`): diffs touching `.fabro/Dockerfile*`, env/credential provisioning, tool allowlists, hook configs, or adding binaries/secrets to agent surfaces require a recorded user decision, else BLOCKING → Changes requested naming ADR-0019; capability reductions are explicitly not blocked, only basis-checked. Wrote the required demonstration at `.fabro/reports/fabro-16ff-capability-review-staged.md`: three staged cases (delta without approval → blocking changes_requested; reduction → pass; revisor filing → needs-user + re-worded fix direction) plus a mechanical grep assertion on both prompts, which was run and passed (`CAPABILITY-GATE-PROMPTS-OK`). No Rust code changed, so no crate-scoped fmt/clippy applies; the assertion is the focused check. Lesson capture: nothing durable — skipped (ADR-0019 itself already records the convention; this seed operationalizes it). Per-criterion verification: - PASS (1) revisor seed-intake capability clause: `.fabro/workflows/revisor/prompts/file.md` 'Capability gate (ADR-0019)' section + hard rule (needs-user + revision labels, ADR-0019 citation, 'implementation awaits explicit user approval', no raw clients/token provisioning, ADR-0019.2/.3 vocabulary). - PASS (2) reviewer CAPABILITY DELTA axis: `.fabro/workflows/develop/prompts/reviewer.md` item 5 — blocking Changes requested without recorded approval, reductions not blocked, basis citation verified. - PASS (3) demonstration of blocking on unapproved capability delta: `.fabro/reports/fabro-16ff-capability-review-staged.md` staged cases 1–3 + mechanical content assertion, executed with output CAPABILITY-GATE-PROMPTS-OK.",
+          "graph.rankdir": "LR",
+          "failure_class": "",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.evidence": 0,
+          "internal.retry_count.tester": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "current_seed_id": "fabro-16ff",
+          "internal.retry_count.start": 0,
+          "journal": {
+            "painpoints": [
+              {
+                "text": "Evidence blob arrived as a path preview (/tmp/fabro/runtime/blobs/8109...json) that had to be paged manually (run 01M1Z017EQK3Q2QCEMTA6XXNSK). Worked fine, but the preamble could hint that the blob is self-terminating ('== evidence complete ==') so a reviewer knows completeness without reading to the end; the blob did include it, which was the deciding signal."
+              }
+            ],
+            "observations": [
+              "All three acceptance criteria verified against actual repo files, not just the diff text; mechanical grep assertion independently re-run and passed (CAPABILITY-GATE-PROMPTS-OK).",
+              "Prompt-file targets are classified as loop churn (correct — dev-loop machinery), so the loop-work diff was the review scope per the capture rules.",
+              "The .seeds/issues.jsonl +1/-1 churn traces to the planner claim commit (d41c4ce), not implementer scope creep.",
+              "Residual risk noted, not blocking: the demonstration is a staged walkthrough, not an executed review; real enforcement is only observable on the next capability-affecting finding, which the spec itself acknowledges."
+            ]
+          },
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3066,
+            "preview": "Seed fabro-16ff claimed: revisor + reviewer prompts must enforce ADR-0019 (capability-affecting changes need explicit user approval), born from the PR #53 gh-forge-client incident.\n\n{\n  \"outcome\": \"su"
+          },
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 1200,
+            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Approved\", \"context_updates\": {\"review_verdict\": \"approved\", \"journal\": {\"painpoints\": [{\"text\": \"Evidence blob arrived as a path preview (/tmp/fabro/"
+          },
+          "internal.seed_cycle_anchor": "fabro-16ff",
+          "graph.preamble_budget_kb": "24",
+          "thread.start.current_node": "planner",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3222,
+            "preview": "All three criteria are met. The changes are prompt-file only (no Rust touched, so crate-scoped fmt/clippy is not applicable); the focused check was the content assertion from the staged verification d"
+          },
+          "review_verdict": "approved",
+          "failure_signature": "",
+          "thread.implementer.current_node": "tester",
+          "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Approved\", \"context_updates\": {\"review_verdict\": \"approved\", \"journal\": {\"painpoints\": [{\"text\": \"Evidence blob arrived as a path preview (/tmp/fabro/",
+          "last_stage": "reviewer",
+          "internal.retry_count.planner": 0,
+          "internal.run_id": "01M1Z017EQK3Q2QCEMTA6XXNSK",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit"
+        },
+        "node_outcomes": {
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/810919efda513863635f007e4a7d47007aa696bf606f79b92455a2233f334680"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 374,
+              "active_time_ms": 374
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3222,
+                "preview": "All three criteria are met. The changes are prompt-file only (no Rust touched, so crate-scoped fmt/clippy is not applicable); the focused check was the content assertion from the staged verification d"
+              },
+              "implementation_summary": "Added a 'Capability gate (ADR-0019)' section plus a matching hard rule to the revisor bookkeeper prompt (`.fabro/workflows/revisor/prompts/file.md`): capability-affecting findings MUST be filed `--labels needs-user,revision`, cite ADR-0019, state `implementation awaits explicit user approval`, and only ever propose engine-mediated, read-only, extend-existing-tools fix directions (ADR-0019.2/.3) — never raw authenticated clients or token provisioning. Added item 5 'CAPABILITY DELTA axis (ADR-0019)' to the develop reviewer checklist (`.fabro/workflows/develop/prompts/reviewer.md`): diffs touching `.fabro/Dockerfile*`, env/credential provisioning, tool allowlists, hook configs, or adding binaries/secrets to agent surfaces require a recorded user decision, else BLOCKING → Changes requested naming ADR-0019; capability reductions are explicitly not blocked, only basis-checked. Wrote the required demonstration at `.fabro/reports/fabro-16ff-capability-review-staged.md`: three staged cases (delta without approval → blocking changes_requested; reduction → pass; revisor filing → needs-user + re-worded fix direction) plus a mechanical grep assertion on both prompts, which was run and passed (`CAPABILITY-GATE-PROMPTS-OK`). No Rust code changed, so no crate-scoped fmt/clippy applies; the assertion is the focused check. Lesson capture: nothing durable — skipped (ADR-0019 itself already records the convention; this seed operationalizes it). Per-criterion verification: - PASS (1) revisor seed-intake capability clause: `.fabro/workflows/revisor/prompts/file.md` 'Capability gate (ADR-0019)' section + hard rule (needs-user + revision labels, ADR-0019 citation, 'implementation awaits explicit user approval', no raw clients/token provisioning, ADR-0019.2/.3 vocabulary). - PASS (2) reviewer CAPABILITY DELTA axis: `.fabro/workflows/develop/prompts/reviewer.md` item 5 — blocking Changes requested without recorded approval, reductions not blocked, basis citation verified. - PASS (3) demonstration of blocking on unapproved capability delta: `.fabro/reports/fabro-16ff-capability-review-staged.md` staged cases 1–3 + mechanical content assertion, executed with output CAPABILITY-GATE-PROMPTS-OK.",
+              "last_response": "All three criteria are met. The changes are prompt-file only (no Rust touched, so crate-scoped fmt/clippy is not applicable); the focused check was the content assertion from the staged verification d",
+              "last_stage": "implementer",
+              "lesson_capture": "nothing durable — skipped",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The seed brief says 'checklist', but `.fabro/workflows/develop/prompts/reviewer.md` has no heading by that name — the numbered 'Your job this pass' list is the checklist; I added the axis as item 5 there. Reviewers judging by heading-name alone would miss it.",
+                  "fs_hide carve-out for platform-targeting seeds worked as documented: file tools are blocked on `.fabro/**` but all reads/edits succeeded through shell (python3 heredoc), including this seed's own edits to the develop workflow's prompts."
+                ]
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 22974,
+                    "output_tokens": 3082,
+                    "reasoning_tokens": 2347,
+                    "cache_read_tokens": 164736,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 98873
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 93775,
+              "tool_time_ms": 1670,
+              "active_time_ms": 95445
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_stage": "planner",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "gh is absent from the agent toolchain (reverted per ADR-0019, commit f00fdb1), so the planner's in-flight PR check cannot run as written; it degraded to 'no PRs'. The planner prompt should switch this check to a credential-less source like fabro_runs_list, consistent with seed fabro-06e0."
+                  }
+                ],
+                "observations": [
+                  "Claimed fabro-16ff (top High-priority ready seed). Basis resolves: both target prompt files exist in the current tree and contain neither ADR-0019 references nor a capability axis — the seed is valid, not stale. In-flight PR check degraded safely (gh unavailable); no open-PR information was available."
+                ]
+              },
+              "current_seed_title": "revisor + reviewer must become security-affine (ADR-0019): capability-affecting ideas get shot down at filing and review time",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3066,
+                "preview": "Seed fabro-16ff claimed: revisor + reviewer prompts must enforce ADR-0019 (capability-affecting changes need explicit user approval), born from the PR #53 gh-forge-client incident.\n\n{\n  \"outcome\": \"su"
+              },
+              "last_response": "Seed fabro-16ff claimed: revisor + reviewer prompts must enforce ADR-0019 (capability-affecting changes need explicit user approval), born from the PR #53 gh-forge-client incident.\n\n{\n  \"outcome\": \"su",
+              "current_seed_brief": "Make the two autonomous gates enforce ADR-0019 themselves, so capability-affecting ideas (adding/changing/removing tools, credentials, or permissions on agent-reachable surfaces) cannot pass without an explicit user decision. Context: PR #53 baked a forge client into the toolchain image; a follow-up seed proposed GH_TOKEN provisioning — harmless only by luck (no credentials in sandboxes). Acceptance criteria: (1) `.fabro/workflows/revisor/prompts/file.md` seed-intake rules gain a capability clause: a finding/fix that would ADD/CHANGE/REMOVE a tool, credential, or permission in agent-reachable surfaces (Dockerfiles, environment env, tool allowlists, hook configs, new binaries) MUST be filed with labels needs-user + revision, must cite ADR-0019 with 'implementation awaits explicit user approval', and the revisor NEVER proposes raw authenticated clients or token provisioning — only engine-mediated, read-only, extend-existing-tools vocabulary (ADR-0019.2/.3). (2) `.fabro/workflows/develop/prompts/reviewer.md` checklist gains a CAPABILITY DELTA axis: if the diff touches `.fabro/Dockerfile*`, env/credential provisioning, tool allowlists, hook configs, or adds binaries/secrets to agent surfaces, verify the seed records an explicit user decision (ADR-0019 citation + approval note); missing → blocking finding, route Changes requested naming ADR-0019 (merged capability changes without user decision get reverted). Capability REDUCTIONS (least-privilege narrowing) must NOT be blocked — only verify they cite their basis. (3) Provide a demonstration that the reviewer axis blocks a capability delta without recorded approval (test or staged verification documented in the PR). Keep edits textually consistent with each prompt's existing style; these are prompt-file changes, so the gate can be scoped accordingly.",
+              "current_seed_id": "fabro-16ff"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19940,
+                    "output_tokens": 1076,
+                    "reasoning_tokens": 194,
+                    "cache_read_tokens": 86720,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 56043
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 36590,
+              "tool_time_ms": 1442,
+              "active_time_ms": 38032
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 1200,
+                "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Approved\", \"context_updates\": {\"review_verdict\": \"approved\", \"journal\": {\"painpoints\": [{\"text\": \"Evidence blob arrived as a path preview (/tmp/fabro/"
+              },
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Evidence blob arrived as a path preview (/tmp/fabro/runtime/blobs/8109...json) that had to be paged manually (run 01M1Z017EQK3Q2QCEMTA6XXNSK). Worked fine, but the preamble could hint that the blob is self-terminating ('== evidence complete ==') so a reviewer knows completeness without reading to the end; the blob did include it, which was the deciding signal."
+                  }
+                ],
+                "observations": [
+                  "All three acceptance criteria verified against actual repo files, not just the diff text; mechanical grep assertion independently re-run and passed (CAPABILITY-GATE-PROMPTS-OK).",
+                  "Prompt-file targets are classified as loop churn (correct — dev-loop machinery), so the loop-work diff was the review scope per the capture rules.",
+                  "The .seeds/issues.jsonl +1/-1 churn traces to the planner claim commit (d41c4ce), not implementer scope creep.",
+                  "Residual risk noted, not blocking: the demonstration is a staged walkthrough, not an executed review; real enforcement is only observable on the next capability-affecting finding, which the spec itself acknowledges."
+                ]
+              },
+              "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Approved\", \"context_updates\": {\"review_verdict\": \"approved\", \"journal\": {\"painpoints\": [{\"text\": \"Evidence blob arrived as a path preview (/tmp/fabro/",
+              "last_stage": "reviewer",
+              "review_verdict": "approved"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16488,
+                    "output_tokens": 1352,
+                    "reasoning_tokens": 395,
+                    "cache_read_tokens": 42368,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 41781
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 35789,
+              "tool_time_ms": 197,
+              "active_time_ms": 35986
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5273,
+              "active_time_ms": 5273
+            }
+          }
+        },
+        "next_node_id": "closeout",
+        "git_commit_sha": "b9dbb9eb74a522a895a8b1e9eefe093315536caa",
+        "node_visits": {
+          "planner": 1,
+          "start": 1,
+          "tester": 1,
+          "implementer": 1,
+          "evidence": 1,
+          "reviewer": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1Z017EQK3Q2QCEMTA6XXNSK.jsonl b/.fabro/journal/01M1Z017EQK3Q2QCEMTA6XXNSK.jsonl\nindex 1c5478a..a07e68f 100644\n--- a/.fabro/journal/01M1Z017EQK3Q2QCEMTA6XXNSK.jsonl\n+++ b/.fabro/journal/01M1Z017EQK3Q2QCEMTA6XXNSK.jsonl\n@@ -3,3 +3,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Z017EQK3Q2QCEMTA6XXNSK\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:35:35Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The seed brief says 'checklist', but `.fabro/workflows/develop/prompts/reviewer.md` has no heading by that name — the numbered 'Your job this pass' list is the checklist; I added the axis as item 5 there. Reviewers judging by heading-name alone would miss it.\",\"fs_hide carve-out for platform-targeting seeds worked as documented: file tools are blocked on `.fabro/**` but all reads/edits succeeded through shell (python3 heredoc), including this seed's own edits to the develop workflow's prompts.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Z017EQK3Q2QCEMTA6XXNSK\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:35:45Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Z017EQK3Q2QCEMTA6XXNSK\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:35:50Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Z017EQK3Q2QCEMTA6XXNSK\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:36:38Z\",\"data\":{\"painpoints\":[{\"text\":\"Evidence blob arrived as a path preview (/tmp/fabro/runtime/blobs/8109...json) that had to be paged manually (run 01M1Z017EQK3Q2QCEMTA6XXNSK). Worked fine, but the preamble could hint that the blob is self-terminating ('== evidence complete ==') so a reviewer knows completeness without reading to the end; the blob did include it, which was the deciding signal.\"}],\"observations\":[\"All three acceptance criteria verified against actual repo files, not just the diff text; mechanical grep assertion independently re-run and passed (CAPABILITY-GATE-PROMPTS-OK).\",\"Prompt-file targets are classified as loop churn (correct — dev-loop machinery), so the loop-work diff was the review scope per the capture rules.\",\"The .seeds/issues.jsonl +1/-1 churn traces to the planner claim commit (d41c4ce), not implementer scope creep.\",\"Residual risk noted, not blocking: the demonstration is a staged walkthrough, not an executed review; real enforcement is only observable on the next capability-affecting finding, which the spec itself acknowledges.\"]}}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 86,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-07T22:36:43.099466063Z",
+        "current_node": "closeout",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout"
         ],
         "node_retries": {},
         "context_values": {
@@ -1551,8 +1858,9 @@
           },
           "internal.retry_count.planner": 0,
           "last_stage": "reviewer",
-          "internal.thread_id": "evidence",
+          "internal.thread_id": "reviewer",
           "internal.retry_count.implementer": 0,
+          "internal.retry_count.closeout": 0,
           "thread.planner.current_node": "implementer",
           "implementation_summary": "Added a 'Capability gate (ADR-0019)' section plus a matching hard rule to the revisor bookkeeper prompt (`.fabro/workflows/revisor/prompts/file.md`): capability-affecting findings MUST be filed `--labels needs-user,revision`, cite ADR-0019, state `implementation awaits explicit user approval`, and only ever propose engine-mediated, read-only, extend-existing-tools fix directions (ADR-0019.2/.3) — never raw authenticated clients or token provisioning. Added item 5 'CAPABILITY DELTA axis (ADR-0019)' to the develop reviewer checklist (`.fabro/workflows/develop/prompts/reviewer.md`): diffs touching `.fabro/Dockerfile*`, env/credential provisioning, tool allowlists, hook configs, or adding binaries/secrets to agent surfaces require a recorded user decision, else BLOCKING → Changes requested naming ADR-0019; capability reductions are explicitly not blocked, only basis-checked. Wrote the required demonstration at `.fabro/reports/fabro-16ff-capability-review-staged.md`: three staged cases (delta without approval → blocking changes_requested; reduction → pass; revisor filing → needs-user + re-worded fix direction) plus a mechanical grep assertion on both prompts, which was run and passed (`CAPABILITY-GATE-PROMPTS-OK`). No Rust code changed, so no crate-scoped fmt/clippy applies; the assertion is the focused check. Lesson capture: nothing durable — skipped (ADR-0019 itself already records the convention; this seed operationalizes it). Per-criterion verification: - PASS (1) revisor seed-intake capability clause: `.fabro/workflows/revisor/prompts/file.md` 'Capability gate (ADR-0019)' section + hard rule (needs-user + revision labels, ADR-0019 citation, 'implementation awaits explicit user approval', no raw clients/token provisioning, ADR-0019.2/.3 vocabulary). - PASS (2) reviewer CAPABILITY DELTA axis: `.fabro/workflows/develop/prompts/reviewer.md` item 5 — blocking Changes requested without recorded approval, reductions not blocked, basis citation verified. - PASS (3) demonstration of blocking on unapproved capability delta: `.fabro/reports/fabro-16ff-capability-review-staged.md` staged cases 1–3 + mechanical content assertion, executed with output CAPABILITY-GATE-PROMPTS-OK.",
           "journal": {
@@ -1573,18 +1881,19 @@
             "implementer": 1,
             "tester": 1,
             "evidence": 1,
-            "reviewer": 1
+            "reviewer": 1,
+            "closeout": 1
           },
           "internal.work_dir": "/workspace/fabro",
           "outcome": "succeeded",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "thread.implementer.current_node": "tester",
-          "command.output": "blob://sha256/810919efda513863635f007e4a7d47007aa696bf606f79b92455a2233f334680",
+          "command.output": "blob://sha256/8e199073d0d42ca7df72cc2a0be01ede40a4bc1e9b9a2edfb9a64adf9100cc42",
           "internal.retry_count.start": 0,
           "internal.seed_cycle_anchor": "fabro-16ff",
           "current_seed_brief": "Make the two autonomous gates enforce ADR-0019 themselves, so capability-affecting ideas (adding/changing/removing tools, credentials, or permissions on agent-reachable surfaces) cannot pass without an explicit user decision. Context: PR #53 baked a forge client into the toolchain image; a follow-up seed proposed GH_TOKEN provisioning — harmless only by luck (no credentials in sandboxes). Acceptance criteria: (1) `.fabro/workflows/revisor/prompts/file.md` seed-intake rules gain a capability clause: a finding/fix that would ADD/CHANGE/REMOVE a tool, credential, or permission in agent-reachable surfaces (Dockerfiles, environment env, tool allowlists, hook configs, new binaries) MUST be filed with labels needs-user + revision, must cite ADR-0019 with 'implementation awaits explicit user approval', and the revisor NEVER proposes raw authenticated clients or token provisioning — only engine-mediated, read-only, extend-existing-tools vocabulary (ADR-0019.2/.3). (2) `.fabro/workflows/develop/prompts/reviewer.md` checklist gains a CAPABILITY DELTA axis: if the diff touches `.fabro/Dockerfile*`, env/credential provisioning, tool allowlists, hook configs, or adds binaries/secrets to agent surfaces, verify the seed records an explicit user decision (ADR-0019 citation + approval note); missing → blocking finding, route Changes requested naming ADR-0019 (merged capability changes without user decision get reverted). Capability REDUCTIONS (least-privilege narrowing) must NOT be blocked — only verify they cite their basis. (3) Provide a demonstration that the reviewer axis blocks a capability delta without recorded approval (test or staged verification documented in the PR). Keep edits textually consistent with each prompt's existing style; these are prompt-file changes, so the gate can be scoped accordingly.",
           "internal.run_id": "01M1Z017EQK3Q2QCEMTA6XXNSK",
-          "current_node": "reviewer",
+          "current_node": "closeout",
           "lesson_capture": "nothing durable — skipped",
           "thread.tester.current_node": "evidence",
           "internal.retry_count.reviewer": 0,
@@ -1592,27 +1901,70 @@
           "internal.retry_count.tester": 0,
           "failure_class": "",
           "review_verdict": "approved",
+          "thread.reviewer.current_node": "closeout",
           "graph.max_node_visits": "40",
           "graph.cycle_counter_reset_key": "current_seed_id",
           "current_seed_title": "revisor + reviewer must become security-affine (ADR-0019): capability-affecting ideas get shot down at filing and review time",
           "internal.retry_count.evidence": 0,
-          "internal.fidelity": "summary:high",
+          "internal.exit_kind": "natural",
+          "internal.fidelity": "compact",
           "thread.start.current_node": "planner",
           "current_seed_id": "fabro-16ff"
         },
         "node_outcomes": {
-          "tester": {
+          "start": {
             "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
             "context_updates": {
-              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3222,
+                "preview": "All three criteria are met. The changes are prompt-file only (no Rust touched, so crate-scoped fmt/clippy is not applicable); the focused check was the content assertion from the staged verification d"
+              },
+              "implementation_summary": "Added a 'Capability gate (ADR-0019)' section plus a matching hard rule to the revisor bookkeeper prompt (`.fabro/workflows/revisor/prompts/file.md`): capability-affecting findings MUST be filed `--labels needs-user,revision`, cite ADR-0019, state `implementation awaits explicit user approval`, and only ever propose engine-mediated, read-only, extend-existing-tools fix directions (ADR-0019.2/.3) — never raw authenticated clients or token provisioning. Added item 5 'CAPABILITY DELTA axis (ADR-0019)' to the develop reviewer checklist (`.fabro/workflows/develop/prompts/reviewer.md`): diffs touching `.fabro/Dockerfile*`, env/credential provisioning, tool allowlists, hook configs, or adding binaries/secrets to agent surfaces require a recorded user decision, else BLOCKING → Changes requested naming ADR-0019; capability reductions are explicitly not blocked, only basis-checked. Wrote the required demonstration at `.fabro/reports/fabro-16ff-capability-review-staged.md`: three staged cases (delta without approval → blocking changes_requested; reduction → pass; revisor filing → needs-user + re-worded fix direction) plus a mechanical grep assertion on both prompts, which was run and passed (`CAPABILITY-GATE-PROMPTS-OK`). No Rust code changed, so no crate-scoped fmt/clippy applies; the assertion is the focused check. Lesson capture: nothing durable — skipped (ADR-0019 itself already records the convention; this seed operationalizes it). Per-criterion verification: - PASS (1) revisor seed-intake capability clause: `.fabro/workflows/revisor/prompts/file.md` 'Capability gate (ADR-0019)' section + hard rule (needs-user + revision labels, ADR-0019 citation, 'implementation awaits explicit user approval', no raw clients/token provisioning, ADR-0019.2/.3 vocabulary). - PASS (2) reviewer CAPABILITY DELTA axis: `.fabro/workflows/develop/prompts/reviewer.md` item 5 — blocking Changes requested without recorded approval, reductions not blocked, basis citation verified. - PASS (3) demonstration of blocking on unapproved capability delta: `.fabro/reports/fabro-16ff-capability-review-staged.md` staged cases 1–3 + mechanical content assertion, executed with output CAPABILITY-GATE-PROMPTS-OK.",
+              "last_response": "All three criteria are met. The changes are prompt-file only (no Rust touched, so crate-scoped fmt/clippy is not applicable); the focused check was the content assertion from the staged verification d",
+              "last_stage": "implementer",
+              "lesson_capture": "nothing durable — skipped",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The seed brief says 'checklist', but `.fabro/workflows/develop/prompts/reviewer.md` has no heading by that name — the numbered 'Your job this pass' list is the checklist; I added the axis as item 5 there. Reviewers judging by heading-name alone would miss it.",
+                  "fs_hide carve-out for platform-targeting seeds worked as documented: file tools are blocked on `.fabro/**` but all reads/edits succeeded through shell (python3 heredoc), including this seed's own edits to the develop workflow's prompts."
+                ]
+              }
             },
-            "notes": "Script completed: just qualitygate",
-            "usage": null,
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 22974,
+                    "output_tokens": 3082,
+                    "reasoning_tokens": 2347,
+                    "cache_read_tokens": 164736,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 98873
+            },
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 5273,
-              "active_time_ms": 5273
+              "inference_time_ms": 93775,
+              "tool_time_ms": 1670,
+              "active_time_ms": 95445
             }
           },
           "evidence": {
@@ -1685,10 +2037,6 @@
               "active_time_ms": 35986
             }
           },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "planner": {
             "status": "succeeded",
             "preferred_label": "Seed claimed",
@@ -1744,62 +2092,40 @@
               "active_time_ms": 38032
             }
           },
-          "implementer": {
+          "tester": {
             "status": "succeeded",
-            "preferred_label": "Implemented",
             "context_updates": {
-              "response.implementer": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.implementer",
-                "chars": 3222,
-                "preview": "All three criteria are met. The changes are prompt-file only (no Rust touched, so crate-scoped fmt/clippy is not applicable); the focused check was the content assertion from the staged verification d"
-              },
-              "implementation_summary": "Added a 'Capability gate (ADR-0019)' section plus a matching hard rule to the revisor bookkeeper prompt (`.fabro/workflows/revisor/prompts/file.md`): capability-affecting findings MUST be filed `--labels needs-user,revision`, cite ADR-0019, state `implementation awaits explicit user approval`, and only ever propose engine-mediated, read-only, extend-existing-tools fix directions (ADR-0019.2/.3) — never raw authenticated clients or token provisioning. Added item 5 'CAPABILITY DELTA axis (ADR-0019)' to the develop reviewer checklist (`.fabro/workflows/develop/prompts/reviewer.md`): diffs touching `.fabro/Dockerfile*`, env/credential provisioning, tool allowlists, hook configs, or adding binaries/secrets to agent surfaces require a recorded user decision, else BLOCKING → Changes requested naming ADR-0019; capability reductions are explicitly not blocked, only basis-checked. Wrote the required demonstration at `.fabro/reports/fabro-16ff-capability-review-staged.md`: three staged cases (delta without approval → blocking changes_requested; reduction → pass; revisor filing → needs-user + re-worded fix direction) plus a mechanical grep assertion on both prompts, which was run and passed (`CAPABILITY-GATE-PROMPTS-OK`). No Rust code changed, so no crate-scoped fmt/clippy applies; the assertion is the focused check. Lesson capture: nothing durable — skipped (ADR-0019 itself already records the convention; this seed operationalizes it). Per-criterion verification: - PASS (1) revisor seed-intake capability clause: `.fabro/workflows/revisor/prompts/file.md` 'Capability gate (ADR-0019)' section + hard rule (needs-user + revision labels, ADR-0019 citation, 'implementation awaits explicit user approval', no raw clients/token provisioning, ADR-0019.2/.3 vocabulary). - PASS (2) reviewer CAPABILITY DELTA axis: `.fabro/workflows/develop/prompts/reviewer.md` item 5 — blocking Changes requested without recorded approval, reductions not blocked, basis citation verified. - PASS (3) demonstration of blocking on unapproved capability delta: `.fabro/reports/fabro-16ff-capability-review-staged.md` staged cases 1–3 + mechanical content assertion, executed with output CAPABILITY-GATE-PROMPTS-OK.",
-              "last_response": "All three criteria are met. The changes are prompt-file only (no Rust touched, so crate-scoped fmt/clippy is not applicable); the focused check was the content assertion from the staged verification d",
-              "last_stage": "implementer",
-              "lesson_capture": "nothing durable — skipped",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "The seed brief says 'checklist', but `.fabro/workflows/develop/prompts/reviewer.md` has no heading by that name — the numbered 'Your job this pass' list is the checklist; I added the axis as item 5 there. Reviewers judging by heading-name alone would miss it.",
-                  "fs_hide carve-out for platform-targeting seeds worked as documented: file tools are blocked on `.fabro/**` but all reads/edits succeeded through shell (python3 heredoc), including this seed's own edits to the develop workflow's prompts."
-                ]
-              }
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
             },
-            "notes": "Stage completed: implementer",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 22974,
-                    "output_tokens": 3082,
-                    "reasoning_tokens": 2347,
-                    "cache_read_tokens": 164736,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 98873
-            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 93775,
-              "tool_time_ms": 1670,
-              "active_time_ms": 95445
+              "inference_time_ms": 0,
+              "tool_time_ms": 5273,
+              "active_time_ms": 5273
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/8e199073d0d42ca7df72cc2a0be01ede40a4bc1e9b9a2edfb9a64adf9100cc42"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 271,
+              "active_time_ms": 271
             }
           }
         },
-        "next_node_id": "closeout",
+        "next_node_id": "exit",
         "node_visits": {
           "tester": 1,
           "planner": 1,
+          "closeout": 1,
           "evidence": 1,
           "implementer": 1,
           "reviewer": 1,
@@ -2398,6 +2724,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "closeout@1": {
+      "first_event_seq": 218,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T22:36:42.892869104Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/8e199073d0d42ca7df72cc2a0be01ede40a4bc1e9b9a2edfb9a64adf9100cc42",
+        "exit_code": 0,
+        "duration_ms": 271,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-07T22:36:42.599267855Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 277,
+        "inference_time_ms": 0,
+        "tool_time_ms": 271,
+        "active_time_ms": 271
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
