@@ -236,6 +236,11 @@ decision, not an accident - it needs the user plus an ADR.
   authenticated automations probe), then re-enable the schedule with
   on_overlap=skip again. A heartbeat (~5m) monitors the deploy and
   performs the resume.
+- BINARY-NEED CHECK (2026-09-07 lesson, user caught it): claiming
+  'repo-side only, no binary need' for a merged PR requires diffing it
+  against lib/ - .fabro/docs/tracker-only changes skip the rebuild, but
+  any lib/ path (even a small crate like fabro-validate) changes the
+  server/CLI image and needs the next just up.
 - PUSH/PR COORDINATION: pushing to denkhaus while a run PR is open can
   turn it DIRTY and stall auto-merge. Check open run PRs before
   pushing; if one goes dirty with a green gate, update its branch
