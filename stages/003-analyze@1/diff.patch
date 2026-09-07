@@ -1,0 +1,55 @@
+diff --git a/.fabro/journal/01M1XZPWJMRXB4PQJYTVANFVJG.jsonl b/.fabro/journal/01M1XZPWJMRXB4PQJYTVANFVJG.jsonl
+index 43cf84e..bf613b0 100644
+--- a/.fabro/journal/01M1XZPWJMRXB4PQJYTVANFVJG.jsonl
++++ b/.fabro/journal/01M1XZPWJMRXB4PQJYTVANFVJG.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1XZPWJMRXB4PQJYTVANFVJG","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T13:08:09Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1XZPWJMRXB4PQJYTVANFVJG","node":"select","visit":1,"status":"succeeded","ts":"2026-09-07T13:08:39Z","data":{"painpoints":[],"observations":["Selected newest develop run; 7 older develop runs are stale-evidence (version drift from baseline 2232aaf0), all 5 merge-upstream runs are stale-evidence vs their 5a4438be baseline, 12 runs lack live sandbox; no active develop run observed"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1XZPWJMRXB4PQJYTVANFVJG","node":"analyze","visit":1,"status":"succeeded","ts":"2026-09-07T13:16:02Z","data":{"painpoints":[{"text":"`sd list --format compact` output omitted open seeds that `sd search` finds (fabro-8d2c, fabro-4881, fabro-c2ca, fabro-890d were all absent from the list but open per search) — a list-only tracker check in this pass would have re-filed 4 duplicates; fix idea: raise or remove the list cap, and make the revisor prompt rely on per-theme sd search as the primary duplicate check."}],"observations":["Withheld 4 of 6 analyst recommendations as duplicates of open seeds: preamble_budget_kb 24→32 duplicate_of fabro-8d2c (related variants fabro-35ab, fabro-cf3e); conditional sd-show re-fetch duplicate_of fabro-4881 (partially covered by fabro-a67f); metadata-snapshot skip on non-agent stages duplicate_of fabro-c2ca (async variant fabro-cf03); planner step renumber duplicate_of fabro-890d.","Sequence the park-probe finding before relying on reasoning-effort savings: the planner journaled that the next run parks until backlog assignment is curated, so #2's numbers depend on that curation.","Target run was healthy (210 s wall, $0.178, zero retries, seed fabro-5e09 approved and closed via PR #38) — this is a marker-plus-2-findings revision, not a repair pass."]}}
+diff --git a/.fabro/reviews/develop/01M1XZCWNBR33BZGHQXNRA80J9.md b/.fabro/reviews/develop/01M1XZCWNBR33BZGHQXNRA80J9.md
+new file mode 100644
+index 0000000..b2dc6c7
+--- /dev/null
++++ b/.fabro/reviews/develop/01M1XZCWNBR33BZGHQXNRA80J9.md
+@@ -0,0 +1,41 @@
++# Improve review — run 01M1XZCWNBR33BZGHQXNRA80J9
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: succeeded (4.1 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-07 13:12+0000 by revisor `fabro_ask`
++
++---
++
++All evidence below is from this run's events, worker logs, stage journals, and the workspace files on `fabro/run/01M1XZCWNBR33BZGHQXNRA80J9` (seed `fabro-5e09`, approved and closed; PR #38). Run totals: 210 s wall, $0.178, zero retries — the loop is healthy, so these are incremental, ranked by expected impact.
++
++**1. Raise the graph preamble budget 24→32 KB — `.fabro/workflows/develop/workflow.fabro:16` (`preamble_budget_kb`).**
++What happened: the 10.7 KB evidence capture was demoted to a blob ref even though it's under the reviewer's 16 KB per-key cap, because the *aggregate* 24 KB budget (prompt + seed brief + implementation summary + capture) was exceeded. The reviewer's first LLM turn (11.9k input tokens, $0.018, ~13 s — 58% of its $0.031 stage cost) existed only to decide-and-read the blob; its journal painpoint names exactly this. Context usage was 1.4% of the 1M window — the budget is the constraint, not the window (the file's own comment at the graph attr admits "the blob detour is").
++Change: `preamble_budget_kb=32` (matches open seeds fabro-8d2c/fabro-cf3e).
++Effect: capture renders inline every run — saves ~13 s and ~$0.02 per review and removes the unread-blob → Verification-blocked cycle risk.
++
++**2. Drop planner `reasoning_effort` from high to low for first-pass claims — `workflow.fabro:49`.**
++What happened: the planner was the most expensive stage (83.6 s wall = 40% of run; $0.080 = 45% of cost; 4,469 of the run's 5,899 reasoning tokens), and the reasoning trace shows most of it was the tie-break between two High seeds (`fabro-513e` vs `fabro-5e09`). The assignee filter this run just shipped makes that decision deterministic — `sd ready --assignee fabro` currently returns exactly one seed.
++Change: `reasoning_effort="low"` on the planner (keep high semantics for `changes_requested` re-plans if conditional effort isn't available; re-measure one run).
++Effect: roughly $0.03–0.05 and 20–40 s off every claim pass once the backlog is curated.
++
++**3. Make "empty filtered view" distinguishable from a broken assignee string — `.fabro/workflows/develop/prompts/planner.md:46` (the FAIL-CLOSED paragraph this run added).**
++What happened: the implementer's live smoke test showed `sd ready --assignee nonexistentuser` exits 0 with "No ready issues." — byte-identical to a legitimately empty pool (implementer journal observation). Combined with the new park semantics, a typo'd or renamed assignee silently parks the line forever.
++Change: one sentence in that paragraph — before routing Tracker empty, run one unfiltered `sd list --limit 5` probe; if open seeds exist but the filtered view is empty, journal "park: N open seeds, none assigned to fabro" so the terminal Slack notification shows a cause.
++Effect: converts a silent permanent outage into a visible, diagnosable park; zero added cost in normal runs.
++
++**4. Gate the implementer's seed re-fetch on brief quality — `.fabro/workflows/develop/prompts/implementer.md`, step 1.**
++What happened: step 1 mandates "Re-read the seed requirements from `sd show`" unconditionally; this run's brief already carried every criterion plus resolved ambiguities, so the `sd show` call and its LLM turn (events seq 92–97, ~7 s, ~$0.016) duplicated context the planner had already distilled.
++Change: "re-fetch via `sd show` only if the brief is thin or a criterion is ambiguous."
++Effect: one fewer LLM round-trip per implementer pass (~7 s, ~$0.01–0.02). (Open seed fabro-4881 already proposes this; this run supplies the evidence.)
++
++**5. Skip metadata snapshots on deterministic command stages — engine checkpoint path (tracer: `fabro_workflow::event::events: Metadata snapshot completed`; open seed fabro-c2ca).**
++What happened: worker logs show 8 metadata snapshots at 1.68–2.05 s each (~14 s serial) plus a per-stage git push, on a run where tester (5.4 s, "no crates touched"), evidence (0.5 s), and closeout (0.3 s) contributed nothing snapshot-worthy beyond one journal line each.
++Change: snapshot only after agent stages (planner, implementer, reviewer).
++Effect: ~7–10 s (~4–5%) off every run's wall time.
++
++**6. Renumber the duplicate step "4." — `planner.md:37` (→ "5.", renumber the current 5 → 6).**
++What happened: the reviewer flagged the pre-existing duplicate ("4. Claim it" at line 36 followed by "4. Write the implementation brief" at line 37); this run edited line 36 and left the duplicate. Any future instruction citing "step 4" is ambiguous between claiming and brief-writing.
++Change: one-line renumber. Effect: removes an ambiguity in the most load-bearing prompt file. (Open seed fabro-890d.)
++
++Not recommended (already working): the tester gate — 5.4 s because it correctly detected "no crates touched"; and the journal loop — every stage reported, and the reviewer's painpoint is literally recommendation #1 arriving through the designed channel. One caveat: #2's savings depend on the user curating backlog assignment (the planner journaled that the next run will park until then), so sequence #3 before relying on #2's numbers.
