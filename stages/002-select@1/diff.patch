@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1YQMBBGPFVSMXH8RWXCKF02.jsonl b/.fabro/journal/01M1YQMBBGPFVSMXH8RWXCKF02.jsonl
+new file mode 100644
+index 0000000..5fedfe8
+--- /dev/null
++++ b/.fabro/journal/01M1YQMBBGPFVSMXH8RWXCKF02.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1YQMBBGPFVSMXH8RWXCKF02","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T20:06:29Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YQMBBGPFVSMXH8RWXCKF02","node":"select","visit":1,"status":"succeeded","ts":"2026-09-07T20:07:07Z","data":{"painpoints":[],"observations":["71 runs listed (66 develop, 5 merge-upstream); 18 already revised via markers in `.fabro/revisions/`","Selected the newest fresh unrevised develop run `01M1YQD03JZJCGRJ53SNRBTM8P` (succeeded, 2.8 min, sandbox live, version = develop baseline `4ff76f32…`)","Backlog remains visible: ~19 unrevised terminal runs blocked (stale-evidence, version drift/absent), 21 blocked (no live sandbox), plus 5 fresh-version develop runs and merge-upstream run `01M1VJ4TE1M383B55YD49JH9TE` awaiting future one-per-invocation passes","No develop run currently active"]}}
