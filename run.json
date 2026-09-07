@@ -644,14 +644,180 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M1XVXF3MJHD0DXVCA7YXDH9G",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-09-07T12:01:44.944005558Z",
+    "run_branch": "fabro/run/01M1XVXF3MJHD0DXVCA7YXDH9G",
+    "base_sha": "62e49cd2c76e0d3f3678560d1ff5d0a42c91d63a"
   },
-  "status_updated_at": "2026-09-07T12:01:32.987255480Z",
-  "last_event_at": "2026-09-07T12:01:44.467726923Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-09-07T12:01:44.944082468Z",
+  "last_event_at": "2026-09-07T12:05:47.761730624Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 20,
+      "checkpoint": {
+        "timestamp": "2026-09-07T12:01:47.423764227Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_signature": "",
+          "graph.max_node_visits": "40",
+          "internal.node_visit_count": 1,
+          "outcome": "succeeded",
+          "internal.seed_cycle_anchor": "",
+          "failure_class": "",
+          "graph.rankdir": "LR",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.run_id": "01M1XVXF3MJHD0DXVCA7YXDH9G",
+          "internal.retry_count.start": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "seed_cycles": {
+            "start": 1
+          },
+          "graph.preamble_budget_kb": "24",
+          "internal.thread_id": null,
+          "current_node": "start",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.fidelity": "compact"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "planner",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-07T12:05:47.974394307Z",
+        "current_node": "planner",
+        "completed_nodes": [
+          "start",
+          "planner"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "current_node": "planner",
+          "seed_cycles": {
+            "planner": 1
+          },
+          "thread.start.current_node": "planner",
+          "current_seed_id": "fabro-56f4",
+          "failure_signature": "",
+          "current_seed_title": "Develop: match gate-red failure tails against open known-bug seeds before the tester→implementer bounce",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 4327,
+            "preview": "Claimed fabro-56f4: add a deterministic known-bug matcher on the develop workflow's Gate red bounce so implementers start from filed root causes instead of re-deriving them from the 186 KB gate log. A"
+          },
+          "graph.preamble_budget_kb": "24",
+          "preferred_label": "Seed claimed",
+          "current_seed_brief": "In `.fabro/workflows/develop/workflow.fabro`, make the tester→implementer Gate red bounce carry known-bug context, deterministically (no LLM). Evidence: run 01M1XN2KWG6T0PHRTJWZ8R0AZX implementer@2 re-derived fabro-febd's root cause from a 186 KB log blob (704 s, $0.38). Acceptance criteria: • Graph: insert a deterministic script node (e.g. `gatebounce`) on the Gate red path — `tester -> gatebounce [label=\"Gate red\"]` then `gatebounce -> implementer` (unconditional) — leaving the `seed_cycles.tester >= 3` deadlock exit and the Gate green edge on `tester` untouched. • Script: new `.fabro/workflows/develop/scripts/gate-bounce.nu` (nushell, modeled on `scripts/closeout.nu`, including the non-tty `cat | str join` stdin pattern) that reads the gate failure tail via `stdin_source=\"command.output\"` (the tester's captured output ref, present on both success and fail paths), runs `sd list --format json --limit 200`, selects OPEN seeds carrying the `workflows` label, and matches the failure tail against seed title+description via deterministic case-insensitive matching on distinctive tokens. • Output bounded: at most 3 matching seeds, ~4 KB total, printed as seed id + title + full description; empty output when nothing matches. • Best-effort semantics: internal failures (sd unavailable, unreadable tail) print a warning and exit 0 — the bounce must never be stranded; enrichment is additive. • Implementer delivery: the hits must appear INLINE in the implementer's ## Context (not a blob ref needing a tool round-trip) under a dedicated key (e.g. via the command-node custom output key mechanism, `output.gate_known_bug_hits`), the key added to implementer `preamble_allow_keys`, plus one short line in `.fabro/workflows/develop/prompts/implementer.md`: when known-bug hits are present, read them BEFORE re-deriving root cause from gate logs. • Node attrs: `timeout=\"1m\"`, `max_retries=1`, mirroring closeout. • Proof: a dry-run of the script against a fabricated tail containing the fabro-febd signature (missing `target/debug/fabro` / SVG-render tests) selects fabro-febd's body; a no-match tail yields empty; plus whatever engine unit tests are needed if any command-handler mechanics change (prefer none — pure workflow/script change). • Scope guard: this complements fabro-febd, do NOT fix the gate build issue itself. Spec annotations: 'edge pre-step' is implemented as a node insertion because the engine has no edge pre-steps (closeout-pattern node is the idiom); 'attach to the implementer brief' is delivered as a dedicated context key rather than mutating the planner's `current_seed_brief`, keeping provenance and the planner's `context_allow_keys` contract clean.",
+          "last_stage": "planner",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.planner": 0,
+          "last_response": "Claimed fabro-56f4: add a deterministic known-bug matcher on the develop workflow's Gate red bounce so implementers start from filed root causes instead of re-deriving them from the 186 KB gate log. A",
+          "internal.seed_cycle_anchor": "fabro-56f4",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.thread_id": "start",
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/workspace/fabro",
+          "outcome": "succeeded",
+          "failure_class": "",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "fabro-56f4 basis verified fresh against the current tree: `tester -> implementer [label=\"Gate red\"]` exists at `.fabro/workflows/develop/workflow.fabro:263`, referenced known-bug seed fabro-febd is still open, and no seed-matching mechanism exists anywhere in the develop workflow.",
+              "Engine primitives for this seed already exist and need no engine changes: command nodes store stdout in context (default `command.output`, custom `output.*` keys via structured output, see `lib/components/fabro-workflow/src/handler/command.rs`), and a later script node can read a prior node's output via `stdin_source` + ref resolution (closeout pattern)."
+            ]
+          },
+          "internal.retry_count.start": 0,
+          "graph.rankdir": "LR",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.run_id": "01M1XVXF3MJHD0DXVCA7YXDH9G",
+          "graph.max_node_visits": "40"
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_id": "fabro-56f4",
+              "current_seed_title": "Develop: match gate-red failure tails against open known-bug seeds before the tester→implementer bounce",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-56f4 basis verified fresh against the current tree: `tester -> implementer [label=\"Gate red\"]` exists at `.fabro/workflows/develop/workflow.fabro:263`, referenced known-bug seed fabro-febd is still open, and no seed-matching mechanism exists anywhere in the develop workflow.",
+                  "Engine primitives for this seed already exist and need no engine changes: command nodes store stdout in context (default `command.output`, custom `output.*` keys via structured output, see `lib/components/fabro-workflow/src/handler/command.rs`), and a later script node can read a prior node's output via `stdin_source` + ref resolution (closeout pattern)."
+                ]
+              },
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 4327,
+                "preview": "Claimed fabro-56f4: add a deterministic known-bug matcher on the develop workflow's Gate red bounce so implementers start from filed root causes instead of re-deriving them from the 186 KB gate log. A"
+              },
+              "current_seed_brief": "In `.fabro/workflows/develop/workflow.fabro`, make the tester→implementer Gate red bounce carry known-bug context, deterministically (no LLM). Evidence: run 01M1XN2KWG6T0PHRTJWZ8R0AZX implementer@2 re-derived fabro-febd's root cause from a 186 KB log blob (704 s, $0.38). Acceptance criteria: • Graph: insert a deterministic script node (e.g. `gatebounce`) on the Gate red path — `tester -> gatebounce [label=\"Gate red\"]` then `gatebounce -> implementer` (unconditional) — leaving the `seed_cycles.tester >= 3` deadlock exit and the Gate green edge on `tester` untouched. • Script: new `.fabro/workflows/develop/scripts/gate-bounce.nu` (nushell, modeled on `scripts/closeout.nu`, including the non-tty `cat | str join` stdin pattern) that reads the gate failure tail via `stdin_source=\"command.output\"` (the tester's captured output ref, present on both success and fail paths), runs `sd list --format json --limit 200`, selects OPEN seeds carrying the `workflows` label, and matches the failure tail against seed title+description via deterministic case-insensitive matching on distinctive tokens. • Output bounded: at most 3 matching seeds, ~4 KB total, printed as seed id + title + full description; empty output when nothing matches. • Best-effort semantics: internal failures (sd unavailable, unreadable tail) print a warning and exit 0 — the bounce must never be stranded; enrichment is additive. • Implementer delivery: the hits must appear INLINE in the implementer's ## Context (not a blob ref needing a tool round-trip) under a dedicated key (e.g. via the command-node custom output key mechanism, `output.gate_known_bug_hits`), the key added to implementer `preamble_allow_keys`, plus one short line in `.fabro/workflows/develop/prompts/implementer.md`: when known-bug hits are present, read them BEFORE re-deriving root cause from gate logs. • Node attrs: `timeout=\"1m\"`, `max_retries=1`, mirroring closeout. • Proof: a dry-run of the script against a fabricated tail containing the fabro-febd signature (missing `target/debug/fabro` / SVG-render tests) selects fabro-febd's body; a no-match tail yields empty; plus whatever engine unit tests are needed if any command-handler mechanics change (prefer none — pure workflow/script change). • Scope guard: this complements fabro-febd, do NOT fix the gate build issue itself. Spec annotations: 'edge pre-step' is implemented as a node insertion because the engine has no edge pre-steps (closeout-pattern node is the idiom); 'attach to the implementer brief' is delivered as a dedicated context key rather than mutating the planner's `current_seed_brief`, keeping provenance and the planner's `context_allow_keys` contract clean.",
+              "last_response": "Claimed fabro-56f4: add a deterministic known-bug matcher on the develop workflow's Gate red bounce so implementers start from filed root causes instead of re-deriving them from the 186 KB gate log. A"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 27487,
+                    "output_tokens": 2137,
+                    "reasoning_tokens": 5014,
+                    "cache_read_tokens": 188224,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 118872
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 216964,
+              "tool_time_ms": 2265,
+              "active_time_ms": 219229
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "implementer",
+        "node_visits": {
+          "planner": 1,
+          "start": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -678,5 +844,256 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "planner@1": {
+      "first_event_seq": 21,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T12:05:47.761730624Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "high"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T12:01:47.438622308Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 219818,
+        "inference_time_ms": 216964,
+        "tool_time_ms": 2265,
+        "active_time_ms": 219229
+      },
+      "usage": {
+        "input_tokens": 27487,
+        "output_tokens": 2137,
+        "total_tokens": 222862,
+        "reasoning_tokens": 5014,
+        "cache_read_tokens": 188224,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 118872
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 27201,
+        "usage_percent": 2.5940895080566406,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-07T12:05:47.742354986Z",
+        "event_seq": 101,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1079,
+            "usage_percent": 0.10290145874023438
+          },
+          {
+            "category": "tools",
+            "tokens": 1571,
+            "usage_percent": 0.14982223510742188
+          },
+          {
+            "category": "memory",
+            "tokens": 5520,
+            "usage_percent": 0.52642822265625
+          },
+          {
+            "category": "conversation",
+            "tokens": 19024,
+            "usage_percent": 1.81427001953125
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T12:01:47.204559907Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T12:01:47.191464456Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
