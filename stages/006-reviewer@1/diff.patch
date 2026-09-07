@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M1YWHK6F8F2VZ6F6FZV8A7VE.jsonl b/.fabro/journal/01M1YWHK6F8F2VZ6F6FZV8A7VE.jsonl
+index a7fccb1..7c62371 100644
+--- a/.fabro/journal/01M1YWHK6F8F2VZ6F6FZV8A7VE.jsonl
++++ b/.fabro/journal/01M1YWHK6F8F2VZ6F6FZV8A7VE.jsonl
+@@ -3,3 +3,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1YWHK6F8F2VZ6F6FZV8A7VE","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-07T21:33:20Z","data":{"painpoints":[],"observations":["The seed brief described the carve-out as being for breaks in 'untouched crates', but the carve-out text in `.fabro/workflows/develop/prompts/implementer.md` (line 63) actually covers VERIFIED pre-existing breaks in touched crates via minimal repair; I reconciled by keeping the carve-out text intact and adding an explicit non-softening clause so the new default-features rule stays unambiguous — worth the Planner knowing the brief's framing didn't literally match the file."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YWHK6F8F2VZ6F6FZV8A7VE","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-07T21:33:30Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YWHK6F8F2VZ6F6FZV8A7VE","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-07T21:33:38Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YWHK6F8F2VZ6F6FZV8A7VE","node":"reviewer","visit":1,"status":"succeeded","ts":"2026-09-07T21:34:10Z","data":{"painpoints":[],"observations":["Verified all five seed criteria against the loop-work diff and the on-disk file (grep confirmed the three key phrases at implementer.md lines 25 and 78); diff scope matches evidence header exactly (+7/-2, single file), tree clean, gate green.","First grep alternation returned only the line-25 match in visible output, requiring a second targeted grep for the carve-out clause — minor tool-output truncation, not an evidence defect."]}}
