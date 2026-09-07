@@ -73,6 +73,16 @@ impl Database {
     }
 
     pub async fn migrate(&self) -> anyhow::Result<()> {
+        // Defense in depth against stale embeds: if the binary was built from
+        // a cached artifact whose MIGRATOR predates a new migration, this log
+        // makes the mismatch visible in server logs without changing ordering
+        // or snapshot behavior.
+        let newest_embedded = MIGRATOR
+            .iter()
+            .map(|migration| migration.version)
+            .max()
+            .unwrap_or_default();
+        info!("newest embedded migration version {newest_embedded}");
         let applied = applied_migration_versions(&self.pool).await?;
         self.preflight_session_owner_index(&applied)
             .await
@@ -506,6 +516,54 @@ async fn prepare_private_database_file(path: &Path) -> anyhow::Result<()> {
         .await
         .with_context(|| format!("creating SQLite database {}", path.display()))?;
     Ok(())
+}
+
+/// Guards against embed/dir drift: `sqlx::migrate!` embeds the migrations
+/// directory at compile time, and a stale cache can otherwise ship a binary
+/// whose MIGRATOR predates the newest on-disk migration.
+#[cfg(test)]
+mod embedded_migrations_tests {
+    use super::MIGRATOR;
+
+    #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test-only sync enumeration of the compile-time migrations directory"
+    )]
+    fn newest_embedded_migration_matches_migrations_dir() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+        let mut newest_on_disk: Option<i64> = None;
+        for entry in std::fs::read_dir(&dir).expect("reading the migrations directory") {
+            let entry = entry.expect("reading a migrations directory entry");
+            let file_name = entry.file_name();
+            let Some(name) = file_name.to_str() else {
+                continue;
+            };
+            if !std::path::Path::new(name)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("sql"))
+            {
+                continue;
+            }
+            let version: i64 = name
+                .split('_')
+                .next()
+                .unwrap_or_default()
+                .parse()
+                .unwrap_or_else(|error| panic!("parsing migration version from {name}: {error}"));
+            newest_on_disk = Some(newest_on_disk.map_or(version, |seen| seen.max(version)));
+        }
+        let newest_on_disk = newest_on_disk.expect("the migrations directory to contain SQL files");
+        let newest_embedded = MIGRATOR
+            .iter()
+            .map(|migration| migration.version)
+            .max()
+            .expect("the embedded MIGRATOR to be non-empty");
+        assert_eq!(
+            newest_embedded, newest_on_disk,
+            "embedded MIGRATOR is stale: recompile fabro-db so sqlx::migrate! re-embeds migrations/"
+        );
+    }
 }
 
 #[cfg(all(test, unix))]
