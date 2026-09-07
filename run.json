@@ -558,7 +558,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T07:30:44.003297005Z",
-  "last_event_at": "2026-09-07T09:34:49.376489017Z",
+  "last_event_at": "2026-09-07T09:34:54.111838916Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -715,9 +715,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 132,
       "checkpoint": {
-        "timestamp": "2026-09-07T09:34:49.642833859Z",
+        "timestamp": "2026-09-07T09:34:54.111049152Z",
         "current_node": "develop",
         "completed_nodes": [
           "start",
@@ -726,50 +726,50 @@
         ],
         "node_retries": {},
         "context_values": {
-          "failure_class": "",
+          "internal.fidelity": "compact",
+          "last_stage": "develop",
           "internal.run_id": "01M1XCC9SP1YH38326ZCVJZT3J",
+          "internal.seed_cycle_anchor": "",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "graph.rankdir": "LR",
+          "failure_class": "",
+          "internal.retry_count.start": 0,
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "internal.retry_count.survey": 0,
+          "internal.thread_id": "survey",
+          "graph.preamble_budget_kb": "12",
+          "failure_signature": "",
           "graph.cycle_counter_reset_key": "pass_id",
-          "current_node": "develop",
-          "internal.work_dir": "/workspace/fabro",
-          "journal": "child 01M1XCHJTDBJKZ31VFMY1KD61Q seed fabro-bc9b succeeded (12m, $0.40); PR #33 open, auto-merge squash enabled 07:46Z, blocked >2h by red CI dogfood-gate (Rust tests exit 100). Run-local gate was green. Possible stale sqlx MIGRATOR in CI cache — the very failure mode this PR hardens; next pass should check the CI log and consider cache-bust/re-run.",
-          "thread.survey.current_node": "develop",
+          "internal.node_visit_count": 1,
+          "preferred_label": "Develop child failed",
+          "child_run_id": "01M1XCHJTDBJKZ31VFMY1KD61Q",
+          "internal.exit_kind": "soft",
           "response.develop": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.develop",
             "chars": 1621,
             "preview": "The merge is blocked: PR #33's `dogfood-gate` CI check failed (Rust tests, exit 100, 17m28s run), so auto-merge will not fire until CI is green. The child run itself succeeded and the seed is closed, "
           },
-          "last_stage": "develop",
-          "graph.max_node_visits": "12",
-          "failure_signature": "",
+          "internal.retry_count.develop": 0,
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 594,
             "preview": "{\"preferred_next_label\": \"Work\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"context_updates\": {\"journal\": \"Surveyor pass 1: upstream remote confirmed -> `https://github.com/fabro-sh/fabro`; fetche"
           },
-          "internal.retry_count.survey": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "current_node": "develop",
+          "journal": "child 01M1XCHJTDBJKZ31VFMY1KD61Q seed fabro-bc9b succeeded (12m, $0.40); PR #33 open, auto-merge squash enabled 07:46Z, blocked >2h by red CI dogfood-gate (Rust tests exit 100). Run-local gate was green. Possible stale sqlx MIGRATOR in CI cache — the very failure mode this PR hardens; next pass should check the CI log and consider cache-bust/re-run.",
+          "last_response": "The merge is blocked: PR #33's `dogfood-gate` CI check failed (Rust tests, exit 100, 17m28s run), so auto-merge will not fire until CI is green. The child run itself succeeded and the seed is closed, ",
+          "graph.max_node_visits": "12",
+          "thread.survey.current_node": "develop",
           "outcome": "succeeded",
+          "thread.start.current_node": "survey",
           "seed_cycles": {
             "start": 1,
             "survey": 1,
             "develop": 1
-          },
-          "graph.preamble_budget_kb": "12",
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "internal.exit_kind": "soft",
-          "internal.retry_count.develop": 0,
-          "child_run_id": "01M1XCHJTDBJKZ31VFMY1KD61Q",
-          "internal.node_visit_count": 1,
-          "last_response": "The merge is blocked: PR #33's `dogfood-gate` CI check failed (Rust tests, exit 100, 17m28s run), so auto-merge will not fire until CI is green. The child run itself succeeded and the seed is closed, ",
-          "internal.retry_count.start": 0,
-          "internal.thread_id": "survey",
-          "internal.seed_cycle_anchor": "",
-          "preferred_label": "Develop child failed",
-          "thread.start.current_node": "survey",
-          "graph.rankdir": "LR",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "internal.fidelity": "compact"
+          }
         },
         "node_outcomes": {
           "develop": {
@@ -865,16 +865,97 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "e2316771da9d39a05f1b1848ede7e5b9ea11f766",
         "node_visits": {
-          "survey": 1,
           "develop": 1,
-          "start": 1
+          "start": 1,
+          "survey": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1XCC9SP1YH38326ZCVJZT3J.jsonl b/.fabro/journal/01M1XCC9SP1YH38326ZCVJZT3J.jsonl\nnew file mode 100644\nindex 000000000..cf1de5c7c\n--- /dev/null\n+++ b/.fabro/journal/01M1XCC9SP1YH38326ZCVJZT3J.jsonl\n@@ -0,0 +1 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XCC9SP1YH38326ZCVJZT3J\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T09:34:49Z\",\"data\":\"child 01M1XCHJTDBJKZ31VFMY1KD61Q seed fabro-bc9b succeeded (12m, $0.40); PR #33 open, auto-merge squash enabled 07:46Z, blocked >2h by red CI dogfood-gate (Rust tests exit 100). Run-local gate was green. Possible stale sqlx MIGRATOR in CI cache — the very failure mode this PR hardens; next pass should check the CI log and consider cache-bust/re-run.\"}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 1,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T09:34:54.169954360Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 6994851,
+      "inference_time_ms": 127749,
+      "tool_time_ms": 6853370,
+      "active_time_ms": 6981119
+    },
+    "failure": {
+      "reason": "soft_stop",
+      "detail": {
+        "message": "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; the next run re-enters autonomously",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "e2316771da9d39a05f1b1848ede7e5b9ea11f766",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 107314,
+          "inference_time_ms": 26453,
+          "tool_time_ms": 80091,
+          "active_time_ms": 106544
+        },
+        "billing_usd_micros": 42472,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 6875146,
+          "inference_time_ms": 101296,
+          "tool_time_ms": 6773279,
+          "active_time_ms": 6874575
+        },
+        "billing_usd_micros": 432921,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 147608,
+      "output_tokens": 1607,
+      "total_tokens": 1149780,
+      "reasoning_tokens": 373,
+      "cache_read_tokens": 1000192,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 475393
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1XCC9SP1YH38326ZCVJZT3J.jsonl b/.fabro/journal/01M1XCC9SP1YH38326ZCVJZT3J.jsonl\nnew file mode 100644\nindex 000000000..cf1de5c7c\n--- /dev/null\n+++ b/.fabro/journal/01M1XCC9SP1YH38326ZCVJZT3J.jsonl\n@@ -0,0 +1 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XCC9SP1YH38326ZCVJZT3J\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T09:34:49Z\",\"data\":\"child 01M1XCHJTDBJKZ31VFMY1KD61Q seed fabro-bc9b succeeded (12m, $0.40); PR #33 open, auto-merge squash enabled 07:46Z, blocked >2h by red CI dogfood-gate (Rust tests exit 100). Run-local gate was green. Possible stale sqlx MIGRATOR in CI cache — the very failure mode this PR hardens; next pass should check the CI log and consider cache-bust/re-run.\"}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 1,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "soft"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1452,6 +1533,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 135,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T09:34:54.111838916Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T09:34:54.111413913Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"

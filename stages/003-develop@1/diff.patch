@@ -1,0 +1,7 @@
+diff --git a/.fabro/journal/01M1XCC9SP1YH38326ZCVJZT3J.jsonl b/.fabro/journal/01M1XCC9SP1YH38326ZCVJZT3J.jsonl
+new file mode 100644
+index 000000000..cf1de5c7c
+--- /dev/null
++++ b/.fabro/journal/01M1XCC9SP1YH38326ZCVJZT3J.jsonl
+@@ -0,0 +1 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1XCC9SP1YH38326ZCVJZT3J","node":"develop","visit":1,"status":"succeeded","ts":"2026-09-07T09:34:49Z","data":"child 01M1XCHJTDBJKZ31VFMY1KD61Q seed fabro-bc9b succeeded (12m, $0.40); PR #33 open, auto-merge squash enabled 07:46Z, blocked >2h by red CI dogfood-gate (Rust tests exit 100). Run-local gate was green. Possible stale sqlx MIGRATOR in CI cache — the very failure mode this PR hardens; next pass should check the CI log and consider cache-bust/re-run."}
