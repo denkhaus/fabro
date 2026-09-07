@@ -1,0 +1,528 @@
+diff --git a/.fabro/journal/01M1XN2KWG6T0PHRTJWZ8R0AZX.jsonl b/.fabro/journal/01M1XN2KWG6T0PHRTJWZ8R0AZX.jsonl
+index a54b4db..53b32e3 100644
+--- a/.fabro/journal/01M1XN2KWG6T0PHRTJWZ8R0AZX.jsonl
++++ b/.fabro/journal/01M1XN2KWG6T0PHRTJWZ8R0AZX.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1XN2KWG6T0PHRTJWZ8R0AZX","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T10:02:16Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1XN2KWG6T0PHRTJWZ8R0AZX","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-07T10:05:39Z","data":{"painpoints":[],"observations":["fabro-bde4 basis verified fresh (incident 2026-09-07, PR #33 in git log); wait.rs has only terminal/merged/closed_unmerged/timeout — gap real.","Spec ambiguity resolved in brief: value named `blocked`, signal = pulls-API mergeable_state dirty/blocked sustained 2 consecutive polls (10s GitHub poll interval in wait.rs), no checks-API addition.","TS client regen needs java (fabro-3b1b open): brief permits consistent hand-edit of the generated client if openapi-generator-cli unavailable.","Conductor until=merged routing lives in TWO prompt files: merge-leg.md (step 4) and develop-leg.md (step 5) — both must gain the blocked route; revise-leg.md is until=terminal only."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1XN2KWG6T0PHRTJWZ8R0AZX","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-07T10:33:00Z","data":{"painpoints":[{"text":"TestAppStateBuilder (lib/apps/fabro-server/src/test_support.rs) had no github_api_base_url setter until this seed added one — every it-test needing a mock GitHub had to either stay in the cfg(test) unit suite or duplicate create_github_token_app_state (fabro-bde4, run 01M1XN2KWG6T0PHRTJWZ8R0AZX). Suggestion: consider exposing a shared mock-github app helper in test_support so future it-tests don't re-derive the token-strategy settings + vault_entries incantation."}],"observations":["httpmock 0.8.3 has no per-mock hit limit (no up_to_n_times); modeling transient-then-changed GitHub responses requires spawning the request task, waiting on mock.calls_async(), then mock.delete() + creating the follow-up mock — the pattern used in merged_wait_ignores_transient_blocked_observation.","wait.rs uses std::time::Instant for the poll cadence, so paused-clock tokio tests cannot fast-forward it; the confirmation interval (BLOCKED_CONFIRMATION_POLL_INTERVAL=1.5s) is what keeps sustained-window tests fast rather than 10s+ (GITHUB_POLL_INTERVAL)."]}}
+diff --git a/.fabro/workflows/conductor/prompts/develop-leg.md b/.fabro/workflows/conductor/prompts/develop-leg.md
+index b1a8766..a38a5df 100644
+--- a/.fabro/workflows/conductor/prompts/develop-leg.md
++++ b/.fabro/workflows/conductor/prompts/develop-leg.md
+@@ -14,7 +14,7 @@ is wrong):
+ 2. Wait terminal: ONE call `fabro_run_wait {"run_id": "<child_run_id>", "until": "terminal", "timeout_ms": 3600000}` — it blocks until terminal or the 60 min deadline. `reached=timeout` (child still running): call again. Never shell-sleep poll loops (fabro-571e).
+ 3. Child FAILED: route "Develop child failed" + journal the reason (retriable causes simply end this pass; the next fire retries the seed).
+ 4. Child SUCCEEDED with goal "Tracker empty"-like completion and no PR: route "Tracker empty" (journal it — the queue is done; the human seeds new demand).
+-5. Child SUCCEEDED: wait for PR auto-merge: `fabro_run_wait {"run_id": "<child_run_id>", "until": "merged", "timeout_ms": 1200000}` — `reached=merged` -> route "Develop integrated" (context key `child_run_id` stays for the revisor leg); `reached=timeout` -> call again; `reached=closed_unmerged` or terminal-failed -> journal it and route "Develop child failed".
++5. Child SUCCEEDED: wait for PR auto-merge: `fabro_run_wait {"run_id": "<child_run_id>", "until": "merged", "timeout_ms": 1200000}` — `reached=merged` -> route "Develop integrated" (context key `child_run_id` stays for the revisor leg); `reached=timeout` -> call again; `reached=blocked` -> journal it (merge gate stuck: failed required checks or dirty/blocked base; NEVER re-wait — fabro-bde4) and route "Develop child failed"; `reached=closed_unmerged` or terminal-failed -> journal it and route "Develop child failed".
+ 
+ ## Workflow addressing (fabro-e297, server-side resolution)
+ 
+diff --git a/.fabro/workflows/conductor/prompts/merge-leg.md b/.fabro/workflows/conductor/prompts/merge-leg.md
+index ceb52c7..db72eaf 100644
+--- a/.fabro/workflows/conductor/prompts/merge-leg.md
++++ b/.fabro/workflows/conductor/prompts/merge-leg.md
+@@ -16,7 +16,7 @@ is wrong):
+    `fabro_run_wait {"run_id": "<child_run_id>", "until": "terminal", "timeout_ms": 2400000}`.
+    `reached=timeout` (still running): call again. Never shell-sleep poll loops (fabro-571e).
+ 3. If the child FAILED: route "Merge child failed" and journal the failure reason — the manual /merge-upstream skill owns hard conflicts. Do not retry in this pass.
+-4. If the child SUCCEEDED: wait for the PR auto-merge (Dogfood Gate): `fabro_run_wait {"run_id": "<child_run_id>", "until": "merged", "timeout_ms": 1200000}` (fabro-571e: the server checks the PR state — no git fetch/tree diff here). `reached=merged` -> route "Infra pass complete". `reached=timeout` -> call again. `reached=closed_unmerged` or terminal-failed -> "Merge child failed" with a journal note (gate stuck; check the PR).
++4. If the child SUCCEEDED: wait for the PR auto-merge (Dogfood Gate): `fabro_run_wait {"run_id": "<child_run_id>", "until": "merged", "timeout_ms": 1200000}` (fabro-571e: the server checks the PR state — no git fetch/tree diff here). `reached=merged` -> route "Infra pass complete". `reached=timeout` -> call again. `reached=blocked` -> "Merge child failed" with a journal note (merge gate stuck: failed required checks or dirty/blocked base; NEVER re-wait — fabro-bde4). `reached=closed_unmerged` or terminal-failed -> "Merge child failed" with a journal note (gate stuck; check the PR).
+ 
+ ## Workflow addressing (fabro-e297, server-side resolution)
+ 
+diff --git a/.mulch/expertise/workflows.jsonl b/.mulch/expertise/workflows.jsonl
+index e42c947..9811649 100644
+--- a/.mulch/expertise/workflows.jsonl
++++ b/.mulch/expertise/workflows.jsonl
+@@ -27,3 +27,4 @@
+ {"type":"decision","classification":"tactical","recorded_at":"2026-09-06T09:31:46.870Z","evidence":{"seeds":"fabro-571e","commit":"df6a6f2ae7955a87ccfa08f47bb6d6f2e12c1c6f"},"dir_anchors":[".fabro/workflows/conductor/prompts","lib/components/fabro-tool/src"],"title":"two-wait-tools-division-of-labor","rationale":"fabro_run_gather (upstream, MCP-public, multi-run fan-in) and the new fabro_run_wait (fabro-571e, single-run long-poll with merged support) overlap; retiring gather violates the carry-upstream-forward posture, so the user split them by wait shape (ADR-0016).","id":"mx-c5dfb9"}
+ {"type":"convention","classification":"tactical","recorded_at":"2026-09-06T09:46:28.042Z","evidence":{"seeds":"fabro-571e","commit":"35a3b441930b6f66906e3120c435d8454f6c47de"},"content":"Adding a fabro_run_* tool definition requires updating: (1) fabro-tool common::tests::shared_tool_definitions_include_run_management_catalog, (2) fabro-workflow api::tests::agent_run_tools_register_exact_shared_definitions, (3) every FabroToolBackend mock gains the required method (compiler enumerates missing impls; test-only mocks bail! with 'not supported by this mock').","id":"mx-d24267"}
+ {"type":"convention","classification":"tactical","recorded_at":"2026-09-06T14:14:41.630Z","evidence":{"seeds":"fabro-571e","commit":"39adffb840ba8c2cc10971d3116f7ec3eb2bd2a9"},"content":"Adding a fabro_run_* tool definition requires updating FOUR exact-list/static-catalog sites: (1) fabro-tool common::tests::shared_tool_definitions_include_run_management_catalog, (2) fabro-workflow api::tests::agent_run_tools_register_exact_shared_definitions, (3) fabro-validate rules/tool_catalog.rs KNOWN_FABRO_RUN_TOOL_NAMES (static list; drift test static_catalogs_match_live_crates fails in CI otherwise — the dogfood gate caught this after local suites passed, PR #31), (4) every FabroToolBackend mock gains the required method (compiler enumerates missing impls). Verification set: nextest -p fabro-tool -p fabro-workflow -p fabro-validate -p fabro-server.","id":"mx-504d6a"}
++{"type":"pattern","classification":"tactical","recorded_at":"2026-09-07T10:32:23.004Z","evidence":{"commit":"422fbb03afdcaa4629dd9ed1f3b50ee253540ece"},"name":"mock-github-it-test-builder","description":"Mock-GitHub it-tests for server wait/PR handlers (fabro-bde4): TestAppStateBuilder gained github_api_base_url(+vault_entries GITHUB_TOKEN, settings [server.integrations.github] strategy=token); point it at an httpmock MockServer. For consecutive-poll behavior (sustained blocked mergeable_state >=2 polls), swap mocks mid-test: tokio::spawn the oneshot request, poll mock.calls_async() until the first hit, mock.delete(), create the follow-up mock. wait.rs gates the confirmation poll at BLOCKED_CONFIRMATION_POLL_INTERVAL (1.5s), keeping such tests under ~4s.","files":[".fabro/workflows/conductor/prompts/develop-leg.md",".fabro/workflows/conductor/prompts/merge-leg.md","docs/public/api-reference/fabro-api.yaml","lib/apps/fabro-server/src/server/handler/wait.rs","lib/apps/fabro-server/src/test_support.rs","lib/apps/fabro-server/tests/it/api/run_wait.rs","lib/components/fabro-tool/src/wait.rs","lib/foundation/fabro-types/src/pull_request.rs","lib/packages/fabro-api-client/src/models/run-wait-result.ts"],"id":"mx-17b677"}
+diff --git a/docs/public/api-reference/fabro-api.yaml b/docs/public/api-reference/fabro-api.yaml
+index a56c7cf..622fd0b 100644
+--- a/docs/public/api-reference/fabro-api.yaml
++++ b/docs/public/api-reference/fabro-api.yaml
+@@ -1607,7 +1607,11 @@ paths:
+         current status, not an error; callers may call again to continue
+         waiting. With `until=merged`, a pull request that closed without
+         merging reports `reached=closed_unmerged`, and a run that fails
+-        hard while waiting reports `reached=terminal`.
++        hard while waiting reports `reached=terminal`. An open pull
++        request whose GitHub `mergeable_state` stays `dirty` or `blocked`
++        across consecutive polls reports `reached=blocked` — the merge
++        gate is stuck (failed required checks or an unmergeable base) and
++        re-waiting will not clear it.
+       parameters:
+         - $ref: "#/components/parameters/RunId"
+         - name: until
+@@ -9159,17 +9163,21 @@ components:
+             - terminal
+             - merged
+             - closed_unmerged
++            - blocked
+             - timeout
+           description: >
+             Which condition ended the wait: the run reached a terminal state,
+             the pull request merged, the pull request closed without merging
++            (until=merged only), the open pull request's GitHub
++            mergeable_state stayed dirty/blocked across consecutive polls —
++            failed required checks or a dirty base, so the merge gate is stuck
+             (until=merged only), or the timeout_ms deadline expired.
+         status:
+           $ref: "#/components/schemas/RunStatus"
+         pull_request:
+           description: >
+-            Linked pull request, present for reached=merged and
+-            reached=closed_unmerged responses.
++            Linked pull request, present for reached=merged,
++            reached=closed_unmerged, and reached=blocked responses.
+           allOf:
+             - $ref: "#/components/schemas/PullRequestLink"
+ 
+diff --git a/lib/apps/fabro-server/src/server/handler/wait.rs b/lib/apps/fabro-server/src/server/handler/wait.rs
+index 36d46be..a712f4a 100644
+--- a/lib/apps/fabro-server/src/server/handler/wait.rs
++++ b/lib/apps/fabro-server/src/server/handler/wait.rs
+@@ -46,6 +46,19 @@ const GITHUB_POLL_INTERVAL: Duration = Duration::from_secs(10);
+ /// retrying on timeout until the deadline expires.
+ const GITHUB_CALL_TIMEOUT: Duration = Duration::from_secs(15);
+ 
++/// How many consecutive GitHub polls must report a blocked/dirty
++/// `mergeable_state` before the wait reports `reached=blocked`. One
++/// observation can be GitHub mid-recompute; two sustained observations
++/// mean the merge gate (required checks or a mergeable base) is stuck
++/// and re-waiting will not clear it (fabro-bde4).
++const BLOCKED_POLL_THRESHOLD: u32 = 2;
++
++/// Confirmation poll cadence after a first blocked/dirty observation.
++/// Shorter than [`GITHUB_POLL_INTERVAL`]: the sustained-window check
++/// needs a quick second sample, not another full poll period, before
++/// the state can flip back to clean/unknown on a transient.
++const BLOCKED_CONFIRMATION_POLL_INTERVAL: Duration = Duration::from_millis(1_500);
++
+ #[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+ #[serde(rename_all = "snake_case")]
+ enum WaitUntil {
+@@ -108,7 +121,8 @@ async fn wait_until_terminal(state: &AppState, id: &RunId, deadline: Instant) ->
+ }
+ 
+ /// Poll the store and the GitHub pull request until the PR merges, the run
+-/// fails hard, the PR closes without merging, or the deadline expires.
++/// fails hard, the PR closes without merging, the PR's merge gate stays
++/// blocked, or the deadline expires.
+ async fn wait_until_merged(
+     state: &AppState,
+     id: &RunId,
+@@ -121,6 +135,7 @@ async fn wait_until_merged(
+     };
+ 
+     let mut last_github_poll: Option<Instant> = None;
++    let mut blocked_streak: u32 = 0;
+     loop {
+         let status = match current_status(state, id).await {
+             Ok(status) => status,
+@@ -136,7 +151,14 @@ async fn wait_until_merged(
+                 Some(ctx.record.clone()),
+             );
+         }
+-        let poll_due = last_github_poll.is_none_or(|last| last.elapsed() >= GITHUB_POLL_INTERVAL);
++        let poll_due = last_github_poll.is_none_or(|last| {
++            let interval = if blocked_streak > 0 {
++                BLOCKED_CONFIRMATION_POLL_INTERVAL
++            } else {
++                GITHUB_POLL_INTERVAL
++            };
++            last.elapsed() >= interval
++        });
+         if poll_due {
+             last_github_poll = Some(Instant::now());
+             let fetch = timeout(
+@@ -162,6 +184,26 @@ async fn wait_until_merged(
+                             Some(ctx.record.clone()),
+                         );
+                     }
++                    // An open PR whose mergeable_state stays dirty/blocked
++                    // across consecutive polls is a stuck merge gate (failed
++                    // required checks or an unmergeable base). `None` and
++                    // "unknown" mean GitHub is still computing and never
++                    // count (fabro-bde4).
++                    if detail.mergeable_state.as_deref().is_some_and(|state| {
++                        state.eq_ignore_ascii_case("dirty") || state.eq_ignore_ascii_case("blocked")
++                    }) {
++                        blocked_streak = blocked_streak.saturating_add(1);
++                        if blocked_streak >= BLOCKED_POLL_THRESHOLD {
++                            return wait_result(
++                                id,
++                                RunWaitResultReached::Blocked,
++                                status,
++                                Some(ctx.record.clone()),
++                            );
++                        }
++                    } else {
++                        blocked_streak = 0;
++                    }
+                 }
+                 Ok(Err(fabro_github::PullRequestApiError::NotFound { .. })) => {
+                     // A deleted PR will never merge; report it as
+diff --git a/lib/apps/fabro-server/src/test_support.rs b/lib/apps/fabro-server/src/test_support.rs
+index a2f4ea0..3e1892a 100644
+--- a/lib/apps/fabro-server/src/test_support.rs
++++ b/lib/apps/fabro-server/src/test_support.rs
+@@ -104,6 +104,7 @@ pub struct TestAppStateBuilder {
+     llm_catalog_settings:         LlmCatalogSettings,
+     automation_materializer:      Option<TestAutomationRunMaterializer>,
+     automation_breaker_notifier:  Option<Arc<dyn AutomationBreakerNotifier>>,
++    github_api_base_url:          Option<String>,
+     #[cfg(test)]
+     worker_runtime:               Option<Arc<dyn WorkerRuntime>>,
+ }
+@@ -127,6 +128,7 @@ impl Default for TestAppStateBuilder {
+             llm_catalog_settings:         LlmCatalogSettings::default(),
+             automation_materializer:      None,
+             automation_breaker_notifier:  None,
++            github_api_base_url:          None,
+             #[cfg(test)]
+             worker_runtime:               None,
+         }
+@@ -237,6 +239,13 @@ impl TestAppStateBuilder {
+         self
+     }
+ 
++    /// Point the server's GitHub API client at a mock server (e.g. an
++    /// `httpmock::MockServer` base URL) instead of github.com.
++    pub fn github_api_base_url(mut self, github_api_base_url: impl Into<String>) -> Self {
++        self.github_api_base_url = Some(github_api_base_url.into());
++        self
++    }
++
+     fn server_env_path(mut self, server_env_path: PathBuf) -> Self {
+         self.server_env_path = Some(server_env_path);
+         self
+@@ -315,7 +324,7 @@ impl TestAppStateBuilder {
+             preloaded_vault,
+             server_secrets: load_test_server_secrets(server_env_path, self.server_secret_env),
+             env_lookup: self.env_lookup,
+-            github_api_base_url: None,
++            github_api_base_url: self.github_api_base_url,
+             active_config_path,
+             http_client: Some(
+                 fabro_http::test_http_client().expect("test HTTP client should build"),
+diff --git a/lib/apps/fabro-server/tests/it/api/run_wait.rs b/lib/apps/fabro-server/tests/it/api/run_wait.rs
+index db9e7b1..d800953 100644
+--- a/lib/apps/fabro-server/tests/it/api/run_wait.rs
++++ b/lib/apps/fabro-server/tests/it/api/run_wait.rs
+@@ -5,20 +5,24 @@
+ //! immediate `terminal` results for finished runs, structured `timeout`
+ //! results carrying the current status, the `until=merged` pull-request
+ //! precondition, and query validation. GitHub-backed merge detection is
+-//! covered by the fabro-github fetch tests plus the handler's wiring;
+-//! these tests do not reach the network.
++//! covered against a local `httpmock` GitHub API — the tests never reach
++//! the real network.
+ 
+ use std::sync::Arc;
+ use std::time::Duration;
+ 
+ use axum::body::Body;
+ use axum::http::{Request, StatusCode};
+-use fabro_server::test_support::test_app_state_with_store;
++use fabro_server::test_support::{
++    TestAppStateBuilder, build_test_router, test_app_state_with_store,
++};
+ use fabro_store::{ArtifactStore, Database};
+-use fabro_types::{Graph, RunId, WorkflowSettings, test_support};
++use fabro_types::{Graph, PullRequestLink, RunId, WorkflowSettings, test_support};
+ use fabro_workflow::event as workflow_event;
+ use fabro_workflow::run_status::SuccessReason;
++use httpmock::MockServer;
+ use object_store::memory::InMemory as MemoryObjectStore;
++use serde_json::json;
+ use tower::ServiceExt;
+ 
+ use crate::helpers::{api, response_json, response_status, test_settings};
+@@ -226,3 +230,168 @@ async fn unknown_until_value_returns_400() {
+     )
+     .await;
+ }
++
++// ── until=merged blocked-gate regression tests (fabro-bde4) ──────────────
++
++/// Open PR payload served by the mock GitHub API, parameterized only by
++/// `mergeable_state`.
++fn open_pr_body(mergeable_state: &str) -> String {
++    json!({
++        "number": 42,
++        "title": "Develop child",
++        "body": null,
++        "state": "open",
++        "draft": false,
++        "merged": false,
++        "merged_at": null,
++        "mergeable": false,
++        "mergeable_state": mergeable_state,
++        "additions": 10,
++        "deletions": 3,
++        "changed_files": 2,
++        "html_url": "https://github.com/acme/widgets/pull/42",
++        "user": { "login": "testuser" },
++        "head": { "ref": "fabro/run/child" },
++        "base": { "ref": "main" },
++        "created_at": "2026-09-07T08:00:00Z",
++        "updated_at": "2026-09-07T09:00:00Z"
++    })
++    .to_string()
++}
++
++/// App whose GitHub API client points at `github_base_url`, with token
++/// credentials and an in-memory store, mirroring the mock-GitHub pattern
++/// from the fabro-server unit suite.
++fn github_wait_app(github_base_url: String) -> (axum::Router, Arc<Database>) {
++    let settings = crate::helpers::settings_from_toml(
++        r#"
++_version = 1
++
++[server.integrations.github]
++strategy = "token"
++"#,
++    );
++    let (store, artifact_store) = store_bundle();
++    let state = TestAppStateBuilder::new()
++        .runtime_settings(settings.server_settings, settings.manifest_run_defaults)
++        .store_bundle(Arc::clone(&store), artifact_store)
++        .vault_entries([("GITHUB_TOKEN", "ghu_test")])
++        .github_api_base_url(github_base_url)
++        .build();
++    (build_test_router(state), store)
++}
++
++/// A running run with a linked acme/widgets#42 pull request.
++async fn append_running_run_with_pr(store: &Database, run_id: &RunId) {
++    append_run(store, run_id, false).await;
++    let run_store = store.open_run(run_id).await.expect("open run store");
++    workflow_event::append_event(
++        &run_store,
++        run_id,
++        &workflow_event::Event::PullRequestLinked {
++            pull_request: PullRequestLink {
++                owner:  "acme".to_string(),
++                repo:   "widgets".to_string(),
++                number: 42,
++            },
++        },
++    )
++    .await
++    .expect("append PullRequestLinked");
++}
++
++/// An open PR whose mergeable_state stays blocked across consecutive
++/// polls must return `reached=blocked` (with the PR link attached), not
++/// loop `timeout` forever — the fabro-bde4 incident.
++#[tokio::test]
++async fn merged_wait_reports_blocked_when_gate_stuck() {
++    let github = MockServer::start();
++    let pr_mock = github.mock(|when, then| {
++        when.method("GET")
++            .path("/repos/acme/widgets/pulls/42")
++            .header("authorization", "Bearer ghu_test");
++        then.status(200)
++            .header("content-type", "application/json")
++            .body(open_pr_body("blocked"));
++    });
++    let (app, store) = github_wait_app(github.base_url());
++    let run_id = RunId::new();
++    append_running_run_with_pr(&store, &run_id).await;
++
++    let req = Request::builder()
++        .method("GET")
++        .uri(api(&format!(
++            "/runs/{run_id}/wait?until=merged&timeout_ms=10000"
++        )))
++        .body(Body::empty())
++        .unwrap();
++    let resp = app.oneshot(req).await.unwrap();
++    let body = response_json(
++        resp,
++        StatusCode::OK,
++        "GET /api/v1/runs/{id}/wait blocked gate",
++    )
++    .await;
++
++    assert_eq!(body["reached"].as_str(), Some("blocked"));
++    assert_eq!(body["pull_request"]["owner"].as_str(), Some("acme"));
++    assert_eq!(body["pull_request"]["number"].as_u64(), Some(42));
++    // The sustained window needs two consecutive blocked polls.
++    assert!(pr_mock.calls_async().await >= 2);
++}
++
++/// A single transient blocked observation (GitHub still computing, then
++/// reporting unknown) must NOT fire `blocked`; the wait keeps going and
++/// ends in a structured timeout.
++#[tokio::test]
++async fn merged_wait_ignores_transient_blocked_observation() {
++    let github = MockServer::start();
++    let mut blocked_mock = github.mock(|when, then| {
++        when.method("GET")
++            .path("/repos/acme/widgets/pulls/42")
++            .header("authorization", "Bearer ghu_test");
++        then.status(200)
++            .header("content-type", "application/json")
++            .body(open_pr_body("blocked"));
++    });
++    let (app, store) = github_wait_app(github.base_url());
++    let run_id = RunId::new();
++    append_running_run_with_pr(&store, &run_id).await;
++
++    let req = Request::builder()
++        .method("GET")
++        .uri(api(&format!(
++            "/runs/{run_id}/wait?until=merged&timeout_ms=4000"
++        )))
++        .body(Body::empty())
++        .unwrap();
++    let task = tokio::spawn(app.oneshot(req));
++    // After the first (blocked) poll lands, swap the PR to mergeable_state
++    // unknown — GitHub recompute — so the second poll breaks the streak.
++    for _ in 0..500 {
++        if blocked_mock.calls_async().await >= 1 {
++            break;
++        }
++        tokio::time::sleep(Duration::from_millis(10)).await;
++    }
++    blocked_mock.delete();
++    github.mock(|when, then| {
++        when.method("GET")
++            .path("/repos/acme/widgets/pulls/42")
++            .header("authorization", "Bearer ghu_test");
++        then.status(200)
++            .header("content-type", "application/json")
++            .body(open_pr_body("unknown"));
++    });
++
++    let resp = task.await.unwrap().unwrap();
++    let body = response_json(
++        resp,
++        StatusCode::OK,
++        "GET /api/v1/runs/{id}/wait transient blocked",
++    )
++    .await;
++
++    assert_eq!(body["reached"].as_str(), Some("timeout"));
++    assert_eq!(body["status"]["kind"].as_str(), Some("running"));
++}
+diff --git a/lib/components/fabro-tool/src/wait.rs b/lib/components/fabro-tool/src/wait.rs
+index 22a720d..13e9de4 100644
+--- a/lib/components/fabro-tool/src/wait.rs
++++ b/lib/components/fabro-tool/src/wait.rs
+@@ -87,6 +87,10 @@ pub enum RunWaitReached {
+     Terminal,
+     Merged,
+     ClosedUnmerged,
++    /// Open PR whose merge gate is stuck (failed required checks or a
++    /// dirty/blocked mergeable_state sustained across polls). Re-waiting
++    /// will not clear it — route to repair instead (fabro-bde4).
++    Blocked,
+     Timeout,
+ }
+ 
+@@ -106,6 +110,7 @@ impl RunWaitReached {
+             RunWaitResultReached::Terminal => Self::Terminal,
+             RunWaitResultReached::Merged => Self::Merged,
+             RunWaitResultReached::ClosedUnmerged => Self::ClosedUnmerged,
++            RunWaitResultReached::Blocked => Self::Blocked,
+             RunWaitResultReached::Timeout => Self::Timeout,
+         }
+     }
+@@ -184,5 +189,10 @@ mod tests {
+             serde_json::to_value(RunWaitReached::Timeout).unwrap(),
+             serde_json::json!("timeout")
+         );
++        assert_eq!(
++            serde_json::to_value(RunWaitReached::Blocked).unwrap(),
++            serde_json::json!("blocked")
++        );
++        assert_eq!(RunWaitReached::Blocked.to_string(), "blocked");
+     }
+ }
+diff --git a/lib/foundation/fabro-types/src/pull_request.rs b/lib/foundation/fabro-types/src/pull_request.rs
+index 4938083..73dff2b 100644
+--- a/lib/foundation/fabro-types/src/pull_request.rs
++++ b/lib/foundation/fabro-types/src/pull_request.rs
+@@ -230,25 +230,31 @@ pub struct PullRequestRef {
+ /// Fields mirrored directly from GitHub's pull request REST payload.
+ #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+ pub struct PullRequestGithubDetail {
+-    pub number:        u64,
+-    pub title:         String,
+-    pub body:          Option<String>,
+-    pub state:         String,
+-    pub draft:         bool,
++    pub number:          u64,
++    pub title:           String,
++    pub body:            Option<String>,
++    pub state:           String,
++    pub draft:           bool,
+     #[serde(default)]
+-    pub merged:        bool,
++    pub merged:          bool,
+     #[serde(default)]
+-    pub merged_at:     Option<String>,
+-    pub mergeable:     Option<bool>,
+-    pub additions:     u64,
+-    pub deletions:     u64,
+-    pub changed_files: u64,
+-    pub html_url:      String,
+-    pub user:          PullRequestUser,
+-    pub head:          PullRequestRef,
+-    pub base:          PullRequestRef,
+-    pub created_at:    String,
+-    pub updated_at:    String,
++    pub merged_at:       Option<String>,
++    pub mergeable:       Option<bool>,
++    /// Raw GitHub `mergeable_state` (`clean`, `dirty`, `blocked`,
++    /// `unknown`, ...). `None` or `unknown` means GitHub is still
++    /// computing mergeability — callers must not treat that as a
++    /// gate-failure signal.
++    #[serde(default)]
++    pub mergeable_state: Option<String>,
++    pub additions:       u64,
++    pub deletions:       u64,
++    pub changed_files:   u64,
++    pub html_url:        String,
++    pub user:            PullRequestUser,
++    pub head:            PullRequestRef,
++    pub base:            PullRequestRef,
++    pub created_at:      String,
++    pub updated_at:      String,
+ }
+ 
+ /// Live GitHub pull request fields returned only after a successful GitHub API
+diff --git a/lib/packages/fabro-api-client/src/models/run-wait-result.ts b/lib/packages/fabro-api-client/src/models/run-wait-result.ts
+index a340822..c5090cd 100644
+--- a/lib/packages/fabro-api-client/src/models/run-wait-result.ts
++++ b/lib/packages/fabro-api-client/src/models/run-wait-result.ts
+@@ -26,12 +26,12 @@ import type { RunStatus } from './run-status';
+ export interface RunWaitResult {
+     'run_id': string;
+     /**
+-     * Which condition ended the wait: the run reached a terminal state, the pull request merged, the pull request closed without merging (until=merged only), or the timeout_ms deadline expired.
++     * Which condition ended the wait: the run reached a terminal state, the pull request merged, the pull request closed without merging (until=merged only), the open pull request's GitHub mergeable_state stayed dirty/blocked across consecutive polls — failed required checks or a dirty base, so the merge gate is stuck (until=merged only), or the timeout_ms deadline expired.
+      */
+     'reached': RunWaitResultReachedEnum;
+     'status': RunStatus;
+     /**
+-     * Linked pull request, present for reached=merged and reached=closed_unmerged responses.
++     * Linked pull request, present for reached=merged, reached=closed_unmerged, and reached=blocked responses.
+      */
+     'pull_request'?: PullRequestLink;
+ }
+@@ -40,6 +40,7 @@ export const RunWaitResultReachedEnum = {
+     TERMINAL: 'terminal',
+     MERGED: 'merged',
+     CLOSED_UNMERGED: 'closed_unmerged',
++    BLOCKED: 'blocked',
+     TIMEOUT: 'timeout'
+ } as const;
+ 
