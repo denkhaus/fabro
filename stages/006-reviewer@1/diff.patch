@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M1Z1PK3D7R9MEWDP7QDZMA1D.jsonl b/.fabro/journal/01M1Z1PK3D7R9MEWDP7QDZMA1D.jsonl
+index 2f37bc3..4637a5e 100644
+--- a/.fabro/journal/01M1Z1PK3D7R9MEWDP7QDZMA1D.jsonl
++++ b/.fabro/journal/01M1Z1PK3D7R9MEWDP7QDZMA1D.jsonl
+@@ -3,3 +3,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1Z1PK3D7R9MEWDP7QDZMA1D","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-07T23:03:28Z","data":{"painpoints":[],"observations":["The seed evidence (run 01M1Z017) described the target as the 'CHECK THE SPEC FOR CONTRADICTIONS' item at line 44 — the line number matched exactly in the current tree, so no stale-basis correction was needed; the clause was appended to that single line to keep the diff truly one-line."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Z1PK3D7R9MEWDP7QDZMA1D","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-07T23:03:43Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Z1PK3D7R9MEWDP7QDZMA1D","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-07T23:03:53Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Z1PK3D7R9MEWDP7QDZMA1D","node":"reviewer","visit":1,"status":"succeeded","ts":"2026-09-07T23:04:19Z","data":{"painpoints":[],"observations":["Verified planner.md step 7 line 44 in the worktree via sed (platform path, shell-only per brief); the loop-work diff in the evidence exactly matches the file state and the seed spec's two acceptance criteria. Churn-only seed correctly identified — review scope was the loop diff, not source files. Gate treated as opaque-green per contract; no re-run needed since no Rust surface changed."]}}
