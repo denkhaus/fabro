@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1Z1K67VQBC52DVT9T76VQDV.jsonl b/.fabro/journal/01M1Z1K67VQBC52DVT9T76VQDV.jsonl
+new file mode 100644
+index 000000000..c5ad05d81
+--- /dev/null
++++ b/.fabro/journal/01M1Z1K67VQBC52DVT9T76VQDV.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1Z1K67VQBC52DVT9T76VQDV","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T23:00:19Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Z1K67VQBC52DVT9T76VQDV","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-07T23:01:37Z","data":["Upstream drift count origin/denkhaus..upstream/main = 0 (< 5 MIN threshold) -> route Work; drift accumulates toward the threshold","Newest upstream subject: 'Bump version to 0.348.0-nightly.0'","Revisor backlog: none — newest completed develop run 01M1Z017EQK3Q2QCEMTA6XXNSK is covered by revisor commit f7b6261 ('distill run 01M1Z017 into seeds fabro-cf76 and fabro-eed2'), and 01M1YY8JJCE3 by commit 572cc13","Friction: initial fetch timed out at the default 10s shell timeout; both remotes had large first-time ref advertisements (hundreds of fabro/meta + fabro/run branches). Retried with a longer timeout and it succeeded. Suggest budgeting >=60s for the surveyor fetch step","Remote 'upstream' already existed pointing at https://github.com/fabro-sh/fabro"]}
