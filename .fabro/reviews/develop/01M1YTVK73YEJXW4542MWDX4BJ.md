@@ -1,0 +1,61 @@
+# Improve review — run 01M1YTVK73YEJXW4542MWDX4BJ
+
+- workflow: develop
+- branch integrated: this revisor pass (unmerged until approved)
+- status: succeeded (4.4 min, revisor pass — reason and cost in run detail)
+- generated: 2026-09-07 21:10+0000 by revisor `fabro_ask`
+
+---
+
+## Recommendations, ordered by expected impact
+
+All numbers below come from this run's events, checkpoints, and the worker log (run `01M1YTVK73YEJXW4542MWDX4BJ`, seed fabro-05d0, 4m24s wall, $0.245, zero retries — a clean run, so the friction below is structural, not failure noise).
+
+**1. Close the "implemented but inert" gap: seed closure doesn't require the image rebuild that makes the fix effective.**
+What happened: the run's entire deliverable is a Dockerfile edit (`aqua:cli/cli@v2.100.0` in `.fabro/Dockerfile.toolchain`). Docker is absent from run sandboxes (implementer events seq 116–119), so no build ran; the reviewer explicitly noted "the first real image rebuild after this lands should be watched" and approved anyway. The prior run already demonstrated the failure mode this creates: `gh` has been in `.fabro/Dockerfile` since commit 98ed9f1 (Sep 5) while run containers still hit exit 127 on Sep 7 — the deployed image predated the file. Nothing in the graph or closeout tracks that.
+Change: in `.fabro/workflows/develop/scripts/closeout.nu`, detect a diff touching `Dockerfile.toolchain`/`Dockerfile*` and emit a run-level warning ("seed closes, but takes effect only after `fabro-toolchain:noble` rebuild") surfaced in the run summary and PR body (the delivery channel fabro-5b0a proposes); optionally add a `just rebuild-toolchain` recipe the warning can name.
+Expected effect: eliminates the recurring class where a seed is closed green while the behavior it promised stays broken for N subsequent runs; the next planner's `gh pr list` guard actually functions instead of fail-opening again.
+
+**2. Write spec corrections back to the tracker — the planner re-derived a known-stale seed path at full cost.**
+What happened: seed fabro-05d0 names `.fabro/Dockerfile` as the fix target; that file is the lab/GUI image and already has gh. The planner burned ~6 tool calls and ~45 s (events seq 44–82, 21:02:49→21:03:36 — most of its 67 s stage and $0.097, 39% of run cost) proving the correction, then the implementer hit the same contradiction again and journaled "Suggest `sd update` on fabro-05d0's description" (implementer journal, checkpoint seq 194). Nobody applied it; the seed closed with the stale body.
+Change: `.fabro/workflows/develop/prompts/planner.md`, step 3 (stale-basis check): when the basis resolves but the spec's named path is wrong, the planner (already the sole tracker writer) must record the correction via `sd update <id> --description ...` before claiming, so the fix is durable in the tracker, not just in this run's brief.
+Expected effect: cuts roughly 40% of planner time/tokens on platform-path seeds (the tracker's most common class) and removes the contradiction from every future reader's context.
+
+**3. Cut the AGENTS.md memory tax: ~24 KB loaded into all three agent stages ≈ 26% of run input tokens.**
+What happened: `agent.memory.loaded` shows 23,967 bytes (~5.6–6.0k tokens) loaded into planner, implementer, and reviewer alike (memory category in each context-window breakdown). Run totals: 66.9k input tokens; ~17.6k of those are this one file — mostly Rust-workspace conventions irrelevant to a Dockerfile seed.
+Change: either split `AGENTS.md` into a slim core plus role/domain sections the engine selects, or implement per-node memory scoping (already open as fabro-9588) — planner needs tracker/scope rules, not gate recipes.
+Expected effect: ~20–25% token and cost reduction per run with zero behavioral risk at these context sizes (peak usage was 2.5% of the 1M window).
+
+**4. Stop feeding the planner the 161-seed firehose.**
+What happened: the mandated `sd ready --assignee fabro --limit 200` returned 161 items / 21,451 bytes (event seq 33); conversation tokens jumped 11.5k→17.4k on that one call. The planner only needed the top candidate.
+Change: `.fabro/workflows/develop/prompts/planner.md` sd table — change the entry command to a top-N view (`--limit 20` first, widen only when the top candidates are all in-flight/superseded), which is also the open ask in fabro-c3b4.
+Expected effect: ~8–10k fewer tokens per planner pass (~$0.01–0.02 and several seconds), and less temptation to treat listing order as ranking (a documented past trap).
+
+**5. Fix the `ml record` flag contract and its exit-0-on-error masking.**
+What happened: the implementer's first lesson-capture call failed with "pattern records are missing required flag(s): --name" (events seq 163–165) — and the process still exited **0** with `is_error: false`, so nothing but the stdout text told the agent it failed. The implementer prompt's step 6 shows `ml record <domain> --type ... --description ...` with no `--name`, teaching the exact failing form.
+Change: (a) `.fabro/workflows/develop/prompts/implementer.md` step 6 — document the exact flag set per record type (pattern requires `--name`); (b) file the mulch-cli exit-code bug (non-zero on errors) — same class as sd's fabro-d936, currently unfixed for `ml`.
+Expected effect: one fewer failed tool call + LLM round per lesson capture, and deterministic error detection instead of relying on the model noticing "Error:" in stdout.
+
+**6. Silence the by-design `preamble_allow_keys` warning.**
+What happened: the run's only WARN (worker log, 21:03:53): "preamble_allow_keys entry absent from context node=implementer key=output.gate_known_bug_hits". That key only exists after a gate-red bounce; on a green first visit its absence is the design, so the warning fires on every clean run and trains people to ignore the log.
+Change: engine `fabro_workflow::lifecycle::fidelity` — downgrade to info, or warn only when the key's producer node (`gatebounce`) actually executed (this is open seed fabro-8275; this run is another data point).
+Expected effect: zero-noise warn channel, so genuine context-contract drift stays visible.
+
+**7. Make the implementer's seed re-fetch conditional — it re-read a seed the planner had just fully corrected.**
+What happened: prompt step 1 mandates "Re-read the seed requirements from `sd show`" unconditionally, while the Input section says fetch only "if the brief is thin". The brief here was comprehensive (spec correction included), yet the implementer spent a call re-reading the identical seed body (seq 107–112).
+Change: `.fabro/workflows/develop/prompts/implementer.md` step 1 — align it with the Input section: re-fetch only when the brief lacks acceptance criteria or carries unresolved ambiguity (open seed fabro-4881 names exactly this).
+Expected effect: one fewer tool round and ~1–2k tokens per implementer pass.
+
+**8. Skip metadata snapshots on command stages.**
+What happened: metadata snapshots (~1.9 s each) ran at init and around agent-stage checkpoints; on a 264 s run that's several seconds of pure bookkeeping on stages (tester, evidence, closeout) that change no agent-relevant state (events seq 15–16, 91–92; the pattern repeats per checkpoint).
+Change: engine checkpoint path — skip `metadata.snapshot` for command-handler nodes (open seed fabro-c2ca already specifies this).
+Expected effect: ~4–6 s per run (~2%) at zero risk; scales with run length.
+
+**9. Tighten the evidence stage-section render before it bites again.**
+What happened: the reviewer's prompt rendered the evidence capture with "(21 lines omitted)" mid-capture — this time the elided lines were the header/churn counts and the churn-only diff section survived, so review succeeded without a blob read (reviewer tool time: 112 ms, one grep). With a non-empty seed-work section, the same elision forces the blob detour the 24 KB budget was raised to avoid (the known fabro-meta-c9f2 / engine dedup item).
+Change: engine stage-section renderer — for nodes with `fidelity="summary:high"`, render the full `command.output` in the stage section (it is already inline in Context) instead of a tail-capped duplicate; dedup the two renderings.
+Expected effect: removes the residual truncation path in the evidence pipe; reviews stop depending on luck over which 21 lines get cut.
+
+**Not worth changing based on this run:** reasoning-effort tuning (planner/implementer/reviewer at `low` produced 1,072/1,148/412 reasoning tokens — already the steady state the graph comments targeted); the gate (5.9 s, correctly no-oped with "no crates touched"); cache behavior (446k cache-read tokens, 0 writes, no stall); and the evidence blob sizing (7.3 KB capture stayed inline under the 16 KB cap).
+
+**What I could not inspect:** events after closeout (PR #53 body generation / auto-merge details) beyond the summary fields, so I can't ground a recommendation about the PR postlude this run; and the deployed image's build date, which is exactly why recommendation 1 matters.
