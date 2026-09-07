@@ -1,0 +1,42 @@
+diff --git a/.fabro/journal/01M1Y12A93HSB4VDZN55HZYNYS.jsonl b/.fabro/journal/01M1Y12A93HSB4VDZN55HZYNYS.jsonl
+index df883d7..e742b04 100644
+--- a/.fabro/journal/01M1Y12A93HSB4VDZN55HZYNYS.jsonl
++++ b/.fabro/journal/01M1Y12A93HSB4VDZN55HZYNYS.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1Y12A93HSB4VDZN55HZYNYS","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T13:31:53Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Y12A93HSB4VDZN55HZYNYS","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-07T13:39:06Z","data":{"painpoints":[{"text":"Planner reconnaissance cannot cheaply verify CLI subcommand usage: `cargo run -q -p fabro-cli -- validate --help` timed out at 240s (no target/debug binary cached, cold build) in run 01M1Y12A93HSB4VDZN55HZYNYS. This is exactly fabro-513e's premise (graph-only validation without a Rust cold build) reproducing from the planner side too — a `just validate-workflows` recipe or a prebuilt binary would fix it."}],"observations":["fabro-bbbb's parenthetical '(keep high semantics for changes_requested re-plans if conditional effort isn't available)' is ambiguous — resolved in the brief to static `low` for all passes because the engine has no per-visit conditional reasoning_effort (static node attribute in lib/foundation/fabro-config/src/layers/run.rs).","Basis check succeeded via shell reads of `.fabro/workflows/develop/workflow.fabro` (fs_hide binds file tools only, as documented); planner reasoning_effort=high confirmed live at line 49, so the seed is fresh, not stale.","fabro-513e (just validate-workflows recipe) premise reproduced live this run — it may be a good next candidate for the following run."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Y12A93HSB4VDZN55HZYNYS","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-07T13:40:56Z","data":{"painpoints":[],"observations":["No graph-only parse check exists for `.fabro` workflow files without a Rust cold build (fabro-513e already open) — I fell back to a python structural check (bracket balance + attribute commas), which catches syntax slips but not schema-level errors; the tester gate remains the only real parser, so a bad edit surfaces one stage late."]}}
+diff --git a/.fabro/workflows/develop/workflow.fabro b/.fabro/workflows/develop/workflow.fabro
+index c312562..c454895 100644
+--- a/.fabro/workflows/develop/workflow.fabro
++++ b/.fabro/workflows/develop/workflow.fabro
+@@ -46,7 +46,19 @@ digraph Develop {
+         max_visits=20,
+         goal_gate=true,
+         retry_policy="standard",
+-        reasoning_effort="high",
++        // fabro-bbbb: reasoning_effort dropped high -> low. Basis: run
++        // 01M1XZCWNBR33BZGHQXNRA80J9 measured the planner at 83.6s wall
++        // = 40% of run, $0.080 = 45% of cost, 4,469 of 5,899 reasoning
++        // tokens — mostly tie-breaking two High seeds. `sd ready
++        // --assignee fabro` is deterministic since fabro-5e09 (PR #38),
++        // removing the tie-break reasoning load that justified high.
++        // Static low for ALL planner passes including changes_requested
++        // re-plans: the engine resolves reasoning_effort as a static node
++        // attribute (no visit-conditional override exists), so per-visit
++        // conditional effort is unavailable; re-plan quality is preserved
++        // by the prompt's mechanical folding of review_feedback into
++        // current_seed_brief (brief-folding, not ambiguity resolution).
++        reasoning_effort="low",
+         preamble_stages_ignore="planner,implementer,evidence",
+         // fabro-1dae (stage envelope fs scope): planning never touches
+         // platform assets — the tracker is reached via the sd CLI (shell
+diff --git a/.mulch/expertise/workflows.jsonl b/.mulch/expertise/workflows.jsonl
+index 6a5efd2..54cd7ab 100644
+--- a/.mulch/expertise/workflows.jsonl
++++ b/.mulch/expertise/workflows.jsonl
+@@ -30,3 +30,4 @@
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-07T10:32:23.004Z","evidence":{"commit":"422fbb03afdcaa4629dd9ed1f3b50ee253540ece"},"name":"mock-github-it-test-builder","description":"Mock-GitHub it-tests for server wait/PR handlers (fabro-bde4): TestAppStateBuilder gained github_api_base_url(+vault_entries GITHUB_TOKEN, settings [server.integrations.github] strategy=token); point it at an httpmock MockServer. For consecutive-poll behavior (sustained blocked mergeable_state >=2 polls), swap mocks mid-test: tokio::spawn the oneshot request, poll mock.calls_async() until the first hit, mock.delete(), create the follow-up mock. wait.rs gates the confirmation poll at BLOCKED_CONFIRMATION_POLL_INTERVAL (1.5s), keeping such tests under ~4s.","files":[".fabro/workflows/conductor/prompts/develop-leg.md",".fabro/workflows/conductor/prompts/merge-leg.md","docs/public/api-reference/fabro-api.yaml","lib/apps/fabro-server/src/server/handler/wait.rs","lib/apps/fabro-server/src/test_support.rs","lib/apps/fabro-server/tests/it/api/run_wait.rs","lib/components/fabro-tool/src/wait.rs","lib/foundation/fabro-types/src/pull_request.rs","lib/packages/fabro-api-client/src/models/run-wait-result.ts"],"id":"mx-17b677"}
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-07T10:47:03.314Z","evidence":{"commit":"5bf119d04ba0e34e7822654a3dfd170fd1e4fcdd"},"description":"Cold-sandbox gate failure class (run 01M1XN2KWG6T0PHRTJWZ8R0AZX tester): fabro-server SVG render tests (get_graph_returns_svg, render_graph_from_manifest_*) spawn the real render subprocess, whose exe resolution fell back to the test binary itself when target/debug/fabro is absent. nextest on fabro-server alone never builds the CLI bin, so libtest treated __render-graph as a filter and the handler returned a 500 protocol violation. Fix: render_graph_subprocess_exe now errors clearly instead of self-spawning, and the three tests skip via render_graph_subprocess_available() when no renderer binary is resolvable; the real path still runs wherever the binary exists (fabro-cli gate builds it).","resolution":"fixed","id":"mx-d38217"}
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-07T12:29:37.993Z","evidence":{"seeds":"fabro-56f4","commit":"31f7b88292c34d05ae38fa083d6e041b2d248212"},"name":"inline-command-output-via-output-schema","description":"Inline command-node output delivery (fabro-56f4): command.output is ALWAYS a blob ref (preview-only in preambles — a tool round-trip for prompt nodes); to deliver a command script's stdout INLINE under a dedicated context key, give the node output_schema='@schemas/<file>.schema.json' (resolved relative to the workflow dir) — the engine validates the script's JSON and stores it as output.<node_id>, a plain value that preamble_allow_keys renders whole. The key must be declared in the producing node's context_allow_keys or the preamble_allow_keys_exist lint warns. Warnings printed by such scripts must stay brace-free (engine merges stderr via 'exec 2>&1' and the validator scans for balanced JSON objects). Nu 0.115 pitfalls hit while writing gate-bounce.nu: 'str downcase' is deprecated (use 'str lowercase'); 'complete' only wraps external commands (do { cat | str join } | complete fails — capture bare 'cat' and str join its stdout); custom command signatures 'string -> string' demand piped input (use 'nothing -> string' when passing args); sd list rows may lack the labels column (use $it.labels? | default []).","files":[".fabro/workflows/develop/prompts/implementer.md",".fabro/workflows/develop/workflow.fabro"],"id":"mx-2eb2e0"}
++{"type":"decision","classification":"tactical","recorded_at":"2026-09-07T13:40:27.734Z","evidence":{"seeds":"fabro-bbbb","commit":"809eb80bcd545715ac004f350de98cdaf5626638"},"title":"reasoning_effort is static per node — no visit-conditional effort","rationale":"Engine resolves reasoning_effort once as a node attribute in the fabro-config run layer; seeds wanting per-visit conditional effort must be re-read as static-for-all-visits. Planner dropped high->low for all passes in fabro-bbbb; re-plan quality rides on the prompt folding review_feedback into current_seed_brief, not on effort. sd ready --assignee fabro is deterministic since fabro-5e09, removing the tie-break load that justified high.","id":"mx-4b1a29"}
