@@ -258,7 +258,12 @@ decision, not an accident - it needs the user plus an ADR.
 5. **Cycle report**: compact summary - outcome, verification evidence,
    seeds filed/closed, skill changes made. Every seed listed with a
    ONE-LINE DESCRIPTION, never a bare id (user directive 2026-08-27).
-   Then end the turn; the user starts the next cycle with /iterate.
+   ALWAYS include an ASSIGNMENT PENDING section: every seed filed since
+   the last report that is still unassigned (revisor seeds land
+   unassigned per ADR-0018 D2), each with a one-line @fabro
+   recommendation - the cycle report is the standing joint forum where
+   user + agent decide execution ownership (ADR-0018 D3). Then end the
+   turn; the user starts the next cycle with /iterate.
 
 ## Standing rules
 
