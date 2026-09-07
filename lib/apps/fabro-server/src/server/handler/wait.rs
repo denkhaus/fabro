@@ -46,6 +46,19 @@ const GITHUB_POLL_INTERVAL: Duration = Duration::from_secs(10);
 /// retrying on timeout until the deadline expires.
 const GITHUB_CALL_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// How many consecutive GitHub polls must report a blocked/dirty
+/// `mergeable_state` before the wait reports `reached=blocked`. One
+/// observation can be GitHub mid-recompute; two sustained observations
+/// mean the merge gate (required checks or a mergeable base) is stuck
+/// and re-waiting will not clear it (fabro-bde4).
+const BLOCKED_POLL_THRESHOLD: u32 = 2;
+
+/// Confirmation poll cadence after a first blocked/dirty observation.
+/// Shorter than [`GITHUB_POLL_INTERVAL`]: the sustained-window check
+/// needs a quick second sample, not another full poll period, before
+/// the state can flip back to clean/unknown on a transient.
+const BLOCKED_CONFIRMATION_POLL_INTERVAL: Duration = Duration::from_millis(1_500);
+
 #[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 enum WaitUntil {
@@ -108,7 +121,8 @@ async fn wait_until_terminal(state: &AppState, id: &RunId, deadline: Instant) ->
 }
 
 /// Poll the store and the GitHub pull request until the PR merges, the run
-/// fails hard, the PR closes without merging, or the deadline expires.
+/// fails hard, the PR closes without merging, the PR's merge gate stays
+/// blocked, or the deadline expires.
 async fn wait_until_merged(
     state: &AppState,
     id: &RunId,
@@ -121,6 +135,7 @@ async fn wait_until_merged(
     };
 
     let mut last_github_poll: Option<Instant> = None;
+    let mut blocked_streak: u32 = 0;
     loop {
         let status = match current_status(state, id).await {
             Ok(status) => status,
@@ -136,7 +151,14 @@ async fn wait_until_merged(
                 Some(ctx.record.clone()),
             );
         }
-        let poll_due = last_github_poll.is_none_or(|last| last.elapsed() >= GITHUB_POLL_INTERVAL);
+        let poll_due = last_github_poll.is_none_or(|last| {
+            let interval = if blocked_streak > 0 {
+                BLOCKED_CONFIRMATION_POLL_INTERVAL
+            } else {
+                GITHUB_POLL_INTERVAL
+            };
+            last.elapsed() >= interval
+        });
         if poll_due {
             last_github_poll = Some(Instant::now());
             let fetch = timeout(
@@ -161,6 +183,26 @@ async fn wait_until_merged(
                             status,
                             Some(ctx.record.clone()),
                         );
+                    }
+                    // An open PR whose mergeable_state stays dirty/blocked
+                    // across consecutive polls is a stuck merge gate (failed
+                    // required checks or an unmergeable base). `None` and
+                    // "unknown" mean GitHub is still computing and never
+                    // count (fabro-bde4).
+                    if detail.mergeable_state.as_deref().is_some_and(|state| {
+                        state.eq_ignore_ascii_case("dirty") || state.eq_ignore_ascii_case("blocked")
+                    }) {
+                        blocked_streak = blocked_streak.saturating_add(1);
+                        if blocked_streak >= BLOCKED_POLL_THRESHOLD {
+                            return wait_result(
+                                id,
+                                RunWaitResultReached::Blocked,
+                                status,
+                                Some(ctx.record.clone()),
+                            );
+                        }
+                    } else {
+                        blocked_streak = 0;
                     }
                 }
                 Ok(Err(fabro_github::PullRequestApiError::NotFound { .. })) => {

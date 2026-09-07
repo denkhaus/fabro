@@ -14,7 +14,7 @@ is wrong):
 2. Wait terminal: ONE call `fabro_run_wait {"run_id": "<child_run_id>", "until": "terminal", "timeout_ms": 3600000}` — it blocks until terminal or the 60 min deadline. `reached=timeout` (child still running): call again. Never shell-sleep poll loops (fabro-571e).
 3. Child FAILED: route "Develop child failed" + journal the reason (retriable causes simply end this pass; the next fire retries the seed).
 4. Child SUCCEEDED with goal "Tracker empty"-like completion and no PR: route "Tracker empty" (journal it — the queue is done; the human seeds new demand).
-5. Child SUCCEEDED: wait for PR auto-merge: `fabro_run_wait {"run_id": "<child_run_id>", "until": "merged", "timeout_ms": 1200000}` — `reached=merged` -> route "Develop integrated" (context key `child_run_id` stays for the revisor leg); `reached=timeout` -> call again; `reached=closed_unmerged` or terminal-failed -> journal it and route "Develop child failed".
+5. Child SUCCEEDED: wait for PR auto-merge: `fabro_run_wait {"run_id": "<child_run_id>", "until": "merged", "timeout_ms": 1200000}` — `reached=merged` -> route "Develop integrated" (context key `child_run_id` stays for the revisor leg); `reached=timeout` -> call again; `reached=blocked` -> journal it (merge gate stuck: failed required checks or dirty/blocked base; NEVER re-wait — fabro-bde4) and route "Develop child failed"; `reached=closed_unmerged` or terminal-failed -> journal it and route "Develop child failed".
 
 ## Workflow addressing (fabro-e297, server-side resolution)
 

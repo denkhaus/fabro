@@ -1607,7 +1607,11 @@ paths:
         current status, not an error; callers may call again to continue
         waiting. With `until=merged`, a pull request that closed without
         merging reports `reached=closed_unmerged`, and a run that fails
-        hard while waiting reports `reached=terminal`.
+        hard while waiting reports `reached=terminal`. An open pull
+        request whose GitHub `mergeable_state` stays `dirty` or `blocked`
+        across consecutive polls reports `reached=blocked` — the merge
+        gate is stuck (failed required checks or an unmergeable base) and
+        re-waiting will not clear it.
       parameters:
         - $ref: "#/components/parameters/RunId"
         - name: until
@@ -9159,17 +9163,21 @@ components:
             - terminal
             - merged
             - closed_unmerged
+            - blocked
             - timeout
           description: >
             Which condition ended the wait: the run reached a terminal state,
             the pull request merged, the pull request closed without merging
+            (until=merged only), the open pull request's GitHub
+            mergeable_state stayed dirty/blocked across consecutive polls —
+            failed required checks or a dirty base, so the merge gate is stuck
             (until=merged only), or the timeout_ms deadline expired.
         status:
           $ref: "#/components/schemas/RunStatus"
         pull_request:
           description: >
-            Linked pull request, present for reached=merged and
-            reached=closed_unmerged responses.
+            Linked pull request, present for reached=merged,
+            reached=closed_unmerged, and reached=blocked responses.
           allOf:
             - $ref: "#/components/schemas/PullRequestLink"
 

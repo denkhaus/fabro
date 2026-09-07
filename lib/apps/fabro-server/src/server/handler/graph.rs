@@ -97,8 +97,28 @@ fn render_graph_subprocess_exe(
             return Ok(candidate);
         }
 
-        Ok(current)
+        // The only remaining executable is the current one, which is NOT the
+        // `fabro` CLI (its name check failed above): spawning it with
+        // `__render-graph` would run its own test harness (or entrypoint) and
+        // produce a confusing protocol violation. The production server always
+        // runs from a binary named `fabro`, so this branch only fires for test
+        // binaries in a target directory without a built `fabro` binary.
+        Err(RenderSubprocessError::SpawnFailed(
+            "graph renderer executable not found: expected a `fabro` binary next to the \
+             current executable's target directory; build it with `cargo build -p fabro-cli` \
+             or set CARGO_BIN_EXE_fabro"
+                .to_string(),
+        ))
     }
+}
+
+/// Whether [`render_graph_subprocess_exe`] can resolve a renderer without an
+/// explicit override. Used by tests to skip the real-subprocess render path
+/// when the sandbox has no built `fabro` binary (cold `cargo nextest -p
+/// fabro-server` runs never build the CLI bin target).
+#[cfg(test)]
+pub(in crate::server) fn render_graph_subprocess_available() -> bool {
+    render_graph_subprocess_exe(None).is_ok()
 }
 
 fn render_subprocess_failure(

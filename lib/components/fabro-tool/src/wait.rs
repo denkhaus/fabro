@@ -87,6 +87,10 @@ pub enum RunWaitReached {
     Terminal,
     Merged,
     ClosedUnmerged,
+    /// Open PR whose merge gate is stuck (failed required checks or a
+    /// dirty/blocked mergeable_state sustained across polls). Re-waiting
+    /// will not clear it — route to repair instead (fabro-bde4).
+    Blocked,
     Timeout,
 }
 
@@ -106,6 +110,7 @@ impl RunWaitReached {
             RunWaitResultReached::Terminal => Self::Terminal,
             RunWaitResultReached::Merged => Self::Merged,
             RunWaitResultReached::ClosedUnmerged => Self::ClosedUnmerged,
+            RunWaitResultReached::Blocked => Self::Blocked,
             RunWaitResultReached::Timeout => Self::Timeout,
         }
     }
@@ -184,5 +189,10 @@ mod tests {
             serde_json::to_value(RunWaitReached::Timeout).unwrap(),
             serde_json::json!("timeout")
         );
+        assert_eq!(
+            serde_json::to_value(RunWaitReached::Blocked).unwrap(),
+            serde_json::json!("blocked")
+        );
+        assert_eq!(RunWaitReached::Blocked.to_string(), "blocked");
     }
 }

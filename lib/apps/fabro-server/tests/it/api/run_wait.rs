@@ -5,20 +5,24 @@
 //! immediate `terminal` results for finished runs, structured `timeout`
 //! results carrying the current status, the `until=merged` pull-request
 //! precondition, and query validation. GitHub-backed merge detection is
-//! covered by the fabro-github fetch tests plus the handler's wiring;
-//! these tests do not reach the network.
+//! covered against a local `httpmock` GitHub API — the tests never reach
+//! the real network.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use fabro_server::test_support::test_app_state_with_store;
+use fabro_server::test_support::{
+    TestAppStateBuilder, build_test_router, test_app_state_with_store,
+};
 use fabro_store::{ArtifactStore, Database};
-use fabro_types::{Graph, RunId, WorkflowSettings, test_support};
+use fabro_types::{Graph, PullRequestLink, RunId, WorkflowSettings, test_support};
 use fabro_workflow::event as workflow_event;
 use fabro_workflow::run_status::SuccessReason;
+use httpmock::MockServer;
 use object_store::memory::InMemory as MemoryObjectStore;
+use serde_json::json;
 use tower::ServiceExt;
 
 use crate::helpers::{api, response_json, response_status, test_settings};
@@ -225,4 +229,169 @@ async fn unknown_until_value_returns_400() {
         "GET /api/v1/runs/{id}/wait invalid until",
     )
     .await;
+}
+
+// ── until=merged blocked-gate regression tests (fabro-bde4) ──────────────
+
+/// Open PR payload served by the mock GitHub API, parameterized only by
+/// `mergeable_state`.
+fn open_pr_body(mergeable_state: &str) -> String {
+    json!({
+        "number": 42,
+        "title": "Develop child",
+        "body": null,
+        "state": "open",
+        "draft": false,
+        "merged": false,
+        "merged_at": null,
+        "mergeable": false,
+        "mergeable_state": mergeable_state,
+        "additions": 10,
+        "deletions": 3,
+        "changed_files": 2,
+        "html_url": "https://github.com/acme/widgets/pull/42",
+        "user": { "login": "testuser" },
+        "head": { "ref": "fabro/run/child" },
+        "base": { "ref": "main" },
+        "created_at": "2026-09-07T08:00:00Z",
+        "updated_at": "2026-09-07T09:00:00Z"
+    })
+    .to_string()
+}
+
+/// App whose GitHub API client points at `github_base_url`, with token
+/// credentials and an in-memory store, mirroring the mock-GitHub pattern
+/// from the fabro-server unit suite.
+fn github_wait_app(github_base_url: String) -> (axum::Router, Arc<Database>) {
+    let settings = crate::helpers::settings_from_toml(
+        r#"
+_version = 1
+
+[server.integrations.github]
+strategy = "token"
+"#,
+    );
+    let (store, artifact_store) = store_bundle();
+    let state = TestAppStateBuilder::new()
+        .runtime_settings(settings.server_settings, settings.manifest_run_defaults)
+        .store_bundle(Arc::clone(&store), artifact_store)
+        .vault_entries([("GITHUB_TOKEN", "ghu_test")])
+        .github_api_base_url(github_base_url)
+        .build();
+    (build_test_router(state), store)
+}
+
+/// A running run with a linked acme/widgets#42 pull request.
+async fn append_running_run_with_pr(store: &Database, run_id: &RunId) {
+    append_run(store, run_id, false).await;
+    let run_store = store.open_run(run_id).await.expect("open run store");
+    workflow_event::append_event(
+        &run_store,
+        run_id,
+        &workflow_event::Event::PullRequestLinked {
+            pull_request: PullRequestLink {
+                owner:  "acme".to_string(),
+                repo:   "widgets".to_string(),
+                number: 42,
+            },
+        },
+    )
+    .await
+    .expect("append PullRequestLinked");
+}
+
+/// An open PR whose mergeable_state stays blocked across consecutive
+/// polls must return `reached=blocked` (with the PR link attached), not
+/// loop `timeout` forever — the fabro-bde4 incident.
+#[tokio::test]
+async fn merged_wait_reports_blocked_when_gate_stuck() {
+    let github = MockServer::start();
+    let pr_mock = github.mock(|when, then| {
+        when.method("GET")
+            .path("/repos/acme/widgets/pulls/42")
+            .header("authorization", "Bearer ghu_test");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(open_pr_body("blocked"));
+    });
+    let (app, store) = github_wait_app(github.base_url());
+    let run_id = RunId::new();
+    append_running_run_with_pr(&store, &run_id).await;
+
+    let req = Request::builder()
+        .method("GET")
+        .uri(api(&format!(
+            "/runs/{run_id}/wait?until=merged&timeout_ms=10000"
+        )))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    let body = response_json(
+        resp,
+        StatusCode::OK,
+        "GET /api/v1/runs/{id}/wait blocked gate",
+    )
+    .await;
+
+    assert_eq!(body["reached"].as_str(), Some("blocked"));
+    assert_eq!(body["pull_request"]["owner"].as_str(), Some("acme"));
+    assert_eq!(body["pull_request"]["number"].as_u64(), Some(42));
+    // The sustained window needs two consecutive blocked polls.
+    assert!(pr_mock.calls_async().await >= 2);
+}
+
+/// A single transient blocked observation (GitHub still computing, then
+/// reporting unknown) must NOT fire `blocked`; the wait keeps going and
+/// ends in a structured timeout.
+#[tokio::test]
+async fn merged_wait_ignores_transient_blocked_observation() {
+    let github = MockServer::start();
+    let mut blocked_mock = github.mock(|when, then| {
+        when.method("GET")
+            .path("/repos/acme/widgets/pulls/42")
+            .header("authorization", "Bearer ghu_test");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(open_pr_body("blocked"));
+    });
+    let (app, store) = github_wait_app(github.base_url());
+    let run_id = RunId::new();
+    append_running_run_with_pr(&store, &run_id).await;
+
+    let req = Request::builder()
+        .method("GET")
+        .uri(api(&format!(
+            "/runs/{run_id}/wait?until=merged&timeout_ms=4000"
+        )))
+        .body(Body::empty())
+        .unwrap();
+    let task = tokio::spawn(app.oneshot(req));
+    // After the first (blocked) poll lands, swap the PR to mergeable_state
+    // unknown — GitHub recompute — so the second poll breaks the streak.
+    for _ in 0..500 {
+        if blocked_mock.calls_async().await >= 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    blocked_mock.delete();
+    github.mock(|when, then| {
+        when.method("GET")
+            .path("/repos/acme/widgets/pulls/42")
+            .header("authorization", "Bearer ghu_test");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(open_pr_body("unknown"));
+    });
+
+    let resp = task.await.unwrap().unwrap();
+    let body = response_json(
+        resp,
+        StatusCode::OK,
+        "GET /api/v1/runs/{id}/wait transient blocked",
+    )
+    .await;
+
+    assert_eq!(body["reached"].as_str(), Some("timeout"));
+    assert_eq!(body["status"]["kind"].as_str(), Some("running"));
 }
