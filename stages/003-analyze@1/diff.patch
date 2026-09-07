@@ -1,0 +1,65 @@
+diff --git a/.fabro/journal/01M1YKF77A13ZDVQZP9HSXVVHY.jsonl b/.fabro/journal/01M1YKF77A13ZDVQZP9HSXVVHY.jsonl
+index 548a903..35bea5f 100644
+--- a/.fabro/journal/01M1YKF77A13ZDVQZP9HSXVVHY.jsonl
++++ b/.fabro/journal/01M1YKF77A13ZDVQZP9HSXVVHY.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1YKF77A13ZDVQZP9HSXVVHY","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T18:53:27Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YKF77A13ZDVQZP9HSXVVHY","node":"select","visit":1,"status":"succeeded","ts":"2026-09-07T18:53:46Z","data":{"painpoints":[],"observations":["Selected newest unrevised develop run; ~40 older develop runs are stale-evidence (version drift or absent version) and ~15 more lack a live sandbox — they stay unrevised until engine provisions fresh analyst sandboxes","3 merge-upstream runs match the current merge baseline but are older than the selected develop run; merge revision value remains unharvested"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YKF77A13ZDVQZP9HSXVVHY","node":"analyze","visit":1,"status":"succeeded","ts":"2026-09-07T18:57:53Z","data":{"painpoints":[{"text":"Ask-Fabro improve answers re-propose already-filed changes: 2 of 7 recommendations for run 01M1YJ8R820R7ZMSN55GJGMZ4A duplicated open seeds (preamble inline floor/budget → fabro-b568/fabro-8d2c/fabro-cf3e; progress denominator → fabro-a0e3/fabro-45bf), forcing manual merge-away. Fix idea: inject the revision-label seed titles into the Ask-Fabro improve prompt as an exclusion list."}],"observations":["Review persisted to `.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md`. Dropped duplicates: rec 5 duplicate_of open fabro-b568/fabro-8d2c/fabro-cf3e; rec 7 duplicate_of open fabro-a0e3/fabro-45bf. Five findings survive, targeting the run's single avoidable gate-red bounce ($0.642 total run cost, implementer stages 84%, bounce ~$0.41/64%).","Selected run implemented seed fabro-22e4 (mtime transport fix) which is still open pending merge; its own journal documents the bug sabotaging its own fix — the qualitygate normalization finding is the in-gate mitigation until that merge ships."]}}
+diff --git a/.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md b/.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md
+new file mode 100644
+index 0000000..fcf649c
+--- /dev/null
++++ b/.fabro/reviews/develop/01M1YJ8R820R7ZMSN55GJGMZ4A.md
+@@ -0,0 +1,51 @@
++# Improve review — run 01M1YJ8R820R7ZMSN55GJGMZ4A
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: succeeded (19.7 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-07 18:56+0000 by revisor `fabro_ask`
++
++---
++
++## What this run was
++
++Seed `fabro-22e4` (tar-upload mtime = 1970 bug), one full develop cycle with **one gate-red bounce**: planner 43.8s/$0.061 → implementer@1 411s/$0.135 → tester RED (11s) → gatebounce → implementer@2 464s/$0.405 → tester GREEN (41s) → evidence → reviewer 35.7s/$0.040 → closeout. Total ~17.5 min active, **$0.642, of which the implementer stages were $0.54 (84%)** (all figures from the run's conclusion/billing in run events).
++
++## Recommendations, ordered by expected impact
++
++**1. Make the implementer's mandated pre-gate clippy mirror the gate's feature set.**
++*What happened:* The prompt (`.fabro/workflows/develop/prompts/implementer.md`, step 4) mandates `cargo clippy -p <touched-crate> --all-targets -- -D warnings` — default features, exactly what the gate runs. The implementer instead verified only under `--features docker` (its summary: "compile check via `cargo nextest run -p fabro-sandbox --features docker`… clippy shows only two pre-existing errors in provider.rs/sandbox_spec.rs" — docker-only lints). The default-features E0432 (`managed_labels`) it had *already diagnosed in its own journal painpoint* then red-lined the tester 11 seconds in.
++*Change:* In `implementer.md` step 4, add: "Run the literal gate invocation (`cargo clippy -p <crate> --all-targets -- -D warnings`, default features) on every touched crate, in addition to any feature-scoped checks for feature-gated code; a known default-features break in a touched crate makes criterion 'gate passes' FAIL, not PASS-under-features."
++*Expected effect:* This exact class of bounce (green self-check, red gate) is caught pre-submit. Here it would have saved the entire second cycle — ~8 min wall and ~$0.41, i.e. 64% of run cost.
++
++**2. Permit (and require disclosing) minimal repair of pre-existing compile breaks in touched crates.**
++*What happened:* implementer@1 verified the E0432 was pre-existing (stash-reproduce on planner commit `1e3f7fc`), knew the exact fix ("move the cfg gate onto the pub use"), but "nothing more, nothing less" scope plus report-don't-fix pushed it to a painpoint instead of a 3-line fix — and the gate punished the whole run for it.
++*Change:* Same file, `implementer.md`: add a carve-out — "A verified pre-existing compile/clippy break **in a touched crate** may be fixed minimally to keep the gate green; name it in `implementation_summary` as adjacent repair."
++*Expected effect:* Gate-blocking latent rot gets fixed in-pass instead of burning a bounce cycle; reviewers already accept this pattern (reviewer journal: "compile-repair… not scope creep").
++
++**3. Stop dropping the implementer's own prior diagnosis on gate-red bounces.**
++*What happened:* implementer@2's prompt (visible in stage events) carried the tester failure tail and gatebounce hits, but **not** `implementation_summary` or `journal` — the node's `preamble_allow_keys` deliberately excludes them ("the implementer's OWN outputs echoing back"). So the bounce pass re-derived from scratch what implementer@1 had root-caused 90 seconds earlier, at 305s inference / 6,997 reasoning tokens / $0.405 — 73% of the run's entire reasoning spend.
++*Change:* In `workflow.fabro`, implementer node: add `implementation_summary` to `preamble_allow_keys` (or have the bounce path inject the previous pass's painpoints as a `gate_bounce_notes` key).
++*Expected effect:* Bounce passes start at the known root cause instead of re-diagnosing; on this run that's roughly half of implementer@2's inference.
++
++**4. Normalize stale mtimes deterministically until the transport fix ships.**
++*What happened:* The seed's own bug sabotaged its own fix — implementer@2's journal: after `edit_file` writes, `push_credentials.rs` carried mtime 1970-01-01, "cargo check replayed stale dead-code warnings… line numbers that no longer matched the source," forcing a manual `touch` detour (lesson `mx-c28106`; same class previously produced wrong test failures in run `01M1YBBXR99PNME6Y8ZED4Y2NN`).
++*Change:* `scripts/qualitygate.nu`: at start, `find lib -name '*.rs' ! -newermt 2000-01-01 -exec touch {} +` (and mirror the one-liner in `implementer.md` step 4) until the rebuilt sandbox binary is everywhere.
++*Expected effect:* Zero-LLM-cost elimination of stale-fingerprint false diagnoses — the failure mode this seed exists to fix, still live in every run container.
++
++**5. Give the evidence capture an inline floor in the preamble demote pass.**
++*What happened:* The 8.6 KB capture was blob-ref'd to the reviewer despite `preamble_inline_max_kb=16` — because the 24 KB aggregate budget was consumed by **duplicate** content: the green tester output rendered twice, plus an irrelevant 1.4 KB gatebounce hit (reviewer's own painpoint: "had to be paged manually before judging"). Open seeds `fabro-b568`/`fabro-8d2c`/`fabro-cf3e` already point here.
++*Change:* Engine preamble demote pass (or graph `preamble_budget_kb` 24→32 plus dedupe per `fabro-edac`): `command.output` on the reviewer node is demoted last / never while it fits `preamble_inline_max_kb`.
++*Expected effect:* Small captures review inline — one fewer tool round-trip per review and removal of the unread-blob → "Verification blocked" failure mode.
++
++**6. Tighten gate-bounce matching to error signatures.**
++*What happened:* The E0432/cargo failure matched known-bug seed `fabro-4814` ("purge retired two-worlds framing" — a prompt-refactoring task, utterly unrelated), injecting ~1.4 KB of noise into both implementer@2's and the reviewer's preambles.
++*Change:* `.fabro/workflows/develop/scripts/gate-bounce.nu`: require token overlap with the failure's error code/crate/file path, not label-level matching; emit `{"hits":[]}` when nothing real matches.
++*Expected effect:* Bounce context carries only signal; less misdirection for the next implementer, budget back for the evidence that matters.
++
++**7. Fix the "Pipeline progress: X of 7" denominator.**
++*What happened:* implementer@1's prompt read "Pipeline progress: 0 of 7 stages completed" *after* the planner completed; the terminal view says "9 of 7" (seeds `fabro-45bf`/`fabro-a0e3`/`38f4`).
++*Change:* Engine stage-prompt builder: count unique completed nodes, not stage-section count.
++*Expected effect:* Stage prompts stop contradicting reality — cosmetic, but it's the first line every agent reads.
++
++The common thread: this run's cost and duration were dominated not by the seed work (implementer@1 was clean and cheap) but by **one avoidable gate-red bounce** — recs 1–3 attack it from the check side, the scope side, and the context side; 4–7 remove the residual friction the journal documented in the run's own words.
