@@ -485,7 +485,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T13:08:07.498430855Z",
-  "last_event_at": "2026-09-07T13:08:39.150817257Z",
+  "last_event_at": "2026-09-07T13:16:02.026379130Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -533,9 +533,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 51,
       "checkpoint": {
-        "timestamp": "2026-09-07T13:08:39.346024301Z",
+        "timestamp": "2026-09-07T13:08:44.182056089Z",
         "current_node": "select",
         "completed_nodes": [
           "start",
@@ -543,48 +543,48 @@
         ],
         "node_retries": {},
         "context_values": {
-          "last_stage": "select",
-          "seed_cycles": {
-            "select": 1
-          },
-          "graph.inspects": "develop,merge-upstream",
-          "thread.start.current_node": "select",
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.thread_id": "start",
-          "revisor_target_status": "succeeded",
-          "revisor_target_title": "Develop one seed per run: claim, implement, gate, review, exit",
-          "last_response": "Run selected: the newest develop run `01M1XZCWNBR33BZGHQXNRA80J9` is terminal (succeeded), has a live sandbox, matches the current develop baseline version `2232aaf0…`, and has no marker at `.fabro/",
-          "revisor_target_wall": "4.1 min",
-          "response.select": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.select",
-            "chars": 1225,
-            "preview": "Run selected: the newest develop run `01M1XZCWNBR33BZGHQXNRA80J9` is terminal (succeeded), has a live sandbox, matches the current develop baseline version `2232aaf0…`, and has no marker at `.fabro/"
-          },
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "outcome": "succeeded",
-          "revisor_target_run_id": "01M1XZCWNBR33BZGHQXNRA80J9",
           "internal.node_visit_count": 1,
-          "revisor_target_workflow_version": "2232aaf05c7a93b3557b65ef13543486edcf917d0a735f9cb430280339b647a2",
-          "internal.run_id": "01M1XZPWJMRXB4PQJYTVANFVJG",
-          "failure_signature": "",
-          "internal.retry_count.start": 0,
-          "current_node": "select",
-          "graph.preamble_budget_kb": "24",
-          "preferred_label": "Run selected",
-          "graph.rankdir": "LR",
           "internal.seed_cycle_anchor": "01M1XZCWNBR33BZGHQXNRA80J9",
-          "internal.fidelity": "compact",
-          "failure_class": "",
-          "internal.retry_count.select": 0,
+          "graph.rankdir": "LR",
+          "revisor_target_status": "succeeded",
+          "revisor_target_workflow_version": "2232aaf05c7a93b3557b65ef13543486edcf917d0a735f9cb430280339b647a2",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.inspects": "develop,merge-upstream",
+          "revisor_target_title": "Develop one seed per run: claim, implement, gate, review, exit",
           "journal": {
             "painpoints": [],
             "observations": [
               "Selected newest develop run; 7 older develop runs are stale-evidence (version drift from baseline 2232aaf0), all 5 merge-upstream runs are stale-evidence vs their 5a4438be baseline, 12 runs lack live sandbox; no active develop run observed"
             ]
           },
-          "graph.max_node_visits": "30"
+          "thread.start.current_node": "select",
+          "current_node": "select",
+          "internal.fidelity": "compact",
+          "failure_signature": "",
+          "last_stage": "select",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "graph.max_node_visits": "30",
+          "internal.retry_count.select": 0,
+          "last_response": "Run selected: the newest develop run `01M1XZCWNBR33BZGHQXNRA80J9` is terminal (succeeded), has a live sandbox, matches the current develop baseline version `2232aaf0…`, and has no marker at `.fabro/",
+          "seed_cycles": {
+            "select": 1
+          },
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 1225,
+            "preview": "Run selected: the newest develop run `01M1XZCWNBR33BZGHQXNRA80J9` is terminal (succeeded), has a live sandbox, matches the current develop baseline version `2232aaf0…`, and has no marker at `.fabro/"
+          },
+          "outcome": "succeeded",
+          "revisor_target_wall": "4.1 min",
+          "internal.thread_id": "start",
+          "graph.preamble_budget_kb": "24",
+          "revisor_target_run_id": "01M1XZCWNBR33BZGHQXNRA80J9",
+          "internal.run_id": "01M1XZPWJMRXB4PQJYTVANFVJG",
+          "failure_class": "",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "internal.retry_count.start": 0,
+          "preferred_label": "Run selected"
         },
         "node_outcomes": {
           "start": {
@@ -646,8 +646,235 @@
           }
         },
         "next_node_id": "analyze",
+        "git_commit_sha": "d1b984ee09e39ce2721215884881933def88a964",
+        "node_visits": {
+          "start": 1,
+          "select": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1XZPWJMRXB4PQJYTVANFVJG.jsonl b/.fabro/journal/01M1XZPWJMRXB4PQJYTVANFVJG.jsonl\nnew file mode 100644\nindex 0000000..43cf84e\n--- /dev/null\n+++ b/.fabro/journal/01M1XZPWJMRXB4PQJYTVANFVJG.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XZPWJMRXB4PQJYTVANFVJG\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:08:09Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XZPWJMRXB4PQJYTVANFVJG\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:08:39Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected newest develop run; 7 older develop runs are stale-evidence (version drift from baseline 2232aaf0), all 5 merge-upstream runs are stale-evidence vs their 5a4438be baseline, 12 runs lack live sandbox; no active develop run observed\"]}}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 2,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-07T13:16:02.229965414Z",
+        "current_node": "analyze",
+        "completed_nodes": [
+          "start",
+          "select",
+          "analyze"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "last_stage": "analyze",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1
+          },
+          "graph.inspects": "develop,merge-upstream",
+          "thread.select.current_node": "analyze",
+          "thread.start.current_node": "select",
+          "revision_findings": [
+            {
+              "title": "Develop planner: drop reasoning_effort from high to low for first-pass claims",
+              "description": "In run 01M1XZCWNBR33BZGHQXNRA80J9 the planner was the most expensive stage (83.6 s wall = 40% of run, $0.080 = 45% of cost, 4,469 of 5,899 reasoning tokens), mostly tie-breaking two High seeds. The assignee filter this run shipped (fabro-5e09, PR #38) makes `sd ready --assignee fabro` deterministic, so the tie-break reasoning is wasted. Change: set reasoning_effort=\"low\" on the planner node at `.fabro/workflows/develop/workflow.fabro:49` (keep high semantics for changes_requested re-plans if conditional effort isn't available; re-measure one run). Effect: ~$0.03–0.05 and 20–40 s off every claim pass.",
+              "priority": 1
+            },
+            {
+              "title": "Develop planner: probe unfiltered sd list before parking on an empty assignee-filtered view",
+              "description": "This run's implementer smoke test showed `sd ready --assignee nonexistentuser` exits 0 with \"No ready issues.\" — byte-identical to a legitimately empty pool — so under the new park semantics a typo'd or renamed assignee silently parks the line forever. Change: in the FAIL-CLOSED paragraph at `.fabro/workflows/develop/prompts/planner.md:46`, before routing Tracker empty, run one unfiltered `sd list --limit 5` probe; if open seeds exist but the filtered view is empty, journal \"park: N open seeds, none assigned to fabro\" so the terminal Slack notification shows a cause. Effect: converts a silent permanent outage into a visible, diagnosable park; zero added cost in normal runs.",
+              "priority": 2
+            }
+          ],
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.thread_id": "select",
+          "revisor_target_status": "succeeded",
+          "revisor_target_title": "Develop one seed per run: claim, implement, gate, review, exit",
+          "last_response": "Pass complete: ask succeeded once, the verbatim answer is persisted at `.fabro/reviews/develop/01M1XZCWNBR33BZGHQXNRA80J9.md`, and tracker checks withheld 4 duplicates (`fabro-8d2c`, `fabro-4881`, `fa",
+          "revisor_target_wall": "4.1 min",
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 1225,
+            "preview": "Run selected: the newest develop run `01M1XZCWNBR33BZGHQXNRA80J9` is terminal (succeeded), has a live sandbox, matches the current develop baseline version `2232aaf0…`, and has no marker at `.fabro/"
+          },
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "outcome": "succeeded",
+          "revisor_target_run_id": "01M1XZCWNBR33BZGHQXNRA80J9",
+          "internal.node_visit_count": 1,
+          "revisor_target_workflow_version": "2232aaf05c7a93b3557b65ef13543486edcf917d0a735f9cb430280339b647a2",
+          "internal.run_id": "01M1XZPWJMRXB4PQJYTVANFVJG",
+          "failure_signature": "",
+          "internal.retry_count.start": 0,
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 3332,
+            "preview": "Pass complete: ask succeeded once, the verbatim answer is persisted at `.fabro/reviews/develop/01M1XZCWNBR33BZGHQXNRA80J9.md`, and tracker checks withheld 4 duplicates (`fabro-8d2c`, `fabro-4881`, `fa"
+          },
+          "current_node": "analyze",
+          "graph.preamble_budget_kb": "24",
+          "preferred_label": "Findings ready",
+          "graph.rankdir": "LR",
+          "internal.retry_count.analyze": 0,
+          "internal.seed_cycle_anchor": "01M1XZCWNBR33BZGHQXNRA80J9",
+          "internal.fidelity": "compact",
+          "failure_class": "",
+          "internal.retry_count.select": 0,
+          "journal": {
+            "painpoints": [
+              {
+                "text": "`sd list --format compact` output omitted open seeds that `sd search` finds (fabro-8d2c, fabro-4881, fabro-c2ca, fabro-890d were all absent from the list but open per search) — a list-only tracker check in this pass would have re-filed 4 duplicates; fix idea: raise or remove the list cap, and make the revisor prompt rely on per-theme sd search as the primary duplicate check."
+              }
+            ],
+            "observations": [
+              "Withheld 4 of 6 analyst recommendations as duplicates of open seeds: preamble_budget_kb 24→32 duplicate_of fabro-8d2c (related variants fabro-35ab, fabro-cf3e); conditional sd-show re-fetch duplicate_of fabro-4881 (partially covered by fabro-a67f); metadata-snapshot skip on non-agent stages duplicate_of fabro-c2ca (async variant fabro-cf03); planner step renumber duplicate_of fabro-890d.",
+              "Sequence the park-probe finding before relying on reasoning-effort savings: the planner journaled that the next run parks until backlog assignment is curated, so #2's numbers depend on that curation.",
+              "Target run was healthy (210 s wall, $0.178, zero retries, seed fabro-5e09 approved and closed via PR #38) — this is a marker-plus-2-findings revision, not a repair pass."
+            ]
+          },
+          "graph.max_node_visits": "30"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "select": {
+            "status": "succeeded",
+            "preferred_label": "Run selected",
+            "context_updates": {
+              "last_stage": "select",
+              "revisor_target_run_id": "01M1XZCWNBR33BZGHQXNRA80J9",
+              "revisor_target_status": "succeeded",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Selected newest develop run; 7 older develop runs are stale-evidence (version drift from baseline 2232aaf0), all 5 merge-upstream runs are stale-evidence vs their 5a4438be baseline, 12 runs lack live sandbox; no active develop run observed"
+                ]
+              },
+              "revisor_target_title": "Develop one seed per run: claim, implement, gate, review, exit",
+              "revisor_target_wall": "4.1 min",
+              "response.select": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.select",
+                "chars": 1225,
+                "preview": "Run selected: the newest develop run `01M1XZCWNBR33BZGHQXNRA80J9` is terminal (succeeded), has a live sandbox, matches the current develop baseline version `2232aaf0…`, and has no marker at `.fabro/"
+              },
+              "last_response": "Run selected: the newest develop run `01M1XZCWNBR33BZGHQXNRA80J9` is terminal (succeeded), has a live sandbox, matches the current develop baseline version `2232aaf0…`, and has no marker at `.fabro/",
+              "revisor_target_workflow_version": "2232aaf05c7a93b3557b65ef13543486edcf917d0a735f9cb430280339b647a2"
+            },
+            "notes": "Stage completed: select",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 27615,
+                    "output_tokens": 429,
+                    "reasoning_tokens": 184,
+                    "cache_read_tokens": 37312,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 51057
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 23639,
+              "tool_time_ms": 2005,
+              "active_time_ms": 25644
+            }
+          },
+          "analyze": {
+            "status": "succeeded",
+            "preferred_label": "Findings ready",
+            "context_updates": {
+              "revision_findings": [
+                {
+                  "title": "Develop planner: drop reasoning_effort from high to low for first-pass claims",
+                  "description": "In run 01M1XZCWNBR33BZGHQXNRA80J9 the planner was the most expensive stage (83.6 s wall = 40% of run, $0.080 = 45% of cost, 4,469 of 5,899 reasoning tokens), mostly tie-breaking two High seeds. The assignee filter this run shipped (fabro-5e09, PR #38) makes `sd ready --assignee fabro` deterministic, so the tie-break reasoning is wasted. Change: set reasoning_effort=\"low\" on the planner node at `.fabro/workflows/develop/workflow.fabro:49` (keep high semantics for changes_requested re-plans if conditional effort isn't available; re-measure one run). Effect: ~$0.03–0.05 and 20–40 s off every claim pass.",
+                  "priority": 1
+                },
+                {
+                  "title": "Develop planner: probe unfiltered sd list before parking on an empty assignee-filtered view",
+                  "description": "This run's implementer smoke test showed `sd ready --assignee nonexistentuser` exits 0 with \"No ready issues.\" — byte-identical to a legitimately empty pool — so under the new park semantics a typo'd or renamed assignee silently parks the line forever. Change: in the FAIL-CLOSED paragraph at `.fabro/workflows/develop/prompts/planner.md:46`, before routing Tracker empty, run one unfiltered `sd list --limit 5` probe; if open seeds exist but the filtered view is empty, journal \"park: N open seeds, none assigned to fabro\" so the terminal Slack notification shows a cause. Effect: converts a silent permanent outage into a visible, diagnosable park; zero added cost in normal runs.",
+                  "priority": 2
+                }
+              ],
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "`sd list --format compact` output omitted open seeds that `sd search` finds (fabro-8d2c, fabro-4881, fabro-c2ca, fabro-890d were all absent from the list but open per search) — a list-only tracker check in this pass would have re-filed 4 duplicates; fix idea: raise or remove the list cap, and make the revisor prompt rely on per-theme sd search as the primary duplicate check."
+                  }
+                ],
+                "observations": [
+                  "Withheld 4 of 6 analyst recommendations as duplicates of open seeds: preamble_budget_kb 24→32 duplicate_of fabro-8d2c (related variants fabro-35ab, fabro-cf3e); conditional sd-show re-fetch duplicate_of fabro-4881 (partially covered by fabro-a67f); metadata-snapshot skip on non-agent stages duplicate_of fabro-c2ca (async variant fabro-cf03); planner step renumber duplicate_of fabro-890d.",
+                  "Sequence the park-probe finding before relying on reasoning-effort savings: the planner journaled that the next run parks until backlog assignment is curated, so #2's numbers depend on that curation.",
+                  "Target run was healthy (210 s wall, $0.178, zero retries, seed fabro-5e09 approved and closed via PR #38) — this is a marker-plus-2-findings revision, not a repair pass."
+                ]
+              },
+              "response.analyze": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.analyze",
+                "chars": 3332,
+                "preview": "Pass complete: ask succeeded once, the verbatim answer is persisted at `.fabro/reviews/develop/01M1XZCWNBR33BZGHQXNRA80J9.md`, and tracker checks withheld 4 duplicates (`fabro-8d2c`, `fabro-4881`, `fa"
+              },
+              "last_response": "Pass complete: ask succeeded once, the verbatim answer is persisted at `.fabro/reviews/develop/01M1XZCWNBR33BZGHQXNRA80J9.md`, and tracker checks withheld 4 duplicates (`fabro-8d2c`, `fabro-4881`, `fa",
+              "last_stage": "analyze"
+            },
+            "notes": "Stage completed: analyze",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 23642,
+                    "output_tokens": 3152,
+                    "reasoning_tokens": 6597,
+                    "cache_read_tokens": 81088,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 97069
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reviews/develop/01M1XZCWNBR33BZGHQXNRA80J9.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 220503,
+              "tool_time_ms": 176127,
+              "active_time_ms": 396630
+            }
+          }
+        },
+        "next_node_id": "file",
         "node_visits": {
           "select": 1,
+          "analyze": 1,
           "start": 1
         }
       },
@@ -920,6 +1147,252 @@
             "category": "other",
             "tokens": 8,
             "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "analyze@1": {
+      "first_event_seq": 54,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: analyze",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T13:16:02.026379130Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "high"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T13:08:44.204409626Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 397215,
+        "inference_time_ms": 220503,
+        "tool_time_ms": 176127,
+        "active_time_ms": 396630
+      },
+      "usage": {
+        "input_tokens": 23642,
+        "output_tokens": 3152,
+        "total_tokens": 114479,
+        "reasoning_tokens": 6597,
+        "cache_read_tokens": 81088,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 97069
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_ask",
+          "description": "Ask one question to the Ask-Fabro analyst of another run and wait for its final answer. Requires the target run's workflow to be declared in this graph's inspects attribute.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 23503,
+        "usage_percent": 2.2414207458496094,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-07T13:16:02.009811691Z",
+        "event_seq": 105,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1073,
+            "usage_percent": 0.10232925415039062
+          },
+          {
+            "category": "tools",
+            "tokens": 1694,
+            "usage_percent": 0.16155242919921875
+          },
+          {
+            "category": "skills",
+            "tokens": 212,
+            "usage_percent": 0.0202178955078125
+          },
+          {
+            "category": "memory",
+            "tokens": 5493,
+            "usage_percent": 0.5238533020019531
+          },
+          {
+            "category": "conversation",
+            "tokens": 15025,
+            "usage_percent": 1.4328956604003906
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
           }
         ],
         "warnings": []
