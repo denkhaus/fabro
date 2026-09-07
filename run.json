@@ -694,7 +694,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T13:31:51.351810461Z",
-  "last_event_at": "2026-09-07T13:41:15.091463154Z",
+  "last_event_at": "2026-09-07T13:41:52.745723331Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1283,9 +1283,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 261,
       "checkpoint": {
-        "timestamp": "2026-09-07T13:41:15.336393038Z",
+        "timestamp": "2026-09-07T13:41:19.628911920Z",
         "current_node": "evidence",
         "completed_nodes": [
           "start",
@@ -1296,8 +1296,241 @@
         ],
         "node_retries": {},
         "context_values": {
+          "current_seed_id": "fabro-bbbb",
+          "outcome": "succeeded",
+          "internal.retry_count.start": 0,
+          "thread.implementer.current_node": "tester",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.tester": 0,
+          "graph.rankdir": "LR",
+          "thread.tester.current_node": "evidence",
+          "internal.seed_cycle_anchor": "fabro-bbbb",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.thread_id": "tester",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 4184,
+            "preview": "Seed `fabro-bbbb` claimed. Basis verified fresh: planner node still runs `reasoning_effort=\"high\"` at `.fabro/workflows/develop/workflow.fabro:49`, and the seed's premise (deterministic assignee filte"
+          },
+          "command.output": "blob://sha256/683d3deea6c190222c1ded3699f19e97873d41102126ce84bf48438b59c5b1ca",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "No graph-only parse check exists for `.fabro` workflow files without a Rust cold build (fabro-513e already open) — I fell back to a python structural check (bracket balance + attribute commas), which catches syntax slips but not schema-level errors; the tester gate remains the only real parser, so a bad edit surfaces one stage late."
+            ]
+          },
+          "graph.preamble_budget_kb": "24",
+          "internal.work_dir": "/workspace/fabro",
+          "failure_class": "",
           "internal.fidelity": "compact",
+          "internal.node_visit_count": 1,
+          "lesson_capture": "mx-4b1a29",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3360,
+            "preview": "All done. The work is complete and scoped:\n\n- **Edit**: `.fabro/workflows/develop/workflow.fabro` planner node — `reasoning_effort=\"high\"` → `\"low\"` plus a 12-line adjacent comment recording the r"
+          },
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1
+          },
+          "internal.retry_count.implementer": 0,
+          "last_stage": "implementer",
+          "current_seed_brief": "Platform-targeting seed (fs_hide binds file tools; the implementer prompt's platform carve-out applies — edit via shell, e.g. sed/python3). Acceptance criteria: (1) `.fabro/workflows/develop/workflow.fabro` planner node (~line 49): `reasoning_effort=\"high\"` becomes `reasoning_effort=\"low\"`; no other planner-node attribute changes (output_schema, max_visits, fs_hide, context_allow_keys all intact). (2) SPEC AMBIGUITY RESOLVED — the seed's parenthetical 'keep high semantics for changes_requested re-plans if conditional effort isn't available' cannot mean per-visit conditional effort: the engine resolves reasoning_effort as a STATIC node attribute (see `lib/foundation/fabro-config/src/layers/run.rs` reasoning_effort field and resolve/run.rs copy — no visit-conditional override exists). Chosen reading: static `low` for ALL planner passes including re-plans; re-plan quality is preserved by the prompt's mechanical folding of review_feedback into current_seed_brief (re-plans are brief-folding, not ambiguity resolution). State this in the node comment, not just silently. (3) Update the comment adjacent to the planner node to record the basis: run 01M1XZCWNBR33BZGHQXNRA80J9 measured planner at 83.6s wall = 40% of run, $0.080 = 45% of cost, 4,469 of 5,899 reasoning tokens; `sd ready --assignee fabro` is deterministic since fabro-5e09/PR #38, removing the tie-break reasoning load that justified high. (4) Do NOT touch the other nodes' `reasoning_effort` settings (implementer ~line 83 and the line ~212 node stay `low`; the line ~70 and ~200 comment blocks stay). (5) Validation: the edited graph must still parse — run the workflow validation path the tester gate uses (`just qualitygate` is the authoritative gate; a graph-only parse check without a Rust cold build does not exist yet, fabro-513e is open — do not build one here). (6) 'Re-measure one run' from the seed is follow-through, not implementable in this run: note in the implementation summary that the next run's cycle report carries the planner cost measurement; file no new seed for it.",
+          "internal.retry_count.evidence": 0,
+          "last_response": "All done. The work is complete and scoped:\n\n- **Edit**: `.fabro/workflows/develop/workflow.fabro` planner node — `reasoning_effort=\"high\"` → `\"low\"` plus a 12-line adjacent comment recording the r",
+          "internal.run_id": "01M1Y12A93HSB4VDZN55HZYNYS",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "preferred_label": "Implemented",
           "current_node": "evidence",
+          "failure_signature": "",
+          "internal.retry_count.planner": 0,
+          "current_seed_title": "Develop planner: drop reasoning_effort from high to low for first-pass claims",
+          "implementation_summary": "Edited `.fabro/workflows/develop/workflow.fabro` (platform-targeting seed, shell path): planner node `reasoning_effort` flipped high→low with an adjacent 12-line comment recording the run 01M1XZCWNBR33BZGHQXNRA80J9 basis and the static-effort ambiguity resolution; no other node or comment touched (git diff = 13 insertions, 1 deletion, planner region only). Durable decision captured as mx-4b1a29 (reasoning_effort is static per node). Re-measurement is follow-through: the next run's cycle report carries the planner cost measurement; no new seed filed. Per-criterion verification: - PASS planner node effort now low, all other planner attributes intact: workflow.fabro planner block (structural check confirmed output_schema, max_visits, fs_hide, context_allow_keys). - PASS ambiguity resolved and stated in node comment: static low for ALL planner passes incl. changes_requested re-plans, engine has no visit-conditional override (fabro-config run layer); re-plan quality via prompt's brief-folding. - PASS comment records basis: 83.6s=40% wall, $0.080=45% cost, 4,469/5,899 reasoning tokens, deterministic `sd ready --assignee fabro` since fabro-5e09/PR #38. - PASS other nodes untouched: implementer (line 95) and reviewer (line 224) remain low; ~82 and ~212 comment blocks unchanged per diff. - PASS graph parses: structural sanity check (bracket balance, attr well-formedness) green; authoritative parse validation deferred to the tester gate as the brief prescribes (no graph-only check without cold build, fabro-513e open). - PASS re-measure handled as follow-through: noted here, no seed filed.",
+          "thread.planner.current_node": "implementer",
+          "thread.start.current_node": "planner"
+        },
+        "node_outcomes": {
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5673,
+              "active_time_ms": 5673
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/683d3deea6c190222c1ded3699f19e97873d41102126ce84bf48438b59c5b1ca"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 374,
+              "active_time_ms": 374
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3360,
+                "preview": "All done. The work is complete and scoped:\n\n- **Edit**: `.fabro/workflows/develop/workflow.fabro` planner node — `reasoning_effort=\"high\"` → `\"low\"` plus a 12-line adjacent comment recording the r"
+              },
+              "implementation_summary": "Edited `.fabro/workflows/develop/workflow.fabro` (platform-targeting seed, shell path): planner node `reasoning_effort` flipped high→low with an adjacent 12-line comment recording the run 01M1XZCWNBR33BZGHQXNRA80J9 basis and the static-effort ambiguity resolution; no other node or comment touched (git diff = 13 insertions, 1 deletion, planner region only). Durable decision captured as mx-4b1a29 (reasoning_effort is static per node). Re-measurement is follow-through: the next run's cycle report carries the planner cost measurement; no new seed filed. Per-criterion verification: - PASS planner node effort now low, all other planner attributes intact: workflow.fabro planner block (structural check confirmed output_schema, max_visits, fs_hide, context_allow_keys). - PASS ambiguity resolved and stated in node comment: static low for ALL planner passes incl. changes_requested re-plans, engine has no visit-conditional override (fabro-config run layer); re-plan quality via prompt's brief-folding. - PASS comment records basis: 83.6s=40% wall, $0.080=45% cost, 4,469/5,899 reasoning tokens, deterministic `sd ready --assignee fabro` since fabro-5e09/PR #38. - PASS other nodes untouched: implementer (line 95) and reviewer (line 224) remain low; ~82 and ~212 comment blocks unchanged per diff. - PASS graph parses: structural sanity check (bracket balance, attr well-formedness) green; authoritative parse validation deferred to the tester gate as the brief prescribes (no graph-only check without cold build, fabro-513e open). - PASS re-measure handled as follow-through: noted here, no seed filed.",
+              "lesson_capture": "mx-4b1a29",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "No graph-only parse check exists for `.fabro` workflow files without a Rust cold build (fabro-513e already open) — I fell back to a python structural check (bracket balance + attribute commas), which catches syntax slips but not schema-level errors; the tester gate remains the only real parser, so a bad edit surfaces one stage late."
+                ]
+              },
+              "last_stage": "implementer",
+              "last_response": "All done. The work is complete and scoped:\n\n- **Edit**: `.fabro/workflows/develop/workflow.fabro` planner node — `reasoning_effort=\"high\"` → `\"low\"` plus a 12-line adjacent comment recording the r"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 18961,
+                    "output_tokens": 2809,
+                    "reasoning_tokens": 1548,
+                    "cache_read_tokens": 188544,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 94722
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 90301,
+              "tool_time_ms": 3783,
+              "active_time_ms": 94084
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_id": "fabro-bbbb",
+              "last_response": "Seed `fabro-bbbb` claimed. Basis verified fresh: planner node still runs `reasoning_effort=\"high\"` at `.fabro/workflows/develop/workflow.fabro:49`, and the seed's premise (deterministic assignee filte",
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 4184,
+                "preview": "Seed `fabro-bbbb` claimed. Basis verified fresh: planner node still runs `reasoning_effort=\"high\"` at `.fabro/workflows/develop/workflow.fabro:49`, and the seed's premise (deterministic assignee filte"
+              },
+              "current_seed_brief": "Platform-targeting seed (fs_hide binds file tools; the implementer prompt's platform carve-out applies — edit via shell, e.g. sed/python3). Acceptance criteria: (1) `.fabro/workflows/develop/workflow.fabro` planner node (~line 49): `reasoning_effort=\"high\"` becomes `reasoning_effort=\"low\"`; no other planner-node attribute changes (output_schema, max_visits, fs_hide, context_allow_keys all intact). (2) SPEC AMBIGUITY RESOLVED — the seed's parenthetical 'keep high semantics for changes_requested re-plans if conditional effort isn't available' cannot mean per-visit conditional effort: the engine resolves reasoning_effort as a STATIC node attribute (see `lib/foundation/fabro-config/src/layers/run.rs` reasoning_effort field and resolve/run.rs copy — no visit-conditional override exists). Chosen reading: static `low` for ALL planner passes including re-plans; re-plan quality is preserved by the prompt's mechanical folding of review_feedback into current_seed_brief (re-plans are brief-folding, not ambiguity resolution). State this in the node comment, not just silently. (3) Update the comment adjacent to the planner node to record the basis: run 01M1XZCWNBR33BZGHQXNRA80J9 measured planner at 83.6s wall = 40% of run, $0.080 = 45% of cost, 4,469 of 5,899 reasoning tokens; `sd ready --assignee fabro` is deterministic since fabro-5e09/PR #38, removing the tie-break reasoning load that justified high. (4) Do NOT touch the other nodes' `reasoning_effort` settings (implementer ~line 83 and the line ~212 node stay `low`; the line ~70 and ~200 comment blocks stay). (5) Validation: the edited graph must still parse — run the workflow validation path the tester gate uses (`just qualitygate` is the authoritative gate; a graph-only parse check without a Rust cold build does not exist yet, fabro-513e is open — do not build one here). (6) 'Re-measure one run' from the seed is follow-through, not implementable in this run: note in the implementation summary that the next run's cycle report carries the planner cost measurement; file no new seed for it.",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Planner reconnaissance cannot cheaply verify CLI subcommand usage: `cargo run -q -p fabro-cli -- validate --help` timed out at 240s (no target/debug binary cached, cold build) in run 01M1Y12A93HSB4VDZN55HZYNYS. This is exactly fabro-513e's premise (graph-only validation without a Rust cold build) reproducing from the planner side too — a `just validate-workflows` recipe or a prebuilt binary would fix it."
+                  }
+                ],
+                "observations": [
+                  "fabro-bbbb's parenthetical '(keep high semantics for changes_requested re-plans if conditional effort isn't available)' is ambiguous — resolved in the brief to static `low` for all passes because the engine has no per-visit conditional reasoning_effort (static node attribute in lib/foundation/fabro-config/src/layers/run.rs).",
+                  "Basis check succeeded via shell reads of `.fabro/workflows/develop/workflow.fabro` (fs_hide binds file tools only, as documented); planner reasoning_effort=high confirmed live at line 49, so the seed is fresh, not stale.",
+                  "fabro-513e (just validate-workflows recipe) premise reproduced live this run — it may be a good next candidate for the following run."
+                ]
+              },
+              "current_seed_title": "Develop planner: drop reasoning_effort from high to low for first-pass claims"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 26988,
+                    "output_tokens": 2507,
+                    "reasoning_tokens": 5489,
+                    "cache_read_tokens": 352640,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 164631
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 147599,
+              "tool_time_ms": 243342,
+              "active_time_ms": 390941
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "reviewer",
+        "git_commit_sha": "1e0839effa066a83e18bb926ff6ed043334cf57a",
+        "node_visits": {
+          "tester": 1,
+          "start": 1,
+          "evidence": 1,
+          "planner": 1,
+          "implementer": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1Y12A93HSB4VDZN55HZYNYS.jsonl b/.fabro/journal/01M1Y12A93HSB4VDZN55HZYNYS.jsonl\nindex 4ec014a..475c3c9 100644\n--- a/.fabro/journal/01M1Y12A93HSB4VDZN55HZYNYS.jsonl\n+++ b/.fabro/journal/01M1Y12A93HSB4VDZN55HZYNYS.jsonl\n@@ -2,3 +2,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y12A93HSB4VDZN55HZYNYS\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:39:06Z\",\"data\":{\"painpoints\":[{\"text\":\"Planner reconnaissance cannot cheaply verify CLI subcommand usage: `cargo run -q -p fabro-cli -- validate --help` timed out at 240s (no target/debug binary cached, cold build) in run 01M1Y12A93HSB4VDZN55HZYNYS. This is exactly fabro-513e's premise (graph-only validation without a Rust cold build) reproducing from the planner side too — a `just validate-workflows` recipe or a prebuilt binary would fix it.\"}],\"observations\":[\"fabro-bbbb's parenthetical '(keep high semantics for changes_requested re-plans if conditional effort isn't available)' is ambiguous — resolved in the brief to static `low` for all passes because the engine has no per-visit conditional reasoning_effort (static node attribute in lib/foundation/fabro-config/src/layers/run.rs).\",\"Basis check succeeded via shell reads of `.fabro/workflows/develop/workflow.fabro` (fs_hide binds file tools only, as documented); planner reasoning_effort=high confirmed live at line 49, so the seed is fresh, not stale.\",\"fabro-513e (just validate-workflows recipe) premise reproduced live this run — it may be a good next candidate for the following run.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y12A93HSB4VDZN55HZYNYS\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:40:56Z\",\"data\":{\"painpoints\":[],\"observations\":[\"No graph-only parse check exists for `.fabro` workflow files without a Rust cold build (fabro-513e already open) — I fell back to a python structural check (bracket balance + attribute commas), which catches syntax slips but not schema-level errors; the tester gate remains the only real parser, so a bad edit surfaces one stage late.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y12A93HSB4VDZN55HZYNYS\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:41:06Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y12A93HSB4VDZN55HZYNYS\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:41:15Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 20,
+          "deletions": 2
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-07T13:41:53.013862694Z",
+        "current_node": "reviewer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.fidelity": "summary:high",
+          "current_node": "reviewer",
           "internal.retry_count.start": 0,
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -1306,16 +1539,24 @@
             "preview": "Seed `fabro-bbbb` claimed. Basis verified fresh: planner node still runs `reasoning_effort=\"high\"` at `.fabro/workflows/develop/workflow.fabro:49`, and the seed's premise (deterministic assignee filte"
           },
           "thread.tester.current_node": "evidence",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 3171,
+            "preview": "**Review: fabro-bbbb — Develop planner reasoning_effort high→low**\n\nVerified against the authoritative seed spec (read from the evidence blob, not the brief):\n\n1. **Planner node effort flipped hig"
+          },
+          "thread.evidence.current_node": "reviewer",
           "internal.seed_cycle_anchor": "fabro-bbbb",
           "graph.max_node_visits": "40",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
             "tester": 1,
-            "evidence": 1
+            "evidence": 1,
+            "reviewer": 1
           },
           "failure_class": "",
-          "preferred_label": "Implemented",
+          "preferred_label": "Approved",
           "failure_signature": "",
           "outcome": "succeeded",
           "thread.planner.current_node": "implementer",
@@ -1323,19 +1564,27 @@
           "implementation_summary": "Edited `.fabro/workflows/develop/workflow.fabro` (platform-targeting seed, shell path): planner node `reasoning_effort` flipped high→low with an adjacent 12-line comment recording the run 01M1XZCWNBR33BZGHQXNRA80J9 basis and the static-effort ambiguity resolution; no other node or comment touched (git diff = 13 insertions, 1 deletion, planner region only). Durable decision captured as mx-4b1a29 (reasoning_effort is static per node). Re-measurement is follow-through: the next run's cycle report carries the planner cost measurement; no new seed filed. Per-criterion verification: - PASS planner node effort now low, all other planner attributes intact: workflow.fabro planner block (structural check confirmed output_schema, max_visits, fs_hide, context_allow_keys). - PASS ambiguity resolved and stated in node comment: static low for ALL planner passes incl. changes_requested re-plans, engine has no visit-conditional override (fabro-config run layer); re-plan quality via prompt's brief-folding. - PASS comment records basis: 83.6s=40% wall, $0.080=45% cost, 4,469/5,899 reasoning tokens, deterministic `sd ready --assignee fabro` since fabro-5e09/PR #38. - PASS other nodes untouched: implementer (line 95) and reviewer (line 224) remain low; ~82 and ~212 comment blocks unchanged per diff. - PASS graph parses: structural sanity check (bracket balance, attr well-formedness) green; authoritative parse validation deferred to the tester gate as the brief prescribes (no graph-only check without cold build, fabro-513e open). - PASS re-measure handled as follow-through: noted here, no seed filed.",
           "internal.run_id": "01M1Y12A93HSB4VDZN55HZYNYS",
           "thread.implementer.current_node": "tester",
+          "review_verdict": "approved",
           "lesson_capture": "mx-4b1a29",
+          "internal.retry_count.reviewer": 0,
           "current_seed_brief": "Platform-targeting seed (fs_hide binds file tools; the implementer prompt's platform carve-out applies — edit via shell, e.g. sed/python3). Acceptance criteria: (1) `.fabro/workflows/develop/workflow.fabro` planner node (~line 49): `reasoning_effort=\"high\"` becomes `reasoning_effort=\"low\"`; no other planner-node attribute changes (output_schema, max_visits, fs_hide, context_allow_keys all intact). (2) SPEC AMBIGUITY RESOLVED — the seed's parenthetical 'keep high semantics for changes_requested re-plans if conditional effort isn't available' cannot mean per-visit conditional effort: the engine resolves reasoning_effort as a STATIC node attribute (see `lib/foundation/fabro-config/src/layers/run.rs` reasoning_effort field and resolve/run.rs copy — no visit-conditional override exists). Chosen reading: static `low` for ALL planner passes including re-plans; re-plan quality is preserved by the prompt's mechanical folding of review_feedback into current_seed_brief (re-plans are brief-folding, not ambiguity resolution). State this in the node comment, not just silently. (3) Update the comment adjacent to the planner node to record the basis: run 01M1XZCWNBR33BZGHQXNRA80J9 measured planner at 83.6s wall = 40% of run, $0.080 = 45% of cost, 4,469 of 5,899 reasoning tokens; `sd ready --assignee fabro` is deterministic since fabro-5e09/PR #38, removing the tie-break reasoning load that justified high. (4) Do NOT touch the other nodes' `reasoning_effort` settings (implementer ~line 83 and the line ~212 node stay `low`; the line ~70 and ~200 comment blocks stay). (5) Validation: the edited graph must still parse — run the workflow validation path the tester gate uses (`just qualitygate` is the authoritative gate; a graph-only parse check without a Rust cold build does not exist yet, fabro-513e is open — do not build one here). (6) 'Re-measure one run' from the seed is follow-through, not implementable in this run: note in the implementation summary that the next run's cycle report carries the planner cost measurement; file no new seed for it.",
           "graph.cycle_counter_reset_key": "current_seed_id",
           "current_seed_title": "Develop planner: drop reasoning_effort from high to low for first-pass claims",
-          "internal.thread_id": "tester",
+          "internal.thread_id": "evidence",
           "thread.start.current_node": "planner",
           "current_seed_id": "fabro-bbbb",
           "internal.node_visit_count": 1,
-          "last_response": "All done. The work is complete and scoped:\n\n- **Edit**: `.fabro/workflows/develop/workflow.fabro` planner node — `reasoning_effort=\"high\"` → `\"low\"` plus a 12-line adjacent comment recording the r",
+          "last_response": "**Review: fabro-bbbb — Develop planner reasoning_effort high→low**\n\nVerified against the authoritative seed spec (read from the evidence blob, not the brief):\n\n1. **Planner node effort flipped hig",
           "journal": {
-            "painpoints": [],
+            "painpoints": [
+              {
+                "text": "Evidence blob arrived as a ref requiring a tool round-trip (run 01M1Y12A93HSB4VDZN55HZYNYS, /tmp/fabro/runtime/blobs/683d3dee...). Known and documented (mx-2eb2e0), so workaround was routine, but the capture itself is only ~5KB of actual content — comfortably under a sane inline budget. Suggestion: raise the preamble blob-ref threshold so captures this size render inline and save reviewer stage a round-trip."
+              }
+            ],
             "observations": [
-              "No graph-only parse check exists for `.fabro` workflow files without a Rust cold build (fabro-513e already open) — I fell back to a python structural check (bracket balance + attribute commas), which catches syntax slips but not schema-level errors; the tester gate remains the only real parser, so a bad edit surfaces one stage late."
+              "Verified the on-disk grep of all six reasoning_effort occurrences (comment lines 49/56/61, untouched nodes at 82/95/212/224) rather than trusting the diff hunk alone — confirms no other node's effort changed.",
+              "This seed was churn-only (seed-work=0, loop-work diff as review scope); the capture correctly disclosed that and the loop-work diff was complete against claim base 809eb80.",
+              "Parse validation of the edited graph rests on the green gate per the brief's own carve-out (fabro-513e open); I did not re-run qualitygate since the diff is comment+one-attribute and the gate already ran green."
             ]
           },
           "response.implementer": {
@@ -1349,7 +1598,7 @@
           "graph.preamble_budget_kb": "24",
           "internal.work_dir": "/workspace/fabro",
           "command.output": "blob://sha256/683d3deea6c190222c1ded3699f19e97873d41102126ce84bf48438b59c5b1ca",
-          "last_stage": "implementer",
+          "last_stage": "reviewer",
           "internal.retry_count.tester": 0,
           "graph.rankdir": "LR",
           "internal.retry_count.evidence": 0
@@ -1433,6 +1682,61 @@
               "active_time_ms": 5673
             }
           },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "review_verdict": "approved",
+              "last_stage": "reviewer",
+              "last_response": "**Review: fabro-bbbb — Develop planner reasoning_effort high→low**\n\nVerified against the authoritative seed spec (read from the evidence blob, not the brief):\n\n1. **Planner node effort flipped hig",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Evidence blob arrived as a ref requiring a tool round-trip (run 01M1Y12A93HSB4VDZN55HZYNYS, /tmp/fabro/runtime/blobs/683d3dee...). Known and documented (mx-2eb2e0), so workaround was routine, but the capture itself is only ~5KB of actual content — comfortably under a sane inline budget. Suggestion: raise the preamble blob-ref threshold so captures this size render inline and save reviewer stage a round-trip."
+                  }
+                ],
+                "observations": [
+                  "Verified the on-disk grep of all six reasoning_effort occurrences (comment lines 49/56/61, untouched nodes at 82/95/212/224) rather than trusting the diff hunk alone — confirms no other node's effort changed.",
+                  "This seed was churn-only (seed-work=0, loop-work diff as review scope); the capture correctly disclosed that and the loop-work diff was complete against claim base 809eb80.",
+                  "Parse validation of the edited graph rests on the green gate per the brief's own carve-out (fabro-513e open); I did not re-run qualitygate since the diff is comment+one-attribute and the gate already ran green."
+                ]
+              },
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 3171,
+                "preview": "**Review: fabro-bbbb — Develop planner reasoning_effort high→low**\n\nVerified against the authoritative seed spec (read from the evidence blob, not the brief):\n\n1. **Planner node effort flipped hig"
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 15568,
+                    "output_tokens": 997,
+                    "reasoning_tokens": 386,
+                    "cache_read_tokens": 26496,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 34766
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 28866,
+              "tool_time_ms": 188,
+              "active_time_ms": 29054
+            }
+          },
           "planner": {
             "status": "succeeded",
             "preferred_label": "Seed claimed",
@@ -1495,13 +1799,14 @@
             "usage": null
           }
         },
-        "next_node_id": "reviewer",
+        "next_node_id": "closeout",
         "node_visits": {
           "evidence": 1,
           "start": 1,
           "implementer": 1,
           "tester": 1,
-          "planner": 1
+          "planner": 1,
+          "reviewer": 1
         }
       },
       "diff": {}
@@ -1534,6 +1839,243 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "reviewer@1": {
+      "first_event_seq": 264,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: reviewer",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T13:41:52.745723331Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T13:41:19.949738121Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 29608,
+        "inference_time_ms": 28866,
+        "tool_time_ms": 188,
+        "active_time_ms": 29054
+      },
+      "usage": {
+        "input_tokens": 15568,
+        "output_tokens": 997,
+        "total_tokens": 43447,
+        "reasoning_tokens": 386,
+        "cache_read_tokens": 26496,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 34766
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 15525,
+        "usage_percent": 1.4805793762207031,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-07T13:41:52.723402674Z",
+        "event_seq": 286,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1163,
+            "usage_percent": 0.11091232299804688
+          },
+          {
+            "category": "tools",
+            "tokens": 1658,
+            "usage_percent": 0.15811920166015625
+          },
+          {
+            "category": "skills",
+            "tokens": 224,
+            "usage_percent": 0.0213623046875
+          },
+          {
+            "category": "memory",
+            "tokens": 5823,
+            "usage_percent": 0.5553245544433594
+          },
+          {
+            "category": "conversation",
+            "tokens": 6650,
+            "usage_percent": 0.6341934204101562
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "planner@1": {
       "first_event_seq": 21,
       "prompt": null,
