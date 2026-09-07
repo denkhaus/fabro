@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1YB91EEC3F5ARY3F5432Q2E.jsonl b/.fabro/journal/01M1YB91EEC3F5ARY3F5432Q2E.jsonl
+new file mode 100644
+index 000000000..5c1a5e5db
+--- /dev/null
++++ b/.fabro/journal/01M1YB91EEC3F5ARY3F5432Q2E.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1YB91EEC3F5ARY3F5432Q2E","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T16:30:19Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YB91EEC3F5ARY3F5432Q2E","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-07T16:31:18Z","data":"Surveyor pass: fetched `upstream` (https://github.com/fabro-sh/fabro) and `origin` with --prune; rev-list count origin/denkhaus..upstream/main = 0 (< MIN 5), so no merge slot consumed (2026-09-05 user decision). Newest upstream subject: none (zero drift). Nothing hurt; fetch output was very noisy (hundreds of new remote-tracking branches on first upstream fetch), consider `--quiet` or narrowed refspecs next time. Route: Work — run one develop+revisor cycle."}
