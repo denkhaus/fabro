@@ -26,4 +26,5 @@ fabro-agent = { path = "../fabro-agent" }
 fabro-workflow = { path = "../fabro-workflow" }
 strum = { workspace = true }
 fabro-tool = { path = "../fabro-tool" }
+tempfile = "3"
 toml = { workspace = true }
