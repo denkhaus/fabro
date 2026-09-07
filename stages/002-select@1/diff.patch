@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1Z0AV57YJGYCZ46E81PEYRS.jsonl b/.fabro/journal/01M1Z0AV57YJGYCZ46E81PEYRS.jsonl
+new file mode 100644
+index 0000000..4539cea
+--- /dev/null
++++ b/.fabro/journal/01M1Z0AV57YJGYCZ46E81PEYRS.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1Z0AV57YJGYCZ46E81PEYRS","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T22:38:14Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Z0AV57YJGYCZ46E81PEYRS","node":"select","visit":1,"status":"succeeded","ts":"2026-09-07T22:38:39Z","data":{"painpoints":[],"observations":["Candidate pool 76 runs (71 develop + 5 merge-upstream); 1 selected (newest develop, baseline version, live sandbox, unrevised). Blocked backlog: ~45+ runs stale-evidence by version drift (including 4 merge-upstream runs, of which 3 carry the current merge-upstream baseline but are older than the selected run), ~17 runs sandbox_available false, several pre-intent runs with absent workflow_version_id; all remain unrevised until engine provisions fresh analyst sandboxes or they age out of relevance"]}}
