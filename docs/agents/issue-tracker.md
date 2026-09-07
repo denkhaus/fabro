@@ -19,6 +19,24 @@ work lives in seeds.
 
 `sd prime` injects rules and workflow context at the start of a session (see AGENTS.md).
 
+## Assignee: the ownership switch
+
+`assignee` decides who owns a seed — it is the switch that splits work
+between the develop line and the user:
+
+- **Filers assign at creation.** When filing a seed meant for the develop
+  line, set `--assignee fabro` (or assign it right after with
+  `sd update <id> --assignee fabro`).
+- **The develop line only works on seeds assigned to `fabro`.** The planner
+  lists candidates with `sd ready --assignee fabro --limit 200` and claims
+  with `sd update <id> --status in_progress --assignee fabro`; seeds not
+  assigned to fabro never appear as candidates.
+- **The user can reassign or unassign anytime — that is a veto.** Unassigning
+  (or reassigning) a seed removes it from the line's candidate pool on the
+  next run; an empty filtered view parks the line rather than falling back
+  to unassigned seeds. Assignment is a user decision, never bulk-applied by
+  the line itself.
+
 ## Upstream PRs
 
 PRs to `fabro-sh/fabro` are referenced from the seed body (e.g. "UPSTREAM PR
