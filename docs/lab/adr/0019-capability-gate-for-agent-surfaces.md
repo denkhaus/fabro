@@ -32,8 +32,10 @@ line could arm its own sandboxes.
    seed.
 3. **Direct agent tools are read-only at most** (user sharpening,
    2026-09-08): an agent-facing tool may expose derived READ data through
-   the engine (e.g. run lists, PR state via `fabro_runs_list` /
-   purpose-built read-only tools), never credentials or general clients.
+   the engine (run lists, PR state via `fabro_runs_list`), never
+   credentials or general clients. Extend EXISTING tools rather than
+   adding new ones (user decision 2026-09-08); a new agent tool is
+   itself a capability addition requiring user approval.
    Every forge WRITE stays engine-side — the agent expresses intent
    (create run, wait for merge), the engine executes under its own
    governance.
