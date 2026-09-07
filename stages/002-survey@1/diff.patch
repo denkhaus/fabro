@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1YWEBWSDRRSKFB3EDQ87WF4.jsonl b/.fabro/journal/01M1YWEBWSDRRSKFB3EDQ87WF4.jsonl
+new file mode 100644
+index 000000000..1397ba8a8
+--- /dev/null
++++ b/.fabro/journal/01M1YWEBWSDRRSKFB3EDQ87WF4.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1YWEBWSDRRSKFB3EDQ87WF4","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T21:30:18Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YWEBWSDRRSKFB3EDQ87WF4","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-07T21:31:34Z","data":["upstream count: 0 commits ahead of origin/denkhaus in upstream/main (threshold MIN=5 not met); newest upstream subject: 'Bump version to 0.348.0-nightly.0'","revisor backlog: 01M1XCHJTDBJKZ31VFMY1KD61Q, 01M1Y12A93HSB4VDZN55HZYNYS, 01M1Y2SMEVDHAFB59GZV9B84CQ, 01M1Y852BN91NSVSHFWNWTW5ST, 01M1Y9N7R47JPR49CYXP8BQYC3, 01M1YBBXR99PNME6Y8ZED4Y2NN (completed develop runs from 2026-09-07 07:32-16:31 UTC with no revisor run sharing their parent_id; best-effort signal via parent-pairing since run records do not expose which run a revisor actually revised — each later revisor pass burns the newest one first)","nothing hurt: git fetches were clean, fabro_runs_list responded normally"]}
