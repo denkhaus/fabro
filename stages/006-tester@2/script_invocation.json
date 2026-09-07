@@ -1,0 +1,6 @@
+{
+  "script": "just qualitygate",
+  "command": "exec 2>&1\njust qualitygate",
+  "language": "shell",
+  "timeout_ms": 1200000
+}
