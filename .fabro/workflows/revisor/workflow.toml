@@ -64,9 +64,12 @@ merge_strategy = "squash"
 # a valid value: the enum is low|medium|high|xhigh|max).
 model = "zai:glm-4.7"
 
-[run.integrations.github.permissions]
-contents = "write"
-pull_requests = "write"
+# NO [run.integrations.github.permissions] (ADR-0019, user directive 2026-09-08):
+# the lab-era write token is vestigial - the ENGINE performs all forge
+# operations (branch push, PR create, auto-merge, waits) with its own
+# credentials; agent shells get NO GITHUB_TOKEN (empty permissions =
+# no_token path in initialize.rs). Forge reads go through engine-mediated
+# tools (fabro_runs_list), never raw clients.
 
 # Terminal-failure visibility (run 01M0T9B7T review, rec 5): one Slack
 # route for terminal lifecycle events is enough to notice credential rot.

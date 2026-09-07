@@ -301,6 +301,17 @@ decision, not an accident - it needs the user plus an ADR.
 
 ## Standing rules
 
+- Capability gate (ADR-0019, user decision 2026-09-08): agent
+  sandboxes get ONLY what the task minimally requires (least
+  privilege). All GitHub writes are ENGINE-mediated (fabro-github
+  crate, server-side: run PRs, auto-merge, gate, branch updates) -
+  agents never receive raw authenticated clients (no token-bearing gh,
+  curl, API keys). Any seed/PR adding/removing/changing a tool,
+  credential, or permission in an agent-reachable surface (Dockerfiles,
+  environment env, tool allowlists, hooks) is needs-user + unassigned
+  until the user approves; reviewers and the line-watch block such
+  changes on sight. A merged capability change without a recorded user
+  decision gets reverted, not ratified.
 - Ownership boundary (ADR-0018, user decisions 2026-09-07): the
   autonomous line works ONLY on seeds assigned to `fabro`
   (`sd ready --assignee fabro` is the planner's sole candidate source,
