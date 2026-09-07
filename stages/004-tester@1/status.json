@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Script failed with exit code: 1\n\n## output\nnu scripts/qualitygate.nu\ntouched crates: fabro-sandbox\n== cargo fmt --check --all ==\nformat clean\n== cargo clippy fabro-sandbox -D warnings ==\n╭────────────╮\n│ empty list │\n╰────────────╯\n    Checking fabro-sandbox v0.348.0-nightly.0 (/repos/denkhaus/fabro/lib/components/fabro-sandbox)\nerror[E0432]: unresolved import `managed_labels`\n  --> lib/components/fabro-sandbox/src/lib.rs:18:9\n   |\n18 | pub use managed_labels::RUN_ID_LABEL;\n   |         ^^^^^^^^^^^^^^ use of unresolved module or unlinked crate `managed_labels`\n   |\nhelp: to make use of source file lib/components/fabro-sandbox/src/managed_labels.rs, use `mod managed_labels` in this file to declare the module\n   |\n 1 + mod managed_labels;\n   |\n\nFor more information about this error, try `rustc --explain E0432`.\nerror: could not compile `fabro-sandbox` (lib) due to 1 previous error\nwarning: build failed, waiting for other jobs to finish...\nGATE RED\nerror: recipe `qualitygate` failed on line 128 with exit code 1\n",
+  "timestamp": "2026-09-07T18:41:15.288976422Z"
+}
