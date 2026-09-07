@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1Y2PF7V04Z003BDBDRZ1TGP.jsonl b/.fabro/journal/01M1Y2PF7V04Z003BDBDRZ1TGP.jsonl
+new file mode 100644
+index 000000000..b3eb44a89
+--- /dev/null
++++ b/.fabro/journal/01M1Y2PF7V04Z003BDBDRZ1TGP.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1Y2PF7V04Z003BDBDRZ1TGP","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T14:00:23Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Y2PF7V04Z003BDBDRZ1TGP","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-07T14:01:30Z","data":"survey: upstream count 0 (`origin/denkhaus`..`upstream/main`), below MIN threshold 5 → route Work. No newest upstream subject (zero drift). Remotes `upstream` -> `https://github.com/fabro-sh/fabro` and `origin` both fetched with --prune; huge volume of new remote-tracking branches made output noisy but nothing failed."}
