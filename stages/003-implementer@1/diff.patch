@@ -1,0 +1,34 @@
+diff --git a/.fabro/journal/01M1YS4NJH27NS7CQ02AWM9BNE.jsonl b/.fabro/journal/01M1YS4NJH27NS7CQ02AWM9BNE.jsonl
+index baa9b99..2443141 100644
+--- a/.fabro/journal/01M1YS4NJH27NS7CQ02AWM9BNE.jsonl
++++ b/.fabro/journal/01M1YS4NJH27NS7CQ02AWM9BNE.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1YS4NJH27NS7CQ02AWM9BNE","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T20:32:37Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YS4NJH27NS7CQ02AWM9BNE","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-07T20:33:28Z","data":{"painpoints":[],"observations":["gh CLI is not installed in this environment — in-flight PR check degraded to 'no data' per fail-open rule; future runs on this host cannot audit PR double-picks (run 01M1YS4NJH27NS7CQ02AWM9BNE)","Basis of fabro-c381 verified fresh: `.fabro/workflows/develop/prompts/implementer.md` has no adjacent-repair carve-out as of this run (grep only finds the report-don't-fix line at implementer.md:56)"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YS4NJH27NS7CQ02AWM9BNE","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-07T20:34:17Z","data":{"painpoints":[],"observations":["fs_hide blocked read_file/edit_file on the platform prompt as designed; the shell carve-out path (sed reads + python3 heredoc replace) worked cleanly for this platform-targeting seed — the existing carve-out guidance functioned exactly as intended, no friction."]}}
+diff --git a/.fabro/workflows/develop/prompts/implementer.md b/.fabro/workflows/develop/prompts/implementer.md
+index 2a00a1c..b8819e0 100644
+--- a/.fabro/workflows/develop/prompts/implementer.md
++++ b/.fabro/workflows/develop/prompts/implementer.md
+@@ -60,6 +60,21 @@ wiring: never modify them without the seed saying so explicitly. When
+ your work reveals friction in any of these (a script bug, a prompt gap,
+ a gate blind spot), do NOT fix it here — report it.
+ 
++Carve-out for verified pre-existing compile breaks in touched crates: a
++VERIFIED pre-existing compile or clippy break in a crate the seed's work
++already touches MAY be fixed minimally — the smallest change that
++restores gate green — even though it predates the seed. "Verified
++pre-existing" means the implementer demonstrates the break exists on the
++untouched tree (e.g. stash the work and reproduce, then restore) BEFORE
++fixing; an unverified break stays report-don't-fix. Every adjacent
++repair must be disclosed in the implementation summary under an explicit
++"adjacent repair" label naming the file(s) and the root cause. This
++carve-out loosens nothing else: unrelated-file fixes, feature drift, and
++platform (`.fabro/`, scripts, justfile) fixes remain off-limits, and
++incidental platform friction stays journal-only. Minimal-fix discipline
++applies: prefer the smallest compiling fix over refactors; if the
++minimal fix is unclear, report instead of fixing.
++
+ Report through `context_updates.journal` on EVERY pass. Silence is a
+ missing report, not an empty one — two full runs shipped zero journal
+ lines because answering was optional. Always emit BOTH keys:
