@@ -1,0 +1,38 @@
+diff --git a/.fabro/journal/01M1Y852BN91NSVSHFWNWTW5ST.jsonl b/.fabro/journal/01M1Y852BN91NSVSHFWNWTW5ST.jsonl
+index df67eab..3a5f8f7 100644
+--- a/.fabro/journal/01M1Y852BN91NSVSHFWNWTW5ST.jsonl
++++ b/.fabro/journal/01M1Y852BN91NSVSHFWNWTW5ST.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1Y852BN91NSVSHFWNWTW5ST","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T15:35:49Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Y852BN91NSVSHFWNWTW5ST","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-07T15:36:42Z","data":{"painpoints":[],"observations":["fabro-5e09's mechanism is already fully present in the current planner prompt (this very run follows it) and docs — claimed as verification-only; the tracker likely lags a landed commit.","Revisor `file.md` contains no assignee language at all, so 'files unassigned' holds by default (sd create without --assignee)."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Y852BN91NSVSHFWNWTW5ST","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-07T15:38:11Z","data":{"painpoints":[{"text":"The verification-only brief asserted 'acceptance criteria appear already satisfied', but criterion 5 was materially unmet in the worktree (run 01M1Y852BN91NSVSHFWNWTW5ST, seed fabro-5e09): docs/agents/issue-tracker.md still said 'Filers assign at creation' and 'Assignment is a user decision', contradicting the seed's D2/D3 decisions from the same day. Fix idea: generate verification-only briefs from the actual worktree state (e.g. grep the named files for the criterion keywords) rather than from the seed's expected end state, so 'make NO changes if all hold' is grounded in reality."}],"observations":["Partial-landing drift pattern: the assignee-filter mechanism had landed in planner.md, revisor file.md, and most of issue-tracker.md, yet the doc retained an older adjacent sentence ('Filers assign at creation') that directly contradicted the new convention — verifying a criterion means checking the full document for contradicting language, not just confirming the new sentence exists."]}}
+diff --git a/docs/agents/issue-tracker.md b/docs/agents/issue-tracker.md
+index 2d5dc24..19b9422 100644
+--- a/docs/agents/issue-tracker.md
++++ b/docs/agents/issue-tracker.md
+@@ -24,9 +24,9 @@ work lives in seeds.
+ `assignee` decides who owns a seed — it is the switch that splits work
+ between the develop line and the user:
+ 
+-- **Filers assign at creation.** When filing a seed meant for the develop
+-  line, set `--assignee fabro` (or assign it right after with
+-  `sd update <id> --assignee fabro`).
++- **Filers file UNASSIGNED.** Agents that file seeds (the revisor, any
++  agent-originated filing) create them without `--assignee`: filing is
++  their job, ownership is not — new seeds land unassigned in the backlog.
+ - **The develop line only works on seeds assigned to `fabro`.** The planner
+   lists candidates with `sd ready --assignee fabro --limit 200` and claims
+   with `sd update <id> --status in_progress --assignee fabro`; seeds not
+@@ -34,8 +34,10 @@ between the develop line and the user:
+ - **The user can reassign or unassign anytime — that is a veto.** Unassigning
+   (or reassigning) a seed removes it from the line's candidate pool on the
+   next run; an empty filtered view parks the line rather than falling back
+-  to unassigned seeds. Assignment is a user decision, never bulk-applied by
+-  the line itself.
++  to unassigned seeds. Assignment is a joint user+agent decision recorded
++  in the cycle report (the agent's `--assignee fabro` is a proposal the
++  user approves or vetoes by reassigning), never bulk-applied by the
++  line itself.
+ 
+ ## Upstream PRs
+ 
