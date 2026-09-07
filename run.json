@@ -694,7 +694,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T14:02:00.848821Z",
-  "last_event_at": "2026-09-07T14:37:21.011019625Z",
+  "last_event_at": "2026-09-07T14:38:28.663500984Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1299,9 +1299,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 750,
       "checkpoint": {
-        "timestamp": "2026-09-07T14:37:21.219455984Z",
+        "timestamp": "2026-09-07T14:37:25.284716870Z",
         "current_node": "evidence",
         "completed_nodes": [
           "start",
@@ -1312,12 +1312,34 @@
         ],
         "node_retries": {},
         "context_values": {
-          "thread.implementer.current_node": "tester",
-          "failure_class": "",
+          "internal.node_visit_count": 1,
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 4331,
+            "preview": "Everything is complete. Final state:\n\n- **New**: `lib/components/fabro-validate/src/file_refs.rs` (resolve `@`-refs + blank templated stylesheets, 7 unit tests), `lib/components/fabro-validate/src/bin"
+          },
+          "current_seed_id": "fabro-513e",
+          "outcome": "succeeded",
+          "failure_signature": "",
+          "command.output": "blob://sha256/aeaed5767fd3f13afa1dc2d13e506e821032bc7fb396c2f57c372f43bf6554f2",
+          "thread.start.current_node": "planner",
+          "internal.retry_count.planner": 0,
+          "graph.preamble_budget_kb": "24",
+          "current_node": "evidence",
+          "graph.rankdir": "LR",
+          "internal.retry_count.evidence": 0,
+          "last_stage": "implementer",
+          "internal.fidelity": "compact",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1
+          },
           "internal.retry_count.tester": 0,
+          "last_response": "Everything is complete. Final state:\n\n- **New**: `lib/components/fabro-validate/src/file_refs.rs` (resolve `@`-refs + blank templated stylesheets, 7 unit tests), `lib/components/fabro-validate/src/bin",
           "internal.retry_count.implementer": 0,
-          "internal.work_dir": "/workspace/fabro",
-          "implementation_summary": "Added `just validate-workflows` (justfile recipe delegating to new `scripts/validate-workflows.nu`, which enumerates `.fabro/workflows/*/workflow.toml` graphs or a single optional target and runs a new `fabro-validate` binary). The binary lives in `lib/components/fabro-validate/src/bin/` and reuses a new `file_refs` lib module that takes the resolve-before-the-rule approach: `@`-prefixed prompt/goal refs are inlined against the graph's directory before `unresolved_file_ref` runs (missing files keep their `@` and still fail), plus templated `model_stylesheet` sources are blanked because the runtime renders them before `stylesheet_syntax` runs — both choices documented in the script header and module docs. 7 unit tests added (5 ref-resolution + 2 stylesheet); lessons recorded as mx-ee9245 (epoch-0 mtime/cargo stale-build failure) and mx-63300b (standalone-lint preprocessing pattern). Verification per criterion: - PASS recipe + nu wrapper around fabro-validate with header comment: `justfile` `validate-workflows` recipe + `scripts/validate-workflows.nu` - PASS graph-only validation without test harness, ONE approach (resolve @-refs before the rule) documented in the header: `src/file_refs.rs` `resolve_file_refs` — no dev-deps built by the recipe's `cargo build --bin` - PASS optional target arg, default all workflows: `graph_paths` in `scripts/validate-workflows.nu`, exercised for name/dir/toml/graph-path forms - PASS current tree exits 0 warm in <2s (22/22 graphs OK; measured 0.65-1.9s): `just validate-workflows` run end-to-end - PASS genuinely missing @-refs still fail: synthetic graph with `@prompts/nope.md` exits 1; unit test `missing_prompt_ref_still_fails_unresolved_file_ref` - PASS unit tests in fabro-validate: 7 tests in `src/file_refs.rs`, full crate suite 269/269 green, fmt+clippy clean - PASS no gate/qualitygate script changes: git status shows only the new recipe in `justfile` and new script; `scripts/qualitygate.nu` untouched",
           "journal": {
             "painpoints": [
               {
@@ -1329,10 +1351,234 @@
               "nu gotchas hit: `graph(s)` in a double-quoted string interpolates `(s)` as a subexpression, and a command call inside a list literal (`[graph_from_toml $toml]`) becomes two bare list items — needs `[(graph_from_toml $toml)]`."
             ]
           },
-          "last_stage": "implementer",
+          "current_seed_brief": "Add a `just validate-workflows` recipe so pure workflow-graph edits validate in seconds instead of a ~7 min Rust cold build. Acceptance criteria: (1) new `justfile` recipe `validate-workflows` that delegates to a small nu wrapper (e.g. `scripts/validate-workflows.nu`) around `fabro-validate` — follow the existing justfile pattern of `nu scripts/<x>.nu ...` with a header comment; (2) the wrapper validates workflow graphs without compiling Rust test harnesses — either by resolving workflow-relative `@`-file refs (e.g. `@prompts/simplify.md`) before the `unresolved_file_ref` rule runs, or by scoping that rule out for this mode — choose ONE approach and document why in the script header; (3) invocation takes an optional workflow/target argument and defaults to validating all `.fabro/workflows/*/workflow.toml` graphs; (4) successful run on the current tree exits 0 in under ~10s warm; (5) `@`-refs that genuinely do not exist still fail (no blanket suppression of real errors); (6) add unit tests in `lib/components/fabro-validate` covering the ref-resolution/scoping behavior, and exercise the recipe end-to-end once (`just validate-workflows`); (7) no changes to unrelated gate/qualitygate scripts.",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.start": 0,
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 1944,
+            "preview": "Claimed `fabro-513e` (highest-priority unblocked fabro seed; basis verified against the current worktree — `justfile` and `lib/components/fabro-validate` both exist).\n\n{\n  \"outcome\": \"succeeded\",\n  "
+          },
+          "internal.thread_id": "tester",
+          "thread.implementer.current_node": "tester",
+          "current_seed_title": "Add a just validate-workflows recipe for graph-only validation without a Rust cold build",
+          "failure_class": "",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.run_id": "01M1Y2SMEVDHAFB59GZV9B84CQ",
+          "thread.planner.current_node": "implementer",
+          "thread.tester.current_node": "evidence",
+          "preferred_label": "Implemented",
+          "lesson_capture": "mx-ee9245 (failure: edit-tool epoch-0 mtimes make cargo skip recompiles; touch before rebuild) and mx-63300b (pattern: standalone-graph-lint preprocessing must mirror runtime pipeline transforms)",
+          "internal.seed_cycle_anchor": "fabro-513e",
+          "graph.max_node_visits": "40",
+          "implementation_summary": "Added `just validate-workflows` (justfile recipe delegating to new `scripts/validate-workflows.nu`, which enumerates `.fabro/workflows/*/workflow.toml` graphs or a single optional target and runs a new `fabro-validate` binary). The binary lives in `lib/components/fabro-validate/src/bin/` and reuses a new `file_refs` lib module that takes the resolve-before-the-rule approach: `@`-prefixed prompt/goal refs are inlined against the graph's directory before `unresolved_file_ref` runs (missing files keep their `@` and still fail), plus templated `model_stylesheet` sources are blanked because the runtime renders them before `stylesheet_syntax` runs — both choices documented in the script header and module docs. 7 unit tests added (5 ref-resolution + 2 stylesheet); lessons recorded as mx-ee9245 (epoch-0 mtime/cargo stale-build failure) and mx-63300b (standalone-lint preprocessing pattern). Verification per criterion: - PASS recipe + nu wrapper around fabro-validate with header comment: `justfile` `validate-workflows` recipe + `scripts/validate-workflows.nu` - PASS graph-only validation without test harness, ONE approach (resolve @-refs before the rule) documented in the header: `src/file_refs.rs` `resolve_file_refs` — no dev-deps built by the recipe's `cargo build --bin` - PASS optional target arg, default all workflows: `graph_paths` in `scripts/validate-workflows.nu`, exercised for name/dir/toml/graph-path forms - PASS current tree exits 0 warm in <2s (22/22 graphs OK; measured 0.65-1.9s): `just validate-workflows` run end-to-end - PASS genuinely missing @-refs still fail: synthetic graph with `@prompts/nope.md` exits 1; unit test `missing_prompt_ref_still_fails_unresolved_file_ref` - PASS unit tests in fabro-validate: 7 tests in `src/file_refs.rs`, full crate suite 269/269 green, fmt+clippy clean - PASS no gate/qualitygate script changes: git status shows only the new recipe in `justfile` and new script; `scripts/qualitygate.nu` untouched"
+        },
+        "node_outcomes": {
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/5d21935a3797c86aa686101ffc74d6b117b8341e1f8ece878447251457493b6e"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 157869,
+              "active_time_ms": 157869
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Claimed `fabro-513e` (highest-priority unblocked fabro seed; basis verified against the current worktree — `justfile` and `lib/components/fabro-validate` both exist).\n\n{\n  \"outcome\": \"succeeded\",\n  ",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 1944,
+                "preview": "Claimed `fabro-513e` (highest-priority unblocked fabro seed; basis verified against the current worktree — `justfile` and `lib/components/fabro-validate` both exist).\n\n{\n  \"outcome\": \"succeeded\",\n  "
+              },
+              "current_seed_brief": "Add a `just validate-workflows` recipe so pure workflow-graph edits validate in seconds instead of a ~7 min Rust cold build. Acceptance criteria: (1) new `justfile` recipe `validate-workflows` that delegates to a small nu wrapper (e.g. `scripts/validate-workflows.nu`) around `fabro-validate` — follow the existing justfile pattern of `nu scripts/<x>.nu ...` with a header comment; (2) the wrapper validates workflow graphs without compiling Rust test harnesses — either by resolving workflow-relative `@`-file refs (e.g. `@prompts/simplify.md`) before the `unresolved_file_ref` rule runs, or by scoping that rule out for this mode — choose ONE approach and document why in the script header; (3) invocation takes an optional workflow/target argument and defaults to validating all `.fabro/workflows/*/workflow.toml` graphs; (4) successful run on the current tree exits 0 in under ~10s warm; (5) `@`-refs that genuinely do not exist still fail (no blanket suppression of real errors); (6) add unit tests in `lib/components/fabro-validate` covering the ref-resolution/scoping behavior, and exercise the recipe end-to-end once (`just validate-workflows`); (7) no changes to unrelated gate/qualitygate scripts.",
+              "current_seed_title": "Add a just validate-workflows recipe for graph-only validation without a Rust cold build",
+              "last_stage": "planner",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-513e was top of 152 ready seeds; sd ready worked fine with --limit 200",
+                  "Basis line verified: run 01M1XVXF3MJHD0DXVCA7YXDH9G, justfile and fabro-validate/src/rules/unresolved_file_ref.rs both present in current tree"
+                ]
+              },
+              "current_seed_id": "fabro-513e"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 18076,
+                    "output_tokens": 754,
+                    "reasoning_tokens": 81,
+                    "cache_read_tokens": 80384,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 49874
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 39684,
+              "tool_time_ms": 1365,
+              "active_time_ms": 41049
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "Added `just validate-workflows` (justfile recipe delegating to new `scripts/validate-workflows.nu`, which enumerates `.fabro/workflows/*/workflow.toml` graphs or a single optional target and runs a new `fabro-validate` binary). The binary lives in `lib/components/fabro-validate/src/bin/` and reuses a new `file_refs` lib module that takes the resolve-before-the-rule approach: `@`-prefixed prompt/goal refs are inlined against the graph's directory before `unresolved_file_ref` runs (missing files keep their `@` and still fail), plus templated `model_stylesheet` sources are blanked because the runtime renders them before `stylesheet_syntax` runs — both choices documented in the script header and module docs. 7 unit tests added (5 ref-resolution + 2 stylesheet); lessons recorded as mx-ee9245 (epoch-0 mtime/cargo stale-build failure) and mx-63300b (standalone-lint preprocessing pattern). Verification per criterion: - PASS recipe + nu wrapper around fabro-validate with header comment: `justfile` `validate-workflows` recipe + `scripts/validate-workflows.nu` - PASS graph-only validation without test harness, ONE approach (resolve @-refs before the rule) documented in the header: `src/file_refs.rs` `resolve_file_refs` — no dev-deps built by the recipe's `cargo build --bin` - PASS optional target arg, default all workflows: `graph_paths` in `scripts/validate-workflows.nu`, exercised for name/dir/toml/graph-path forms - PASS current tree exits 0 warm in <2s (22/22 graphs OK; measured 0.65-1.9s): `just validate-workflows` run end-to-end - PASS genuinely missing @-refs still fail: synthetic graph with `@prompts/nope.md` exits 1; unit test `missing_prompt_ref_still_fails_unresolved_file_ref` - PASS unit tests in fabro-validate: 7 tests in `src/file_refs.rs`, full crate suite 269/269 green, fmt+clippy clean - PASS no gate/qualitygate script changes: git status shows only the new recipe in `justfile` and new script; `scripts/qualitygate.nu` untouched",
+              "last_stage": "implementer",
+              "last_response": "Everything is complete. Final state:\n\n- **New**: `lib/components/fabro-validate/src/file_refs.rs` (resolve `@`-refs + blank templated stylesheets, 7 unit tests), `lib/components/fabro-validate/src/bin",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 4331,
+                "preview": "Everything is complete. Final state:\n\n- **New**: `lib/components/fabro-validate/src/file_refs.rs` (resolve `@`-refs + blank templated stylesheets, 7 unit tests), `lib/components/fabro-validate/src/bin"
+              },
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Edit-tool file writes landed with mtime 1970-01-01 (e.g. lib/components/fabro-validate/src/file_refs.rs in run 01M1Y2SMEVDHAFB59GZV9B84CQ), so cargo considered sources older than cached rlibs and silently skipped recompiles — a just-added pub fn was reported missing and behavior lagged edits until manual `touch`. Fix idea: the platform's file-write path should set a real mtime (or utime after write); agents should `touch` after edit_file when Rust builds seem implausibly stale."
+                  }
+                ],
+                "observations": [
+                  "Raw-graph standalone linting cannot be a pure rules pass: two runtime transforms run before lint rules — @-file inlining (prompt/goal) and model_stylesheet MiniJinja rendering. The wrapper preprocesses both (file_refs.rs); any future pre-render pipeline transform needs a matching step there or the fast gate false-positives (found via code-review.fabro, whose templated stylesheet would otherwise fail).",
+                  "nu gotchas hit: `graph(s)` in a double-quoted string interpolates `(s)` as a subexpression, and a command call inside a list literal (`[graph_from_toml $toml]`) becomes two bare list items — needs `[(graph_from_toml $toml)]`."
+                ]
+              },
+              "lesson_capture": "mx-ee9245 (failure: edit-tool epoch-0 mtimes make cargo skip recompiles; touch before rebuild) and mx-63300b (pattern: standalone-graph-lint preprocessing must mirror runtime pipeline transforms)"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 79350,
+                    "output_tokens": 14372,
+                    "reasoning_tokens": 13156,
+                    "cache_read_tokens": 5370240,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 1628340
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/components/fabro-validate/Cargo.toml",
+              "/workspace/fabro/lib/components/fabro-validate/src/bin/fabro-validate.rs",
+              "/workspace/fabro/lib/components/fabro-validate/src/file_refs.rs",
+              "/workspace/fabro/lib/components/fabro-validate/src/lib.rs",
+              "/workspace/fabro/lib/components/fabro-validate/src/rules/mod.rs",
+              "/workspace/fabro/lib/components/fabro-validate/src/rules/unresolved_file_ref.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 998488,
+              "tool_time_ms": 695676,
+              "active_time_ms": 1694164
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/aeaed5767fd3f13afa1dc2d13e506e821032bc7fb396c2f57c372f43bf6554f2"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 369,
+              "active_time_ms": 369
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "reviewer",
+        "git_commit_sha": "83143ba344b4adc0cf109b5bc635af0ca0ba8585",
+        "node_visits": {
+          "tester": 1,
+          "evidence": 1,
+          "planner": 1,
+          "implementer": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1Y2SMEVDHAFB59GZV9B84CQ.jsonl b/.fabro/journal/01M1Y2SMEVDHAFB59GZV9B84CQ.jsonl\nindex 372cbf5..c9e417b 100644\n--- a/.fabro/journal/01M1Y2SMEVDHAFB59GZV9B84CQ.jsonl\n+++ b/.fabro/journal/01M1Y2SMEVDHAFB59GZV9B84CQ.jsonl\n@@ -2,3 +2,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y2SMEVDHAFB59GZV9B84CQ\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T14:02:51Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-513e was top of 152 ready seeds; sd ready worked fine with --limit 200\",\"Basis line verified: run 01M1XVXF3MJHD0DXVCA7YXDH9G, justfile and fabro-validate/src/rules/unresolved_file_ref.rs both present in current tree\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y2SMEVDHAFB59GZV9B84CQ\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T14:34:14Z\",\"data\":{\"painpoints\":[{\"text\":\"Edit-tool file writes landed with mtime 1970-01-01 (e.g. lib/components/fabro-validate/src/file_refs.rs in run 01M1Y2SMEVDHAFB59GZV9B84CQ), so cargo considered sources older than cached rlibs and silently skipped recompiles — a just-added pub fn was reported missing and behavior lagged edits until manual `touch`. Fix idea: the platform's file-write path should set a real mtime (or utime after write); agents should `touch` after edit_file when Rust builds seem implausibly stale.\"}],\"observations\":[\"Raw-graph standalone linting cannot be a pure rules pass: two runtime transforms run before lint rules — @-file inlining (prompt/goal) and model_stylesheet MiniJinja rendering. The wrapper preprocesses both (file_refs.rs); any future pre-render pipeline transform needs a matching step there or the fast gate false-positives (found via code-review.fabro, whose templated stylesheet would otherwise fail).\",\"nu gotchas hit: `graph(s)` in a double-quoted string interpolates `(s)` as a subexpression, and a command call inside a list literal (`[graph_from_toml $toml]`) becomes two bare list items — needs `[(graph_from_toml $toml)]`.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y2SMEVDHAFB59GZV9B84CQ\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T14:37:16Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y2SMEVDHAFB59GZV9B84CQ\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T14:37:21Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 12,
+          "additions": 426,
+          "deletions": 2
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-07T14:38:28.884821558Z",
+        "current_node": "reviewer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "thread.implementer.current_node": "tester",
+          "failure_class": "",
+          "internal.retry_count.reviewer": 0,
+          "internal.retry_count.tester": 0,
+          "internal.retry_count.implementer": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "implementation_summary": "Added `just validate-workflows` (justfile recipe delegating to new `scripts/validate-workflows.nu`, which enumerates `.fabro/workflows/*/workflow.toml` graphs or a single optional target and runs a new `fabro-validate` binary). The binary lives in `lib/components/fabro-validate/src/bin/` and reuses a new `file_refs` lib module that takes the resolve-before-the-rule approach: `@`-prefixed prompt/goal refs are inlined against the graph's directory before `unresolved_file_ref` runs (missing files keep their `@` and still fail), plus templated `model_stylesheet` sources are blanked because the runtime renders them before `stylesheet_syntax` runs — both choices documented in the script header and module docs. 7 unit tests added (5 ref-resolution + 2 stylesheet); lessons recorded as mx-ee9245 (epoch-0 mtime/cargo stale-build failure) and mx-63300b (standalone-lint preprocessing pattern). Verification per criterion: - PASS recipe + nu wrapper around fabro-validate with header comment: `justfile` `validate-workflows` recipe + `scripts/validate-workflows.nu` - PASS graph-only validation without test harness, ONE approach (resolve @-refs before the rule) documented in the header: `src/file_refs.rs` `resolve_file_refs` — no dev-deps built by the recipe's `cargo build --bin` - PASS optional target arg, default all workflows: `graph_paths` in `scripts/validate-workflows.nu`, exercised for name/dir/toml/graph-path forms - PASS current tree exits 0 warm in <2s (22/22 graphs OK; measured 0.65-1.9s): `just validate-workflows` run end-to-end - PASS genuinely missing @-refs still fail: synthetic graph with `@prompts/nope.md` exits 1; unit test `missing_prompt_ref_still_fails_unresolved_file_ref` - PASS unit tests in fabro-validate: 7 tests in `src/file_refs.rs`, full crate suite 269/269 green, fmt+clippy clean - PASS no gate/qualitygate script changes: git status shows only the new recipe in `justfile` and new script; `scripts/qualitygate.nu` untouched",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "Evidence capture classified justfile (+14) and scripts/validate-workflows.nu (+73) as loop churn (counts only, no diff), yet these are the seed's two primary deliverables per the spec. I had to verify them via tools (git show + read_file). Fix idea: in evidence.nu, exempt churn-classified files that are explicitly named in the seed spec, or always include diffs for justfile/scripts/ paths when the in-progress seed mentions them."
+              }
+            ],
+            "observations": [
+              "Verified the two churn-classified deliverables directly: justfile recipe delegates to nu wrapper with header comments; script header documents the resolve-before-rule choice. Re-ran `just validate-workflows` end-to-end: 22/22 graphs OK, exit 0, 0.64s warm. Confirmed tempfile is under [dev-dependencies] and used only in #[cfg(test)] code. unresolved_file_ref visibility change is pub(crate) only. strip_templated_stylesheet is slightly beyond the literal brief but required for criterion 4; documented and tested."
+            ]
+          },
+          "last_stage": "reviewer",
           "internal.retry_count.evidence": 0,
           "current_seed_brief": "Add a `just validate-workflows` recipe so pure workflow-graph edits validate in seconds instead of a ~7 min Rust cold build. Acceptance criteria: (1) new `justfile` recipe `validate-workflows` that delegates to a small nu wrapper (e.g. `scripts/validate-workflows.nu`) around `fabro-validate` — follow the existing justfile pattern of `nu scripts/<x>.nu ...` with a header comment; (2) the wrapper validates workflow graphs without compiling Rust test harnesses — either by resolving workflow-relative `@`-file refs (e.g. `@prompts/simplify.md`) before the `unresolved_file_ref` rule runs, or by scoping that rule out for this mode — choose ONE approach and document why in the script header; (3) invocation takes an optional workflow/target argument and defaults to validating all `.fabro/workflows/*/workflow.toml` graphs; (4) successful run on the current tree exits 0 in under ~10s warm; (5) `@`-refs that genuinely do not exist still fail (no blanket suppression of real errors); (6) add unit tests in `lib/components/fabro-validate` covering the ref-resolution/scoping behavior, and exercise the recipe end-to-end once (`just validate-workflows`); (7) no changes to unrelated gate/qualitygate scripts.",
-          "internal.fidelity": "compact",
+          "internal.fidelity": "summary:high",
           "internal.retry_count.start": 0,
           "thread.start.current_node": "planner",
           "current_seed_title": "Add a just validate-workflows recipe for graph-only validation without a Rust cold build",
@@ -1341,22 +1587,25 @@
             "planner": 1,
             "implementer": 1,
             "tester": 1,
-            "evidence": 1
+            "evidence": 1,
+            "reviewer": 1
           },
           "outcome": "succeeded",
-          "last_response": "Everything is complete. Final state:\n\n- **New**: `lib/components/fabro-validate/src/file_refs.rs` (resolve `@`-refs + blank templated stylesheets, 7 unit tests), `lib/components/fabro-validate/src/bin",
+          "last_response": "All checks pass. `tempfile` is correctly under `[dev-dependencies]`, used only in `#[cfg(test)]` code. Verdict against the seed spec:\n\n1. **Recipe + nu wrapper with header comment** — ✓ `justfile`",
           "graph.preamble_budget_kb": "24",
           "internal.seed_cycle_anchor": "fabro-513e",
+          "thread.evidence.current_node": "reviewer",
+          "review_verdict": "approved",
           "internal.node_visit_count": 1,
-          "preferred_label": "Implemented",
+          "preferred_label": "Approved",
           "thread.tester.current_node": "evidence",
-          "internal.thread_id": "tester",
+          "internal.thread_id": "evidence",
           "thread.planner.current_node": "implementer",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "internal.run_id": "01M1Y2SMEVDHAFB59GZV9B84CQ",
           "failure_signature": "",
           "command.output": "blob://sha256/aeaed5767fd3f13afa1dc2d13e506e821032bc7fb396c2f57c372f43bf6554f2",
-          "current_node": "evidence",
+          "current_node": "reviewer",
           "current_seed_id": "fabro-513e",
           "internal.retry_count.planner": 0,
           "response.implementer": {
@@ -1368,6 +1617,12 @@
           "graph.cycle_counter_reset_key": "current_seed_id",
           "graph.rankdir": "LR",
           "lesson_capture": "mx-ee9245 (failure: edit-tool epoch-0 mtimes make cargo skip recompiles; touch before rebuild) and mx-63300b (pattern: standalone-graph-lint preprocessing must mirror runtime pipeline transforms)",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 3917,
+            "preview": "All checks pass. `tempfile` is correctly under `[dev-dependencies]`, used only in `#[cfg(test)]` code. Verdict against the seed spec:\n\n1. **Recipe + nu wrapper with header comment** — ✓ `justfile`"
+          },
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
@@ -1376,6 +1631,59 @@
           }
         },
         "node_outcomes": {
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "last_stage": "reviewer",
+              "last_response": "All checks pass. `tempfile` is correctly under `[dev-dependencies]`, used only in `#[cfg(test)]` code. Verdict against the seed spec:\n\n1. **Recipe + nu wrapper with header comment** — ✓ `justfile`",
+              "review_verdict": "approved",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 3917,
+                "preview": "All checks pass. `tempfile` is correctly under `[dev-dependencies]`, used only in `#[cfg(test)]` code. Verdict against the seed spec:\n\n1. **Recipe + nu wrapper with header comment** — ✓ `justfile`"
+              },
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Evidence capture classified justfile (+14) and scripts/validate-workflows.nu (+73) as loop churn (counts only, no diff), yet these are the seed's two primary deliverables per the spec. I had to verify them via tools (git show + read_file). Fix idea: in evidence.nu, exempt churn-classified files that are explicitly named in the seed spec, or always include diffs for justfile/scripts/ paths when the in-progress seed mentions them."
+                  }
+                ],
+                "observations": [
+                  "Verified the two churn-classified deliverables directly: justfile recipe delegates to nu wrapper with header comments; script header documents the resolve-before-rule choice. Re-ran `just validate-workflows` end-to-end: 22/22 graphs OK, exit 0, 0.64s warm. Confirmed tempfile is under [dev-dependencies] and used only in #[cfg(test)] code. unresolved_file_ref visibility change is pub(crate) only. strip_templated_stylesheet is slightly beyond the literal brief but required for criterion 4; documented and tested."
+                ]
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 20247,
+                    "output_tokens": 1320,
+                    "reasoning_tokens": 1036,
+                    "cache_read_tokens": 66560,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 56012
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 54715,
+              "tool_time_ms": 1133,
+              "active_time_ms": 55848
+            }
+          },
           "start": {
             "status": "succeeded",
             "usage": null
@@ -1524,9 +1832,10 @@
             }
           }
         },
-        "next_node_id": "reviewer",
+        "next_node_id": "closeout",
         "node_visits": {
           "planner": 1,
+          "reviewer": 1,
           "implementer": 1,
           "tester": 1,
           "evidence": 1,
@@ -1857,6 +2166,243 @@
             "category": "other",
             "tokens": 8,
             "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "reviewer@1": {
+      "first_event_seq": 753,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: reviewer",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T14:38:28.663500984Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T14:37:25.600017896Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 56380,
+        "inference_time_ms": 54715,
+        "tool_time_ms": 1133,
+        "active_time_ms": 55848
+      },
+      "usage": {
+        "input_tokens": 20247,
+        "output_tokens": 1320,
+        "total_tokens": 89163,
+        "reasoning_tokens": 1036,
+        "cache_read_tokens": 66560,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 56012
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 20071,
+        "usage_percent": 1.9141197204589844,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-07T14:38:28.645753518Z",
+        "event_seq": 789,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1177,
+            "usage_percent": 0.11224746704101562
+          },
+          {
+            "category": "tools",
+            "tokens": 1697,
+            "usage_percent": 0.16183853149414062
+          },
+          {
+            "category": "skills",
+            "tokens": 230,
+            "usage_percent": 0.02193450927734375
+          },
+          {
+            "category": "memory",
+            "tokens": 5960,
+            "usage_percent": 0.568389892578125
+          },
+          {
+            "category": "conversation",
+            "tokens": 11000,
+            "usage_percent": 1.049041748046875
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
           }
         ],
         "warnings": []
