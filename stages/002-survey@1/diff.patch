@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1Y9J6J3DN5F7M7A677SFSA6.jsonl b/.fabro/journal/01M1Y9J6J3DN5F7M7A677SFSA6.jsonl
+new file mode 100644
+index 000000000..8a3b7e8fd
+--- /dev/null
++++ b/.fabro/journal/01M1Y9J6J3DN5F7M7A677SFSA6.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1Y9J6J3DN5F7M7A677SFSA6","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T16:00:22Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Y9J6J3DN5F7M7A677SFSA6","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-07T16:01:26Z","data":["Surveyor pass 1 (cycle 1): upstream drift count = 0 (`git rev-list --count origin/denkhaus..upstream/main` after fetching `upstream` and `origin`).","Newest upstream subject: \"Bump version to 0.348.0-nightly.0\" — already contained in `origin/denkhaus`, so no drift accumulating.","Threshold not met (0 < 5, MIN threshold per user decision 2026-09-05): route \"Work\" — run one develop+revisor cycle.","Note: first fetch of `upstream` was noisy (many new remote-tracking branches, truncated output); harmless, but a `--quiet` fetch would keep logs cleaner in future passes."]}
