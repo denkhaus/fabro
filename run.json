@@ -570,7 +570,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T21:00:16.744508714Z",
-  "last_event_at": "2026-09-07T21:14:37.012319511Z",
+  "last_event_at": "2026-09-07T21:14:42.333675052Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -921,9 +921,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 134,
       "checkpoint": {
-        "timestamp": "2026-09-07T21:14:37.281228323Z",
+        "timestamp": "2026-09-07T21:14:42.333391564Z",
         "current_node": "revise",
         "completed_nodes": [
           "start",
@@ -933,32 +933,49 @@
         ],
         "node_retries": {},
         "context_values": {
+          "internal.thread_id": "develop",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.preamble_budget_kb": "12",
+          "internal.exit_kind": "natural",
+          "internal.retry_count.start": 0,
+          "internal.fidelity": "compact",
+          "graph.max_node_visits": "12",
+          "internal.retry_count.revise": 0,
+          "failure_class": "",
+          "graph.rankdir": "LR",
+          "internal.retry_count.survey": 0,
+          "journal": [
+            "Child 01M1YTVK73YEJXW4542MWDX4BJ (develop, seed fabro-05d0: bake gh into .fabro/Dockerfile.toolchain via mise aqua:cli/cli@v2.100.0) succeeded in one cycle; PR #53 auto-merged after one young-blocked re-wait (2 waits total). Seed closed by closeout.",
+            "Revisor run 01M1YV61SYNEQ8JE22NPN404S3 (parent 01M1YTQE2P3XPAP8XWJ2R2E6KF) created against develop child and reached terminal: succeeded (completed); no PR."
+          ],
+          "internal.node_visit_count": 1,
+          "last_response": "{\"preferred_next_label\":\"Cycle complete\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":[\"Child 01M1YTVK73YEJXW4542MWDX4BJ (develop, seed fabro-05d0: ba",
           "response.develop": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.develop",
             "chars": 900,
             "preview": "Journal: develop child `01M1YTVK73YEJXW4542MWDX4BJ` (seed fabro-05d0, \"Bake gh into the develop toolchain image…\") succeeded in one pass — planner claimed, implementer edited `.fabro/Dockerfile.to"
           },
-          "failure_signature": "",
-          "thread.start.current_node": "survey",
-          "preferred_label": "Cycle complete",
-          "internal.fidelity": "compact",
-          "internal.retry_count.revise": 0,
-          "internal.exit_kind": "natural",
-          "internal.thread_id": "develop",
-          "graph.cycle_counter_reset_key": "pass_id",
-          "graph.rankdir": "LR",
-          "internal.retry_count.develop": 0,
-          "last_response": "{\"preferred_next_label\":\"Cycle complete\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":[\"Child 01M1YTVK73YEJXW4542MWDX4BJ (develop, seed fabro-05d0: ba",
-          "thread.survey.current_node": "develop",
-          "graph.preamble_budget_kb": "12",
           "response.revise": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.revise",
             "chars": 611,
             "preview": "{\"preferred_next_label\":\"Cycle complete\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":[\"Child 01M1YTVK73YEJXW4542MWDX4BJ (develop, seed fabro-05d0: ba"
           },
-          "internal.retry_count.start": 0,
+          "child_seed_id": "fabro-05d0",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "child_run_id": "01M1YTVK73YEJXW4542MWDX4BJ",
+          "failure_signature": "",
+          "outcome": "succeeded",
+          "current_node": "revise",
+          "internal.retry_count.develop": 0,
+          "last_stage": "revise",
+          "thread.develop.current_node": "revise",
+          "preferred_label": "Cycle complete",
+          "thread.start.current_node": "survey",
+          "thread.survey.current_node": "develop",
+          "graph.cycle_counter_reset_key": "pass_id",
           "seed_cycles": {
             "start": 1,
             "survey": 1,
@@ -966,86 +983,17 @@
             "revisor": 1,
             "revise": 1
           },
-          "failure_class": "",
+          "internal.seed_cycle_anchor": "",
+          "internal.run_id": "01M1YTQE2P3XPAP8XWJ2R2E6KF",
+          "child_pr": "https://github.com/denkhaus/fabro/pull/53",
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 1180,
             "preview": "{\n  \"preferred_next_label\": \"Work\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": [\n      \"Upstream drift count `origin/denkhaus.."
-          },
-          "internal.node_visit_count": 1,
-          "child_run_id": "01M1YTVK73YEJXW4542MWDX4BJ",
-          "internal.run_id": "01M1YTQE2P3XPAP8XWJ2R2E6KF",
-          "journal": [
-            "Child 01M1YTVK73YEJXW4542MWDX4BJ (develop, seed fabro-05d0: bake gh into .fabro/Dockerfile.toolchain via mise aqua:cli/cli@v2.100.0) succeeded in one cycle; PR #53 auto-merged after one young-blocked re-wait (2 waits total). Seed closed by closeout.",
-            "Revisor run 01M1YV61SYNEQ8JE22NPN404S3 (parent 01M1YTQE2P3XPAP8XWJ2R2E6KF) created against develop child and reached terminal: succeeded (completed); no PR."
-          ],
-          "child_seed_id": "fabro-05d0",
-          "internal.work_dir": "/workspace/fabro",
-          "graph.max_node_visits": "12",
-          "internal.retry_count.survey": 0,
-          "child_pr": "https://github.com/denkhaus/fabro/pull/53",
-          "outcome": "succeeded",
-          "last_stage": "revise",
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "current_node": "revise",
-          "internal.seed_cycle_anchor": "",
-          "thread.develop.current_node": "revise",
-          "graph.inspects": "develop,merge-upstream,revisor"
+          }
         },
         "node_outcomes": {
-          "revise": {
-            "status": "succeeded",
-            "preferred_label": "Cycle complete",
-            "context_updates": {
-              "last_stage": "revise",
-              "seed_cycles": {
-                "start": 1,
-                "survey": 1,
-                "develop": 1,
-                "revisor": 1
-              },
-              "journal": [
-                "Child 01M1YTVK73YEJXW4542MWDX4BJ (develop, seed fabro-05d0: bake gh into .fabro/Dockerfile.toolchain via mise aqua:cli/cli@v2.100.0) succeeded in one cycle; PR #53 auto-merged after one young-blocked re-wait (2 waits total). Seed closed by closeout.",
-                "Revisor run 01M1YV61SYNEQ8JE22NPN404S3 (parent 01M1YTQE2P3XPAP8XWJ2R2E6KF) created against develop child and reached terminal: succeeded (completed); no PR."
-              ],
-              "response.revise": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.revise",
-                "chars": 611,
-                "preview": "{\"preferred_next_label\":\"Cycle complete\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":[\"Child 01M1YTVK73YEJXW4542MWDX4BJ (develop, seed fabro-05d0: ba"
-              },
-              "last_response": "{\"preferred_next_label\":\"Cycle complete\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":[\"Child 01M1YTVK73YEJXW4542MWDX4BJ (develop, seed fabro-05d0: ba"
-            },
-            "notes": "Stage completed: revise",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 11832,
-                    "output_tokens": 624,
-                    "reasoning_tokens": 6,
-                    "cache_read_tokens": 33536,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 28052
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 20162,
-              "tool_time_ms": 343908,
-              "active_time_ms": 364070
-            }
-          },
           "survey": {
             "status": "succeeded",
             "preferred_label": "Work",
@@ -1093,6 +1041,10 @@
               "tool_time_ms": 31469,
               "active_time_ms": 90674
             }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
           },
           "develop": {
             "status": "succeeded",
@@ -1146,23 +1098,157 @@
               "active_time_ms": 304287
             }
           },
-          "start": {
+          "revise": {
             "status": "succeeded",
-            "usage": null
+            "preferred_label": "Cycle complete",
+            "context_updates": {
+              "last_stage": "revise",
+              "seed_cycles": {
+                "start": 1,
+                "survey": 1,
+                "develop": 1,
+                "revisor": 1
+              },
+              "journal": [
+                "Child 01M1YTVK73YEJXW4542MWDX4BJ (develop, seed fabro-05d0: bake gh into .fabro/Dockerfile.toolchain via mise aqua:cli/cli@v2.100.0) succeeded in one cycle; PR #53 auto-merged after one young-blocked re-wait (2 waits total). Seed closed by closeout.",
+                "Revisor run 01M1YV61SYNEQ8JE22NPN404S3 (parent 01M1YTQE2P3XPAP8XWJ2R2E6KF) created against develop child and reached terminal: succeeded (completed); no PR."
+              ],
+              "response.revise": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.revise",
+                "chars": 611,
+                "preview": "{\"preferred_next_label\":\"Cycle complete\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":[\"Child 01M1YTVK73YEJXW4542MWDX4BJ (develop, seed fabro-05d0: ba"
+              },
+              "last_response": "{\"preferred_next_label\":\"Cycle complete\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":[\"Child 01M1YTVK73YEJXW4542MWDX4BJ (develop, seed fabro-05d0: ba"
+            },
+            "notes": "Stage completed: revise",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 11832,
+                    "output_tokens": 624,
+                    "reasoning_tokens": 6,
+                    "cache_read_tokens": 33536,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 28052
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 20162,
+              "tool_time_ms": 343908,
+              "active_time_ms": 364070
+            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "c3f089bb60fafa82f7b58fd01d31406076d8c505",
         "node_visits": {
+          "revise": 1,
           "develop": 1,
           "start": 1,
-          "survey": 1,
-          "revise": 1
+          "survey": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1YTQE2P3XPAP8XWJ2R2E6KF.jsonl b/.fabro/journal/01M1YTQE2P3XPAP8XWJ2R2E6KF.jsonl\nindex 602409fd9..59a91603c 100644\n--- a/.fabro/journal/01M1YTQE2P3XPAP8XWJ2R2E6KF.jsonl\n+++ b/.fabro/journal/01M1YTQE2P3XPAP8XWJ2R2E6KF.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YTQE2P3XPAP8XWJ2R2E6KF\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:00:22Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YTQE2P3XPAP8XWJ2R2E6KF\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:02:04Z\",\"data\":[\"Upstream drift count `origin/denkhaus..upstream/main` = 0 (threshold MIN 5 not met); newest upstream subject: \\\"Bump version to 0.348.0-nightly.0\\\" (already contained in denkhaus, zero drift accumulating).\",\"Revisor backlog: none detected. Newest completed develop run `01M1YS4NJH27NS7CQ02AWM9BNE` (completed 2026-09-07T20:35Z) is covered by revisor run `01M1YSCK72V0HKCD5Z1VGDQ2KP` (started 20:36Z, succeeded; matches repo commit c04ceb6 \\\"File fabro-05d0 and fabro-5b0a from improve run 01M1YSCK72V0HKCD5Z1VGDQ…\\\"). Prior pairs (01M1YQD03J->01M1YQMBBG, 01M1YJ8R82->01M1YKF77A, 01M1YGJ7JS->01M1YH3BBS) are likewise paired. Signal derived from timestamps + repo log since revisor goals are generic; mildly ambiguous but no unreviewed completed develop run is evident.\",\"Route: Work — proceed with one develop+revisor cycle (children only after previous child merged).\",\"Nothing hurt: `upstream` remote was missing and was added (`https://github.com/fabro-sh/fabro`); fetches clean.\"]}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YTQE2P3XPAP8XWJ2R2E6KF\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:07:48Z\",\"data\":[\"Child 01M1YTVK73YEJXW4542MWDX4BJ (develop, seed fabro-05d0: bake gh into .fabro/Dockerfile.toolchain via mise aqua:cli/cli@v2.100.0) succeeded in one cycle; PR #53 auto-merged after one young-blocked re-wait (2 waits total). Seed closed by closeout.\"]}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YTQE2P3XPAP8XWJ2R2E6KF\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:14:37Z\",\"data\":[\"Child 01M1YTVK73YEJXW4542MWDX4BJ (develop, seed fabro-05d0: bake gh into .fabro/Dockerfile.toolchain via mise aqua:cli/cli@v2.100.0) succeeded in one cycle; PR #53 auto-merged after one young-blocked re-wait (2 waits total). Seed closed by closeout.\",\"Revisor run 01M1YV61SYNEQ8JE22NPN404S3 (parent 01M1YTQE2P3XPAP8XWJ2R2E6KF) created against develop child and reached terminal: succeeded (completed); no PR.\"]}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 4,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T21:14:42.402490079Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 778961,
+      "inference_time_ms": 108901,
+      "tool_time_ms": 650130,
+      "active_time_ms": 759031
+    },
+    "final_git_commit_sha": "c3f089bb60fafa82f7b58fd01d31406076d8c505",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 91232,
+          "inference_time_ms": 59205,
+          "tool_time_ms": 31469,
+          "active_time_ms": 90674
+        },
+        "billing_usd_micros": 66005,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 304834,
+          "inference_time_ms": 29534,
+          "tool_time_ms": 274753,
+          "active_time_ms": 304287
+        },
+        "billing_usd_micros": 205690,
+        "retries": 0
+      },
+      {
+        "stage_id": "revise",
+        "stage_label": "revise",
+        "timing": {
+          "wall_time_ms": 364596,
+          "inference_time_ms": 20162,
+          "tool_time_ms": 343908,
+          "active_time_ms": 364070
+        },
+        "billing_usd_micros": 28052,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 147445,
+      "output_tokens": 2245,
+      "total_tokens": 463306,
+      "reasoning_tokens": 464,
+      "cache_read_tokens": 313152,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 299747
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1YTQE2P3XPAP8XWJ2R2E6KF.jsonl b/.fabro/journal/01M1YTQE2P3XPAP8XWJ2R2E6KF.jsonl\nnew file mode 100644\nindex 000000000..59a91603c\n--- /dev/null\n+++ b/.fabro/journal/01M1YTQE2P3XPAP8XWJ2R2E6KF.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YTQE2P3XPAP8XWJ2R2E6KF\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:00:22Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YTQE2P3XPAP8XWJ2R2E6KF\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:02:04Z\",\"data\":[\"Upstream drift count `origin/denkhaus..upstream/main` = 0 (threshold MIN 5 not met); newest upstream subject: \\\"Bump version to 0.348.0-nightly.0\\\" (already contained in denkhaus, zero drift accumulating).\",\"Revisor backlog: none detected. Newest completed develop run `01M1YS4NJH27NS7CQ02AWM9BNE` (completed 2026-09-07T20:35Z) is covered by revisor run `01M1YSCK72V0HKCD5Z1VGDQ2KP` (started 20:36Z, succeeded; matches repo commit c04ceb6 \\\"File fabro-05d0 and fabro-5b0a from improve run 01M1YSCK72V0HKCD5Z1VGDQ…\\\"). Prior pairs (01M1YQD03J->01M1YQMBBG, 01M1YJ8R82->01M1YKF77A, 01M1YGJ7JS->01M1YH3BBS) are likewise paired. Signal derived from timestamps + repo log since revisor goals are generic; mildly ambiguous but no unreviewed completed develop run is evident.\",\"Route: Work — proceed with one develop+revisor cycle (children only after previous child merged).\",\"Nothing hurt: `upstream` remote was missing and was added (`https://github.com/fabro-sh/fabro`); fetches clean.\"]}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YTQE2P3XPAP8XWJ2R2E6KF\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:07:48Z\",\"data\":[\"Child 01M1YTVK73YEJXW4542MWDX4BJ (develop, seed fabro-05d0: bake gh into .fabro/Dockerfile.toolchain via mise aqua:cli/cli@v2.100.0) succeeded in one cycle; PR #53 auto-merged after one young-blocked re-wait (2 waits total). Seed closed by closeout.\"]}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YTQE2P3XPAP8XWJ2R2E6KF\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:14:37Z\",\"data\":[\"Child 01M1YTVK73YEJXW4542MWDX4BJ (develop, seed fabro-05d0: bake gh into .fabro/Dockerfile.toolchain via mise aqua:cli/cli@v2.100.0) succeeded in one cycle; PR #53 auto-merged after one young-blocked re-wait (2 waits total). Seed closed by closeout.\",\"Revisor run 01M1YV61SYNEQ8JE22NPN404S3 (parent 01M1YTQE2P3XPAP8XWJ2R2E6KF) created against develop child and reached terminal: succeeded (completed); no PR.\"]}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 4,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2013,6 +2099,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 137,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T21:14:42.333675052Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T21:14:42.333643308Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
