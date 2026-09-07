@@ -230,25 +230,31 @@ pub struct PullRequestRef {
 /// Fields mirrored directly from GitHub's pull request REST payload.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PullRequestGithubDetail {
-    pub number:        u64,
-    pub title:         String,
-    pub body:          Option<String>,
-    pub state:         String,
-    pub draft:         bool,
+    pub number:          u64,
+    pub title:           String,
+    pub body:            Option<String>,
+    pub state:           String,
+    pub draft:           bool,
     #[serde(default)]
-    pub merged:        bool,
+    pub merged:          bool,
     #[serde(default)]
-    pub merged_at:     Option<String>,
-    pub mergeable:     Option<bool>,
-    pub additions:     u64,
-    pub deletions:     u64,
-    pub changed_files: u64,
-    pub html_url:      String,
-    pub user:          PullRequestUser,
-    pub head:          PullRequestRef,
-    pub base:          PullRequestRef,
-    pub created_at:    String,
-    pub updated_at:    String,
+    pub merged_at:       Option<String>,
+    pub mergeable:       Option<bool>,
+    /// Raw GitHub `mergeable_state` (`clean`, `dirty`, `blocked`,
+    /// `unknown`, ...). `None` or `unknown` means GitHub is still
+    /// computing mergeability — callers must not treat that as a
+    /// gate-failure signal.
+    #[serde(default)]
+    pub mergeable_state: Option<String>,
+    pub additions:       u64,
+    pub deletions:       u64,
+    pub changed_files:   u64,
+    pub html_url:        String,
+    pub user:            PullRequestUser,
+    pub head:            PullRequestRef,
+    pub base:            PullRequestRef,
+    pub created_at:      String,
+    pub updated_at:      String,
 }
 
 /// Live GitHub pull request fields returned only after a successful GitHub API

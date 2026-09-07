@@ -104,6 +104,7 @@ pub struct TestAppStateBuilder {
     llm_catalog_settings:         LlmCatalogSettings,
     automation_materializer:      Option<TestAutomationRunMaterializer>,
     automation_breaker_notifier:  Option<Arc<dyn AutomationBreakerNotifier>>,
+    github_api_base_url:          Option<String>,
     #[cfg(test)]
     worker_runtime:               Option<Arc<dyn WorkerRuntime>>,
 }
@@ -127,6 +128,7 @@ impl Default for TestAppStateBuilder {
             llm_catalog_settings:         LlmCatalogSettings::default(),
             automation_materializer:      None,
             automation_breaker_notifier:  None,
+            github_api_base_url:          None,
             #[cfg(test)]
             worker_runtime:               None,
         }
@@ -237,6 +239,13 @@ impl TestAppStateBuilder {
         self
     }
 
+    /// Point the server's GitHub API client at a mock server (e.g. an
+    /// `httpmock::MockServer` base URL) instead of github.com.
+    pub fn github_api_base_url(mut self, github_api_base_url: impl Into<String>) -> Self {
+        self.github_api_base_url = Some(github_api_base_url.into());
+        self
+    }
+
     fn server_env_path(mut self, server_env_path: PathBuf) -> Self {
         self.server_env_path = Some(server_env_path);
         self
@@ -315,7 +324,7 @@ impl TestAppStateBuilder {
             preloaded_vault,
             server_secrets: load_test_server_secrets(server_env_path, self.server_secret_env),
             env_lookup: self.env_lookup,
-            github_api_base_url: None,
+            github_api_base_url: self.github_api_base_url,
             active_config_path,
             http_client: Some(
                 fabro_http::test_http_client().expect("test HTTP client should build"),
