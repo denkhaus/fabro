@@ -644,14 +644,186 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M1XCHJTDBJKZ31VFMY1KD61Q",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-09-07T07:33:34.087790597Z",
+    "run_branch": "fabro/run/01M1XCHJTDBJKZ31VFMY1KD61Q",
+    "base_sha": "bfd8eee21e22d04b41b72e6e0fbe4ee7464946a6"
   },
-  "status_updated_at": "2026-09-07T07:32:54.934641444Z",
-  "last_event_at": "2026-09-07T07:33:33.579922576Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-09-07T07:33:34.087871271Z",
+  "last_event_at": "2026-09-07T07:36:26.667346144Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 20,
+      "checkpoint": {
+        "timestamp": "2026-09-07T07:33:36.611445055Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.retry_count.start": 0,
+          "internal.run_id": "01M1XCHJTDBJKZ31VFMY1KD61Q",
+          "outcome": "succeeded",
+          "internal.seed_cycle_anchor": "",
+          "seed_cycles": {
+            "start": 1
+          },
+          "internal.node_visit_count": 1,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.max_node_visits": "40",
+          "failure_class": "",
+          "graph.rankdir": "LR",
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.preamble_budget_kb": "24",
+          "internal.thread_id": null,
+          "current_node": "start",
+          "failure_signature": ""
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "planner",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-07T07:36:26.832099026Z",
+        "current_node": "planner",
+        "completed_nodes": [
+          "start",
+          "planner"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_class": "",
+          "graph.preamble_budget_kb": "24",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.rankdir": "LR",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3065,
+            "preview": "Claimed `fabro-bc9b`. Basis verified live against the tree (`sqlx::migrate!(\"./migrations\")` at `lib/foundation/fabro-db/src/lib.rs:17`, no `build.rs`, migration `2026090601` present), so no stale-bas"
+          },
+          "internal.node_visit_count": 1,
+          "internal.work_dir": "/workspace/fabro",
+          "current_seed_title": "fabro-db: emit cargo rerun-if-changed for the migrations dir — sqlx::migrate! embeds silently stale in cached builds",
+          "last_stage": "planner",
+          "outcome": "succeeded",
+          "last_response": "Claimed `fabro-bc9b`. Basis verified live against the tree (`sqlx::migrate!(\"./migrations\")` at `lib/foundation/fabro-db/src/lib.rs:17`, no `build.rs`, migration `2026090601` present), so no stale-bas",
+          "internal.retry_count.start": 0,
+          "seed_cycles": {
+            "planner": 1
+          },
+          "current_seed_id": "fabro-bc9b",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "current_node": "planner",
+          "graph.max_node_visits": "40",
+          "current_seed_brief": "Bug in `lib/foundation/fabro-db`: adding/removing files under `migrations/` does not reliably invalidate the crate fingerprint in local-target and docker-volume caches, so `sqlx::migrate!` embeds a stale MIGRATOR (broke nextest with 'no column breaker_threshold' and caused production deploy #5's /api/v1/automations 500s while health stayed green). Acceptance criteria: - new `lib/foundation/fabro-db/build.rs` that prints `cargo:rerun-if-changed=migrations` and `cargo:rerun-if-changed=build.rs` so any migration change forces recompilation and re-expansion of `sqlx::migrate!` (build scripts run with CWD at the crate root; keep paths relative) - `migrate()` in `lib/foundation/fabro-db/src/lib.rs` gains a defense-in-depth log line stating the NEWEST embedded migration version (derive from `MIGRATOR.iter()`, e.g. tracing info 'newest embedded migration version 2026090601') so logs prove which set ran; do not change migration ordering, preflight, or snapshot logic - test: a unit test in fabro-db asserting the embedded MIGRATOR's max version equals the highest version parsed from the on-disk `migrations/` dir (via `env!(\"CARGO_MANIFEST_DIR\")`), guarding embed/dir drift - gate: `cargo nextest run -p fabro-db` plus a workspace build/check; follow repo Rust style (no glob imports, anyhow Context conventions); keep the change minimal — no unrelated refactors",
+          "internal.fidelity": "compact",
+          "internal.seed_cycle_anchor": "fabro-bc9b",
+          "failure_signature": "",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "sd is unusable through the mise-activated PATH in this container: every `sd ...` invocation prints only 'mise ERROR config file /repos/denkhaus/fabro/.mise.toml not trusted' and produces NO tracker output while exiting 0 (run 01M1XCHJTDBJKZ31VFMY1KD61Q). Cost 4 extra tool calls to diagnose. Workaround that worked: run `/mise/installs/bun/1.4.0/bin/bun /mise/bun-global/bin/sd <args>`. Matches open seed fabro-66db (pre-trust repo mise config in run containers); that seed should also cover making the bun-global sd shim emit output or fail loudly under mise errors."
+              }
+            ],
+            "observations": [
+              "fabro-bc9b (created 2026-09-06) has no `Basis:` line despite post-dating the ADR-0015 legacy cutoff; I verified its basis manually against the current tree (migrations/2026090601 present, no build.rs, sqlx::migrate! at lib/foundation/fabro-db/src/lib.rs:17) before claiming. Tracker note: several other High seeds target .fabro/** prompt paths — those need shell reads (not read_file) for stale-basis checks per fs_hide."
+            ]
+          },
+          "internal.thread_id": "start",
+          "internal.retry_count.planner": 0,
+          "internal.run_id": "01M1XCHJTDBJKZ31VFMY1KD61Q",
+          "thread.start.current_node": "planner",
+          "preferred_label": "Seed claimed"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_stage": "planner",
+              "last_response": "Claimed `fabro-bc9b`. Basis verified live against the tree (`sqlx::migrate!(\"./migrations\")` at `lib/foundation/fabro-db/src/lib.rs:17`, no `build.rs`, migration `2026090601` present), so no stale-bas",
+              "current_seed_title": "fabro-db: emit cargo rerun-if-changed for the migrations dir — sqlx::migrate! embeds silently stale in cached builds",
+              "current_seed_brief": "Bug in `lib/foundation/fabro-db`: adding/removing files under `migrations/` does not reliably invalidate the crate fingerprint in local-target and docker-volume caches, so `sqlx::migrate!` embeds a stale MIGRATOR (broke nextest with 'no column breaker_threshold' and caused production deploy #5's /api/v1/automations 500s while health stayed green). Acceptance criteria: - new `lib/foundation/fabro-db/build.rs` that prints `cargo:rerun-if-changed=migrations` and `cargo:rerun-if-changed=build.rs` so any migration change forces recompilation and re-expansion of `sqlx::migrate!` (build scripts run with CWD at the crate root; keep paths relative) - `migrate()` in `lib/foundation/fabro-db/src/lib.rs` gains a defense-in-depth log line stating the NEWEST embedded migration version (derive from `MIGRATOR.iter()`, e.g. tracing info 'newest embedded migration version 2026090601') so logs prove which set ran; do not change migration ordering, preflight, or snapshot logic - test: a unit test in fabro-db asserting the embedded MIGRATOR's max version equals the highest version parsed from the on-disk `migrations/` dir (via `env!(\"CARGO_MANIFEST_DIR\")`), guarding embed/dir drift - gate: `cargo nextest run -p fabro-db` plus a workspace build/check; follow repo Rust style (no glob imports, anyhow Context conventions); keep the change minimal — no unrelated refactors",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "sd is unusable through the mise-activated PATH in this container: every `sd ...` invocation prints only 'mise ERROR config file /repos/denkhaus/fabro/.mise.toml not trusted' and produces NO tracker output while exiting 0 (run 01M1XCHJTDBJKZ31VFMY1KD61Q). Cost 4 extra tool calls to diagnose. Workaround that worked: run `/mise/installs/bun/1.4.0/bin/bun /mise/bun-global/bin/sd <args>`. Matches open seed fabro-66db (pre-trust repo mise config in run containers); that seed should also cover making the bun-global sd shim emit output or fail loudly under mise errors."
+                  }
+                ],
+                "observations": [
+                  "fabro-bc9b (created 2026-09-06) has no `Basis:` line despite post-dating the ADR-0015 legacy cutoff; I verified its basis manually against the current tree (migrations/2026090601 present, no build.rs, sqlx::migrate! at lib/foundation/fabro-db/src/lib.rs:17) before claiming. Tracker note: several other High seeds target .fabro/** prompt paths — those need shell reads (not read_file) for stale-basis checks per fs_hide."
+                ]
+              },
+              "current_seed_id": "fabro-bc9b",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3065,
+                "preview": "Claimed `fabro-bc9b`. Basis verified live against the tree (`sqlx::migrate!(\"./migrations\")` at `lib/foundation/fabro-db/src/lib.rs:17`, no `build.rs`, migration `2026090601` present), so no stale-bas"
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19789,
+                    "output_tokens": 1888,
+                    "reasoning_tokens": 2558,
+                    "cache_read_tokens": 149312,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 86074
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 159835,
+              "tool_time_ms": 2590,
+              "active_time_ms": 162425
+            }
+          }
+        },
+        "next_node_id": "implementer",
+        "node_visits": {
+          "planner": 1,
+          "start": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -678,5 +850,256 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "planner@1": {
+      "first_event_seq": 21,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T07:36:26.667346144Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "high"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T07:33:36.629521277Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 163082,
+        "inference_time_ms": 159835,
+        "tool_time_ms": 2590,
+        "active_time_ms": 162425
+      },
+      "usage": {
+        "input_tokens": 19789,
+        "output_tokens": 1888,
+        "total_tokens": 173547,
+        "reasoning_tokens": 2558,
+        "cache_read_tokens": 149312,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 86074
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 19457,
+        "usage_percent": 1.8555641174316406,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-07T07:36:26.650083166Z",
+        "event_seq": 103,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1089,
+            "usage_percent": 0.10385513305664062
+          },
+          {
+            "category": "tools",
+            "tokens": 1600,
+            "usage_percent": 0.152587890625
+          },
+          {
+            "category": "memory",
+            "tokens": 5534,
+            "usage_percent": 0.5277633666992188
+          },
+          {
+            "category": "conversation",
+            "tokens": 11227,
+            "usage_percent": 1.0706901550292969
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T07:33:36.426843313Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T07:33:36.412404545Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
