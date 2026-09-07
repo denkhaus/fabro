@@ -1,0 +1,63 @@
+diff --git a/.fabro/journal/01M1YSCK72V0HKCD5Z1VGDQ2KP.jsonl b/.fabro/journal/01M1YSCK72V0HKCD5Z1VGDQ2KP.jsonl
+index a88ae71..c321e22 100644
+--- a/.fabro/journal/01M1YSCK72V0HKCD5Z1VGDQ2KP.jsonl
++++ b/.fabro/journal/01M1YSCK72V0HKCD5Z1VGDQ2KP.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1YSCK72V0HKCD5Z1VGDQ2KP","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T20:36:52Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YSCK72V0HKCD5Z1VGDQ2KP","node":"select","visit":1,"status":"succeeded","ts":"2026-09-07T20:37:10Z","data":{"painpoints":[],"observations":["Selected newest develop run 01M1YS4NJH27NS7CQ02AWM9BNE (baseline version ae2869ac, live sandbox, terminal); 67 develop runs total — most older ones stale-evidence via version drift (4ff76f32, 8afe037f, and earlier) or pre-intent (absent version), ~20 sandbox false; 4 unrevised merge-upstream runs sit on baseline 5a4438be but are all older than the selected develop run; no active develop run observed"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YSCK72V0HKCD5Z1VGDQ2KP","node":"analyze","visit":1,"status":"succeeded","ts":"2026-09-07T20:40:23Z","data":{"painpoints":[{"text":"5 of 7 analyst recommendations were already-filed seeds (fabro-c3b4/fabro-0da8, fabro-944d, fabro-9588, fabro-a67f, fabro-c2ca/fabro-cf03) — the improve question keeps re-deriving the backlog; the analyst citing seed ids inline (as this one did) is what makes dedupe tractable. Fix idea: have the improve question explicitly ask to check the tracker before recommending."},{"text":"The gh exit-127 fail-open degradation (events seq 40-41) has been disabling the fabro-d0c7 double-pick guard across runs with no tracker entry and no human-visible signal — painpoint filed as the two surviving seeds."}],"observations":["Review persisted to `.fabro/reviews/develop/01M1YS4NJH27NS7CQ02AWM9BNE.md` (generated 2026-09-07 20:39+0000).","Dropped as duplicates: planner firehose bound (duplicate_of fabro-c3b4, deeper fix fabro-0da8); shared prompt-cache prefix (duplicate_of fabro-944d); per-node memory scoping (duplicate_of fabro-9588); conditional sd show re-fetch (duplicate_of fabro-a67f); snapshot async/agent-only (duplicate_of fabro-c2ca and fabro-cf03); fs_hide prompt hoist (duplicate_of closed fabro-56c2 — prompt-side bypass guidance already implemented — with open engine alternative fabro-8296).","fabro-8354 (bake ripgrep into runner image) is the same missing-binary pattern as the gh finding but a different tool and purpose, so the gh seed is not a duplicate of it."]}}
+diff --git a/.fabro/reviews/develop/01M1YS4NJH27NS7CQ02AWM9BNE.md b/.fabro/reviews/develop/01M1YS4NJH27NS7CQ02AWM9BNE.md
+new file mode 100644
+index 0000000..961e6a6
+--- /dev/null
++++ b/.fabro/reviews/develop/01M1YS4NJH27NS7CQ02AWM9BNE.md
+@@ -0,0 +1,49 @@
++# Improve review — run 01M1YS4NJH27NS7CQ02AWM9BNE
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: succeeded (2.9 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-07 20:39+0000 by revisor `fabro_ask`
++
++---
++
++All evidence below is from this run's events, stage transcripts, and journal (run 01M1YS4NJH27NS7CQ02AWM9BNE, seed fabro-c381, all stages green first-pass, $0.133 total, 2m53s wall). Ordered by expected impact.
++
++## 1. The in-flight-PR guard is structurally disabled on this host — fix the tool, not the prompt
++**What happened:** planner step 4 mandates `gh pr list --state open`; the call failed with exit 127 `gh: command not found` (event seq 40–41), degraded fail-open per policy, and the journal recorded "future runs on this host cannot audit PR double-picks." The run's engine side clearly has GitHub access (PR #51 was created), only the `fabro-toolchain:noble` sandbox lacks `gh`.
++**Change:** bake `gh` into `.fabro/Dockerfile` (toolchain image), or move the open-PR check engine-side into the run's own PR metadata instead of a sandbox binary.
++**Expected effect:** the double-pick guard (which exists because fabro-22e4 re-implemented a fix already waiting in PR #47 — a whole wasted run) actually functions; also removes one guaranteed erroring tool call per planning pass.
++
++## 2. Planner eats a 160-seed firehose to pick one seed — bound the listing
++**What happened:** `sd ready --assignee fabro --limit 200` returned 21,270 bytes / 160 issues into the planner's context (event seq 33); the model then picked the top entry. Planner was **$0.065 of $0.133 total (49% of LLM cost) and 46s of 112s active time** — the most expensive stage for a near-deterministic decision.
++**Change:** in `.fabro/workflows/develop/prompts/planner.md` step 1, change the command to `sd ready --assignee fabro --limit 200 | head -15` (keeps the fabro-c16d no-truncation fix at the CLI level, bounds context); the deeper fix is filed seed fabro-c3b4 / fabro-0da8 — a deterministic pre-planner script node (same pattern as `gatebounce`) that emits top-3 candidates + extracted `Basis:` paths as context.
++**Expected effect:** cuts planner input tokens and round-trips substantially; planner is the single biggest cost lever in the graph.
++
++## 3. Zero cache writes across all three agent stages — share the prompt prefix
++**What happened:** billing shows `cache_write_tokens: 0` for planner, implementer, and reviewer, while `cache_read_tokens` hit 183k — each stage re-pays for the repeated prefix (goal text, ~13k-char role prompt, 24KB AGENTS.md memory).
++**Change:** engine-side shared prompt-cache prefix across stages in one run (already filed as fabro-944d).
++**Expected effect:** direct input-cost reduction on every multi-agent run; the repeated AGENTS.md + preamble is identical byte-for-byte across stages here.
++
++## 4. Reviewer paid 42% of its input for memory it didn't use
++**What happened:** reviewer context breakdown: `memory` = 5,684 of 13,553 input tokens (AGENTS.md, 23,967 bytes, loaded into all three agent stages per `agent.memory.loaded` events). The reviewer's actual job this pass was judging a 15-line prompt diff against a bulleted brief — it needed neither repo-wide conventions nor Rust build rules.
++**Change:** per-node memory scoping (engine; sibling of filed fabro-9588 for skills) — reviewer gets a slim subset or none; planner keeps the full file.
++**Expected effect:** ~5.7k tokens saved on the reviewer (and re-check scoping for the implementer on docs-only seeds); meaningful slice of the 47k billed input tokens.
++
++## 5. Mandated redundant `sd show` re-fetch in the implementer
++**What happened:** the planner's brief already carried the complete distilled spec, yet implementer step 1 ("Re-read the seed requirements from `sd show`") forced another `sd show fabro-c381 --format json | head -80` call (event seq 97) that added nothing.
++**Change:** in `.fabro/workflows/develop/prompts/implementer.md` step 1, make the re-fetch conditional: "only when the brief is thin or marked verification-only" (this is filed fabro-a67f/fabro-4881; it just hasn't landed).
++**Expected effect:** one fewer tool call + LLM round-trip per implementer pass; smaller risk of the raw seed body contradicting the (authoritative, contradiction-resolved) brief.
++
++## 6. ~10% of wall time is stage-boundary overhead — skip metadata snapshots on non-agent stages
++**What happened:** metadata snapshot took 2.0s at init and 2.3s after the planner checkpoint; observable gaps of ~5–6s sit between every stage pair (implementer→tester→evidence→reviewer→closeout) from checkpoint commits + pushes + snapshots. On a 173s run that's roughly 15–20s of pure bookkeeping.
++**Change:** make checkpoint metadata snapshots async or agent-stage-only (filed fabro-c2ca/fabro-cf03) — the tester/evidence/closeout snapshots here carried no agent state worth 2s each.
++**Expected effect:** ~10% wall-time cut on short single-seed runs; proportionally more as gates get faster.
++
++## 7. fs_hide guidance is buried where the model doesn't look before grepping
++**What happened:** despite planner.md step 3 saying "never burn tool calls discovering the denial," the planner's first basis check was a `grep` on `.fabro` → `path is hidden by fs_hide` (seq 47–48), one wasted call + LLM round-trip before switching to shell `rg`. The instruction lives mid-step in a ~13k-char prompt; grep is the instinctive first move.
++**Change:** in `.fabro/workflows/develop/prompts/planner.md`, hoist a one-line tool rule to the top of the "sd command reference" section: "`.fabro/**` is fs_hide for you — grep/glob/read_file on it always fail; use shell (`rg`, `sed`) for basis checks." (Engine alternative, filed fabro-8296, returns the notice from glob too.)
++**Expected effect:** one fewer wasted round-trip (~3–5s) per planning pass; more importantly, removes the failure mode where the model misreads the denial as "path doesn't exist" and wrongly closes a seed as stale-basis.
++
++**One UX addition (fold into #1):** the gh degradation is visible only in the journal line. Surface degraded planner checks as a run-level warning (run summary / PR body) so a human reading PR #51 knows the in-flight-PR audit was off — "succeeded" currently looks identical to "succeeded with guards down."
++
++Sources: run events (tool calls seq 33–100, stage timings/billing, journal entries), run projection (graph definition and settings). I could not inspect the toolchain image build itself to confirm why `gh` is absent — the fix target `.fabro/Dockerfile` is inferred from the repo file list seen in the planner's `rg --files` output.
