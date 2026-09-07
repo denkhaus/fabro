@@ -570,7 +570,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T22:00:16.431899757Z",
-  "last_event_at": "2026-09-07T22:11:18.941808398Z",
+  "last_event_at": "2026-09-07T22:11:26.555191127Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -913,9 +913,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 137,
       "checkpoint": {
-        "timestamp": "2026-09-07T22:11:19.227195160Z",
+        "timestamp": "2026-09-07T22:11:26.554817111Z",
         "current_node": "revise",
         "completed_nodes": [
           "start",
@@ -925,14 +925,43 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.thread_id": "develop",
-          "graph.rankdir": "LR",
-          "internal.fidelity": "compact",
-          "graph.max_node_visits": "12",
-          "internal.retry_count.survey": 0,
-          "thread.develop.current_node": "revise",
-          "internal.seed_cycle_anchor": "",
           "failure_signature": "",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "outcome": "succeeded",
+          "internal.thread_id": "develop",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "graph.max_node_visits": "12",
+          "internal.fidelity": "compact",
+          "graph.rankdir": "LR",
+          "thread.survey.current_node": "develop",
+          "internal.run_id": "01M1YY59Y8YJJC4WC9NNRW8RNC",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "internal.retry_count.survey": 0,
+          "internal.retry_count.start": 0,
+          "internal.seed_cycle_anchor": "",
+          "last_response": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": [\"revise leg: revisor child 01M1YYGC5AEC5EWY8J544FGMF0",
+          "internal.retry_count.develop": 0,
+          "failure_class": "",
+          "internal.exit_kind": "natural",
+          "last_stage": "revise",
+          "thread.develop.current_node": "revise",
+          "preferred_label": "Cycle complete",
+          "thread.start.current_node": "survey",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "develop": 1,
+            "revise": 1
+          },
+          "child_run_id": "01M1YY8JJCE31XHSDCZ816634G",
+          "journal": [
+            "revise leg: revisor child 01M1YYGC5AEC5EWY8J544FGMF0 created against develop run 01M1YY8JJCE31XHSDCZ816634G (parent 01M1YY59Y8YJJC4WC9NNRW8RNC) with environment=toolchain, auto_approve=true",
+            "revisor child reached terminal: status.kind=succeeded, reason=completed; no pull request produced this pass",
+            "seed_cycles after this pass: start=1, survey=1, develop=1, revise=1"
+          ],
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.revise": 0,
+          "graph.preamble_budget_kb": "12",
           "response.revise": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.revise",
@@ -945,43 +974,14 @@
             "chars": 384,
             "preview": "```json\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Develop integrated\", \"journal\": \"child 01M1YY8JJCE31XHSDCZ816634G (develop, goalless autonomous queue burn-down) succeeded; PR denkhaus/fabro#"
           },
-          "internal.exit_kind": "natural",
-          "outcome": "succeeded",
-          "internal.run_id": "01M1YY59Y8YJJC4WC9NNRW8RNC",
-          "child_run_id": "01M1YY8JJCE31XHSDCZ816634G",
-          "graph.preamble_budget_kb": "12",
-          "internal.retry_count.start": 0,
-          "seed_cycles": {
-            "start": 1,
-            "survey": 1,
-            "develop": 1,
-            "revise": 1
-          },
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "current_node": "revise",
+          "internal.node_visit_count": 1,
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 1235,
             "preview": "{\n  \"preferred_next_label\": \"Work\",\n  \"outcome\": \"succeeded\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": [\n      \"upstream count: 0 commits ahead of `origin/denkhaus` (`git rev-"
-          },
-          "journal": [
-            "revise leg: revisor child 01M1YYGC5AEC5EWY8J544FGMF0 created against develop run 01M1YY8JJCE31XHSDCZ816634G (parent 01M1YY59Y8YJJC4WC9NNRW8RNC) with environment=toolchain, auto_approve=true",
-            "revisor child reached terminal: status.kind=succeeded, reason=completed; no pull request produced this pass",
-            "seed_cycles after this pass: start=1, survey=1, develop=1, revise=1"
-          ],
-          "last_stage": "revise",
-          "thread.survey.current_node": "develop",
-          "internal.retry_count.develop": 0,
-          "internal.node_visit_count": 1,
-          "thread.start.current_node": "survey",
-          "preferred_label": "Cycle complete",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.retry_count.revise": 0,
-          "graph.cycle_counter_reset_key": "pass_id",
-          "failure_class": "",
-          "current_node": "revise",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "last_response": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": [\"revise leg: revisor child 01M1YYGC5AEC5EWY8J544FGMF0"
+          }
         },
         "node_outcomes": {
           "revise": {
@@ -1128,17 +1128,103 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "d316d21edb7ac9752ddc0a26cf49357d7c89cb0e",
         "node_visits": {
-          "survey": 1,
+          "revise": 1,
           "develop": 1,
-          "start": 1,
-          "revise": 1
+          "survey": 1,
+          "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1YY59Y8YJJC4WC9NNRW8RNC.jsonl b/.fabro/journal/01M1YY59Y8YJJC4WC9NNRW8RNC.jsonl\nindex c925910e3..c54f36ca9 100644\n--- a/.fabro/journal/01M1YY59Y8YJJC4WC9NNRW8RNC.jsonl\n+++ b/.fabro/journal/01M1YY59Y8YJJC4WC9NNRW8RNC.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YY59Y8YJJC4WC9NNRW8RNC\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:00:18Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YY59Y8YJJC4WC9NNRW8RNC\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:01:35Z\",\"data\":[\"upstream count: 0 commits ahead of `origin/denkhaus` (`git rev-list --count origin/denkhaus..upstream/main` = 0); newest upstream subject: 'Bump version to 0.348.0-nightly.0'; well below the MIN threshold of 5, so no merge slot is consumed this pass — drift accumulates toward the threshold\",\"revisor backlog: 01M1XCHJTDBJKZ31VFMY1KD61Q, 01M1YBBXR99PNME6Y8ZED4Y2NN, 01M1Y9N7R47JPR49CYXP8BQYC3, 01M1Y852BN91NSVSHFWNWTW5ST — completed develop runs with no revisor run sharing their parent (pairing checked via parent_id across both workflows); the revisor burns these newest-first one per pass\",\"caveat (best-effort): 01M1XCHJTDBJKZ31VFMY1KD61Q (07:32) predates the run at 12:01 that WAS revised; per ADR-0015 stale-evidence runs may be deliberately skipped rather than backlogged, so the older entries may never be revisable — the signal is unambiguous for 01M1Y852BN91NSVSHFWNWTW5ST through 01M1YBBXR99PNME6Y8ZED4Y2NN, ambiguous for the 07:32 run\",\"nothing hurt: both fetches clean, remote `upstream` already configured -> `https://github.com/fabro-sh/fabro`\"]}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YY59Y8YJJC4WC9NNRW8RNC\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:05:51Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YY59Y8YJJC4WC9NNRW8RNC\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:11:19Z\",\"data\":[\"revise leg: revisor child 01M1YYGC5AEC5EWY8J544FGMF0 created against develop run 01M1YY8JJCE31XHSDCZ816634G (parent 01M1YY59Y8YJJC4WC9NNRW8RNC) with environment=toolchain, auto_approve=true\",\"revisor child reached terminal: status.kind=succeeded, reason=completed; no pull request produced this pass\",\"seed_cycles after this pass: start=1, survey=1, develop=1, revise=1\"]}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 4,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T22:11:26.599949788Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 600289,
+      "inference_time_ms": 80064,
+      "tool_time_ms": 502508,
+      "active_time_ms": 582572
+    },
+    "final_git_commit_sha": "d316d21edb7ac9752ddc0a26cf49357d7c89cb0e",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 66300,
+          "inference_time_ms": 33761,
+          "tool_time_ms": 31946,
+          "active_time_ms": 65707
+        },
+        "billing_usd_micros": 79553,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 224783,
+          "inference_time_ms": 26941,
+          "tool_time_ms": 197229,
+          "active_time_ms": 224170
+        },
+        "billing_usd_micros": 35725,
+        "retries": 0
+      },
+      {
+        "stage_id": "revise",
+        "stage_label": "revise",
+        "timing": {
+          "wall_time_ms": 293223,
+          "inference_time_ms": 19362,
+          "tool_time_ms": 273333,
+          "active_time_ms": 292695
+        },
+        "billing_usd_micros": 27596,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 61438,
+      "output_tokens": 1960,
+      "total_tokens": 232438,
+      "reasoning_tokens": 1040,
+      "cache_read_tokens": 168000,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 142874
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1YY59Y8YJJC4WC9NNRW8RNC.jsonl b/.fabro/journal/01M1YY59Y8YJJC4WC9NNRW8RNC.jsonl\nnew file mode 100644\nindex 000000000..c54f36ca9\n--- /dev/null\n+++ b/.fabro/journal/01M1YY59Y8YJJC4WC9NNRW8RNC.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YY59Y8YJJC4WC9NNRW8RNC\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:00:18Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YY59Y8YJJC4WC9NNRW8RNC\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:01:35Z\",\"data\":[\"upstream count: 0 commits ahead of `origin/denkhaus` (`git rev-list --count origin/denkhaus..upstream/main` = 0); newest upstream subject: 'Bump version to 0.348.0-nightly.0'; well below the MIN threshold of 5, so no merge slot is consumed this pass — drift accumulates toward the threshold\",\"revisor backlog: 01M1XCHJTDBJKZ31VFMY1KD61Q, 01M1YBBXR99PNME6Y8ZED4Y2NN, 01M1Y9N7R47JPR49CYXP8BQYC3, 01M1Y852BN91NSVSHFWNWTW5ST — completed develop runs with no revisor run sharing their parent (pairing checked via parent_id across both workflows); the revisor burns these newest-first one per pass\",\"caveat (best-effort): 01M1XCHJTDBJKZ31VFMY1KD61Q (07:32) predates the run at 12:01 that WAS revised; per ADR-0015 stale-evidence runs may be deliberately skipped rather than backlogged, so the older entries may never be revisable — the signal is unambiguous for 01M1Y852BN91NSVSHFWNWTW5ST through 01M1YBBXR99PNME6Y8ZED4Y2NN, ambiguous for the 07:32 run\",\"nothing hurt: both fetches clean, remote `upstream` already configured -> `https://github.com/fabro-sh/fabro`\"]}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YY59Y8YJJC4WC9NNRW8RNC\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:05:51Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YY59Y8YJJC4WC9NNRW8RNC\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:11:19Z\",\"data\":[\"revise leg: revisor child 01M1YYGC5AEC5EWY8J544FGMF0 created against develop run 01M1YY8JJCE31XHSDCZ816634G (parent 01M1YY59Y8YJJC4WC9NNRW8RNC) with environment=toolchain, auto_approve=true\",\"revisor child reached terminal: status.kind=succeeded, reason=completed; no pull request produced this pass\",\"seed_cycles after this pass: start=1, survey=1, develop=1, revise=1\"]}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 4,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1434,6 +1520,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 140,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T22:11:26.555191127Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T22:11:26.555136489Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
