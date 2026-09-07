@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M1YGDXXQKT56AV83974FGGEY.jsonl b/.fabro/journal/01M1YGDXXQKT56AV83974FGGEY.jsonl
+index bb5e49208..a064c912c 100644
+--- a/.fabro/journal/01M1YGDXXQKT56AV83974FGGEY.jsonl
++++ b/.fabro/journal/01M1YGDXXQKT56AV83974FGGEY.jsonl
+@@ -1,3 +1,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1YGDXXQKT56AV83974FGGEY","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T18:00:44Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YGDXXQKT56AV83974FGGEY","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-07T18:02:09Z","data":"Upstream count origin/denkhaus..upstream/main = 0 (fetch succeeded with --prune for both remotes; upstream remote already configured). Newest upstream subject: 'Bump version to 0.348.0-nightly.0'. Count 0 < 5 MIN threshold -> route Work (develop+revisor cycle). Nothing hurt beyond a very large first-fetch branch listing (hundreds of fabro/run/* refs) inflating fetch output."}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YGDXXQKT56AV83974FGGEY","node":"develop","visit":1,"status":"succeeded","ts":"2026-09-07T18:11:31Z","data":{"painpoints":[],"observations":["develop child 01M1YGJ7JSWAVWJT45DRDZ89Z6 claimed and closed seed fabro-1dc9 (conductor blocked-routing regression fix, PR #45); PR auto-merged on the first until=merged wait"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YGDXXQKT56AV83974FGGEY","node":"revise","visit":1,"status":"succeeded","ts":"2026-09-07T18:18:25Z","data":"revisor child 01M1YH3BBSM6Z09S64HYN131DV (parent 01M1YGDXXQKT56AV83974FGGEY) ran against develop child 01M1YGJ7JSWAVWJT45DRDZ89Z6 (PR #45, seed fabro-1dc9) and finished succeeded/completed; pass cycle complete"}
