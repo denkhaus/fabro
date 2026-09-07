@@ -653,7 +653,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T10:02:13.691982045Z",
-  "last_event_at": "2026-09-07T10:05:39.090860131Z",
+  "last_event_at": "2026-09-07T10:32:59.841895862Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -700,9 +700,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 164,
       "checkpoint": {
-        "timestamp": "2026-09-07T10:05:39.301905871Z",
+        "timestamp": "2026-09-07T10:05:47.265769535Z",
         "current_node": "planner",
         "completed_nodes": [
           "start",
@@ -710,14 +710,10 @@
         ],
         "node_retries": {},
         "context_values": {
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "current_node": "planner",
-          "last_stage": "planner",
-          "failure_class": "",
-          "thread.start.current_node": "planner",
-          "current_seed_title": "engine: fabro_run_wait until=merged needs a gate-failure signal — OPEN PR with failed checks must not loop timeouts forever",
-          "internal.fidelity": "compact",
-          "outcome": "succeeded",
+          "internal.run_id": "01M1XN2KWG6T0PHRTJWZ8R0AZX",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.preamble_budget_kb": "24",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -727,13 +723,158 @@
               "Conductor until=merged routing lives in TWO prompt files: merge-leg.md (step 4) and develop-leg.md (step 5) — both must gain the blocked route; revise-leg.md is until=terminal only."
             ]
           },
+          "last_response": "Seed `fabro-bde4` claimed. Basis verified against the current tree: the wait handler, OpenAPI enum, tool mirror, and conductor prompts all lack any failed-checks exit — the described infinite-timeou",
+          "current_seed_title": "engine: fabro_run_wait until=merged needs a gate-failure signal — OPEN PR with failed checks must not loop timeouts forever",
+          "failure_class": "",
+          "graph.rankdir": "LR",
+          "outcome": "succeeded",
+          "internal.fidelity": "compact",
+          "internal.node_visit_count": 1,
+          "current_seed_brief": "Incident: develop child PR #33 sat OPEN with failed dogfood gate + DIRTY base; conductor re-waited until=merged five times (2h+) because no wait result matches open-but-unmergeable. Add a distinct wait result for that state and route it. Resolved ambiguities: (1) name the value `blocked` — it covers both failed required checks and DIRTY/BLOCKED merge states; (2) detection signal = GitHub pulls-API `mergeable_state` in {dirty, blocked}, which is how 'required checks concluded FAILURE' manifests in the pulls API — do NOT add a checks/combined-status API surface. Acceptance criteria: [OpenAPI] `RunWaitResult.reached` enum in `docs/public/api-reference/fabro-api.yaml` gains `blocked`; schema + endpoint descriptions document when it fires. [Types] `cargo build -p fabro-api` regen adds `RunWaitResultReached::Blocked`; `PullRequestGithubDetail` in `lib/foundation/fabro-types/src/pull_request.rs` gains `mergeable_state: Option<String>` with serde default. [Server] `lib/apps/fabro-server/src/server/handler/wait.rs` `wait_until_merged` returns `reached=blocked` WITH the PR link attached when the PR is open and `mergeable_state` is dirty/blocked on >=2 consecutive GitHub polls (sustained window; never fires while mergeable_state is unknown/null — GitHub may still be computing). [Tool] `lib/components/fabro-tool/src/wait.rs` `RunWaitReached` gains `Blocked`, `from_api` maps it, snake_case wire-name test updated. [TS client] `lib/packages/fabro-api-client/src/models/run-wait-result.ts` enum gains `blocked` (regen via `bun run generate` if java available, else hand-edit consistently — fabro-3b1b context). [Conductor] `.fabro/workflows/conductor/prompts/merge-leg.md` step 4 and `develop-leg.md` step 5 route `reached=blocked` to the existing failure route with a clear journal note (gate stuck / base dirty), NEVER re-wait. [Tests] regression test (extend `lib/apps/fabro-server/tests/it/api/run_wait.rs`, mock-GitHub pattern from `src/server/tests.rs:8686+`): open PR + mergeable_state=blocked sustained + until=merged returns `blocked` not `timeout`; and single-poll (transient) blocked observation does not fire. [Gate] `cargo nextest run -p fabro-types -p fabro-api -p fabro-tool -p fabro-server`, pinned-nightly fmt + clippy clean; openapi conformance test passes.",
           "internal.retry_count.start": 0,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.seed_cycle_anchor": "fabro-bde4",
+          "internal.retry_count.planner": 0,
+          "current_seed_id": "fabro-bde4",
+          "graph.max_node_visits": "40",
+          "internal.thread_id": "start",
           "preferred_label": "Seed claimed",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3972,
+            "preview": "Seed `fabro-bde4` claimed. Basis verified against the current tree: the wait handler, OpenAPI enum, tool mirror, and conductor prompts all lack any failed-checks exit — the described infinite-timeou"
+          },
+          "last_stage": "planner",
+          "thread.start.current_node": "planner",
+          "failure_signature": "",
+          "seed_cycles": {
+            "planner": 1
+          },
+          "current_node": "planner"
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Seed `fabro-bde4` claimed. Basis verified against the current tree: the wait handler, OpenAPI enum, tool mirror, and conductor prompts all lack any failed-checks exit — the described infinite-timeou",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-bde4 basis verified fresh (incident 2026-09-07, PR #33 in git log); wait.rs has only terminal/merged/closed_unmerged/timeout — gap real.",
+                  "Spec ambiguity resolved in brief: value named `blocked`, signal = pulls-API mergeable_state dirty/blocked sustained 2 consecutive polls (10s GitHub poll interval in wait.rs), no checks-API addition.",
+                  "TS client regen needs java (fabro-3b1b open): brief permits consistent hand-edit of the generated client if openapi-generator-cli unavailable.",
+                  "Conductor until=merged routing lives in TWO prompt files: merge-leg.md (step 4) and develop-leg.md (step 5) — both must gain the blocked route; revise-leg.md is until=terminal only."
+                ]
+              },
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3972,
+                "preview": "Seed `fabro-bde4` claimed. Basis verified against the current tree: the wait handler, OpenAPI enum, tool mirror, and conductor prompts all lack any failed-checks exit — the described infinite-timeou"
+              },
+              "last_stage": "planner",
+              "current_seed_id": "fabro-bde4",
+              "current_seed_brief": "Incident: develop child PR #33 sat OPEN with failed dogfood gate + DIRTY base; conductor re-waited until=merged five times (2h+) because no wait result matches open-but-unmergeable. Add a distinct wait result for that state and route it. Resolved ambiguities: (1) name the value `blocked` — it covers both failed required checks and DIRTY/BLOCKED merge states; (2) detection signal = GitHub pulls-API `mergeable_state` in {dirty, blocked}, which is how 'required checks concluded FAILURE' manifests in the pulls API — do NOT add a checks/combined-status API surface. Acceptance criteria: [OpenAPI] `RunWaitResult.reached` enum in `docs/public/api-reference/fabro-api.yaml` gains `blocked`; schema + endpoint descriptions document when it fires. [Types] `cargo build -p fabro-api` regen adds `RunWaitResultReached::Blocked`; `PullRequestGithubDetail` in `lib/foundation/fabro-types/src/pull_request.rs` gains `mergeable_state: Option<String>` with serde default. [Server] `lib/apps/fabro-server/src/server/handler/wait.rs` `wait_until_merged` returns `reached=blocked` WITH the PR link attached when the PR is open and `mergeable_state` is dirty/blocked on >=2 consecutive GitHub polls (sustained window; never fires while mergeable_state is unknown/null — GitHub may still be computing). [Tool] `lib/components/fabro-tool/src/wait.rs` `RunWaitReached` gains `Blocked`, `from_api` maps it, snake_case wire-name test updated. [TS client] `lib/packages/fabro-api-client/src/models/run-wait-result.ts` enum gains `blocked` (regen via `bun run generate` if java available, else hand-edit consistently — fabro-3b1b context). [Conductor] `.fabro/workflows/conductor/prompts/merge-leg.md` step 4 and `develop-leg.md` step 5 route `reached=blocked` to the existing failure route with a clear journal note (gate stuck / base dirty), NEVER re-wait. [Tests] regression test (extend `lib/apps/fabro-server/tests/it/api/run_wait.rs`, mock-GitHub pattern from `src/server/tests.rs:8686+`): open PR + mergeable_state=blocked sustained + until=merged returns `blocked` not `timeout`; and single-poll (transient) blocked observation does not fire. [Gate] `cargo nextest run -p fabro-types -p fabro-api -p fabro-tool -p fabro-server`, pinned-nightly fmt + clippy clean; openapi conformance test passes.",
+              "current_seed_title": "engine: fabro_run_wait until=merged needs a gate-failure signal — OPEN PR with failed checks must not loop timeouts forever"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 40220,
+                    "output_tokens": 2487,
+                    "reasoning_tokens": 5539,
+                    "cache_read_tokens": 513536,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 225114
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 185288,
+              "tool_time_ms": 3170,
+              "active_time_ms": 188458
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "implementer",
+        "git_commit_sha": "422fbb03afdcaa4629dd9ed1f3b50ee253540ece",
+        "node_visits": {
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1XN2KWG6T0PHRTJWZ8R0AZX.jsonl b/.fabro/journal/01M1XN2KWG6T0PHRTJWZ8R0AZX.jsonl\nnew file mode 100644\nindex 0000000..a54b4db\n--- /dev/null\n+++ b/.fabro/journal/01M1XN2KWG6T0PHRTJWZ8R0AZX.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XN2KWG6T0PHRTJWZ8R0AZX\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T10:02:16Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XN2KWG6T0PHRTJWZ8R0AZX\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T10:05:39Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-bde4 basis verified fresh (incident 2026-09-07, PR #33 in git log); wait.rs has only terminal/merged/closed_unmerged/timeout — gap real.\",\"Spec ambiguity resolved in brief: value named `blocked`, signal = pulls-API mergeable_state dirty/blocked sustained 2 consecutive polls (10s GitHub poll interval in wait.rs), no checks-API addition.\",\"TS client regen needs java (fabro-3b1b open): brief permits consistent hand-edit of the generated client if openapi-generator-cli unavailable.\",\"Conductor until=merged routing lives in TWO prompt files: merge-leg.md (step 4) and develop-leg.md (step 5) — both must gain the blocked route; revise-leg.md is until=terminal only.\"]}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex aa4fdba..f55dff6 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -225,4 +225,4 @@\n {\"id\":\"fabro-0195\",\"title\":\"engine: declarative automation definitions in the repo (config/automations/*.toml) with on_overlap + breaker_threshold as code\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-09-06T21:41:21.610Z\",\"updatedAt\":\"2026-09-06T21:41:21.610Z\",\"description\":\"User review 2026-09-06 ('warum ist der skip nicht in der workflow def gesetzt?'): the conductor automation exists ONLY as live DB state — hand-created via UI/API, on_overlap never set (default Fire caused the three-pass stacking night), breaker_threshold likewise unset. Nothing versioned declares the line's safety posture; a DB reset or re-created automation silently loses skip/threshold and re-exposes the stacking + breaker-less behavior. The legacy import path (import_legacy_directory_once, dir = <config>/automations) exists but the repo ships no files there and import is one-shot legacy-shaped. Wanted: declarative automation definitions (e.g. config/automations/conductor.toml: target, workflow, environment, schedule expression, on_overlap=skip, breaker_threshold) that are (a) reviewed in PRs, (b) reconciled on server start (upsert by id; live pause state PRESERVED — enabled flag stays operator-owned, like today's resume flow), (c) surfaced in the web UI as 'managed from repo'. The workflow.fabro itself cannot carry on_overlap (scheduler-scope, not graph-scope) — the seed is about the automation layer getting its own source of truth. Interim (applied live 2026-09-06): on_overlap=skip set via API on the conductor.\",\"labels\":[\"engine\",\"workflows\"]}\n {\"id\":\"fabro-3b1b\",\"title\":\"sandbox: openapi-generator-cli needs java — regen fails in runs, implementer hand-edits the generated TS client (live drift on denkhaus)\",\"status\":\"open\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T07:48:54.498Z\",\"updatedAt\":\"2026-09-07T07:48:54.498Z\",\"description\":\"Evidence (develop run 01M1VZTJSZ551NFPHPXD429MG0, implementer, 2026-09-06): 'bun run generate' for lib/packages/fabro-api-client fails in run sandboxes because openapi-generator-cli requires java, which is NOT in the fabro-toolchain image. The implementer worked around it by HAND-EDITING the generated lib/packages/fabro-api-client/src/models/automation-schedule-trigger.ts 'to mirror generator output' — that hand-edit merged to denkhaus via PR #32: the checked-in generated client is now unverified drift; the next regen on a java-capable machine may churn or silently differ. Fix directions: (a) hermetic regen — add a JRE to the fabro-toolchain image OR switch generation to a java-less path (e.g. hey-api/openapi-ts via bun) so 'bun run generate' runs in every sandbox; (b) reconcile the drift: regenerate canonically once java/hermetic regen exists and commit the canonical output; (c) develop prompts + gate must treat lib/packages/fabro-api-client/src as GENERATED: hand edits are a process defect — the gate should diff generated output or at least flag manual edits to generated paths.\",\"labels\":[\"sandbox\",\"workflows\",\"revision\"]}\n {\"id\":\"fabro-febd\",\"title\":\"qualitygate: fabro-server graph-render tests need target/debug/fabro — gate only builds touched crates and fails 3 tests deterministically\",\"status\":\"open\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T07:49:03.612Z\",\"updatedAt\":\"2026-09-07T07:49:03.612Z\",\"description\":\"Evidence (develop run 01M1VZTJSZ551NFPHPXD429MG0, tester stage, 2026-09-06): scripts/qualitygate.nu gates only the touched crates, but fabro-server graph-render unit tests (server::tests::get_graph_returns_svg, render_graph_from_manifest_*) invoke target/debug/fabro. When a run touches fabro-server WITHOUT fabro-cli in the touched set, the binary is missing and the gate fails 3 tests deterministically — the 01M1VZTJSZ55 run burned a whole implementer revisit on this. Fix directions: (a) qualitygate builds 'cargo build -p fabro-cli --bin fabro' whenever fabro-server is in the touched set (make the dependency explicit in the gate recipe), or (b) the tests skip with a clear skip message when the binary is absent (worse: hides real regressions), or (c) decouple the tests from the CLI binary via a test-support builder. Prefer (a).\",\"labels\":[\"workflows\",\"revision\"]}\n-{\"id\":\"fabro-bde4\",\"title\":\"engine: fabro_run_wait until=merged needs a gate-failure signal — OPEN PR with failed checks must not loop timeouts forever\",\"status\":\"open\",\"type\":\"feature\",\"priority\":1,\"createdAt\":\"2026-09-07T09:42:18.217Z\",\"updatedAt\":\"2026-09-07T09:42:18.217Z\",\"description\":\"Incident 2026-09-07 (conductor pass 01M1XCC9SP1YH38326ZCVJZT3J, develop child 01M1XCHJTDBJKZ31VFMY1KD61Q, PR #33): the develop child merged its work and enabled auto-merge, but the dogfood gate FAILED and a later base push made the PR DIRTY. The conductor leg waits with fabro_run_wait until=merged; ADR-0016 wait results are terminal|merged|closed_unmerged|timeout — a PR that is OPEN with failed checks (or DIRTY) matches NONE of them, so every wait returns timeout and the agent re-waits: 5 chained fabro_run_wait calls over 2+ hours with zero routing until manual repair (debug!-level fix + base merge pushed to the run branch, 09:3x UTC). Wanted: (a) the wait result gains a distinct reached value (e.g. 'blocked' or 'checks_failed') when the linked PR is open but its required checks concluded FAILURE, or its merge state is DIRTY/BLOCKED for a sustained window; (b) conductor prompts route that value to a repair child or park with a clear reason instead of re-waiting; (c) regression test: open PR + failed checks + until=merged returns the new value, not timeout. Related: fabro-94e8 (auto-rebase for stale bases), fabro-6a77 (branch-pushed-PR-failed completion semantics), ADR-0016.\",\"labels\":[\"engine\",\"workflows\"]}\n+{\"id\":\"fabro-bde4\",\"title\":\"engine: fabro_run_wait until=merged needs a gate-failure signal — OPEN PR with failed checks must not loop timeouts forever\",\"status\":\"in_progress\",\"type\":\"feature\",\"priority\":1,\"createdAt\":\"2026-09-07T09:42:18.217Z\",\"updatedAt\":\"2026-09-07T10:05:21.098Z\",\"description\":\"Incident 2026-09-07 (conductor pass 01M1XCC9SP1YH38326ZCVJZT3J, develop child 01M1XCHJTDBJKZ31VFMY1KD61Q, PR #33): the develop child merged its work and enabled auto-merge, but the dogfood gate FAILED and a later base push made the PR DIRTY. The conductor leg waits with fabro_run_wait until=merged; ADR-0016 wait results are terminal|merged|closed_unmerged|timeout — a PR that is OPEN with failed checks (or DIRTY) matches NONE of them, so every wait returns timeout and the agent re-waits: 5 chained fabro_run_wait calls over 2+ hours with zero routing until manual repair (debug!-level fix + base merge pushed to the run branch, 09:3x UTC). Wanted: (a) the wait result gains a distinct reached value (e.g. 'blocked' or 'checks_failed') when the linked PR is open but its required checks concluded FAILURE, or its merge state is DIRTY/BLOCKED for a sustained window; (b) conductor prompts route that value to a repair child or park with a clear reason instead of re-waiting; (c) regression test: open PR + failed checks + until=merged returns the new value, not timeout. Related: fabro-94e8 (auto-rebase for stale bases), fabro-6a77 (branch-pushed-PR-failed completion semantics), ADR-0016.\",\"labels\":[\"engine\",\"workflows\"]}\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 3,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-07T10:33:00.048194495Z",
+        "current_node": "implementer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "current_node": "implementer",
+          "last_stage": "implementer",
+          "failure_class": "",
+          "thread.start.current_node": "planner",
+          "current_seed_title": "engine: fabro_run_wait until=merged needs a gate-failure signal — OPEN PR with failed checks must not loop timeouts forever",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5007,
+            "preview": "All green. Final summary:\n\n**Implementation** — added a `blocked` wait result across the stack: OpenAPI spec (`docs/public/api-reference/fabro-api.yaml` — enum + endpoint/schema/`pull_request` des"
+          },
+          "internal.fidelity": "summary:high",
+          "outcome": "succeeded",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "TestAppStateBuilder (lib/apps/fabro-server/src/test_support.rs) had no github_api_base_url setter until this seed added one — every it-test needing a mock GitHub had to either stay in the cfg(test) unit suite or duplicate create_github_token_app_state (fabro-bde4, run 01M1XN2KWG6T0PHRTJWZ8R0AZX). Suggestion: consider exposing a shared mock-github app helper in test_support so future it-tests don't re-derive the token-strategy settings + vault_entries incantation."
+              }
+            ],
+            "observations": [
+              "httpmock 0.8.3 has no per-mock hit limit (no up_to_n_times); modeling transient-then-changed GitHub responses requires spawning the request task, waiting on mock.calls_async(), then mock.delete() + creating the follow-up mock — the pattern used in merged_wait_ignores_transient_blocked_observation.",
+              "wait.rs uses std::time::Instant for the poll cadence, so paused-clock tokio tests cannot fast-forward it; the confirmation interval (BLOCKED_CONFIRMATION_POLL_INTERVAL=1.5s) is what keeps sustained-window tests fast rather than 10s+ (GITHUB_POLL_INTERVAL)."
+            ]
+          },
+          "thread.planner.current_node": "implementer",
+          "internal.retry_count.start": 0,
+          "preferred_label": "Implemented",
           "internal.seed_cycle_anchor": "fabro-bde4",
           "current_seed_brief": "Incident: develop child PR #33 sat OPEN with failed dogfood gate + DIRTY base; conductor re-waited until=merged five times (2h+) because no wait result matches open-but-unmergeable. Add a distinct wait result for that state and route it. Resolved ambiguities: (1) name the value `blocked` — it covers both failed required checks and DIRTY/BLOCKED merge states; (2) detection signal = GitHub pulls-API `mergeable_state` in {dirty, blocked}, which is how 'required checks concluded FAILURE' manifests in the pulls API — do NOT add a checks/combined-status API surface. Acceptance criteria: [OpenAPI] `RunWaitResult.reached` enum in `docs/public/api-reference/fabro-api.yaml` gains `blocked`; schema + endpoint descriptions document when it fires. [Types] `cargo build -p fabro-api` regen adds `RunWaitResultReached::Blocked`; `PullRequestGithubDetail` in `lib/foundation/fabro-types/src/pull_request.rs` gains `mergeable_state: Option<String>` with serde default. [Server] `lib/apps/fabro-server/src/server/handler/wait.rs` `wait_until_merged` returns `reached=blocked` WITH the PR link attached when the PR is open and `mergeable_state` is dirty/blocked on >=2 consecutive GitHub polls (sustained window; never fires while mergeable_state is unknown/null — GitHub may still be computing). [Tool] `lib/components/fabro-tool/src/wait.rs` `RunWaitReached` gains `Blocked`, `from_api` maps it, snake_case wire-name test updated. [TS client] `lib/packages/fabro-api-client/src/models/run-wait-result.ts` enum gains `blocked` (regen via `bun run generate` if java available, else hand-edit consistently — fabro-3b1b context). [Conductor] `.fabro/workflows/conductor/prompts/merge-leg.md` step 4 and `develop-leg.md` step 5 route `reached=blocked` to the existing failure route with a clear journal note (gate stuck / base dirty), NEVER re-wait. [Tests] regression test (extend `lib/apps/fabro-server/tests/it/api/run_wait.rs`, mock-GitHub pattern from `src/server/tests.rs:8686+`): open PR + mergeable_state=blocked sustained + until=merged returns `blocked` not `timeout`; and single-poll (transient) blocked observation does not fire. [Gate] `cargo nextest run -p fabro-types -p fabro-api -p fabro-tool -p fabro-server`, pinned-nightly fmt + clippy clean; openapi conformance test passes.",
           "internal.run_id": "01M1XN2KWG6T0PHRTJWZ8R0AZX",
           "current_seed_id": "fabro-bde4",
-          "internal.thread_id": "start",
+          "implementation_summary": "Added `reached=blocked` across OpenAPI spec, fabro-types (mergeable_state), regenerated fabro-api, server wait handler (sustained ≥2-poll dirty/blocked detection with PR link attached), fabro-tool enum + wire test, hand-edited TS client (java absent), conductor prompt routing (never re-wait), plus mock-GitHub it-tests via a new TestAppStateBuilder.github_api_base_url knob; lesson captured as mx-17b677. Per-criterion: OpenAPI enum+descriptions PASS (fabro-api.yaml); Blocked regen + mergeable_state serde-default PASS (pull_request.rs + codegen); server sustained-window logic PASS (handler/wait.rs); tool enum/from_api/test PASS (fabro-tool/src/wait.rs); TS enum PASS (run-wait-result.ts); conductor routing PASS (merge-leg step 4, develop-leg step 5); regression tests PASS (run_wait.rs: blocked-not-timeout + transient-does-not-fire, 7/7); gate prereqs PASS (crate-scoped fmt+clippy clean, 803 unit + 5 conformance tests pass).",
+          "internal.thread_id": "planner",
           "internal.work_dir": "/workspace/fabro",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -744,16 +885,83 @@
           "internal.retry_count.planner": 0,
           "graph.cycle_counter_reset_key": "current_seed_id",
           "seed_cycles": {
-            "planner": 1
+            "planner": 1,
+            "implementer": 1
           },
           "graph.preamble_budget_kb": "24",
+          "lesson_capture": "mx-17b677",
           "graph.rankdir": "LR",
-          "last_response": "Seed `fabro-bde4` claimed. Basis verified against the current tree: the wait handler, OpenAPI enum, tool mirror, and conductor prompts all lack any failed-checks exit — the described infinite-timeou",
+          "last_response": "All green. Final summary:\n\n**Implementation** — added a `blocked` wait result across the stack: OpenAPI spec (`docs/public/api-reference/fabro-api.yaml` — enum + endpoint/schema/`pull_request` des",
           "internal.node_visit_count": 1,
           "failure_signature": "",
-          "graph.max_node_visits": "40"
+          "graph.max_node_visits": "40",
+          "internal.retry_count.implementer": 0
         },
         "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_stage": "implementer",
+              "implementation_summary": "Added `reached=blocked` across OpenAPI spec, fabro-types (mergeable_state), regenerated fabro-api, server wait handler (sustained ≥2-poll dirty/blocked detection with PR link attached), fabro-tool enum + wire test, hand-edited TS client (java absent), conductor prompt routing (never re-wait), plus mock-GitHub it-tests via a new TestAppStateBuilder.github_api_base_url knob; lesson captured as mx-17b677. Per-criterion: OpenAPI enum+descriptions PASS (fabro-api.yaml); Blocked regen + mergeable_state serde-default PASS (pull_request.rs + codegen); server sustained-window logic PASS (handler/wait.rs); tool enum/from_api/test PASS (fabro-tool/src/wait.rs); TS enum PASS (run-wait-result.ts); conductor routing PASS (merge-leg step 4, develop-leg step 5); regression tests PASS (run_wait.rs: blocked-not-timeout + transient-does-not-fire, 7/7); gate prereqs PASS (crate-scoped fmt+clippy clean, 803 unit + 5 conformance tests pass).",
+              "lesson_capture": "mx-17b677",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5007,
+                "preview": "All green. Final summary:\n\n**Implementation** — added a `blocked` wait result across the stack: OpenAPI spec (`docs/public/api-reference/fabro-api.yaml` — enum + endpoint/schema/`pull_request` des"
+              },
+              "last_response": "All green. Final summary:\n\n**Implementation** — added a `blocked` wait result across the stack: OpenAPI spec (`docs/public/api-reference/fabro-api.yaml` — enum + endpoint/schema/`pull_request` des",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "TestAppStateBuilder (lib/apps/fabro-server/src/test_support.rs) had no github_api_base_url setter until this seed added one — every it-test needing a mock GitHub had to either stay in the cfg(test) unit suite or duplicate create_github_token_app_state (fabro-bde4, run 01M1XN2KWG6T0PHRTJWZ8R0AZX). Suggestion: consider exposing a shared mock-github app helper in test_support so future it-tests don't re-derive the token-strategy settings + vault_entries incantation."
+                  }
+                ],
+                "observations": [
+                  "httpmock 0.8.3 has no per-mock hit limit (no up_to_n_times); modeling transient-then-changed GitHub responses requires spawning the request task, waiting on mock.calls_async(), then mock.delete() + creating the follow-up mock — the pattern used in merged_wait_ignores_transient_blocked_observation.",
+                  "wait.rs uses std::time::Instant for the poll cadence, so paused-clock tokio tests cannot fast-forward it; the confirmation interval (BLOCKED_CONFIRMATION_POLL_INTERVAL=1.5s) is what keeps sustained-window tests fast rather than 10s+ (GITHUB_POLL_INTERVAL)."
+                ]
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 70267,
+                    "output_tokens": 12517,
+                    "reasoning_tokens": 8912,
+                    "cache_read_tokens": 3589440,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 1125819
+            },
+            "files_touched": [
+              "/workspace/fabro/docs/public/api-reference/fabro-api.yaml",
+              "/workspace/fabro/lib/apps/fabro-server/src/server/handler/wait.rs",
+              "/workspace/fabro/lib/apps/fabro-server/src/test_support.rs",
+              "/workspace/fabro/lib/apps/fabro-server/tests/it/api/run_wait.rs",
+              "/workspace/fabro/lib/components/fabro-tool/src/wait.rs",
+              "/workspace/fabro/lib/foundation/fabro-types/src/pull_request.rs",
+              "/workspace/fabro/lib/packages/fabro-api-client/src/models/run-wait-result.ts"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 531632,
+              "tool_time_ms": 980558,
+              "active_time_ms": 1512190
+            }
+          },
           "start": {
             "status": "succeeded",
             "usage": null
@@ -813,10 +1021,11 @@
             }
           }
         },
-        "next_node_id": "implementer",
+        "next_node_id": "tester",
         "node_visits": {
           "start": 1,
-          "planner": 1
+          "planner": 1,
+          "implementer": 1
         }
       },
       "diff": {}
@@ -881,6 +1090,220 @@
         "reasoning_tokens": 0,
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "implementer@1": {
+      "first_event_seq": 167,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T10:32:59.841895862Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T10:05:47.284405259Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 1512830,
+        "inference_time_ms": 531632,
+        "tool_time_ms": 980558,
+        "active_time_ms": 1512190
+      },
+      "usage": {
+        "input_tokens": 70267,
+        "output_tokens": 12517,
+        "total_tokens": 3681136,
+        "reasoning_tokens": 8912,
+        "cache_read_tokens": 3589440,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 1125819
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 67598,
+        "usage_percent": 6.446647644042969,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-07T10:32:59.822124323Z",
+        "event_seq": 651,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 917,
+            "usage_percent": 0.08745193481445312
+          },
+          {
+            "category": "tools",
+            "tokens": 1376,
+            "usage_percent": 0.1312255859375
+          },
+          {
+            "category": "memory",
+            "tokens": 4835,
+            "usage_percent": 0.4611015319824219
+          },
+          {
+            "category": "conversation",
+            "tokens": 60464,
+            "usage_percent": 5.76629638671875
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
+          }
+        ],
+        "warnings": []
       },
       "agent_control": "running",
       "state": "succeeded"
