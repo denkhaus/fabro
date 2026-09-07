@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Script failed with exit code: 1\n\n## output\nmise ERROR error parsing config file: /repos/denkhaus/fabro/.mise.toml\nmise ERROR Config files in /repos/denkhaus/fabro/.mise.toml are not trusted.\nTrust them with `mise trust`. See https://mise.jdx.dev/cli/trust.html for more information.\nmise ERROR Version: 2026.8.10 linux-x64 (2026-08-20)\nmise ERROR Run with --verbose or MISE_VERBOSE=1 for more information\n",
+  "timestamp": "2026-09-07T07:42:35.418456838Z"
+}
