@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M1YBBXR99PNME6Y8ZED4Y2NN.jsonl b/.fabro/journal/01M1YBBXR99PNME6Y8ZED4Y2NN.jsonl
+index 051ebe6..391bf27 100644
+--- a/.fabro/journal/01M1YBBXR99PNME6Y8ZED4Y2NN.jsonl
++++ b/.fabro/journal/01M1YBBXR99PNME6Y8ZED4Y2NN.jsonl
+@@ -2,3 +2,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1YBBXR99PNME6Y8ZED4Y2NN","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-07T16:33:57Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YBBXR99PNME6Y8ZED4Y2NN","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-07T17:02:49Z","data":{"painpoints":[{"text":"bun run generate in lib/packages/fabro-api-client requires Java, which was not installed in this sandbox (run 01M1YBBXR99PNME6Y8ZED4Y2NN); `apt-get install default-jre-headless` fixed it, but the API-workflow doc in CLAUDE.md could state the Java prerequisite so implementers don't hand-edit generated files when apt is unavailable."}],"observations":["Regenerating the TS client synced pre-existing spec drift beyond this seed's description change: the previously hand-inlined AutomationScheduleTriggerBreaker interface split back into its own generated file and runs-api.ts picked up the reached=blocked doc text — generated output now matches the committed spec, verified by typecheck and the full web suite."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YBBXR99PNME6Y8ZED4Y2NN","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-07T17:04:30Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YBBXR99PNME6Y8ZED4Y2NN","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-07T17:04:36Z","data":{}}
