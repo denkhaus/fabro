@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1YB91EEC3F5ARY3F5432Q2E.jsonl b/.fabro/journal/01M1YB91EEC3F5ARY3F5432Q2E.jsonl
+index 5c1a5e5db..44934ec91 100644
+--- a/.fabro/journal/01M1YB91EEC3F5ARY3F5432Q2E.jsonl
++++ b/.fabro/journal/01M1YB91EEC3F5ARY3F5432Q2E.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1YB91EEC3F5ARY3F5432Q2E","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T16:30:19Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YB91EEC3F5ARY3F5432Q2E","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-07T16:31:18Z","data":"Surveyor pass: fetched `upstream` (https://github.com/fabro-sh/fabro) and `origin` with --prune; rev-list count origin/denkhaus..upstream/main = 0 (< MIN 5), so no merge slot consumed (2026-09-05 user decision). Newest upstream subject: none (zero drift). Nothing hurt; fetch output was very noisy (hundreds of new remote-tracking branches on first upstream fetch), consider `--quiet` or narrowed refspecs next time. Route: Work — run one develop+revisor cycle."}
++{"$schema":"fabro-journal-v1","run_id":"01M1YB91EEC3F5ARY3F5432Q2E","node":"develop","visit":1,"status":"succeeded","ts":"2026-09-07T17:06:26Z","data":"child 01M1YBBXR99PNME6Y8ZED4Y2NN seed fabro-fb16 (Skip-safe-default + on_overlap UI) full cycle green, seed closed; PR #44 merge gate BLOCKED (reached=blocked on until=merged wait)"}

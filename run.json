@@ -558,7 +558,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T16:30:16.788746827Z",
-  "last_event_at": "2026-09-07T17:06:26.038044569Z",
+  "last_event_at": "2026-09-07T17:06:34.521056660Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -716,9 +716,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 90,
       "checkpoint": {
-        "timestamp": "2026-09-07T17:06:26.316989331Z",
+        "timestamp": "2026-09-07T17:06:34.520344006Z",
         "current_node": "develop",
         "completed_nodes": [
           "start",
@@ -727,56 +727,52 @@
         ],
         "node_retries": {},
         "context_values": {
-          "preferred_label": "Develop child failed",
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "graph.max_node_visits": "12",
-          "internal.fidelity": "compact",
           "seed_cycles": {
             "start": 1,
             "survey": 1,
             "develop": 1
           },
-          "thread.start.current_node": "survey",
-          "child_run_id": "01M1YBBXR99PNME6Y8ZED4Y2NN",
-          "current_node": "develop",
           "graph.preamble_budget_kb": "12",
-          "journal": "child 01M1YBBXR99PNME6Y8ZED4Y2NN seed fabro-fb16 (Skip-safe-default + on_overlap UI) full cycle green, seed closed; PR #44 merge gate BLOCKED (reached=blocked on until=merged wait)",
-          "internal.retry_count.survey": 0,
-          "graph.rankdir": "LR",
-          "internal.exit_kind": "soft",
-          "internal.thread_id": "survey",
-          "internal.seed_cycle_anchor": "",
-          "failure_signature": "",
-          "internal.work_dir": "/workspace/fabro",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "child_run_id": "01M1YBBXR99PNME6Y8ZED4Y2NN",
+          "failure_class": "",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
           "response.develop": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.develop",
             "chars": 1554,
             "preview": "Journal: child `01M1YBBXR99PNME6Y8ZED4Y2NN` (develop, seed `fabro-fb16` — \"engine: make Skip the safe default for scheduled automations + audit the untagged scheduler run path + surface on_overlap i"
           },
-          "graph.cycle_counter_reset_key": "pass_id",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "failure_class": "",
           "internal.retry_count.start": 0,
+          "internal.seed_cycle_anchor": "",
+          "internal.node_visit_count": 1,
+          "thread.start.current_node": "survey",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "failure_signature": "",
+          "internal.fidelity": "compact",
+          "outcome": "succeeded",
+          "internal.exit_kind": "soft",
+          "internal.retry_count.develop": 0,
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 569,
             "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"context_updates\":{\"journal\":\"Surveyor pass: fetched `upstream` (https://github.com/fabro-sh/fabro) and `origin` with --prune; "
           },
-          "internal.run_id": "01M1YB91EEC3F5ARY3F5432Q2E",
-          "internal.node_visit_count": 1,
-          "last_stage": "develop",
           "last_response": "Journal: child `01M1YBBXR99PNME6Y8ZED4Y2NN` (develop, seed `fabro-fb16` — \"engine: make Skip the safe default for scheduled automations + audit the untagged scheduler run path + surface on_overlap i",
-          "outcome": "succeeded",
-          "internal.retry_count.develop": 0,
-          "thread.survey.current_node": "develop"
+          "journal": "child 01M1YBBXR99PNME6Y8ZED4Y2NN seed fabro-fb16 (Skip-safe-default + on_overlap UI) full cycle green, seed closed; PR #44 merge gate BLOCKED (reached=blocked on until=merged wait)",
+          "internal.thread_id": "survey",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.max_node_visits": "12",
+          "internal.retry_count.survey": 0,
+          "internal.run_id": "01M1YB91EEC3F5ARY3F5432Q2E",
+          "graph.rankdir": "LR",
+          "preferred_label": "Develop child failed",
+          "thread.survey.current_node": "develop",
+          "last_stage": "develop",
+          "current_node": "develop"
         },
         "node_outcomes": {
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "survey": {
             "status": "succeeded",
             "preferred_label": "Work",
@@ -863,19 +859,104 @@
               "tool_time_ms": 1864926,
               "active_time_ms": 1892353
             }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "da147ee00e877fc0a566c187c61b74769432b8a7",
         "node_visits": {
-          "start": 1,
+          "develop": 1,
           "survey": 1,
-          "develop": 1
+          "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1YB91EEC3F5ARY3F5432Q2E.jsonl b/.fabro/journal/01M1YB91EEC3F5ARY3F5432Q2E.jsonl\nindex 5c1a5e5db..44934ec91 100644\n--- a/.fabro/journal/01M1YB91EEC3F5ARY3F5432Q2E.jsonl\n+++ b/.fabro/journal/01M1YB91EEC3F5ARY3F5432Q2E.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YB91EEC3F5ARY3F5432Q2E\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T16:30:19Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YB91EEC3F5ARY3F5432Q2E\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T16:31:18Z\",\"data\":\"Surveyor pass: fetched `upstream` (https://github.com/fabro-sh/fabro) and `origin` with --prune; rev-list count origin/denkhaus..upstream/main = 0 (< MIN 5), so no merge slot consumed (2026-09-05 user decision). Newest upstream subject: none (zero drift). Nothing hurt; fetch output was very noisy (hundreds of new remote-tracking branches on first upstream fetch), consider `--quiet` or narrowed refspecs next time. Route: Work — run one develop+revisor cycle.\"}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YB91EEC3F5ARY3F5432Q2E\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T17:06:26Z\",\"data\":\"child 01M1YBBXR99PNME6Y8ZED4Y2NN seed fabro-fb16 (Skip-safe-default + on_overlap UI) full cycle green, seed closed; PR #44 merge gate BLOCKED (reached=blocked on until=merged wait)\"}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 3,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T17:06:34.596035776Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 1957641,
+      "inference_time_ms": 43789,
+      "tool_time_ms": 1899942,
+      "active_time_ms": 1943731
+    },
+    "failure": {
+      "reason": "soft_stop",
+      "detail": {
+        "message": "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; the next run re-enters autonomously",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "da147ee00e877fc0a566c187c61b74769432b8a7",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 51913,
+          "inference_time_ms": 16362,
+          "tool_time_ms": 35016,
+          "active_time_ms": 51378
+        },
+        "billing_usd_micros": 40191,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 1892891,
+          "inference_time_ms": 27427,
+          "tool_time_ms": 1864926,
+          "active_time_ms": 1892353
+        },
+        "billing_usd_micros": 255326,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 171435,
+      "output_tokens": 1132,
+      "total_tokens": 364286,
+      "reasoning_tokens": 167,
+      "cache_read_tokens": 191552,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 295517
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1YB91EEC3F5ARY3F5432Q2E.jsonl b/.fabro/journal/01M1YB91EEC3F5ARY3F5432Q2E.jsonl\nnew file mode 100644\nindex 000000000..44934ec91\n--- /dev/null\n+++ b/.fabro/journal/01M1YB91EEC3F5ARY3F5432Q2E.jsonl\n@@ -0,0 +1,3 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YB91EEC3F5ARY3F5432Q2E\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T16:30:19Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YB91EEC3F5ARY3F5432Q2E\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T16:31:18Z\",\"data\":\"Surveyor pass: fetched `upstream` (https://github.com/fabro-sh/fabro) and `origin` with --prune; rev-list count origin/denkhaus..upstream/main = 0 (< MIN 5), so no merge slot consumed (2026-09-05 user decision). Newest upstream subject: none (zero drift). Nothing hurt; fetch output was very noisy (hundreds of new remote-tracking branches on first upstream fetch), consider `--quiet` or narrowed refspecs next time. Route: Work — run one develop+revisor cycle.\"}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YB91EEC3F5ARY3F5432Q2E\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T17:06:26Z\",\"data\":\"child 01M1YBBXR99PNME6Y8ZED4Y2NN seed fabro-fb16 (Skip-safe-default + on_overlap UI) full cycle green, seed closed; PR #44 merge gate BLOCKED (reached=blocked on until=merged wait)\"}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 3,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "soft"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1453,6 +1534,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 93,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T17:06:34.521056660Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T17:06:34.520913761Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
