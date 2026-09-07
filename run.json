@@ -694,7 +694,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T16:31:48.845522044Z",
-  "last_event_at": "2026-09-07T17:05:34.976242923Z",
+  "last_event_at": "2026-09-07T17:05:40.039799902Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1512,9 +1512,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 650,
       "checkpoint": {
-        "timestamp": "2026-09-07T17:05:35.304249401Z",
+        "timestamp": "2026-09-07T17:05:39.488443040Z",
         "current_node": "reviewer",
         "completed_nodes": [
           "start",
@@ -1526,8 +1526,314 @@
         ],
         "node_retries": {},
         "context_values": {
+          "internal.retry_count.implementer": 0,
+          "current_node": "reviewer",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5542,
+            "preview": "All done. Summary of the implementation:\n\n**Engine (`lib/`)**: Added `Automation::effective_scheduled_overlap_policy()` in `lib/components/fabro-automation/src/model.rs` — untagged (`None`) resolves"
+          },
+          "graph.max_node_visits": "40",
+          "outcome": "succeeded",
+          "review_verdict": "approved",
+          "current_seed_title": "engine: make Skip the safe default for scheduled automations + audit the untagged scheduler run path + surface on_overlap in the web UI",
+          "failure_signature": "",
+          "failure_class": "",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.retry_count.reviewer": 0,
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1
+          },
+          "internal.retry_count.planner": 0,
+          "thread.planner.current_node": "implementer",
+          "graph.preamble_budget_kb": "24",
+          "graph.rankdir": "LR",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.tester": 0,
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2853,
+            "preview": "Verification complete. Every seed criterion is met in the evidence:\n\n1. **Server-side Skip default** — `effective_scheduled_overlap_policy()` on `Automation` in `fabro-automation/src/model.rs` resol"
+          },
+          "internal.thread_id": "evidence",
+          "internal.node_visit_count": 1,
+          "internal.fidelity": "summary:high",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "Evidence capture classified docs/public/api-reference/fabro-api.yaml (+9/-3) as loop churn even though it is the seed's own acceptance criterion 6 (OpenAPI description update, run 01M1YBBXR99PNME6Y8ZED4Y2NN). Loop-churn sections show counts only, no diff, so seed-required spec changes can land outside the review-visible diff. Suggestion: classify docs/public/api-reference/ as seed work (or include churn diffs when they match the seed brief's named files)."
+              }
+            ],
+            "observations": [
+              "Verified all 6 seed criteria against the complete diff in the blob; re-ran the two modified web test files (15 pass) since the quality gate only covered the touched Rust crates; confirmed the yaml description change in all three schemas via git diff against the claim base. TS client regen carried benign drift from earlier merged spec commits (#34, #32) — regen catch-up, not scope creep."
+            ]
+          },
+          "last_stage": "reviewer",
+          "current_seed_id": "fabro-fb16",
+          "thread.start.current_node": "planner",
+          "command.output": "blob://sha256/c1f62a67b5ae10fd6bce252cfcb414fdb8b5682eb01c3edfcb0357c5c73f5a81",
+          "current_seed_brief": "Make overlapping scheduled passes impossible by default and stop the web UI from silently reverting the overlap policy. Verified basis: `lib/apps/fabro-server/src/server/automation_scheduler.rs:256` treats `on_overlap == Some(Skip)` as the only skip case (untagged/None fires), and no route under `apps/fabro-web/app/routes/` references `on_overlap`. Acceptance criteria: (1) server-side default: when an automation with a schedule trigger has `on_overlap = None` (untagged), the effective policy at fire time is Skip — implement where the scheduler resolves the policy (prefer resolving in `fabro-automation` model/scheduler boundary so every caller inherits it; manual/API-set Fire must still be honored explicitly); (2) audit the untagged scheduler run path: enumerate every place a fire decision is made without an explicit policy and document/assert the Skip default, including the overlap-check-failure path at scheduler line ~274-285 which already fails safe; (3) web UI: add an on_overlap switch/selector to BOTH the create dialog (`apps/fabro-web/app/routes/automations-new.tsx`) and the edit dialog (`apps/fabro-web/app/routes/automations-edit.tsx`) so `replaceAutomation`/create payloads always carry the field — a UI save must never reset an API-set policy; (4) update `automation-detail.tsx` to display the effective overlap policy; (5) tests: engine-side test that an untagged schedule automation with a non-terminal overlapping run does NOT fire a second pass (mirror `scheduled_fire_without_skip_policy_fires_despite_overlap` at scheduler ~line 845, which asserts the OLD Fire behavior and must be updated), plus web tests in `automations-new.test.tsx`/`automations.test.tsx` asserting the field is present in submit payloads; (6) OpenAPI: if the field's wire description documents a default, update `docs/public/api-reference/fabro-api.yaml` to say the schedule-trigger default is skip, regenerate per the API workflow (`cargo build -p fabro-api`, `bun run generate` in `lib/packages/fabro-api-client`) only if descriptions change — the field already exists in the schema so no new endpoint work. Contradiction resolved: seed title says 'make Skip the safe default for scheduled automations' — this applies to the untagged/None case only; an explicitly-set Fire from the API remains user intent and must keep firing. Do not change manual-trigger automations' behavior.",
+          "last_response": "Verification complete. Every seed criterion is met in the evidence:\n\n1. **Server-side Skip default** — `effective_scheduled_overlap_policy()` on `Automation` in `fabro-automation/src/model.rs` resol",
+          "lesson_capture": "mx-46b756",
+          "internal.seed_cycle_anchor": "fabro-fb16",
+          "preferred_label": "Approved",
+          "thread.implementer.current_node": "tester",
+          "thread.evidence.current_node": "reviewer",
+          "implementation_summary": "Made Skip the effective default for untagged scheduled automations via Automation::effective_scheduled_overlap_policy (model.rs) used by the scheduler's overlap guard; documented the untagged-path audit (single fire decision point, manual runs unconditional, overlap-check failure fails safe); added an Overlap policy selector to the shared automation form (create+edit), always send on_overlap in create/replace/pause-resume payloads, and show the effective policy on the detail page; updated engine tests (untagged→skip, explicit Fire still fires) and web payload tests; updated OpenAPI descriptions and regenerated both clients. Lesson captured as mx-46b756. Verification report: PASS server-side Skip default (model.rs + scheduler; tests untagged_overlap_policy_resolves_to_skip_for_scheduled_fires, scheduled_fire_without_overlap_policy_defaults_to_skip); PASS untagged-path audit documented at the fire decision point; PASS on_overlap selector + always-carried payloads (automation-form.tsx, automations-new/edit.tsx, automations.tsx; tests creation payload always carries on_overlap, pause preserves an API-set fire overlap policy); PASS detail-page effective-policy chip (automation-detail.tsx); PASS old Fire-default test replaced and explicit-Fire test added (automation_scheduler.rs); PASS OpenAPI descriptions updated and fabro-api + TS client regenerated.",
+          "internal.run_id": "01M1YBBXR99PNME6Y8ZED4Y2NN",
+          "thread.tester.current_node": "evidence",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3759,
+            "preview": "Claimed fabro-fb16 (High, user-directive). Verified its basis in the current tree: the scheduler at `lib/apps/fabro-server/src/server/automation_scheduler.rs:256` only skips on `Some(Skip)` — untagg"
+          },
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.evidence": 0
+        },
+        "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5542,
+                "preview": "All done. Summary of the implementation:\n\n**Engine (`lib/`)**: Added `Automation::effective_scheduled_overlap_policy()` in `lib/components/fabro-automation/src/model.rs` — untagged (`None`) resolves"
+              },
+              "lesson_capture": "mx-46b756",
+              "last_response": "All done. Summary of the implementation:\n\n**Engine (`lib/`)**: Added `Automation::effective_scheduled_overlap_policy()` in `lib/components/fabro-automation/src/model.rs` — untagged (`None`) resolves",
+              "implementation_summary": "Made Skip the effective default for untagged scheduled automations via Automation::effective_scheduled_overlap_policy (model.rs) used by the scheduler's overlap guard; documented the untagged-path audit (single fire decision point, manual runs unconditional, overlap-check failure fails safe); added an Overlap policy selector to the shared automation form (create+edit), always send on_overlap in create/replace/pause-resume payloads, and show the effective policy on the detail page; updated engine tests (untagged→skip, explicit Fire still fires) and web payload tests; updated OpenAPI descriptions and regenerated both clients. Lesson captured as mx-46b756. Verification report: PASS server-side Skip default (model.rs + scheduler; tests untagged_overlap_policy_resolves_to_skip_for_scheduled_fires, scheduled_fire_without_overlap_policy_defaults_to_skip); PASS untagged-path audit documented at the fire decision point; PASS on_overlap selector + always-carried payloads (automation-form.tsx, automations-new/edit.tsx, automations.tsx; tests creation payload always carries on_overlap, pause preserves an API-set fire overlap policy); PASS detail-page effective-policy chip (automation-detail.tsx); PASS old Fire-default test replaced and explicit-Fire test added (automation_scheduler.rs); PASS OpenAPI descriptions updated and fabro-api + TS client regenerated.",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "bun run generate in lib/packages/fabro-api-client requires Java, which was not installed in this sandbox (run 01M1YBBXR99PNME6Y8ZED4Y2NN); `apt-get install default-jre-headless` fixed it, but the API-workflow doc in CLAUDE.md could state the Java prerequisite so implementers don't hand-edit generated files when apt is unavailable."
+                  }
+                ],
+                "observations": [
+                  "Regenerating the TS client synced pre-existing spec drift beyond this seed's description change: the previously hand-inlined AutomationScheduleTriggerBreaker interface split back into its own generated file and runs-api.ts picked up the reached=blocked doc text — generated output now matches the committed spec, verified by typecheck and the full web suite."
+                ]
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 78000,
+                    "output_tokens": 12268,
+                    "reasoning_tokens": 6576,
+                    "cache_read_tokens": 3760256,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 1169692
+            },
+            "files_touched": [
+              "/workspace/fabro/apps/fabro-web/app/components/automation-form.tsx",
+              "/workspace/fabro/apps/fabro-web/app/routes/automation-detail.tsx",
+              "/workspace/fabro/apps/fabro-web/app/routes/automations-edit.tsx",
+              "/workspace/fabro/apps/fabro-web/app/routes/automations-new.test.tsx",
+              "/workspace/fabro/apps/fabro-web/app/routes/automations-new.tsx",
+              "/workspace/fabro/apps/fabro-web/app/routes/automations.test.tsx",
+              "/workspace/fabro/apps/fabro-web/app/routes/automations.tsx",
+              "/workspace/fabro/lib/apps/fabro-server/src/server/automation_scheduler.rs",
+              "/workspace/fabro/lib/components/fabro-automation/src/model.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 451383,
+              "tool_time_ms": 1101461,
+              "active_time_ms": 1552844
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/c1f62a67b5ae10fd6bce252cfcb414fdb8b5682eb01c3edfcb0357c5c73f5a81"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 714,
+              "active_time_ms": 714
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Evidence capture classified docs/public/api-reference/fabro-api.yaml (+9/-3) as loop churn even though it is the seed's own acceptance criterion 6 (OpenAPI description update, run 01M1YBBXR99PNME6Y8ZED4Y2NN). Loop-churn sections show counts only, no diff, so seed-required spec changes can land outside the review-visible diff. Suggestion: classify docs/public/api-reference/ as seed work (or include churn diffs when they match the seed brief's named files)."
+                  }
+                ],
+                "observations": [
+                  "Verified all 6 seed criteria against the complete diff in the blob; re-ran the two modified web test files (15 pass) since the quality gate only covered the touched Rust crates; confirmed the yaml description change in all three schemas via git diff against the claim base. TS client regen carried benign drift from earlier merged spec commits (#34, #32) — regen catch-up, not scope creep."
+                ]
+              },
+              "last_stage": "reviewer",
+              "last_response": "Verification complete. Every seed criterion is met in the evidence:\n\n1. **Server-side Skip default** — `effective_scheduled_overlap_policy()` on `Automation` in `fabro-automation/src/model.rs` resol",
+              "review_verdict": "approved",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 2853,
+                "preview": "Verification complete. Every seed criterion is met in the evidence:\n\n1. **Server-side Skip default** — `effective_scheduled_overlap_policy()` on `Automation` in `fabro-automation/src/model.rs` resol"
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 25830,
+                    "output_tokens": 986,
+                    "reasoning_tokens": 936,
+                    "cache_read_tokens": 72896,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 63566
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 45172,
+              "tool_time_ms": 1325,
+              "active_time_ms": 46497
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Claimed fabro-fb16 (High, user-directive). Verified its basis in the current tree: the scheduler at `lib/apps/fabro-server/src/server/automation_scheduler.rs:256` only skips on `Some(Skip)` — untagg",
+              "last_stage": "planner",
+              "current_seed_id": "fabro-fb16",
+              "current_seed_brief": "Make overlapping scheduled passes impossible by default and stop the web UI from silently reverting the overlap policy. Verified basis: `lib/apps/fabro-server/src/server/automation_scheduler.rs:256` treats `on_overlap == Some(Skip)` as the only skip case (untagged/None fires), and no route under `apps/fabro-web/app/routes/` references `on_overlap`. Acceptance criteria: (1) server-side default: when an automation with a schedule trigger has `on_overlap = None` (untagged), the effective policy at fire time is Skip — implement where the scheduler resolves the policy (prefer resolving in `fabro-automation` model/scheduler boundary so every caller inherits it; manual/API-set Fire must still be honored explicitly); (2) audit the untagged scheduler run path: enumerate every place a fire decision is made without an explicit policy and document/assert the Skip default, including the overlap-check-failure path at scheduler line ~274-285 which already fails safe; (3) web UI: add an on_overlap switch/selector to BOTH the create dialog (`apps/fabro-web/app/routes/automations-new.tsx`) and the edit dialog (`apps/fabro-web/app/routes/automations-edit.tsx`) so `replaceAutomation`/create payloads always carry the field — a UI save must never reset an API-set policy; (4) update `automation-detail.tsx` to display the effective overlap policy; (5) tests: engine-side test that an untagged schedule automation with a non-terminal overlapping run does NOT fire a second pass (mirror `scheduled_fire_without_skip_policy_fires_despite_overlap` at scheduler ~line 845, which asserts the OLD Fire behavior and must be updated), plus web tests in `automations-new.test.tsx`/`automations.test.tsx` asserting the field is present in submit payloads; (6) OpenAPI: if the field's wire description documents a default, update `docs/public/api-reference/fabro-api.yaml` to say the schedule-trigger default is skip, regenerate per the API workflow (`cargo build -p fabro-api`, `bun run generate` in `lib/packages/fabro-api-client`) only if descriptions change — the field already exists in the schema so no new endpoint work. Contradiction resolved: seed title says 'make Skip the safe default for scheduled automations' — this applies to the untagged/None case only; an explicitly-set Fire from the API remains user intent and must keep firing. Do not change manual-trigger automations' behavior.",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3759,
+                "preview": "Claimed fabro-fb16 (High, user-directive). Verified its basis in the current tree: the scheduler at `lib/apps/fabro-server/src/server/automation_scheduler.rs:256` only skips on `Some(Skip)` — untagg"
+              },
+              "current_seed_title": "engine: make Skip the safe default for scheduled automations + audit the untagged scheduler run path + surface on_overlap in the web UI"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 23408,
+                    "output_tokens": 1966,
+                    "reasoning_tokens": 1238,
+                    "cache_read_tokens": 303808,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 125837
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 107991,
+              "tool_time_ms": 3755,
+              "active_time_ms": 111746
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/1e63957d1f70170b7917ed4cc4b39cc3ae864b0bda0fad551a49a56e116ff91f"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 86339,
+              "active_time_ms": 86339
+            }
+          }
+        },
+        "next_node_id": "closeout",
+        "git_commit_sha": "0b8b39d11cd1438b7df10e6f5c98b2db4099037c",
+        "node_visits": {
+          "implementer": 1,
+          "start": 1,
+          "reviewer": 1,
+          "evidence": 1,
+          "tester": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1YBBXR99PNME6Y8ZED4Y2NN.jsonl b/.fabro/journal/01M1YBBXR99PNME6Y8ZED4Y2NN.jsonl\nindex 391bf27..aebf8b6 100644\n--- a/.fabro/journal/01M1YBBXR99PNME6Y8ZED4Y2NN.jsonl\n+++ b/.fabro/journal/01M1YBBXR99PNME6Y8ZED4Y2NN.jsonl\n@@ -3,3 +3,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YBBXR99PNME6Y8ZED4Y2NN\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T17:02:49Z\",\"data\":{\"painpoints\":[{\"text\":\"bun run generate in lib/packages/fabro-api-client requires Java, which was not installed in this sandbox (run 01M1YBBXR99PNME6Y8ZED4Y2NN); `apt-get install default-jre-headless` fixed it, but the API-workflow doc in CLAUDE.md could state the Java prerequisite so implementers don't hand-edit generated files when apt is unavailable.\"}],\"observations\":[\"Regenerating the TS client synced pre-existing spec drift beyond this seed's description change: the previously hand-inlined AutomationScheduleTriggerBreaker interface split back into its own generated file and runs-api.ts picked up the reached=blocked doc text — generated output now matches the committed spec, verified by typecheck and the full web suite.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YBBXR99PNME6Y8ZED4Y2NN\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T17:04:30Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YBBXR99PNME6Y8ZED4Y2NN\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T17:04:36Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YBBXR99PNME6Y8ZED4Y2NN\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T17:05:35Z\",\"data\":{\"painpoints\":[{\"text\":\"Evidence capture classified docs/public/api-reference/fabro-api.yaml (+9/-3) as loop churn even though it is the seed's own acceptance criterion 6 (OpenAPI description update, run 01M1YBBXR99PNME6Y8ZED4Y2NN). Loop-churn sections show counts only, no diff, so seed-required spec changes can land outside the review-visible diff. Suggestion: classify docs/public/api-reference/ as seed work (or include churn diffs when they match the seed brief's named files).\"}],\"observations\":[\"Verified all 6 seed criteria against the complete diff in the blob; re-ran the two modified web test files (15 pass) since the quality gate only covered the touched Rust crates; confirmed the yaml description change in all three schemas via git diff against the claim base. TS client regen carried benign drift from earlier merged spec commits (#34, #32) — regen catch-up, not scope creep.\"]}}\n",
+        "summary": {
+          "files_changed": 23,
+          "additions": 326,
+          "deletions": 100
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-07T17:05:40.287343885Z",
+        "current_node": "closeout",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout"
+        ],
+        "node_retries": {},
+        "context_values": {
           "internal.run_id": "01M1YBBXR99PNME6Y8ZED4Y2NN",
           "internal.retry_count.planner": 0,
+          "internal.retry_count.closeout": 0,
           "review_verdict": "approved",
           "internal.work_dir": "/workspace/fabro",
           "graph.max_node_visits": "40",
@@ -1547,6 +1853,8 @@
             "preview": "Verification complete. Every seed criterion is met in the evidence:\n\n1. **Server-side Skip default** — `effective_scheduled_overlap_policy()` on `Automation` in `fabro-automation/src/model.rs` resol"
           },
           "thread.tester.current_node": "evidence",
+          "thread.reviewer.current_node": "closeout",
+          "internal.exit_kind": "natural",
           "current_seed_title": "engine: make Skip the safe default for scheduled automations + audit the untagged scheduler run path + surface on_overlap in the web UI",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -1559,7 +1867,7 @@
           "lesson_capture": "mx-46b756",
           "thread.implementer.current_node": "tester",
           "internal.seed_cycle_anchor": "fabro-fb16",
-          "command.output": "blob://sha256/c1f62a67b5ae10fd6bce252cfcb414fdb8b5682eb01c3edfcb0357c5c73f5a81",
+          "command.output": "blob://sha256/22bc3bf4a78a9feb16ce8b41ff2ed1466cc25283e0141528bbd535e3929fe8be",
           "internal.node_visit_count": 1,
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -1570,7 +1878,7 @@
           "failure_signature": "",
           "graph.rankdir": "LR",
           "implementation_summary": "Made Skip the effective default for untagged scheduled automations via Automation::effective_scheduled_overlap_policy (model.rs) used by the scheduler's overlap guard; documented the untagged-path audit (single fire decision point, manual runs unconditional, overlap-check failure fails safe); added an Overlap policy selector to the shared automation form (create+edit), always send on_overlap in create/replace/pause-resume payloads, and show the effective policy on the detail page; updated engine tests (untagged→skip, explicit Fire still fires) and web payload tests; updated OpenAPI descriptions and regenerated both clients. Lesson captured as mx-46b756. Verification report: PASS server-side Skip default (model.rs + scheduler; tests untagged_overlap_policy_resolves_to_skip_for_scheduled_fires, scheduled_fire_without_overlap_policy_defaults_to_skip); PASS untagged-path audit documented at the fire decision point; PASS on_overlap selector + always-carried payloads (automation-form.tsx, automations-new/edit.tsx, automations.tsx; tests creation payload always carries on_overlap, pause preserves an API-set fire overlap policy); PASS detail-page effective-policy chip (automation-detail.tsx); PASS old Fire-default test replaced and explicit-Fire test added (automation_scheduler.rs); PASS OpenAPI descriptions updated and fabro-api + TS client regenerated.",
-          "current_node": "reviewer",
+          "current_node": "closeout",
           "failure_class": "",
           "journal": {
             "painpoints": [
@@ -1582,9 +1890,9 @@
               "Verified all 6 seed criteria against the complete diff in the blob; re-ran the two modified web test files (15 pass) since the quality gate only covered the touched Rust crates; confirmed the yaml description change in all three schemas via git diff against the claim base. TS client regen carried benign drift from earlier merged spec commits (#34, #32) — regen catch-up, not scope creep."
             ]
           },
-          "internal.thread_id": "evidence",
+          "internal.thread_id": "reviewer",
           "last_response": "Verification complete. Every seed criterion is met in the evidence:\n\n1. **Server-side Skip default** — `effective_scheduled_overlap_policy()` on `Automation` in `fabro-automation/src/model.rs` resol",
-          "internal.fidelity": "summary:high",
+          "internal.fidelity": "compact",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "graph.cycle_counter_reset_key": "current_seed_id",
           "internal.retry_count.tester": 0,
@@ -1595,13 +1903,95 @@
             "implementer": 1,
             "tester": 1,
             "evidence": 1,
-            "reviewer": 1
+            "reviewer": 1,
+            "closeout": 1
           }
         },
         "node_outcomes": {
           "start": {
             "status": "succeeded",
             "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/1e63957d1f70170b7917ed4cc4b39cc3ae864b0bda0fad551a49a56e116ff91f"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 86339,
+              "active_time_ms": 86339
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/22bc3bf4a78a9feb16ce8b41ff2ed1466cc25283e0141528bbd535e3929fe8be"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 280,
+              "active_time_ms": 280
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Evidence capture classified docs/public/api-reference/fabro-api.yaml (+9/-3) as loop churn even though it is the seed's own acceptance criterion 6 (OpenAPI description update, run 01M1YBBXR99PNME6Y8ZED4Y2NN). Loop-churn sections show counts only, no diff, so seed-required spec changes can land outside the review-visible diff. Suggestion: classify docs/public/api-reference/ as seed work (or include churn diffs when they match the seed brief's named files)."
+                  }
+                ],
+                "observations": [
+                  "Verified all 6 seed criteria against the complete diff in the blob; re-ran the two modified web test files (15 pass) since the quality gate only covered the touched Rust crates; confirmed the yaml description change in all three schemas via git diff against the claim base. TS client regen carried benign drift from earlier merged spec commits (#34, #32) — regen catch-up, not scope creep."
+                ]
+              },
+              "last_stage": "reviewer",
+              "last_response": "Verification complete. Every seed criterion is met in the evidence:\n\n1. **Server-side Skip default** — `effective_scheduled_overlap_policy()` on `Automation` in `fabro-automation/src/model.rs` resol",
+              "review_verdict": "approved",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 2853,
+                "preview": "Verification complete. Every seed criterion is met in the evidence:\n\n1. **Server-side Skip default** — `effective_scheduled_overlap_policy()` on `Automation` in `fabro-automation/src/model.rs` resol"
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 25830,
+                    "output_tokens": 986,
+                    "reasoning_tokens": 936,
+                    "cache_read_tokens": 72896,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 63566
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 45172,
+              "tool_time_ms": 1325,
+              "active_time_ms": 46497
+            }
           },
           "planner": {
             "status": "succeeded",
@@ -1713,73 +2103,6 @@
               "active_time_ms": 1552844
             }
           },
-          "tester": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/1e63957d1f70170b7917ed4cc4b39cc3ae864b0bda0fad551a49a56e116ff91f"
-            },
-            "notes": "Script completed: just qualitygate",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 86339,
-              "active_time_ms": 86339
-            }
-          },
-          "reviewer": {
-            "status": "succeeded",
-            "preferred_label": "Approved",
-            "context_updates": {
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "Evidence capture classified docs/public/api-reference/fabro-api.yaml (+9/-3) as loop churn even though it is the seed's own acceptance criterion 6 (OpenAPI description update, run 01M1YBBXR99PNME6Y8ZED4Y2NN). Loop-churn sections show counts only, no diff, so seed-required spec changes can land outside the review-visible diff. Suggestion: classify docs/public/api-reference/ as seed work (or include churn diffs when they match the seed brief's named files)."
-                  }
-                ],
-                "observations": [
-                  "Verified all 6 seed criteria against the complete diff in the blob; re-ran the two modified web test files (15 pass) since the quality gate only covered the touched Rust crates; confirmed the yaml description change in all three schemas via git diff against the claim base. TS client regen carried benign drift from earlier merged spec commits (#34, #32) — regen catch-up, not scope creep."
-                ]
-              },
-              "last_stage": "reviewer",
-              "last_response": "Verification complete. Every seed criterion is met in the evidence:\n\n1. **Server-side Skip default** — `effective_scheduled_overlap_policy()` on `Automation` in `fabro-automation/src/model.rs` resol",
-              "review_verdict": "approved",
-              "response.reviewer": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.reviewer",
-                "chars": 2853,
-                "preview": "Verification complete. Every seed criterion is met in the evidence:\n\n1. **Server-side Skip default** — `effective_scheduled_overlap_policy()` on `Automation` in `fabro-automation/src/model.rs` resol"
-              }
-            },
-            "notes": "Stage completed: reviewer",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 25830,
-                    "output_tokens": 986,
-                    "reasoning_tokens": 936,
-                    "cache_read_tokens": 72896,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 63566
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 45172,
-              "tool_time_ms": 1325,
-              "active_time_ms": 46497
-            }
-          },
           "evidence": {
             "status": "succeeded",
             "context_updates": {
@@ -1795,13 +2118,14 @@
             }
           }
         },
-        "next_node_id": "closeout",
+        "next_node_id": "exit",
         "node_visits": {
           "tester": 1,
           "evidence": 1,
           "start": 1,
           "planner": 1,
           "reviewer": 1,
+          "closeout": 1,
           "implementer": 1
         }
       },
@@ -2369,6 +2693,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "closeout@1": {
+      "first_event_seq": 653,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T17:05:40.039799902Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/22bc3bf4a78a9feb16ce8b41ff2ed1466cc25283e0141528bbd535e3929fe8be",
+        "exit_code": 0,
+        "duration_ms": 280,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-07T17:05:39.734282346Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 288,
+        "inference_time_ms": 0,
+        "tool_time_ms": 280,
+        "active_time_ms": 280
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
