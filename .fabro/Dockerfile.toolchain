@@ -75,24 +75,20 @@ RUN set -eux; \
         aqua:nushell/nushell@0.115.0 \
         just@1.58.0 \
         aqua:BurntSushi/ripgrep@15.2.0 \
-        aqua:cli/cli@v2.100.0 \
     && bun --version \
     && nu --version \
     && just --version \
-    && rg --version \
-    && gh --version
+    && rg --version
 
-# gh (fabro-05d0): the develop planner's in-flight-PR guard runs
-# `gh pr list --state open` inside the run container; without the binary the
-# check degraded fail-open (exit 127, run 01M1YS4NJH27NS7CQ02AWM9BNE),
-# structurally disabling the double-pick audit from fabro-d0c7. Pin rides the
-# mise toolset (aqua:cli/cli); the lab image (.fabro/Dockerfile) installs gh
-# via the github-cli apt repo instead. AUTH: no token is baked into the image
-# -- the workflow engine already injects a freshly minted GITHUB_TOKEN into
-# the agent tool env for every shell call (fabro-workflow services.rs
-# resolve_workflow_env + fabro-agent ToolEnvProvider), and gh reads
-# GITHUB_TOKEN natively, so `gh pr list` authenticates without image-side
-# credentials.
+# NO gh in the toolchain image (ADR-0019 capability gate, user decision
+# 2026-09-08): gh was briefly baked in for the planner's in-flight-PR guard
+# (fabro-05d0, PR #53) and REVERTED — an authenticated forge client in agent
+# shells bypasses every engine governance control (gate, revisor, auto-merge;
+# the engine injects GITHUB_TOKEN + a git credential bridge into shell calls,
+# so gh would have been fully write-capable: merge, close, force-push,
+# branch delete). All forge reads/writes are engine-mediated; the guard uses
+# fabro_runs_list data instead (fabro-06e0, Weg A: extend existing tools,
+# no new agent tools).
 
 # Repo agent tooling: AGENTS.md asks agents to run `sd prime` / `ml prime` at
 # session start; without these binaries every run wastes turns on failures.
