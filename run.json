@@ -644,14 +644,184 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M1XN2KWG6T0PHRTJWZ8R0AZX",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-09-07T10:02:13.691910376Z",
+    "run_branch": "fabro/run/01M1XN2KWG6T0PHRTJWZ8R0AZX",
+    "base_sha": "cbd9fe2e6ad0b9e1a8470fda73a347c5e5c1e19a"
   },
-  "status_updated_at": "2026-09-07T10:02:01.687889904Z",
-  "last_event_at": "2026-09-07T10:02:12.996907905Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-09-07T10:02:13.691982045Z",
+  "last_event_at": "2026-09-07T10:05:39.090860131Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 20,
+      "checkpoint": {
+        "timestamp": "2026-09-07T10:02:16.226071892Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.max_node_visits": "40",
+          "graph.preamble_budget_kb": "24",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.run_id": "01M1XN2KWG6T0PHRTJWZ8R0AZX",
+          "internal.seed_cycle_anchor": "",
+          "internal.node_visit_count": 1,
+          "internal.thread_id": null,
+          "current_node": "start",
+          "seed_cycles": {
+            "start": 1
+          },
+          "internal.fidelity": "compact",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "failure_signature": "",
+          "internal.retry_count.start": 0,
+          "outcome": "succeeded",
+          "graph.rankdir": "LR",
+          "internal.work_dir": "/workspace/fabro",
+          "failure_class": ""
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "planner",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-07T10:05:39.301905871Z",
+        "current_node": "planner",
+        "completed_nodes": [
+          "start",
+          "planner"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "current_node": "planner",
+          "last_stage": "planner",
+          "failure_class": "",
+          "thread.start.current_node": "planner",
+          "current_seed_title": "engine: fabro_run_wait until=merged needs a gate-failure signal — OPEN PR with failed checks must not loop timeouts forever",
+          "internal.fidelity": "compact",
+          "outcome": "succeeded",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "fabro-bde4 basis verified fresh (incident 2026-09-07, PR #33 in git log); wait.rs has only terminal/merged/closed_unmerged/timeout — gap real.",
+              "Spec ambiguity resolved in brief: value named `blocked`, signal = pulls-API mergeable_state dirty/blocked sustained 2 consecutive polls (10s GitHub poll interval in wait.rs), no checks-API addition.",
+              "TS client regen needs java (fabro-3b1b open): brief permits consistent hand-edit of the generated client if openapi-generator-cli unavailable.",
+              "Conductor until=merged routing lives in TWO prompt files: merge-leg.md (step 4) and develop-leg.md (step 5) — both must gain the blocked route; revise-leg.md is until=terminal only."
+            ]
+          },
+          "internal.retry_count.start": 0,
+          "preferred_label": "Seed claimed",
+          "internal.seed_cycle_anchor": "fabro-bde4",
+          "current_seed_brief": "Incident: develop child PR #33 sat OPEN with failed dogfood gate + DIRTY base; conductor re-waited until=merged five times (2h+) because no wait result matches open-but-unmergeable. Add a distinct wait result for that state and route it. Resolved ambiguities: (1) name the value `blocked` — it covers both failed required checks and DIRTY/BLOCKED merge states; (2) detection signal = GitHub pulls-API `mergeable_state` in {dirty, blocked}, which is how 'required checks concluded FAILURE' manifests in the pulls API — do NOT add a checks/combined-status API surface. Acceptance criteria: [OpenAPI] `RunWaitResult.reached` enum in `docs/public/api-reference/fabro-api.yaml` gains `blocked`; schema + endpoint descriptions document when it fires. [Types] `cargo build -p fabro-api` regen adds `RunWaitResultReached::Blocked`; `PullRequestGithubDetail` in `lib/foundation/fabro-types/src/pull_request.rs` gains `mergeable_state: Option<String>` with serde default. [Server] `lib/apps/fabro-server/src/server/handler/wait.rs` `wait_until_merged` returns `reached=blocked` WITH the PR link attached when the PR is open and `mergeable_state` is dirty/blocked on >=2 consecutive GitHub polls (sustained window; never fires while mergeable_state is unknown/null — GitHub may still be computing). [Tool] `lib/components/fabro-tool/src/wait.rs` `RunWaitReached` gains `Blocked`, `from_api` maps it, snake_case wire-name test updated. [TS client] `lib/packages/fabro-api-client/src/models/run-wait-result.ts` enum gains `blocked` (regen via `bun run generate` if java available, else hand-edit consistently — fabro-3b1b context). [Conductor] `.fabro/workflows/conductor/prompts/merge-leg.md` step 4 and `develop-leg.md` step 5 route `reached=blocked` to the existing failure route with a clear journal note (gate stuck / base dirty), NEVER re-wait. [Tests] regression test (extend `lib/apps/fabro-server/tests/it/api/run_wait.rs`, mock-GitHub pattern from `src/server/tests.rs:8686+`): open PR + mergeable_state=blocked sustained + until=merged returns `blocked` not `timeout`; and single-poll (transient) blocked observation does not fire. [Gate] `cargo nextest run -p fabro-types -p fabro-api -p fabro-tool -p fabro-server`, pinned-nightly fmt + clippy clean; openapi conformance test passes.",
+          "internal.run_id": "01M1XN2KWG6T0PHRTJWZ8R0AZX",
+          "current_seed_id": "fabro-bde4",
+          "internal.thread_id": "start",
+          "internal.work_dir": "/workspace/fabro",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3972,
+            "preview": "Seed `fabro-bde4` claimed. Basis verified against the current tree: the wait handler, OpenAPI enum, tool mirror, and conductor prompts all lack any failed-checks exit — the described infinite-timeou"
+          },
+          "internal.retry_count.planner": 0,
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "seed_cycles": {
+            "planner": 1
+          },
+          "graph.preamble_budget_kb": "24",
+          "graph.rankdir": "LR",
+          "last_response": "Seed `fabro-bde4` claimed. Basis verified against the current tree: the wait handler, OpenAPI enum, tool mirror, and conductor prompts all lack any failed-checks exit — the described infinite-timeou",
+          "internal.node_visit_count": 1,
+          "failure_signature": "",
+          "graph.max_node_visits": "40"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Seed `fabro-bde4` claimed. Basis verified against the current tree: the wait handler, OpenAPI enum, tool mirror, and conductor prompts all lack any failed-checks exit — the described infinite-timeou",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-bde4 basis verified fresh (incident 2026-09-07, PR #33 in git log); wait.rs has only terminal/merged/closed_unmerged/timeout — gap real.",
+                  "Spec ambiguity resolved in brief: value named `blocked`, signal = pulls-API mergeable_state dirty/blocked sustained 2 consecutive polls (10s GitHub poll interval in wait.rs), no checks-API addition.",
+                  "TS client regen needs java (fabro-3b1b open): brief permits consistent hand-edit of the generated client if openapi-generator-cli unavailable.",
+                  "Conductor until=merged routing lives in TWO prompt files: merge-leg.md (step 4) and develop-leg.md (step 5) — both must gain the blocked route; revise-leg.md is until=terminal only."
+                ]
+              },
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3972,
+                "preview": "Seed `fabro-bde4` claimed. Basis verified against the current tree: the wait handler, OpenAPI enum, tool mirror, and conductor prompts all lack any failed-checks exit — the described infinite-timeou"
+              },
+              "last_stage": "planner",
+              "current_seed_id": "fabro-bde4",
+              "current_seed_brief": "Incident: develop child PR #33 sat OPEN with failed dogfood gate + DIRTY base; conductor re-waited until=merged five times (2h+) because no wait result matches open-but-unmergeable. Add a distinct wait result for that state and route it. Resolved ambiguities: (1) name the value `blocked` — it covers both failed required checks and DIRTY/BLOCKED merge states; (2) detection signal = GitHub pulls-API `mergeable_state` in {dirty, blocked}, which is how 'required checks concluded FAILURE' manifests in the pulls API — do NOT add a checks/combined-status API surface. Acceptance criteria: [OpenAPI] `RunWaitResult.reached` enum in `docs/public/api-reference/fabro-api.yaml` gains `blocked`; schema + endpoint descriptions document when it fires. [Types] `cargo build -p fabro-api` regen adds `RunWaitResultReached::Blocked`; `PullRequestGithubDetail` in `lib/foundation/fabro-types/src/pull_request.rs` gains `mergeable_state: Option<String>` with serde default. [Server] `lib/apps/fabro-server/src/server/handler/wait.rs` `wait_until_merged` returns `reached=blocked` WITH the PR link attached when the PR is open and `mergeable_state` is dirty/blocked on >=2 consecutive GitHub polls (sustained window; never fires while mergeable_state is unknown/null — GitHub may still be computing). [Tool] `lib/components/fabro-tool/src/wait.rs` `RunWaitReached` gains `Blocked`, `from_api` maps it, snake_case wire-name test updated. [TS client] `lib/packages/fabro-api-client/src/models/run-wait-result.ts` enum gains `blocked` (regen via `bun run generate` if java available, else hand-edit consistently — fabro-3b1b context). [Conductor] `.fabro/workflows/conductor/prompts/merge-leg.md` step 4 and `develop-leg.md` step 5 route `reached=blocked` to the existing failure route with a clear journal note (gate stuck / base dirty), NEVER re-wait. [Tests] regression test (extend `lib/apps/fabro-server/tests/it/api/run_wait.rs`, mock-GitHub pattern from `src/server/tests.rs:8686+`): open PR + mergeable_state=blocked sustained + until=merged returns `blocked` not `timeout`; and single-poll (transient) blocked observation does not fire. [Gate] `cargo nextest run -p fabro-types -p fabro-api -p fabro-tool -p fabro-server`, pinned-nightly fmt + clippy clean; openapi conformance test passes.",
+              "current_seed_title": "engine: fabro_run_wait until=merged needs a gate-failure signal — OPEN PR with failed checks must not loop timeouts forever"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 40220,
+                    "output_tokens": 2487,
+                    "reasoning_tokens": 5539,
+                    "cache_read_tokens": 513536,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 225114
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 185288,
+              "tool_time_ms": 3170,
+              "active_time_ms": 188458
+            }
+          }
+        },
+        "next_node_id": "implementer",
+        "node_visits": {
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -678,5 +848,256 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T10:02:16.023911483Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T10:02:16.009478479Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "planner@1": {
+      "first_event_seq": 21,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T10:05:39.090860131Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "high"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T10:02:16.241172311Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 188975,
+        "inference_time_ms": 185288,
+        "tool_time_ms": 3170,
+        "active_time_ms": 188458
+      },
+      "usage": {
+        "input_tokens": 40220,
+        "output_tokens": 2487,
+        "total_tokens": 561782,
+        "reasoning_tokens": 5539,
+        "cache_read_tokens": 513536,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 225114
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 39540,
+        "usage_percent": 3.7708282470703125,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-07T10:05:39.073743950Z",
+        "event_seq": 156,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1097,
+            "usage_percent": 0.10461807250976562
+          },
+          {
+            "category": "tools",
+            "tokens": 1607,
+            "usage_percent": 0.15325546264648438
+          },
+          {
+            "category": "memory",
+            "tokens": 5644,
+            "usage_percent": 0.5382537841796875
+          },
+          {
+            "category": "conversation",
+            "tokens": 31186,
+            "usage_percent": 2.9741287231445312
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
