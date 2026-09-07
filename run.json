@@ -570,7 +570,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T22:30:15.953360806Z",
-  "last_event_at": "2026-09-07T22:44:29.080265744Z",
+  "last_event_at": "2026-09-07T22:44:33.830669058Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -918,9 +918,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 156,
       "checkpoint": {
-        "timestamp": "2026-09-07T22:44:29.296797590Z",
+        "timestamp": "2026-09-07T22:44:33.830291780Z",
         "current_node": "revise",
         "completed_nodes": [
           "start",
@@ -930,19 +930,34 @@
         ],
         "node_retries": {},
         "context_values": {
-          "failure_class": "",
-          "response.revise": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.revise",
-            "chars": 574,
-            "preview": "{\"outcome\":\"succeeded\",\"preferred_next_label\":\"Cycle complete\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":[\"revisor run 01M1Z0AV57YJGYCZ46E81PEYRS succeeded (revised deve"
-          },
+          "journal": [
+            "revisor run 01M1Z0AV57YJGYCZ46E81PEYRS succeeded (revised develop child 01M1Z017EQK3Q2QCEMTA6XXNSK per ADR-0015 newest-revisable selection); terminal status succeeded/completed",
+            "pass gate note carried forward: PR #59 merge remains soft-parked; next pass re-enters via survey"
+          ],
           "graph.preamble_budget_kb": "12",
-          "current_node": "revise",
-          "last_stage": "revise",
-          "internal.seed_cycle_anchor": "",
-          "last_response": "{\"outcome\":\"succeeded\",\"preferred_next_label\":\"Cycle complete\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":[\"revisor run 01M1Z0AV57YJGYCZ46E81PEYRS succeeded (revised deve",
+          "response.survey": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.survey",
+            "chars": 972,
+            "preview": "{\n  \"preferred_next_label\": \"Work\",\n  \"outcome\": \"succeeded\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": [\n      \"upstream count: 0 (origin/denkhaus..upstream/main after fetch o"
+          },
+          "internal.fidelity": "compact",
+          "graph.max_node_visits": "12",
           "internal.retry_count.start": 0,
+          "thread.develop.current_node": "revise",
+          "response.develop": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.develop",
+            "chars": 669,
+            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Gate stuck — revise anyway\", \"failure_reason\": \"\", \"suggested_next_ids\": [\"01M1Z017EQK3Q2QCEMTA6XXNSK\"], \"context_updates\": {\"child_run_id\": \"01M1Z0"
+          },
+          "failure_signature": "",
+          "thread.start.current_node": "survey",
+          "preferred_label": "Cycle complete",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "last_stage": "revise",
+          "internal.thread_id": "develop",
+          "internal.work_dir": "/workspace/fabro",
           "seed_cycles": {
             "start": 1,
             "survey": 1,
@@ -950,49 +965,38 @@
             "revisor": 1,
             "revise": 1
           },
-          "child_run_id": "01M1Z017EQK3Q2QCEMTA6XXNSK",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.retry_count.revise": 0,
-          "internal.retry_count.develop": 0,
-          "internal.exit_kind": "natural",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "internal.retry_count.survey": 0,
-          "response.survey": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.survey",
-            "chars": 972,
-            "preview": "{\n  \"preferred_next_label\": \"Work\",\n  \"outcome\": \"succeeded\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": [\n      \"upstream count: 0 (origin/denkhaus..upstream/main after fetch o"
-          },
-          "failure_signature": "",
-          "response.develop": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.develop",
-            "chars": 669,
-            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Gate stuck — revise anyway\", \"failure_reason\": \"\", \"suggested_next_ids\": [\"01M1Z017EQK3Q2QCEMTA6XXNSK\"], \"context_updates\": {\"child_run_id\": \"01M1Z0"
-          },
-          "internal.run_id": "01M1YZW7ZP5CJGX9D61SNS372R",
-          "internal.node_visit_count": 1,
-          "outcome": "succeeded",
-          "internal.thread_id": "develop",
-          "thread.develop.current_node": "revise",
-          "thread.survey.current_node": "develop",
-          "graph.max_node_visits": "12",
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "current_node": "revise",
           "graph.cycle_counter_reset_key": "pass_id",
-          "internal.fidelity": "compact",
-          "thread.start.current_node": "survey",
+          "internal.retry_count.revise": 0,
+          "graph.rankdir": "LR",
+          "failure_class": "",
+          "internal.run_id": "01M1YZW7ZP5CJGX9D61SNS372R",
+          "internal.seed_cycle_anchor": "",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "outcome": "succeeded",
           "child_run_ids": {
             "develop": "01M1Z017EQK3Q2QCEMTA6XXNSK",
             "revisor": "01M1Z0AV57YJGYCZ46E81PEYRS"
           },
-          "graph.rankdir": "LR",
-          "journal": [
-            "revisor run 01M1Z0AV57YJGYCZ46E81PEYRS succeeded (revised develop child 01M1Z017EQK3Q2QCEMTA6XXNSK per ADR-0015 newest-revisable selection); terminal status succeeded/completed",
-            "pass gate note carried forward: PR #59 merge remains soft-parked; next pass re-enters via survey"
-          ],
-          "preferred_label": "Cycle complete"
+          "child_run_id": "01M1Z017EQK3Q2QCEMTA6XXNSK",
+          "internal.exit_kind": "natural",
+          "response.revise": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.revise",
+            "chars": 574,
+            "preview": "{\"outcome\":\"succeeded\",\"preferred_next_label\":\"Cycle complete\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":[\"revisor run 01M1Z0AV57YJGYCZ46E81PEYRS succeeded (revised deve"
+          },
+          "internal.retry_count.develop": 0,
+          "thread.survey.current_node": "develop",
+          "internal.node_visit_count": 1,
+          "last_response": "{\"outcome\":\"succeeded\",\"preferred_next_label\":\"Cycle complete\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":[\"revisor run 01M1Z0AV57YJGYCZ46E81PEYRS succeeded (revised deve",
+          "internal.retry_count.survey": 0
         },
         "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "develop": {
             "status": "succeeded",
             "preferred_label": "Gate stuck — revise anyway",
@@ -1146,24 +1150,106 @@
               "tool_time_ms": 339434,
               "active_time_ms": 358741
             }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "45078586f3a76d328c5e98107d635c8035d90582",
         "node_visits": {
+          "revise": 1,
           "survey": 1,
-          "start": 1,
           "develop": 1,
-          "revise": 1
+          "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1YZW7ZP5CJGX9D61SNS372R.jsonl b/.fabro/journal/01M1YZW7ZP5CJGX9D61SNS372R.jsonl\nindex 52c79c8dd..056d3a95a 100644\n--- a/.fabro/journal/01M1YZW7ZP5CJGX9D61SNS372R.jsonl\n+++ b/.fabro/journal/01M1YZW7ZP5CJGX9D61SNS372R.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YZW7ZP5CJGX9D61SNS372R\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:30:18Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YZW7ZP5CJGX9D61SNS372R\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:32:31Z\",\"data\":[\"upstream count: 0 (origin/denkhaus..upstream/main after fetch of both remotes); no newest upstream subject — zero drift, threshold of 5 not met, so route Work\",\"revisor backlog: 01M1XCHJTDBJKZ31VFMY1KD61Q, 01M1Y12A93HSB4VDZN55HZYNYS, 01M1Y2SMEVDHAFB59GZV9B84CQ, 01M1Y852BN91NSVSHFWNWTW5ST, 01M1Y9N7R47JPR49CYXP8BQYC3, 01M1YBBXR99PNME6Y8ZED4Y2NN (develop runs with no revisor pass sharing their parent_id; newest revisable is 01M1YBBXR99PNME6Y8ZED4Y2NN)\",\"backfill caveat: signal is parent_id linkage; the revisor actually selects via Ask-Fabro newest-unrevised logic, so a backlog entry could in principle have been revised without a matching-parent run — listing is best-effort\",\"nothing hurt: git fetch of both remotes and fabro_runs_list of develop (70 runs) and revisor (21 runs) all succeeded\"]}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YZW7ZP5CJGX9D61SNS372R\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:37:43Z\",\"data\":[\"child develop run 01M1Z017EQK3Q2QCEMTA6XXNSK succeeded: claimed + closed seed fabro-16ff (revisor + reviewer security-affine per ADR-0019), gate green, review approved, PR #59 opened\",\"gate stuck: PR #59 (denkhaus/fabro) reported blocked after 3 bounded merged-waits (~60 min ceiling, fabro-1dc9/fabro-bde4 semantics); no 4th wait attempted; child status stayed succeeded — merge is soft-parked, next fire re-enters via survey\"]}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YZW7ZP5CJGX9D61SNS372R\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:44:29Z\",\"data\":[\"revisor run 01M1Z0AV57YJGYCZ46E81PEYRS succeeded (revised develop child 01M1Z017EQK3Q2QCEMTA6XXNSK per ADR-0015 newest-revisable selection); terminal status succeeded/completed\",\"pass gate note carried forward: PR #59 merge remains soft-parked; next pass re-enters via survey\"]}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 4,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T22:44:33.893869333Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 773880,
+      "inference_time_ms": 124772,
+      "tool_time_ms": 629716,
+      "active_time_ms": 754488
+    },
+    "final_git_commit_sha": "45078586f3a76d328c5e98107d635c8035d90582",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 118227,
+          "inference_time_ms": 69521,
+          "tool_time_ms": 47961,
+          "active_time_ms": 117482
+        },
+        "billing_usd_micros": 89472,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 278848,
+          "inference_time_ms": 35944,
+          "tool_time_ms": 242321,
+          "active_time_ms": 278265
+        },
+        "billing_usd_micros": 263157,
+        "retries": 0
+      },
+      {
+        "stage_id": "revise",
+        "stage_label": "revise",
+        "timing": {
+          "wall_time_ms": 359392,
+          "inference_time_ms": 19307,
+          "tool_time_ms": 339434,
+          "active_time_ms": 358741
+        },
+        "billing_usd_micros": 27827,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 152714,
+      "output_tokens": 2441,
+      "total_tokens": 727200,
+      "reasoning_tokens": 1741,
+      "cache_read_tokens": 570304,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 380456
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1YZW7ZP5CJGX9D61SNS372R.jsonl b/.fabro/journal/01M1YZW7ZP5CJGX9D61SNS372R.jsonl\nnew file mode 100644\nindex 000000000..056d3a95a\n--- /dev/null\n+++ b/.fabro/journal/01M1YZW7ZP5CJGX9D61SNS372R.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YZW7ZP5CJGX9D61SNS372R\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:30:18Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YZW7ZP5CJGX9D61SNS372R\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:32:31Z\",\"data\":[\"upstream count: 0 (origin/denkhaus..upstream/main after fetch of both remotes); no newest upstream subject — zero drift, threshold of 5 not met, so route Work\",\"revisor backlog: 01M1XCHJTDBJKZ31VFMY1KD61Q, 01M1Y12A93HSB4VDZN55HZYNYS, 01M1Y2SMEVDHAFB59GZV9B84CQ, 01M1Y852BN91NSVSHFWNWTW5ST, 01M1Y9N7R47JPR49CYXP8BQYC3, 01M1YBBXR99PNME6Y8ZED4Y2NN (develop runs with no revisor pass sharing their parent_id; newest revisable is 01M1YBBXR99PNME6Y8ZED4Y2NN)\",\"backfill caveat: signal is parent_id linkage; the revisor actually selects via Ask-Fabro newest-unrevised logic, so a backlog entry could in principle have been revised without a matching-parent run — listing is best-effort\",\"nothing hurt: git fetch of both remotes and fabro_runs_list of develop (70 runs) and revisor (21 runs) all succeeded\"]}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YZW7ZP5CJGX9D61SNS372R\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:37:43Z\",\"data\":[\"child develop run 01M1Z017EQK3Q2QCEMTA6XXNSK succeeded: claimed + closed seed fabro-16ff (revisor + reviewer security-affine per ADR-0019), gate green, review approved, PR #59 opened\",\"gate stuck: PR #59 (denkhaus/fabro) reported blocked after 3 bounded merged-waits (~60 min ceiling, fabro-1dc9/fabro-bde4 semantics); no 4th wait attempted; child status stayed succeeded — merge is soft-parked, next fire re-enters via survey\"]}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YZW7ZP5CJGX9D61SNS372R\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:44:29Z\",\"data\":[\"revisor run 01M1Z0AV57YJGYCZ46E81PEYRS succeeded (revised develop child 01M1Z017EQK3Q2QCEMTA6XXNSK per ADR-0015 newest-revisable selection); terminal status succeeded/completed\",\"pass gate note carried forward: PR #59 merge remains soft-parked; next pass re-enters via survey\"]}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 4,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1190,6 +1276,42 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 159,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T22:44:33.830669058Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T22:44:33.830644053Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 17,
       "prompt": null,
