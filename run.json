@@ -570,7 +570,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T20:30:16.990320958Z",
-  "last_event_at": "2026-09-07T20:41:37.357426343Z",
+  "last_event_at": "2026-09-07T20:41:41.781190392Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -923,9 +923,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 144,
       "checkpoint": {
-        "timestamp": "2026-09-07T20:41:37.590741979Z",
+        "timestamp": "2026-09-07T20:41:41.780393148Z",
         "current_node": "revise",
         "completed_nodes": [
           "start",
@@ -935,68 +935,72 @@
         ],
         "node_retries": {},
         "context_values": {
-          "failure_class": "",
-          "internal.retry_count.survey": 0,
-          "preferred_label": "Cycle complete",
-          "internal.node_visit_count": 1,
-          "journal": [
-            "revisor child 01M1YSCK72V0HKCD5Z1VGDQ2KP: revised develop run 01M1YS4NJH27NS7CQ02AWM9BNE (fabro-c381, PR #51) — select->analyze->file all green, 4m26s wall, $0.195, PR #52 opened for the revision artifacts",
-            "seeds filed: fabro-05d0 (bake gh into toolchain image or engine-side open-PR check — double-pick guard structurally disabled by gh exit 127), fabro-5b0a (surface degraded fail-open planner checks as run-level warnings in run summary/PR body)",
-            "analyst dedupe: 5 of 7 recommendations dropped as duplicates (fabro-c3b4/0da8, fabro-944d, fabro-9588, fabro-a67f, fabro-c2ca/cf03, closed fabro-56c2) — improve question keeps re-deriving the backlog; fix idea: have the improve question mandate a tracker check before recommending"
-          ],
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "child_seed_id": "fabro-c381",
-          "child_seed_title": "Allow minimal adjacent repair of pre-existing compile breaks in touched crates",
-          "response.revise": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.revise",
-            "chars": 1496,
-            "preview": "Revisor run 01M1YSCK72V0HKCD5Z1VGDQ2KP completed one full pass in 4m26s ($0.195): selected develop run `01M1YS4NJH27NS7CQ02AWM9BNE` (seed fabro-c381, PR #51), ran the improve review via `fabro_ask` (7"
-          },
-          "last_response": "Revisor run 01M1YSCK72V0HKCD5Z1VGDQ2KP completed one full pass in 4m26s ($0.195): selected develop run `01M1YS4NJH27NS7CQ02AWM9BNE` (seed fabro-c381, PR #51), ran the improve review via `fabro_ask` (7",
-          "response.survey": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.survey",
-            "chars": 895,
-            "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":[\"upstream drift count: 0 (git rev-list --count origin/denkhaus..upstream/"
-          },
-          "seed_cycles": {
-            "start": 1,
-            "survey": 1,
-            "develop": 1,
-            "revise": 1
-          },
-          "internal.retry_count.revise": 0,
-          "last_stage": "revise",
-          "graph.max_node_visits": "12",
-          "thread.start.current_node": "survey",
-          "thread.develop.current_node": "revise",
-          "internal.work_dir": "/workspace/fabro",
-          "graph.cycle_counter_reset_key": "pass_id",
           "internal.exit_kind": "natural",
-          "outcome": "succeeded",
+          "last_stage": "revise",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "graph.max_node_visits": "12",
+          "graph.rankdir": "LR",
+          "internal.fidelity": "compact",
+          "internal.retry_count.revise": 0,
+          "internal.run_id": "01M1YS0G0H09MQKM26ZG7CPWA4",
+          "internal.node_visit_count": 1,
+          "last_response": "Revisor run 01M1YSCK72V0HKCD5Z1VGDQ2KP completed one full pass in 4m26s ($0.195): selected develop run `01M1YS4NJH27NS7CQ02AWM9BNE` (seed fabro-c381, PR #51), ran the improve review via `fabro_ask` (7",
+          "thread.survey.current_node": "develop",
+          "thread.develop.current_node": "revise",
           "response.develop": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.develop",
             "chars": 1002,
             "preview": "Child develop run `01M1YS4NJH27NS7CQ02AWM9BNE` succeeded and its PR (#51, seed `fabro-c381` — \"Allow minimal adjacent repair of pre-existing compile breaks in touched crates\") merged after one young"
           },
-          "internal.fidelity": "compact",
-          "internal.seed_cycle_anchor": "",
-          "thread.survey.current_node": "develop",
-          "internal.retry_count.develop": 0,
-          "internal.run_id": "01M1YS0G0H09MQKM26ZG7CPWA4",
-          "current_node": "revise",
-          "child_run_id": "01M1YS4NJH27NS7CQ02AWM9BNE",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "graph.rankdir": "LR",
-          "child_pr": 51,
-          "failure_signature": "",
           "graph.preamble_budget_kb": "12",
+          "internal.retry_count.start": 0,
+          "response.revise": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.revise",
+            "chars": 1496,
+            "preview": "Revisor run 01M1YSCK72V0HKCD5Z1VGDQ2KP completed one full pass in 4m26s ($0.195): selected develop run `01M1YS4NJH27NS7CQ02AWM9BNE` (seed fabro-c381, PR #51), ran the improve review via `fabro_ask` (7"
+          },
+          "child_seed_id": "fabro-c381",
+          "internal.retry_count.survey": 0,
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "develop": 1,
+            "revise": 1
+          },
+          "child_pr": 51,
+          "failure_class": "",
+          "response.survey": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.survey",
+            "chars": 895,
+            "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":[\"upstream drift count: 0 (git rev-list --count origin/denkhaus..upstream/"
+          },
           "internal.thread_id": "develop",
-          "internal.retry_count.start": 0
+          "journal": [
+            "revisor child 01M1YSCK72V0HKCD5Z1VGDQ2KP: revised develop run 01M1YS4NJH27NS7CQ02AWM9BNE (fabro-c381, PR #51) — select->analyze->file all green, 4m26s wall, $0.195, PR #52 opened for the revision artifacts",
+            "seeds filed: fabro-05d0 (bake gh into toolchain image or engine-side open-PR check — double-pick guard structurally disabled by gh exit 127), fabro-5b0a (surface degraded fail-open planner checks as run-level warnings in run summary/PR body)",
+            "analyst dedupe: 5 of 7 recommendations dropped as duplicates (fabro-c3b4/0da8, fabro-944d, fabro-9588, fabro-a67f, fabro-c2ca/cf03, closed fabro-56c2) — improve question keeps re-deriving the backlog; fix idea: have the improve question mandate a tracker check before recommending"
+          ],
+          "child_run_id": "01M1YS4NJH27NS7CQ02AWM9BNE",
+          "child_seed_title": "Allow minimal adjacent repair of pre-existing compile breaks in touched crates",
+          "current_node": "revise",
+          "thread.start.current_node": "survey",
+          "preferred_label": "Cycle complete",
+          "internal.retry_count.develop": 0,
+          "internal.seed_cycle_anchor": "",
+          "failure_signature": "",
+          "outcome": "succeeded"
         },
         "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "develop": {
             "status": "succeeded",
             "preferred_label": "Develop integrated",
@@ -1048,57 +1052,6 @@
               "active_time_ms": 227932
             }
           },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
-          "revise": {
-            "status": "succeeded",
-            "preferred_label": "Cycle complete",
-            "context_updates": {
-              "last_stage": "revise",
-              "response.revise": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.revise",
-                "chars": 1496,
-                "preview": "Revisor run 01M1YSCK72V0HKCD5Z1VGDQ2KP completed one full pass in 4m26s ($0.195): selected develop run `01M1YS4NJH27NS7CQ02AWM9BNE` (seed fabro-c381, PR #51), ran the improve review via `fabro_ask` (7"
-              },
-              "last_response": "Revisor run 01M1YSCK72V0HKCD5Z1VGDQ2KP completed one full pass in 4m26s ($0.195): selected develop run `01M1YS4NJH27NS7CQ02AWM9BNE` (seed fabro-c381, PR #51), ran the improve review via `fabro_ask` (7",
-              "journal": [
-                "revisor child 01M1YSCK72V0HKCD5Z1VGDQ2KP: revised develop run 01M1YS4NJH27NS7CQ02AWM9BNE (fabro-c381, PR #51) — select->analyze->file all green, 4m26s wall, $0.195, PR #52 opened for the revision artifacts",
-                "seeds filed: fabro-05d0 (bake gh into toolchain image or engine-side open-PR check — double-pick guard structurally disabled by gh exit 127), fabro-5b0a (surface degraded fail-open planner checks as run-level warnings in run summary/PR body)",
-                "analyst dedupe: 5 of 7 recommendations dropped as duplicates (fabro-c3b4/0da8, fabro-944d, fabro-9588, fabro-a67f, fabro-c2ca/cf03, closed fabro-56c2) — improve question keeps re-deriving the backlog; fix idea: have the improve question mandate a tracker check before recommending"
-              ]
-            },
-            "notes": "Stage completed: revise",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 64135,
-                    "output_tokens": 632,
-                    "reasoning_tokens": 193,
-                    "cache_read_tokens": 33600,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 102150
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 25341,
-              "tool_time_ms": 252542,
-              "active_time_ms": 277883
-            }
-          },
           "survey": {
             "status": "succeeded",
             "preferred_label": "Work",
@@ -1146,20 +1099,153 @@
               "tool_time_ms": 48082,
               "active_time_ms": 90311
             }
+          },
+          "revise": {
+            "status": "succeeded",
+            "preferred_label": "Cycle complete",
+            "context_updates": {
+              "last_stage": "revise",
+              "response.revise": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.revise",
+                "chars": 1496,
+                "preview": "Revisor run 01M1YSCK72V0HKCD5Z1VGDQ2KP completed one full pass in 4m26s ($0.195): selected develop run `01M1YS4NJH27NS7CQ02AWM9BNE` (seed fabro-c381, PR #51), ran the improve review via `fabro_ask` (7"
+              },
+              "last_response": "Revisor run 01M1YSCK72V0HKCD5Z1VGDQ2KP completed one full pass in 4m26s ($0.195): selected develop run `01M1YS4NJH27NS7CQ02AWM9BNE` (seed fabro-c381, PR #51), ran the improve review via `fabro_ask` (7",
+              "journal": [
+                "revisor child 01M1YSCK72V0HKCD5Z1VGDQ2KP: revised develop run 01M1YS4NJH27NS7CQ02AWM9BNE (fabro-c381, PR #51) — select->analyze->file all green, 4m26s wall, $0.195, PR #52 opened for the revision artifacts",
+                "seeds filed: fabro-05d0 (bake gh into toolchain image or engine-side open-PR check — double-pick guard structurally disabled by gh exit 127), fabro-5b0a (surface degraded fail-open planner checks as run-level warnings in run summary/PR body)",
+                "analyst dedupe: 5 of 7 recommendations dropped as duplicates (fabro-c3b4/0da8, fabro-944d, fabro-9588, fabro-a67f, fabro-c2ca/cf03, closed fabro-56c2) — improve question keeps re-deriving the backlog; fix idea: have the improve question mandate a tracker check before recommending"
+              ]
+            },
+            "notes": "Stage completed: revise",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 64135,
+                    "output_tokens": 632,
+                    "reasoning_tokens": 193,
+                    "cache_read_tokens": 33600,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 102150
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 25341,
+              "tool_time_ms": 252542,
+              "active_time_ms": 277883
+            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "9529afcf37cbd657ecb1ae8995f7ae3e668d2df5",
         "node_visits": {
           "develop": 1,
-          "start": 1,
           "revise": 1,
+          "start": 1,
           "survey": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1YS0G0H09MQKM26ZG7CPWA4.jsonl b/.fabro/journal/01M1YS0G0H09MQKM26ZG7CPWA4.jsonl\nindex c9b86b1b9..ff7d73947 100644\n--- a/.fabro/journal/01M1YS0G0H09MQKM26ZG7CPWA4.jsonl\n+++ b/.fabro/journal/01M1YS0G0H09MQKM26ZG7CPWA4.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS0G0H09MQKM26ZG7CPWA4\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:30:22Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS0G0H09MQKM26ZG7CPWA4\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:32:04Z\",\"data\":[\"upstream drift count: 0 (git rev-list --count origin/denkhaus..upstream/main after fetching `upstream` -> `https://github.com/fabro-sh/fabro` and `origin`); newest upstream subject: 'Bump version to 0.348.0-nightly.0'\",\"decision: count 0 < MIN threshold 5 -> route Work; no merge slot consumed, drift accumulates toward threshold\",\"revisor backlog: 01M1YBBXR99PNME6Y8ZED4Y2NN, 01M1Y9N7R47JPR49CYXP8BQYC3, 01M1Y852BN91NSVSHFWNWTW5ST, 01M1Y2SMEVDHAFB59GZV9B84CQ, 01M1Y12A93HSB4VDZN55HZYNYS, 01M1XCHJTDBJKZ31VFMY1KD61Q — completed develop runs with no revisor pass sharing their parent_id; each future revisor pass burns the newest one down\",\"friction: initial git fetch+count exceeded the 10s default shell timeout; succeeded on retry with 120s timeout (36s wall)\"]}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS0G0H09MQKM26ZG7CPWA4\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:36:21Z\",\"data\":[\"develop child 01M1YS4NJH27NS7CQ02AWM9BNE: claimed seed fabro-c381, one clean cycle (planner->implementer->gate green->evidence->reviewer approved->closeout closed), total $0.133, 2m25s wall\",\"gate wait: first merged-wait returned blocked (young gate, checks running); second wait returned merged — PR #51 squash-merged\",\"planner observation from child: gh CLI unavailable in the develop sandbox — in-flight PR check degraded fail-open; double-pick audit blind on this host\"]}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS0G0H09MQKM26ZG7CPWA4\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:41:37Z\",\"data\":[\"revisor child 01M1YSCK72V0HKCD5Z1VGDQ2KP: revised develop run 01M1YS4NJH27NS7CQ02AWM9BNE (fabro-c381, PR #51) — select->analyze->file all green, 4m26s wall, $0.195, PR #52 opened for the revision artifacts\",\"seeds filed: fabro-05d0 (bake gh into toolchain image or engine-side open-PR check — double-pick guard structurally disabled by gh exit 127), fabro-5b0a (surface degraded fail-open planner checks as run-level warnings in run summary/PR body)\",\"analyst dedupe: 5 of 7 recommendations dropped as duplicates (fabro-c3b4/0da8, fabro-944d, fabro-9588, fabro-a67f, fabro-c2ca/cf03, closed fabro-56c2) — improve question keeps re-deriving the backlog; fix idea: have the improve question mandate a tracker check before recommending\"]}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 4,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T20:41:41.855588765Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 614749,
+      "inference_time_ms": 99208,
+      "tool_time_ms": 496918,
+      "active_time_ms": 596126
+    },
+    "final_git_commit_sha": "9529afcf37cbd657ecb1ae8995f7ae3e668d2df5",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 91019,
+          "inference_time_ms": 42229,
+          "tool_time_ms": 48082,
+          "active_time_ms": 90311
+        },
+        "billing_usd_micros": 82354,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 228541,
+          "inference_time_ms": 31638,
+          "tool_time_ms": 196294,
+          "active_time_ms": 227932
+        },
+        "billing_usd_micros": 186786,
+        "retries": 0
+      },
+      {
+        "stage_id": "revise",
+        "stage_label": "revise",
+        "timing": {
+          "wall_time_ms": 278431,
+          "inference_time_ms": 25341,
+          "tool_time_ms": 252542,
+          "active_time_ms": 277883
+        },
+        "billing_usd_micros": 102150,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 189906,
+      "output_tokens": 2205,
+      "total_tokens": 541577,
+      "reasoning_tokens": 1178,
+      "cache_read_tokens": 348288,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 371290
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1YS0G0H09MQKM26ZG7CPWA4.jsonl b/.fabro/journal/01M1YS0G0H09MQKM26ZG7CPWA4.jsonl\nnew file mode 100644\nindex 000000000..ff7d73947\n--- /dev/null\n+++ b/.fabro/journal/01M1YS0G0H09MQKM26ZG7CPWA4.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS0G0H09MQKM26ZG7CPWA4\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:30:22Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS0G0H09MQKM26ZG7CPWA4\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:32:04Z\",\"data\":[\"upstream drift count: 0 (git rev-list --count origin/denkhaus..upstream/main after fetching `upstream` -> `https://github.com/fabro-sh/fabro` and `origin`); newest upstream subject: 'Bump version to 0.348.0-nightly.0'\",\"decision: count 0 < MIN threshold 5 -> route Work; no merge slot consumed, drift accumulates toward threshold\",\"revisor backlog: 01M1YBBXR99PNME6Y8ZED4Y2NN, 01M1Y9N7R47JPR49CYXP8BQYC3, 01M1Y852BN91NSVSHFWNWTW5ST, 01M1Y2SMEVDHAFB59GZV9B84CQ, 01M1Y12A93HSB4VDZN55HZYNYS, 01M1XCHJTDBJKZ31VFMY1KD61Q — completed develop runs with no revisor pass sharing their parent_id; each future revisor pass burns the newest one down\",\"friction: initial git fetch+count exceeded the 10s default shell timeout; succeeded on retry with 120s timeout (36s wall)\"]}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS0G0H09MQKM26ZG7CPWA4\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:36:21Z\",\"data\":[\"develop child 01M1YS4NJH27NS7CQ02AWM9BNE: claimed seed fabro-c381, one clean cycle (planner->implementer->gate green->evidence->reviewer approved->closeout closed), total $0.133, 2m25s wall\",\"gate wait: first merged-wait returned blocked (young gate, checks running); second wait returned merged — PR #51 squash-merged\",\"planner observation from child: gh CLI unavailable in the develop sandbox — in-flight PR check degraded fail-open; double-pick audit blind on this host\"]}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YS0G0H09MQKM26ZG7CPWA4\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:41:37Z\",\"data\":[\"revisor child 01M1YSCK72V0HKCD5Z1VGDQ2KP: revised develop run 01M1YS4NJH27NS7CQ02AWM9BNE (fabro-c381, PR #51) — select->analyze->file all green, 4m26s wall, $0.195, PR #52 opened for the revision artifacts\",\"seeds filed: fabro-05d0 (bake gh into toolchain image or engine-side open-PR check — double-pick guard structurally disabled by gh exit 127), fabro-5b0a (surface degraded fail-open planner checks as run-level warnings in run summary/PR body)\",\"analyst dedupe: 5 of 7 recommendations dropped as duplicates (fabro-c3b4/0da8, fabro-944d, fabro-9588, fabro-a67f, fabro-c2ca/cf03, closed fabro-56c2) — improve question keeps re-deriving the backlog; fix idea: have the improve question mandate a tracker check before recommending\"]}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 4,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1701,6 +1787,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 147,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T20:41:41.781190392Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T20:41:41.780943315Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
