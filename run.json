@@ -694,7 +694,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T16:01:56.519100678Z",
-  "last_event_at": "2026-09-07T16:21:46.844792582Z",
+  "last_event_at": "2026-09-07T16:21:51.877872273Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1052,15 +1052,223 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 226,
       "checkpoint": {
-        "timestamp": "2026-09-07T16:21:47.062755706Z",
+        "timestamp": "2026-09-07T16:21:51.343830406Z",
         "current_node": "tester",
         "completed_nodes": [
           "start",
           "planner",
           "implementer",
           "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.preamble_budget_kb": "24",
+          "internal.work_dir": "/workspace/fabro",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "The renderer binary build added ~9 minutes cold to a fabro-server-only gate — acceptable per the seed, but future seeds touching fabro-server in a hot loop may want `cargo build` cache priming or the test-support builder route (fix direction c) if tester timeouts appear."
+            ]
+          },
+          "internal.retry_count.start": 0,
+          "failure_class": "",
+          "outcome": "succeeded",
+          "internal.retry_count.tester": 0,
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1
+          },
+          "failure_signature": "",
+          "internal.fidelity": "compact",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.rankdir": "LR",
+          "current_seed_id": "fabro-febd",
+          "last_stage": "implementer",
+          "thread.implementer.current_node": "tester",
+          "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+          "thread.start.current_node": "planner",
+          "internal.seed_cycle_anchor": "fabro-febd",
+          "internal.retry_count.planner": 0,
+          "internal.thread_id": "implementer",
+          "implementation_summary": "Added `build-renderer-if-needed` to `scripts/qualitygate.nu`: when the touched-crates set contains fabro-server, the gate now runs `cargo build -p fabro-cli --bin fabro` (with an explanatory banner) before `check-tests`, so the three graph-render tests run instead of skipping; the in-test skip guard was left untouched as the manual-cold-run fallback, and no Rust changes were required. Verified cold: binary absent -> function built it -> the three tests in `lib/apps/fabro-server/src/server/tests.rs` ran and passed 3/3. Lesson captured as mx-4d3c07. Per-criterion: PASS gate builds renderer bin before tests for fabro-server-only diffs (scripts/qualitygate.nu build-renderer-if-needed, outside fmt/clippy); PASS three tests execute not skip in cold sandbox (server::tests::get_graph_returns_svg, render_graph_from_manifest_returns_svg, render_graph_from_manifest_accepts_fabro_dotted_attributes all PASS); PASS skip guard retained (lib/apps/fabro-server/src/server/handler/graph.rs render_graph_subprocess_available); PASS gate output explains the extra build; PASS end-to-end cold verification with absent target/debug/fabro.",
+          "preferred_label": "Implemented",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.implementer": 0,
+          "thread.planner.current_node": "implementer",
+          "current_seed_title": "qualitygate: fabro-server graph-render tests need target/debug/fabro — gate only builds touched crates and fails 3 tests deterministically",
+          "last_response": "Implementation complete. Summary of this pass:\n\n**What changed** — `scripts/qualitygate.nu` only (the seed's explicit target; edited via shell per the platform carve-out):\n- Added `build-renderer-if",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2456,
+            "preview": "Claimed `fabro-febd`. The seed's original symptom (3 deterministic gate failures) was already mitigated by a skip guard in the tests, but the seed's preferred fix — making the gate build the rendere"
+          },
+          "current_node": "tester",
+          "lesson_capture": "mx-4d3c07",
+          "internal.node_visit_count": 1,
+          "internal.run_id": "01M1Y9N7R47JPR49CYXP8BQYC3",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 4012,
+            "preview": "Implementation complete. Summary of this pass:\n\n**What changed** — `scripts/qualitygate.nu` only (the seed's explicit target; edited via shell per the platform carve-out):\n- Added `build-renderer-if"
+          },
+          "current_seed_brief": "Make `scripts/qualitygate.nu` build the `fabro` renderer binary whenever `fabro-server` is in the touched-crates set, so the graph-render tests exercise the real render path instead of silently skipping. Acceptance criteria: - `scripts/qualitygate.nu` runs `cargo build -p fabro-cli --bin fabro` before the test step when the touched set contains `fabro-server` (explicit dependency in the gate recipe; keep it out of the fmt/clippy paths) - the three graph-render tests in `lib/apps/fabro-server/src/server/tests.rs` (`get_graph_returns_svg`, `render_graph_from_manifest_returns_svg`, `render_graph_from_manifest_accepts_fabro_dotted_attributes`) then execute (not skip) under the gate in a cold sandbox - the existing `render_graph_subprocess_available()` skip guard stays in place as a cold-sandbox fallback (manual `cargo nextest` without a prior build must still pass) - gate output clearly states when the extra binary build happens and why - verify with: remove `target/debug/fabro` (or a fresh target dir), run `nu scripts/qualitygate.nu` with a diff touching only `lib/apps/fabro-server/**`, confirm the three tests run and pass. Context: the original symptom (deterministic 3-test failure, run 01M1VZTJSZ55) was mitigated by the skip guard; this seed's preferred fix (a) closes the remaining gap so the skip path stops hiding real regressions.",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit"
+        },
+        "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_stage": "implementer",
+              "implementation_summary": "Added `build-renderer-if-needed` to `scripts/qualitygate.nu`: when the touched-crates set contains fabro-server, the gate now runs `cargo build -p fabro-cli --bin fabro` (with an explanatory banner) before `check-tests`, so the three graph-render tests run instead of skipping; the in-test skip guard was left untouched as the manual-cold-run fallback, and no Rust changes were required. Verified cold: binary absent -> function built it -> the three tests in `lib/apps/fabro-server/src/server/tests.rs` ran and passed 3/3. Lesson captured as mx-4d3c07. Per-criterion: PASS gate builds renderer bin before tests for fabro-server-only diffs (scripts/qualitygate.nu build-renderer-if-needed, outside fmt/clippy); PASS three tests execute not skip in cold sandbox (server::tests::get_graph_returns_svg, render_graph_from_manifest_returns_svg, render_graph_from_manifest_accepts_fabro_dotted_attributes all PASS); PASS skip guard retained (lib/apps/fabro-server/src/server/handler/graph.rs render_graph_subprocess_available); PASS gate output explains the extra build; PASS end-to-end cold verification with absent target/debug/fabro.",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The renderer binary build added ~9 minutes cold to a fabro-server-only gate — acceptable per the seed, but future seeds touching fabro-server in a hot loop may want `cargo build` cache priming or the test-support builder route (fix direction c) if tester timeouts appear."
+                ]
+              },
+              "last_response": "Implementation complete. Summary of this pass:\n\n**What changed** — `scripts/qualitygate.nu` only (the seed's explicit target; edited via shell per the platform carve-out):\n- Added `build-renderer-if",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 4012,
+                "preview": "Implementation complete. Summary of this pass:\n\n**What changed** — `scripts/qualitygate.nu` only (the seed's explicit target; edited via shell per the platform carve-out):\n- Added `build-renderer-if"
+              },
+              "lesson_capture": "mx-4d3c07"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 34889,
+                    "output_tokens": 2627,
+                    "reasoning_tokens": 1059,
+                    "cache_read_tokens": 251328,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 130387
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 175946,
+              "tool_time_ms": 831778,
+              "active_time_ms": 1007724
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5772,
+              "active_time_ms": 5772
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_id": "fabro-febd",
+              "last_response": "Claimed `fabro-febd`. The seed's original symptom (3 deterministic gate failures) was already mitigated by a skip guard in the tests, but the seed's preferred fix — making the gate build the rendere",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-febd's original failure mode is already mitigated: the three graph-render tests now skip via render_graph_subprocess_available() when target/debug/fabro is absent, so the gate no longer fails — but the seed's preferred fix (a), gate building fabro-cli when fabro-server is touched, is unimplemented, so I claimed it as real work with a brief focused on closing that gap."
+                ]
+              },
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2456,
+                "preview": "Claimed `fabro-febd`. The seed's original symptom (3 deterministic gate failures) was already mitigated by a skip guard in the tests, but the seed's preferred fix — making the gate build the rendere"
+              },
+              "current_seed_title": "qualitygate: fabro-server graph-render tests need target/debug/fabro — gate only builds touched crates and fails 3 tests deterministically",
+              "current_seed_brief": "Make `scripts/qualitygate.nu` build the `fabro` renderer binary whenever `fabro-server` is in the touched-crates set, so the graph-render tests exercise the real render path instead of silently skipping. Acceptance criteria: - `scripts/qualitygate.nu` runs `cargo build -p fabro-cli --bin fabro` before the test step when the touched set contains `fabro-server` (explicit dependency in the gate recipe; keep it out of the fmt/clippy paths) - the three graph-render tests in `lib/apps/fabro-server/src/server/tests.rs` (`get_graph_returns_svg`, `render_graph_from_manifest_returns_svg`, `render_graph_from_manifest_accepts_fabro_dotted_attributes`) then execute (not skip) under the gate in a cold sandbox - the existing `render_graph_subprocess_available()` skip guard stays in place as a cold-sandbox fallback (manual `cargo nextest` without a prior build must still pass) - gate output clearly states when the extra binary build happens and why - verify with: remove `target/debug/fabro` (or a fresh target dir), run `nu scripts/qualitygate.nu` with a diff touching only `lib/apps/fabro-server/**`, confirm the three tests run and pass. Context: the original symptom (deterministic 3-test failure, run 01M1VZTJSZ55) was mitigated by the skip guard; this seed's preferred fix (a) closes the remaining gap so the skip path stops hiding real regressions.",
+              "last_stage": "planner"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 20372,
+                    "output_tokens": 1110,
+                    "reasoning_tokens": 409,
+                    "cache_read_tokens": 136256,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 70618
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 46756,
+              "tool_time_ms": 1957,
+              "active_time_ms": 48713
+            }
+          }
+        },
+        "next_node_id": "evidence",
+        "git_commit_sha": "e189073d32d2542569ebd73d51ec7c1bf979f46f",
+        "node_visits": {
+          "implementer": 1,
+          "planner": 1,
+          "start": 1,
+          "tester": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1Y9N7R47JPR49CYXP8BQYC3.jsonl b/.fabro/journal/01M1Y9N7R47JPR49CYXP8BQYC3.jsonl\nindex fd24c5c..6b51efb 100644\n--- a/.fabro/journal/01M1Y9N7R47JPR49CYXP8BQYC3.jsonl\n+++ b/.fabro/journal/01M1Y9N7R47JPR49CYXP8BQYC3.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y9N7R47JPR49CYXP8BQYC3\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T16:01:59Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y9N7R47JPR49CYXP8BQYC3\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T16:02:56Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-febd's original failure mode is already mitigated: the three graph-render tests now skip via render_graph_subprocess_available() when target/debug/fabro is absent, so the gate no longer fails — but the seed's preferred fix (a), gate building fabro-cli when fabro-server is touched, is unimplemented, so I claimed it as real work with a brief focused on closing that gap.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y9N7R47JPR49CYXP8BQYC3\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T16:21:36Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The renderer binary build added ~9 minutes cold to a fabro-server-only gate — acceptable per the seed, but future seeds touching fabro-server in a hot loop may want `cargo build` cache priming or the test-support builder route (fix direction c) if tester timeouts appear.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Y9N7R47JPR49CYXP8BQYC3\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T16:21:47Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 25,
+          "deletions": 2
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-07T16:21:52.133784133Z",
+        "current_node": "evidence",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence"
         ],
         "node_retries": {},
         "context_values": {
@@ -1071,8 +1279,8 @@
           "current_seed_id": "fabro-febd",
           "graph.preamble_budget_kb": "24",
           "internal.run_id": "01M1Y9N7R47JPR49CYXP8BQYC3",
-          "current_node": "tester",
-          "internal.thread_id": "implementer",
+          "current_node": "evidence",
+          "internal.thread_id": "tester",
           "current_seed_brief": "Make `scripts/qualitygate.nu` build the `fabro` renderer binary whenever `fabro-server` is in the touched-crates set, so the graph-render tests exercise the real render path instead of silently skipping. Acceptance criteria: - `scripts/qualitygate.nu` runs `cargo build -p fabro-cli --bin fabro` before the test step when the touched set contains `fabro-server` (explicit dependency in the gate recipe; keep it out of the fmt/clippy paths) - the three graph-render tests in `lib/apps/fabro-server/src/server/tests.rs` (`get_graph_returns_svg`, `render_graph_from_manifest_returns_svg`, `render_graph_from_manifest_accepts_fabro_dotted_attributes`) then execute (not skip) under the gate in a cold sandbox - the existing `render_graph_subprocess_available()` skip guard stays in place as a cold-sandbox fallback (manual `cargo nextest` without a prior build must still pass) - gate output clearly states when the extra binary build happens and why - verify with: remove `target/debug/fabro` (or a fresh target dir), run `nu scripts/qualitygate.nu` with a diff touching only `lib/apps/fabro-server/**`, confirm the three tests run and pass. Context: the original symptom (deterministic 3-test failure, run 01M1VZTJSZ55) was mitigated by the skip guard; this seed's preferred fix (a) closes the remaining gap so the skip path stops hiding real regressions.",
           "internal.node_visit_count": 1,
           "response.implementer": {
@@ -1089,17 +1297,19 @@
             ]
           },
           "thread.implementer.current_node": "tester",
+          "thread.tester.current_node": "evidence",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "internal.fidelity": "compact",
           "thread.planner.current_node": "implementer",
           "current_seed_title": "qualitygate: fabro-server graph-render tests need target/debug/fabro — gate only builds touched crates and fails 3 tests deterministically",
-          "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+          "command.output": "blob://sha256/f2f306b3951bf950cd7d0abbcefe0af89970fbfa2e02e921f8c0256f46df0b08",
           "internal.retry_count.start": 0,
           "outcome": "succeeded",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
-            "tester": 1
+            "tester": 1,
+            "evidence": 1
           },
           "preferred_label": "Implemented",
           "internal.work_dir": "/workspace/fabro",
@@ -1117,7 +1327,8 @@
             "output_key": "output.planner",
             "chars": 2456,
             "preview": "Claimed `fabro-febd`. The seed's original symptom (3 deterministic gate failures) was already mitigated by a skip guard in the tests, but the seed's preferred fix — making the gate build the rendere"
-          }
+          },
+          "internal.retry_count.evidence": 0
         },
         "node_outcomes": {
           "start": {
@@ -1238,11 +1449,26 @@
               "tool_time_ms": 831778,
               "active_time_ms": 1007724
             }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/f2f306b3951bf950cd7d0abbcefe0af89970fbfa2e02e921f8c0256f46df0b08"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 485,
+              "active_time_ms": 485
+            }
           }
         },
-        "next_node_id": "evidence",
+        "next_node_id": "reviewer",
         "node_visits": {
           "tester": 1,
+          "evidence": 1,
           "planner": 1,
           "start": 1,
           "implementer": 1
@@ -1317,6 +1543,57 @@
         "inference_time_ms": 0,
         "tool_time_ms": 5772,
         "active_time_ms": 5772
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "evidence@1": {
+      "first_event_seq": 229,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T16:21:51.877872273Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/f2f306b3951bf950cd7d0abbcefe0af89970fbfa2e02e921f8c0256f46df0b08",
+        "exit_code": 0,
+        "duration_ms": 485,
+        "termination": "exited",
+        "output_bytes": 7571,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 7571,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-07T16:21:51.368792184Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 492,
+        "inference_time_ms": 0,
+        "tool_time_ms": 485,
+        "active_time_ms": 485
       },
       "usage": {
         "input_tokens": 0,
