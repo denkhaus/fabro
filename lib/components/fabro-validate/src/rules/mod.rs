@@ -46,7 +46,7 @@ pub(crate) mod tool_catalog;
 mod tools_attribute_known;
 mod tools_requires_agent_node;
 mod type_known;
-mod unresolved_file_ref;
+pub(crate) mod unresolved_file_ref;
 
 use crate::LintRule;
 

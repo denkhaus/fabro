@@ -157,3 +157,17 @@ run *args:
 cycle *args:
     nu scripts/run_workflow.nu develop {{ args }}
     nu scripts/run_workflow.nu revisor
+
+# Validate workflow graphs (graph-only lint) without the ~7 min Rust
+# test-harness cold build: builds just the fabro-validate binary (small
+# dep subset) and runs the built-in lint rules on every
+# .fabro/workflows/*/workflow.fabro graph. Workflow-relative @-file refs
+# are resolved before the unresolved_file_ref rule runs, so existing refs
+# pass and genuinely missing ones still fail. Optional target: workflow
+# name, workflow dir, workflow.toml path, or graph path.
+#
+# Examples:
+#   just validate-workflows
+#   just validate-workflows develop
+validate-workflows target="":
+    nu scripts/validate-workflows.nu {{ if target == "" { "" } else { target } }}

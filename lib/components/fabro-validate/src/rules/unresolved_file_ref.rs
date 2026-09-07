@@ -6,6 +6,13 @@ pub(super) fn rule() -> Box<dyn LintRule> {
     Box::new(Rule)
 }
 
+/// Test-only accessor so sibling modules (e.g. `file_refs`) can assert how
+/// ref resolution interacts with this rule.
+#[cfg(test)]
+pub(crate) fn rule_for_tests() -> Box<dyn LintRule> {
+    rule()
+}
+
 struct Rule;
 
 impl LintRule for Rule {

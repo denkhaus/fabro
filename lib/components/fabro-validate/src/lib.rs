@@ -1,3 +1,4 @@
+pub mod file_refs;
 pub mod rules;
 
 use fabro_graphviz::graph::Graph;
