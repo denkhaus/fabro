@@ -694,7 +694,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T20:02:09.404989721Z",
-  "last_event_at": "2026-09-07T20:04:35.569479755Z",
+  "last_event_at": "2026-09-07T20:04:41.086572250Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1738,9 +1738,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 177,
       "checkpoint": {
-        "timestamp": "2026-09-07T20:04:35.772764176Z",
+        "timestamp": "2026-09-07T20:04:40.152364691Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -1753,19 +1753,40 @@
         ],
         "node_retries": {},
         "context_values": {
-          "response.reviewer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.reviewer",
-            "chars": 2367,
-            "preview": "Verification complete. The file in the tree matches the evidence diff exactly.\n\n**Checks against the seed brief:**\n\n1. **New step between selection and claim** — PASS: numbered step 4 \"IN-FLIGHT PR "
-          },
-          "command.output": "blob://sha256/dbc71023adddceff19063088b7146fe9e02647f76831952985b858a3a27794a4",
-          "thread.reviewer.current_node": "closeout",
+          "current_seed_title": "develop planner: treat seeds with open in-flight run-PRs as taken — duplicate implementation while the gate runs (fabro-22e4 double-pick)",
+          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/planner.md` only: added numbered step 4 (IN-FLIGHT PR CHECK) between candidate selection (step 3, stale-basis) and the claim (`sd update`, now step 5), renumbered brief/contradiction steps to 6/7 (incidentally fixing the file's pre-existing duplicate '4.' numbering), and extended the step-1 fast-path so a named seed with an open run-PR is skipped with the same journal line and falls through to `sd ready`. All commands and paths in the new text are backticked, matching file style. Lesson capture: nothing durable — skipped (a spec-driven prompt edit; the skip-vs-park pattern is already captured by the seed itself). Per-criterion verification: - PASS planner step after candidate selection, before `sd update`, runs `gh pr list --state open` and skips candidates matching an open run-linked PR: `.fabro/workflows/develop/prompts/planner.md` step 4 (grep-verified line 36). - PASS skipped candidates journaled with exact phrase `skipped: in-flight PR <n>`: step 4, phrase present (grep count 2). - PASS skip is not a park, planner continues down the `sd ready` list, still routes Seed claimed / Tracker empty: step 4 wording. - PASS fast-path named-seed flow gets the same check with same journal line, falls through to `sd ready`: step 1 appended sentence (line 33). - PASS degrades safely when `gh` unavailable/errors or no PRs — treated as no in-flight PRs, noted in observations, never dead-ends: step 4 final sentence. - PASS minimal change, prompt edit only, no engine/workflow graph changes: `git status` shows only planner.md, +5/−4. - PASS paths wrapped in backticks, existing numbered-step style followed: new/edited steps 1 and 4.",
+          "last_stage": "reviewer",
           "thread.start.current_node": "planner",
-          "last_response": "Verification complete. The file in the tree matches the evidence diff exactly.\n\n**Checks against the seed brief:**\n\n1. **New step between selection and claim** — PASS: numbered step 4 \"IN-FLIGHT PR ",
-          "internal.node_visit_count": 1,
-          "internal.retry_count.reviewer": 0,
+          "current_seed_id": "fabro-d0c7",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Verified planner.md in the worktree against the evidence loop-work diff — byte-identical intent, all 7 acceptance criteria pass. The git stat shows `.fabro/journal/<run>.jsonl +3` beyond the evidence churn list; that is engine journal output written after the evidence capture, not seed work — no action needed, but the evidence churn filter might exclude it explicitly for cleanliness.",
+              "The renumbering to steps 5–7 incidentally fixed the file's pre-existing duplicate '4.' numbering (steps 4 and 4 both existed before) — a harmless, in-scope side effect of the insertion."
+            ]
+          },
+          "internal.retry_count.planner": 0,
+          "internal.retry_count.implementer": 0,
           "internal.thread_id": "reviewer",
+          "outcome": "succeeded",
+          "review_verdict": "approved",
+          "failure_class": "",
+          "internal.retry_count.closeout": 0,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.reviewer": 0,
+          "current_node": "closeout",
+          "internal.node_visit_count": 1,
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2574,
+            "preview": "Done. Only `.fabro/workflows/develop/prompts/planner.md` changed (+5/−4): new step 4 \"IN-FLIGHT PR CHECK\" before the claim, fast-path clause in step 1, subsequent steps renumbered (this also fixed t"
+          },
+          "failure_signature": "",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.exit_kind": "natural",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -1774,81 +1795,55 @@
             "reviewer": 1,
             "closeout": 1
           },
-          "current_seed_title": "develop planner: treat seeds with open in-flight run-PRs as taken — duplicate implementation while the gate runs (fabro-22e4 double-pick)",
-          "internal.retry_count.planner": 0,
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "failure_class": "",
+          "current_seed_brief": "Prevent the develop planner from re-claiming a seed that already has an OPEN run-linked PR, which caused the fabro-22e4 double-pick (duplicate implementation while PR #47 sat in gate). Change target: `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md`. Acceptance criteria: (1) planner step added after candidate selection but before `sd update` claim: run `gh pr list --state open` (or equivalent open-PR view) and skip any top candidate whose seed id or title matches an open run-linked PR; (2) skipped candidates are journaled in the pass journal painpoints/observations with the exact phrase 'skipped: in-flight PR <n>' so the skip is auditable; (3) after skipping, the planner continues down the `sd ready` candidate list to the next unblocked seed — a skip is not a park, and the run still routes Seed claimed (or Tracker empty if nothing remains); (4) the fast-path named-seed flow (step 1) gets the same check: a named seed with an open run-PR is skipped with the same journal line, falling through to `sd ready`; (5) `gh` may be unavailable or the repo have no PRs — the check must degrade safely (treat as no in-flight PRs, note it in observations) rather than dead-end the planner; (6) keep the change minimal: prompt edit only, no engine/workflow graph changes (direction (a) of the seed; the tracker-side alternative (b) is explicitly out of scope); (7) prompt wording must wrap paths in backticks and follow the existing numbered-step style of the file.",
+          "graph.rankdir": "LR",
+          "internal.run_id": "01M1YQD03JZJCGRJ53SNRBTM8P",
+          "internal.seed_cycle_anchor": "fabro-d0c7",
+          "thread.evidence.current_node": "reviewer",
+          "thread.planner.current_node": "implementer",
           "thread.implementer.current_node": "tester",
-          "graph.preamble_budget_kb": "24",
-          "current_seed_id": "fabro-d0c7",
-          "lesson_capture": "nothing durable — skipped",
-          "internal.retry_count.tester": 0,
-          "thread.tester.current_node": "evidence",
-          "internal.retry_count.start": 0,
           "preferred_label": "Approved",
-          "failure_signature": "",
-          "review_verdict": "approved",
-          "internal.retry_count.closeout": 0,
-          "internal.exit_kind": "natural",
+          "internal.work_dir": "/workspace/fabro",
+          "last_response": "Verification complete. The file in the tree matches the evidence diff exactly.\n\n**Checks against the seed brief:**\n\n1. **New step between selection and claim** — PASS: numbered step 4 \"IN-FLIGHT PR ",
+          "internal.retry_count.tester": 0,
+          "lesson_capture": "nothing durable — skipped",
+          "internal.fidelity": "compact",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2367,
+            "preview": "Verification complete. The file in the tree matches the evidence diff exactly.\n\n**Checks against the seed brief:**\n\n1. **New step between selection and claim** — PASS: numbered step 4 \"IN-FLIGHT PR "
+          },
+          "thread.tester.current_node": "evidence",
+          "internal.retry_count.evidence": 0,
+          "graph.preamble_budget_kb": "24",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
             "chars": 2024,
             "preview": "Claimed `fabro-d0c7`: the develop planner prompt (`/workspace/fabro/.fabro/workflows/develop/prompts/planner.md`) still lacks any open-run-PR awareness, so the seed's basis is current and the fix goes"
           },
-          "internal.work_dir": "/workspace/fabro",
-          "graph.max_node_visits": "40",
-          "current_node": "closeout",
-          "thread.planner.current_node": "implementer",
-          "internal.run_id": "01M1YQD03JZJCGRJ53SNRBTM8P",
-          "response.implementer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 2574,
-            "preview": "Done. Only `.fabro/workflows/develop/prompts/planner.md` changed (+5/−4): new step 4 \"IN-FLIGHT PR CHECK\" before the claim, fast-path clause in step 1, subsequent steps renumbered (this also fixed t"
-          },
-          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/planner.md` only: added numbered step 4 (IN-FLIGHT PR CHECK) between candidate selection (step 3, stale-basis) and the claim (`sd update`, now step 5), renumbered brief/contradiction steps to 6/7 (incidentally fixing the file's pre-existing duplicate '4.' numbering), and extended the step-1 fast-path so a named seed with an open run-PR is skipped with the same journal line and falls through to `sd ready`. All commands and paths in the new text are backticked, matching file style. Lesson capture: nothing durable — skipped (a spec-driven prompt edit; the skip-vs-park pattern is already captured by the seed itself). Per-criterion verification: - PASS planner step after candidate selection, before `sd update`, runs `gh pr list --state open` and skips candidates matching an open run-linked PR: `.fabro/workflows/develop/prompts/planner.md` step 4 (grep-verified line 36). - PASS skipped candidates journaled with exact phrase `skipped: in-flight PR <n>`: step 4, phrase present (grep count 2). - PASS skip is not a park, planner continues down the `sd ready` list, still routes Seed claimed / Tracker empty: step 4 wording. - PASS fast-path named-seed flow gets the same check with same journal line, falls through to `sd ready`: step 1 appended sentence (line 33). - PASS degrades safely when `gh` unavailable/errors or no PRs — treated as no in-flight PRs, noted in observations, never dead-ends: step 4 final sentence. - PASS minimal change, prompt edit only, no engine/workflow graph changes: `git status` shows only planner.md, +5/−4. - PASS paths wrapped in backticks, existing numbered-step style followed: new/edited steps 1 and 4.",
-          "current_seed_brief": "Prevent the develop planner from re-claiming a seed that already has an OPEN run-linked PR, which caused the fabro-22e4 double-pick (duplicate implementation while PR #47 sat in gate). Change target: `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md`. Acceptance criteria: (1) planner step added after candidate selection but before `sd update` claim: run `gh pr list --state open` (or equivalent open-PR view) and skip any top candidate whose seed id or title matches an open run-linked PR; (2) skipped candidates are journaled in the pass journal painpoints/observations with the exact phrase 'skipped: in-flight PR <n>' so the skip is auditable; (3) after skipping, the planner continues down the `sd ready` candidate list to the next unblocked seed — a skip is not a park, and the run still routes Seed claimed (or Tracker empty if nothing remains); (4) the fast-path named-seed flow (step 1) gets the same check: a named seed with an open run-PR is skipped with the same journal line, falling through to `sd ready`; (5) `gh` may be unavailable or the repo have no PRs — the check must degrade safely (treat as no in-flight PRs, note it in observations) rather than dead-end the planner; (6) keep the change minimal: prompt edit only, no engine/workflow graph changes (direction (a) of the seed; the tracker-side alternative (b) is explicitly out of scope); (7) prompt wording must wrap paths in backticks and follow the existing numbered-step style of the file.",
-          "journal": {
-            "painpoints": [],
-            "observations": [
-              "Verified planner.md in the worktree against the evidence loop-work diff — byte-identical intent, all 7 acceptance criteria pass. The git stat shows `.fabro/journal/<run>.jsonl +3` beyond the evidence churn list; that is engine journal output written after the evidence capture, not seed work — no action needed, but the evidence churn filter might exclude it explicitly for cleanliness.",
-              "The renumbering to steps 5–7 incidentally fixed the file's pre-existing duplicate '4.' numbering (steps 4 and 4 both existed before) — a harmless, in-scope side effect of the insertion."
-            ]
-          },
-          "thread.evidence.current_node": "reviewer",
-          "internal.fidelity": "compact",
-          "outcome": "succeeded",
-          "last_stage": "reviewer",
-          "graph.rankdir": "LR",
-          "internal.seed_cycle_anchor": "fabro-d0c7",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "internal.retry_count.implementer": 0,
-          "internal.retry_count.evidence": 0
+          "command.output": "blob://sha256/dbc71023adddceff19063088b7146fe9e02647f76831952985b858a3a27794a4",
+          "thread.reviewer.current_node": "closeout"
         },
         "node_outcomes": {
-          "implementer": {
+          "planner": {
             "status": "succeeded",
-            "preferred_label": "Implemented",
+            "preferred_label": "Seed claimed",
             "context_updates": {
-              "last_response": "Done. Only `.fabro/workflows/develop/prompts/planner.md` changed (+5/−4): new step 4 \"IN-FLIGHT PR CHECK\" before the claim, fast-path clause in step 1, subsequent steps renumbered (this also fixed t",
-              "last_stage": "implementer",
-              "response.implementer": {
+              "last_response": "Claimed `fabro-d0c7`: the develop planner prompt (`/workspace/fabro/.fabro/workflows/develop/prompts/planner.md`) still lacks any open-run-PR awareness, so the seed's basis is current and the fix goes",
+              "current_seed_id": "fabro-d0c7",
+              "current_seed_title": "develop planner: treat seeds with open in-flight run-PRs as taken — duplicate implementation while the gate runs (fabro-22e4 double-pick)",
+              "current_seed_brief": "Prevent the develop planner from re-claiming a seed that already has an OPEN run-linked PR, which caused the fabro-22e4 double-pick (duplicate implementation while PR #47 sat in gate). Change target: `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md`. Acceptance criteria: (1) planner step added after candidate selection but before `sd update` claim: run `gh pr list --state open` (or equivalent open-PR view) and skip any top candidate whose seed id or title matches an open run-linked PR; (2) skipped candidates are journaled in the pass journal painpoints/observations with the exact phrase 'skipped: in-flight PR <n>' so the skip is auditable; (3) after skipping, the planner continues down the `sd ready` candidate list to the next unblocked seed — a skip is not a park, and the run still routes Seed claimed (or Tracker empty if nothing remains); (4) the fast-path named-seed flow (step 1) gets the same check: a named seed with an open run-PR is skipped with the same journal line, falling through to `sd ready`; (5) `gh` may be unavailable or the repo have no PRs — the check must degrade safely (treat as no in-flight PRs, note it in observations) rather than dead-end the planner; (6) keep the change minimal: prompt edit only, no engine/workflow graph changes (direction (a) of the seed; the tracker-side alternative (b) is explicitly out of scope); (7) prompt wording must wrap paths in backticks and follow the existing numbered-step style of the file.",
+              "response.planner": {
                 "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.implementer",
-                "chars": 2574,
-                "preview": "Done. Only `.fabro/workflows/develop/prompts/planner.md` changed (+5/−4): new step 4 \"IN-FLIGHT PR CHECK\" before the claim, fast-path clause in step 1, subsequent steps renumbered (this also fixed t"
+                "output_key": "output.planner",
+                "chars": 2024,
+                "preview": "Claimed `fabro-d0c7`: the develop planner prompt (`/workspace/fabro/.fabro/workflows/develop/prompts/planner.md`) still lacks any open-run-PR awareness, so the seed's basis is current and the fix goes"
               },
-              "implementation_summary": "Edited `.fabro/workflows/develop/prompts/planner.md` only: added numbered step 4 (IN-FLIGHT PR CHECK) between candidate selection (step 3, stale-basis) and the claim (`sd update`, now step 5), renumbered brief/contradiction steps to 6/7 (incidentally fixing the file's pre-existing duplicate '4.' numbering), and extended the step-1 fast-path so a named seed with an open run-PR is skipped with the same journal line and falls through to `sd ready`. All commands and paths in the new text are backticked, matching file style. Lesson capture: nothing durable — skipped (a spec-driven prompt edit; the skip-vs-park pattern is already captured by the seed itself). Per-criterion verification: - PASS planner step after candidate selection, before `sd update`, runs `gh pr list --state open` and skips candidates matching an open run-linked PR: `.fabro/workflows/develop/prompts/planner.md` step 4 (grep-verified line 36). - PASS skipped candidates journaled with exact phrase `skipped: in-flight PR <n>`: step 4, phrase present (grep count 2). - PASS skip is not a park, planner continues down the `sd ready` list, still routes Seed claimed / Tracker empty: step 4 wording. - PASS fast-path named-seed flow gets the same check with same journal line, falls through to `sd ready`: step 1 appended sentence (line 33). - PASS degrades safely when `gh` unavailable/errors or no PRs — treated as no in-flight PRs, noted in observations, never dead-ends: step 4 final sentence. - PASS minimal change, prompt edit only, no engine/workflow graph changes: `git status` shows only planner.md, +5/−4. - PASS paths wrapped in backticks, existing numbered-step style followed: new/edited steps 1 and 4.",
-              "lesson_capture": "nothing durable — skipped",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "The planner.md numbered list had two steps both numbered '4.' (claim and brief) before this change — the renumber in this pass fixed it incidentally; future prompt edits should keep an eye on list numbering drift in `.fabro/workflows/develop/prompts/planner.md`."
-                ]
-              }
+              "last_stage": "planner"
             },
-            "notes": "Stage completed: implementer",
+            "notes": "Stage completed: planner",
             "usage": {
               "input": {
                 "usage": {
@@ -1857,10 +1852,10 @@
                     "model_id": "glm-5.3"
                   },
                   "tokens": {
-                    "input_tokens": 17394,
-                    "output_tokens": 1475,
-                    "reasoning_tokens": 1408,
-                    "cache_read_tokens": 42752,
+                    "input_tokens": 19566,
+                    "output_tokens": 857,
+                    "reasoning_tokens": 161,
+                    "cache_read_tokens": 100288,
                     "cache_write_tokens": 0
                   }
                 },
@@ -1868,13 +1863,31 @@
                   "algorithm": "openai"
                 }
               },
-              "total_usd_micros": 48147
+              "total_usd_micros": 57938
             },
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 43797,
-              "tool_time_ms": 617,
-              "active_time_ms": 44414
+              "inference_time_ms": 35987,
+              "tool_time_ms": 1446,
+              "active_time_ms": 37433
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5261,
+              "active_time_ms": 5261
             }
           },
           "reviewer": {
@@ -1927,53 +1940,18 @@
               "active_time_ms": 18234
             }
           },
-          "start": {
+          "closeout": {
             "status": "succeeded",
-            "usage": null
-          },
-          "planner": {
-            "status": "succeeded",
-            "preferred_label": "Seed claimed",
             "context_updates": {
-              "last_response": "Claimed `fabro-d0c7`: the develop planner prompt (`/workspace/fabro/.fabro/workflows/develop/prompts/planner.md`) still lacks any open-run-PR awareness, so the seed's basis is current and the fix goes",
-              "current_seed_id": "fabro-d0c7",
-              "current_seed_title": "develop planner: treat seeds with open in-flight run-PRs as taken — duplicate implementation while the gate runs (fabro-22e4 double-pick)",
-              "current_seed_brief": "Prevent the develop planner from re-claiming a seed that already has an OPEN run-linked PR, which caused the fabro-22e4 double-pick (duplicate implementation while PR #47 sat in gate). Change target: `/workspace/fabro/.fabro/workflows/develop/prompts/planner.md`. Acceptance criteria: (1) planner step added after candidate selection but before `sd update` claim: run `gh pr list --state open` (or equivalent open-PR view) and skip any top candidate whose seed id or title matches an open run-linked PR; (2) skipped candidates are journaled in the pass journal painpoints/observations with the exact phrase 'skipped: in-flight PR <n>' so the skip is auditable; (3) after skipping, the planner continues down the `sd ready` candidate list to the next unblocked seed — a skip is not a park, and the run still routes Seed claimed (or Tracker empty if nothing remains); (4) the fast-path named-seed flow (step 1) gets the same check: a named seed with an open run-PR is skipped with the same journal line, falling through to `sd ready`; (5) `gh` may be unavailable or the repo have no PRs — the check must degrade safely (treat as no in-flight PRs, note it in observations) rather than dead-end the planner; (6) keep the change minimal: prompt edit only, no engine/workflow graph changes (direction (a) of the seed; the tracker-side alternative (b) is explicitly out of scope); (7) prompt wording must wrap paths in backticks and follow the existing numbered-step style of the file.",
-              "response.planner": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.planner",
-                "chars": 2024,
-                "preview": "Claimed `fabro-d0c7`: the develop planner prompt (`/workspace/fabro/.fabro/workflows/develop/prompts/planner.md`) still lacks any open-run-PR awareness, so the seed's basis is current and the fix goes"
-              },
-              "last_stage": "planner"
+              "command.output": "blob://sha256/dbc71023adddceff19063088b7146fe9e02647f76831952985b858a3a27794a4"
             },
-            "notes": "Stage completed: planner",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 19566,
-                    "output_tokens": 857,
-                    "reasoning_tokens": 161,
-                    "cache_read_tokens": 100288,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 57938
-            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 35987,
-              "tool_time_ms": 1446,
-              "active_time_ms": 37433
+              "inference_time_ms": 0,
+              "tool_time_ms": 290,
+              "active_time_ms": 290
             }
           },
           "evidence": {
@@ -1990,50 +1968,191 @@
               "active_time_ms": 370
             }
           },
-          "tester": {
+          "implementer": {
             "status": "succeeded",
+            "preferred_label": "Implemented",
             "context_updates": {
-              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+              "last_response": "Done. Only `.fabro/workflows/develop/prompts/planner.md` changed (+5/−4): new step 4 \"IN-FLIGHT PR CHECK\" before the claim, fast-path clause in step 1, subsequent steps renumbered (this also fixed t",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2574,
+                "preview": "Done. Only `.fabro/workflows/develop/prompts/planner.md` changed (+5/−4): new step 4 \"IN-FLIGHT PR CHECK\" before the claim, fast-path clause in step 1, subsequent steps renumbered (this also fixed t"
+              },
+              "implementation_summary": "Edited `.fabro/workflows/develop/prompts/planner.md` only: added numbered step 4 (IN-FLIGHT PR CHECK) between candidate selection (step 3, stale-basis) and the claim (`sd update`, now step 5), renumbered brief/contradiction steps to 6/7 (incidentally fixing the file's pre-existing duplicate '4.' numbering), and extended the step-1 fast-path so a named seed with an open run-PR is skipped with the same journal line and falls through to `sd ready`. All commands and paths in the new text are backticked, matching file style. Lesson capture: nothing durable — skipped (a spec-driven prompt edit; the skip-vs-park pattern is already captured by the seed itself). Per-criterion verification: - PASS planner step after candidate selection, before `sd update`, runs `gh pr list --state open` and skips candidates matching an open run-linked PR: `.fabro/workflows/develop/prompts/planner.md` step 4 (grep-verified line 36). - PASS skipped candidates journaled with exact phrase `skipped: in-flight PR <n>`: step 4, phrase present (grep count 2). - PASS skip is not a park, planner continues down the `sd ready` list, still routes Seed claimed / Tracker empty: step 4 wording. - PASS fast-path named-seed flow gets the same check with same journal line, falls through to `sd ready`: step 1 appended sentence (line 33). - PASS degrades safely when `gh` unavailable/errors or no PRs — treated as no in-flight PRs, noted in observations, never dead-ends: step 4 final sentence. - PASS minimal change, prompt edit only, no engine/workflow graph changes: `git status` shows only planner.md, +5/−4. - PASS paths wrapped in backticks, existing numbered-step style followed: new/edited steps 1 and 4.",
+              "lesson_capture": "nothing durable — skipped",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The planner.md numbered list had two steps both numbered '4.' (claim and brief) before this change — the renumber in this pass fixed it incidentally; future prompt edits should keep an eye on list numbering drift in `.fabro/workflows/develop/prompts/planner.md`."
+                ]
+              }
             },
-            "notes": "Script completed: just qualitygate",
-            "usage": null,
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 17394,
+                    "output_tokens": 1475,
+                    "reasoning_tokens": 1408,
+                    "cache_read_tokens": 42752,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 48147
+            },
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 5261,
-              "active_time_ms": 5261
-            }
-          },
-          "closeout": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/dbc71023adddceff19063088b7146fe9e02647f76831952985b858a3a27794a4"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 290,
-              "active_time_ms": 290
+              "inference_time_ms": 43797,
+              "tool_time_ms": 617,
+              "active_time_ms": 44414
             }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "f9abab05ccfbfb0250df2cc7353b65e8a3e851e8",
         "node_visits": {
-          "implementer": 1,
-          "start": 1,
-          "closeout": 1,
-          "tester": 1,
-          "evidence": 1,
           "planner": 1,
+          "tester": 1,
+          "closeout": 1,
+          "implementer": 1,
+          "evidence": 1,
+          "start": 1,
           "reviewer": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1YQD03JZJCGRJ53SNRBTM8P.jsonl b/.fabro/journal/01M1YQD03JZJCGRJ53SNRBTM8P.jsonl\nindex 460fdea..1150bd6 100644\n--- a/.fabro/journal/01M1YQD03JZJCGRJ53SNRBTM8P.jsonl\n+++ b/.fabro/journal/01M1YQD03JZJCGRJ53SNRBTM8P.jsonl\n@@ -4,3 +4,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YQD03JZJCGRJ53SNRBTM8P\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:03:59Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YQD03JZJCGRJ53SNRBTM8P\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:04:04Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YQD03JZJCGRJ53SNRBTM8P\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:04:30Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified planner.md in the worktree against the evidence loop-work diff — byte-identical intent, all 7 acceptance criteria pass. The git stat shows `.fabro/journal/<run>.jsonl +3` beyond the evidence churn list; that is engine journal output written after the evidence capture, not seed work — no action needed, but the evidence churn filter might exclude it explicitly for cleanliness.\",\"The renumbering to steps 5–7 incidentally fixed the file's pre-existing duplicate '4.' numbering (steps 4 and 4 both existed before) — a harmless, in-scope side effect of the insertion.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YQD03JZJCGRJ53SNRBTM8P\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:04:35Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 45f2cb4..b5d1af7 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -253,4 +253,4 @@\n {\"id\":\"fabro-8194\",\"title\":\"Carry the implementer's prior diagnosis into gate-red bounce prompts\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:15.338Z\",\"updatedAt\":\"2026-09-07T19:19:56.855Z\",\"description\":\"In workflow.fabro implementer node, add implementation_summary to preamble_allow_keys (or inject the previous pass's painpoints as a gate_bounce_notes key on the bounce path). In this run implementer@2's prompt excluded the node's own prior outputs, so it re-derived from scratch what implementer@1 had root-caused 90s earlier - 305s inference, 6,997 reasoning tokens, $0.405 (73% of the run's reasoning spend). Different mechanism from open fabro-6a78 (compact fidelity): this is the node allow-key/bounce injection path. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-56db\",\"title\":\"Normalize stale mtimes at qualitygate start until the transport fix ships\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:21.984Z\",\"updatedAt\":\"2026-09-07T19:19:56.962Z\",\"description\":\"In scripts/qualitygate.nu, at start run: find lib -name '*.rs' ! -newermt 2000-01-01 -exec touch {} + and mirror the one-liner in implementer.md step 4, until the fabro-22e4 sandbox transport fix is deployed everywhere. In this run edit_file-written push_credentials.rs carried mtime 1970-01-01 and cargo replayed stale dead-code warnings with wrong line numbers, forcing a manual touch detour; zero-LLM-cost mitigation, complementary to the open root-cause seed fabro-22e4. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-c841\",\"title\":\"Tighten gate-bounce known-bug matching to error signatures\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:22.097Z\",\"updatedAt\":\"2026-09-07T19:19:57.075Z\",\"description\":\"In .fabro/workflows/develop/scripts/gate-bounce.nu, require token overlap with the failure's error code/crate/file path instead of label-level matching, and emit {\\\"hits\\\":[]} when nothing real matches. In this run an E0432 cargo failure falsely matched prompt-refactoring seed fabro-4814, injecting ~1.4 KB of noise into implementer@2's and the reviewer's preambles. New iteration on the shipped fabro-56f4 mechanism (match precision, not match existence). Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-d0c7\",\"title\":\"develop planner: treat seeds with open in-flight run-PRs as taken — duplicate implementation while the gate runs (fabro-22e4 double-pick)\",\"status\":\"in_progress\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T19:07:46.196Z\",\"updatedAt\":\"2026-09-07T20:02:43.675Z\",\"assignee\":\"fabro\",\"description\":\"Incident 2026-09-07 21:0x Berlin: while PR #47 (fabro-22e4, mtime fix) sat OPEN in a running gate, the NEXT pass's develop planner re-claimed fabro-22e4 (seed still open — it closes only at merge) and re-derived the identical fix (planner observation: 'set_mtime in docker.rs build_single_file_tar, the only Header::new_gnu site'); the implementer began duplicating the work and was manually cancelled (~$0.5 burn, no conflicting PR). ROOT CAUSE: the planner's candidate view has no open-run-PR awareness — same gap class as fabro-94e8's survey note for merge children ('a pending/mergeable run PR must suppress new merge children'). FIX DIRECTIONS: (a) planner step: before claiming a seed, run gh pr list (or fabro_runs_list for runs with a non-terminal PR) and skip seeds whose id/title matches an OPEN run-linked PR (journal 'skipped: in-flight PR <n>'); (b) alternatively the fast-path/claim flow consults the seed's linked PR state from the tracker evidence; (c) test: planner prompt change + one develop pass during an open PR for its top seed picks a DIFFERENT seed and journals the skip.\",\"labels\":[\"workflows\",\"revision\"]}\n+{\"id\":\"fabro-d0c7\",\"title\":\"develop planner: treat seeds with open in-flight run-PRs as taken — duplicate implementation while the gate runs (fabro-22e4 double-pick)\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T19:07:46.196Z\",\"updatedAt\":\"2026-09-07T20:04:35.492Z\",\"assignee\":\"fabro\",\"description\":\"Incident 2026-09-07 21:0x Berlin: while PR #47 (fabro-22e4, mtime fix) sat OPEN in a running gate, the NEXT pass's develop planner re-claimed fabro-22e4 (seed still open — it closes only at merge) and re-derived the identical fix (planner observation: 'set_mtime in docker.rs build_single_file_tar, the only Header::new_gnu site'); the implementer began duplicating the work and was manually cancelled (~$0.5 burn, no conflicting PR). ROOT CAUSE: the planner's candidate view has no open-run-PR awareness — same gap class as fabro-94e8's survey note for merge children ('a pending/mergeable run PR must suppress new merge children'). FIX DIRECTIONS: (a) planner step: before claiming a seed, run gh pr list (or fabro_runs_list for runs with a non-terminal PR) and skip seeds whose id/title matches an OPEN run-linked PR (journal 'skipped: in-flight PR <n>'); (b) alternatively the fast-path/claim flow consults the seed's linked PR state from the tracker evidence; (c) test: planner prompt change + one develop pass during an open PR for its top seed picks a DIFFERENT seed and journals the skip.\",\"labels\":[\"workflows\",\"revision\"],\"closedAt\":\"2026-09-07T20:04:35.492Z\"}\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 13,
+          "deletions": 5
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T20:04:40.216242343Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 137401,
+      "inference_time_ms": 97844,
+      "tool_time_ms": 8158,
+      "active_time_ms": 106002
+    },
+    "final_git_commit_sha": "f9abab05ccfbfb0250df2cc7353b65e8a3e851e8",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 37953,
+          "inference_time_ms": 35987,
+          "tool_time_ms": 1446,
+          "active_time_ms": 37433
+        },
+        "billing_usd_micros": 57938,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 44915,
+          "inference_time_ms": 43797,
+          "tool_time_ms": 617,
+          "active_time_ms": 44414
+        },
+        "billing_usd_micros": 48147,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 5266,
+          "inference_time_ms": 0,
+          "tool_time_ms": 5261,
+          "active_time_ms": 5261
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 376,
+          "inference_time_ms": 0,
+          "tool_time_ms": 370,
+          "active_time_ms": 370
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 18756,
+          "inference_time_ms": 18060,
+          "tool_time_ms": 174,
+          "active_time_ms": 18234
+        },
+        "billing_usd_micros": 30728,
+        "retries": 0
+      },
+      {
+        "stage_id": "closeout",
+        "stage_label": "closeout",
+        "timing": {
+          "wall_time_ms": 298,
+          "inference_time_ms": 0,
+          "tool_time_ms": 290,
+          "active_time_ms": 290
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 53182,
+      "output_tokens": 3034,
+      "total_tokens": 214772,
+      "reasoning_tokens": 1884,
+      "cache_read_tokens": 156672,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 136813
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1YQD03JZJCGRJ53SNRBTM8P.jsonl b/.fabro/journal/01M1YQD03JZJCGRJ53SNRBTM8P.jsonl\nnew file mode 100644\nindex 0000000..1150bd6\n--- /dev/null\n+++ b/.fabro/journal/01M1YQD03JZJCGRJ53SNRBTM8P.jsonl\n@@ -0,0 +1,7 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YQD03JZJCGRJ53SNRBTM8P\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:02:11Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YQD03JZJCGRJ53SNRBTM8P\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:02:53Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YQD03JZJCGRJ53SNRBTM8P\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:03:49Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The planner.md numbered list had two steps both numbered '4.' (claim and brief) before this change — the renumber in this pass fixed it incidentally; future prompt edits should keep an eye on list numbering drift in `.fabro/workflows/develop/prompts/planner.md`.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YQD03JZJCGRJ53SNRBTM8P\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:03:59Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YQD03JZJCGRJ53SNRBTM8P\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:04:04Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YQD03JZJCGRJ53SNRBTM8P\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:04:30Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified planner.md in the worktree against the evidence loop-work diff — byte-identical intent, all 7 acceptance criteria pass. The git stat shows `.fabro/journal/<run>.jsonl +3` beyond the evidence churn list; that is engine journal output written after the evidence capture, not seed work — no action needed, but the evidence churn filter might exclude it explicitly for cleanliness.\",\"The renumbering to steps 5–7 incidentally fixed the file's pre-existing duplicate '4.' numbering (steps 4 and 4 both existed before) — a harmless, in-scope side effect of the insertion.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YQD03JZJCGRJ53SNRBTM8P\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:04:35Z\",\"data\":{}}\ndiff --git a/.fabro/workflows/develop/prompts/planner.md b/.fabro/workflows/develop/prompts/planner.md\nindex d9d91ea..54e00e0 100644\n--- a/.fabro/workflows/develop/prompts/planner.md\n+++ b/.fabro/workflows/develop/prompts/planner.md\n@@ -30,16 +30,17 @@ The engine maintains `seed_cycles` deterministically: `{ node -> completed visit\n \n ## Plan the next seed\n \n-1. FAST-PATH: first check the `<goal>` text for a seed id (e.g. fabro-37a6). When one is named, the FIRST tracker call is `sd show <id> --format json`, not `sd ready`; judge resolution from the JSON `success` field / issue body, NOT the process exit code (seeds-cli exits 0 on errors, fabro-d936). A named seed is honored ONLY when its JSON `assignee` is exactly `fabro` AND it is open and unblocked — continue at step 2 with it. A named-but-unassigned seed, one assigned to someone else, one that does not resolve, or one that cannot be claimed (closed or blocked) must NOT be claimed: fall through and run `sd ready --assignee fabro --limit 200` to list unblocked fabro-assigned seeds; `sd list --format json --assignee fabro --limit 200` for the full picture if needed (do NOT also run `sd list` when `sd ready` suffices). The user naming a seed in the goal is a request, not an override of their ownership decision — if they wanted the line to take it, they would have assigned it to fabro.\n+1. FAST-PATH: first check the `<goal>` text for a seed id (e.g. fabro-37a6). When one is named, the FIRST tracker call is `sd show <id> --format json`, not `sd ready`; judge resolution from the JSON `success` field / issue body, NOT the process exit code (seeds-cli exits 0 on errors, fabro-d936). A named seed is honored ONLY when its JSON `assignee` is exactly `fabro` AND it is open and unblocked — continue at step 2 with it. A named-but-unassigned seed, one assigned to someone else, one that does not resolve, or one that cannot be claimed (closed or blocked) must NOT be claimed: fall through and run `sd ready --assignee fabro --limit 200` to list unblocked fabro-assigned seeds; `sd list --format json --assignee fabro --limit 200` for the full picture if needed (do NOT also run `sd list` when `sd ready` suffices). The user naming a seed in the goal is a request, not an override of their ownership decision — if they wanted the line to take it, they would have assigned it to fabro. A named seed that matches an OPEN run-linked PR is equally untouchable (see the IN-FLIGHT PR CHECK at step 4): skip it, journal `skipped: in-flight PR <n>`, and fall through to `sd ready --assignee fabro --limit 200`.\n 2. Pick the highest-priority unblocked seed that serves the goal. If two compete, prefer the one with fewest blockers.\n 3. STALE-BASIS CHECK (ADR-0015): before claiming, read the seed body for its `Basis:` line (source run id, workflow version, repo commit). Open the referenced files/prompts in the CURRENT worktree: if the behavior the seed describes no longer exists, already changed, or the finding is moot against the current tree, the seed is superseded — close it with `sd close <id> --reason \"superseded: basis stale (<what changed>)\"` and pick the next candidate. Never implement a seed whose basis does not resolve. When a seed's `Basis:` references platform paths (`.fabro/**` etc.), open them through the shell — fs_hide binds tool calls only, so read_file fails while sed/grep/cat succeed; never burn tool calls discovering the denial. Seeds without a Basis line are legacy (pre-2026-09-05): judge them the same way against the current tree before claiming.\n-4. Claim it: `sd update <id> --status in_progress --assignee fabro`.\n-4. Write the implementation brief into the context as BULLETED acceptance criteria, not prose: seed id, title, then one bullet per requirement, plus review feedback if this is a re-plan. Bullets are cheaper to re-read, harder to misparse, and the reviewer and the implementer's PASS/FAIL report check them item-by-item. Shape each bullet as a checkable statement, e.g.:\n+4. IN-FLIGHT PR CHECK: after selecting the candidate and BEFORE the claim, run `gh pr list --state open` (or an equivalent open-PR view). Skip any top candidate whose seed id or title matches an OPEN run-linked PR — a seed whose PR is sitting in the gate is already taken (fabro-22e4 double-pick: the identical fix was re-implemented while PR #47 waited in gate). For each skipped candidate, add a journal line (painpoints or observations) containing the exact phrase `skipped: in-flight PR <n>` so the skip is auditable. A skip is not a park: continue down the `sd ready --assignee fabro --limit 200` candidate list to the next unblocked seed and claim that one — the run still routes Seed claimed (or Tracker empty if nothing remains). If `gh` is unavailable, errors, or the repo has no PRs, degrade safely: treat the result as no in-flight PRs, note that in observations, and proceed — never dead-end the planner on this check.\n+5. Claim it: `sd update <id> --status in_progress --assignee fabro`.\n+6. Write the implementation brief into the context as BULLETED acceptance criteria, not prose: seed id, title, then one bullet per requirement, plus review feedback if this is a re-plan. Bullets are cheaper to re-read, harder to misparse, and the reviewer and the implementer's PASS/FAIL report check them item-by-item. Shape each bullet as a checkable statement, e.g.:\n \n    - `-pretty flag: aligned column output, combines with -json`\n    - `-n flag: default 100, rejects values < 1 with non-zero exit`\n    - `tests: table-driven, cover flag combinations`\n-5. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong.\n+7. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong.\n \n If the top candidate looks already implemented (its acceptance criteria appear satisfied in the worktree — often a stale tracker from an earlier run), do NOT close it yourself and do NOT skip it. Claim it normally and mark the brief as verification-only (see below). The normal cycle then proves it: implementer verifies, gate runs, reviewer approves. Only an approved review closes a seed.\n \ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 7b94de4..b5d1af7 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -253,4 +253,4 @@\n {\"id\":\"fabro-8194\",\"title\":\"Carry the implementer's prior diagnosis into gate-red bounce prompts\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:15.338Z\",\"updatedAt\":\"2026-09-07T19:19:56.855Z\",\"description\":\"In workflow.fabro implementer node, add implementation_summary to preamble_allow_keys (or inject the previous pass's painpoints as a gate_bounce_notes key on the bounce path). In this run implementer@2's prompt excluded the node's own prior outputs, so it re-derived from scratch what implementer@1 had root-caused 90s earlier - 305s inference, 6,997 reasoning tokens, $0.405 (73% of the run's reasoning spend). Different mechanism from open fabro-6a78 (compact fidelity): this is the node allow-key/bounce injection path. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-56db\",\"title\":\"Normalize stale mtimes at qualitygate start until the transport fix ships\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:21.984Z\",\"updatedAt\":\"2026-09-07T19:19:56.962Z\",\"description\":\"In scripts/qualitygate.nu, at start run: find lib -name '*.rs' ! -newermt 2000-01-01 -exec touch {} + and mirror the one-liner in implementer.md step 4, until the fabro-22e4 sandbox transport fix is deployed everywhere. In this run edit_file-written push_credentials.rs carried mtime 1970-01-01 and cargo replayed stale dead-code warnings with wrong line numbers, forcing a manual touch detour; zero-LLM-cost mitigation, complementary to the open root-cause seed fabro-22e4. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-c841\",\"title\":\"Tighten gate-bounce known-bug matching to error signatures\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:22.097Z\",\"updatedAt\":\"2026-09-07T19:19:57.075Z\",\"description\":\"In .fabro/workflows/develop/scripts/gate-bounce.nu, require token overlap with the failure's error code/crate/file path instead of label-level matching, and emit {\\\"hits\\\":[]} when nothing real matches. In this run an E0432 cargo failure falsely matched prompt-refactoring seed fabro-4814, injecting ~1.4 KB of noise into implementer@2's and the reviewer's preambles. New iteration on the shipped fabro-56f4 mechanism (match precision, not match existence). Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-d0c7\",\"title\":\"develop planner: treat seeds with open in-flight run-PRs as taken — duplicate implementation while the gate runs (fabro-22e4 double-pick)\",\"status\":\"open\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T19:07:46.196Z\",\"updatedAt\":\"2026-09-07T19:07:46.196Z\",\"assignee\":\"fabro\",\"description\":\"Incident 2026-09-07 21:0x Berlin: while PR #47 (fabro-22e4, mtime fix) sat OPEN in a running gate, the NEXT pass's develop planner re-claimed fabro-22e4 (seed still open — it closes only at merge) and re-derived the identical fix (planner observation: 'set_mtime in docker.rs build_single_file_tar, the only Header::new_gnu site'); the implementer began duplicating the work and was manually cancelled (~$0.5 burn, no conflicting PR). ROOT CAUSE: the planner's candidate view has no open-run-PR awareness — same gap class as fabro-94e8's survey note for merge children ('a pending/mergeable run PR must suppress new merge children'). FIX DIRECTIONS: (a) planner step: before claiming a seed, run gh pr list (or fabro_runs_list for runs with a non-terminal PR) and skip seeds whose id/title matches an OPEN run-linked PR (journal 'skipped: in-flight PR <n>'); (b) alternatively the fast-path/claim flow consults the seed's linked PR state from the tracker evidence; (c) test: planner prompt change + one develop pass during an open PR for its top seed picks a DIFFERENT seed and journals the skip.\",\"labels\":[\"workflows\",\"revision\"]}\n+{\"id\":\"fabro-d0c7\",\"title\":\"develop planner: treat seeds with open in-flight run-PRs as taken — duplicate implementation while the gate runs (fabro-22e4 double-pick)\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T19:07:46.196Z\",\"updatedAt\":\"2026-09-07T20:04:35.492Z\",\"assignee\":\"fabro\",\"description\":\"Incident 2026-09-07 21:0x Berlin: while PR #47 (fabro-22e4, mtime fix) sat OPEN in a running gate, the NEXT pass's develop planner re-claimed fabro-22e4 (seed still open — it closes only at merge) and re-derived the identical fix (planner observation: 'set_mtime in docker.rs build_single_file_tar, the only Header::new_gnu site'); the implementer began duplicating the work and was manually cancelled (~$0.5 burn, no conflicting PR). ROOT CAUSE: the planner's candidate view has no open-run-PR awareness — same gap class as fabro-94e8's survey note for merge children ('a pending/mergeable run PR must suppress new merge children'). FIX DIRECTIONS: (a) planner step: before claiming a seed, run gh pr list (or fabro_runs_list for runs with a non-terminal PR) and skip seeds whose id/title matches an OPEN run-linked PR (journal 'skipped: in-flight PR <n>'); (b) alternatively the fast-path/claim flow consults the seed's linked PR state from the tracker evidence; (c) test: planner prompt change + one develop pass during an open PR for its top seed picks a DIFFERENT seed and journals the skip.\",\"labels\":[\"workflows\",\"revision\"],\"closedAt\":\"2026-09-07T20:04:35.492Z\"}\n",
+      "summary": {
+        "files_changed": 3,
+        "additions": 13,
+        "deletions": 5
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2084,57 +2203,6 @@
         "inference_time_ms": 0,
         "tool_time_ms": 0,
         "active_time_ms": 0
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "evidence@1": {
-      "first_event_seq": 131,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-        "failure_reason": null,
-        "timestamp": "2026-09-07T20:04:04.073113384Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
-        "language": "shell",
-        "timeout_ms": 120000
-      },
-      "script_timing": {
-        "output": "blob://sha256/5ff19ebbace4231d83efd3e4903ff5cde74758cd06018e6f226cea444e9b5881",
-        "exit_code": 0,
-        "duration_ms": 370,
-        "termination": "exited",
-        "output_bytes": 9058,
-        "live_streaming": true
-      },
-      "parallel_results": null,
-      "output": null,
-      "output_bytes": 9058,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-07T20:04:03.683723340Z",
-      "handler": "command",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 376,
-        "inference_time_ms": 0,
-        "tool_time_ms": 370,
-        "active_time_ms": 370
       },
       "usage": {
         "input_tokens": 0,
@@ -2384,6 +2452,108 @@
       "agent_control": "running",
       "state": "succeeded"
     },
+    "evidence@1": {
+      "first_event_seq": 131,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T20:04:04.073113384Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/5ff19ebbace4231d83efd3e4903ff5cde74758cd06018e6f226cea444e9b5881",
+        "exit_code": 0,
+        "duration_ms": 370,
+        "termination": "exited",
+        "output_bytes": 9058,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 9058,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-07T20:04:03.683723340Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 376,
+        "inference_time_ms": 0,
+        "tool_time_ms": 370,
+        "active_time_ms": 370
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "closeout@1": {
+      "first_event_seq": 170,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T20:04:35.569479755Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/dbc71023adddceff19063088b7146fe9e02647f76831952985b858a3a27794a4",
+        "exit_code": 0,
+        "duration_ms": 290,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-07T20:04:35.258560064Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 298,
+        "inference_time_ms": 0,
+        "tool_time_ms": 290,
+        "active_time_ms": 290
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "planner@1": {
       "first_event_seq": 21,
       "prompt": null,
@@ -2598,45 +2768,30 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "closeout@1": {
-      "first_event_seq": 170,
+    "exit@1": {
+      "first_event_seq": 180,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "notes": null,
         "failure_reason": null,
-        "timestamp": "2026-09-07T20:04:35.569479755Z"
+        "timestamp": "2026-09-07T20:04:40.152704778Z"
       },
       "provider_used": null,
       "diff": null,
-      "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
-        "language": "shell",
-        "timeout_ms": 60000
-      },
-      "script_timing": {
-        "output": "blob://sha256/dbc71023adddceff19063088b7146fe9e02647f76831952985b858a3a27794a4",
-        "exit_code": 0,
-        "duration_ms": 290,
-        "termination": "exited",
-        "output_bytes": 58,
-        "live_streaming": true
-      },
+      "script_invocation": null,
+      "script_timing": null,
       "parallel_results": null,
       "output": null,
-      "output_bytes": 58,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-07T20:04:35.258560064Z",
-      "handler": "command",
+      "started_at": "2026-09-07T20:04:40.152679110Z",
+      "handler": "exit",
       "graph_visit": 1,
       "timing": {
-        "wall_time_ms": 298,
+        "wall_time_ms": 0,
         "inference_time_ms": 0,
-        "tool_time_ms": 290,
-        "active_time_ms": 290
+        "tool_time_ms": 0,
+        "active_time_ms": 0
       },
       "usage": {
         "input_tokens": 0,
