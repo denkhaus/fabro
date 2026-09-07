@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1YZW7ZP5CJGX9D61SNS372R.jsonl b/.fabro/journal/01M1YZW7ZP5CJGX9D61SNS372R.jsonl
+new file mode 100644
+index 000000000..3ee64a693
+--- /dev/null
++++ b/.fabro/journal/01M1YZW7ZP5CJGX9D61SNS372R.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1YZW7ZP5CJGX9D61SNS372R","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T22:30:18Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YZW7ZP5CJGX9D61SNS372R","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-07T22:32:31Z","data":["upstream count: 0 (origin/denkhaus..upstream/main after fetch of both remotes); no newest upstream subject — zero drift, threshold of 5 not met, so route Work","revisor backlog: 01M1XCHJTDBJKZ31VFMY1KD61Q, 01M1Y12A93HSB4VDZN55HZYNYS, 01M1Y2SMEVDHAFB59GZV9B84CQ, 01M1Y852BN91NSVSHFWNWTW5ST, 01M1Y9N7R47JPR49CYXP8BQYC3, 01M1YBBXR99PNME6Y8ZED4Y2NN (develop runs with no revisor pass sharing their parent_id; newest revisable is 01M1YBBXR99PNME6Y8ZED4Y2NN)","backfill caveat: signal is parent_id linkage; the revisor actually selects via Ask-Fabro newest-unrevised logic, so a backlog entry could in principle have been revised without a matching-parent run — listing is best-effort","nothing hurt: git fetch of both remotes and fabro_runs_list of develop (70 runs) and revisor (21 runs) all succeeded"]}
