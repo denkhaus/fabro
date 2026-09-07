@@ -1,0 +1,513 @@
+diff --git a/.fabro/journal/01M1Y2SMEVDHAFB59GZV9B84CQ.jsonl b/.fabro/journal/01M1Y2SMEVDHAFB59GZV9B84CQ.jsonl
+index bf7da91..f032ffe 100644
+--- a/.fabro/journal/01M1Y2SMEVDHAFB59GZV9B84CQ.jsonl
++++ b/.fabro/journal/01M1Y2SMEVDHAFB59GZV9B84CQ.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1Y2SMEVDHAFB59GZV9B84CQ","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T14:02:03Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1Y2SMEVDHAFB59GZV9B84CQ","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-07T14:02:51Z","data":{"painpoints":[],"observations":["fabro-513e was top of 152 ready seeds; sd ready worked fine with --limit 200","Basis line verified: run 01M1XVXF3MJHD0DXVCA7YXDH9G, justfile and fabro-validate/src/rules/unresolved_file_ref.rs both present in current tree"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Y2SMEVDHAFB59GZV9B84CQ","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-07T14:34:14Z","data":{"painpoints":[{"text":"Edit-tool file writes landed with mtime 1970-01-01 (e.g. lib/components/fabro-validate/src/file_refs.rs in run 01M1Y2SMEVDHAFB59GZV9B84CQ), so cargo considered sources older than cached rlibs and silently skipped recompiles — a just-added pub fn was reported missing and behavior lagged edits until manual `touch`. Fix idea: the platform's file-write path should set a real mtime (or utime after write); agents should `touch` after edit_file when Rust builds seem implausibly stale."}],"observations":["Raw-graph standalone linting cannot be a pure rules pass: two runtime transforms run before lint rules — @-file inlining (prompt/goal) and model_stylesheet MiniJinja rendering. The wrapper preprocesses both (file_refs.rs); any future pre-render pipeline transform needs a matching step there or the fast gate false-positives (found via code-review.fabro, whose templated stylesheet would otherwise fail).","nu gotchas hit: `graph(s)` in a double-quoted string interpolates `(s)` as a subexpression, and a command call inside a list literal (`[graph_from_toml $toml]`) becomes two bare list items — needs `[(graph_from_toml $toml)]`."]}}
+diff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl
+index ae98f73..e88b2f3 100644
+--- a/.mulch/expertise/engine.jsonl
++++ b/.mulch/expertise/engine.jsonl
+@@ -33,3 +33,5 @@
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-07T07:44:19.123Z","evidence":{"commit":"88f072b4"},"description":"Run-stage scripts invoking mise-wrapped commands (just qualitygate, sd) fail with 'Config files in /repos/denkhaus/fabro/.mise.toml are not trusted' whenever the sandbox/home is recycled or .mise.toml changes, killing the whole stage before any code runs (run 01M1XCHJTDBJKZ31VFMY1KD61Q tester stage).","resolution":"Immediate: 'mise trust /repos/denkhaus/fabro/.mise.toml' once per environment (done this session). Durable: stage bootstrap or justfile entry should export MISE_YES=1 or pre-trust before invoking mise-dependent recipes.","id":"mx-39bda9"}
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-07T07:50:19.874Z","evidence":{"commit":"bfd8eee21e22d04b41b72e6e0fbe4ee7464946a6"},"name":"autonomous-run-failure-triage","description":"autonomous-run failure triage: 'fabro ps -a --json' (full ULIDs) + run-detail API gives lifecycle.status.reason (soft_stop / cancelled / workflow_error / stall watchdog); the authoritative per-run evidence is the engine log inside the deployed server container: docker exec fabro-fabro-1 cat /storage/scratch/<YYYYMMDD>-<runid>/runtime/server.log — grep for 'ERROR|Workflow run failed|watchdog|cancel'. API needs auth: bearer token from ~/.fabro/auth.json servers entry (dev-token). Stage-journal jsonl in .fabro/journal/ lags until the run's PR merges, so server.log is the live source. Validated 2026-09-07: root-caused 11 failed passes (stall watchdog vs blocking fabro_run_wait, zai 5h quota soft-stop, pass-guard cancels) in minutes.","files":[".seeds/issues.jsonl"],"id":"mx-cbd50e"}
+ {"type":"decision","classification":"tactical","recorded_at":"2026-09-07T08:30:51.755Z","evidence":{"commit":"bfd8eee21e22d04b41b72e6e0fbe4ee7464946a6"},"relates_to":["mx-87c249"],"title":"engine stays tool-agnostic about project-scope tooling","rationale":"User decision 2026-09-07 (fabro session, grill on fabro-66db): mise and any other project-scope tool exists only in the project's own artifacts; the fabro engine (sandbox providers, workflow engine, server, CLI) must stay tool-agnostic. A first fix that ran 'mise trust' inside docker.rs/daytona providers was reverted unmerged - layering violation. Project tooling bootstrap lives in project artifacts: .fabro/Dockerfile.toolchain (ENV MISE_TRUSTED_CONFIG_PATHS=/repos/*/*/.mise.toml - trust-by-glob, content-independent, verified in mise 2026.8.10), server environment env config, or workflow hooks. The engine's stable contract for bootstrap purposes is the clone layout /repos/<owner>/<repo> + /workspace/<repo> symlink. Full decision: ADR-0017 docs/lab/adr/0017-engine-stays-tool-agnostic-about-project-scope-tooling.md. Rule also anchored in AGENTS.md (sandbox section) and the iterate skill standing rules.","id":"mx-77d073"}
++{"type":"failure","classification":"tactical","recorded_at":"2026-09-07T14:32:34.243Z","evidence":{"commit":"8287d73911db242d75e4134cb326035fe4a9a0e9"},"description":"Edit-tool writes can land with epoch-0 (1970-01-01) mtimes; cargo then considers the source older than cached artifacts and silently skips recompiles, so binary behavior lags source edits (hit while iterating the fabro-validate bin in run 01M1Y2SMEVDHAFB59GZV9B84CQ: import of a just-added pub fn failed until manually touching the file). After surprising stale-behavior, touch the edited .rs files before rebuilding.","resolution":"Touch edited source files before rebuild when a just-added symbol is reported missing or behavior seems stale.","id":"mx-ee9245"}
++{"type":"pattern","classification":"tactical","recorded_at":"2026-09-07T14:32:51.757Z","evidence":{"seeds":"fabro-513e","commit":"8287d73911db242d75e4134cb326035fe4a9a0e9"},"name":"standalone-graph-lint-preprocessing","description":"Standalone workflow-graph linting (scripts/validate-workflows.nu + fabro-validate bin, seed fabro-513e): raw graphs must be preprocessed exactly like the runtime pipeline before lint rules run — resolve @-prefixed prompt/goal refs against the graph dir (missing files left for unresolved_file_ref) and blank template-syntax model_stylesheet (runtime renders it before stylesheet_syntax; raw MiniJinja source is unlintable). Any new pre-render transform added to the pipeline needs a matching preprocessing step here or the standalone gate false-positives.","files":[".mulch/expertise/engine.jsonl","Cargo.lock","justfile","lib/components/fabro-validate/Cargo.toml","lib/components/fabro-validate/src/lib.rs","lib/components/fabro-validate/src/rules/mod.rs","lib/components/fabro-validate/src/rules/unresolved_file_ref.rs"],"id":"mx-8562ab"}
+diff --git a/Cargo.lock b/Cargo.lock
+index 32aebf4..efde46e 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -3344,6 +3344,7 @@ dependencies = [
+  "fabro-workflow",
+  "serde",
+  "strum 0.28.0",
++ "tempfile",
+  "thiserror 2.0.18",
+  "toml 0.8.23",
+ ]
+diff --git a/justfile b/justfile
+index c1d714d..44fe6e8 100644
+--- a/justfile
++++ b/justfile
+@@ -157,3 +157,17 @@ run *args:
+ cycle *args:
+     nu scripts/run_workflow.nu develop {{ args }}
+     nu scripts/run_workflow.nu revisor
++
++# Validate workflow graphs (graph-only lint) without the ~7 min Rust
++# test-harness cold build: builds just the fabro-validate binary (small
++# dep subset) and runs the built-in lint rules on every
++# .fabro/workflows/*/workflow.fabro graph. Workflow-relative @-file refs
++# are resolved before the unresolved_file_ref rule runs, so existing refs
++# pass and genuinely missing ones still fail. Optional target: workflow
++# name, workflow dir, workflow.toml path, or graph path.
++#
++# Examples:
++#   just validate-workflows
++#   just validate-workflows develop
++validate-workflows target="":
++    nu scripts/validate-workflows.nu {{ if target == "" { "" } else { target } }}
+diff --git a/lib/components/fabro-validate/Cargo.toml b/lib/components/fabro-validate/Cargo.toml
+index 47d90fe..51176bd 100644
+--- a/lib/components/fabro-validate/Cargo.toml
++++ b/lib/components/fabro-validate/Cargo.toml
+@@ -26,4 +26,5 @@ fabro-agent = { path = "../fabro-agent" }
+ fabro-workflow = { path = "../fabro-workflow" }
+ strum = { workspace = true }
+ fabro-tool = { path = "../fabro-tool" }
++tempfile = "3"
+ toml = { workspace = true }
+diff --git a/lib/components/fabro-validate/src/bin/fabro-validate.rs b/lib/components/fabro-validate/src/bin/fabro-validate.rs
+new file mode 100644
+index 0000000..c233128
+--- /dev/null
++++ b/lib/components/fabro-validate/src/bin/fabro-validate.rs
+@@ -0,0 +1,99 @@
++//! Standalone workflow-graph validator.
++//!
++//! Parses one or more Graphviz workflow graphs, resolves workflow-relative
++//! `@`-file references against each graph's directory (see
++//! [`fabro_validate::file_refs`]), and runs the built-in lint rules without
++//! building the full CLI or any Rust test harness. This is the engine behind
++//! `just validate-workflows`.
++//!
++//! Exit status is non-zero when any Error-severity diagnostic is produced.
++
++#![allow(
++    clippy::print_stdout,
++    reason = "CLI validator prints its report to stdout by design."
++)]
++#![allow(
++    clippy::print_stderr,
++    reason = "CLI validator prints diagnostics to stderr by design."
++)]
++#![allow(
++    clippy::exit,
++    reason = "The CLI exits explicitly with the computed process status."
++)]
++
++use std::path::Path;
++
++use fabro_graphviz::parser;
++use fabro_validate::file_refs::{resolve_file_refs, strip_templated_stylesheet};
++use fabro_validate::{Diagnostic, Severity, validate};
++
++#[expect(
++    clippy::disallowed_methods,
++    reason = "sync CLI validator reads graph files synchronously"
++)]
++fn validate_graph_file(path: &Path) -> Result<bool, String> {
++    let source = std::fs::read_to_string(path)
++        .map_err(|err| format!("{}: failed to read: {err}", path.display()))?;
++    let mut graph = parser::parse(&source)
++        .map_err(|err| format!("{}: failed to parse: {err}", path.display()))?;
++    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
++    resolve_file_refs(&mut graph, base_dir);
++    strip_templated_stylesheet(&mut graph);
++    let diagnostics = validate(&graph, &[]);
++    let ok = print_diagnostics(path, &diagnostics);
++    Ok(ok)
++}
++
++fn print_diagnostics(path: &Path, diagnostics: &[Diagnostic]) -> bool {
++    let mut ok = true;
++    for d in diagnostics {
++        let severity = match d.severity {
++            Severity::Error => {
++                ok = false;
++                "error"
++            }
++            Severity::Warning => "warning",
++            Severity::Info => "info",
++        };
++        let location = d
++            .node_id
++            .as_deref()
++            .map(|node| format!(" node {node}"))
++            .unwrap_or_default();
++        eprintln!("{severity}: {}{location}: {}", d.rule, d.message);
++        if let Some(fix) = &d.fix {
++            eprintln!("  help: {fix}");
++        }
++    }
++    let status = if ok { "OK" } else { "FAILED" };
++    println!(
++        "{}: {status} ({} diagnostics)",
++        path.display(),
++        diagnostics.len()
++    );
++    ok
++}
++
++fn main() {
++    let paths: Vec<std::path::PathBuf> = std::env::args()
++        .skip(1)
++        .map(std::path::PathBuf::from)
++        .collect();
++    if paths.is_empty() {
++        eprintln!("usage: fabro-validate <graph.fabro> [...]");
++        std::process::exit(2);
++    }
++    let mut ok = true;
++    for path in &paths {
++        match validate_graph_file(path) {
++            Ok(graph_ok) => ok &= graph_ok,
++            Err(err) => {
++                eprintln!("error: {err}");
++                ok = false;
++            }
++        }
++    }
++    if !ok {
++        std::process::exit(1);
++    }
++}
+diff --git a/lib/components/fabro-validate/src/file_refs.rs b/lib/components/fabro-validate/src/file_refs.rs
+new file mode 100644
+index 0000000..75497eb
+--- /dev/null
++++ b/lib/components/fabro-validate/src/file_refs.rs
+@@ -0,0 +1,221 @@
++//! Resolve workflow-relative `@`-file references before lint rules run.
++//!
++//! The `unresolved_file_ref` rule treats any `@`-prefixed `prompt` or `goal`
++//! as an error because the runtime pipeline normally inlines those files
++//! before validation. Standalone graph validation (the `fabro-validate`
++//! binary behind `just validate-workflows`) does have a real base directory —
++//! the graph file's directory — so it inlines referenced files here first,
++//! mirroring the runtime's file-inlining approach. References whose file does
++//! not exist are left untouched so `unresolved_file_ref` still reports them:
++//! resolution narrows the rule to genuinely broken references instead of
++//! scoping the rule out wholesale.
++//!
++//! The runtime also renders templated `model_stylesheet` sources before the
++//! `stylesheet_syntax` rule runs; standalone validation cannot render them,
++//! so [`strip_templated_stylesheet`] blanks them instead of false-positiving
++//! on template syntax.
++
++use std::path::Path;
++
++use fabro_graphviz::graph::{AttrValue, Graph};
++
++/// Node attributes whose `@`-prefixed values are file references covered by
++/// the `unresolved_file_ref` rule.
++const NODE_REF_ATTRS: [&str; 1] = ["prompt"];
++
++/// Graph attributes whose `@`-prefixed values are file references covered by
++/// the `unresolved_file_ref` rule.
++const GRAPH_REF_ATTRS: [&str; 1] = ["goal"];
++
++#[expect(
++    clippy::disallowed_methods,
++    reason = "sync CLI linter inlines small prompt/goal files synchronously"
++)]
++fn inline_ref(value: &mut String, base_dir: &Path) {
++    let Some(reference) = value.strip_prefix('@') else {
++        return;
++    };
++    let path = base_dir.join(reference);
++    if let Ok(contents) = std::fs::read_to_string(&path) {
++        *value = contents;
++    }
++    // A missing file keeps the `@` reference so `unresolved_file_ref`
++    // reports it instead of silently suppressing the error.
++}
++
++/// Inline every resolvable `@`-file reference in `graph` relative to
++/// `base_dir`, leaving unresolvable references for `unresolved_file_ref`.
++pub fn resolve_file_refs(graph: &mut Graph, base_dir: &Path) {
++    for attr in GRAPH_REF_ATTRS {
++        if let Some(AttrValue::String(value)) = graph.attrs.get_mut(attr) {
++            inline_ref(value, base_dir);
++        }
++    }
++    for node in graph.nodes.values_mut() {
++        for attr in NODE_REF_ATTRS {
++            if let Some(AttrValue::String(value)) = node.attrs.get_mut(attr) {
++                inline_ref(value, base_dir);
++            }
++        }
++    }
++}
++
++/// Blank a `model_stylesheet` whose source contains template syntax.
++///
++/// The runtime renders the stylesheet (MiniJinja, `inputs`/`vars`) before the
++/// `stylesheet_syntax` rule runs. Raw template source is not valid stylesheet
++/// syntax and cannot be rendered without a run context, so standalone
++/// validation blanks templated stylesheets instead of false-positive
++/// linting them; the rendered form is still validated at run creation.
++/// Template-free stylesheets are kept and linted as-is.
++pub fn strip_templated_stylesheet(graph: &mut Graph) {
++    if let Some(AttrValue::String(stylesheet)) = graph.attrs.get_mut("model_stylesheet") {
++        if stylesheet.contains("{{") || stylesheet.contains("{%") {
++            stylesheet.clear();
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use std::path::Path;
++
++    use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
++
++    use super::{resolve_file_refs, strip_templated_stylesheet};
++    use crate::Severity;
++    use crate::rules::test_support::minimal_graph;
++    use crate::rules::unresolved_file_ref;
++
++    fn graph_with_prompt(prompt: &str) -> Graph {
++        let mut g = minimal_graph();
++        let mut node = Node::new("work");
++        node.attrs
++            .insert("prompt".to_string(), AttrValue::String(prompt.to_string()));
++        g.nodes.insert("work".to_string(), node);
++        g.edges.push(Edge::new("start", "work"));
++        g.edges.push(Edge::new("work", "exit"));
++        g
++    }
++
++    fn unresolved_diagnostics(g: &Graph) -> Vec<String> {
++        unresolved_file_ref::rule_for_tests()
++            .apply(g)
++            .into_iter()
++            .filter(|d| d.severity == Severity::Error)
++            .map(|d| d.message)
++            .collect()
++    }
++
++    #[expect(
++        clippy::disallowed_methods,
++        reason = "unit test creates a temporary prompt file synchronously"
++    )]
++    fn temp_dir_with_prompt(name: &str, contents: &str) -> tempfile::TempDir {
++        let dir = tempfile::tempdir().expect("temp dir");
++        let prompts = dir.path().join("prompts");
++        std::fs::create_dir_all(&prompts).expect("mkdir prompts");
++        std::fs::write(prompts.join(name), contents).expect("write prompt");
++        dir
++    }
++
++    #[test]
++    fn resolves_existing_prompt_ref_relative_to_base_dir() {
++        let base = temp_dir_with_prompt("work.md", "Do the work.");
++        let mut g = graph_with_prompt("@prompts/work.md");
++
++        resolve_file_refs(&mut g, base.path());
++
++        let prompt = g.nodes["work"].attrs["prompt"].as_str().unwrap_or("");
++        assert_eq!(prompt, "Do the work.");
++        assert!(unresolved_diagnostics(&g).is_empty());
++    }
++
++    #[test]
++    fn resolves_existing_goal_ref() {
++        let base = temp_dir_with_prompt("goal.md", "Ship it.");
++        let mut g = minimal_graph();
++        g.attrs.insert(
++            "goal".to_string(),
++            AttrValue::String("@prompts/goal.md".to_string()),
++        );
++
++        resolve_file_refs(&mut g, base.path());
++
++        let goal = g.attrs["goal"].as_str().unwrap_or("");
++        assert_eq!(goal, "Ship it.");
++        assert!(unresolved_diagnostics(&g).is_empty());
++    }
++
++    #[test]
++    fn missing_prompt_ref_still_fails_unresolved_file_ref() {
++        let base = tempfile::tempdir().expect("temp dir");
++        let mut g = graph_with_prompt("@prompts/does-not-exist.md");
++
++        resolve_file_refs(&mut g, base.path());
++
++        assert_eq!(
++            g.nodes["work"].attrs["prompt"].as_str().unwrap_or(""),
++            "@prompts/does-not-exist.md",
++            "missing reference must be left for the rule to report"
++        );
++        let diagnostics = unresolved_diagnostics(&g);
++        assert_eq!(diagnostics.len(), 1);
++        assert!(diagnostics[0].contains("@prompts/does-not-exist.md"));
++    }
++
++    #[test]
++    fn inline_prompt_is_untouched() {
++        let base = temp_dir_with_prompt("work.md", "Do the work.");
++        let mut g = graph_with_prompt("Inline prompt, no file");
++
++        resolve_file_refs(&mut g, base.path());
++
++        assert_eq!(
++            g.nodes["work"].attrs["prompt"].as_str().unwrap_or(""),
++            "Inline prompt, no file"
++        );
++    }
++
++    #[test]
++    fn non_string_attr_values_are_ignored() {
++        let base = Path::new("/nonexistent");
++        let mut g = minimal_graph();
++        g.attrs.insert("goal".to_string(), AttrValue::Integer(7));
++
++        resolve_file_refs(&mut g, base);
++
++        assert_eq!(g.attrs["goal"], AttrValue::Integer(7));
++    }
++
++    #[test]
++    fn templated_stylesheet_is_blanked_for_standalone_lint() {
++        let mut g = minimal_graph();
++        g.attrs.insert(
++            "model_stylesheet".to_string(),
++            AttrValue::String(
++                "{% set tiers = ['low'] %}\n* { reasoning_effort: low; }".to_string(),
++            ),
++        );
++
++        strip_templated_stylesheet(&mut g);
++
++        assert_eq!(g.attrs["model_stylesheet"].as_str().unwrap_or(""), "");
++    }
++
++    #[test]
++    fn literal_stylesheet_is_kept() {
++        let mut g = minimal_graph();
++        g.attrs.insert(
++            "model_stylesheet".to_string(),
++            AttrValue::String("* { reasoning_effort: low; }".to_string()),
++        );
++
++        strip_templated_stylesheet(&mut g);
++
++        assert_eq!(
++            g.attrs["model_stylesheet"].as_str().unwrap_or(""),
++            "* { reasoning_effort: low; }"
++        );
++    }
++}
+diff --git a/lib/components/fabro-validate/src/lib.rs b/lib/components/fabro-validate/src/lib.rs
+index 3747b67..63ee9d4 100644
+--- a/lib/components/fabro-validate/src/lib.rs
++++ b/lib/components/fabro-validate/src/lib.rs
+@@ -1,3 +1,4 @@
++pub mod file_refs;
+ pub mod rules;
+ 
+ use fabro_graphviz::graph::Graph;
+diff --git a/lib/components/fabro-validate/src/rules/mod.rs b/lib/components/fabro-validate/src/rules/mod.rs
+index b971359..42ff685 100644
+--- a/lib/components/fabro-validate/src/rules/mod.rs
++++ b/lib/components/fabro-validate/src/rules/mod.rs
+@@ -46,7 +46,7 @@ pub(crate) mod tool_catalog;
+ mod tools_attribute_known;
+ mod tools_requires_agent_node;
+ mod type_known;
+-mod unresolved_file_ref;
++pub(crate) mod unresolved_file_ref;
+ 
+ use crate::LintRule;
+ 
+diff --git a/lib/components/fabro-validate/src/rules/unresolved_file_ref.rs b/lib/components/fabro-validate/src/rules/unresolved_file_ref.rs
+index c7891fd..d96856e 100644
+--- a/lib/components/fabro-validate/src/rules/unresolved_file_ref.rs
++++ b/lib/components/fabro-validate/src/rules/unresolved_file_ref.rs
+@@ -6,6 +6,13 @@ pub(super) fn rule() -> Box<dyn LintRule> {
+     Box::new(Rule)
+ }
+ 
++/// Test-only accessor so sibling modules (e.g. `file_refs`) can assert how
++/// ref resolution interacts with this rule.
++#[cfg(test)]
++pub(crate) fn rule_for_tests() -> Box<dyn LintRule> {
++    rule()
++}
++
+ struct Rule;
+ 
+ impl LintRule for Rule {
+diff --git a/scripts/validate-workflows.nu b/scripts/validate-workflows.nu
+new file mode 100644
+index 0000000..74cef56
+--- /dev/null
++++ b/scripts/validate-workflows.nu
+@@ -0,0 +1,73 @@
++#!/usr/bin/env nu
++# Validate workflow graphs without a Rust test-harness cold build
++# (`just validate-workflows [target]`).
++#
++# Approach (chosen over scoping the rule out): the `fabro-validate`
++# binary pre-processes the raw graph for standalone linting: `@`-file
++# refs (prompt/goal, e.g. `@prompts/simplify.md`) are resolved against the
++# graph file's directory BEFORE the `unresolved_file_ref` rule runs — the
++# same inline strategy as the runtime pipeline. A ref whose file genuinely
++# does not exist keeps its `@` value and still fails validation; scoping
++# the rule out would blanket-suppress real errors. A `model_stylesheet`
++# containing template syntax is blanked (the runtime renders it before the
++# `stylesheet_syntax` rule runs; raw template source cannot be linted).
++#
++# No Rust test harness is compiled: `cargo build -p fabro-validate
++# --bin fabro-validate` builds only the validator lib and its deps — not
++# the CLI, the server, or dev-dependencies. Warm runs finish in seconds
++# (the cold build of the small dep subset is a one-off).
++#
++# `target` (optional): a workflow name (`.fabro/workflows/<name>`), a
++# workflow directory, a `workflow.toml` path, or a graph file path.
++# Default: every `.fabro/workflows/*/workflow.toml` graph.
++
++def main [target: string = ""] {
++    let graphs = (graph_paths $target)
++    if ($graphs | is-empty) {
++        print -e "validate-workflows: no workflow graphs found"
++        exit 2
++    }
++
++    let build = (do { cargo build --locked --quiet -p fabro-validate --bin fabro-validate } | complete)
++    if ($build.exit_code != 0) {
++        print -e $build.stderr
++        exit $build.exit_code
++    }
++    let bin = ((cargo metadata --no-deps --format-version 1 | from json).target_directory
++        | path join debug fabro-validate)
++
++    print $"validate-workflows: ($graphs | length) graph"
++    let result = (do { ^$bin ...$graphs } | complete)
++    print $result.stdout
++    if ($result.exit_code != 0) {
++        print -e $result.stderr
++        exit $result.exit_code
++    }
++}
++
++# Resolve the target (or all workflows) to a list of graph file paths.
++def graph_paths [target: string] {
++    if ($target | is-empty) {
++        glob .fabro/workflows/*/workflow.toml | each { graph_from_toml $in }
++    } else if ($target | str ends-with ".fabro") {
++        [$target]
++    } else if ($target | str ends-with ".toml") {
++        [($target | path expand)] | each { graph_from_toml $in }
++    } else {
++        let dir = (if ($target | str starts-with ".") { $target } else { $".fabro/workflows/($target)" })
++        let toml = ($dir | path join workflow.toml)
++        if not ($toml | path exists) {
++            print -e $"validate-workflows: no workflow at ($toml)"
++            exit 2
++        }
++        [(graph_from_toml $toml)]
++    }
++}
++
++# The graph path named by a workflow.toml (default: workflow.fabro),
++# resolved relative to the workflow directory.
++def graph_from_toml [manifest: path] {
++    let settings = (open $manifest)
++    let graph = ($settings | get -o workflow | get -o graph | default "workflow.fabro")
++    ($manifest | path dirname | path join $graph)
++}
