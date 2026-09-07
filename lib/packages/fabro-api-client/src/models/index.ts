@@ -36,6 +36,7 @@ export * from './automation-list-meta';
 export * from './automation-list-response';
 export * from './automation-ref';
 export * from './automation-schedule-trigger';
+export * from './automation-schedule-trigger-breaker';
 export * from './automation-trigger';
 export * from './batch-delete-runs-request';
 export * from './batch-delete-runs-response';

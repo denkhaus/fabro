@@ -63,6 +63,7 @@ models/automation-git-workflow-source.ts
 models/automation-list-meta.ts
 models/automation-list-response.ts
 models/automation-ref.ts
+models/automation-schedule-trigger-breaker.ts
 models/automation-schedule-trigger.ts
 models/automation-trigger.ts
 models/automation.ts

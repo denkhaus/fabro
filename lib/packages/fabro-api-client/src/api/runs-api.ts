@@ -1591,7 +1591,7 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
-         * Long-poll until the run reaches a terminal state (`until=terminal`) or its pull request merges (`until=merged`). A single blocking call replaces agent-side sleep/poll loops. Hitting the `timeout_ms` deadline is a structured `reached=timeout` result carrying the current status, not an error; callers may call again to continue waiting. With `until=merged`, a pull request that closed without merging reports `reached=closed_unmerged`, and a run that fails hard while waiting reports `reached=terminal`.
+         * Long-poll until the run reaches a terminal state (`until=terminal`) or its pull request merges (`until=merged`). A single blocking call replaces agent-side sleep/poll loops. Hitting the `timeout_ms` deadline is a structured `reached=timeout` result carrying the current status, not an error; callers may call again to continue waiting. With `until=merged`, a pull request that closed without merging reports `reached=closed_unmerged`, and a run that fails hard while waiting reports `reached=terminal`. An open pull request whose GitHub `mergeable_state` stays `dirty` or `blocked` across consecutive polls reports `reached=blocked` — the merge gate is stuck (failed required checks or an unmergeable base) and re-waiting will not clear it.
          * @summary Wait for Run
          * @param {string} id Unique run identifier (ULID).
          * @param {WaitRunUntilEnum} until Wait condition — terminal run state or merged pull request.
@@ -2128,7 +2128,7 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Long-poll until the run reaches a terminal state (`until=terminal`) or its pull request merges (`until=merged`). A single blocking call replaces agent-side sleep/poll loops. Hitting the `timeout_ms` deadline is a structured `reached=timeout` result carrying the current status, not an error; callers may call again to continue waiting. With `until=merged`, a pull request that closed without merging reports `reached=closed_unmerged`, and a run that fails hard while waiting reports `reached=terminal`.
+         * Long-poll until the run reaches a terminal state (`until=terminal`) or its pull request merges (`until=merged`). A single blocking call replaces agent-side sleep/poll loops. Hitting the `timeout_ms` deadline is a structured `reached=timeout` result carrying the current status, not an error; callers may call again to continue waiting. With `until=merged`, a pull request that closed without merging reports `reached=closed_unmerged`, and a run that fails hard while waiting reports `reached=terminal`. An open pull request whose GitHub `mergeable_state` stays `dirty` or `blocked` across consecutive polls reports `reached=blocked` — the merge gate is stuck (failed required checks or an unmergeable base) and re-waiting will not clear it.
          * @summary Wait for Run
          * @param {string} id Unique run identifier (ULID).
          * @param {WaitRunUntilEnum} until Wait condition — terminal run state or merged pull request.
@@ -2521,7 +2521,7 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.validateRunManifest(runManifest, options).then((request) => request(axios, basePath));
         },
         /**
-         * Long-poll until the run reaches a terminal state (`until=terminal`) or its pull request merges (`until=merged`). A single blocking call replaces agent-side sleep/poll loops. Hitting the `timeout_ms` deadline is a structured `reached=timeout` result carrying the current status, not an error; callers may call again to continue waiting. With `until=merged`, a pull request that closed without merging reports `reached=closed_unmerged`, and a run that fails hard while waiting reports `reached=terminal`.
+         * Long-poll until the run reaches a terminal state (`until=terminal`) or its pull request merges (`until=merged`). A single blocking call replaces agent-side sleep/poll loops. Hitting the `timeout_ms` deadline is a structured `reached=timeout` result carrying the current status, not an error; callers may call again to continue waiting. With `until=merged`, a pull request that closed without merging reports `reached=closed_unmerged`, and a run that fails hard while waiting reports `reached=terminal`. An open pull request whose GitHub `mergeable_state` stays `dirty` or `blocked` across consecutive polls reports `reached=blocked` — the merge gate is stuck (failed required checks or an unmergeable base) and re-waiting will not clear it.
          * @summary Wait for Run
          * @param {string} id Unique run identifier (ULID).
          * @param {WaitRunUntilEnum} until Wait condition — terminal run state or merged pull request.
@@ -2944,7 +2944,7 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
-     * Long-poll until the run reaches a terminal state (`until=terminal`) or its pull request merges (`until=merged`). A single blocking call replaces agent-side sleep/poll loops. Hitting the `timeout_ms` deadline is a structured `reached=timeout` result carrying the current status, not an error; callers may call again to continue waiting. With `until=merged`, a pull request that closed without merging reports `reached=closed_unmerged`, and a run that fails hard while waiting reports `reached=terminal`.
+     * Long-poll until the run reaches a terminal state (`until=terminal`) or its pull request merges (`until=merged`). A single blocking call replaces agent-side sleep/poll loops. Hitting the `timeout_ms` deadline is a structured `reached=timeout` result carrying the current status, not an error; callers may call again to continue waiting. With `until=merged`, a pull request that closed without merging reports `reached=closed_unmerged`, and a run that fails hard while waiting reports `reached=terminal`. An open pull request whose GitHub `mergeable_state` stays `dirty` or `blocked` across consecutive polls reports `reached=blocked` — the merge gate is stuck (failed required checks or an unmergeable base) and re-waiting will not clear it.
      * @summary Wait for Run
      * @param {string} id Unique run identifier (ULID).
      * @param {WaitRunUntilEnum} until Wait condition — terminal run state or merged pull request.

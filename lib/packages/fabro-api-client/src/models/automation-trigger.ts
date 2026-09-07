@@ -19,6 +19,9 @@ import type { AutomationApiTrigger } from './automation-api-trigger';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { AutomationScheduleTrigger } from './automation-schedule-trigger';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { AutomationScheduleTriggerBreaker } from './automation-schedule-trigger-breaker';
 
 /**
  * @type AutomationTrigger

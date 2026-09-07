@@ -165,7 +165,13 @@ function AutomationHeader({ automation }: { automation: Automation }) {
               )}
             </Chip>
             {scheduleTrigger ? (
-              <Chip icon={ClockIcon}>{scheduleTrigger.expression}</Chip>
+              <>
+                <Chip icon={ClockIcon}>{scheduleTrigger.expression}</Chip>
+                <Chip icon={ArrowPathIcon}>
+                  Overlap · {automation.on_overlap ?? "skip"}
+                  {automation.on_overlap == null ? " (default)" : ""}
+                </Chip>
+              </>
             ) : null}
           </div>
           {automation.description ? (

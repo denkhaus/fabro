@@ -26,7 +26,7 @@ import type { RunStatus } from './run-status';
 export interface RunWaitResult {
     'run_id': string;
     /**
-     * Which condition ended the wait: the run reached a terminal state, the pull request merged, the pull request closed without merging (until=merged only), the open pull request's GitHub mergeable_state stayed dirty/blocked across consecutive polls — failed required checks or a dirty base, so the merge gate is stuck (until=merged only), or the timeout_ms deadline expired.
+     * Which condition ended the wait: the run reached a terminal state, the pull request merged, the pull request closed without merging (until=merged only), the open pull request\'s GitHub mergeable_state stayed dirty/blocked across consecutive polls — failed required checks or a dirty base, so the merge gate is stuck (until=merged only), or the timeout_ms deadline expired.
      */
     'reached': RunWaitResultReachedEnum;
     'status': RunStatus;

@@ -248,12 +248,20 @@ async fn fire_scheduled_automation_run(
     due_at: DateTime<Utc>,
 ) {
     let automation_id = automation.id.clone();
-    // fabro-09ea overlap guard: a `skip` policy suppresses the fire while
-    // a previous run of THIS automation is still non-terminal — running,
-    // queued, or blocked at a gate that may wait indefinitely (ADR-0011).
+    // fabro-09ea overlap guard: an effective `skip` policy suppresses the
+    // fire while a previous run of THIS automation is still non-terminal —
+    // running, queued, or blocked at a gate that may wait indefinitely
+    // (ADR-0011). Since fabro-fb16 the untagged (`None`) policy resolves
+    // to `Skip` (fabro_automation::Automation::effective_scheduled_overlap_policy),
+    // so overlapping scheduled passes are impossible by default; only an
+    // explicit API-set `Fire` keeps firing. This is the only scheduled fire
+    // decision point — manual/API-triggered runs (handler create_run) are
+    // unconditional by design and never consult the policy.
     // A skip is healthy behavior: INFO only, no last_error, no run; the
-    // next tick retries. Manual API triggers stay unconditional.
-    if automation.on_overlap == Some(fabro_automation::AutomationOverlapPolicy::Skip) {
+    // next tick retries.
+    if automation.effective_scheduled_overlap_policy()
+        == fabro_automation::AutomationOverlapPolicy::Skip
+    {
         match state
             .stores
             .run_summaries
@@ -272,7 +280,9 @@ async fn fire_scheduled_automation_run(
             Ok(None) => {}
             Err(err) => {
                 // The overlap check failing must not silently turn into a
-                // fire: record it like other scheduler errors and skip.
+                // fire (fabro-fb16 audit: this is the fail-safe arm of the
+                // Skip default — an undecidable overlap state skips):
+                // record it like other scheduler errors and skip.
                 record_scheduler_error(
                     state.as_ref(),
                     &automation_id,
@@ -842,12 +852,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn scheduled_fire_without_skip_policy_fires_despite_overlap() {
+    async fn scheduled_fire_without_overlap_policy_defaults_to_skip() {
         let materializer = succeeding_materializer();
         let state = test_state_with_materializer(materializer.clone());
-        create_automation(state.as_ref(), "fire-on-overlap", "Fire on overlap", vec![
-            schedule_trigger("schedule", "* * * * *", true),
-        ])
+        create_automation(
+            state.as_ref(),
+            "untagged-overlap",
+            "Untagged overlap",
+            vec![schedule_trigger("schedule", "* * * * *", true)],
+        )
+        .await;
+        let mut planner = AutomationSchedulePlanner::default();
+
+        // First due fire creates a run; it stays non-terminal in this test
+        // state (submitted/runnable), exactly like a run blocked at a gate.
+        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
+        assert_eq!(stored_runs(state.as_ref()).await.len(), 1);
+
+        // Untagged (`None`) policy resolves to Skip (fabro-fb16): the
+        // second due fire is suppressed — no second run, and the
+        // materializer saw only the first request.
+        run_due_schedules_once(Arc::clone(&state), &mut planner, second_due_time()).await;
+        assert_eq!(stored_runs(state.as_ref()).await.len(), 1);
+        assert_eq!(materializer.captured_inputs().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn scheduled_fire_with_explicit_fire_policy_fires_despite_overlap() {
+        let materializer = succeeding_materializer();
+        let state = test_state_with_materializer(materializer.clone());
+        create_automation_full(
+            state.as_ref(),
+            "fire-on-overlap",
+            "Fire on overlap",
+            None,
+            Some(fabro_automation::AutomationOverlapPolicy::Fire),
+            vec![schedule_trigger("schedule", "* * * * *", true)],
+        )
         .await;
         let mut planner = AutomationSchedulePlanner::default();
 
@@ -855,8 +897,8 @@ mod tests {
         run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
         run_due_schedules_once(Arc::clone(&state), &mut planner, second_due_time()).await;
 
-        // Default policy (None = fire) keeps the unchanged behavior: both
-        // fires created runs even though run one is still non-terminal.
+        // An explicitly-set Fire policy is user intent: both fires created
+        // runs even though run one is still non-terminal.
         assert_eq!(stored_runs(state.as_ref()).await.len(), 2);
     }
 
@@ -925,10 +967,21 @@ mod tests {
     async fn multiple_due_triggers_create_multiple_runs() {
         let materializer = succeeding_materializer();
         let state = test_state_with_materializer(materializer);
-        create_automation(state.as_ref(), "nightly", "Nightly", vec![
-            schedule_trigger("first", "* * * * *", true),
-            schedule_trigger("second", "* * * * *", true),
-        ])
+        // Explicit Fire: both due triggers fire in the same tick even
+        // though the first run is non-terminal (the Skip default would
+        // suppress the second — see
+        // scheduled_fire_without_overlap_policy_defaults_to_skip).
+        create_automation_full(
+            state.as_ref(),
+            "nightly",
+            "Nightly",
+            None,
+            Some(fabro_automation::AutomationOverlapPolicy::Fire),
+            vec![
+                schedule_trigger("first", "* * * * *", true),
+                schedule_trigger("second", "* * * * *", true),
+            ],
+        )
         .await;
         let mut planner = AutomationSchedulePlanner::default();
 
@@ -948,9 +1001,17 @@ mod tests {
     async fn queued_prior_run_does_not_suppress_new_due_run() {
         let materializer = succeeding_materializer();
         let state = test_state_with_materializer(materializer);
-        create_automation(state.as_ref(), "nightly", "Nightly", vec![
-            schedule_trigger("schedule", "* * * * *", true),
-        ])
+        // Explicit Fire: a merely queued (not yet started) prior run does
+        // not suppress the next fire. Under the Skip default (untagged)
+        // this fire would be suppressed — a queued run is non-terminal.
+        create_automation_full(
+            state.as_ref(),
+            "nightly",
+            "Nightly",
+            None,
+            Some(fabro_automation::AutomationOverlapPolicy::Fire),
+            vec![schedule_trigger("schedule", "* * * * *", true)],
+        )
         .await;
         let mut planner = AutomationSchedulePlanner::default();
 
