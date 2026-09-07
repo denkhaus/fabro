@@ -694,7 +694,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T21:32:02.505380023Z",
-  "last_event_at": "2026-09-07T21:34:15.301479480Z",
+  "last_event_at": "2026-09-07T21:34:20.386626111Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1774,9 +1774,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 184,
       "checkpoint": {
-        "timestamp": "2026-09-07T21:34:15.527152329Z",
+        "timestamp": "2026-09-07T21:34:19.460018351Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -1789,25 +1789,38 @@
         ],
         "node_retries": {},
         "context_values": {
+          "last_response": "All five seed criteria verified against the on-disk file and the diff:\n\n1. **Literal default-features invocation** — line 25 now states the clippy command is \"the literal gate command with DEFAULT f",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2077,
+            "preview": "Claimed fabro-2254. Brief distilled with one resolved ambiguity: the current prompt already runs clippy without `--features` (i.e., default features), so the real gap is making the parity explicit and"
+          },
+          "internal.retry_count.reviewer": 0,
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.start": 0,
+          "failure_class": "",
+          "graph.max_node_visits": "40",
           "internal.run_id": "01M1YWHK6F8F2VZ6F6FZV8A7VE",
-          "internal.work_dir": "/workspace/fabro",
-          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/implementer.md` only (prompt-only change, +7/-2 lines). Step 4 now states the clippy command is the literal gate invocation with DEFAULT features, required on EVERY touched crate IN ADDITION to any feature-scoped checks, with feature-scoped passes explicitly non-substitutable (citing run 01M1YJ8R820R7ZMSN55GJGMZ4A), and adds that a known default-features break in a touched crate FAILs the 'gate passes' self-assessment (fix it or route Blocked). The adjacent-repair carve-out paragraph gained a closing clause that it does not soften the new step-4 rule. Lesson capture: nothing durable — skipped (the lesson is the seed's own content, already encoded in the prompt). Verification report: - PASS default-features invocation required literally on every touched crate, in addition to feature-scoped checks, never substituted: step 4 sentence additions in `.fabro/workflows/develop/prompts/implementer.md` (line 25). - PASS known default-features break fails 'gate passes' self-assessment, success may not be reported while outstanding: same step 4 addition, explicit 'FAILs your gate passes self-assessment... fix it, or route Blocked'. - PASS pre-existing-break carve-out kept intact and disambiguated vs the new rule: carve-out paragraph (lines 62-80) unchanged in substance, new clause scopes it to VERIFIED pre-existing breaks and subordinates it to the step-4 rule for touched-caused/could-fix breaks. - PASS crate-scoping and no-full-workspace rules unchanged: original 'on EVERY touched crate' and 'Never the full workspace fmt/clippy and never the full suite' text preserved verbatim. - PASS prompt-only change, no code changes: `git diff --stat` shows exactly one file, `.fabro/workflows/develop/prompts/implementer.md`.",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Verified all five seed criteria against the loop-work diff and the on-disk file (grep confirmed the three key phrases at implementer.md lines 25 and 78); diff scope matches evidence header exactly (+7/-2, single file), tree clean, gate green.",
+              "First grep alternation returned only the line-25 match in visible output, requiring a second targeted grep for the carve-out clause — minor tool-output truncation, not an evidence defect."
+            ]
+          },
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2839,
+            "preview": "Both edits landed cleanly and the diff is scoped to the single prompt file. All five acceptance criteria are satisfied; no Rust code was touched, so no crate-scoped fmt/clippy applies. Lesson capture:"
+          },
           "response.reviewer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.reviewer",
             "chars": 2141,
             "preview": "All five seed criteria verified against the on-disk file and the diff:\n\n1. **Literal default-features invocation** — line 25 now states the clippy command is \"the literal gate command with DEFAULT f"
           },
-          "internal.retry_count.reviewer": 0,
-          "internal.retry_count.closeout": 0,
-          "internal.exit_kind": "natural",
-          "internal.retry_count.evidence": 0,
-          "current_seed_id": "fabro-2254",
-          "internal.seed_cycle_anchor": "fabro-2254",
-          "thread.reviewer.current_node": "closeout",
-          "failure_signature": "",
-          "thread.evidence.current_node": "reviewer",
-          "internal.node_visit_count": 1,
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -1816,118 +1829,40 @@
             "reviewer": 1,
             "closeout": 1
           },
-          "internal.retry_count.implementer": 0,
-          "graph.preamble_budget_kb": "24",
-          "graph.max_node_visits": "40",
-          "internal.retry_count.start": 0,
-          "last_stage": "reviewer",
-          "internal.thread_id": "reviewer",
-          "thread.planner.current_node": "implementer",
-          "outcome": "succeeded",
-          "failure_class": "",
-          "last_response": "All five seed criteria verified against the on-disk file and the diff:\n\n1. **Literal default-features invocation** — line 25 now states the clippy command is \"the literal gate command with DEFAULT f",
-          "thread.tester.current_node": "evidence",
           "thread.implementer.current_node": "tester",
-          "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/implementer.md` step 4 (the clippy guidance around line 25). Acceptance criteria: (1) the prompt requires the literal default-features invocation `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings` on EVERY touched crate, explicitly IN ADDITION to any feature-scoped clippy checks the implementer may also run — feature-scoped passes must never substitute for the default-features run (root cause of run 01M1YJ8R820R7ZMSN55GJGMZ4A's wasted cycle); (2) a known default-features break (e.g. E0432 that only appears without features) must FAIL the implementer's 'gate passes' self-assessment — the implementer may not report success while such a break is outstanding; (3) keep the existing carve-out at line ~64 for PRE-EXISTING breaks in untouched crates intact and unambiguous versus the new rule (new rule applies to touched crates and breaks the implementer caused or could fix); (4) keep the existing crate-scoping and no-full-workspace rules unchanged; (5) prompt-only change — no code changes. Note: current wording already runs clippy without --features, so this is an explicitness/parity fix, not a new command — do not restructure step 4 beyond what the criteria require.",
+          "thread.evidence.current_node": "reviewer",
           "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.fidelity": "compact",
-          "current_node": "closeout",
-          "current_seed_title": "Mirror the gate's default-features clippy in the implementer's pre-gate check",
+          "internal.exit_kind": "natural",
+          "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/implementer.md` step 4 (the clippy guidance around line 25). Acceptance criteria: (1) the prompt requires the literal default-features invocation `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings` on EVERY touched crate, explicitly IN ADDITION to any feature-scoped clippy checks the implementer may also run — feature-scoped passes must never substitute for the default-features run (root cause of run 01M1YJ8R820R7ZMSN55GJGMZ4A's wasted cycle); (2) a known default-features break (e.g. E0432 that only appears without features) must FAIL the implementer's 'gate passes' self-assessment — the implementer may not report success while such a break is outstanding; (3) keep the existing carve-out at line ~64 for PRE-EXISTING breaks in untouched crates intact and unambiguous versus the new rule (new rule applies to touched crates and breaks the implementer caused or could fix); (4) keep the existing crate-scoping and no-full-workspace rules unchanged; (5) prompt-only change — no code changes. Note: current wording already runs clippy without --features, so this is an explicitness/parity fix, not a new command — do not restructure step 4 beyond what the criteria require.",
           "internal.retry_count.planner": 0,
           "lesson_capture": "nothing durable — skipped",
-          "response.implementer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 2839,
-            "preview": "Both edits landed cleanly and the diff is scoped to the single prompt file. All five acceptance criteria are satisfied; no Rust code was touched, so no crate-scoped fmt/clippy applies. Lesson capture:"
-          },
-          "journal": {
-            "painpoints": [],
-            "observations": [
-              "Verified all five seed criteria against the loop-work diff and the on-disk file (grep confirmed the three key phrases at implementer.md lines 25 and 78); diff scope matches evidence header exactly (+7/-2, single file), tree clean, gate green.",
-              "First grep alternation returned only the line-25 match in visible output, requiring a second targeted grep for the carve-out clause — minor tool-output truncation, not an evidence defect."
-            ]
-          },
-          "command.output": "blob://sha256/c6e9ffe322c3501c97861558ba058516ec4d3595705b1e86988f7966fea28f8a",
+          "thread.tester.current_node": "evidence",
+          "current_node": "closeout",
+          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/implementer.md` only (prompt-only change, +7/-2 lines). Step 4 now states the clippy command is the literal gate invocation with DEFAULT features, required on EVERY touched crate IN ADDITION to any feature-scoped checks, with feature-scoped passes explicitly non-substitutable (citing run 01M1YJ8R820R7ZMSN55GJGMZ4A), and adds that a known default-features break in a touched crate FAILs the 'gate passes' self-assessment (fix it or route Blocked). The adjacent-repair carve-out paragraph gained a closing clause that it does not soften the new step-4 rule. Lesson capture: nothing durable — skipped (the lesson is the seed's own content, already encoded in the prompt). Verification report: - PASS default-features invocation required literally on every touched crate, in addition to feature-scoped checks, never substituted: step 4 sentence additions in `.fabro/workflows/develop/prompts/implementer.md` (line 25). - PASS known default-features break fails 'gate passes' self-assessment, success may not be reported while outstanding: same step 4 addition, explicit 'FAILs your gate passes self-assessment... fix it, or route Blocked'. - PASS pre-existing-break carve-out kept intact and disambiguated vs the new rule: carve-out paragraph (lines 62-80) unchanged in substance, new clause scopes it to VERIFIED pre-existing breaks and subordinates it to the step-4 rule for touched-caused/could-fix breaks. - PASS crate-scoping and no-full-workspace rules unchanged: original 'on EVERY touched crate' and 'Never the full workspace fmt/clippy and never the full suite' text preserved verbatim. - PASS prompt-only change, no code changes: `git diff --stat` shows exactly one file, `.fabro/workflows/develop/prompts/implementer.md`.",
+          "internal.retry_count.implementer": 0,
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 2077,
-            "preview": "Claimed fabro-2254. Brief distilled with one resolved ambiguity: the current prompt already runs clippy without `--features` (i.e., default features), so the real gap is making the parity explicit and"
-          },
-          "preferred_label": "Approved",
+          "internal.seed_cycle_anchor": "fabro-2254",
           "internal.retry_count.tester": 0,
+          "outcome": "succeeded",
+          "preferred_label": "Approved",
           "review_verdict": "approved",
+          "thread.reviewer.current_node": "closeout",
+          "current_seed_id": "fabro-2254",
+          "failure_signature": "",
+          "graph.rankdir": "LR",
+          "internal.node_visit_count": 1,
+          "current_seed_title": "Mirror the gate's default-features clippy in the implementer's pre-gate check",
+          "internal.retry_count.evidence": 0,
+          "thread.planner.current_node": "implementer",
+          "internal.thread_id": "reviewer",
+          "internal.retry_count.closeout": 0,
           "thread.start.current_node": "planner",
-          "graph.rankdir": "LR"
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/workspace/fabro",
+          "command.output": "blob://sha256/c6e9ffe322c3501c97861558ba058516ec4d3595705b1e86988f7966fea28f8a",
+          "last_stage": "reviewer"
         },
         "node_outcomes": {
-          "planner": {
-            "status": "succeeded",
-            "preferred_label": "Seed claimed",
-            "context_updates": {
-              "response.planner": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.planner",
-                "chars": 2077,
-                "preview": "Claimed fabro-2254. Brief distilled with one resolved ambiguity: the current prompt already runs clippy without `--features` (i.e., default features), so the real gap is making the parity explicit and"
-              },
-              "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/implementer.md` step 4 (the clippy guidance around line 25). Acceptance criteria: (1) the prompt requires the literal default-features invocation `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings` on EVERY touched crate, explicitly IN ADDITION to any feature-scoped clippy checks the implementer may also run — feature-scoped passes must never substitute for the default-features run (root cause of run 01M1YJ8R820R7ZMSN55GJGMZ4A's wasted cycle); (2) a known default-features break (e.g. E0432 that only appears without features) must FAIL the implementer's 'gate passes' self-assessment — the implementer may not report success while such a break is outstanding; (3) keep the existing carve-out at line ~64 for PRE-EXISTING breaks in untouched crates intact and unambiguous versus the new rule (new rule applies to touched crates and breaks the implementer caused or could fix); (4) keep the existing crate-scoping and no-full-workspace rules unchanged; (5) prompt-only change — no code changes. Note: current wording already runs clippy without --features, so this is an explicitness/parity fix, not a new command — do not restructure step 4 beyond what the criteria require.",
-              "last_stage": "planner",
-              "last_response": "Claimed fabro-2254. Brief distilled with one resolved ambiguity: the current prompt already runs clippy without `--features` (i.e., default features), so the real gap is making the parity explicit and",
-              "current_seed_title": "Mirror the gate's default-features clippy in the implementer's pre-gate check",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "fabro-2254 basis verified against current tree: implementer.md line 25 already runs default-features clippy; the genuine gap is only the explicit in-addition-to-feature-scoped parity rule and the known-break FAIL criterion — brief scoped accordingly to avoid redundant restructuring."
-                ]
-              },
-              "current_seed_id": "fabro-2254"
-            },
-            "notes": "Stage completed: planner",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 18791,
-                    "output_tokens": 720,
-                    "reasoning_tokens": 292,
-                    "cache_read_tokens": 64768,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 47594
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 24713,
-              "tool_time_ms": 1489,
-              "active_time_ms": 26202
-            }
-          },
-          "tester": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
-            },
-            "notes": "Script completed: just qualitygate",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 5357,
-              "active_time_ms": 5357
-            }
-          },
           "start": {
             "status": "succeeded",
             "usage": null
@@ -1944,6 +1879,34 @@
               "inference_time_ms": 0,
               "tool_time_ms": 276,
               "active_time_ms": 276
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5357,
+              "active_time_ms": 5357
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/7579e03821a2776fb95fa703fbfc32725ab937c79a2801fc4ba5df934fcdc214"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 367,
+              "active_time_ms": 367
             }
           },
           "implementer": {
@@ -2046,36 +2009,192 @@
               "active_time_ms": 23981
             }
           },
-          "evidence": {
+          "planner": {
             "status": "succeeded",
+            "preferred_label": "Seed claimed",
             "context_updates": {
-              "command.output": "blob://sha256/7579e03821a2776fb95fa703fbfc32725ab937c79a2801fc4ba5df934fcdc214"
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2077,
+                "preview": "Claimed fabro-2254. Brief distilled with one resolved ambiguity: the current prompt already runs clippy without `--features` (i.e., default features), so the real gap is making the parity explicit and"
+              },
+              "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/implementer.md` step 4 (the clippy guidance around line 25). Acceptance criteria: (1) the prompt requires the literal default-features invocation `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings` on EVERY touched crate, explicitly IN ADDITION to any feature-scoped clippy checks the implementer may also run — feature-scoped passes must never substitute for the default-features run (root cause of run 01M1YJ8R820R7ZMSN55GJGMZ4A's wasted cycle); (2) a known default-features break (e.g. E0432 that only appears without features) must FAIL the implementer's 'gate passes' self-assessment — the implementer may not report success while such a break is outstanding; (3) keep the existing carve-out at line ~64 for PRE-EXISTING breaks in untouched crates intact and unambiguous versus the new rule (new rule applies to touched crates and breaks the implementer caused or could fix); (4) keep the existing crate-scoping and no-full-workspace rules unchanged; (5) prompt-only change — no code changes. Note: current wording already runs clippy without --features, so this is an explicitness/parity fix, not a new command — do not restructure step 4 beyond what the criteria require.",
+              "last_stage": "planner",
+              "last_response": "Claimed fabro-2254. Brief distilled with one resolved ambiguity: the current prompt already runs clippy without `--features` (i.e., default features), so the real gap is making the parity explicit and",
+              "current_seed_title": "Mirror the gate's default-features clippy in the implementer's pre-gate check",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-2254 basis verified against current tree: implementer.md line 25 already runs default-features clippy; the genuine gap is only the explicit in-addition-to-feature-scoped parity rule and the known-break FAIL criterion — brief scoped accordingly to avoid redundant restructuring."
+                ]
+              },
+              "current_seed_id": "fabro-2254"
             },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-            "usage": null,
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 18791,
+                    "output_tokens": 720,
+                    "reasoning_tokens": 292,
+                    "cache_read_tokens": 64768,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 47594
+            },
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 367,
-              "active_time_ms": 367
+              "inference_time_ms": 24713,
+              "tool_time_ms": 1489,
+              "active_time_ms": 26202
             }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "63ca1f94e43d8a0161b12c0d2172b49d2a063ecb",
         "node_visits": {
-          "evidence": 1,
-          "implementer": 1,
           "tester": 1,
-          "start": 1,
+          "evidence": 1,
+          "closeout": 1,
           "planner": 1,
+          "implementer": 1,
           "reviewer": 1,
-          "closeout": 1
+          "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1YWHK6F8F2VZ6F6FZV8A7VE.jsonl b/.fabro/journal/01M1YWHK6F8F2VZ6F6FZV8A7VE.jsonl\nindex 7c62371..ab39294 100644\n--- a/.fabro/journal/01M1YWHK6F8F2VZ6F6FZV8A7VE.jsonl\n+++ b/.fabro/journal/01M1YWHK6F8F2VZ6F6FZV8A7VE.jsonl\n@@ -4,3 +4,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YWHK6F8F2VZ6F6FZV8A7VE\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:33:30Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YWHK6F8F2VZ6F6FZV8A7VE\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:33:38Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YWHK6F8F2VZ6F6FZV8A7VE\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:34:10Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified all five seed criteria against the loop-work diff and the on-disk file (grep confirmed the three key phrases at implementer.md lines 25 and 78); diff scope matches evidence header exactly (+7/-2, single file), tree clean, gate green.\",\"First grep alternation returned only the line-25 match in visible output, requiring a second targeted grep for the carve-out clause — minor tool-output truncation, not an evidence defect.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YWHK6F8F2VZ6F6FZV8A7VE\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:34:15Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex d01c623..f6faf77 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -248,7 +248,7 @@\n {\"id\":\"fabro-22e4\",\"title\":\"agent: edit-tool file writes land with mtime 1970-01-01 — cargo skips recompiles, edits silently lag until manual touch\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T18:30:04.569Z\",\"updatedAt\":\"2026-09-07T18:51:48.005Z\",\"assignee\":\"fabro\",\"description\":\"From unreviewed run 01M1Y2SMEVDHAFB59GZV9B84CQ (PR #41 implementer; recovered via journal sweep 2026-09-07 after the run aged out of revisor freshness): edit-tool file writes landed with mtime 1970-01-01 (e.g. lib/components/fabro-validate/src/file_refs.rs), so cargo considered the sources older than cached rlibs and silently skipped recompiles — a just-added pub fn was reported missing and behavior lagged the edits until a manual touch. This is silent cache poisoning of the build loop: any agent edit can produce a stale-binary diagnosis that costs implementer revisits. Fix direction: the platform's file-write path (edit tool / sandbox write transport) must set a real mtime — utimensat/write-with-times after creating or replacing the file so downstream build systems see fresh sources. Acceptance: an edit-tool write produces mtime == wall clock (unit test on the write path); a before/after cargo check in a scratch crate recompiles after an agent edit without manual touch.\",\"labels\":[\"engine\",\"agent\"],\"closedAt\":\"2026-09-07T18:51:48.005Z\"}\n {\"id\":\"fabro-b8ed\",\"title\":\"develop: verification-only briefs must not assert 'criteria satisfied' — derive per-criterion checks instead\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:30:04.670Z\",\"updatedAt\":\"2026-09-07T18:30:04.670Z\",\"assignee\":\"fabro\",\"description\":\"From unreviewed run 01M1Y852BN91NSVSHFWNWTW5ST (PR #42; journal sweep 2026-09-07): the verification-only brief asserted 'acceptance criteria appear already satisfied', but criterion 5 of fabro-5e09 was materially unmet in the worktree — docs/agents/issue-tracker.md still said 'Filers assign at creation' and 'Assignment is a user decision', contradicting the seed's D2/D3 decisions from the same day. The pass only converged because the implementer re-checked; a lazier one would have closed the seed on the brief's word. Fix direction: the planner's verification-only brief generation must not carry satisfaction assertions — instead list each acceptance criterion with an instruction to verify it against the CURRENT worktree and report per-criterion status in the summary. Related: fabro-578a (different aspect: allowed command level in verification-only briefs).\",\"labels\":[\"workflows\",\"revision\"]}\n {\"id\":\"fabro-52a9\",\"title\":\"conductor survey: reword misleading 'burns the backlog down' claim — backlog journal is visibility-only, drain needs the revisor's newest-first rule to change\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-07T18:30:04.771Z\",\"updatedAt\":\"2026-09-07T18:30:04.771Z\",\"assignee\":\"fabro\",\"description\":\"PR #45's survey prompt says 'the revisor revises the newest revisable run, so each subsequent pass burns the backlog down one run at a time' — but the revise leg creates the revisor without a goal and the revisor's select rule picks the NEWEST unrevised fresh run (which is always the current pass's own child), so the backlog NEVER drains; additionally the freshness rule (ADR-0015) makes older runs stale-evidence the moment the workflow version drifts, permanently disqualifying them. The journal line is dead-letter optimism (user + agent analysis 2026-09-07). Fix: reword survey.md to state the truth — the backlog entry is VISIBILITY-only (unreviewed run ids stay observable), runs are only revisable while fresh, and a real drain would need the revise leg to pass an explicit backlog run id in the goal (a decision not made). Do not promise behavior the graph cannot deliver.\",\"labels\":[\"workflows\",\"revision\"]}\n-{\"id\":\"fabro-2254\",\"title\":\"Mirror the gate's default-features clippy in the implementer's pre-gate check\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T18:58:15.104Z\",\"updatedAt\":\"2026-09-07T21:32:24.224Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, require the literal gate invocation cargo clippy -p <crate> --all-targets -- -D warnings (default features) on every touched crate in addition to any feature-scoped checks, and make a known default-features break FAIL the 'gate passes' criterion. In run 01M1YJ8R820R7ZMSN55GJGMZ4A the implementer verified only under --features docker while the default-features E0432 it had itself diagnosed red-lined the tester 11s in, forcing a full second cycle (~8 min, ~$0.41, 64% of run cost). Distinct from closed fabro-0d56 (crate scoping): this is feature-set parity. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-2254\",\"title\":\"Mirror the gate's default-features clippy in the implementer's pre-gate check\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T18:58:15.104Z\",\"updatedAt\":\"2026-09-07T21:34:15.200Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, require the literal gate invocation cargo clippy -p <crate> --all-targets -- -D warnings (default features) on every touched crate in addition to any feature-scoped checks, and make a known default-features break FAIL the 'gate passes' criterion. In run 01M1YJ8R820R7ZMSN55GJGMZ4A the implementer verified only under --features docker while the default-features E0432 it had itself diagnosed red-lined the tester 11s in, forcing a full second cycle (~8 min, ~$0.41, 64% of run cost). Distinct from closed fabro-0d56 (crate scoping): this is feature-set parity. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-07T21:34:15.200Z\"}\n {\"id\":\"fabro-c381\",\"title\":\"Allow minimal adjacent repair of pre-existing compile breaks in touched crates\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T18:58:15.217Z\",\"updatedAt\":\"2026-09-07T20:35:09.322Z\",\"description\":\"Add a carve-out to implementer.md: a verified pre-existing compile/clippy break in a touched crate may be fixed minimally to keep the gate green, disclosed in implementation_summary as adjacent repair. In this run implementer@1 root-caused the pre-existing E0432 via stash-reproduce and knew the 3-line fix, but report-don't-fix scope pushed it to a painpoint and the gate bounced the whole run; the reviewer journal already treats compile-repair as not scope creep. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-07T20:35:09.322Z\"}\n {\"id\":\"fabro-8194\",\"title\":\"Carry the implementer's prior diagnosis into gate-red bounce prompts\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:15.338Z\",\"updatedAt\":\"2026-09-07T19:19:56.855Z\",\"description\":\"In workflow.fabro implementer node, add implementation_summary to preamble_allow_keys (or inject the previous pass's painpoints as a gate_bounce_notes key on the bounce path). In this run implementer@2's prompt excluded the node's own prior outputs, so it re-derived from scratch what implementer@1 had root-caused 90s earlier - 305s inference, 6,997 reasoning tokens, $0.405 (73% of the run's reasoning spend). Different mechanism from open fabro-6a78 (compact fidelity): this is the node allow-key/bounce injection path. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-56db\",\"title\":\"Normalize stale mtimes at qualitygate start until the transport fix ships\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:21.984Z\",\"updatedAt\":\"2026-09-07T19:19:56.962Z\",\"description\":\"In scripts/qualitygate.nu, at start run: find lib -name '*.rs' ! -newermt 2000-01-01 -exec touch {} + and mirror the one-liner in implementer.md step 4, until the fabro-22e4 sandbox transport fix is deployed everywhere. In this run edit_file-written push_credentials.rs carried mtime 1970-01-01 and cargo replayed stale dead-code warnings with wrong line numbers, forcing a manual touch detour; zero-LLM-cost mitigation, complementary to the open root-cause seed fabro-22e4. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 15,
+          "deletions": 3
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T21:34:19.519866733Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 123579,
+      "inference_time_ms": 83172,
+      "tool_time_ms": 8745,
+      "active_time_ms": 91917
+    },
+    "final_git_commit_sha": "63ca1f94e43d8a0161b12c0d2172b49d2a063ecb",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 26756,
+          "inference_time_ms": 24713,
+          "tool_time_ms": 1489,
+          "active_time_ms": 26202
+        },
+        "billing_usd_micros": 47594,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 36270,
+          "inference_time_ms": 34747,
+          "tool_time_ms": 987,
+          "active_time_ms": 35734
+        },
+        "billing_usd_micros": 53717,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 5362,
+          "inference_time_ms": 0,
+          "tool_time_ms": 5357,
+          "active_time_ms": 5357
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 372,
+          "inference_time_ms": 0,
+          "tool_time_ms": 367,
+          "active_time_ms": 367
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 24491,
+          "inference_time_ms": 23712,
+          "tool_time_ms": 269,
+          "active_time_ms": 23981
+        },
+        "billing_usd_micros": 34268,
+        "retries": 0
+      },
+      {
+        "stage_id": "closeout",
+        "stage_label": "closeout",
+        "timing": {
+          "wall_time_ms": 282,
+          "inference_time_ms": 0,
+          "tool_time_ms": 276,
+          "active_time_ms": 276
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 50898,
+      "output_tokens": 2953,
+      "total_tokens": 221606,
+      "reasoning_tokens": 1867,
+      "cache_read_tokens": 165888,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 135579
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1YWHK6F8F2VZ6F6FZV8A7VE.jsonl b/.fabro/journal/01M1YWHK6F8F2VZ6F6FZV8A7VE.jsonl\nnew file mode 100644\nindex 0000000..ab39294\n--- /dev/null\n+++ b/.fabro/journal/01M1YWHK6F8F2VZ6F6FZV8A7VE.jsonl\n@@ -0,0 +1,7 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YWHK6F8F2VZ6F6FZV8A7VE\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:32:04Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YWHK6F8F2VZ6F6FZV8A7VE\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:32:35Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-2254 basis verified against current tree: implementer.md line 25 already runs default-features clippy; the genuine gap is only the explicit in-addition-to-feature-scoped parity rule and the known-break FAIL criterion — brief scoped accordingly to avoid redundant restructuring.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YWHK6F8F2VZ6F6FZV8A7VE\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:33:20Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The seed brief described the carve-out as being for breaks in 'untouched crates', but the carve-out text in `.fabro/workflows/develop/prompts/implementer.md` (line 63) actually covers VERIFIED pre-existing breaks in touched crates via minimal repair; I reconciled by keeping the carve-out text intact and adding an explicit non-softening clause so the new default-features rule stays unambiguous — worth the Planner knowing the brief's framing didn't literally match the file.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YWHK6F8F2VZ6F6FZV8A7VE\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:33:30Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YWHK6F8F2VZ6F6FZV8A7VE\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:33:38Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YWHK6F8F2VZ6F6FZV8A7VE\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:34:10Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified all five seed criteria against the loop-work diff and the on-disk file (grep confirmed the three key phrases at implementer.md lines 25 and 78); diff scope matches evidence header exactly (+7/-2, single file), tree clean, gate green.\",\"First grep alternation returned only the line-25 match in visible output, requiring a second targeted grep for the carve-out clause — minor tool-output truncation, not an evidence defect.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YWHK6F8F2VZ6F6FZV8A7VE\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:34:15Z\",\"data\":{}}\ndiff --git a/.fabro/workflows/develop/prompts/implementer.md b/.fabro/workflows/develop/prompts/implementer.md\nindex b8819e0..e77bdac 100644\n--- a/.fabro/workflows/develop/prompts/implementer.md\n+++ b/.fabro/workflows/develop/prompts/implementer.md\n@@ -22,7 +22,7 @@ Tracker mechanics (sd is installed and authoritative):\n 1. Re-read the seed requirements from `sd show <current_seed_id>`. The seed description is the specification; follow it literally.\n 2. Implement it in the current worktree: create and edit files, keep the project's conventions (commands run through its `just` recipes).\n 3. Write or update tests exactly as the seed demands.\n-4. Do NOT run the quality gate — NOT `just qualitygate`, NOT its equivalent. The deterministic tester step after you owns the gate; a redundant run (observed: implementer + tester + reviewer all gating the same tree) wastes a cold cache's tens of seconds and blurs role boundaries. Your check: the project's compile check or ONE focused test — plus, for Rust changes, crate-scoped fmt and clippy on EVERY touched crate: `cargo +nightly-2026-04-14 fmt -p <touched-crate>` and `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings`. Never the full workspace fmt/clippy and never the full suite (fabro-0d56: two of three tester cycles in run 01M1S6VRWQMD56M1X8HWAXDSNN were pure style failures — rustfmt drift and two denied clippy lints — burning ~25% of run LLM spend; the crate-scoped pass here keeps the tester's first gate compile-warm).\n+4. Do NOT run the quality gate — NOT `just qualitygate`, NOT its equivalent. The deterministic tester step after you owns the gate; a redundant run (observed: implementer + tester + reviewer all gating the same tree) wastes a cold cache's tens of seconds and blurs role boundaries. Your check: the project's compile check or ONE focused test — plus, for Rust changes, crate-scoped fmt and clippy on EVERY touched crate: `cargo +nightly-2026-04-14 fmt -p <touched-crate>` and `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings`. That clippy invocation is the literal gate command with DEFAULT features: run it on EVERY touched crate IN ADDITION to any feature-scoped clippy checks you may also run (e.g. `--features docker`) — a feature-scoped pass must never substitute for the default-features run (run 01M1YJ8R820R7ZMSN55GJGMZ4A: the implementer verified only under a feature flag while a default-features E0432 it had itself diagnosed red-lined the tester 11s in). Accordingly, a known default-features break in a touched crate (e.g. an E0432 that only appears without features) FAILS your 'gate passes' self-assessment: you may not report success while such a break is outstanding — fix it, or route Blocked if you cannot. Never the full workspace fmt/clippy and never the full suite (fabro-0d56: two of three tester cycles in run 01M1S6VRWQMD56M1X8HWAXDSNN were pure style failures — rustfmt drift and two denied clippy lints — burning ~25% of run LLM spend; the crate-scoped pass here keeps the tester's first gate compile-warm).\n    For repetitive, pattern-shaped rewrites — call-site adaptation after a signature change, or a rename rippling through many sites — do ONE mechanical shell pass with a transform tool (`sed`, `perl -pi -e`, a small script) instead of N per-site `edit_file` calls, then verify with ONE focused check (compile check or ONE focused test, as above). Measured (run `01M11P68SHFS`, implementer@2): 277 s inference against 6 s tool time, ~43% of the run's LLM spend (US$0.486, 51.8k tokens). Correctness, not only cost: hand-editing many identical sites produced 19 concurrent-write serialization warnings and one swallowed-loop-body near-miss; mechanical transforms eliminate that near-miss class.\n 5. Do NOT close the seed and do NOT review — the Reviewer decides, the deterministic Closeout closes.\n 6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. Skip if nothing surfaced. Either way, the answer has a required home: name the mx-id (format `mx-xxxxxx`) or the literal skip text in `lesson_capture` — see 'Lesson capture' below.\n@@ -73,7 +73,12 @@ carve-out loosens nothing else: unrelated-file fixes, feature drift, and\n platform (`.fabro/`, scripts, justfile) fixes remain off-limits, and\n incidental platform friction stays journal-only. Minimal-fix discipline\n applies: prefer the smallest compiling fix over refactors; if the\n-minimal fix is unclear, report instead of fixing.\n+minimal fix is unclear, report instead of fixing. This carve-out only\n+permits the minimal repair of VERIFIED pre-existing breaks — it does\n+not soften the default-features clippy rule in step 4: that rule\n+governs touched crates and breaks you caused or could fix, and until\n+the minimal fix lands, a default-features break still fails your\n+'gate passes' self-assessment.\n \n Report through `context_updates.journal` on EVERY pass. Silence is a\n missing report, not an empty one — two full runs shipped zero journal\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 1c46688..f6faf77 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -248,7 +248,7 @@\n {\"id\":\"fabro-22e4\",\"title\":\"agent: edit-tool file writes land with mtime 1970-01-01 — cargo skips recompiles, edits silently lag until manual touch\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T18:30:04.569Z\",\"updatedAt\":\"2026-09-07T18:51:48.005Z\",\"assignee\":\"fabro\",\"description\":\"From unreviewed run 01M1Y2SMEVDHAFB59GZV9B84CQ (PR #41 implementer; recovered via journal sweep 2026-09-07 after the run aged out of revisor freshness): edit-tool file writes landed with mtime 1970-01-01 (e.g. lib/components/fabro-validate/src/file_refs.rs), so cargo considered the sources older than cached rlibs and silently skipped recompiles — a just-added pub fn was reported missing and behavior lagged the edits until a manual touch. This is silent cache poisoning of the build loop: any agent edit can produce a stale-binary diagnosis that costs implementer revisits. Fix direction: the platform's file-write path (edit tool / sandbox write transport) must set a real mtime — utimensat/write-with-times after creating or replacing the file so downstream build systems see fresh sources. Acceptance: an edit-tool write produces mtime == wall clock (unit test on the write path); a before/after cargo check in a scratch crate recompiles after an agent edit without manual touch.\",\"labels\":[\"engine\",\"agent\"],\"closedAt\":\"2026-09-07T18:51:48.005Z\"}\n {\"id\":\"fabro-b8ed\",\"title\":\"develop: verification-only briefs must not assert 'criteria satisfied' — derive per-criterion checks instead\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:30:04.670Z\",\"updatedAt\":\"2026-09-07T18:30:04.670Z\",\"assignee\":\"fabro\",\"description\":\"From unreviewed run 01M1Y852BN91NSVSHFWNWTW5ST (PR #42; journal sweep 2026-09-07): the verification-only brief asserted 'acceptance criteria appear already satisfied', but criterion 5 of fabro-5e09 was materially unmet in the worktree — docs/agents/issue-tracker.md still said 'Filers assign at creation' and 'Assignment is a user decision', contradicting the seed's D2/D3 decisions from the same day. The pass only converged because the implementer re-checked; a lazier one would have closed the seed on the brief's word. Fix direction: the planner's verification-only brief generation must not carry satisfaction assertions — instead list each acceptance criterion with an instruction to verify it against the CURRENT worktree and report per-criterion status in the summary. Related: fabro-578a (different aspect: allowed command level in verification-only briefs).\",\"labels\":[\"workflows\",\"revision\"]}\n {\"id\":\"fabro-52a9\",\"title\":\"conductor survey: reword misleading 'burns the backlog down' claim — backlog journal is visibility-only, drain needs the revisor's newest-first rule to change\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-07T18:30:04.771Z\",\"updatedAt\":\"2026-09-07T18:30:04.771Z\",\"assignee\":\"fabro\",\"description\":\"PR #45's survey prompt says 'the revisor revises the newest revisable run, so each subsequent pass burns the backlog down one run at a time' — but the revise leg creates the revisor without a goal and the revisor's select rule picks the NEWEST unrevised fresh run (which is always the current pass's own child), so the backlog NEVER drains; additionally the freshness rule (ADR-0015) makes older runs stale-evidence the moment the workflow version drifts, permanently disqualifying them. The journal line is dead-letter optimism (user + agent analysis 2026-09-07). Fix: reword survey.md to state the truth — the backlog entry is VISIBILITY-only (unreviewed run ids stay observable), runs are only revisable while fresh, and a real drain would need the revise leg to pass an explicit backlog run id in the goal (a decision not made). Do not promise behavior the graph cannot deliver.\",\"labels\":[\"workflows\",\"revision\"]}\n-{\"id\":\"fabro-2254\",\"title\":\"Mirror the gate's default-features clippy in the implementer's pre-gate check\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T18:58:15.104Z\",\"updatedAt\":\"2026-09-07T19:19:56.648Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, require the literal gate invocation cargo clippy -p <crate> --all-targets -- -D warnings (default features) on every touched crate in addition to any feature-scoped checks, and make a known default-features break FAIL the 'gate passes' criterion. In run 01M1YJ8R820R7ZMSN55GJGMZ4A the implementer verified only under --features docker while the default-features E0432 it had itself diagnosed red-lined the tester 11s in, forcing a full second cycle (~8 min, ~$0.41, 64% of run cost). Distinct from closed fabro-0d56 (crate scoping): this is feature-set parity. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-2254\",\"title\":\"Mirror the gate's default-features clippy in the implementer's pre-gate check\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T18:58:15.104Z\",\"updatedAt\":\"2026-09-07T21:34:15.200Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, require the literal gate invocation cargo clippy -p <crate> --all-targets -- -D warnings (default features) on every touched crate in addition to any feature-scoped checks, and make a known default-features break FAIL the 'gate passes' criterion. In run 01M1YJ8R820R7ZMSN55GJGMZ4A the implementer verified only under --features docker while the default-features E0432 it had itself diagnosed red-lined the tester 11s in, forcing a full second cycle (~8 min, ~$0.41, 64% of run cost). Distinct from closed fabro-0d56 (crate scoping): this is feature-set parity. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-07T21:34:15.200Z\"}\n {\"id\":\"fabro-c381\",\"title\":\"Allow minimal adjacent repair of pre-existing compile breaks in touched crates\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T18:58:15.217Z\",\"updatedAt\":\"2026-09-07T20:35:09.322Z\",\"description\":\"Add a carve-out to implementer.md: a verified pre-existing compile/clippy break in a touched crate may be fixed minimally to keep the gate green, disclosed in implementation_summary as adjacent repair. In this run implementer@1 root-caused the pre-existing E0432 via stash-reproduce and knew the 3-line fix, but report-don't-fix scope pushed it to a painpoint and the gate bounced the whole run; the reviewer journal already treats compile-repair as not scope creep. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-07T20:35:09.322Z\"}\n {\"id\":\"fabro-8194\",\"title\":\"Carry the implementer's prior diagnosis into gate-red bounce prompts\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:15.338Z\",\"updatedAt\":\"2026-09-07T19:19:56.855Z\",\"description\":\"In workflow.fabro implementer node, add implementation_summary to preamble_allow_keys (or inject the previous pass's painpoints as a gate_bounce_notes key on the bounce path). In this run implementer@2's prompt excluded the node's own prior outputs, so it re-derived from scratch what implementer@1 had root-caused 90s earlier - 305s inference, 6,997 reasoning tokens, $0.405 (73% of the run's reasoning spend). Different mechanism from open fabro-6a78 (compact fidelity): this is the node allow-key/bounce injection path. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-56db\",\"title\":\"Normalize stale mtimes at qualitygate start until the transport fix ships\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:58:21.984Z\",\"updatedAt\":\"2026-09-07T19:19:56.962Z\",\"description\":\"In scripts/qualitygate.nu, at start run: find lib -name '*.rs' ! -newermt 2000-01-01 -exec touch {} + and mirror the one-liner in implementer.md step 4, until the fabro-22e4 sandbox transport fix is deployed everywhere. In this run edit_file-written push_credentials.rs carried mtime 1970-01-01 and cargo replayed stale dead-code warnings with wrong line numbers, forcing a manual touch detour; zero-LLM-cost mitigation, complementary to the open root-cause seed fabro-22e4. Basis: run 01M1YJ8R820R7ZMSN55GJGMZ4A, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit b1dbce3b713540dc605bec39d9ac09c17a224cb4\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n",
+      "summary": {
+        "files_changed": 3,
+        "additions": 15,
+        "deletions": 3
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2309,6 +2428,220 @@
             "category": "other",
             "tokens": 7,
             "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "planner@1": {
+      "first_event_seq": 21,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T21:32:34.948153134Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T21:32:04.802619148Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 26756,
+        "inference_time_ms": 24713,
+        "tool_time_ms": 1489,
+        "active_time_ms": 26202
+      },
+      "usage": {
+        "input_tokens": 18791,
+        "output_tokens": 720,
+        "total_tokens": 84571,
+        "reasoning_tokens": 292,
+        "cache_read_tokens": 64768,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 47594
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 18590,
+        "usage_percent": 1.7728805541992188,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-07T21:32:34.931449968Z",
+        "event_seq": 59,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1187,
+            "usage_percent": 0.11320114135742188
+          },
+          {
+            "category": "tools",
+            "tokens": 1678,
+            "usage_percent": 0.16002655029296875
+          },
+          {
+            "category": "memory",
+            "tokens": 5894,
+            "usage_percent": 0.5620956420898438
+          },
+          {
+            "category": "conversation",
+            "tokens": 9825,
+            "usage_percent": 0.9369850158691406
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
           }
         ],
         "warnings": []
@@ -2742,216 +3075,38 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "planner@1": {
-      "first_event_seq": 21,
+    "exit@1": {
+      "first_event_seq": 187,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": "Stage completed: planner",
+        "notes": null,
         "failure_reason": null,
-        "timestamp": "2026-09-07T21:32:34.948153134Z"
+        "timestamp": "2026-09-07T21:34:19.460377347Z"
       },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "low"
-      },
+      "provider_used": null,
       "diff": null,
       "script_invocation": null,
       "script_timing": null,
       "parallel_results": null,
       "output": null,
-      "started_at": "2026-09-07T21:32:04.802619148Z",
-      "handler": "agent",
+      "started_at": "2026-09-07T21:34:19.460343147Z",
+      "handler": "exit",
       "graph_visit": 1,
       "timing": {
-        "wall_time_ms": 26756,
-        "inference_time_ms": 24713,
-        "tool_time_ms": 1489,
-        "active_time_ms": 26202
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
       },
       "usage": {
-        "input_tokens": 18791,
-        "output_tokens": 720,
-        "total_tokens": 84571,
-        "reasoning_tokens": 292,
-        "cache_read_tokens": 64768,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 47594
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": true
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 18590,
-        "usage_percent": 1.7728805541992188,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-07T21:32:34.931449968Z",
-        "event_seq": 59,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1187,
-            "usage_percent": 0.11320114135742188
-          },
-          {
-            "category": "tools",
-            "tokens": 1678,
-            "usage_percent": 0.16002655029296875
-          },
-          {
-            "category": "memory",
-            "tokens": 5894,
-            "usage_percent": 0.5620956420898438
-          },
-          {
-            "category": "conversation",
-            "tokens": 9825,
-            "usage_percent": 0.9369850158691406
-          },
-          {
-            "category": "other",
-            "tokens": 6,
-            "usage_percent": 0.00057220458984375
-          }
-        ],
-        "warnings": []
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
