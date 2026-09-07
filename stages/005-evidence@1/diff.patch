@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M1YQD03JZJCGRJ53SNRBTM8P.jsonl b/.fabro/journal/01M1YQD03JZJCGRJ53SNRBTM8P.jsonl
+index 913f90e..e86b08d 100644
+--- a/.fabro/journal/01M1YQD03JZJCGRJ53SNRBTM8P.jsonl
++++ b/.fabro/journal/01M1YQD03JZJCGRJ53SNRBTM8P.jsonl
+@@ -2,3 +2,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1YQD03JZJCGRJ53SNRBTM8P","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-07T20:02:53Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YQD03JZJCGRJ53SNRBTM8P","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-07T20:03:49Z","data":{"painpoints":[],"observations":["The planner.md numbered list had two steps both numbered '4.' (claim and brief) before this change — the renumber in this pass fixed it incidentally; future prompt edits should keep an eye on list numbering drift in `.fabro/workflows/develop/prompts/planner.md`."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YQD03JZJCGRJ53SNRBTM8P","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-07T20:03:59Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YQD03JZJCGRJ53SNRBTM8P","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-07T20:04:04Z","data":{}}
