@@ -691,7 +691,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T23:02:08.489461167Z",
-  "last_event_at": "2026-09-07T23:03:28.248693926Z",
+  "last_event_at": "2026-09-07T23:03:43.375482134Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -870,9 +870,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 114,
       "checkpoint": {
-        "timestamp": "2026-09-07T23:03:28.586981291Z",
+        "timestamp": "2026-09-07T23:03:34.439356943Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -881,7 +881,202 @@
         ],
         "node_retries": {},
         "context_values": {
+          "graph.rankdir": "LR",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.run_id": "01M1Z1PK3D7R9MEWDP7QDZMA1D",
+          "last_stage": "implementer",
+          "internal.seed_cycle_anchor": "fabro-cf76",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 4254,
+            "preview": "Claimed `fabro-cf76`. Brief written below; basis verified against the current worktree before claiming.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n  "
+          },
+          "current_seed_id": "fabro-cf76",
+          "preferred_label": "Implemented",
+          "lesson_capture": "nothing durable — skipped",
+          "current_node": "implementer",
+          "graph.max_node_visits": "40",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.planner.current_node": "implementer",
+          "internal.retry_count.start": 0,
+          "internal.fidelity": "summary:high",
+          "last_response": "Implementation complete. The change is a single additive sentence appended to step 7 of `.fabro/workflows/develop/prompts/planner.md`: it extends the contradiction check so the planner must verify spe",
+          "graph.preamble_budget_kb": "24",
+          "internal.node_visit_count": 1,
+          "failure_class": "",
+          "outcome": "succeeded",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "thread.start.current_node": "planner",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "The seed evidence (run 01M1Z017) described the target as the 'CHECK THE SPEC FOR CONTRADICTIONS' item at line 44 — the line number matched exactly in the current tree, so no stale-basis correction was needed; the clause was appended to that single line to keep the diff truly one-line."
+            ]
+          },
+          "current_seed_title": "Planner: verify spec-named headings/anchors/paths exist in target files before forwarding the brief",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3266,
+            "preview": "Implementation complete. The change is a single additive sentence appended to step 7 of `.fabro/workflows/develop/prompts/planner.md`: it extends the contradiction check so the planner must verify spe"
+          },
+          "internal.retry_count.implementer": 0,
+          "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/planner.md` step 7 (the 'CHECK THE SPEC FOR CONTRADICTIONS' item, currently at line 44) to extend the contradiction check with existence verification of spec-named references. Acceptance criteria: - New rule in step 7: when the seed spec names a heading, anchor, or file path, the planner must confirm it exists in the target file before forwarding the brief - When a named heading/anchor/path does not exist, the planner annotates the ACTUAL location (real heading name or path) in the brief instead of transcribing the spec verbatim - Keep the change minimal: an additive clause in step 7, no restructuring of the prompt's numbered steps or other sections - Tone/style consistent with the surrounding prompt text (imperative, concise) - Context only, do not re-verify: run 01M1Z017 brief forwarded 'checklist gains a CAPABILITY DELTA axis' though `reviewer.md` has no 'checklist' heading (the numbered 'Your job this pass' list is it) - Platform paths under `.fabro/**` must be read via shell (sed/grep/cat), not read_file - Verification: prompt-file-only change; no Rust build impact expected",
+          "failure_signature": "",
+          "graph.cycle_counter_reset_key": "current_seed_id",
           "implementation_summary": "Edited `.fabro/workflows/develop/prompts/planner.md` step 7 (line 44) via shell, appending one additive clause to the contradiction check: spec-named headings/anchors/paths must be confirmed to exist in the target file before the brief is forwarded, and when absent the planner annotates the ACTUAL location instead of transcribing the spec verbatim. Single-line diff, prompt-file-only, no Rust surface. Lesson capture: nothing durable — skipped. Per-criterion report: PASS existence-verification rule added (planner.md line 44); PASS actual-location annotation requirement (same clause); PASS minimal additive change (git diff --stat: 1 file, 1 line); PASS imperative/concise tone matches surrounding text; PASS no Rust build impact (no lib/ or apps/ files touched); PASS platform path handled via shell throughout.",
+          "internal.retry_count.planner": 0,
+          "internal.thread_id": "planner"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "Edited `.fabro/workflows/develop/prompts/planner.md` step 7 (line 44) via shell, appending one additive clause to the contradiction check: spec-named headings/anchors/paths must be confirmed to exist in the target file before the brief is forwarded, and when absent the planner annotates the ACTUAL location instead of transcribing the spec verbatim. Single-line diff, prompt-file-only, no Rust surface. Lesson capture: nothing durable — skipped. Per-criterion report: PASS existence-verification rule added (planner.md line 44); PASS actual-location annotation requirement (same clause); PASS minimal additive change (git diff --stat: 1 file, 1 line); PASS imperative/concise tone matches surrounding text; PASS no Rust build impact (no lib/ or apps/ files touched); PASS platform path handled via shell throughout.",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3266,
+                "preview": "Implementation complete. The change is a single additive sentence appended to step 7 of `.fabro/workflows/develop/prompts/planner.md`: it extends the contradiction check so the planner must verify spe"
+              },
+              "last_stage": "implementer",
+              "lesson_capture": "nothing durable — skipped",
+              "last_response": "Implementation complete. The change is a single additive sentence appended to step 7 of `.fabro/workflows/develop/prompts/planner.md`: it extends the contradiction check so the planner must verify spe",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The seed evidence (run 01M1Z017) described the target as the 'CHECK THE SPEC FOR CONTRADICTIONS' item at line 44 — the line number matched exactly in the current tree, so no stale-basis correction was needed; the clause was appended to that single line to keep the diff truly one-line."
+                ]
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14905,
+                    "output_tokens": 1084,
+                    "reasoning_tokens": 343,
+                    "cache_read_tokens": 54400,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 41284
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 32115,
+              "tool_time_ms": 932,
+              "active_time_ms": 33047
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_stage": "planner",
+              "current_seed_id": "fabro-cf76",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 4254,
+                "preview": "Claimed `fabro-cf76`. Brief written below; basis verified against the current worktree before claiming.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n  "
+              },
+              "current_seed_title": "Planner: verify spec-named headings/anchors/paths exist in target files before forwarding the brief",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "gh CLI is not installed in the planner sandbox, so the in-flight PR check (planner step 4) degraded to 'no in-flight PRs' this run. fabro-06e0 already tracks replacing gh with credential-less fabro_runs_list; that work should also become the sanctioned source for this check."
+                  }
+                ],
+                "observations": [
+                  "Claimed fabro-cf76 (top of sd ready, High). Basis verified before claim: planner.md step 7 exists at line 44 without the proposed verification rule, and reviewer.md has no 'checklist' heading — evidence holds against the current tree."
+                ]
+              },
+              "last_response": "Claimed `fabro-cf76`. Brief written below; basis verified against the current worktree before claiming.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n  ",
+              "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/planner.md` step 7 (the 'CHECK THE SPEC FOR CONTRADICTIONS' item, currently at line 44) to extend the contradiction check with existence verification of spec-named references. Acceptance criteria: - New rule in step 7: when the seed spec names a heading, anchor, or file path, the planner must confirm it exists in the target file before forwarding the brief - When a named heading/anchor/path does not exist, the planner annotates the ACTUAL location (real heading name or path) in the brief instead of transcribing the spec verbatim - Keep the change minimal: an additive clause in step 7, no restructuring of the prompt's numbered steps or other sections - Tone/style consistent with the surrounding prompt text (imperative, concise) - Context only, do not re-verify: run 01M1Z017 brief forwarded 'checklist gains a CAPABILITY DELTA axis' though `reviewer.md` has no 'checklist' heading (the numbered 'Your job this pass' list is it) - Platform paths under `.fabro/**` must be read via shell (sed/grep/cat), not read_file - Verification: prompt-file-only change; no Rust build impact expected"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19753,
+                    "output_tokens": 1344,
+                    "reasoning_tokens": 201,
+                    "cache_read_tokens": 67840,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 52085
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 33413,
+              "tool_time_ms": 1757,
+              "active_time_ms": 35170
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "d9947e360ecd9db1adcd92edce612666bdc6c40b",
+        "node_visits": {
+          "planner": 1,
+          "implementer": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1Z1PK3D7R9MEWDP7QDZMA1D.jsonl b/.fabro/journal/01M1Z1PK3D7R9MEWDP7QDZMA1D.jsonl\nindex 7b3a2fc..aa6f1af 100644\n--- a/.fabro/journal/01M1Z1PK3D7R9MEWDP7QDZMA1D.jsonl\n+++ b/.fabro/journal/01M1Z1PK3D7R9MEWDP7QDZMA1D.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Z1PK3D7R9MEWDP7QDZMA1D\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T23:02:11Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Z1PK3D7R9MEWDP7QDZMA1D\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T23:02:48Z\",\"data\":{\"painpoints\":[{\"text\":\"gh CLI is not installed in the planner sandbox, so the in-flight PR check (planner step 4) degraded to 'no in-flight PRs' this run. fabro-06e0 already tracks replacing gh with credential-less fabro_runs_list; that work should also become the sanctioned source for this check.\"}],\"observations\":[\"Claimed fabro-cf76 (top of sd ready, High). Basis verified before claim: planner.md step 7 exists at line 44 without the proposed verification rule, and reviewer.md has no 'checklist' heading — evidence holds against the current tree.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1Z1PK3D7R9MEWDP7QDZMA1D\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T23:03:28Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The seed evidence (run 01M1Z017) described the target as the 'CHECK THE SPEC FOR CONTRADICTIONS' item at line 44 — the line number matched exactly in the current tree, so no stale-basis correction was needed; the clause was appended to that single line to keep the diff truly one-line.\"]}}\ndiff --git a/.fabro/workflows/develop/prompts/planner.md b/.fabro/workflows/develop/prompts/planner.md\nindex 2e42dd9..cfaa93f 100644\n--- a/.fabro/workflows/develop/prompts/planner.md\n+++ b/.fabro/workflows/develop/prompts/planner.md\n@@ -41,7 +41,7 @@ The engine maintains `seed_cycles` deterministically: `{ node -> completed visit\n    - `-pretty flag: aligned column output, combines with -json`\n    - `-n flag: default 100, rejects values < 1 with non-zero exit`\n    - `tests: table-driven, cover flag combinations`\n-7. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong.\n+7. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong. When the spec names a heading, anchor, or file path, confirm it exists in the target file before forwarding the brief; when it does not, annotate the ACTUAL location (the real heading name or path) instead of transcribing the spec verbatim.\n \n If the top candidate looks already implemented (its acceptance criteria appear satisfied in the worktree — often a stale tracker from an earlier run), do NOT close it yourself and do NOT skip it. Claim it normally and mark the brief as verification-only (see below). The normal cycle then proves it: implementer verifies, gate runs, reviewer approves. Only an approved review closes a seed.\n \n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 5,
+          "deletions": 2
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-07T23:03:43.790434482Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/planner.md` step 7 (line 44) via shell, appending one additive clause to the contradiction check: spec-named headings/anchors/paths must be confirmed to exist in the target file before the brief is forwarded, and when absent the planner annotates the ACTUAL location instead of transcribing the spec verbatim. Single-line diff, prompt-file-only, no Rust surface. Lesson capture: nothing durable — skipped. Per-criterion report: PASS existence-verification rule added (planner.md line 44); PASS actual-location annotation requirement (same clause); PASS minimal additive change (git diff --stat: 1 file, 1 line); PASS imperative/concise tone matches surrounding text; PASS no Rust build impact (no lib/ or apps/ files touched); PASS platform path handled via shell throughout.",
+          "thread.implementer.current_node": "tester",
+          "internal.retry_count.tester": 0,
+          "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
           "last_stage": "implementer",
           "preferred_label": "Implemented",
           "internal.seed_cycle_anchor": "fabro-cf76",
@@ -898,7 +1093,7 @@
           "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/planner.md` step 7 (the 'CHECK THE SPEC FOR CONTRADICTIONS' item, currently at line 44) to extend the contradiction check with existence verification of spec-named references. Acceptance criteria: - New rule in step 7: when the seed spec names a heading, anchor, or file path, the planner must confirm it exists in the target file before forwarding the brief - When a named heading/anchor/path does not exist, the planner annotates the ACTUAL location (real heading name or path) in the brief instead of transcribing the spec verbatim - Keep the change minimal: an additive clause in step 7, no restructuring of the prompt's numbered steps or other sections - Tone/style consistent with the surrounding prompt text (imperative, concise) - Context only, do not re-verify: run 01M1Z017 brief forwarded 'checklist gains a CAPABILITY DELTA axis' though `reviewer.md` has no 'checklist' heading (the numbered 'Your job this pass' list is it) - Platform paths under `.fabro/**` must be read via shell (sed/grep/cat), not read_file - Verification: prompt-file-only change; no Rust build impact expected",
           "thread.planner.current_node": "implementer",
           "graph.preamble_budget_kb": "24",
-          "internal.thread_id": "planner",
+          "internal.thread_id": "implementer",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "internal.node_visit_count": 1,
           "thread.start.current_node": "planner",
@@ -911,10 +1106,11 @@
             "preview": "Claimed `fabro-cf76`. Brief written below; basis verified against the current worktree before claiming.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n  "
           },
           "last_response": "Implementation complete. The change is a single additive sentence appended to step 7 of `.fabro/workflows/develop/prompts/planner.md`: it extends the contradiction check so the planner must verify spe",
-          "current_node": "implementer",
+          "current_node": "tester",
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
           "journal": {
             "painpoints": [],
@@ -923,7 +1119,7 @@
             ]
           },
           "graph.max_node_visits": "40",
-          "internal.fidelity": "summary:high",
+          "internal.fidelity": "compact",
           "internal.retry_count.start": 0,
           "lesson_capture": "nothing durable — skipped",
           "internal.retry_count.implementer": 0,
@@ -1041,13 +1237,28 @@
               "tool_time_ms": 1757,
               "active_time_ms": 35170
             }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 8870,
+              "active_time_ms": 8870
+            }
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
           "planner": 1,
-          "start": 1,
-          "implementer": 1
+          "tester": 1,
+          "implementer": 1,
+          "start": 1
         }
       },
       "diff": {}
@@ -1294,42 +1505,6 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "start@1": {
-      "first_event_seq": 17,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": null,
-        "failure_reason": null,
-        "timestamp": "2026-09-07T23:02:10.949763256Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-07T23:02:10.930780437Z",
-      "handler": "start",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 0,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "implementer@1": {
       "first_event_seq": 69,
       "prompt": null,
@@ -1540,6 +1715,93 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T23:02:10.949763256Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T23:02:10.930780437Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@1": {
+      "first_event_seq": 117,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T23:03:43.375482134Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+        "exit_code": 0,
+        "duration_ms": 8870,
+        "termination": "exited",
+        "output_bytes": 87,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 87,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-07T23:03:34.474066303Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 8878,
+        "inference_time_ms": 0,
+        "tool_time_ms": 8870,
+        "active_time_ms": 8870
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
