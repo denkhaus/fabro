@@ -121,6 +121,24 @@ def check-tests [crates: list<string>] {
     true
 }
 
+# fabro-server's graph-render tests shell out to the `fabro` CLI binary
+# (target/debug/fabro), which a touched-crates gate never builds on its own —
+# without it the tests skip and real render regressions slip through (seed
+# fabro-febd). Explicit dependency: build the renderer bin before the test
+# step whenever fabro-server is in the gated set. Stays out of the fmt/clippy
+# paths.
+def build-renderer-if-needed [crates: list<string>] {
+    if not ('fabro-server' in $crates) { return true }
+    print '== building fabro CLI renderer binary (fabro-server graph-render tests invoke it) =='
+    let res = (do { ^cargo build -p fabro-cli --bin fabro } | complete)
+    if $res.exit_code != 0 {
+        print ($res.stderr | str trim -r -c "\n" | lines | last 30)
+        return false
+    }
+    print 'renderer binary ready'
+    true
+}
+
 # Workspace-wide fallback when root manifests changed: a compile check only
 # (clippy+tests on all 52 crates would blow the tester timeout).
 def check-workspace-compiles [] {
@@ -151,7 +169,7 @@ def main [] {
         exit 1
     }
     print $"touched crates: ($crates | str join ', ')"
-    let green = ((check-fmt) and (check-clippy $crates) and (check-tests $crates))
+    let green = ((check-fmt) and (check-clippy $crates) and (build-renderer-if-needed $crates) and (check-tests $crates))
     if $green {
         print "GATE GREEN"
         exit 0
