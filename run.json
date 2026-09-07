@@ -694,7 +694,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T18:32:23.548453389Z",
-  "last_event_at": "2026-09-07T18:51:48.102532190Z",
+  "last_event_at": "2026-09-07T18:51:53.783998199Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -2631,9 +2631,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 583,
       "checkpoint": {
-        "timestamp": "2026-09-07T18:51:48.319150529Z",
+        "timestamp": "2026-09-07T18:51:52.498721753Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -2649,73 +2649,31 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.fidelity": "compact",
-          "graph.preamble_budget_kb": "24",
-          "thread.implementer.current_node": "tester",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.retry_count.evidence": 0,
-          "internal.exit_kind": "natural",
-          "current_node": "closeout",
-          "internal.retry_count.planner": 0,
-          "current_seed_brief": "Fix the Docker sandbox single-file write transport so container file writes carry a real mtime. Root cause (planner-located): `build_single_file_tar` in `/workspace/fabro/lib/components/fabro-sandbox/src/docker.rs` (definition ~line 1833, callers at ~796 Dockerfile upload and ~1323 upload_file path) builds a GNU tar header setting only path/size/mode/cksum — mtime defaults to 0, so the extracted file lands with mtime 1970-01-01 and cargo considers sources older than cached rlibs. Acceptance criteria: (1) `build_single_file_tar` sets header mtime to the current wall clock (`SystemTime::now` seconds since epoch) before `set_cksum`; (2) a unit test on the tar build path asserts the header mtime is within a small tolerance (e.g. a few seconds) of `SystemTime::now` and nonzero; (3) the two existing tests at docker.rs ~3354/~3367 still pass (update only if they assert the old zero-mtime behavior); (4) also check other tar writers in `lib/components/fabro-sandbox/src/docker.rs` (upload dir archive at ~381/404 is download-side, verify only upload-side paths need the fix) and fix any sibling upload-path header builders missing mtime the same way; (5) cargo check on the touched crates passes. The seed's cargo recompile acceptance (before/after scratch-crate check) is covered by criterion (1)+(2): a correct mtime makes the extracted file newer than cached rlibs by construction; a live docker-based recompile test is NOT required if no docker daemon is available in the gate environment — state that explicitly in the verification report.",
-          "thread.gatebounce.current_node": "implementer",
-          "internal.retry_count.implementer": 0,
-          "internal.retry_count.reviewer": 0,
-          "last_stage": "reviewer",
-          "internal.retry_count.gatebounce": 0,
-          "graph.rankdir": "LR",
-          "internal.retry_count.start": 0,
-          "internal.node_visit_count": 1,
-          "thread.planner.current_node": "implementer",
-          "outcome": "succeeded",
-          "current_seed_id": "fabro-22e4",
-          "failure_class": "",
-          "thread.start.current_node": "planner",
-          "last_response": "Verification complete. Judging against the seed spec:\n\n**Criteria check (against diff-base 1e3f7fc, stat matches integrity header 4 files +53/-2 exactly):**\n1. ✅ `build_single_file_tar` now stamps `",
-          "internal.retry_count.tester": 0,
-          "thread.tester.current_node": "evidence",
-          "thread.reviewer.current_node": "closeout",
-          "implementation_summary": "Seed fabro-22e4's mtime fix was already in `lib/components/fabro-sandbox/src/docker.rs` (commit e6ae814); this pass repaired the actual gate blocker: fabro-sandbox failed to compile under default features because `mod managed_labels` was cfg-gated behind docker/daytona/test while `pub use managed_labels::RUN_ID_LABEL;` in `lib.rs` was ungated (from 4c1ca7e), and `push_credentials.rs` carried dead-code items/imports under default features. Touched `lib.rs` (un-gated the mod), `managed_labels.rs` (cfg-gated MANAGED_LABEL/MANAGED_LABEL_VALUE/insert_for_run + imports), `push_credentials.rs` (cfg-gated build_token_source, first PushCredentialState impl, three imports). Verified: clippy -D warnings clean on default features, docker-feature all-targets clean of new warnings, 237+146 tests pass, fmt clean. Lesson captured as mx-c28106 (mtime-0 bug hit this session live: cargo replayed stale warnings until touched). Per-criterion report: (1) PASS — `build_single_file_tar` sets header mtime to wall clock before `set_cksum`: docker.rs ~1844-1850; (2) PASS — `docker::tests::single_file_tar_sets_current_mtime` asserts mtime nonzero and within [before, after] of wall clock: docker.rs ~3373, ran green; (3) PASS — existing tests `single_file_tar_contains_named_file` and `single_file_tar_applies_private_mode` (~3361/3396) pass unmodified; (4) PASS — audited all tar usage in docker.rs: remaining sites are `tar::Archive` unpack (download-side, lines 404/3362/3383/3397); the sole upload-side builder is `build_single_file_tar`, fixed; no sibling upload header builders missing mtime; (5) PASS — cargo check + clippy `-D warnings` pass on fabro-sandbox under both default and docker features. Live docker recompile test: not run, no docker daemon in gate environment — per brief, criteria (1)+(2) cover it.",
+          "command.output": "blob://sha256/1e4de8c0eb5481874411246adaf1c65099dcaeff9f6afb3f313365dbfe54e161",
           "internal.work_dir": "/workspace/fabro",
-          "graph.max_node_visits": "40",
-          "seed_cycles": {
-            "planner": 1,
-            "implementer": 2,
-            "tester": 2,
-            "gatebounce": 1,
-            "evidence": 1,
-            "reviewer": 1,
-            "closeout": 1
-          },
-          "internal.run_id": "01M1YJ8R820R7ZMSN55GJGMZ4A",
-          "thread.evidence.current_node": "reviewer",
           "response.reviewer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.reviewer",
             "chars": 3965,
             "preview": "Verification complete. Judging against the seed spec:\n\n**Criteria check (against diff-base 1e3f7fc, stat matches integrity header 4 files +53/-2 exactly):**\n1. ✅ `build_single_file_tar` now stamps `"
           },
-          "preferred_label": "Approved",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 2574,
-            "preview": "Claimed `fabro-22e4`. Root cause located in `build_single_file_tar` (`lib/components/fabro-sandbox/src/docker.rs:1833`): the tar header sets path/size/mode but never mtime, so the default 0 propagates"
-          },
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "current_seed_title": "agent: edit-tool file writes land with mtime 1970-01-01 — cargo skips recompiles, edits silently lag until manual touch",
+          "last_response": "Verification complete. Judging against the seed spec:\n\n**Criteria check (against diff-base 1e3f7fc, stat matches integrity header 4 files +53/-2 exactly):**\n1. ✅ `build_single_file_tar` now stamps `",
+          "internal.retry_count.implementer": 0,
           "review_verdict": "approved",
-          "command.output": "blob://sha256/1e4de8c0eb5481874411246adaf1c65099dcaeff9f6afb3f313365dbfe54e161",
-          "response.implementer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 4361,
-            "preview": "All checks green and the lesson recorded (`mx-c28106`). Summary of this pass:\n\n**Seed fabro-22e4 (mtime fix)**: The core fix already landed in commit `e6ae814` — `build_single_file_tar` in `/workspa"
-          },
-          "lesson_capture": "mx-c28106",
-          "internal.thread_id": "reviewer",
+          "internal.run_id": "01M1YJ8R820R7ZMSN55GJGMZ4A",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.node_visit_count": 1,
+          "thread.reviewer.current_node": "closeout",
+          "current_seed_title": "agent: edit-tool file writes land with mtime 1970-01-01 — cargo skips recompiles, edits silently lag until manual touch",
+          "internal.fidelity": "compact",
+          "thread.tester.current_node": "evidence",
+          "internal.retry_count.planner": 0,
+          "internal.retry_count.tester": 0,
+          "internal.retry_count.evidence": 0,
+          "current_seed_brief": "Fix the Docker sandbox single-file write transport so container file writes carry a real mtime. Root cause (planner-located): `build_single_file_tar` in `/workspace/fabro/lib/components/fabro-sandbox/src/docker.rs` (definition ~line 1833, callers at ~796 Dockerfile upload and ~1323 upload_file path) builds a GNU tar header setting only path/size/mode/cksum — mtime defaults to 0, so the extracted file lands with mtime 1970-01-01 and cargo considers sources older than cached rlibs. Acceptance criteria: (1) `build_single_file_tar` sets header mtime to the current wall clock (`SystemTime::now` seconds since epoch) before `set_cksum`; (2) a unit test on the tar build path asserts the header mtime is within a small tolerance (e.g. a few seconds) of `SystemTime::now` and nonzero; (3) the two existing tests at docker.rs ~3354/~3367 still pass (update only if they assert the old zero-mtime behavior); (4) also check other tar writers in `lib/components/fabro-sandbox/src/docker.rs` (upload dir archive at ~381/404 is download-side, verify only upload-side paths need the fix) and fix any sibling upload-path header builders missing mtime the same way; (5) cargo check on the touched crates passes. The seed's cargo recompile acceptance (before/after scratch-crate check) is covered by criterion (1)+(2): a correct mtime makes the extracted file newer than cached rlibs by construction; a live docker-based recompile test is NOT required if no docker daemon is available in the gate environment — state that explicitly in the verification report.",
           "failure_signature": "",
-          "internal.seed_cycle_anchor": "fabro-22e4",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.retry_count.start": 0,
           "journal": {
             "painpoints": [
               {
@@ -2728,27 +2686,51 @@
               "Live docker recompile acceptance waived per brief (no daemon in gate env); the fresh-mtime-by-construction argument holds since the extracted file's mtime now exceeds any cached rlib."
             ]
           },
-          "internal.retry_count.closeout": 0
+          "last_stage": "reviewer",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2574,
+            "preview": "Claimed `fabro-22e4`. Root cause located in `build_single_file_tar` (`lib/components/fabro-sandbox/src/docker.rs:1833`): the tar header sets path/size/mode but never mtime, so the default 0 propagates"
+          },
+          "internal.retry_count.reviewer": 0,
+          "graph.rankdir": "LR",
+          "internal.seed_cycle_anchor": "fabro-22e4",
+          "internal.thread_id": "reviewer",
+          "thread.evidence.current_node": "reviewer",
+          "graph.preamble_budget_kb": "24",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 4361,
+            "preview": "All checks green and the lesson recorded (`mx-c28106`). Summary of this pass:\n\n**Seed fabro-22e4 (mtime fix)**: The core fix already landed in commit `e6ae814` — `build_single_file_tar` in `/workspa"
+          },
+          "implementation_summary": "Seed fabro-22e4's mtime fix was already in `lib/components/fabro-sandbox/src/docker.rs` (commit e6ae814); this pass repaired the actual gate blocker: fabro-sandbox failed to compile under default features because `mod managed_labels` was cfg-gated behind docker/daytona/test while `pub use managed_labels::RUN_ID_LABEL;` in `lib.rs` was ungated (from 4c1ca7e), and `push_credentials.rs` carried dead-code items/imports under default features. Touched `lib.rs` (un-gated the mod), `managed_labels.rs` (cfg-gated MANAGED_LABEL/MANAGED_LABEL_VALUE/insert_for_run + imports), `push_credentials.rs` (cfg-gated build_token_source, first PushCredentialState impl, three imports). Verified: clippy -D warnings clean on default features, docker-feature all-targets clean of new warnings, 237+146 tests pass, fmt clean. Lesson captured as mx-c28106 (mtime-0 bug hit this session live: cargo replayed stale warnings until touched). Per-criterion report: (1) PASS — `build_single_file_tar` sets header mtime to wall clock before `set_cksum`: docker.rs ~1844-1850; (2) PASS — `docker::tests::single_file_tar_sets_current_mtime` asserts mtime nonzero and within [before, after] of wall clock: docker.rs ~3373, ran green; (3) PASS — existing tests `single_file_tar_contains_named_file` and `single_file_tar_applies_private_mode` (~3361/3396) pass unmodified; (4) PASS — audited all tar usage in docker.rs: remaining sites are `tar::Archive` unpack (download-side, lines 404/3362/3383/3397); the sole upload-side builder is `build_single_file_tar`, fixed; no sibling upload header builders missing mtime; (5) PASS — cargo check + clippy `-D warnings` pass on fabro-sandbox under both default and docker features. Live docker recompile test: not run, no docker daemon in gate environment — per brief, criteria (1)+(2) cover it.",
+          "current_node": "closeout",
+          "current_seed_id": "fabro-22e4",
+          "internal.exit_kind": "natural",
+          "failure_class": "",
+          "thread.implementer.current_node": "tester",
+          "thread.planner.current_node": "implementer",
+          "thread.start.current_node": "planner",
+          "preferred_label": "Approved",
+          "outcome": "succeeded",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 2,
+            "tester": 2,
+            "gatebounce": 1,
+            "evidence": 1,
+            "reviewer": 1,
+            "closeout": 1
+          },
+          "lesson_capture": "mx-c28106",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.closeout": 0,
+          "internal.retry_count.gatebounce": 0,
+          "thread.gatebounce.current_node": "implementer"
         },
         "node_outcomes": {
-          "gatebounce": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/8c945f1394dc8e047c1c29ae5ce29d2291080efc84d5ae4a085027410c071a26"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/gate-bounce.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 271,
-              "active_time_ms": 271
-            }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "planner": {
             "status": "succeeded",
             "preferred_label": "Seed claimed",
@@ -2801,32 +2783,18 @@
               "active_time_ms": 43799
             }
           },
-          "evidence": {
+          "gatebounce": {
             "status": "succeeded",
             "context_updates": {
-              "command.output": "blob://sha256/122667dac88acb0153ba8b82d9e1485e22cc6b6df41895c4b87ace823b75bc36"
+              "command.output": "blob://sha256/8c945f1394dc8e047c1c29ae5ce29d2291080efc84d5ae4a085027410c071a26"
             },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/gate-bounce.nu",
             "usage": null,
             "timing": {
               "wall_time_ms": 0,
               "inference_time_ms": 0,
-              "tool_time_ms": 478,
-              "active_time_ms": 478
-            }
-          },
-          "tester": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/7c0a4bfab9e62d94c1d737936a5993fdd2f498068117dced54575ae1cfd8477b"
-            },
-            "notes": "Script completed: just qualitygate",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 41495,
-              "active_time_ms": 41495
+              "tool_time_ms": 271,
+              "active_time_ms": 271
             }
           },
           "reviewer": {
@@ -2883,6 +2851,10 @@
               "tool_time_ms": 208,
               "active_time_ms": 35227
             }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
           },
           "implementer": {
             "status": "succeeded",
@@ -2943,6 +2915,20 @@
               "active_time_ms": 463521
             }
           },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/7c0a4bfab9e62d94c1d737936a5993fdd2f498068117dced54575ae1cfd8477b"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 41495,
+              "active_time_ms": 41495
+            }
+          },
           "closeout": {
             "status": "succeeded",
             "context_updates": {
@@ -2956,24 +2942,171 @@
               "tool_time_ms": 275,
               "active_time_ms": 275
             }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/122667dac88acb0153ba8b82d9e1485e22cc6b6df41895c4b87ace823b75bc36"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 478,
+              "active_time_ms": 478
+            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "b725e9b72c26ac9678e4aa27b9a1c51bb55db9ff",
+        "loop_failure_signatures": {
+          "tester|deterministic|script failed with exit code: <n> ## output nu scripts/qualitygate.nu touched crates: fabro-sandbox == cargo fmt --check --all == format clean == cargo clippy fabro-sandbox -d warnings == ╭────────────╮ │ empty": 1
+        },
         "node_visits": {
-          "tester": 2,
-          "evidence": 1,
-          "closeout": 1,
+          "reviewer": 1,
+          "start": 1,
           "planner": 1,
           "implementer": 2,
-          "start": 1,
+          "closeout": 1,
           "gatebounce": 1,
-          "reviewer": 1
+          "evidence": 1,
+          "tester": 2
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1YJ8R820R7ZMSN55GJGMZ4A.jsonl b/.fabro/journal/01M1YJ8R820R7ZMSN55GJGMZ4A.jsonl\nindex 35d804c..ed1c9f7 100644\n--- a/.fabro/journal/01M1YJ8R820R7ZMSN55GJGMZ4A.jsonl\n+++ b/.fabro/journal/01M1YJ8R820R7ZMSN55GJGMZ4A.jsonl\n@@ -6,3 +6,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YJ8R820R7ZMSN55GJGMZ4A\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:50:54Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YJ8R820R7ZMSN55GJGMZ4A\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:50:59Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YJ8R820R7ZMSN55GJGMZ4A\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:51:43Z\",\"data\":{\"painpoints\":[{\"text\":\"Evidence capture arrived as a blob ref (/tmp/fabro/runtime/blobs/122667...json) that had to be paged manually before judging (run 01M1YJ8R820R7ZMSN55GJGMZ4A). Workable, but inlining the integrity header + file list in the preview would let small captures like this one (8.6 KB) skip the blob round-trip entirely.\"}],\"observations\":[\"Verified all 5 acceptance criteria from the evidence diff: mtime stamp before set_cksum, wall-clock tolerance unit test, untouched existing tests, independently grep-confirmed that build_single_file_tar is the only upload-side tar builder in docker.rs, and green gate.\",\"The three cfg-gating files beyond docker.rs are compile-repair for a pre-existing default-features break (ungated pub use vs gated mod from 4c1ca7e), not scope creep; comments explain each gate.\",\"Live docker recompile acceptance waived per brief (no daemon in gate env); the fresh-mtime-by-construction argument holds since the extracted file's mtime now exceeds any cached rlib.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YJ8R820R7ZMSN55GJGMZ4A\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:51:48Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex d493ca2..b5d4f88 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -245,6 +245,6 @@\n {\"id\":\"fabro-1dc9\",\"title\":\"conductor: reached=blocked routes as 'Develop child failed' — revisor leg skipped for every slow-gate PR since deploy #6\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T16:44:03.054Z\",\"updatedAt\":\"2026-09-07T18:10:15.437Z\",\"assignee\":\"fabro\",\"description\":\"REGRESSION since deploy #6 (2026-09-07 ~13:29 Berlin): conductor passes 01M1Y0ZE7K (15:30), 01M1Y2PF7V (16:00... UTC 13:30/14:00/15:34/16:00) ALL skip the revise leg. Evidence (16:00 UTC pass 01M1Y9J6J3DN server.log): develop child 01M1Y9N7R4 succeeded and PR #43 sat in a running gate; the develop-leg's second fabro_run_wait (until=merged) returned after 3s with reached=blocked (PR #34 semantics: open PR + non-green gate); the leg routed Edge 'develop -> exit' label='Develop child failed' -> soft park. The revise leg ONLY ran on passes whose PR was already merged at wait time (10:00/12:00/13:00 UTC passes, revisors 11:07/12:34/13:08). CONSEQUENCE: four develop runs unreviewed, no revisor seeds for them, and the line burns develop cycles without its feedback organ. FIX DIRECTIONS: (a) develop-leg routing must treat reached=blocked as 'merge pending', not failure: re-wait until=merged with a bounded deadline (e.g. 2-3 chained waits), and only route Failed on terminal-failed children (child status, not PR state); (b) after merged OR after child-terminal+parked-for-gate, ALWAYS run the revise leg; (c) backfill: the survey leg should detect completed develop runs without a revisor pass (no revisor journal/review artifact for the run id) and trigger a catch-up revise; (d) regression test: conductor graph routing on wait results terminal|merged|closed_unmerged|blocked|timeout maps blocked to wait-again/revise, never to the failed exit.\",\"labels\":[\"workflows\",\"revision\"],\"closedAt\":\"2026-09-07T18:10:15.437Z\"}\n {\"id\":\"fabro-5bee\",\"title\":\"ci: bump Swatinem/rust-cache to v2.9.2 — Node 20 deprecation warning in the action gates\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T17:25:44.212Z\",\"updatedAt\":\"2026-09-07T17:27:49.436Z\",\"assignee\":\"fabro\",\"description\":\"Evidence: the warning was observed in the dogfood-gate run of PR #33 (2026-09-07 morning, user finding) — not in a current run; it fires on EVERY gate run as long as the old pin stands (GitHub changelog 2025-09-19: deprecation of Node 20 runners): 'Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5'. The pinned SHA (comment '# v2') is an old v2 tag predating the node24 runtime. FIX: bump all 5 occurrences (.github/workflows/dogfood-gate.yml:62, .github/workflows/rust.yml:66,95,112,138) to Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 with comment '# v2.9.2' (v2.9.2 released 2026-08-06, commit SHA resolved via the annotated tag 63fed3e2 -> 6323deb1). Keep the repo's SHA-pinning style (no floating tags). Acceptance: grep shows the new SHA at all 5 sites; one gate run after the change shows no Node deprecation warning.\",\"labels\":[\"ci\"]}\n {\"id\":\"fabro-8275\",\"title\":\"Downgrade the by-design preamble allow-key absence warn to info\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:17:29.202Z\",\"updatedAt\":\"2026-09-07T18:21:27.438Z\",\"description\":\"In the preamble fidelity module of fabro-workflow, the warn 'preamble_allow_keys entry absent … key=output.gate_known_bug_hits' fired on a green first-visit stage of develop run 01M1YGJ7JSWAVWJT45DRDZ89Z6, even though key absence on first visit is by design and fires on every clean run. Change: emit info (not warn) when an allow-listed context key is absent on a node's first visit; keep warn for repeat visits or genuine contract regressions. Expected effect: warn-level logs stop crying wolf on every green run while real fidelity regressions stay visible. Related but distinct from fabro-meta-c454 (input-contract closure, not log level).\\nBasis: run 01M1YGJ7JSWAVWJT45DRDZ89Z6, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit f7126d9612d28110fca518d3aeeeb941bd7b659d\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-22e4\",\"title\":\"agent: edit-tool file writes land with mtime 1970-01-01 — cargo skips recompiles, edits silently lag until manual touch\",\"status\":\"in_progress\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T18:30:04.569Z\",\"updatedAt\":\"2026-09-07T18:33:03.771Z\",\"assignee\":\"fabro\",\"description\":\"From unreviewed run 01M1Y2SMEVDHAFB59GZV9B84CQ (PR #41 implementer; recovered via journal sweep 2026-09-07 after the run aged out of revisor freshness): edit-tool file writes landed with mtime 1970-01-01 (e.g. lib/components/fabro-validate/src/file_refs.rs), so cargo considered the sources older than cached rlibs and silently skipped recompiles — a just-added pub fn was reported missing and behavior lagged the edits until a manual touch. This is silent cache poisoning of the build loop: any agent edit can produce a stale-binary diagnosis that costs implementer revisits. Fix direction: the platform's file-write path (edit tool / sandbox write transport) must set a real mtime — utimensat/write-with-times after creating or replacing the file so downstream build systems see fresh sources. Acceptance: an edit-tool write produces mtime == wall clock (unit test on the write path); a before/after cargo check in a scratch crate recompiles after an agent edit without manual touch.\",\"labels\":[\"engine\",\"agent\"]}\n+{\"id\":\"fabro-22e4\",\"title\":\"agent: edit-tool file writes land with mtime 1970-01-01 — cargo skips recompiles, edits silently lag until manual touch\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T18:30:04.569Z\",\"updatedAt\":\"2026-09-07T18:51:48.005Z\",\"assignee\":\"fabro\",\"description\":\"From unreviewed run 01M1Y2SMEVDHAFB59GZV9B84CQ (PR #41 implementer; recovered via journal sweep 2026-09-07 after the run aged out of revisor freshness): edit-tool file writes landed with mtime 1970-01-01 (e.g. lib/components/fabro-validate/src/file_refs.rs), so cargo considered the sources older than cached rlibs and silently skipped recompiles — a just-added pub fn was reported missing and behavior lagged the edits until a manual touch. This is silent cache poisoning of the build loop: any agent edit can produce a stale-binary diagnosis that costs implementer revisits. Fix direction: the platform's file-write path (edit tool / sandbox write transport) must set a real mtime — utimensat/write-with-times after creating or replacing the file so downstream build systems see fresh sources. Acceptance: an edit-tool write produces mtime == wall clock (unit test on the write path); a before/after cargo check in a scratch crate recompiles after an agent edit without manual touch.\",\"labels\":[\"engine\",\"agent\"],\"closedAt\":\"2026-09-07T18:51:48.005Z\"}\n {\"id\":\"fabro-b8ed\",\"title\":\"develop: verification-only briefs must not assert 'criteria satisfied' — derive per-criterion checks instead\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:30:04.670Z\",\"updatedAt\":\"2026-09-07T18:30:04.670Z\",\"assignee\":\"fabro\",\"description\":\"From unreviewed run 01M1Y852BN91NSVSHFWNWTW5ST (PR #42; journal sweep 2026-09-07): the verification-only brief asserted 'acceptance criteria appear already satisfied', but criterion 5 of fabro-5e09 was materially unmet in the worktree — docs/agents/issue-tracker.md still said 'Filers assign at creation' and 'Assignment is a user decision', contradicting the seed's D2/D3 decisions from the same day. The pass only converged because the implementer re-checked; a lazier one would have closed the seed on the brief's word. Fix direction: the planner's verification-only brief generation must not carry satisfaction assertions — instead list each acceptance criterion with an instruction to verify it against the CURRENT worktree and report per-criterion status in the summary. Related: fabro-578a (different aspect: allowed command level in verification-only briefs).\",\"labels\":[\"workflows\",\"revision\"]}\n {\"id\":\"fabro-52a9\",\"title\":\"conductor survey: reword misleading 'burns the backlog down' claim — backlog journal is visibility-only, drain needs the revisor's newest-first rule to change\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-07T18:30:04.771Z\",\"updatedAt\":\"2026-09-07T18:30:04.771Z\",\"assignee\":\"fabro\",\"description\":\"PR #45's survey prompt says 'the revisor revises the newest revisable run, so each subsequent pass burns the backlog down one run at a time' — but the revise leg creates the revisor without a goal and the revisor's select rule picks the NEWEST unrevised fresh run (which is always the current pass's own child), so the backlog NEVER drains; additionally the freshness rule (ADR-0015) makes older runs stale-evidence the moment the workflow version drifts, permanently disqualifying them. The journal line is dead-letter optimism (user + agent analysis 2026-09-07). Fix: reword survey.md to state the truth — the backlog entry is VISIBILITY-only (unreviewed run ids stay observable), runs are only revisable while fresh, and a real drain would need the revise leg to pass an explicit backlog run id in the goal (a decision not made). Do not promise behavior the graph cannot deliver.\",\"labels\":[\"workflows\",\"revision\"]}\n",
+        "summary": {
+          "files_changed": 7,
+          "additions": 65,
+          "deletions": 3
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T18:51:52.628607843Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 1052031,
+      "inference_time_ms": 508767,
+      "tool_time_ms": 498063,
+      "active_time_ms": 1006830
+    },
+    "final_git_commit_sha": "b725e9b72c26ac9678e4aa27b9a1c51bb55db9ff",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 44354,
+          "inference_time_ms": 42464,
+          "tool_time_ms": 1335,
+          "active_time_ms": 43799
+        },
+        "billing_usd_micros": 61364,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 875246,
+          "inference_time_ms": 431284,
+          "tool_time_ms": 442821,
+          "active_time_ms": 874105
+        },
+        "billing_usd_micros": 540053,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 52687,
+          "inference_time_ms": 0,
+          "tool_time_ms": 52675,
+          "active_time_ms": 52675
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "gatebounce",
+        "stage_label": "gatebounce",
+        "timing": {
+          "wall_time_ms": 277,
+          "inference_time_ms": 0,
+          "tool_time_ms": 271,
+          "active_time_ms": 271
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 484,
+          "inference_time_ms": 0,
+          "tool_time_ms": 478,
+          "active_time_ms": 478
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 35760,
+          "inference_time_ms": 35019,
+          "tool_time_ms": 208,
+          "active_time_ms": 35227
+        },
+        "billing_usd_micros": 40158,
+        "retries": 0
+      },
+      {
+        "stage_id": "closeout",
+        "stage_label": "closeout",
+        "timing": {
+          "wall_time_ms": 281,
+          "inference_time_ms": 0,
+          "tool_time_ms": 275,
+          "active_time_ms": 275
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 98719,
+      "output_tokens": 11408,
+      "total_tokens": 1700591,
+      "reasoning_tokens": 9600,
+      "cache_read_tokens": 1580864,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 641575
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1YJ8R820R7ZMSN55GJGMZ4A.jsonl b/.fabro/journal/01M1YJ8R820R7ZMSN55GJGMZ4A.jsonl\nnew file mode 100644\nindex 0000000..ed1c9f7\n--- /dev/null\n+++ b/.fabro/journal/01M1YJ8R820R7ZMSN55GJGMZ4A.jsonl\n@@ -0,0 +1,9 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YJ8R820R7ZMSN55GJGMZ4A\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:32:26Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YJ8R820R7ZMSN55GJGMZ4A\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:33:17Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-22e4 basis resolved precisely: mtime-1970 writes come from build_single_file_tar in lib/components/fabro-sandbox/src/docker.rs never calling header.set_mtime; callers are the Dockerfile upload (~796) and upload_file (~1323) paths\",\"sd ready returned 153 ready seeds; fabro-22e4 was top High-priority bug and unblocked\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YJ8R820R7ZMSN55GJGMZ4A\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:40:59Z\",\"data\":{\"painpoints\":[{\"text\":\"Pre-existing compile break: `cargo nextest run -p fabro-sandbox` with default features fails at lib/components/fabro-sandbox/src/lib.rs:18 — `pub use managed_labels::RUN_ID_LABEL;` lacks the `#[cfg(any(feature=\\\"docker\\\", feature=\\\"daytona\\\", test))]` gate its module has, so integration-test builds hit E0432. Reproduced on planner commit 1e3f7fc with changes stashed (run 01M1YJ8R820R7ZMSN55GJGMZ4A). Any tester gate that compiles fabro-sandbox without the docker feature will go red on this. Fix: move the cfg gate onto the pub use or make the module unconditional.\"}],\"observations\":[\"fabro-sandbox clippy with `--features docker --all-targets -D warnings` already fails pre-existing on `large size difference between variants` in provider.rs:25 and sandbox_spec.rs:24 (Docker variants only compiled under the feature); verified identical with my change stashed — a tester running clippy this way will need to attribute these correctly.\",\"docker.rs is entirely feature-gated, so the required clippy/fmt scope for changes there must include `--features docker`; default-feature builds never compile the file.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YJ8R820R7ZMSN55GJGMZ4A\",\"node\":\"gatebounce\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:41:19Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YJ8R820R7ZMSN55GJGMZ4A\",\"node\":\"implementer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:50:01Z\",\"data\":{\"painpoints\":[{\"text\":\"The quality gate's clippy runs touched crates with default features, exposing a pre-existing compile break (fabro-sandbox E0432 from commit 4c1ca7e, ungated `pub use managed_labels::RUN_ID_LABEL`) only when this crate first became a touched crate — the implementing seed got blamed for a latent break it didn't cause (run 01M1YJ8R820R7ZMSN55GJGMZ4A, tester fail). Fix idea: gate could run a one-time `cargo check --all-features -p <crate>` baseline or CI could compile crates under default features on every merge so cfg-rot is caught at authoring time, not at seed time.\"}],\"observations\":[\"The seed's own bug manifested live during this pass: after edit_file writes, `lib/components/fabro-sandbox/src/push_credentials.rs` had mtime 1970-01-01, so cargo check replayed stale dead-code warnings from cache instead of recompiling — diagnostics cited line numbers that no longer matched the source. `touch` on the edited files forced recompilation. Until the docker transport fix ships into all sandboxes, any implementer can be misled by stale compiler output.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YJ8R820R7ZMSN55GJGMZ4A\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:50:54Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YJ8R820R7ZMSN55GJGMZ4A\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:50:59Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YJ8R820R7ZMSN55GJGMZ4A\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:51:43Z\",\"data\":{\"painpoints\":[{\"text\":\"Evidence capture arrived as a blob ref (/tmp/fabro/runtime/blobs/122667...json) that had to be paged manually before judging (run 01M1YJ8R820R7ZMSN55GJGMZ4A). Workable, but inlining the integrity header + file list in the preview would let small captures like this one (8.6 KB) skip the blob round-trip entirely.\"}],\"observations\":[\"Verified all 5 acceptance criteria from the evidence diff: mtime stamp before set_cksum, wall-clock tolerance unit test, untouched existing tests, independently grep-confirmed that build_single_file_tar is the only upload-side tar builder in docker.rs, and green gate.\",\"The three cfg-gating files beyond docker.rs are compile-repair for a pre-existing default-features break (ungated pub use vs gated mod from 4c1ca7e), not scope creep; comments explain each gate.\",\"Live docker recompile acceptance waived per brief (no daemon in gate env); the fresh-mtime-by-construction argument holds since the extracted file's mtime now exceeds any cached rlib.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YJ8R820R7ZMSN55GJGMZ4A\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:51:48Z\",\"data\":{}}\ndiff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl\nindex dd1e7ed..4a194b8 100644\n--- a/.mulch/expertise/engine.jsonl\n+++ b/.mulch/expertise/engine.jsonl\n@@ -36,3 +36,5 @@\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-07T14:32:34.243Z\",\"evidence\":{\"commit\":\"8287d73911db242d75e4134cb326035fe4a9a0e9\"},\"description\":\"Edit-tool writes can land with epoch-0 (1970-01-01) mtimes; cargo then considers the source older than cached artifacts and silently skips recompiles, so binary behavior lags source edits (hit while iterating the fabro-validate bin in run 01M1Y2SMEVDHAFB59GZV9B84CQ: import of a just-added pub fn failed until manually touching the file). After surprising stale-behavior, touch the edited .rs files before rebuilding.\",\"resolution\":\"Touch edited source files before rebuild when a just-added symbol is reported missing or behavior seems stale.\",\"id\":\"mx-ee9245\"}\n {\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-07T14:32:51.757Z\",\"evidence\":{\"seeds\":\"fabro-513e\",\"commit\":\"8287d73911db242d75e4134cb326035fe4a9a0e9\"},\"name\":\"standalone-graph-lint-preprocessing\",\"description\":\"Standalone workflow-graph linting (scripts/validate-workflows.nu + fabro-validate bin, seed fabro-513e): raw graphs must be preprocessed exactly like the runtime pipeline before lint rules run — resolve @-prefixed prompt/goal refs against the graph dir (missing files left for unresolved_file_ref) and blank template-syntax model_stylesheet (runtime renders it before stylesheet_syntax; raw MiniJinja source is unlintable). Any new pre-render transform added to the pipeline needs a matching preprocessing step here or the standalone gate false-positives.\",\"files\":[\".mulch/expertise/engine.jsonl\",\"Cargo.lock\",\"justfile\",\"lib/components/fabro-validate/Cargo.toml\",\"lib/components/fabro-validate/src/lib.rs\",\"lib/components/fabro-validate/src/rules/mod.rs\",\"lib/components/fabro-validate/src/rules/unresolved_file_ref.rs\"],\"id\":\"mx-8562ab\"}\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-07T17:02:15.526Z\",\"evidence\":{\"commit\":\"fc5635470d988ee4adac87e9c2ca2a4e738e83f6\"},\"dir_anchors\":[\"apps/fabro-web/app/routes\",\"lib/packages/fabro-api-client/src/models\"],\"description\":\"Stale cargo test binary after edit_file changes: nextest reused a prior compile whose fingerprints did not register the edit (run 01M1YBBXR99PNME6Y8ZED4Y2NN, fabro-fb16) — panic line numbers pointed 7-14 lines away from the actual asserts and two tests failed on a code path the source no longer contained.\",\"resolution\":\"touch the edited file (or cargo test --no-run) to force recompilation before trusting a failure diagnosis; after the forced rebuild both tests passed unchanged.\",\"id\":\"mx-46b756\"}\n+{\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-07T18:40:29.825Z\",\"evidence\":{\"seeds\":\"fabro-22e4\",\"commit\":\"1e3f7fca5f6c4df1d90247b7fa5a847a699bc9be\"},\"name\":\"tar-upload-mtime\",\"description\":\"Docker sandbox single-file tar uploads (build_single_file_tar in lib/components/fabro-sandbox/src/docker.rs) must set header mtime via SystemTime::now before set_cksum; a zero/epoch mtime makes extracted container files land at 1970-01-01 so cargo treats sources as older than cached rlibs and silently skips recompiles after agent edits (fabro-22e4).\",\"files\":[\"lib/components/fabro-sandbox/src/docker.rs\"],\"id\":\"mx-d8c4ed\"}\n+{\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-07T18:49:39.652Z\",\"evidence\":{\"seeds\":\"fabro-22e4\",\"commit\":\"2778c8238330fd9ffb7b1ace6919ad856fb6df10\"},\"dir_anchors\":[\"lib/components/fabro-sandbox/src\"],\"description\":\"Seed fabro-22e4's mtime-0 bug is live in the agent tooling itself: after edit_file writes, lib/components/fabro-sandbox/src/push_credentials.rs carried mtime 1970-01-01, so cargo check replayed stale dead-code warnings from the cached fingerprint instead of recompiling (run 01M1YJ8R820R7ZMSN55GJGMZ4A, implementer re-pass). Symptom: warnings citing line numbers that no longer match edited source. Workaround while the docker transport fix propagates: touch touched .rs files (or find lib -name '*.rs' ! -newermt 2000-01-01) before cargo check/clippy. Also fixed the gate-blocking default-feature compile: mod managed_labels was cfg-gated behind docker/daytona/test while pub use managed_labels::RUN_ID_LABEL stayed ungated (introduced 4c1ca7e); push_credentials.rs needed matching cfg gates on build_token_source, the first PushCredentialState impl, and three imports to satisfy -D warnings under default features.\",\"resolution\":\"Docker transport fix landed in e6ae814 (build_single_file_tar stamps wall-clock mtime); until the rebuilt binary reaches every sandbox, touch edited sources before cargo invocations to force recompilation.\",\"id\":\"mx-c28106\"}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 60e2c8e..b5d4f88 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -245,6 +245,6 @@\n {\"id\":\"fabro-1dc9\",\"title\":\"conductor: reached=blocked routes as 'Develop child failed' — revisor leg skipped for every slow-gate PR since deploy #6\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T16:44:03.054Z\",\"updatedAt\":\"2026-09-07T18:10:15.437Z\",\"assignee\":\"fabro\",\"description\":\"REGRESSION since deploy #6 (2026-09-07 ~13:29 Berlin): conductor passes 01M1Y0ZE7K (15:30), 01M1Y2PF7V (16:00... UTC 13:30/14:00/15:34/16:00) ALL skip the revise leg. Evidence (16:00 UTC pass 01M1Y9J6J3DN server.log): develop child 01M1Y9N7R4 succeeded and PR #43 sat in a running gate; the develop-leg's second fabro_run_wait (until=merged) returned after 3s with reached=blocked (PR #34 semantics: open PR + non-green gate); the leg routed Edge 'develop -> exit' label='Develop child failed' -> soft park. The revise leg ONLY ran on passes whose PR was already merged at wait time (10:00/12:00/13:00 UTC passes, revisors 11:07/12:34/13:08). CONSEQUENCE: four develop runs unreviewed, no revisor seeds for them, and the line burns develop cycles without its feedback organ. FIX DIRECTIONS: (a) develop-leg routing must treat reached=blocked as 'merge pending', not failure: re-wait until=merged with a bounded deadline (e.g. 2-3 chained waits), and only route Failed on terminal-failed children (child status, not PR state); (b) after merged OR after child-terminal+parked-for-gate, ALWAYS run the revise leg; (c) backfill: the survey leg should detect completed develop runs without a revisor pass (no revisor journal/review artifact for the run id) and trigger a catch-up revise; (d) regression test: conductor graph routing on wait results terminal|merged|closed_unmerged|blocked|timeout maps blocked to wait-again/revise, never to the failed exit.\",\"labels\":[\"workflows\",\"revision\"],\"closedAt\":\"2026-09-07T18:10:15.437Z\"}\n {\"id\":\"fabro-5bee\",\"title\":\"ci: bump Swatinem/rust-cache to v2.9.2 — Node 20 deprecation warning in the action gates\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T17:25:44.212Z\",\"updatedAt\":\"2026-09-07T17:27:49.436Z\",\"assignee\":\"fabro\",\"description\":\"Evidence: the warning was observed in the dogfood-gate run of PR #33 (2026-09-07 morning, user finding) — not in a current run; it fires on EVERY gate run as long as the old pin stands (GitHub changelog 2025-09-19: deprecation of Node 20 runners): 'Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5'. The pinned SHA (comment '# v2') is an old v2 tag predating the node24 runtime. FIX: bump all 5 occurrences (.github/workflows/dogfood-gate.yml:62, .github/workflows/rust.yml:66,95,112,138) to Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 with comment '# v2.9.2' (v2.9.2 released 2026-08-06, commit SHA resolved via the annotated tag 63fed3e2 -> 6323deb1). Keep the repo's SHA-pinning style (no floating tags). Acceptance: grep shows the new SHA at all 5 sites; one gate run after the change shows no Node deprecation warning.\",\"labels\":[\"ci\"]}\n {\"id\":\"fabro-8275\",\"title\":\"Downgrade the by-design preamble allow-key absence warn to info\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:17:29.202Z\",\"updatedAt\":\"2026-09-07T18:21:27.438Z\",\"description\":\"In the preamble fidelity module of fabro-workflow, the warn 'preamble_allow_keys entry absent … key=output.gate_known_bug_hits' fired on a green first-visit stage of develop run 01M1YGJ7JSWAVWJT45DRDZ89Z6, even though key absence on first visit is by design and fires on every clean run. Change: emit info (not warn) when an allow-listed context key is absent on a node's first visit; keep warn for repeat visits or genuine contract regressions. Expected effect: warn-level logs stop crying wolf on every green run while real fidelity regressions stay visible. Related but distinct from fabro-meta-c454 (input-contract closure, not log level).\\nBasis: run 01M1YGJ7JSWAVWJT45DRDZ89Z6, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit f7126d9612d28110fca518d3aeeeb941bd7b659d\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-22e4\",\"title\":\"agent: edit-tool file writes land with mtime 1970-01-01 — cargo skips recompiles, edits silently lag until manual touch\",\"status\":\"open\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T18:30:04.569Z\",\"updatedAt\":\"2026-09-07T18:30:04.569Z\",\"assignee\":\"fabro\",\"description\":\"From unreviewed run 01M1Y2SMEVDHAFB59GZV9B84CQ (PR #41 implementer; recovered via journal sweep 2026-09-07 after the run aged out of revisor freshness): edit-tool file writes landed with mtime 1970-01-01 (e.g. lib/components/fabro-validate/src/file_refs.rs), so cargo considered the sources older than cached rlibs and silently skipped recompiles — a just-added pub fn was reported missing and behavior lagged the edits until a manual touch. This is silent cache poisoning of the build loop: any agent edit can produce a stale-binary diagnosis that costs implementer revisits. Fix direction: the platform's file-write path (edit tool / sandbox write transport) must set a real mtime — utimensat/write-with-times after creating or replacing the file so downstream build systems see fresh sources. Acceptance: an edit-tool write produces mtime == wall clock (unit test on the write path); a before/after cargo check in a scratch crate recompiles after an agent edit without manual touch.\",\"labels\":[\"engine\",\"agent\"]}\n+{\"id\":\"fabro-22e4\",\"title\":\"agent: edit-tool file writes land with mtime 1970-01-01 — cargo skips recompiles, edits silently lag until manual touch\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T18:30:04.569Z\",\"updatedAt\":\"2026-09-07T18:51:48.005Z\",\"assignee\":\"fabro\",\"description\":\"From unreviewed run 01M1Y2SMEVDHAFB59GZV9B84CQ (PR #41 implementer; recovered via journal sweep 2026-09-07 after the run aged out of revisor freshness): edit-tool file writes landed with mtime 1970-01-01 (e.g. lib/components/fabro-validate/src/file_refs.rs), so cargo considered the sources older than cached rlibs and silently skipped recompiles — a just-added pub fn was reported missing and behavior lagged the edits until a manual touch. This is silent cache poisoning of the build loop: any agent edit can produce a stale-binary diagnosis that costs implementer revisits. Fix direction: the platform's file-write path (edit tool / sandbox write transport) must set a real mtime — utimensat/write-with-times after creating or replacing the file so downstream build systems see fresh sources. Acceptance: an edit-tool write produces mtime == wall clock (unit test on the write path); a before/after cargo check in a scratch crate recompiles after an agent edit without manual touch.\",\"labels\":[\"engine\",\"agent\"],\"closedAt\":\"2026-09-07T18:51:48.005Z\"}\n {\"id\":\"fabro-b8ed\",\"title\":\"develop: verification-only briefs must not assert 'criteria satisfied' — derive per-criterion checks instead\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:30:04.670Z\",\"updatedAt\":\"2026-09-07T18:30:04.670Z\",\"assignee\":\"fabro\",\"description\":\"From unreviewed run 01M1Y852BN91NSVSHFWNWTW5ST (PR #42; journal sweep 2026-09-07): the verification-only brief asserted 'acceptance criteria appear already satisfied', but criterion 5 of fabro-5e09 was materially unmet in the worktree — docs/agents/issue-tracker.md still said 'Filers assign at creation' and 'Assignment is a user decision', contradicting the seed's D2/D3 decisions from the same day. The pass only converged because the implementer re-checked; a lazier one would have closed the seed on the brief's word. Fix direction: the planner's verification-only brief generation must not carry satisfaction assertions — instead list each acceptance criterion with an instruction to verify it against the CURRENT worktree and report per-criterion status in the summary. Related: fabro-578a (different aspect: allowed command level in verification-only briefs).\",\"labels\":[\"workflows\",\"revision\"]}\n {\"id\":\"fabro-52a9\",\"title\":\"conductor survey: reword misleading 'burns the backlog down' claim — backlog journal is visibility-only, drain needs the revisor's newest-first rule to change\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-07T18:30:04.771Z\",\"updatedAt\":\"2026-09-07T18:30:04.771Z\",\"assignee\":\"fabro\",\"description\":\"PR #45's survey prompt says 'the revisor revises the newest revisable run, so each subsequent pass burns the backlog down one run at a time' — but the revise leg creates the revisor without a goal and the revisor's select rule picks the NEWEST unrevised fresh run (which is always the current pass's own child), so the backlog NEVER drains; additionally the freshness rule (ADR-0015) makes older runs stale-evidence the moment the workflow version drifts, permanently disqualifying them. The journal line is dead-letter optimism (user + agent analysis 2026-09-07). Fix: reword survey.md to state the truth — the backlog entry is VISIBILITY-only (unreviewed run ids stay observable), runs are only revisable while fresh, and a real drain would need the revise leg to pass an explicit backlog run id in the goal (a decision not made). Do not promise behavior the graph cannot deliver.\",\"labels\":[\"workflows\",\"revision\"]}\ndiff --git a/lib/components/fabro-sandbox/src/docker.rs b/lib/components/fabro-sandbox/src/docker.rs\nindex a69ebf2..22de963 100644\n--- a/lib/components/fabro-sandbox/src/docker.rs\n+++ b/lib/components/fabro-sandbox/src/docker.rs\n@@ -1841,6 +1841,13 @@ fn build_single_file_tar(file_name: &str, bytes: &[u8], mode: u32) -> crate::Res\n             .map_err(|_| crate::Error::message(\"file is too large for tar header\"))?,\n     );\n     header.set_mode(mode);\n+    // A zero mtime makes the extracted file land at 1970-01-01, so build\n+    // systems (cargo) treat the source as older than cached artifacts and\n+    // skip recompiles. Stamp the current wall clock instead.\n+    let mtime = SystemTime::now()\n+        .duration_since(UNIX_EPOCH)\n+        .map_err(|e| crate::Error::context(\"system clock is before the epoch\", e))?;\n+    header.set_mtime(mtime.as_secs());\n     header.set_cksum();\n     tar_builder\n         .append(&header, bytes)\n@@ -3362,6 +3369,28 @@ mod tests {\n         assert_eq!(content, \"hello\");\n     }\n \n+    #[test]\n+    fn single_file_tar_sets_current_mtime() {\n+        let before = SystemTime::now()\n+            .duration_since(UNIX_EPOCH)\n+            .unwrap()\n+            .as_secs();\n+        let bytes = build_single_file_tar(\"stale.rs\", b\"fn main() {}\", 0o644).unwrap();\n+        let after = SystemTime::now()\n+            .duration_since(UNIX_EPOCH)\n+            .unwrap()\n+            .as_secs();\n+        let mut archive = tar::Archive::new(Cursor::new(bytes));\n+        let mut entries = archive.entries().unwrap();\n+        let entry = entries.next().unwrap().unwrap();\n+        let mtime = entry.header().mtime().unwrap();\n+        assert_ne!(mtime, 0, \"tar header mtime must not default to epoch 0\");\n+        assert!(\n+            mtime >= before && mtime <= after,\n+            \"tar header mtime {mtime} should be within [{before}, {after}] of wall clock\"\n+        );\n+    }\n+\n     #[test]\n     fn single_file_tar_applies_private_mode() {\n         let bytes = build_single_file_tar(\"blob.json\", b\"{}\", 0o600).unwrap();\ndiff --git a/lib/components/fabro-sandbox/src/lib.rs b/lib/components/fabro-sandbox/src/lib.rs\nindex 5d71f77..b8d388f 100644\n--- a/lib/components/fabro-sandbox/src/lib.rs\n+++ b/lib/components/fabro-sandbox/src/lib.rs\n@@ -12,7 +12,6 @@ mod clone_source;\n \n mod git_retry;\n \n-#[cfg(any(feature = \"docker\", feature = \"daytona\", test))]\n mod managed_labels;\n \n pub use managed_labels::RUN_ID_LABEL;\ndiff --git a/lib/components/fabro-sandbox/src/managed_labels.rs b/lib/components/fabro-sandbox/src/managed_labels.rs\nindex a2d66b8..d2a1d76 100644\n--- a/lib/components/fabro-sandbox/src/managed_labels.rs\n+++ b/lib/components/fabro-sandbox/src/managed_labels.rs\n@@ -1,8 +1,16 @@\n+// Everything except RUN_ID_LABEL is provider-label plumbing used only by\n+// the docker/daytona transports (and unit tests); gating the items keeps\n+// the module compilable (and warning-free) under default features, where\n+// the pub re-export of RUN_ID_LABEL must still resolve (fabro-22e4 gate).\n+#[cfg(any(feature = \"docker\", feature = \"daytona\", test))]\n use std::collections::HashMap;\n \n+#[cfg(any(feature = \"docker\", feature = \"daytona\", test))]\n use fabro_types::RunId;\n \n+#[cfg(any(feature = \"docker\", feature = \"daytona\", test))]\n pub(crate) const MANAGED_LABEL: &str = \"sh.fabro.managed\";\n+#[cfg(any(feature = \"docker\", feature = \"daytona\", test))]\n pub(crate) const MANAGED_LABEL_VALUE: &str = \"true\";\n /// Public because server handlers read the run id off provider inventory\n /// entries (sandbox-availability probe, fabro-8d30a); the label is part\n@@ -32,6 +40,7 @@ pub(crate) fn merge_for_run(\n     labels\n }\n \n+#[cfg(any(feature = \"docker\", feature = \"daytona\", test))]\n fn insert_for_run(labels: &mut HashMap<String, String>, run_id: Option<&RunId>) {\n     labels.insert(MANAGED_LABEL.to_string(), MANAGED_LABEL_VALUE.to_string());\n     if let Some(run_id) = run_id {\ndiff --git a/lib/components/fabro-sandbox/src/push_credentials.rs b/lib/components/fabro-sandbox/src/push_credentials.rs\nindex d1896b1..e77d0c0 100644\n--- a/lib/components/fabro-sandbox/src/push_credentials.rs\n+++ b/lib/components/fabro-sandbox/src/push_credentials.rs\n@@ -7,9 +7,13 @@\n //! providers. The token cache itself sits below the providers, in\n //! [`fabro_github::token_source::InstallationTokenSource`].\n \n+// `Future`, `GitHubCredentials`, and `RefreshOutcome` serve the\n+// clone-transport constructor/refresh path gated below.\n+#[cfg(any(feature = \"docker\", feature = \"daytona\", test))]\n use std::future::Future;\n use std::sync::Arc;\n \n+#[cfg(any(feature = \"docker\", feature = \"daytona\", test))]\n use fabro_github::GitHubCredentials;\n use fabro_github::token_source::{InstallationTokenSource, ResolvedToken, TokenSnapshot};\n use fabro_redact::DisplaySafeUrl;\n@@ -17,13 +21,19 @@ pub use fabro_types::run_event::GitCredentialRefreshError as RefreshErrorKind;\n use tokio::sync::{Mutex, MutexGuard};\n \n use crate::redact;\n-use crate::sandbox::{RefreshOutcome, RemoteCredentialAction};\n+#[cfg(any(feature = \"docker\", feature = \"daytona\", test))]\n+use crate::sandbox::RefreshOutcome;\n+use crate::sandbox::RemoteCredentialAction;\n \n /// Build the shared installation-token source for a clone-based sandbox.\n ///\n /// Returns `None` when there are no managed credentials or no GitHub origin\n /// to scope them to. Minted tokens carry the same `contents: write`\n /// permission the clone token uses.\n+// Clone-based transports (and unit tests) are the only callers; gating\n+// keeps default-feature builds warning-free while `PushCredentialState`\n+// stays compiled for the shared lease plumbing in `sandbox.rs`.\n+#[cfg(any(feature = \"docker\", feature = \"daytona\", test))]\n pub(crate) fn build_token_source(\n     github_app: Option<&GitHubCredentials>,\n     clone_origin_url: Option<&str>,\n@@ -66,6 +76,10 @@ pub(crate) struct PushCredentialState {\n     embedded: Mutex<Option<ResolvedToken>>,\n }\n \n+// Constructing and refreshing state is clone-transport behavior (docker,\n+// daytona) exercised by unit tests; the lease path below stays compiled\n+// unconditionally because `sandbox.rs` push planning references it.\n+#[cfg(any(feature = \"docker\", feature = \"daytona\", test))]\n impl PushCredentialState {\n     pub(crate) fn new(source: Option<Arc<InstallationTokenSource>>) -> Self {\n         Self {\n",
+      "summary": {
+        "files_changed": 7,
+        "additions": 65,
+        "deletions": 3
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -4044,6 +4177,42 @@
         "inference_time_ms": 0,
         "tool_time_ms": 275,
         "active_time_ms": 275
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 586,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T18:51:52.498998526Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T18:51:52.498953077Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
       },
       "usage": {
         "input_tokens": 0,
