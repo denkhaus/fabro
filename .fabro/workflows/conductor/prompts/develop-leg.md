@@ -14,7 +14,14 @@ is wrong):
 2. Wait terminal: ONE call `fabro_run_wait {"run_id": "<child_run_id>", "until": "terminal", "timeout_ms": 3600000}` — it blocks until terminal or the 60 min deadline. `reached=timeout` (child still running): call again. Never shell-sleep poll loops (fabro-571e).
 3. Child FAILED: route "Develop child failed" + journal the reason (retriable causes simply end this pass; the next fire retries the seed).
 4. Child SUCCEEDED with goal "Tracker empty"-like completion and no PR: route "Tracker empty" (journal it — the queue is done; the human seeds new demand).
-5. Child SUCCEEDED: wait for PR auto-merge: `fabro_run_wait {"run_id": "<child_run_id>", "until": "merged", "timeout_ms": 1200000}` — `reached=merged` -> route "Develop integrated" (context key `child_run_id` stays for the revisor leg); `reached=timeout` -> call again; `reached=blocked` -> journal it (merge gate stuck: failed required checks or dirty/blocked base; NEVER re-wait — fabro-bde4) and route "Develop child failed"; `reached=closed_unmerged` or terminal-failed -> journal it and route "Develop child failed".
+5. Child SUCCEEDED: wait for PR auto-merge: `fabro_run_wait {"run_id": "<child_run_id>", "until": "merged", "timeout_ms": 1200000}`.
+   - `reached=merged` -> route "Develop integrated" (context key `child_run_id` stays for the revisor leg).
+   - `reached=timeout` -> call again.
+   - `reached=blocked` -> the gate is YOUNG-blocked, not stuck: a healthy-but-slow gate (checks still running, PR open) reports blocked within seconds. Bounded re-wait (fabro-1dc9): re-call `fabro_run_wait {"until": "merged", "timeout_ms": 1200000}` up to 2 MORE times (3 waits total, ~60 min ceiling). After EACH blocked return, prefer continuing the chain over concluding anything.
+     - `reached=merged` at any point -> "Develop integrated".
+     - Still `blocked` after the 3rd wait -> the gate is now PERSISTENTLY stuck (fabro-bde4 semantics: failed required checks or dirty/blocked base). NEVER wait a 4th time. Journal it naming "gate stuck" (NOT "child failed" — the child itself succeeded) with the wait count, then route "Gate stuck — revise anyway" (soft-parks the merge; `child_run_id` stays in context so the revise leg still runs the revisor pass — an unreviewed develop run is worse than a parked PR; the next fire re-enters via survey).
+   - `reached=closed_unmerged` -> journal it and route "Develop child failed".
+   - Failure routing keys on CHILD status, NEVER on PR state: only a terminal-FAILED child or `closed_unmerged` routes "Develop child failed". A succeeded child with any gate state never routes the failed exit.
 
 ## Workflow addressing (fabro-e297, server-side resolution)
 
@@ -38,7 +45,7 @@ child id, seed title if visible, status, gate wait.
 
 ## Outcome contract
 
-- `succeeded` + "Develop integrated" | "Tracker empty" | "Develop child failed".
+- `succeeded` + "Develop integrated" | "Gate stuck — revise anyway" | "Tracker empty" | "Develop child failed".
 - `failed`: create/poll tooling failed.
 
 Hygiene: backtick every path.

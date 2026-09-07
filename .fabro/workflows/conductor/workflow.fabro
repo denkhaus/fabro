@@ -82,6 +82,11 @@ digraph Conductor {
     merge -> revise [label="Infra merged — revise the merge run"]
     merge -> exit [kind="soft", label="Merge child failed — manual /merge-upstream", condition="preferred_label=\"Merge child failed\""]
     develop -> revise [label="Develop integrated", condition="preferred_label=\"Develop integrated\""]
+    // Gate-stuck park (fabro-1dc9): the develop child SUCCEEDED but its PR
+    // gate is persistently blocked after the bounded re-wait chain. The pass
+    // still runs the revise leg — an unreviewed develop run is worse than a
+    // parked PR; the next fire re-enters via survey.
+    develop -> revise [label="Gate stuck — revise anyway", condition="preferred_label=\"Gate stuck — revise anyway\""]
     develop -> exit   [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
     develop -> exit   [kind="soft", label="Develop child failed", condition="preferred_label=\"Develop child failed\""]
     revise -> exit [label="Cycle complete"]
