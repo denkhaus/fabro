@@ -289,8 +289,15 @@ decision, not an accident - it needs the user plus an ADR.
    the last report that is still unassigned (revisor seeds land
    unassigned per ADR-0018 D2), each with a one-line @fabro
    recommendation - the cycle report is the standing joint forum where
-   user + agent decide execution ownership (ADR-0018 D3). Then end the
-   turn; the user starts the next cycle with /iterate.
+   user + agent decide execution ownership (ADR-0018 D3). BETWEEN
+   cycles, the persistent line-watch heartbeat carries the same
+   ceremony: new revisor seeds of the approved classes (per the
+   2026-09-07 curation: workflow/revision/engine/ci/web/docs work) get
+   @fabro as a proposal, design forks and user decisions get
+   needs-user and stay unassigned + flagged; every assignment is
+   surfaced in the heartbeat report. Categorize EVERY revisor seed -
+   none stays silently unassigned (user directive 2026-09-07). Then
+   end the turn; the user starts the next cycle with /iterate.
 
 ## Standing rules
 
