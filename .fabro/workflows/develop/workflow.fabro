@@ -46,7 +46,19 @@ digraph Develop {
         max_visits=20,
         goal_gate=true,
         retry_policy="standard",
-        reasoning_effort="high",
+        // fabro-bbbb: reasoning_effort dropped high -> low. Basis: run
+        // 01M1XZCWNBR33BZGHQXNRA80J9 measured the planner at 83.6s wall
+        // = 40% of run, $0.080 = 45% of cost, 4,469 of 5,899 reasoning
+        // tokens — mostly tie-breaking two High seeds. `sd ready
+        // --assignee fabro` is deterministic since fabro-5e09 (PR #38),
+        // removing the tie-break reasoning load that justified high.
+        // Static low for ALL planner passes including changes_requested
+        // re-plans: the engine resolves reasoning_effort as a static node
+        // attribute (no visit-conditional override exists), so per-visit
+        // conditional effort is unavailable; re-plan quality is preserved
+        // by the prompt's mechanical folding of review_feedback into
+        // current_seed_brief (brief-folding, not ambiguity resolution).
+        reasoning_effort="low",
         preamble_stages_ignore="planner,implementer,evidence",
         // fabro-1dae (stage envelope fs scope): planning never touches
         // platform assets — the tracker is reached via the sd CLI (shell
