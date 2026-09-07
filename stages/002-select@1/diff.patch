@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1Z1YPJQSXE7HKZKVR20VYCY.jsonl b/.fabro/journal/01M1Z1YPJQSXE7HKZKVR20VYCY.jsonl
+new file mode 100644
+index 0000000..1319bfa
+--- /dev/null
++++ b/.fabro/journal/01M1Z1YPJQSXE7HKZKVR20VYCY.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1Z1YPJQSXE7HKZKVR20VYCY","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T23:06:41Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1Z1YPJQSXE7HKZKVR20VYCY","node":"select","visit":1,"status":"succeeded","ts":"2026-09-07T23:07:07Z","data":{"painpoints":[],"observations":["Selected newest unrevised develop run; older develop runs are revised or stale-evidence (version drift from be58840f baseline); merge-upstream pool older (2026-09-06, all failed/revised-in-value but not newer); 1 run blocked as stale-evidence per version comparison among unrevised terminal runs is implicit via baseline rule"]}}
