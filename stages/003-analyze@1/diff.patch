@@ -1,0 +1,68 @@
+diff --git a/.fabro/journal/01M1YYGC5AEC5EWY8J544FGMF0.jsonl b/.fabro/journal/01M1YYGC5AEC5EWY8J544FGMF0.jsonl
+index ead7cea..ab35e6e 100644
+--- a/.fabro/journal/01M1YYGC5AEC5EWY8J544FGMF0.jsonl
++++ b/.fabro/journal/01M1YYGC5AEC5EWY8J544FGMF0.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1YYGC5AEC5EWY8J544FGMF0","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T22:06:18Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1YYGC5AEC5EWY8J544FGMF0","node":"select","visit":1,"status":"succeeded","ts":"2026-09-07T22:06:36Z","data":{"painpoints":[],"observations":["Selected newest unrevised develop run; 1 merge-upstream run stale-evidence (version drift vs merge baseline), 13 older develop runs stale-evidence (version drift), 0 sandbox-less terminal runs in the fresh pool; no active develop run at selection time"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YYGC5AEC5EWY8J544FGMF0","node":"analyze","visit":1,"status":"succeeded","ts":"2026-09-07T22:10:01Z","data":{"painpoints":[{"text":"Tracker check trap: `sd list --format compact` omitted several open seeds that `sd search` revealed (fabro-c3b4, fabro-4881, fabro-9588, fabro-cf03, fabro-c2ca, fabro-45bf, fabro-a0e3 were all absent from the list view). An analyst trusting the list alone would re-file six duplicates. Fix idea: the revisor prompt already mandates per-theme searches — consider a seed to make `sd list` show a visible truncation marker or raise its row cap so the list view is trustworthy."}],"observations":["Run 01M1YY8JJCE31XHSDCZ816634G was healthy and well-tracked: 6 of 8 analyst recommendations were duplicates withheld from filing — duplicate_of: fabro-c3b4 (sd ready firehose), duplicate_of: fabro-4881/fabro-a67f (conditional sd show), duplicate_of: fabro-9588 (AGENTS.md memory scoping), duplicate_of: fabro-cf03/fabro-c2ca (snapshot off critical path), duplicate_of: fabro-8275 (preamble WARN downgrade), duplicate_of: fabro-45bf/fabro-a0e3 (pipeline progress denominator); the preamble_inline_max_kb 16→32 raise half of the reviewer finding is duplicate_of: fabro-cf3e.","Two findings survived: reviewer preamble_allow_keys dedupe (drop current_seed_brief) and implementer scoped-read guidance; both are prompt/graph-file changes the develop line can implement itself.","Analyst explicitly marked gate path, closeout, cycle guards, and auto-merge/PR as not worth changing; PR-body model call internals are not inspectable via events — no recommendation possible there."]}}
+diff --git a/.fabro/reviews/develop/01M1YY8JJCE31XHSDCZ816634G.md b/.fabro/reviews/develop/01M1YY8JJCE31XHSDCZ816634G.md
+new file mode 100644
+index 0000000..650da84
+--- /dev/null
++++ b/.fabro/reviews/develop/01M1YY8JJCE31XHSDCZ816634G.md
+@@ -0,0 +1,54 @@
++# Improve review — run 01M1YY8JJCE31XHSDCZ816634G
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: succeeded (2.9 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-07 22:08+0000 by revisor `fabro_ask`
++
++---
++
++All recommendations below are grounded in this run's events, stage transcripts, timings, and the worker log. Run baseline for scale: **146.7 s wall, $0.128 total, 180.8k tokens** — planner 49.9 s/$0.052, implementer 43.2 s/$0.048, reviewer 18.2 s/$0.028, gate 5.3 s, evidence 0.5 s, closeout 0.3 s (from run events / conclusion).
++
++## 1. Cap the planner's `sd ready` firehose — biggest recurring cost
++- **Evidence:** the planner's first tool call returned **21,724 bytes / 163 seeds** (event seq 33–34). It only used the top of the list (`fabro-c0a8` was first). That blob rode along in every one of the planner's 6 LLM calls, making the planner the costliest stage (41% of run cost, 34% of wall) for a task that ended in one claim.
++- **Change:** `.fabro/workflows/develop/prompts/planner.md`, sd command table — change the documented first call to a top-N view (e.g. `sd ready --assignee fabro --limit 200 | sed -n '1,30p'`), with "fall through to the full list only when top candidates are skipped (in-flight PR) or stale."
++- **Expected effect:** ~5–6k tokens off the planner's per-call context → roughly $0.01–0.02 and several seconds saved **every planning pass** (open seed fabro-c3b4; this run confirms it's still live).
++
++## 2. Stop blob-ref'ing the evidence capture into the reviewer
++- **Evidence:** the reviewer's preamble rendered the 8.9 KB capture as `Output (8.9 KB; full value: /tmp/fabro/runtime/blobs/…)` despite `preamble_inline_max_kb=16` — the aggregate 24 KB budget was blown. The reviewer's response literally opens "The evidence blob is complete and readable" after a `read_file` detour (reviewer@1, tool_time 20 ms but a full model round-trip). The same preamble also carried the full `current_seed_brief` (~2.3 KB) **and** the evidence capture's own "== in-progress seed spec ==" section — the spec delivered twice.
++- **Change:** `.fabro/workflows/develop/workflow.fabro`, reviewer node — drop `current_seed_brief` from `preamble_allow_keys` (the prompt itself says the capture's seed spec is authoritative and the brief is "only a summary"); optionally raise `preamble_inline_max_kb` 16→32 (open seed fabro-cf3e).
++- **Expected effect:** the capture renders inline; one tool round-trip eliminated per review and the `verification_blocked`-on-blob failure mode disappears (the 12→24 KB budget bump in the graph comments did not fix it — this run proves it).
++
++## 3. Make the implementer's `sd show` re-fetch conditional
++- **Evidence:** implementer step 1 mandates "Re-read the seed requirements from `sd show`" — it ran `sd show fabro-c0a8` (seq 80–83) and got back exactly what the complete 6-criterion brief already in its preamble said. Pure redundancy: one tool call + one LLM round.
++- **Change:** `.fabro/workflows/develop/prompts/implementer.md` step 1 — "Fetch the full seed via `sd show` ONLY if the brief is thin, ambiguous, or marked verification-only."
++- **Expected effect:** one fewer round-trip per implementer pass (~4–8 s, ~$0.006–0.017 at this run's message costs). Matches open seeds fabro-4881/fabro-a67f.
++
++## 4. Scope the 24 KB `AGENTS.md` memory per stage
++- **Evidence:** `agent.memory.loaded` shows AGENTS.md (23,967 bytes ≈ **5.8–5.9k tokens**) injected into planner (seq 24) and implementer (seq 72) — ~29% of the planner's input tokens — for a seed that edited a platform prompt file where product conventions were irrelevant.
++- **Change:** engine-side per-node memory scoping (open seed fabro-9588): load AGENTS.md only for stages touching product code, or trim to a per-stage relevant section.
++- **Expected effect:** ~12k tokens and ~$0.01+ saved per run, plus less distractor context for platform-path seeds (the tracker's most common class, per this run's own seed text).
++
++## 5. Take metadata snapshots off the critical path
++- **Evidence:** four serialized snapshots: init 2,296 ms (seq 16), planner checkpoint 2,093 ms (seq 65), closeout 1,678 ms (seq 163), finalize 1,654 ms (seq 172) — **~7.7 s ≈ 5.3% of the run's wall time**, all blocking between stages.
++- **Change:** engine — make checkpoint snapshots async or skip them on non-agent stages (open seeds fabro-cf03 / fabro-c2ca).
++- **Expected effect:** ~5% wall-time cut on every run at zero behavioral risk.
++
++## 6. Downgrade the false-positive preamble WARN
++- **Evidence:** the run's **only** warn-level log line is `preamble_allow_keys entry absent … key=output.gate_known_bug_hits` (worker log, 22:03:07) — expected on every green first-pass run, since that key only exists after a gate-red bounce.
++- **Change:** engine lint (open seed fabro-8275): emit this at info, or only when the tester stage actually failed.
++- **Expected effect:** the warn channel stays meaningful — in this run a real warning would have been the only other line in an otherwise clean log.
++
++## 7. Fix the "Pipeline progress" numerator/denominator
++- **Evidence:** the reviewer's stage prompt says **"Pipeline progress: 2 of 7 stages completed"** when 5 of 7 (start, planner, implementer, tester, evidence) were done (stage prompt, reviewer@1). Agent-visible and wrong.
++- **Change:** engine — compute progress from unique completed nodes (open seeds fabro-45bf / fabro-a0e3).
++- **Expected effect:** correct stage awareness in prompts; cosmetic but zero-risk.
++
++## 8. Teach scoped reads when line anchors are known
++- **Evidence:** the implementer ran `cat -n` on the whole 111-line `planner.md` (12,096 bytes, seq 84–85) although the brief pinned the targets ("step 3, line ~35", table ~line 28) and the edit itself used exact-string replace.
++- **Change:** `.fabro/workflows/develop/prompts/implementer.md` shell guidance — "when the brief names line anchors, read with `sed -n '<range>p'`, not whole-file `cat`."
++- **Expected effect:** ~10 KB less context per platform-file pass; small, same class as #1.
++
++**Not worth changing based on this run:** the gate path (5.3 s, "no crates touched" fast path worked exactly as designed), the deterministic closeout (0.27 s), cycle guards (never approached — 1 visit per node), and auto-merge/PR creation (PR #57 opened cleanly at 22:04:54, no degradation events).
++
++One caveat on scope: items 4–7 are engine-side; the develop line itself can only file/advance them via the tracker (seeds already open for each). I could not inspect the PR-body model call's internals (no events expose it), so no recommendation is made there.
