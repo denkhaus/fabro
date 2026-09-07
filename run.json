@@ -485,7 +485,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T21:08:16.539485656Z",
-  "last_event_at": "2026-09-07T21:13:48.700823993Z",
+  "last_event_at": "2026-09-07T21:14:06.668851776Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -905,9 +905,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 198,
       "checkpoint": {
-        "timestamp": "2026-09-07T21:13:48.940083256Z",
+        "timestamp": "2026-09-07T21:14:02.459667005Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -917,38 +917,13 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.retry_count.select": 0,
-          "thread.select.current_node": "analyze",
+          "thread.analyze.current_node": "file",
           "internal.exit_kind": "natural",
-          "internal.thread_id": "analyze",
+          "internal.node_visit_count": 1,
           "failure_signature": "",
-          "revisor_target_run_id": "01M1YTVK73YEJXW4542MWDX4BJ",
-          "internal.retry_count.file": 0,
-          "internal.seed_cycle_anchor": "01M1YTVK73YEJXW4542MWDX4BJ",
-          "internal.retry_count.analyze": 0,
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
           "outcome": "succeeded",
-          "revisor_target_workflow_version": "5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21",
-          "journal": {
-            "painpoints": [
-              {
-                "text": "The three sd create writes landed in .seeds/issues.jsonl but the first git commit reported only 2 files changed with no indication the seed store was included until verified manually — the bookkeeper cannot tell from sd output whether seeds are git-synced; sd sync reporting 'No changes to commit' added ambiguity. Fix idea: have sd create print the seed file path it appended to."
-              }
-            ],
-            "observations": [
-              "fabro-5b0a (warnings surfaced in run summary and PR body) is the transport layer for fabro-6f6e's Dockerfile-rebuild warning; the closeout seed cross-references it rather than superseding — implementing 5b0a first makes 6f6e a one-line consumer.",
-              "fabro-c0a8 complements fabro-1e9f (diff evidence against last seed boundary): both target planner-vs-tracker staleness but different mechanisms (description correction vs evidence baseline) — neither supersedes the other."
-            ]
-          },
-          "response.analyze": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "chars": 4797,
-            "preview": "All checks complete. Of 9 recommendations, 6 duplicate existing open seeds (fabro-meta-c9f2, fabro-9588, fabro-c3b4, fabro-8275, fabro-4881/fabro-a67f, fabro-c2ca) and are withheld; 3 survive as new f"
-          },
-          "thread.start.current_node": "select",
-          "internal.work_dir": "/workspace/fabro",
-          "failure_class": "",
+          "internal.retry_count.start": 0,
+          "revisor_target_wall": "4.4 min",
           "revision_findings": [
             {
               "title": "Closeout: warn when the run diff touches a Dockerfile — the fix is inert until the toolchain image rebuilds",
@@ -966,45 +941,70 @@
               "priority": 2
             }
           ],
-          "thread.analyze.current_node": "file",
-          "response.file": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.file",
-            "chars": 1472,
-            "preview": "All three seeds (`fabro-6f6e`, `fabro-c0a8`, `fabro-96bd`) are in `.seeds/issues.jsonl` and committed together with the revision marker at `329d95e` — no duplicates found (three targeted `sd search`"
-          },
-          "graph.max_node_visits": "30",
-          "revisor_target_status": "succeeded",
-          "revisor_target_wall": "4.4 min",
-          "internal.run_id": "01M1YV61SYNEQ8JE22NPN404S3",
+          "graph.inspects": "develop,merge-upstream",
+          "preferred_label": "Staged",
+          "internal.retry_count.select": 0,
+          "last_stage": "file",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "thread.select.current_node": "analyze",
+          "failure_class": "",
+          "graph.rankdir": "LR",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.analyze": 0,
+          "last_response": "All three seeds (`fabro-6f6e`, `fabro-c0a8`, `fabro-96bd`) are in `.seeds/issues.jsonl` and committed together with the revision marker at `329d95e` — no duplicates found (three targeted `sd search`",
           "internal.fidelity": "compact",
-          "seed_cycles": {
-            "select": 1,
-            "analyze": 1,
-            "file": 1
+          "thread.start.current_node": "select",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "The three sd create writes landed in .seeds/issues.jsonl but the first git commit reported only 2 files changed with no indication the seed store was included until verified manually — the bookkeeper cannot tell from sd output whether seeds are git-synced; sd sync reporting 'No changes to commit' added ambiguity. Fix idea: have sd create print the seed file path it appended to."
+              }
+            ],
+            "observations": [
+              "fabro-5b0a (warnings surfaced in run summary and PR body) is the transport layer for fabro-6f6e's Dockerfile-rebuild warning; the closeout seed cross-references it rather than superseding — implementing 5b0a first makes 6f6e a one-line consumer.",
+              "fabro-c0a8 complements fabro-1e9f (diff evidence against last seed boundary): both target planner-vs-tracker staleness but different mechanisms (description correction vs evidence baseline) — neither supersedes the other."
+            ]
           },
-          "internal.retry_count.start": 0,
           "response.select": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.select",
             "chars": 1569,
             "preview": "Run selected: the develop run `01M1YTVK73YEJXW4542MWDX4BJ` (created 2026-09-07T21:02:17Z) is the newest terminal, unrevised, live-sandbox run. It matches the current develop version baseline (`5603b5e"
           },
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "internal.retry_count.file": 0,
+          "graph.max_node_visits": "30",
+          "current_node": "file",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.thread_id": "analyze",
+          "internal.run_id": "01M1YV61SYNEQ8JE22NPN404S3",
+          "internal.seed_cycle_anchor": "01M1YTVK73YEJXW4542MWDX4BJ",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 1472,
+            "preview": "All three seeds (`fabro-6f6e`, `fabro-c0a8`, `fabro-96bd`) are in `.seeds/issues.jsonl` and committed together with the revision marker at `329d95e` — no duplicates found (three targeted `sd search`"
+          },
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
           "revisor_target_title": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "last_response": "All three seeds (`fabro-6f6e`, `fabro-c0a8`, `fabro-96bd`) are in `.seeds/issues.jsonl` and committed together with the revision marker at `329d95e` — no duplicates found (three targeted `sd search`",
-          "preferred_label": "Staged",
-          "graph.preamble_budget_kb": "24",
+          "revisor_target_run_id": "01M1YTVK73YEJXW4542MWDX4BJ",
           "filed_seed_ids": [
             "fabro-6f6e",
             "fabro-c0a8",
             "fabro-96bd"
           ],
-          "current_node": "file",
-          "last_stage": "file",
-          "graph.rankdir": "LR",
-          "internal.node_visit_count": 1,
-          "graph.inspects": "develop,merge-upstream"
+          "revisor_target_status": "succeeded",
+          "revisor_target_workflow_version": "5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 4797,
+            "preview": "All checks complete. Of 9 recommendations, 6 duplicate existing open seeds (fabro-meta-c9f2, fabro-9588, fabro-c3b4, fabro-8275, fabro-4881/fabro-a67f, fabro-c2ca) and are withheld; 3 survive as new f"
+          },
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          }
         },
         "node_outcomes": {
           "select": {
@@ -1060,67 +1060,6 @@
               "inference_time_ms": 17464,
               "tool_time_ms": 2438,
               "active_time_ms": 19902
-            }
-          },
-          "file": {
-            "status": "succeeded",
-            "preferred_label": "Staged",
-            "context_updates": {
-              "response.file": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.file",
-                "chars": 1472,
-                "preview": "All three seeds (`fabro-6f6e`, `fabro-c0a8`, `fabro-96bd`) are in `.seeds/issues.jsonl` and committed together with the revision marker at `329d95e` — no duplicates found (three targeted `sd search`"
-              },
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "The three sd create writes landed in .seeds/issues.jsonl but the first git commit reported only 2 files changed with no indication the seed store was included until verified manually — the bookkeeper cannot tell from sd output whether seeds are git-synced; sd sync reporting 'No changes to commit' added ambiguity. Fix idea: have sd create print the seed file path it appended to."
-                  }
-                ],
-                "observations": [
-                  "fabro-5b0a (warnings surfaced in run summary and PR body) is the transport layer for fabro-6f6e's Dockerfile-rebuild warning; the closeout seed cross-references it rather than superseding — implementing 5b0a first makes 6f6e a one-line consumer.",
-                  "fabro-c0a8 complements fabro-1e9f (diff evidence against last seed boundary): both target planner-vs-tracker staleness but different mechanisms (description correction vs evidence baseline) — neither supersedes the other."
-                ]
-              },
-              "last_stage": "file",
-              "last_response": "All three seeds (`fabro-6f6e`, `fabro-c0a8`, `fabro-96bd`) are in `.seeds/issues.jsonl` and committed together with the revision marker at `329d95e` — no duplicates found (three targeted `sd search`",
-              "filed_seed_ids": [
-                "fabro-6f6e",
-                "fabro-c0a8",
-                "fabro-96bd"
-              ]
-            },
-            "notes": "Stage completed: file",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 18553,
-                    "output_tokens": 2338,
-                    "reasoning_tokens": 115,
-                    "cache_read_tokens": 149696,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 75677
-            },
-            "files_touched": [
-              "/workspace/fabro/.fabro/revisions/01M1YTVK73YEJXW4542MWDX4BJ.md"
-            ],
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 53536,
-              "tool_time_ms": 2244,
-              "active_time_ms": 55780
             }
           },
           "analyze": {
@@ -1200,20 +1139,167 @@
           "start": {
             "status": "succeeded",
             "usage": null
+          },
+          "file": {
+            "status": "succeeded",
+            "preferred_label": "Staged",
+            "context_updates": {
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 1472,
+                "preview": "All three seeds (`fabro-6f6e`, `fabro-c0a8`, `fabro-96bd`) are in `.seeds/issues.jsonl` and committed together with the revision marker at `329d95e` — no duplicates found (three targeted `sd search`"
+              },
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "The three sd create writes landed in .seeds/issues.jsonl but the first git commit reported only 2 files changed with no indication the seed store was included until verified manually — the bookkeeper cannot tell from sd output whether seeds are git-synced; sd sync reporting 'No changes to commit' added ambiguity. Fix idea: have sd create print the seed file path it appended to."
+                  }
+                ],
+                "observations": [
+                  "fabro-5b0a (warnings surfaced in run summary and PR body) is the transport layer for fabro-6f6e's Dockerfile-rebuild warning; the closeout seed cross-references it rather than superseding — implementing 5b0a first makes 6f6e a one-line consumer.",
+                  "fabro-c0a8 complements fabro-1e9f (diff evidence against last seed boundary): both target planner-vs-tracker staleness but different mechanisms (description correction vs evidence baseline) — neither supersedes the other."
+                ]
+              },
+              "last_stage": "file",
+              "last_response": "All three seeds (`fabro-6f6e`, `fabro-c0a8`, `fabro-96bd`) are in `.seeds/issues.jsonl` and committed together with the revision marker at `329d95e` — no duplicates found (three targeted `sd search`",
+              "filed_seed_ids": [
+                "fabro-6f6e",
+                "fabro-c0a8",
+                "fabro-96bd"
+              ]
+            },
+            "notes": "Stage completed: file",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 18553,
+                    "output_tokens": 2338,
+                    "reasoning_tokens": 115,
+                    "cache_read_tokens": 149696,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 75677
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/revisions/01M1YTVK73YEJXW4542MWDX4BJ.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 53536,
+              "tool_time_ms": 2244,
+              "active_time_ms": 55780
+            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "61088e47a76b6f1e1181324928cc1332058a96c4",
         "node_visits": {
-          "select": 1,
           "start": 1,
           "analyze": 1,
+          "select": 1,
           "file": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1YV61SYNEQ8JE22NPN404S3.jsonl b/.fabro/journal/01M1YV61SYNEQ8JE22NPN404S3.jsonl\nindex 9d57ac0..805730e 100644\n--- a/.fabro/journal/01M1YV61SYNEQ8JE22NPN404S3.jsonl\n+++ b/.fabro/journal/01M1YV61SYNEQ8JE22NPN404S3.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YV61SYNEQ8JE22NPN404S3\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:08:18Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YV61SYNEQ8JE22NPN404S3\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:08:42Z\",\"data\":{\"painpoints\":[],\"observations\":[\"73 runs listed (68 develop, 5 merge-upstream); selected the only fresh-evidence develop run; 3 merge-upstream runs are fresh vs their own baseline but older than the selected develop run\",\"47 runs stale-evidence (version drift), 14 pre-intent (absent version), 0 no-live-sandbox among otherwise-terminal fresh candidates; 19 runs already revised per markers in `.fabro/revisions/`\",\"No active develop run at listing time\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YV61SYNEQ8JE22NPN404S3\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:12:44Z\",\"data\":{\"painpoints\":[{\"text\":\"`sd list --format compact` under-reported the tracker: open seeds fabro-9588, fabro-c3b4, fabro-c2ca, and fabro-4881 appeared only via `sd search`, not in the list output — duplicate detection on list evidence alone would have mis-filed four findings as new. Fix idea: document the list command's truncation/filter for this stage, or make per-theme `sd search` the mandated primary check with the list as background only.\"}],\"observations\":[\"Dropped as duplicates of existing OPEN seeds: evidence stage-section tail-cap render → fabro-meta-c9f2; per-node memory scoping / AGENTS.md split → fabro-9588; top-N `sd ready` view → fabro-c3b4; preamble allow-key warn downgrade → fabro-8275; conditional implementer seed re-fetch → fabro-4881 (also covered by fabro-a67f); skip metadata snapshots on command stages → fabro-c2ca.\",\"3 of 9 recommendations survived: the closeout Dockerfile-rebuild warning (orthogonal trigger building on fabro-5b0a's proposed warning channel), the planner `sd update` stale-spec writeback, and the implementer `ml record` flag docs.\",\"Analyst could not inspect post-closeout events (PR body generation / auto-merge) or the deployed image's build date — the latter gap is exactly why the closeout-rebuild-warning finding matters.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YV61SYNEQ8JE22NPN404S3\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:13:48Z\",\"data\":{\"painpoints\":[{\"text\":\"The three sd create writes landed in .seeds/issues.jsonl but the first git commit reported only 2 files changed with no indication the seed store was included until verified manually — the bookkeeper cannot tell from sd output whether seeds are git-synced; sd sync reporting 'No changes to commit' added ambiguity. Fix idea: have sd create print the seed file path it appended to.\"}],\"observations\":[\"fabro-5b0a (warnings surfaced in run summary and PR body) is the transport layer for fabro-6f6e's Dockerfile-rebuild warning; the closeout seed cross-references it rather than superseding — implementing 5b0a first makes 6f6e a one-line consumer.\",\"fabro-c0a8 complements fabro-1e9f (diff evidence against last seed boundary): both target planner-vs-tracker staleness but different mechanisms (description correction vs evidence baseline) — neither supersedes the other.\"]}}\ndiff --git a/.fabro/revisions/01M1YTVK73YEJXW4542MWDX4BJ.md b/.fabro/revisions/01M1YTVK73YEJXW4542MWDX4BJ.md\nnew file mode 100644\nindex 0000000..87b9f1b\n--- /dev/null\n+++ b/.fabro/revisions/01M1YTVK73YEJXW4542MWDX4BJ.md\n@@ -0,0 +1,21 @@\n+# Revision — run 01M1YTVK73YEJXW4542MWDX4BJ\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M1YTVK73YEJXW4542MWDX4BJ.md\n+- seeds filed: fabro-6f6e — Closeout: warn when the run diff touches a Dockerfile — the fix is inert until the toolchain image rebuilds; fabro-c0a8 — Develop planner: record stale-spec corrections via sd update before claiming; fabro-96bd — Implementer prompt: document the ml record flag contract per record type\n+- basis: run 01M1YTVK73YEJXW4542MWDX4BJ, workflow version 5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21, commit 54612515b569d36aa68872cb119b12ae7f9c4eaf\n+- revised_at_commit: 54612515b569d36aa68872cb119b12ae7f9c4eaf (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Closeout: warn when the run diff touches a Dockerfile — the fix is inert until the toolchain image rebuilds\n+- filed: fabro-6f6e\n+- Change: in `.fabro/workflows/develop/scripts/closeout.nu`, detect a diff touching `Dockerfile*` and emit a run-level warning (\"seed closes, but takes effect only after `fabro-toolchain:noble` rebuild\") surfaced in the run summary and PR body (the channel open seed fabro-5b0a proposes — complementary, cross-referenced, not superseded). Expected effect: eliminates the recurring class of seeds closed green while the promised behavior stays broken for N subsequent runs.\n+\n+### Develop planner: record stale-spec corrections via sd update before claiming\n+- filed: fabro-c0a8\n+- Change: `.fabro/workflows/develop/prompts/planner.md` step 3 (stale-basis check): when the basis resolves but the spec's named path is wrong, the planner must record the correction via `sd update <id> --description` before claiming. Expected effect: ~40% planner time/token cut on platform-path seeds and the contradiction stops recurring in every future reader's context.\n+\n+### Implementer prompt: document the ml record flag contract per record type\n+- filed: fabro-96bd\n+- Change: document the exact flag set per record type (pattern requires `--name`) in `.fabro/workflows/develop/prompts/implementer.md` step 6, and note the mulch-cli exit-0-on-error bug for upstream filing. Expected effect: one fewer failed tool call + LLM round per lesson capture and deterministic error detection.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 86b2fd4..1c46688 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -259,3 +259,6 @@\n {\"id\":\"fabro-6db3\",\"title\":\"Classify the engine journal file as expected churn in evidence.nu\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T20:12:21.007Z\",\"updatedAt\":\"2026-09-07T20:22:11.204Z\",\"description\":\"In `.fabro/workflows/develop/scripts/evidence.nu`, add `.fabro/journal/**` (and `.fabro/blobs/**`) to the known-transient/churn section with an explicit '(engine journal, expected)' label. This run's reviewer found `.fabro/journal/<run>.jsonl +3` in its `git diff` beyond the churn list because the stage-journal hook writes after capture, and burned verification budget rationalizing an unexplained diff line instead of judging the seed. Distinct from open fabro-43ba (no-net-diff detection — the journal file grows monotonically) and fabro-93a7 (seed-spec paths). Effect: every review sees a reconciled churn list; removes a recurring false-deviation risk.\\nBasis: run 01M1YQD03JZJCGRJ53SNRBTM8P, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit 26c7ce34ffeb12df96dc464c485f83e5d1ba0b85\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-05d0\",\"title\":\"Bake gh into the develop toolchain image (or check open PRs engine-side) so the in-flight-PR guard functions\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T20:40:40.695Z\",\"updatedAt\":\"2026-09-07T21:06:39.364Z\",\"description\":\"In run 01M1YS4NJH27NS7CQ02AWM9BNE the planner's mandated gh pr list --state open failed with exit 127 (gh: command not found) and degraded fail-open, so the double-pick guard from fabro-d0c7 (which exists because fabro-22e4 re-implemented a fix waiting in PR #47) is structurally disabled on fabro-toolchain:noble even though the engine has GitHub access (PR #51 was created). Change: add the gh binary to the toolchain image built from .fabro/Dockerfile, or move the open-PR check engine-side using run PR metadata instead of a sandbox binary. Expected effect: the guard actually audits double-picks and one guaranteed erroring tool call disappears from every planning pass.\\nBasis: run 01M1YS4NJH27NS7CQ02AWM9BNE, workflow version ae2869aca84cea61832e77a2926b97ebb79d70300014555c724f2862e12612c9, commit 774f67e9548357656f837bd152c22be72920eb1e\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-07T21:06:39.364Z\"}\n {\"id\":\"fabro-5b0a\",\"title\":\"Surface degraded fail-open planner checks as run-level warnings in the run summary and PR body\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T20:40:43.171Z\",\"updatedAt\":\"2026-09-07T20:56:07.608Z\",\"description\":\"In run 01M1YS4NJH27NS7CQ02AWM9BNE the gh open-PR check degraded fail-open but the degradation was visible only in a journal line; a human reading PR #51 cannot distinguish 'succeeded' from 'succeeded with guards down'. Change: engine-side, emit a run-level warning (surfaced in the run summary and the PR body) whenever a mandated planner check degrades fail-open instead of logging it only to the journal. Expected effect: guard-down runs become human-visible at review time instead of silently passing.\\nBasis: run 01M1YS4NJH27NS7CQ02AWM9BNE, workflow version ae2869aca84cea61832e77a2926b97ebb79d70300014555c724f2862e12612c9, commit 774f67e9548357656f837bd152c22be72920eb1e\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-6f6e\",\"title\":\"Closeout: warn when the run diff touches a Dockerfile — the fix is inert until the toolchain image rebuilds\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T21:13:09.464Z\",\"updatedAt\":\"2026-09-07T21:13:09.464Z\",\"description\":\"Run 01M1YTVK73YEJXW4542MWDX4BJ (seed fabro-05d0) delivered only a .fabro/Dockerfile.toolchain edit; Docker is absent from run sandboxes so no build ran and the reviewer approved anyway — the same gap that left gh in .fabro/Dockerfile since commit 98ed9f1 while run containers still hit exit 127 on Sep 7. Change: in .fabro/workflows/develop/scripts/closeout.nu, detect a diff touching Dockerfile* and emit a run-level warning ('seed closes, but takes effect only after fabro-toolchain:noble rebuild') surfaced in the run summary and PR body (the channel open seed fabro-5b0a proposes — complementary, cross-referenced, not superseded). Expected effect: eliminates the recurring class of seeds closed green while the promised behavior stays broken for N subsequent runs.\\\\nBasis: run 01M1YTVK73YEJXW4542MWDX4BJ, workflow version 5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21, commit 54612515b569d36aa68872cb119b12ae7f9c4eaf\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-c0a8\",\"title\":\"Develop planner: record stale-spec corrections via sd update before claiming\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T21:13:15.362Z\",\"updatedAt\":\"2026-09-07T21:13:15.362Z\",\"description\":\"Seed fabro-05d0 named .fabro/Dockerfile as the fix target; the planner burned ~6 tool calls / ~45 s / $0.097 (39% of run cost, events seq 44-82) proving the path wrong, then the implementer re-hit the contradiction and journaled a suggested sd update that nobody applied — the seed closed with the stale body. Change: .fabro/workflows/develop/prompts/planner.md step 3 (stale-basis check): when the basis resolves but the spec's named path is wrong, the planner (already the sole tracker writer) must record the correction via sd update <id> --description before claiming. Expected effect: ~40% planner time/token cut on platform-path seeds (the tracker's most common class) and the contradiction stops recurring in every future reader's context.\\\\nBasis: run 01M1YTVK73YEJXW4542MWDX4BJ, workflow version 5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21, commit 54612515b569d36aa68872cb119b12ae7f9c4eaf\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-96bd\",\"title\":\"Implementer prompt: document the ml record flag contract per record type\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T21:13:20.579Z\",\"updatedAt\":\"2026-09-07T21:13:20.579Z\",\"description\":\"The implementer's lesson-capture call failed with 'pattern records are missing required flag(s): --name' yet exited 0 with is_error: false (events seq 163-165) — only the stdout text revealed the failure. .fabro/workflows/develop/prompts/implementer.md step 6 teaches the exact failing form (ml record <domain> --type ... --description ... with no --name). Change: document the exact flag set per record type (pattern requires --name) in step 6, and note the mulch-cli exit-0-on-error bug (same class as sd's fabro-d936) for upstream filing. Expected effect: one fewer failed tool call + LLM round per lesson capture and deterministic error detection.\\\\nBasis: run 01M1YTVK73YEJXW4542MWDX4BJ, workflow version 5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21, commit 54612515b569d36aa68872cb119b12ae7f9c4eaf\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 89,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T21:14:02.543092479Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 315557,
+      "inference_time_ms": 180558,
+      "tool_time_ms": 108007,
+      "active_time_ms": 288565
+    },
+    "final_git_commit_sha": "61088e47a76b6f1e1181324928cc1332058a96c4",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 20448,
+          "inference_time_ms": 17464,
+          "tool_time_ms": 2438,
+          "active_time_ms": 19902
+        },
+        "billing_usd_micros": 49475,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 213431,
+          "inference_time_ms": 109558,
+          "tool_time_ms": 103325,
+          "active_time_ms": 212883
+        },
+        "billing_usd_micros": 90173,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 56317,
+          "inference_time_ms": 53536,
+          "tool_time_ms": 2244,
+          "active_time_ms": 55780
+        },
+        "billing_usd_micros": 75677,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 70433,
+      "output_tokens": 7079,
+      "total_tokens": 318688,
+      "reasoning_tokens": 5528,
+      "cache_read_tokens": 235648,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 215325
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1YV61SYNEQ8JE22NPN404S3.jsonl b/.fabro/journal/01M1YV61SYNEQ8JE22NPN404S3.jsonl\nnew file mode 100644\nindex 0000000..805730e\n--- /dev/null\n+++ b/.fabro/journal/01M1YV61SYNEQ8JE22NPN404S3.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YV61SYNEQ8JE22NPN404S3\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:08:18Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YV61SYNEQ8JE22NPN404S3\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:08:42Z\",\"data\":{\"painpoints\":[],\"observations\":[\"73 runs listed (68 develop, 5 merge-upstream); selected the only fresh-evidence develop run; 3 merge-upstream runs are fresh vs their own baseline but older than the selected develop run\",\"47 runs stale-evidence (version drift), 14 pre-intent (absent version), 0 no-live-sandbox among otherwise-terminal fresh candidates; 19 runs already revised per markers in `.fabro/revisions/`\",\"No active develop run at listing time\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YV61SYNEQ8JE22NPN404S3\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:12:44Z\",\"data\":{\"painpoints\":[{\"text\":\"`sd list --format compact` under-reported the tracker: open seeds fabro-9588, fabro-c3b4, fabro-c2ca, and fabro-4881 appeared only via `sd search`, not in the list output — duplicate detection on list evidence alone would have mis-filed four findings as new. Fix idea: document the list command's truncation/filter for this stage, or make per-theme `sd search` the mandated primary check with the list as background only.\"}],\"observations\":[\"Dropped as duplicates of existing OPEN seeds: evidence stage-section tail-cap render → fabro-meta-c9f2; per-node memory scoping / AGENTS.md split → fabro-9588; top-N `sd ready` view → fabro-c3b4; preamble allow-key warn downgrade → fabro-8275; conditional implementer seed re-fetch → fabro-4881 (also covered by fabro-a67f); skip metadata snapshots on command stages → fabro-c2ca.\",\"3 of 9 recommendations survived: the closeout Dockerfile-rebuild warning (orthogonal trigger building on fabro-5b0a's proposed warning channel), the planner `sd update` stale-spec writeback, and the implementer `ml record` flag docs.\",\"Analyst could not inspect post-closeout events (PR body generation / auto-merge) or the deployed image's build date — the latter gap is exactly why the closeout-rebuild-warning finding matters.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YV61SYNEQ8JE22NPN404S3\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T21:13:48Z\",\"data\":{\"painpoints\":[{\"text\":\"The three sd create writes landed in .seeds/issues.jsonl but the first git commit reported only 2 files changed with no indication the seed store was included until verified manually — the bookkeeper cannot tell from sd output whether seeds are git-synced; sd sync reporting 'No changes to commit' added ambiguity. Fix idea: have sd create print the seed file path it appended to.\"}],\"observations\":[\"fabro-5b0a (warnings surfaced in run summary and PR body) is the transport layer for fabro-6f6e's Dockerfile-rebuild warning; the closeout seed cross-references it rather than superseding — implementing 5b0a first makes 6f6e a one-line consumer.\",\"fabro-c0a8 complements fabro-1e9f (diff evidence against last seed boundary): both target planner-vs-tracker staleness but different mechanisms (description correction vs evidence baseline) — neither supersedes the other.\"]}}\ndiff --git a/.fabro/reviews/develop/01M1YTVK73YEJXW4542MWDX4BJ.md b/.fabro/reviews/develop/01M1YTVK73YEJXW4542MWDX4BJ.md\nnew file mode 100644\nindex 0000000..23da0b2\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M1YTVK73YEJXW4542MWDX4BJ.md\n@@ -0,0 +1,61 @@\n+# Improve review — run 01M1YTVK73YEJXW4542MWDX4BJ\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (4.4 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-07 21:10+0000 by revisor `fabro_ask`\n+\n+---\n+\n+## Recommendations, ordered by expected impact\n+\n+All numbers below come from this run's events, checkpoints, and the worker log (run `01M1YTVK73YEJXW4542MWDX4BJ`, seed fabro-05d0, 4m24s wall, $0.245, zero retries — a clean run, so the friction below is structural, not failure noise).\n+\n+**1. Close the \"implemented but inert\" gap: seed closure doesn't require the image rebuild that makes the fix effective.**\n+What happened: the run's entire deliverable is a Dockerfile edit (`aqua:cli/cli@v2.100.0` in `.fabro/Dockerfile.toolchain`). Docker is absent from run sandboxes (implementer events seq 116–119), so no build ran; the reviewer explicitly noted \"the first real image rebuild after this lands should be watched\" and approved anyway. The prior run already demonstrated the failure mode this creates: `gh` has been in `.fabro/Dockerfile` since commit 98ed9f1 (Sep 5) while run containers still hit exit 127 on Sep 7 — the deployed image predated the file. Nothing in the graph or closeout tracks that.\n+Change: in `.fabro/workflows/develop/scripts/closeout.nu`, detect a diff touching `Dockerfile.toolchain`/`Dockerfile*` and emit a run-level warning (\"seed closes, but takes effect only after `fabro-toolchain:noble` rebuild\") surfaced in the run summary and PR body (the delivery channel fabro-5b0a proposes); optionally add a `just rebuild-toolchain` recipe the warning can name.\n+Expected effect: eliminates the recurring class where a seed is closed green while the behavior it promised stays broken for N subsequent runs; the next planner's `gh pr list` guard actually functions instead of fail-opening again.\n+\n+**2. Write spec corrections back to the tracker — the planner re-derived a known-stale seed path at full cost.**\n+What happened: seed fabro-05d0 names `.fabro/Dockerfile` as the fix target; that file is the lab/GUI image and already has gh. The planner burned ~6 tool calls and ~45 s (events seq 44–82, 21:02:49→21:03:36 — most of its 67 s stage and $0.097, 39% of run cost) proving the correction, then the implementer hit the same contradiction again and journaled \"Suggest `sd update` on fabro-05d0's description\" (implementer journal, checkpoint seq 194). Nobody applied it; the seed closed with the stale body.\n+Change: `.fabro/workflows/develop/prompts/planner.md`, step 3 (stale-basis check): when the basis resolves but the spec's named path is wrong, the planner (already the sole tracker writer) must record the correction via `sd update <id> --description ...` before claiming, so the fix is durable in the tracker, not just in this run's brief.\n+Expected effect: cuts roughly 40% of planner time/tokens on platform-path seeds (the tracker's most common class) and removes the contradiction from every future reader's context.\n+\n+**3. Cut the AGENTS.md memory tax: ~24 KB loaded into all three agent stages ≈ 26% of run input tokens.**\n+What happened: `agent.memory.loaded` shows 23,967 bytes (~5.6–6.0k tokens) loaded into planner, implementer, and reviewer alike (memory category in each context-window breakdown). Run totals: 66.9k input tokens; ~17.6k of those are this one file — mostly Rust-workspace conventions irrelevant to a Dockerfile seed.\n+Change: either split `AGENTS.md` into a slim core plus role/domain sections the engine selects, or implement per-node memory scoping (already open as fabro-9588) — planner needs tracker/scope rules, not gate recipes.\n+Expected effect: ~20–25% token and cost reduction per run with zero behavioral risk at these context sizes (peak usage was 2.5% of the 1M window).\n+\n+**4. Stop feeding the planner the 161-seed firehose.**\n+What happened: the mandated `sd ready --assignee fabro --limit 200` returned 161 items / 21,451 bytes (event seq 33); conversation tokens jumped 11.5k→17.4k on that one call. The planner only needed the top candidate.\n+Change: `.fabro/workflows/develop/prompts/planner.md` sd table — change the entry command to a top-N view (`--limit 20` first, widen only when the top candidates are all in-flight/superseded), which is also the open ask in fabro-c3b4.\n+Expected effect: ~8–10k fewer tokens per planner pass (~$0.01–0.02 and several seconds), and less temptation to treat listing order as ranking (a documented past trap).\n+\n+**5. Fix the `ml record` flag contract and its exit-0-on-error masking.**\n+What happened: the implementer's first lesson-capture call failed with \"pattern records are missing required flag(s): --name\" (events seq 163–165) — and the process still exited **0** with `is_error: false`, so nothing but the stdout text told the agent it failed. The implementer prompt's step 6 shows `ml record <domain> --type ... --description ...` with no `--name`, teaching the exact failing form.\n+Change: (a) `.fabro/workflows/develop/prompts/implementer.md` step 6 — document the exact flag set per record type (pattern requires `--name`); (b) file the mulch-cli exit-code bug (non-zero on errors) — same class as sd's fabro-d936, currently unfixed for `ml`.\n+Expected effect: one fewer failed tool call + LLM round per lesson capture, and deterministic error detection instead of relying on the model noticing \"Error:\" in stdout.\n+\n+**6. Silence the by-design `preamble_allow_keys` warning.**\n+What happened: the run's only WARN (worker log, 21:03:53): \"preamble_allow_keys entry absent from context node=implementer key=output.gate_known_bug_hits\". That key only exists after a gate-red bounce; on a green first visit its absence is the design, so the warning fires on every clean run and trains people to ignore the log.\n+Change: engine `fabro_workflow::lifecycle::fidelity` — downgrade to info, or warn only when the key's producer node (`gatebounce`) actually executed (this is open seed fabro-8275; this run is another data point).\n+Expected effect: zero-noise warn channel, so genuine context-contract drift stays visible.\n+\n+**7. Make the implementer's seed re-fetch conditional — it re-read a seed the planner had just fully corrected.**\n+What happened: prompt step 1 mandates \"Re-read the seed requirements from `sd show`\" unconditionally, while the Input section says fetch only \"if the brief is thin\". The brief here was comprehensive (spec correction included), yet the implementer spent a call re-reading the identical seed body (seq 107–112).\n+Change: `.fabro/workflows/develop/prompts/implementer.md` step 1 — align it with the Input section: re-fetch only when the brief lacks acceptance criteria or carries unresolved ambiguity (open seed fabro-4881 names exactly this).\n+Expected effect: one fewer tool round and ~1–2k tokens per implementer pass.\n+\n+**8. Skip metadata snapshots on command stages.**\n+What happened: metadata snapshots (~1.9 s each) ran at init and around agent-stage checkpoints; on a 264 s run that's several seconds of pure bookkeeping on stages (tester, evidence, closeout) that change no agent-relevant state (events seq 15–16, 91–92; the pattern repeats per checkpoint).\n+Change: engine checkpoint path — skip `metadata.snapshot` for command-handler nodes (open seed fabro-c2ca already specifies this).\n+Expected effect: ~4–6 s per run (~2%) at zero risk; scales with run length.\n+\n+**9. Tighten the evidence stage-section render before it bites again.**\n+What happened: the reviewer's prompt rendered the evidence capture with \"(21 lines omitted)\" mid-capture — this time the elided lines were the header/churn counts and the churn-only diff section survived, so review succeeded without a blob read (reviewer tool time: 112 ms, one grep). With a non-empty seed-work section, the same elision forces the blob detour the 24 KB budget was raised to avoid (the known fabro-meta-c9f2 / engine dedup item).\n+Change: engine stage-section renderer — for nodes with `fidelity=\"summary:high\"`, render the full `command.output` in the stage section (it is already inline in Context) instead of a tail-capped duplicate; dedup the two renderings.\n+Expected effect: removes the residual truncation path in the evidence pipe; reviews stop depending on luck over which 21 lines get cut.\n+\n+**Not worth changing based on this run:** reasoning-effort tuning (planner/implementer/reviewer at `low` produced 1,072/1,148/412 reasoning tokens — already the steady state the graph comments targeted); the gate (5.9 s, correctly no-oped with \"no crates touched\"); cache behavior (446k cache-read tokens, 0 writes, no stall); and the evidence blob sizing (7.3 KB capture stayed inline under the 16 KB cap).\n+\n+**What I could not inspect:** events after closeout (PR #53 body generation / auto-merge details) beyond the summary fields, so I can't ground a recommendation about the PR postlude this run; and the deployed image's build date, which is exactly why recommendation 1 matters.\ndiff --git a/.fabro/revisions/01M1YTVK73YEJXW4542MWDX4BJ.md b/.fabro/revisions/01M1YTVK73YEJXW4542MWDX4BJ.md\nnew file mode 100644\nindex 0000000..87b9f1b\n--- /dev/null\n+++ b/.fabro/revisions/01M1YTVK73YEJXW4542MWDX4BJ.md\n@@ -0,0 +1,21 @@\n+# Revision — run 01M1YTVK73YEJXW4542MWDX4BJ\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M1YTVK73YEJXW4542MWDX4BJ.md\n+- seeds filed: fabro-6f6e — Closeout: warn when the run diff touches a Dockerfile — the fix is inert until the toolchain image rebuilds; fabro-c0a8 — Develop planner: record stale-spec corrections via sd update before claiming; fabro-96bd — Implementer prompt: document the ml record flag contract per record type\n+- basis: run 01M1YTVK73YEJXW4542MWDX4BJ, workflow version 5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21, commit 54612515b569d36aa68872cb119b12ae7f9c4eaf\n+- revised_at_commit: 54612515b569d36aa68872cb119b12ae7f9c4eaf (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Closeout: warn when the run diff touches a Dockerfile — the fix is inert until the toolchain image rebuilds\n+- filed: fabro-6f6e\n+- Change: in `.fabro/workflows/develop/scripts/closeout.nu`, detect a diff touching `Dockerfile*` and emit a run-level warning (\"seed closes, but takes effect only after `fabro-toolchain:noble` rebuild\") surfaced in the run summary and PR body (the channel open seed fabro-5b0a proposes — complementary, cross-referenced, not superseded). Expected effect: eliminates the recurring class of seeds closed green while the promised behavior stays broken for N subsequent runs.\n+\n+### Develop planner: record stale-spec corrections via sd update before claiming\n+- filed: fabro-c0a8\n+- Change: `.fabro/workflows/develop/prompts/planner.md` step 3 (stale-basis check): when the basis resolves but the spec's named path is wrong, the planner must record the correction via `sd update <id> --description` before claiming. Expected effect: ~40% planner time/token cut on platform-path seeds and the contradiction stops recurring in every future reader's context.\n+\n+### Implementer prompt: document the ml record flag contract per record type\n+- filed: fabro-96bd\n+- Change: document the exact flag set per record type (pattern requires `--name`) in `.fabro/workflows/develop/prompts/implementer.md` step 6, and note the mulch-cli exit-0-on-error bug for upstream filing. Expected effect: one fewer failed tool call + LLM round per lesson capture and deterministic error detection.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 86b2fd4..1c46688 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -259,3 +259,6 @@\n {\"id\":\"fabro-6db3\",\"title\":\"Classify the engine journal file as expected churn in evidence.nu\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T20:12:21.007Z\",\"updatedAt\":\"2026-09-07T20:22:11.204Z\",\"description\":\"In `.fabro/workflows/develop/scripts/evidence.nu`, add `.fabro/journal/**` (and `.fabro/blobs/**`) to the known-transient/churn section with an explicit '(engine journal, expected)' label. This run's reviewer found `.fabro/journal/<run>.jsonl +3` in its `git diff` beyond the churn list because the stage-journal hook writes after capture, and burned verification budget rationalizing an unexplained diff line instead of judging the seed. Distinct from open fabro-43ba (no-net-diff detection — the journal file grows monotonically) and fabro-93a7 (seed-spec paths). Effect: every review sees a reconciled churn list; removes a recurring false-deviation risk.\\nBasis: run 01M1YQD03JZJCGRJ53SNRBTM8P, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit 26c7ce34ffeb12df96dc464c485f83e5d1ba0b85\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-05d0\",\"title\":\"Bake gh into the develop toolchain image (or check open PRs engine-side) so the in-flight-PR guard functions\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T20:40:40.695Z\",\"updatedAt\":\"2026-09-07T21:06:39.364Z\",\"description\":\"In run 01M1YS4NJH27NS7CQ02AWM9BNE the planner's mandated gh pr list --state open failed with exit 127 (gh: command not found) and degraded fail-open, so the double-pick guard from fabro-d0c7 (which exists because fabro-22e4 re-implemented a fix waiting in PR #47) is structurally disabled on fabro-toolchain:noble even though the engine has GitHub access (PR #51 was created). Change: add the gh binary to the toolchain image built from .fabro/Dockerfile, or move the open-PR check engine-side using run PR metadata instead of a sandbox binary. Expected effect: the guard actually audits double-picks and one guaranteed erroring tool call disappears from every planning pass.\\nBasis: run 01M1YS4NJH27NS7CQ02AWM9BNE, workflow version ae2869aca84cea61832e77a2926b97ebb79d70300014555c724f2862e12612c9, commit 774f67e9548357656f837bd152c22be72920eb1e\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-07T21:06:39.364Z\"}\n {\"id\":\"fabro-5b0a\",\"title\":\"Surface degraded fail-open planner checks as run-level warnings in the run summary and PR body\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T20:40:43.171Z\",\"updatedAt\":\"2026-09-07T20:56:07.608Z\",\"description\":\"In run 01M1YS4NJH27NS7CQ02AWM9BNE the gh open-PR check degraded fail-open but the degradation was visible only in a journal line; a human reading PR #51 cannot distinguish 'succeeded' from 'succeeded with guards down'. Change: engine-side, emit a run-level warning (surfaced in the run summary and the PR body) whenever a mandated planner check degrades fail-open instead of logging it only to the journal. Expected effect: guard-down runs become human-visible at review time instead of silently passing.\\nBasis: run 01M1YS4NJH27NS7CQ02AWM9BNE, workflow version ae2869aca84cea61832e77a2926b97ebb79d70300014555c724f2862e12612c9, commit 774f67e9548357656f837bd152c22be72920eb1e\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-6f6e\",\"title\":\"Closeout: warn when the run diff touches a Dockerfile — the fix is inert until the toolchain image rebuilds\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T21:13:09.464Z\",\"updatedAt\":\"2026-09-07T21:13:09.464Z\",\"description\":\"Run 01M1YTVK73YEJXW4542MWDX4BJ (seed fabro-05d0) delivered only a .fabro/Dockerfile.toolchain edit; Docker is absent from run sandboxes so no build ran and the reviewer approved anyway — the same gap that left gh in .fabro/Dockerfile since commit 98ed9f1 while run containers still hit exit 127 on Sep 7. Change: in .fabro/workflows/develop/scripts/closeout.nu, detect a diff touching Dockerfile* and emit a run-level warning ('seed closes, but takes effect only after fabro-toolchain:noble rebuild') surfaced in the run summary and PR body (the channel open seed fabro-5b0a proposes — complementary, cross-referenced, not superseded). Expected effect: eliminates the recurring class of seeds closed green while the promised behavior stays broken for N subsequent runs.\\\\nBasis: run 01M1YTVK73YEJXW4542MWDX4BJ, workflow version 5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21, commit 54612515b569d36aa68872cb119b12ae7f9c4eaf\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-c0a8\",\"title\":\"Develop planner: record stale-spec corrections via sd update before claiming\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T21:13:15.362Z\",\"updatedAt\":\"2026-09-07T21:13:15.362Z\",\"description\":\"Seed fabro-05d0 named .fabro/Dockerfile as the fix target; the planner burned ~6 tool calls / ~45 s / $0.097 (39% of run cost, events seq 44-82) proving the path wrong, then the implementer re-hit the contradiction and journaled a suggested sd update that nobody applied — the seed closed with the stale body. Change: .fabro/workflows/develop/prompts/planner.md step 3 (stale-basis check): when the basis resolves but the spec's named path is wrong, the planner (already the sole tracker writer) must record the correction via sd update <id> --description before claiming. Expected effect: ~40% planner time/token cut on platform-path seeds (the tracker's most common class) and the contradiction stops recurring in every future reader's context.\\\\nBasis: run 01M1YTVK73YEJXW4542MWDX4BJ, workflow version 5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21, commit 54612515b569d36aa68872cb119b12ae7f9c4eaf\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-96bd\",\"title\":\"Implementer prompt: document the ml record flag contract per record type\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T21:13:20.579Z\",\"updatedAt\":\"2026-09-07T21:13:20.579Z\",\"description\":\"The implementer's lesson-capture call failed with 'pattern records are missing required flag(s): --name' yet exited 0 with is_error: false (events seq 163-165) — only the stdout text revealed the failure. .fabro/workflows/develop/prompts/implementer.md step 6 teaches the exact failing form (ml record <domain> --type ... --description ... with no --name). Change: document the exact flag set per record type (pattern requires --name) in step 6, and note the mulch-cli exit-0-on-error bug (same class as sd's fabro-d936) for upstream filing. Expected effect: one fewer failed tool call + LLM round per lesson capture and deterministic error detection.\\\\nBasis: run 01M1YTVK73YEJXW4542MWDX4BJ, workflow version 5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21, commit 54612515b569d36aa68872cb119b12ae7f9c4eaf\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 89,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1240,6 +1326,42 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 201,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T21:14:02.460159981Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T21:14:02.460123676Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "analyze@1": {
       "first_event_seq": 51,
       "prompt": null,
