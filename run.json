@@ -485,7 +485,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T20:36:50.586544967Z",
-  "last_event_at": "2026-09-07T20:41:00.467434492Z",
+  "last_event_at": "2026-09-07T20:41:06.765810673Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -895,9 +895,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 171,
       "checkpoint": {
-        "timestamp": "2026-09-07T20:41:00.721650497Z",
+        "timestamp": "2026-09-07T20:41:05.659479031Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -907,58 +907,18 @@
         ],
         "node_retries": {},
         "context_values": {
-          "graph.rankdir": "LR",
-          "internal.retry_count.file": 0,
-          "preferred_label": "Staged",
-          "revisor_target_wall": "2.9 min",
-          "internal.retry_count.select": 0,
-          "thread.analyze.current_node": "file",
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "journal": {
-            "painpoints": [],
-            "observations": [
-              "gh open-PR guard failure (exit 127) is the root cause behind both findings; if fabro-05d0's engine-side fix is chosen over baking gh into the toolchain image, fabro-5b0a's run-level warning still applies to any future fail-open checks",
-              "sd search returned no hits for both themes, but title-blind duplicates remain possible across unrelated phrasings — the analyzer's pre-dedup plus this pass is the coverage boundary"
-            ]
-          },
+          "graph.max_node_visits": "30",
           "revisor_target_title": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "internal.node_visit_count": 1,
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "failure_signature": "",
-          "response.analyze": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "chars": 3821,
-            "preview": "Distillation complete: five of the seven recommendations were already filed (firehose `fabro-c3b4`/`fabro-0da8`, cache prefix `fabro-944d`, memory scoping `fabro-9588`, conditional re-fetch `fabro-a67"
-          },
-          "filed_seed_ids": [
-            "fabro-05d0",
-            "fabro-5b0a"
-          ],
-          "internal.work_dir": "/workspace/fabro",
-          "revisor_target_run_id": "01M1YS4NJH27NS7CQ02AWM9BNE",
-          "internal.seed_cycle_anchor": "01M1YS4NJH27NS7CQ02AWM9BNE",
-          "internal.thread_id": "analyze",
-          "response.select": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.select",
-            "chars": 1434,
-            "preview": "The develop baseline is `ae2869ac…` (newest develop run). Run `01M1YS4NJH27NS7CQ02AWM9BNE` (created 2026-09-07T20:32:17) is terminal (succeeded), `sandbox_available == true`, matches the baseline ve"
-          },
-          "revisor_target_status": "succeeded",
-          "internal.retry_count.analyze": 0,
-          "response.file": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.file",
-            "chars": 884,
-            "preview": "Bookkeeper pass complete: both findings deduplicated cleanly against existing seeds, filed as `fabro-05d0` and `fabro-5b0a` with basis lines, marker written to `/workspace/fabro/.fabro/revisions/01M1Y"
-          },
+          "thread.select.current_node": "analyze",
           "seed_cycles": {
             "select": 1,
             "analyze": 1,
             "file": 1
           },
-          "thread.start.current_node": "select",
+          "internal.retry_count.select": 0,
+          "graph.rankdir": "LR",
+          "internal.retry_count.file": 0,
+          "internal.retry_count.start": 0,
           "revision_findings": [
             {
               "title": "Bake gh into the develop toolchain image (or check open PRs engine-side) so the in-flight-PR guard functions",
@@ -971,26 +931,62 @@
               "priority": 2
             }
           ],
-          "last_response": "Bookkeeper pass complete: both findings deduplicated cleanly against existing seeds, filed as `fabro-05d0` and `fabro-5b0a` with basis lines, marker written to `/workspace/fabro/.fabro/revisions/01M1Y",
-          "internal.retry_count.start": 0,
-          "current_node": "file",
-          "internal.run_id": "01M1YSCK72V0HKCD5Z1VGDQ2KP",
-          "graph.preamble_budget_kb": "24",
-          "graph.inspects": "develop,merge-upstream",
-          "internal.fidelity": "compact",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "gh open-PR guard failure (exit 127) is the root cause behind both findings; if fabro-05d0's engine-side fix is chosen over baking gh into the toolchain image, fabro-5b0a's run-level warning still applies to any future fail-open checks",
+              "sd search returned no hits for both themes, but title-blind duplicates remain possible across unrelated phrasings — the analyzer's pre-dedup plus this pass is the coverage boundary"
+            ]
+          },
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "internal.thread_id": "analyze",
+          "revisor_target_run_id": "01M1YS4NJH27NS7CQ02AWM9BNE",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
           "last_stage": "file",
-          "failure_class": "",
+          "internal.retry_count.analyze": 0,
+          "internal.node_visit_count": 1,
           "internal.exit_kind": "natural",
-          "thread.select.current_node": "analyze",
-          "revisor_target_workflow_version": "ae2869aca84cea61832e77a2926b97ebb79d70300014555c724f2862e12612c9",
+          "current_node": "file",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 3821,
+            "preview": "Distillation complete: five of the seven recommendations were already filed (firehose `fabro-c3b4`/`fabro-0da8`, cache prefix `fabro-944d`, memory scoping `fabro-9588`, conditional re-fetch `fabro-a67"
+          },
+          "revisor_target_wall": "2.9 min",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 884,
+            "preview": "Bookkeeper pass complete: both findings deduplicated cleanly against existing seeds, filed as `fabro-05d0` and `fabro-5b0a` with basis lines, marker written to `/workspace/fabro/.fabro/revisions/01M1Y"
+          },
+          "thread.analyze.current_node": "file",
+          "internal.run_id": "01M1YSCK72V0HKCD5Z1VGDQ2KP",
+          "revisor_target_status": "succeeded",
           "outcome": "succeeded",
-          "graph.max_node_visits": "30"
+          "graph.inspects": "develop,merge-upstream",
+          "preferred_label": "Staged",
+          "failure_class": "",
+          "failure_signature": "",
+          "last_response": "Bookkeeper pass complete: both findings deduplicated cleanly against existing seeds, filed as `fabro-05d0` and `fabro-5b0a` with basis lines, marker written to `/workspace/fabro/.fabro/revisions/01M1Y",
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 1434,
+            "preview": "The develop baseline is `ae2869ac…` (newest develop run). Run `01M1YS4NJH27NS7CQ02AWM9BNE` (created 2026-09-07T20:32:17) is terminal (succeeded), `sandbox_available == true`, matches the baseline ve"
+          },
+          "revisor_target_workflow_version": "ae2869aca84cea61832e77a2926b97ebb79d70300014555c724f2862e12612c9",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.preamble_budget_kb": "24",
+          "internal.seed_cycle_anchor": "01M1YS4NJH27NS7CQ02AWM9BNE",
+          "filed_seed_ids": [
+            "fabro-05d0",
+            "fabro-5b0a"
+          ],
+          "thread.start.current_node": "select",
+          "internal.fidelity": "compact"
         },
         "node_outcomes": {
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "file": {
             "status": "succeeded",
             "preferred_label": "Staged",
@@ -1100,6 +1096,10 @@
               "active_time_ms": 13427
             }
           },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "analyze": {
             "status": "succeeded",
             "preferred_label": "Findings ready",
@@ -1174,17 +1174,103 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "9bdd10a7bf081140d0dc8ce13580c7bee957cdbd",
         "node_visits": {
-          "file": 1,
-          "select": 1,
+          "start": 1,
           "analyze": 1,
-          "start": 1
+          "file": 1,
+          "select": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1YSCK72V0HKCD5Z1VGDQ2KP.jsonl b/.fabro/journal/01M1YSCK72V0HKCD5Z1VGDQ2KP.jsonl\nindex c321e22..b802502 100644\n--- a/.fabro/journal/01M1YSCK72V0HKCD5Z1VGDQ2KP.jsonl\n+++ b/.fabro/journal/01M1YSCK72V0HKCD5Z1VGDQ2KP.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YSCK72V0HKCD5Z1VGDQ2KP\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:36:52Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YSCK72V0HKCD5Z1VGDQ2KP\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:37:10Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected newest develop run 01M1YS4NJH27NS7CQ02AWM9BNE (baseline version ae2869ac, live sandbox, terminal); 67 develop runs total — most older ones stale-evidence via version drift (4ff76f32, 8afe037f, and earlier) or pre-intent (absent version), ~20 sandbox false; 4 unrevised merge-upstream runs sit on baseline 5a4438be but are all older than the selected develop run; no active develop run observed\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YSCK72V0HKCD5Z1VGDQ2KP\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:40:23Z\",\"data\":{\"painpoints\":[{\"text\":\"5 of 7 analyst recommendations were already-filed seeds (fabro-c3b4/fabro-0da8, fabro-944d, fabro-9588, fabro-a67f, fabro-c2ca/fabro-cf03) — the improve question keeps re-deriving the backlog; the analyst citing seed ids inline (as this one did) is what makes dedupe tractable. Fix idea: have the improve question explicitly ask to check the tracker before recommending.\"},{\"text\":\"The gh exit-127 fail-open degradation (events seq 40-41) has been disabling the fabro-d0c7 double-pick guard across runs with no tracker entry and no human-visible signal — painpoint filed as the two surviving seeds.\"}],\"observations\":[\"Review persisted to `.fabro/reviews/develop/01M1YS4NJH27NS7CQ02AWM9BNE.md` (generated 2026-09-07 20:39+0000).\",\"Dropped as duplicates: planner firehose bound (duplicate_of fabro-c3b4, deeper fix fabro-0da8); shared prompt-cache prefix (duplicate_of fabro-944d); per-node memory scoping (duplicate_of fabro-9588); conditional sd show re-fetch (duplicate_of fabro-a67f); snapshot async/agent-only (duplicate_of fabro-c2ca and fabro-cf03); fs_hide prompt hoist (duplicate_of closed fabro-56c2 — prompt-side bypass guidance already implemented — with open engine alternative fabro-8296).\",\"fabro-8354 (bake ripgrep into runner image) is the same missing-binary pattern as the gh finding but a different tool and purpose, so the gh seed is not a duplicate of it.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YSCK72V0HKCD5Z1VGDQ2KP\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:41:00Z\",\"data\":{\"painpoints\":[],\"observations\":[\"gh open-PR guard failure (exit 127) is the root cause behind both findings; if fabro-05d0's engine-side fix is chosen over baking gh into the toolchain image, fabro-5b0a's run-level warning still applies to any future fail-open checks\",\"sd search returned no hits for both themes, but title-blind duplicates remain possible across unrelated phrasings — the analyzer's pre-dedup plus this pass is the coverage boundary\"]}}\ndiff --git a/.fabro/revisions/01M1YS4NJH27NS7CQ02AWM9BNE.md b/.fabro/revisions/01M1YS4NJH27NS7CQ02AWM9BNE.md\nnew file mode 100644\nindex 0000000..0904297\n--- /dev/null\n+++ b/.fabro/revisions/01M1YS4NJH27NS7CQ02AWM9BNE.md\n@@ -0,0 +1,19 @@\n+# Revision — run 01M1YS4NJH27NS7CQ02AWM9BNE\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M1YS4NJH27NS7CQ02AWM9BNE.md\n+- seeds filed: fabro-05d0 — Bake gh into the develop toolchain image (or check open PRs engine-side) so the in-flight-PR guard functions; fabro-5b0a — Surface degraded fail-open planner checks as run-level warnings in the run summary and PR body\n+- basis: run 01M1YS4NJH27NS7CQ02AWM9BNE, workflow version ae2869aca84cea61832e77a2926b97ebb79d70300014555c724f2862e12612c9, commit 774f67e9548357656f837bd152c22be72920eb1e\n+- revised_at_commit: 774f67e9548357656f837bd152c22be72920eb1e (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Bake gh into the develop toolchain image (or check open PRs engine-side) so the in-flight-PR guard functions\n+\n+- filed: fabro-05d0\n+- The planner's mandated `gh pr list --state open` failed with exit 127 (`gh: command not found`, events seq 40-41) and degraded fail-open, structurally disabling the double-pick guard from fabro-d0c7 on `fabro-toolchain:noble` even though the engine has GitHub access (PR #51 was created). Change: add `gh` to the toolchain image built from `.fabro/Dockerfile`, or move the open-PR check engine-side using run PR metadata. Expected effect: the guard actually audits double-picks and one guaranteed erroring tool call disappears from every planning pass.\n+\n+### Surface degraded fail-open planner checks as run-level warnings in the run summary and PR body\n+\n+- filed: fabro-5b0a\n+- The gh open-PR check degraded fail-open but the degradation was visible only in a journal line; a human reading PR #51 cannot distinguish \"succeeded\" from \"succeeded with guards down\". Change: engine-side, emit a run-level warning surfaced in the run summary and PR body whenever a mandated planner check degrades fail-open. Expected effect: guard-down runs become human-visible at review time instead of silently passing.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 19f0baa..c741c93 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -257,3 +257,5 @@\n {\"id\":\"fabro-8296\",\"title\":\"Make hidden-path glob return the fs_hide notice like grep does\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T20:12:20.817Z\",\"updatedAt\":\"2026-09-07T20:22:11.003Z\",\"description\":\"In the engine agent tool layer (`fabro-agent` glob tool), when a glob pattern targets paths hidden by fs_hide, return the same 'hidden from this stage by fs_hide' error grep produces instead of a silent empty result. This run's planner burned one LLM round plus 2 tool calls discovering the boundary: grep on `.fabro` errored correctly, but glob for `.fabro/workflows/**/*planner*` returned `is_error: false, output: \\\"\\\"` — indistinguishable from no-match. Optionally hoist the fs_hide rule in `.fabro/workflows/develop/prompts/planner.md` from step 3 to the tool-notes area. Effect: eliminates one wasted inference round per platform-path seed (the tracker's most common seed class). Not covered by open fabro-b7ab (docs) or fabro-8d61 (glob syntax docs).\\nBasis: run 01M1YQD03JZJCGRJ53SNRBTM8P, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit 26c7ce34ffeb12df96dc464c485f83e5d1ba0b85\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-ab38\",\"title\":\"Sweep open seeds against the merged run diff and mark satisfied siblings superseded\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T20:12:20.968Z\",\"updatedAt\":\"2026-09-07T20:22:11.106Z\",\"description\":\"Extend `.fabro/workflows/develop/scripts/closeout.nu` (or the improve workflow) with a post-merge sweep that greps the run's merged diff against open seeds targeting the same files and flags ones the change already satisfies. Evidence: this run's diff incidentally fixed the planner.md duplicate-'4.' numbering while open seed fabro-890d ('Renumber the duplicated step 4') stays open — nothing marks sibling seeds superseded, so the next planner can claim done work (the double-pick class fabro-d0c7 guarded only pre-merge). Distinct from fabro-aa46 (intake-time lint), fabro-fbed (closing the implemented seed itself), and fabro-c74f (journal clustering). Effect: tracker stays truthful after merges; prevents re-picking implemented work.\\nBasis: run 01M1YQD03JZJCGRJ53SNRBTM8P, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit 26c7ce34ffeb12df96dc464c485f83e5d1ba0b85\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-6db3\",\"title\":\"Classify the engine journal file as expected churn in evidence.nu\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T20:12:21.007Z\",\"updatedAt\":\"2026-09-07T20:22:11.204Z\",\"description\":\"In `.fabro/workflows/develop/scripts/evidence.nu`, add `.fabro/journal/**` (and `.fabro/blobs/**`) to the known-transient/churn section with an explicit '(engine journal, expected)' label. This run's reviewer found `.fabro/journal/<run>.jsonl +3` in its `git diff` beyond the churn list because the stage-journal hook writes after capture, and burned verification budget rationalizing an unexplained diff line instead of judging the seed. Distinct from open fabro-43ba (no-net-diff detection — the journal file grows monotonically) and fabro-93a7 (seed-spec paths). Effect: every review sees a reconciled churn list; removes a recurring false-deviation risk.\\nBasis: run 01M1YQD03JZJCGRJ53SNRBTM8P, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit 26c7ce34ffeb12df96dc464c485f83e5d1ba0b85\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-05d0\",\"title\":\"Bake gh into the develop toolchain image (or check open PRs engine-side) so the in-flight-PR guard functions\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T20:40:40.695Z\",\"updatedAt\":\"2026-09-07T20:40:40.695Z\",\"description\":\"In run 01M1YS4NJH27NS7CQ02AWM9BNE the planner's mandated gh pr list --state open failed with exit 127 (gh: command not found) and degraded fail-open, so the double-pick guard from fabro-d0c7 (which exists because fabro-22e4 re-implemented a fix waiting in PR #47) is structurally disabled on fabro-toolchain:noble even though the engine has GitHub access (PR #51 was created). Change: add the gh binary to the toolchain image built from .fabro/Dockerfile, or move the open-PR check engine-side using run PR metadata instead of a sandbox binary. Expected effect: the guard actually audits double-picks and one guaranteed erroring tool call disappears from every planning pass.\\nBasis: run 01M1YS4NJH27NS7CQ02AWM9BNE, workflow version ae2869aca84cea61832e77a2926b97ebb79d70300014555c724f2862e12612c9, commit 774f67e9548357656f837bd152c22be72920eb1e\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-5b0a\",\"title\":\"Surface degraded fail-open planner checks as run-level warnings in the run summary and PR body\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T20:40:43.171Z\",\"updatedAt\":\"2026-09-07T20:40:43.171Z\",\"description\":\"In run 01M1YS4NJH27NS7CQ02AWM9BNE the gh open-PR check degraded fail-open but the degradation was visible only in a journal line; a human reading PR #51 cannot distinguish 'succeeded' from 'succeeded with guards down'. Change: engine-side, emit a run-level warning (surfaced in the run summary and the PR body) whenever a mandated planner check degrades fail-open instead of logging it only to the journal. Expected effect: guard-down runs become human-visible at review time instead of silently passing.\\nBasis: run 01M1YS4NJH27NS7CQ02AWM9BNE, workflow version ae2869aca84cea61832e77a2926b97ebb79d70300014555c724f2862e12612c9, commit 774f67e9548357656f837bd152c22be72920eb1e\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 74,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T20:41:05.725632144Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 228392,
+      "inference_time_ms": 117121,
+      "tool_time_ms": 92009,
+      "active_time_ms": 209130
+    },
+    "final_git_commit_sha": "9bdd10a7bf081140d0dc8ce13580c7bee957cdbd",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 14050,
+          "inference_time_ms": 11091,
+          "tool_time_ms": 2336,
+          "active_time_ms": 13427
+        },
+        "billing_usd_micros": 48564,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 168236,
+          "inference_time_ms": 79761,
+          "tool_time_ms": 87839,
+          "active_time_ms": 167600
+        },
+        "billing_usd_micros": 91179,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 28914,
+          "inference_time_ms": 26269,
+          "tool_time_ms": 1834,
+          "active_time_ms": 28103
+        },
+        "billing_usd_micros": 55723,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 70784,
+      "output_tokens": 5318,
+      "total_tokens": 278403,
+      "reasoning_tokens": 4925,
+      "cache_read_tokens": 197376,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 195466
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1YSCK72V0HKCD5Z1VGDQ2KP.jsonl b/.fabro/journal/01M1YSCK72V0HKCD5Z1VGDQ2KP.jsonl\nnew file mode 100644\nindex 0000000..b802502\n--- /dev/null\n+++ b/.fabro/journal/01M1YSCK72V0HKCD5Z1VGDQ2KP.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YSCK72V0HKCD5Z1VGDQ2KP\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:36:52Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YSCK72V0HKCD5Z1VGDQ2KP\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:37:10Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected newest develop run 01M1YS4NJH27NS7CQ02AWM9BNE (baseline version ae2869ac, live sandbox, terminal); 67 develop runs total — most older ones stale-evidence via version drift (4ff76f32, 8afe037f, and earlier) or pre-intent (absent version), ~20 sandbox false; 4 unrevised merge-upstream runs sit on baseline 5a4438be but are all older than the selected develop run; no active develop run observed\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YSCK72V0HKCD5Z1VGDQ2KP\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:40:23Z\",\"data\":{\"painpoints\":[{\"text\":\"5 of 7 analyst recommendations were already-filed seeds (fabro-c3b4/fabro-0da8, fabro-944d, fabro-9588, fabro-a67f, fabro-c2ca/fabro-cf03) — the improve question keeps re-deriving the backlog; the analyst citing seed ids inline (as this one did) is what makes dedupe tractable. Fix idea: have the improve question explicitly ask to check the tracker before recommending.\"},{\"text\":\"The gh exit-127 fail-open degradation (events seq 40-41) has been disabling the fabro-d0c7 double-pick guard across runs with no tracker entry and no human-visible signal — painpoint filed as the two surviving seeds.\"}],\"observations\":[\"Review persisted to `.fabro/reviews/develop/01M1YS4NJH27NS7CQ02AWM9BNE.md` (generated 2026-09-07 20:39+0000).\",\"Dropped as duplicates: planner firehose bound (duplicate_of fabro-c3b4, deeper fix fabro-0da8); shared prompt-cache prefix (duplicate_of fabro-944d); per-node memory scoping (duplicate_of fabro-9588); conditional sd show re-fetch (duplicate_of fabro-a67f); snapshot async/agent-only (duplicate_of fabro-c2ca and fabro-cf03); fs_hide prompt hoist (duplicate_of closed fabro-56c2 — prompt-side bypass guidance already implemented — with open engine alternative fabro-8296).\",\"fabro-8354 (bake ripgrep into runner image) is the same missing-binary pattern as the gh finding but a different tool and purpose, so the gh seed is not a duplicate of it.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YSCK72V0HKCD5Z1VGDQ2KP\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T20:41:00Z\",\"data\":{\"painpoints\":[],\"observations\":[\"gh open-PR guard failure (exit 127) is the root cause behind both findings; if fabro-05d0's engine-side fix is chosen over baking gh into the toolchain image, fabro-5b0a's run-level warning still applies to any future fail-open checks\",\"sd search returned no hits for both themes, but title-blind duplicates remain possible across unrelated phrasings — the analyzer's pre-dedup plus this pass is the coverage boundary\"]}}\ndiff --git a/.fabro/reviews/develop/01M1YS4NJH27NS7CQ02AWM9BNE.md b/.fabro/reviews/develop/01M1YS4NJH27NS7CQ02AWM9BNE.md\nnew file mode 100644\nindex 0000000..961e6a6\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M1YS4NJH27NS7CQ02AWM9BNE.md\n@@ -0,0 +1,49 @@\n+# Improve review — run 01M1YS4NJH27NS7CQ02AWM9BNE\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (2.9 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-07 20:39+0000 by revisor `fabro_ask`\n+\n+---\n+\n+All evidence below is from this run's events, stage transcripts, and journal (run 01M1YS4NJH27NS7CQ02AWM9BNE, seed fabro-c381, all stages green first-pass, $0.133 total, 2m53s wall). Ordered by expected impact.\n+\n+## 1. The in-flight-PR guard is structurally disabled on this host — fix the tool, not the prompt\n+**What happened:** planner step 4 mandates `gh pr list --state open`; the call failed with exit 127 `gh: command not found` (event seq 40–41), degraded fail-open per policy, and the journal recorded \"future runs on this host cannot audit PR double-picks.\" The run's engine side clearly has GitHub access (PR #51 was created), only the `fabro-toolchain:noble` sandbox lacks `gh`.\n+**Change:** bake `gh` into `.fabro/Dockerfile` (toolchain image), or move the open-PR check engine-side into the run's own PR metadata instead of a sandbox binary.\n+**Expected effect:** the double-pick guard (which exists because fabro-22e4 re-implemented a fix already waiting in PR #47 — a whole wasted run) actually functions; also removes one guaranteed erroring tool call per planning pass.\n+\n+## 2. Planner eats a 160-seed firehose to pick one seed — bound the listing\n+**What happened:** `sd ready --assignee fabro --limit 200` returned 21,270 bytes / 160 issues into the planner's context (event seq 33); the model then picked the top entry. Planner was **$0.065 of $0.133 total (49% of LLM cost) and 46s of 112s active time** — the most expensive stage for a near-deterministic decision.\n+**Change:** in `.fabro/workflows/develop/prompts/planner.md` step 1, change the command to `sd ready --assignee fabro --limit 200 | head -15` (keeps the fabro-c16d no-truncation fix at the CLI level, bounds context); the deeper fix is filed seed fabro-c3b4 / fabro-0da8 — a deterministic pre-planner script node (same pattern as `gatebounce`) that emits top-3 candidates + extracted `Basis:` paths as context.\n+**Expected effect:** cuts planner input tokens and round-trips substantially; planner is the single biggest cost lever in the graph.\n+\n+## 3. Zero cache writes across all three agent stages — share the prompt prefix\n+**What happened:** billing shows `cache_write_tokens: 0` for planner, implementer, and reviewer, while `cache_read_tokens` hit 183k — each stage re-pays for the repeated prefix (goal text, ~13k-char role prompt, 24KB AGENTS.md memory).\n+**Change:** engine-side shared prompt-cache prefix across stages in one run (already filed as fabro-944d).\n+**Expected effect:** direct input-cost reduction on every multi-agent run; the repeated AGENTS.md + preamble is identical byte-for-byte across stages here.\n+\n+## 4. Reviewer paid 42% of its input for memory it didn't use\n+**What happened:** reviewer context breakdown: `memory` = 5,684 of 13,553 input tokens (AGENTS.md, 23,967 bytes, loaded into all three agent stages per `agent.memory.loaded` events). The reviewer's actual job this pass was judging a 15-line prompt diff against a bulleted brief — it needed neither repo-wide conventions nor Rust build rules.\n+**Change:** per-node memory scoping (engine; sibling of filed fabro-9588 for skills) — reviewer gets a slim subset or none; planner keeps the full file.\n+**Expected effect:** ~5.7k tokens saved on the reviewer (and re-check scoping for the implementer on docs-only seeds); meaningful slice of the 47k billed input tokens.\n+\n+## 5. Mandated redundant `sd show` re-fetch in the implementer\n+**What happened:** the planner's brief already carried the complete distilled spec, yet implementer step 1 (\"Re-read the seed requirements from `sd show`\") forced another `sd show fabro-c381 --format json | head -80` call (event seq 97) that added nothing.\n+**Change:** in `.fabro/workflows/develop/prompts/implementer.md` step 1, make the re-fetch conditional: \"only when the brief is thin or marked verification-only\" (this is filed fabro-a67f/fabro-4881; it just hasn't landed).\n+**Expected effect:** one fewer tool call + LLM round-trip per implementer pass; smaller risk of the raw seed body contradicting the (authoritative, contradiction-resolved) brief.\n+\n+## 6. ~10% of wall time is stage-boundary overhead — skip metadata snapshots on non-agent stages\n+**What happened:** metadata snapshot took 2.0s at init and 2.3s after the planner checkpoint; observable gaps of ~5–6s sit between every stage pair (implementer→tester→evidence→reviewer→closeout) from checkpoint commits + pushes + snapshots. On a 173s run that's roughly 15–20s of pure bookkeeping.\n+**Change:** make checkpoint metadata snapshots async or agent-stage-only (filed fabro-c2ca/fabro-cf03) — the tester/evidence/closeout snapshots here carried no agent state worth 2s each.\n+**Expected effect:** ~10% wall-time cut on short single-seed runs; proportionally more as gates get faster.\n+\n+## 7. fs_hide guidance is buried where the model doesn't look before grepping\n+**What happened:** despite planner.md step 3 saying \"never burn tool calls discovering the denial,\" the planner's first basis check was a `grep` on `.fabro` → `path is hidden by fs_hide` (seq 47–48), one wasted call + LLM round-trip before switching to shell `rg`. The instruction lives mid-step in a ~13k-char prompt; grep is the instinctive first move.\n+**Change:** in `.fabro/workflows/develop/prompts/planner.md`, hoist a one-line tool rule to the top of the \"sd command reference\" section: \"`.fabro/**` is fs_hide for you — grep/glob/read_file on it always fail; use shell (`rg`, `sed`) for basis checks.\" (Engine alternative, filed fabro-8296, returns the notice from glob too.)\n+**Expected effect:** one fewer wasted round-trip (~3–5s) per planning pass; more importantly, removes the failure mode where the model misreads the denial as \"path doesn't exist\" and wrongly closes a seed as stale-basis.\n+\n+**One UX addition (fold into #1):** the gh degradation is visible only in the journal line. Surface degraded planner checks as a run-level warning (run summary / PR body) so a human reading PR #51 knows the in-flight-PR audit was off — \"succeeded\" currently looks identical to \"succeeded with guards down.\"\n+\n+Sources: run events (tool calls seq 33–100, stage timings/billing, journal entries), run projection (graph definition and settings). I could not inspect the toolchain image build itself to confirm why `gh` is absent — the fix target `.fabro/Dockerfile` is inferred from the repo file list seen in the planner's `rg --files` output.\ndiff --git a/.fabro/revisions/01M1YS4NJH27NS7CQ02AWM9BNE.md b/.fabro/revisions/01M1YS4NJH27NS7CQ02AWM9BNE.md\nnew file mode 100644\nindex 0000000..0904297\n--- /dev/null\n+++ b/.fabro/revisions/01M1YS4NJH27NS7CQ02AWM9BNE.md\n@@ -0,0 +1,19 @@\n+# Revision — run 01M1YS4NJH27NS7CQ02AWM9BNE\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M1YS4NJH27NS7CQ02AWM9BNE.md\n+- seeds filed: fabro-05d0 — Bake gh into the develop toolchain image (or check open PRs engine-side) so the in-flight-PR guard functions; fabro-5b0a — Surface degraded fail-open planner checks as run-level warnings in the run summary and PR body\n+- basis: run 01M1YS4NJH27NS7CQ02AWM9BNE, workflow version ae2869aca84cea61832e77a2926b97ebb79d70300014555c724f2862e12612c9, commit 774f67e9548357656f837bd152c22be72920eb1e\n+- revised_at_commit: 774f67e9548357656f837bd152c22be72920eb1e (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Bake gh into the develop toolchain image (or check open PRs engine-side) so the in-flight-PR guard functions\n+\n+- filed: fabro-05d0\n+- The planner's mandated `gh pr list --state open` failed with exit 127 (`gh: command not found`, events seq 40-41) and degraded fail-open, structurally disabling the double-pick guard from fabro-d0c7 on `fabro-toolchain:noble` even though the engine has GitHub access (PR #51 was created). Change: add `gh` to the toolchain image built from `.fabro/Dockerfile`, or move the open-PR check engine-side using run PR metadata. Expected effect: the guard actually audits double-picks and one guaranteed erroring tool call disappears from every planning pass.\n+\n+### Surface degraded fail-open planner checks as run-level warnings in the run summary and PR body\n+\n+- filed: fabro-5b0a\n+- The gh open-PR check degraded fail-open but the degradation was visible only in a journal line; a human reading PR #51 cannot distinguish \"succeeded\" from \"succeeded with guards down\". Change: engine-side, emit a run-level warning surfaced in the run summary and PR body whenever a mandated planner check degrades fail-open. Expected effect: guard-down runs become human-visible at review time instead of silently passing.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 19f0baa..c741c93 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -257,3 +257,5 @@\n {\"id\":\"fabro-8296\",\"title\":\"Make hidden-path glob return the fs_hide notice like grep does\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T20:12:20.817Z\",\"updatedAt\":\"2026-09-07T20:22:11.003Z\",\"description\":\"In the engine agent tool layer (`fabro-agent` glob tool), when a glob pattern targets paths hidden by fs_hide, return the same 'hidden from this stage by fs_hide' error grep produces instead of a silent empty result. This run's planner burned one LLM round plus 2 tool calls discovering the boundary: grep on `.fabro` errored correctly, but glob for `.fabro/workflows/**/*planner*` returned `is_error: false, output: \\\"\\\"` — indistinguishable from no-match. Optionally hoist the fs_hide rule in `.fabro/workflows/develop/prompts/planner.md` from step 3 to the tool-notes area. Effect: eliminates one wasted inference round per platform-path seed (the tracker's most common seed class). Not covered by open fabro-b7ab (docs) or fabro-8d61 (glob syntax docs).\\nBasis: run 01M1YQD03JZJCGRJ53SNRBTM8P, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit 26c7ce34ffeb12df96dc464c485f83e5d1ba0b85\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-ab38\",\"title\":\"Sweep open seeds against the merged run diff and mark satisfied siblings superseded\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T20:12:20.968Z\",\"updatedAt\":\"2026-09-07T20:22:11.106Z\",\"description\":\"Extend `.fabro/workflows/develop/scripts/closeout.nu` (or the improve workflow) with a post-merge sweep that greps the run's merged diff against open seeds targeting the same files and flags ones the change already satisfies. Evidence: this run's diff incidentally fixed the planner.md duplicate-'4.' numbering while open seed fabro-890d ('Renumber the duplicated step 4') stays open — nothing marks sibling seeds superseded, so the next planner can claim done work (the double-pick class fabro-d0c7 guarded only pre-merge). Distinct from fabro-aa46 (intake-time lint), fabro-fbed (closing the implemented seed itself), and fabro-c74f (journal clustering). Effect: tracker stays truthful after merges; prevents re-picking implemented work.\\nBasis: run 01M1YQD03JZJCGRJ53SNRBTM8P, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit 26c7ce34ffeb12df96dc464c485f83e5d1ba0b85\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-6db3\",\"title\":\"Classify the engine journal file as expected churn in evidence.nu\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T20:12:21.007Z\",\"updatedAt\":\"2026-09-07T20:22:11.204Z\",\"description\":\"In `.fabro/workflows/develop/scripts/evidence.nu`, add `.fabro/journal/**` (and `.fabro/blobs/**`) to the known-transient/churn section with an explicit '(engine journal, expected)' label. This run's reviewer found `.fabro/journal/<run>.jsonl +3` in its `git diff` beyond the churn list because the stage-journal hook writes after capture, and burned verification budget rationalizing an unexplained diff line instead of judging the seed. Distinct from open fabro-43ba (no-net-diff detection — the journal file grows monotonically) and fabro-93a7 (seed-spec paths). Effect: every review sees a reconciled churn list; removes a recurring false-deviation risk.\\nBasis: run 01M1YQD03JZJCGRJ53SNRBTM8P, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit 26c7ce34ffeb12df96dc464c485f83e5d1ba0b85\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-05d0\",\"title\":\"Bake gh into the develop toolchain image (or check open PRs engine-side) so the in-flight-PR guard functions\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T20:40:40.695Z\",\"updatedAt\":\"2026-09-07T20:40:40.695Z\",\"description\":\"In run 01M1YS4NJH27NS7CQ02AWM9BNE the planner's mandated gh pr list --state open failed with exit 127 (gh: command not found) and degraded fail-open, so the double-pick guard from fabro-d0c7 (which exists because fabro-22e4 re-implemented a fix waiting in PR #47) is structurally disabled on fabro-toolchain:noble even though the engine has GitHub access (PR #51 was created). Change: add the gh binary to the toolchain image built from .fabro/Dockerfile, or move the open-PR check engine-side using run PR metadata instead of a sandbox binary. Expected effect: the guard actually audits double-picks and one guaranteed erroring tool call disappears from every planning pass.\\nBasis: run 01M1YS4NJH27NS7CQ02AWM9BNE, workflow version ae2869aca84cea61832e77a2926b97ebb79d70300014555c724f2862e12612c9, commit 774f67e9548357656f837bd152c22be72920eb1e\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-5b0a\",\"title\":\"Surface degraded fail-open planner checks as run-level warnings in the run summary and PR body\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T20:40:43.171Z\",\"updatedAt\":\"2026-09-07T20:40:43.171Z\",\"description\":\"In run 01M1YS4NJH27NS7CQ02AWM9BNE the gh open-PR check degraded fail-open but the degradation was visible only in a journal line; a human reading PR #51 cannot distinguish 'succeeded' from 'succeeded with guards down'. Change: engine-side, emit a run-level warning (surfaced in the run summary and the PR body) whenever a mandated planner check degrades fail-open instead of logging it only to the journal. Expected effect: guard-down runs become human-visible at review time instead of silently passing.\\nBasis: run 01M1YS4NJH27NS7CQ02AWM9BNE, workflow version ae2869aca84cea61832e77a2926b97ebb79d70300014555c724f2862e12612c9, commit 774f67e9548357656f837bd152c22be72920eb1e\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 74,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1211,6 +1297,42 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 174,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T20:41:05.660514960Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T20:41:05.660355050Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "analyze@1": {
       "first_event_seq": 51,
       "prompt": null,
