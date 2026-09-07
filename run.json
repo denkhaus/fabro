@@ -694,7 +694,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T22:02:03.559146146Z",
-  "last_event_at": "2026-09-07T22:04:11.983114436Z",
+  "last_event_at": "2026-09-07T22:04:34.768223147Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1267,9 +1267,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 128,
       "checkpoint": {
-        "timestamp": "2026-09-07T22:04:12.188146130Z",
+        "timestamp": "2026-09-07T22:04:16.293328372Z",
         "current_node": "evidence",
         "completed_nodes": [
           "start",
@@ -1280,44 +1280,12 @@
         ],
         "node_retries": {},
         "context_values": {
-          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/planner.md` via shell (python exact-match replace, honoring fs_hide): step 3 STALE-BASIS CHECK gained the intermediate case — basis resolves but named path/target/details wrong → record correction via `sd update <id> --description` BEFORE claiming, with the wholesale-replacement caveat (re-emit full body including `Basis:`); the sd command reference table gained the `sd update <id> --description \"<full corrected body>\"` row placed directly under the claim row, noting it likewise takes no `--format` flag. Superseded routing and all other steps unchanged. Lesson capture: nothing durable — skipped (the fs_hide shell-workaround convention is already codified in the very prompt edited). Verification report: - PASS intermediate case added to step 3, distinct from superseded, with correction-before-claim ordering and fabro-05d0/run 01M1YTVK7 evidence: step 3 insertion in `.fabro/workflows/develop/prompts/planner.md` — PASS wholesale `--description` semantics annotated explicitly in prompt text (both in step 3 and table row): same two hunks — PASS table row for `sd update <id> --description \"<full corrected body>\"` adjacent to claim row with no-`--format` note: table row directly below the claim row — PASS superseded semantics unchanged (fully-moot still `sd close --reason 'superseded: ...'`); only wrong-path-but-valid routes to description correction: unchanged close clause + explicit 'do NOT close it as superseded' in new text — PASS no other steps/sections restructured, minimal diff: `git diff --stat` = 2 insertions, 1 deletion, hunks confined to step 3 and the table — PASS textual validation via grep/diff confirming new clause, table row, and no unintended hunks: verified above.",
-          "internal.seed_cycle_anchor": "fabro-c0a8",
-          "internal.retry_count.start": 0,
-          "graph.rankdir": "LR",
-          "command.output": "blob://sha256/c8aa3ee2c82fa11254175286434f8a0afadb3206ffb352e80bca40c7d7f53b51",
-          "thread.implementer.current_node": "tester",
-          "failure_signature": "",
-          "graph.max_node_visits": "40",
-          "graph.cycle_counter_reset_key": "current_seed_id",
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.implementer",
             "chars": 2766,
             "preview": "The diff is exactly the two intended hunks: one new table row and one inserted sentence block in step 3. No other steps or sections changed; superseded semantics (the `sd close --reason \"superseded: ."
           },
-          "thread.start.current_node": "planner",
-          "last_response": "The diff is exactly the two intended hunks: one new table row and one inserted sentence block in step 3. No other steps or sections changed; superseded semantics (the `sd close --reason \"superseded: .",
-          "internal.retry_count.implementer": 0,
-          "internal.retry_count.evidence": 0,
-          "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/planner.md` (a platform path under `.fabro/**`: read/edit it via shell sed/cat, NOT read_file — fs_hide binds tool calls; write via shell too if edit_file is denied). Acceptance criteria: (1) Step 3 (STALE-BASIS CHECK, currently line ~35) gains an intermediate case distinct from superseded: when the basis RESOLVES but the seed's named path/target/details are wrong (e.g. names `.fabro/Dockerfile` when the real target is elsewhere), the planner must record the correction into the seed body via `sd update <id> --description` BEFORE claiming, so the implementer never re-hits the contradiction (evidence: run 01M1YTVK7, seed fabro-05d0, ~6 wasted tool calls / 39% of run cost). (2) The updated instruction must state that the rewritten description preserves the existing `Basis:` line and appends/amends only the corrected facts — `--description` replaces the body wholesale, so the planner must re-emit the full corrected body including Basis (annotate this explicitly in the prompt text). (3) The sd command reference table in the same file gains a row for `sd update <id> --description \"<full corrected body>\"` — the table claims exactness, so the new call form must be documented there, next to the existing claim row noting `--format` is unsupported on `sd update`. (4) Superseded semantics unchanged: basis fully moot still routes to `sd close --reason 'superseded: ...'`; only the wrong-path-but-otherwise-valid case routes to description correction + normal claim. (5) No other steps or sections are restructured — minimal diff confined to `planner.md`. (6) Since this is a prompt-only change, validation is textual: grep the edited file to confirm the new clause, the table row, and that no other steps changed (`git diff -- .fabro/workflows/develop/prompts/planner.md` shows only the intended hunks).",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 3060,
-            "preview": "Seed fabro-c0a8 claimed. Brief is distilled below; basis verified against the current worktree (step 3 at line 35 of `planner.md` has no correction clause), no open PRs exist, and no contradictions be"
-          },
-          "outcome": "succeeded",
-          "failure_class": "",
-          "current_seed_id": "fabro-c0a8",
-          "internal.fidelity": "compact",
-          "current_node": "evidence",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "preferred_label": "Implemented",
-          "thread.planner.current_node": "implementer",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.run_id": "01M1YY8JJCE31XHSDCZ816634G",
-          "graph.preamble_budget_kb": "24",
-          "last_stage": "implementer",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -1330,10 +1298,281 @@
               "Prompt-only seed edited cleanly through the shell carve-out: python exact-match string replace on `.fabro/workflows/develop/prompts/planner.md` worked first try; the final diff was 2 insertions / 1 deletion — evidence that the shell path for `.fabro/**` is fully functional, no friction."
             ]
           },
+          "current_node": "evidence",
+          "graph.max_node_visits": "40",
+          "graph.rankdir": "LR",
+          "last_stage": "implementer",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.seed_cycle_anchor": "fabro-c0a8",
+          "internal.fidelity": "compact",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.retry_count.evidence": 0,
+          "current_seed_title": "Develop planner: record stale-spec corrections via sd update before claiming",
+          "preferred_label": "Implemented",
+          "internal.retry_count.planner": 0,
+          "failure_signature": "",
+          "internal.retry_count.start": 0,
+          "internal.thread_id": "tester",
+          "thread.implementer.current_node": "tester",
+          "thread.planner.current_node": "implementer",
+          "last_response": "The diff is exactly the two intended hunks: one new table row and one inserted sentence block in step 3. No other steps or sections changed; superseded semantics (the `sd close --reason \"superseded: .",
+          "internal.node_visit_count": 1,
+          "outcome": "succeeded",
+          "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/planner.md` (a platform path under `.fabro/**`: read/edit it via shell sed/cat, NOT read_file — fs_hide binds tool calls; write via shell too if edit_file is denied). Acceptance criteria: (1) Step 3 (STALE-BASIS CHECK, currently line ~35) gains an intermediate case distinct from superseded: when the basis RESOLVES but the seed's named path/target/details are wrong (e.g. names `.fabro/Dockerfile` when the real target is elsewhere), the planner must record the correction into the seed body via `sd update <id> --description` BEFORE claiming, so the implementer never re-hits the contradiction (evidence: run 01M1YTVK7, seed fabro-05d0, ~6 wasted tool calls / 39% of run cost). (2) The updated instruction must state that the rewritten description preserves the existing `Basis:` line and appends/amends only the corrected facts — `--description` replaces the body wholesale, so the planner must re-emit the full corrected body including Basis (annotate this explicitly in the prompt text). (3) The sd command reference table in the same file gains a row for `sd update <id> --description \"<full corrected body>\"` — the table claims exactness, so the new call form must be documented there, next to the existing claim row noting `--format` is unsupported on `sd update`. (4) Superseded semantics unchanged: basis fully moot still routes to `sd close --reason 'superseded: ...'`; only the wrong-path-but-otherwise-valid case routes to description correction + normal claim. (5) No other steps or sections are restructured — minimal diff confined to `planner.md`. (6) Since this is a prompt-only change, validation is textual: grep the edited file to confirm the new clause, the table row, and that no other steps changed (`git diff -- .fabro/workflows/develop/prompts/planner.md` shows only the intended hunks).",
+          "thread.tester.current_node": "evidence",
+          "internal.retry_count.tester": 0,
+          "failure_class": "",
+          "graph.preamble_budget_kb": "24",
+          "internal.run_id": "01M1YY8JJCE31XHSDCZ816634G",
+          "thread.start.current_node": "planner",
+          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/planner.md` via shell (python exact-match replace, honoring fs_hide): step 3 STALE-BASIS CHECK gained the intermediate case — basis resolves but named path/target/details wrong → record correction via `sd update <id> --description` BEFORE claiming, with the wholesale-replacement caveat (re-emit full body including `Basis:`); the sd command reference table gained the `sd update <id> --description \"<full corrected body>\"` row placed directly under the claim row, noting it likewise takes no `--format` flag. Superseded routing and all other steps unchanged. Lesson capture: nothing durable — skipped (the fs_hide shell-workaround convention is already codified in the very prompt edited). Verification report: - PASS intermediate case added to step 3, distinct from superseded, with correction-before-claim ordering and fabro-05d0/run 01M1YTVK7 evidence: step 3 insertion in `.fabro/workflows/develop/prompts/planner.md` — PASS wholesale `--description` semantics annotated explicitly in prompt text (both in step 3 and table row): same two hunks — PASS table row for `sd update <id> --description \"<full corrected body>\"` adjacent to claim row with no-`--format` note: table row directly below the claim row — PASS superseded semantics unchanged (fully-moot still `sd close --reason 'superseded: ...'`); only wrong-path-but-valid routes to description correction: unchanged close clause + explicit 'do NOT close it as superseded' in new text — PASS no other steps/sections restructured, minimal diff: `git diff --stat` = 2 insertions, 1 deletion, hunks confined to step 3 and the table — PASS textual validation via grep/diff confirming new clause, table row, and no unintended hunks: verified above.",
+          "current_seed_id": "fabro-c0a8",
+          "lesson_capture": "nothing durable — skipped",
+          "command.output": "blob://sha256/c8aa3ee2c82fa11254175286434f8a0afadb3206ffb352e80bca40c7d7f53b51",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3060,
+            "preview": "Seed fabro-c0a8 claimed. Brief is distilled below; basis verified against the current worktree (step 3 at line 35 of `planner.md` has no correction clause), no open PRs exist, and no contradictions be"
+          },
+          "internal.retry_count.implementer": 0,
+          "internal.work_dir": "/workspace/fabro"
+        },
+        "node_outcomes": {
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/c8aa3ee2c82fa11254175286434f8a0afadb3206ffb352e80bca40c7d7f53b51"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 491,
+              "active_time_ms": 491
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "lesson_capture": "nothing durable — skipped",
+              "last_response": "The diff is exactly the two intended hunks: one new table row and one inserted sentence block in step 3. No other steps or sections changed; superseded semantics (the `sd close --reason \"superseded: .",
+              "last_stage": "implementer",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Prompt-only seed edited cleanly through the shell carve-out: python exact-match string replace on `.fabro/workflows/develop/prompts/planner.md` worked first try; the final diff was 2 insertions / 1 deletion — evidence that the shell path for `.fabro/**` is fully functional, no friction."
+                ]
+              },
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2766,
+                "preview": "The diff is exactly the two intended hunks: one new table row and one inserted sentence block in step 3. No other steps or sections changed; superseded semantics (the `sd close --reason \"superseded: ."
+              },
+              "implementation_summary": "Edited `.fabro/workflows/develop/prompts/planner.md` via shell (python exact-match replace, honoring fs_hide): step 3 STALE-BASIS CHECK gained the intermediate case — basis resolves but named path/target/details wrong → record correction via `sd update <id> --description` BEFORE claiming, with the wholesale-replacement caveat (re-emit full body including `Basis:`); the sd command reference table gained the `sd update <id> --description \"<full corrected body>\"` row placed directly under the claim row, noting it likewise takes no `--format` flag. Superseded routing and all other steps unchanged. Lesson capture: nothing durable — skipped (the fs_hide shell-workaround convention is already codified in the very prompt edited). Verification report: - PASS intermediate case added to step 3, distinct from superseded, with correction-before-claim ordering and fabro-05d0/run 01M1YTVK7 evidence: step 3 insertion in `.fabro/workflows/develop/prompts/planner.md` — PASS wholesale `--description` semantics annotated explicitly in prompt text (both in step 3 and table row): same two hunks — PASS table row for `sd update <id> --description \"<full corrected body>\"` adjacent to claim row with no-`--format` note: table row directly below the claim row — PASS superseded semantics unchanged (fully-moot still `sd close --reason 'superseded: ...'`); only wrong-path-but-valid routes to description correction: unchanged close clause + explicit 'do NOT close it as superseded' in new text — PASS no other steps/sections restructured, minimal diff: `git diff --stat` = 2 insertions, 1 deletion, hunks confined to step 3 and the table — PASS textual validation via grep/diff confirming new clause, table row, and no unintended hunks: verified above."
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 18886,
+                    "output_tokens": 1331,
+                    "reasoning_tokens": 939,
+                    "cache_read_tokens": 44352,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 47955
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 42055,
+              "tool_time_ms": 522,
+              "active_time_ms": 42577
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5260,
+              "active_time_ms": 5260
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_title": "Develop planner: record stale-spec corrections via sd update before claiming",
+              "last_stage": "planner",
+              "current_seed_id": "fabro-c0a8",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-c0a8 basis verified fresh: `.fabro/workflows/develop/prompts/planner.md` step 3 (line 35) exists and contains no `sd update --description` correction clause — seed is implementable as specced.",
+                  "`gh pr list --state open` returned empty (no in-flight PRs), so the top ready candidate was claimable without skips.",
+                  "Spec ambiguity resolved in the brief: `sd update --description` replaces the whole body, so the prompt text must instruct re-emitting the full corrected description including the `Basis:` line."
+                ]
+              },
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3060,
+                "preview": "Seed fabro-c0a8 claimed. Brief is distilled below; basis verified against the current worktree (step 3 at line 35 of `planner.md` has no correction clause), no open PRs exist, and no contradictions be"
+              },
+              "last_response": "Seed fabro-c0a8 claimed. Brief is distilled below; basis verified against the current worktree (step 3 at line 35 of `planner.md` has no correction clause), no open PRs exist, and no contradictions be",
+              "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/planner.md` (a platform path under `.fabro/**`: read/edit it via shell sed/cat, NOT read_file — fs_hide binds tool calls; write via shell too if edit_file is denied). Acceptance criteria: (1) Step 3 (STALE-BASIS CHECK, currently line ~35) gains an intermediate case distinct from superseded: when the basis RESOLVES but the seed's named path/target/details are wrong (e.g. names `.fabro/Dockerfile` when the real target is elsewhere), the planner must record the correction into the seed body via `sd update <id> --description` BEFORE claiming, so the implementer never re-hits the contradiction (evidence: run 01M1YTVK7, seed fabro-05d0, ~6 wasted tool calls / 39% of run cost). (2) The updated instruction must state that the rewritten description preserves the existing `Basis:` line and appends/amends only the corrected facts — `--description` replaces the body wholesale, so the planner must re-emit the full corrected body including Basis (annotate this explicitly in the prompt text). (3) The sd command reference table in the same file gains a row for `sd update <id> --description \"<full corrected body>\"` — the table claims exactness, so the new call form must be documented there, next to the existing claim row noting `--format` is unsupported on `sd update`. (4) Superseded semantics unchanged: basis fully moot still routes to `sd close --reason 'superseded: ...'`; only the wrong-path-but-otherwise-valid case routes to description correction + normal claim. (5) No other steps or sections are restructured — minimal diff confined to `planner.md`. (6) Since this is a prompt-only change, validation is textual: grep the edited file to confirm the new clause, the table row, and that no other steps changed (`git diff -- .fabro/workflows/develop/prompts/planner.md` shows only the intended hunks)."
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19879,
+                    "output_tokens": 1016,
+                    "reasoning_tokens": 651,
+                    "cache_read_tokens": 66304,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 52397
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 47873,
+              "tool_time_ms": 1523,
+              "active_time_ms": 49396
+            }
+          }
+        },
+        "next_node_id": "reviewer",
+        "git_commit_sha": "07482f62dbb82d1409be33e49e07b924ecebd4c6",
+        "node_visits": {
+          "planner": 1,
+          "start": 1,
+          "evidence": 1,
+          "tester": 1,
+          "implementer": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1YY8JJCE31XHSDCZ816634G.jsonl b/.fabro/journal/01M1YY8JJCE31XHSDCZ816634G.jsonl\nindex 224e0b3..1a5d769 100644\n--- a/.fabro/journal/01M1YY8JJCE31XHSDCZ816634G.jsonl\n+++ b/.fabro/journal/01M1YY8JJCE31XHSDCZ816634G.jsonl\n@@ -2,3 +2,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YY8JJCE31XHSDCZ816634G\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:02:59Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-c0a8 basis verified fresh: `.fabro/workflows/develop/prompts/planner.md` step 3 (line 35) exists and contains no `sd update --description` correction clause — seed is implementable as specced.\",\"`gh pr list --state open` returned empty (no in-flight PRs), so the top ready candidate was claimable without skips.\",\"Spec ambiguity resolved in the brief: `sd update --description` replaces the whole body, so the prompt text must instruct re-emitting the full corrected description including the `Basis:` line.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YY8JJCE31XHSDCZ816634G\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:03:54Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Prompt-only seed edited cleanly through the shell carve-out: python exact-match string replace on `.fabro/workflows/develop/prompts/planner.md` worked first try; the final diff was 2 insertions / 1 deletion — evidence that the shell path for `.fabro/**` is fully functional, no friction.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YY8JJCE31XHSDCZ816634G\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:04:03Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YY8JJCE31XHSDCZ816634G\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T22:04:12Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 8,
+          "deletions": 2
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-07T22:04:34.964395733Z",
+        "current_node": "reviewer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/planner.md` via shell (python exact-match replace, honoring fs_hide): step 3 STALE-BASIS CHECK gained the intermediate case — basis resolves but named path/target/details wrong → record correction via `sd update <id> --description` BEFORE claiming, with the wholesale-replacement caveat (re-emit full body including `Basis:`); the sd command reference table gained the `sd update <id> --description \"<full corrected body>\"` row placed directly under the claim row, noting it likewise takes no `--format` flag. Superseded routing and all other steps unchanged. Lesson capture: nothing durable — skipped (the fs_hide shell-workaround convention is already codified in the very prompt edited). Verification report: - PASS intermediate case added to step 3, distinct from superseded, with correction-before-claim ordering and fabro-05d0/run 01M1YTVK7 evidence: step 3 insertion in `.fabro/workflows/develop/prompts/planner.md` — PASS wholesale `--description` semantics annotated explicitly in prompt text (both in step 3 and table row): same two hunks — PASS table row for `sd update <id> --description \"<full corrected body>\"` adjacent to claim row with no-`--format` note: table row directly below the claim row — PASS superseded semantics unchanged (fully-moot still `sd close --reason 'superseded: ...'`); only wrong-path-but-valid routes to description correction: unchanged close clause + explicit 'do NOT close it as superseded' in new text — PASS no other steps/sections restructured, minimal diff: `git diff --stat` = 2 insertions, 1 deletion, hunks confined to step 3 and the table — PASS textual validation via grep/diff confirming new clause, table row, and no unintended hunks: verified above.",
+          "internal.seed_cycle_anchor": "fabro-c0a8",
+          "review_verdict": "approved",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2830,
+            "preview": "The evidence blob is complete and readable. Verifying each acceptance criterion of seed fabro-c0a8 against the loop-work diff (this is a churn-only seed; the loop diff is the review scope):\n\n1. **Inte"
+          },
+          "internal.retry_count.start": 0,
+          "graph.rankdir": "LR",
+          "thread.evidence.current_node": "reviewer",
+          "internal.retry_count.reviewer": 0,
+          "command.output": "blob://sha256/c8aa3ee2c82fa11254175286434f8a0afadb3206ffb352e80bca40c7d7f53b51",
+          "thread.implementer.current_node": "tester",
+          "failure_signature": "",
+          "graph.max_node_visits": "40",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2766,
+            "preview": "The diff is exactly the two intended hunks: one new table row and one inserted sentence block in step 3. No other steps or sections changed; superseded semantics (the `sd close --reason \"superseded: ."
+          },
+          "thread.start.current_node": "planner",
+          "last_response": "The evidence blob is complete and readable. Verifying each acceptance criterion of seed fabro-c0a8 against the loop-work diff (this is a churn-only seed; the loop diff is the review scope):\n\n1. **Inte",
+          "internal.retry_count.implementer": 0,
+          "internal.retry_count.evidence": 0,
+          "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/planner.md` (a platform path under `.fabro/**`: read/edit it via shell sed/cat, NOT read_file — fs_hide binds tool calls; write via shell too if edit_file is denied). Acceptance criteria: (1) Step 3 (STALE-BASIS CHECK, currently line ~35) gains an intermediate case distinct from superseded: when the basis RESOLVES but the seed's named path/target/details are wrong (e.g. names `.fabro/Dockerfile` when the real target is elsewhere), the planner must record the correction into the seed body via `sd update <id> --description` BEFORE claiming, so the implementer never re-hits the contradiction (evidence: run 01M1YTVK7, seed fabro-05d0, ~6 wasted tool calls / 39% of run cost). (2) The updated instruction must state that the rewritten description preserves the existing `Basis:` line and appends/amends only the corrected facts — `--description` replaces the body wholesale, so the planner must re-emit the full corrected body including Basis (annotate this explicitly in the prompt text). (3) The sd command reference table in the same file gains a row for `sd update <id> --description \"<full corrected body>\"` — the table claims exactness, so the new call form must be documented there, next to the existing claim row noting `--format` is unsupported on `sd update`. (4) Superseded semantics unchanged: basis fully moot still routes to `sd close --reason 'superseded: ...'`; only the wrong-path-but-otherwise-valid case routes to description correction + normal claim. (5) No other steps or sections are restructured — minimal diff confined to `planner.md`. (6) Since this is a prompt-only change, validation is textual: grep the edited file to confirm the new clause, the table row, and that no other steps changed (`git diff -- .fabro/workflows/develop/prompts/planner.md` shows only the intended hunks).",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3060,
+            "preview": "Seed fabro-c0a8 claimed. Brief is distilled below; basis verified against the current worktree (step 3 at line 35 of `planner.md` has no correction clause), no open PRs exist, and no contradictions be"
+          },
+          "outcome": "succeeded",
+          "failure_class": "",
+          "current_seed_id": "fabro-c0a8",
+          "internal.fidelity": "summary:high",
+          "current_node": "reviewer",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "preferred_label": "Approved",
+          "thread.planner.current_node": "implementer",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.run_id": "01M1YY8JJCE31XHSDCZ816634G",
+          "graph.preamble_budget_kb": "24",
+          "last_stage": "reviewer",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1
+          },
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Verified both hunks of planner.md (+2/-1) against all six acceptance criteria of seed fabro-c0a8; churn-only seed so the loop-work diff was the full review scope and it was complete. .seeds/issues.jsonl +1/-1 is the seed claim itself, not seed work."
+            ]
+          },
           "internal.retry_count.planner": 0,
           "current_seed_title": "Develop planner: record stale-spec corrections via sd update before claiming",
           "thread.tester.current_node": "evidence",
-          "internal.thread_id": "tester",
+          "internal.thread_id": "evidence",
           "internal.node_visit_count": 1,
           "internal.retry_count.tester": 0,
           "lesson_capture": "nothing durable — skipped"
@@ -1365,6 +1604,55 @@
               "inference_time_ms": 0,
               "tool_time_ms": 491,
               "active_time_ms": 491
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "last_response": "The evidence blob is complete and readable. Verifying each acceptance criterion of seed fabro-c0a8 against the loop-work diff (this is a churn-only seed; the loop diff is the review scope):\n\n1. **Inte",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 2830,
+                "preview": "The evidence blob is complete and readable. Verifying each acceptance criterion of seed fabro-c0a8 against the loop-work diff (this is a churn-only seed; the loop diff is the review scope):\n\n1. **Inte"
+              },
+              "review_verdict": "approved",
+              "last_stage": "reviewer",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Verified both hunks of planner.md (+2/-1) against all six acceptance criteria of seed fabro-c0a8; churn-only seed so the loop-work diff was the full review scope and it was complete. .seeds/issues.jsonl +1/-1 is the seed claim itself, not seed work."
+                ]
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14491,
+                    "output_tokens": 765,
+                    "reasoning_tokens": 172,
+                    "cache_read_tokens": 11968,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 27520
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 17642,
+              "tool_time_ms": 20,
+              "active_time_ms": 17662
             }
           },
           "planner": {
@@ -1475,11 +1763,12 @@
             "usage": null
           }
         },
-        "next_node_id": "reviewer",
+        "next_node_id": "closeout",
         "node_visits": {
           "implementer": 1,
           "start": 1,
           "evidence": 1,
+          "reviewer": 1,
           "planner": 1,
           "tester": 1
         }
@@ -2076,6 +2365,243 @@
         "reasoning_tokens": 0,
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "reviewer@1": {
+      "first_event_seq": 131,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: reviewer",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T22:04:34.768223147Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T22:04:16.582592628Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 18171,
+        "inference_time_ms": 17642,
+        "tool_time_ms": 20,
+        "active_time_ms": 17662
+      },
+      "usage": {
+        "input_tokens": 14491,
+        "output_tokens": 765,
+        "total_tokens": 27396,
+        "reasoning_tokens": 172,
+        "cache_read_tokens": 11968,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 27520
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": false
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 14453,
+        "usage_percent": 1.3783454895019531,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-07T22:04:34.750448714Z",
+        "event_seq": 147,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1148,
+            "usage_percent": 0.1094818115234375
+          },
+          {
+            "category": "tools",
+            "tokens": 1657,
+            "usage_percent": 0.15802383422851562
+          },
+          {
+            "category": "skills",
+            "tokens": 224,
+            "usage_percent": 0.0213623046875
+          },
+          {
+            "category": "memory",
+            "tokens": 5821,
+            "usage_percent": 0.5551338195800781
+          },
+          {
+            "category": "conversation",
+            "tokens": 5595,
+            "usage_percent": 0.5335807800292969
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
       },
       "agent_control": "running",
       "state": "succeeded"
