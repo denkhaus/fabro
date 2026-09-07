@@ -1,0 +1,100 @@
+diff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl
+index d2bce0a0..24cbb84b 100644
+--- a/.mulch/expertise/engine.jsonl
++++ b/.mulch/expertise/engine.jsonl
+@@ -29,3 +29,4 @@
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-06T19:31:08.323Z","evidence":{"commit":"b44d4f24371d8ff1edc4195e14f9431e00c6b192"},"dir_anchors":["lib/apps/fabro-server/src","lib/components/fabro-automation/src"],"name":"automation-breaker-high-water-baseline","description":"Automation circuit breaker (fabro-3d97): per-trigger counters are store-backed with a last-processed-run high-water mark (automation_triggers.breaker_* columns); on first observation or after a replace (the enable path rewrites trigger rows) the newest terminal run becomes the baseline WITHOUT counting, which is what makes 'resume resets the counter' work — a stateless tail-count would instantly re-pause after re-enable. Also: run_summaries.list_all/list_terminal_for_automation return NEWEST-FIRST; scheduler tests must sort by created_at before indexing runs by fire order.","files":["docs/public/api-reference/fabro-api.yaml","lib/apps/fabro-server/src/serve.rs","lib/apps/fabro-server/src/server.rs","lib/apps/fabro-server/src/server/automation_scheduler.rs","lib/apps/fabro-server/src/server/tests.rs","lib/apps/fabro-server/src/test_support.rs","lib/components/fabro-automation/src/error.rs","lib/components/fabro-automation/src/lib.rs","lib/components/fabro-automation/src/model.rs","lib/components/fabro-automation/src/store.rs","lib/components/fabro-automation/tests/store.rs","lib/components/fabro-slack/src/blocks.rs","lib/components/fabro-store/src/run_summary_store.rs","lib/foundation/fabro-api/tests/automation_round_trip.rs","lib/packages/fabro-api-client/src/models/automation-schedule-trigger.ts"],"id":"mx-6cddf3"}
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-06T19:41:07.953Z","evidence":{"commit":"95621c0649c636f966af89e9810965b5214beb38"},"description":"fabro-server graph-render unit tests (server::tests::get_graph_returns_svg, render_graph_from_manifest_*) spawn 'fabro __render-graph' resolved via current_exe().parent().parent()/fabro (target/debug/fabro). The touched-crates qualitygate (scripts/qualitygate.nu) only builds/clippies touched crates, so when a run touches fabro-server without fabro-cli the binary is absent and these 3 tests fail deterministically (run 01M1VZTJSZ551NFPHPXD429MG0, tester stage).","resolution":"Build 'cargo build -p fabro-cli --bin fabro' before gating fabro-server; root fix belongs in the gate (build the fabro bin when fabro-server is touched).","id":"mx-a62008"}
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-06T21:19:50.314Z","evidence":{"seeds":"fabro-3d97","commit":"b7e74fc417d463f3c5ff8ee43e5f8291421e7500"},"description":"Whenever a migration file is added on a branch switch or cache reuse and behavior says 'column/migration missing': suspect the embedded MIGRATOR, not the DB. Diagnosis: query _sqlx_migrations (with -wal!) for the newest version. Mitigations: touch lib/foundation/fabro-db/src/lib.rs before just up after migration changes (until fabro-db gains rerun-if-changed in build.rs, filed as seed); cargo clean -p fabro-db for local test binaries. Deep lesson: /health + one API roundtrip is not deploy verification — the new automations smoke probe exists because the broken surface had no probe.","resolution":"Smoke probe landed (authenticated automations check, live-proofed red on the broken deploy); build.rs hardening filed as P1 seed; deploy-watch-5 verifies the volume-cache rebuild.","id":"mx-99d245"}
++{"type":"pattern","classification":"tactical","recorded_at":"2026-09-07T07:41:54.972Z","evidence":{"commit":"d0589219c2369c0112404572e8de20fe2728c399"},"name":"sqlx-migrate-rerun-if-changed","description":"Crates embedding sqlx::migrate! need a build.rs emitting cargo:rerun-if-changed=migrations (and =build.rs); cargo fingerprints do not reliably invalidate on migration file add/remove under local-target and docker-volume caches, shipping a stale MIGRATOR (fabro-bc9b). Pair with a unit test asserting max(MIGRATOR versions) equals max version parsed from the on-disk migrations dir via CARGO_MANIFEST_DIR, and log the newest embedded version at migrate() startup.","files":["lib/foundation/fabro-db/src/lib.rs"],"id":"mx-87c249"}
+diff --git a/lib/foundation/fabro-db/build.rs b/lib/foundation/fabro-db/build.rs
+new file mode 100644
+index 00000000..2be46faa
+--- /dev/null
++++ b/lib/foundation/fabro-db/build.rs
+@@ -0,0 +1,9 @@
++fn main() {
++    // Build scripts run with the crate root as their working directory, so
++    // relative paths are correct here. Without these directives, cargo does
++    // not reliably invalidate the crate fingerprint when migration files are
++    // added or removed under local-target and docker-volume caches, and
++    // `sqlx::migrate!` keeps embedding a stale MIGRATOR.
++    println!("cargo:rerun-if-changed=migrations");
++    println!("cargo:rerun-if-changed=build.rs");
++}
+diff --git a/lib/foundation/fabro-db/src/lib.rs b/lib/foundation/fabro-db/src/lib.rs
+index a921ec7e..e7516b9a 100644
+--- a/lib/foundation/fabro-db/src/lib.rs
++++ b/lib/foundation/fabro-db/src/lib.rs
+@@ -73,6 +73,16 @@ impl Database {
+     }
+ 
+     pub async fn migrate(&self) -> anyhow::Result<()> {
++        // Defense in depth against stale embeds: if the binary was built from
++        // a cached artifact whose MIGRATOR predates a new migration, this log
++        // makes the mismatch visible in server logs without changing ordering
++        // or snapshot behavior.
++        let newest_embedded = MIGRATOR
++            .iter()
++            .map(|migration| migration.version)
++            .max()
++            .unwrap_or_default();
++        info!("newest embedded migration version {newest_embedded}");
+         let applied = applied_migration_versions(&self.pool).await?;
+         self.preflight_session_owner_index(&applied)
+             .await
+@@ -508,6 +518,54 @@ async fn prepare_private_database_file(path: &Path) -> anyhow::Result<()> {
+     Ok(())
+ }
+ 
++/// Guards against embed/dir drift: `sqlx::migrate!` embeds the migrations
++/// directory at compile time, and a stale cache can otherwise ship a binary
++/// whose MIGRATOR predates the newest on-disk migration.
++#[cfg(test)]
++mod embedded_migrations_tests {
++    use super::MIGRATOR;
++
++    #[test]
++    #[expect(
++        clippy::disallowed_methods,
++        reason = "test-only sync enumeration of the compile-time migrations directory"
++    )]
++    fn newest_embedded_migration_matches_migrations_dir() {
++        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
++        let mut newest_on_disk: Option<i64> = None;
++        for entry in std::fs::read_dir(&dir).expect("reading the migrations directory") {
++            let entry = entry.expect("reading a migrations directory entry");
++            let file_name = entry.file_name();
++            let Some(name) = file_name.to_str() else {
++                continue;
++            };
++            if !std::path::Path::new(name)
++                .extension()
++                .is_some_and(|ext| ext.eq_ignore_ascii_case("sql"))
++            {
++                continue;
++            }
++            let version: i64 = name
++                .split('_')
++                .next()
++                .unwrap_or_default()
++                .parse()
++                .unwrap_or_else(|error| panic!("parsing migration version from {name}: {error}"));
++            newest_on_disk = Some(newest_on_disk.map_or(version, |seen| seen.max(version)));
++        }
++        let newest_on_disk = newest_on_disk.expect("the migrations directory to contain SQL files");
++        let newest_embedded = MIGRATOR
++            .iter()
++            .map(|migration| migration.version)
++            .max()
++            .expect("the embedded MIGRATOR to be non-empty");
++        assert_eq!(
++            newest_embedded, newest_on_disk,
++            "embedded MIGRATOR is stale: recompile fabro-db so sqlx::migrate! re-embeds migrations/"
++        );
++    }
++}
++
+ #[cfg(all(test, unix))]
+ mod tests {
+     use std::os::unix::fs::PermissionsExt as _;
