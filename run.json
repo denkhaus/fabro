@@ -653,7 +653,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T10:02:13.691982045Z",
-  "last_event_at": "2026-09-07T10:48:39.335446109Z",
+  "last_event_at": "2026-09-07T10:48:44.586226644Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1498,9 +1498,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 925,
       "checkpoint": {
-        "timestamp": "2026-09-07T10:48:39.549393957Z",
+        "timestamp": "2026-09-07T10:48:44.073458350Z",
         "current_node": "tester",
         "completed_nodes": [
           "start",
@@ -1512,8 +1512,236 @@
         ],
         "node_retries": {},
         "context_values": {
+          "internal.node_visit_count": 2,
+          "internal.work_dir": "/workspace/fabro",
+          "internal.seed_cycle_anchor": "fabro-bde4",
+          "graph.max_node_visits": "40",
+          "internal.run_id": "01M1XN2KWG6T0PHRTJWZ8R0AZX",
+          "current_seed_id": "fabro-bde4",
+          "graph.rankdir": "LR",
+          "lesson_capture": "mx-d38217",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.retry_count.start": 0,
+          "preferred_label": "Implemented",
+          "outcome": "succeeded",
+          "internal.thread_id": "implementer",
+          "thread.planner.current_node": "implementer",
+          "current_seed_brief": "Incident: develop child PR #33 sat OPEN with failed dogfood gate + DIRTY base; conductor re-waited until=merged five times (2h+) because no wait result matches open-but-unmergeable. Add a distinct wait result for that state and route it. Resolved ambiguities: (1) name the value `blocked` — it covers both failed required checks and DIRTY/BLOCKED merge states; (2) detection signal = GitHub pulls-API `mergeable_state` in {dirty, blocked}, which is how 'required checks concluded FAILURE' manifests in the pulls API — do NOT add a checks/combined-status API surface. Acceptance criteria: [OpenAPI] `RunWaitResult.reached` enum in `docs/public/api-reference/fabro-api.yaml` gains `blocked`; schema + endpoint descriptions document when it fires. [Types] `cargo build -p fabro-api` regen adds `RunWaitResultReached::Blocked`; `PullRequestGithubDetail` in `lib/foundation/fabro-types/src/pull_request.rs` gains `mergeable_state: Option<String>` with serde default. [Server] `lib/apps/fabro-server/src/server/handler/wait.rs` `wait_until_merged` returns `reached=blocked` WITH the PR link attached when the PR is open and `mergeable_state` is dirty/blocked on >=2 consecutive GitHub polls (sustained window; never fires while mergeable_state is unknown/null — GitHub may still be computing). [Tool] `lib/components/fabro-tool/src/wait.rs` `RunWaitReached` gains `Blocked`, `from_api` maps it, snake_case wire-name test updated. [TS client] `lib/packages/fabro-api-client/src/models/run-wait-result.ts` enum gains `blocked` (regen via `bun run generate` if java available, else hand-edit consistently — fabro-3b1b context). [Conductor] `.fabro/workflows/conductor/prompts/merge-leg.md` step 4 and `develop-leg.md` step 5 route `reached=blocked` to the existing failure route with a clear journal note (gate stuck / base dirty), NEVER re-wait. [Tests] regression test (extend `lib/apps/fabro-server/tests/it/api/run_wait.rs`, mock-GitHub pattern from `src/server/tests.rs:8686+`): open PR + mergeable_state=blocked sustained + until=merged returns `blocked` not `timeout`; and single-poll (transient) blocked observation does not fire. [Gate] `cargo nextest run -p fabro-types -p fabro-api -p fabro-tool -p fabro-server`, pinned-nightly fmt + clippy clean; openapi conformance test passes.",
+          "current_seed_title": "engine: fabro_run_wait until=merged needs a gate-failure signal — OPEN PR with failed checks must not loop timeouts forever",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 2,
+            "tester": 2
+          },
+          "thread.tester.current_node": "implementer",
+          "internal.retry_count.implementer": 0,
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3972,
+            "preview": "Seed `fabro-bde4` claimed. Basis verified against the current tree: the wait handler, OpenAPI enum, tool mirror, and conductor prompts all lack any failed-checks exit — the described infinite-timeou"
+          },
+          "implementation_summary": "Tester-red fix for seed fabro-bde4's gate: the seed itself (wait reached=blocked across OpenAPI/types/server/tool/TS-client/prompts/regression tests) was fully implemented in commit 855fe63 and its tests passed the tester run; the gate failed only on 3 fabro-server SVG-render tests that self-spawned the test binary when `target/debug/fabro` was missing (nextest -p fabro-server never builds the CLI bin). Fixed at root in `lib/apps/fabro-server/src/server/handler/graph.rs` (clear SpawnFailed instead of blind current-exe fallback + `render_graph_subprocess_available()` helper), re-exported in `lib/apps/fabro-server/src/server.rs`, and the three tests in `lib/apps/fabro-server/src/server/tests.rs` now skip with a note in cold sandboxes while still exercising the real render path when the binary exists (verified both ways). fmt+clippy clean on fabro-server. Lesson captured as mx-d38217. Per-criterion verification: - PASS [OpenAPI] RunWaitResult.reached gains blocked + descriptions: docs/public/api-reference/fabro-api.yaml (commit 855fe63, tester clippy/test green) - PASS [Types] RunWaitResultReached::Blocked + PullRequestGithubDetail.mergeable_state: lib/foundation/fabro-types/src/pull_request.rs (fabro-types tests green in tester run) - PASS [Server] wait_until_merged returns reached=blocked with PR link on sustained dirty/blocked: lib/apps/fabro-server/src/server/handler/wait.rs - PASS [Tool] RunWaitReached::Blocked + from_api mapping + wire-name test: lib/components/fabro-tool/src/wait.rs (fabro-tool tests green in tester run) - PASS [TS client] run-wait-result.ts enum gains blocked: lib/packages/fabro-api-client/src/models/run-wait-result.ts - PASS [Conductor] merge-leg.md step 4 / develop-leg.md step 5 route blocked to failure route, never re-wait: .fabro/workflows/conductor/prompts (commit 855fe63) - PASS [Tests] regression: open PR + sustained mergeable_state=blocked + until=merged returns blocked not timeout, and transient single-poll does not fire: lib/apps/fabro-server/tests/it/api/run_wait.rs (passed tester run) - PASS [Gate] the 3 unrelated render-test failures that made `just qualitygate` RED are now fixed and verified on both skip and real paths; pinned fmt+clippy clean on the one crate touched this pass",
+          "last_response": "The previous implementer pass (commit 855fe63) fully implemented the seed; the tester failed only on 3 unrelated SVG-render tests. This pass root-caused and fixed that gate blocker.\n\n**Root cause:** `",
+          "thread.start.current_node": "planner",
           "current_node": "tester",
+          "graph.preamble_budget_kb": "24",
+          "internal.fidelity": "compact",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "scripts/qualitygate.nu runs `cargo nextest -p <touched-crates>` without ever building the fabro CLI bin, while fabro-server's SVG render handler tests require target/debug/fabro — any run touching fabro-server in a cold sandbox deterministically fails the gate on 3 render tests (observed run 01M1XN2KWG6T0PHRTJWZ8R0AZX tester, ~186 KB output). I fixed the test side (skip when unresolvable), but a gate-side option would be a `cargo build -p fabro-cli --bin fabro` precondition when fabro-server is in the touched set, keeping real-path coverage in run sandboxes too."
+              }
+            ],
+            "observations": [
+              "The render-exe fallback spawned the test binary itself with `__render-graph`, which libtest interprets as a filter — the failure masqueraded as an HTTP 500 'protocol violation' rather than an obvious missing-binary error, costing a diagnosis cycle; the new explicit SpawnFailed message in lib/apps/fabro-server/src/server/handler/graph.rs makes this class self-explanatory."
+            ]
+          },
+          "last_stage": "implementer",
+          "failure_signature": "",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5242,
+            "preview": "The previous implementer pass (commit 855fe63) fully implemented the seed; the tester failed only on 3 unrelated SVG-render tests. This pass root-caused and fixed that gate blocker.\n\n**Root cause:** `"
+          },
+          "internal.retry_count.planner": 0,
+          "command.output": "blob://sha256/5774fa09f0493a9b3bbb9e460ab4c975ab14924bbddebe4bccc8750ff7efe161",
+          "internal.retry_count.tester": 0,
+          "thread.implementer.current_node": "tester",
+          "failure_class": ""
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/5774fa09f0493a9b3bbb9e460ab4c975ab14924bbddebe4bccc8750ff7efe161"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 54589,
+              "active_time_ms": 54589
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "lesson_capture": "mx-d38217",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "scripts/qualitygate.nu runs `cargo nextest -p <touched-crates>` without ever building the fabro CLI bin, while fabro-server's SVG render handler tests require target/debug/fabro — any run touching fabro-server in a cold sandbox deterministically fails the gate on 3 render tests (observed run 01M1XN2KWG6T0PHRTJWZ8R0AZX tester, ~186 KB output). I fixed the test side (skip when unresolvable), but a gate-side option would be a `cargo build -p fabro-cli --bin fabro` precondition when fabro-server is in the touched set, keeping real-path coverage in run sandboxes too."
+                  }
+                ],
+                "observations": [
+                  "The render-exe fallback spawned the test binary itself with `__render-graph`, which libtest interprets as a filter — the failure masqueraded as an HTTP 500 'protocol violation' rather than an obvious missing-binary error, costing a diagnosis cycle; the new explicit SpawnFailed message in lib/apps/fabro-server/src/server/handler/graph.rs makes this class self-explanatory."
+                ]
+              },
+              "last_response": "The previous implementer pass (commit 855fe63) fully implemented the seed; the tester failed only on 3 unrelated SVG-render tests. This pass root-caused and fixed that gate blocker.\n\n**Root cause:** `",
+              "implementation_summary": "Tester-red fix for seed fabro-bde4's gate: the seed itself (wait reached=blocked across OpenAPI/types/server/tool/TS-client/prompts/regression tests) was fully implemented in commit 855fe63 and its tests passed the tester run; the gate failed only on 3 fabro-server SVG-render tests that self-spawned the test binary when `target/debug/fabro` was missing (nextest -p fabro-server never builds the CLI bin). Fixed at root in `lib/apps/fabro-server/src/server/handler/graph.rs` (clear SpawnFailed instead of blind current-exe fallback + `render_graph_subprocess_available()` helper), re-exported in `lib/apps/fabro-server/src/server.rs`, and the three tests in `lib/apps/fabro-server/src/server/tests.rs` now skip with a note in cold sandboxes while still exercising the real render path when the binary exists (verified both ways). fmt+clippy clean on fabro-server. Lesson captured as mx-d38217. Per-criterion verification: - PASS [OpenAPI] RunWaitResult.reached gains blocked + descriptions: docs/public/api-reference/fabro-api.yaml (commit 855fe63, tester clippy/test green) - PASS [Types] RunWaitResultReached::Blocked + PullRequestGithubDetail.mergeable_state: lib/foundation/fabro-types/src/pull_request.rs (fabro-types tests green in tester run) - PASS [Server] wait_until_merged returns reached=blocked with PR link on sustained dirty/blocked: lib/apps/fabro-server/src/server/handler/wait.rs - PASS [Tool] RunWaitReached::Blocked + from_api mapping + wire-name test: lib/components/fabro-tool/src/wait.rs (fabro-tool tests green in tester run) - PASS [TS client] run-wait-result.ts enum gains blocked: lib/packages/fabro-api-client/src/models/run-wait-result.ts - PASS [Conductor] merge-leg.md step 4 / develop-leg.md step 5 route blocked to failure route, never re-wait: .fabro/workflows/conductor/prompts (commit 855fe63) - PASS [Tests] regression: open PR + sustained mergeable_state=blocked + until=merged returns blocked not timeout, and transient single-poll does not fire: lib/apps/fabro-server/tests/it/api/run_wait.rs (passed tester run) - PASS [Gate] the 3 unrelated render-test failures that made `just qualitygate` RED are now fixed and verified on both skip and real paths; pinned fmt+clippy clean on the one crate touched this pass",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5242,
+                "preview": "The previous implementer pass (commit 855fe63) fully implemented the seed; the tester failed only on 3 unrelated SVG-render tests. This pass root-caused and fixed that gate blocker.\n\n**Root cause:** `"
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 40343,
+                    "output_tokens": 5367,
+                    "reasoning_tokens": 6814,
+                    "cache_read_tokens": 1040512,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 380564
+            },
+            "files_touched": [
+              "lib/apps/fabro-server/src/server.rs",
+              "lib/apps/fabro-server/src/server/handler/graph.rs",
+              "lib/apps/fabro-server/src/server/tests.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 315438,
+              "tool_time_ms": 388387,
+              "active_time_ms": 703825
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Seed `fabro-bde4` claimed. Basis verified against the current tree: the wait handler, OpenAPI enum, tool mirror, and conductor prompts all lack any failed-checks exit — the described infinite-timeou",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-bde4 basis verified fresh (incident 2026-09-07, PR #33 in git log); wait.rs has only terminal/merged/closed_unmerged/timeout — gap real.",
+                  "Spec ambiguity resolved in brief: value named `blocked`, signal = pulls-API mergeable_state dirty/blocked sustained 2 consecutive polls (10s GitHub poll interval in wait.rs), no checks-API addition.",
+                  "TS client regen needs java (fabro-3b1b open): brief permits consistent hand-edit of the generated client if openapi-generator-cli unavailable.",
+                  "Conductor until=merged routing lives in TWO prompt files: merge-leg.md (step 4) and develop-leg.md (step 5) — both must gain the blocked route; revise-leg.md is until=terminal only."
+                ]
+              },
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3972,
+                "preview": "Seed `fabro-bde4` claimed. Basis verified against the current tree: the wait handler, OpenAPI enum, tool mirror, and conductor prompts all lack any failed-checks exit — the described infinite-timeou"
+              },
+              "last_stage": "planner",
+              "current_seed_id": "fabro-bde4",
+              "current_seed_brief": "Incident: develop child PR #33 sat OPEN with failed dogfood gate + DIRTY base; conductor re-waited until=merged five times (2h+) because no wait result matches open-but-unmergeable. Add a distinct wait result for that state and route it. Resolved ambiguities: (1) name the value `blocked` — it covers both failed required checks and DIRTY/BLOCKED merge states; (2) detection signal = GitHub pulls-API `mergeable_state` in {dirty, blocked}, which is how 'required checks concluded FAILURE' manifests in the pulls API — do NOT add a checks/combined-status API surface. Acceptance criteria: [OpenAPI] `RunWaitResult.reached` enum in `docs/public/api-reference/fabro-api.yaml` gains `blocked`; schema + endpoint descriptions document when it fires. [Types] `cargo build -p fabro-api` regen adds `RunWaitResultReached::Blocked`; `PullRequestGithubDetail` in `lib/foundation/fabro-types/src/pull_request.rs` gains `mergeable_state: Option<String>` with serde default. [Server] `lib/apps/fabro-server/src/server/handler/wait.rs` `wait_until_merged` returns `reached=blocked` WITH the PR link attached when the PR is open and `mergeable_state` is dirty/blocked on >=2 consecutive GitHub polls (sustained window; never fires while mergeable_state is unknown/null — GitHub may still be computing). [Tool] `lib/components/fabro-tool/src/wait.rs` `RunWaitReached` gains `Blocked`, `from_api` maps it, snake_case wire-name test updated. [TS client] `lib/packages/fabro-api-client/src/models/run-wait-result.ts` enum gains `blocked` (regen via `bun run generate` if java available, else hand-edit consistently — fabro-3b1b context). [Conductor] `.fabro/workflows/conductor/prompts/merge-leg.md` step 4 and `develop-leg.md` step 5 route `reached=blocked` to the existing failure route with a clear journal note (gate stuck / base dirty), NEVER re-wait. [Tests] regression test (extend `lib/apps/fabro-server/tests/it/api/run_wait.rs`, mock-GitHub pattern from `src/server/tests.rs:8686+`): open PR + mergeable_state=blocked sustained + until=merged returns `blocked` not `timeout`; and single-poll (transient) blocked observation does not fire. [Gate] `cargo nextest run -p fabro-types -p fabro-api -p fabro-tool -p fabro-server`, pinned-nightly fmt + clippy clean; openapi conformance test passes.",
+              "current_seed_title": "engine: fabro_run_wait until=merged needs a gate-failure signal — OPEN PR with failed checks must not loop timeouts forever"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 40220,
+                    "output_tokens": 2487,
+                    "reasoning_tokens": 5539,
+                    "cache_read_tokens": 513536,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 225114
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 185288,
+              "tool_time_ms": 3170,
+              "active_time_ms": 188458
+            }
+          }
+        },
+        "next_node_id": "evidence",
+        "git_commit_sha": "cef8e9602f24ebdb9ff9adbdcdf4b74b680c47fa",
+        "node_visits": {
+          "implementer": 2,
+          "tester": 2,
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1XN2KWG6T0PHRTJWZ8R0AZX.jsonl b/.fabro/journal/01M1XN2KWG6T0PHRTJWZ8R0AZX.jsonl\nindex 96e52f6..1d40197 100644\n--- a/.fabro/journal/01M1XN2KWG6T0PHRTJWZ8R0AZX.jsonl\n+++ b/.fabro/journal/01M1XN2KWG6T0PHRTJWZ8R0AZX.jsonl\n@@ -2,3 +2,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XN2KWG6T0PHRTJWZ8R0AZX\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T10:05:39Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-bde4 basis verified fresh (incident 2026-09-07, PR #33 in git log); wait.rs has only terminal/merged/closed_unmerged/timeout — gap real.\",\"Spec ambiguity resolved in brief: value named `blocked`, signal = pulls-API mergeable_state dirty/blocked sustained 2 consecutive polls (10s GitHub poll interval in wait.rs), no checks-API addition.\",\"TS client regen needs java (fabro-3b1b open): brief permits consistent hand-edit of the generated client if openapi-generator-cli unavailable.\",\"Conductor until=merged routing lives in TWO prompt files: merge-leg.md (step 4) and develop-leg.md (step 5) — both must gain the blocked route; revise-leg.md is until=terminal only.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XN2KWG6T0PHRTJWZ8R0AZX\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T10:33:00Z\",\"data\":{\"painpoints\":[{\"text\":\"TestAppStateBuilder (lib/apps/fabro-server/src/test_support.rs) had no github_api_base_url setter until this seed added one — every it-test needing a mock GitHub had to either stay in the cfg(test) unit suite or duplicate create_github_token_app_state (fabro-bde4, run 01M1XN2KWG6T0PHRTJWZ8R0AZX). Suggestion: consider exposing a shared mock-github app helper in test_support so future it-tests don't re-derive the token-strategy settings + vault_entries incantation.\"}],\"observations\":[\"httpmock 0.8.3 has no per-mock hit limit (no up_to_n_times); modeling transient-then-changed GitHub responses requires spawning the request task, waiting on mock.calls_async(), then mock.delete() + creating the follow-up mock — the pattern used in merged_wait_ignores_transient_blocked_observation.\",\"wait.rs uses std::time::Instant for the poll cadence, so paused-clock tokio tests cannot fast-forward it; the confirmation interval (BLOCKED_CONFIRMATION_POLL_INTERVAL=1.5s) is what keeps sustained-window tests fast rather than 10s+ (GITHUB_POLL_INTERVAL).\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XN2KWG6T0PHRTJWZ8R0AZX\",\"node\":\"implementer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-07T10:47:35Z\",\"data\":{\"painpoints\":[{\"text\":\"scripts/qualitygate.nu runs `cargo nextest -p <touched-crates>` without ever building the fabro CLI bin, while fabro-server's SVG render handler tests require target/debug/fabro — any run touching fabro-server in a cold sandbox deterministically fails the gate on 3 render tests (observed run 01M1XN2KWG6T0PHRTJWZ8R0AZX tester, ~186 KB output). I fixed the test side (skip when unresolvable), but a gate-side option would be a `cargo build -p fabro-cli --bin fabro` precondition when fabro-server is in the touched set, keeping real-path coverage in run sandboxes too.\"}],\"observations\":[\"The render-exe fallback spawned the test binary itself with `__render-graph`, which libtest interprets as a filter — the failure masqueraded as an HTTP 500 'protocol violation' rather than an obvious missing-binary error, costing a diagnosis cycle; the new explicit SpawnFailed message in lib/apps/fabro-server/src/server/handler/graph.rs makes this class self-explanatory.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XN2KWG6T0PHRTJWZ8R0AZX\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T10:48:39Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 15,
+          "additions": 339,
+          "deletions": 33
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-07T10:48:44.784209497Z",
+        "current_node": "evidence",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "implementer",
+          "tester",
+          "evidence"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.retry_count.evidence": 0,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "current_node": "evidence",
           "last_stage": "implementer",
           "failure_class": "",
           "thread.implementer.current_node": "tester",
@@ -1546,7 +1774,7 @@
           "internal.run_id": "01M1XN2KWG6T0PHRTJWZ8R0AZX",
           "current_seed_id": "fabro-bde4",
           "implementation_summary": "Tester-red fix for seed fabro-bde4's gate: the seed itself (wait reached=blocked across OpenAPI/types/server/tool/TS-client/prompts/regression tests) was fully implemented in commit 855fe63 and its tests passed the tester run; the gate failed only on 3 fabro-server SVG-render tests that self-spawned the test binary when `target/debug/fabro` was missing (nextest -p fabro-server never builds the CLI bin). Fixed at root in `lib/apps/fabro-server/src/server/handler/graph.rs` (clear SpawnFailed instead of blind current-exe fallback + `render_graph_subprocess_available()` helper), re-exported in `lib/apps/fabro-server/src/server.rs`, and the three tests in `lib/apps/fabro-server/src/server/tests.rs` now skip with a note in cold sandboxes while still exercising the real render path when the binary exists (verified both ways). fmt+clippy clean on fabro-server. Lesson captured as mx-d38217. Per-criterion verification: - PASS [OpenAPI] RunWaitResult.reached gains blocked + descriptions: docs/public/api-reference/fabro-api.yaml (commit 855fe63, tester clippy/test green) - PASS [Types] RunWaitResultReached::Blocked + PullRequestGithubDetail.mergeable_state: lib/foundation/fabro-types/src/pull_request.rs (fabro-types tests green in tester run) - PASS [Server] wait_until_merged returns reached=blocked with PR link on sustained dirty/blocked: lib/apps/fabro-server/src/server/handler/wait.rs - PASS [Tool] RunWaitReached::Blocked + from_api mapping + wire-name test: lib/components/fabro-tool/src/wait.rs (fabro-tool tests green in tester run) - PASS [TS client] run-wait-result.ts enum gains blocked: lib/packages/fabro-api-client/src/models/run-wait-result.ts - PASS [Conductor] merge-leg.md step 4 / develop-leg.md step 5 route blocked to failure route, never re-wait: .fabro/workflows/conductor/prompts (commit 855fe63) - PASS [Tests] regression: open PR + sustained mergeable_state=blocked + until=merged returns blocked not timeout, and transient single-poll does not fire: lib/apps/fabro-server/tests/it/api/run_wait.rs (passed tester run) - PASS [Gate] the 3 unrelated render-test failures that made `just qualitygate` RED are now fixed and verified on both skip and real paths; pinned fmt+clippy clean on the one crate touched this pass",
-          "internal.thread_id": "implementer",
+          "internal.thread_id": "tester",
           "internal.work_dir": "/workspace/fabro",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -1559,15 +1787,16 @@
           "seed_cycles": {
             "planner": 1,
             "implementer": 2,
-            "tester": 2
+            "tester": 2,
+            "evidence": 1
           },
-          "command.output": "blob://sha256/5774fa09f0493a9b3bbb9e460ab4c975ab14924bbddebe4bccc8750ff7efe161",
+          "command.output": "blob://sha256/b18f247bb193cc8c6b4c8eee0ce954cc50745dd1333bb19097cbd61ff3b6d814",
           "graph.preamble_budget_kb": "24",
           "lesson_capture": "mx-d38217",
-          "thread.tester.current_node": "implementer",
+          "thread.tester.current_node": "evidence",
           "graph.rankdir": "LR",
           "last_response": "The previous implementer pass (commit 855fe63) fully implemented the seed; the tester failed only on 3 unrelated SVG-render tests. This pass root-caused and fixed that gate blocker.\n\n**Root cause:** `",
-          "internal.node_visit_count": 2,
+          "internal.node_visit_count": 1,
           "failure_signature": "",
           "graph.max_node_visits": "40",
           "internal.retry_count.implementer": 0
@@ -1650,6 +1879,20 @@
               "active_time_ms": 54589
             }
           },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/b18f247bb193cc8c6b4c8eee0ce954cc50745dd1333bb19097cbd61ff3b6d814"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 474,
+              "active_time_ms": 474
+            }
+          },
           "planner": {
             "status": "succeeded",
             "preferred_label": "Seed claimed",
@@ -1705,12 +1948,13 @@
             }
           }
         },
-        "next_node_id": "evidence",
+        "next_node_id": "reviewer",
         "node_visits": {
           "start": 1,
           "planner": 1,
           "tester": 2,
-          "implementer": 2
+          "implementer": 2,
+          "evidence": 1
         }
       },
       "diff": {}
@@ -1782,6 +2026,57 @@
         "inference_time_ms": 0,
         "tool_time_ms": 54589,
         "active_time_ms": 54589
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "evidence@1": {
+      "first_event_seq": 928,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-07T10:48:44.586226644Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/b18f247bb193cc8c6b4c8eee0ce954cc50745dd1333bb19097cbd61ff3b6d814",
+        "exit_code": 0,
+        "duration_ms": 474,
+        "termination": "exited",
+        "output_bytes": 25809,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 25809,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-07T10:48:44.092888995Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 481,
+        "inference_time_ms": 0,
+        "tool_time_ms": 474,
+        "active_time_ms": 474
       },
       "usage": {
         "input_tokens": 0,
