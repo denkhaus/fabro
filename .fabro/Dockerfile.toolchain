@@ -49,7 +49,20 @@ RUN set -eux; \
 # no-op version check. bun/just/nushell/ripgrep pins MUST match the lab
 # image until the worlds are unified.
 ARG MISE_VERSION=v2026.8.10
+# Tool-agnostic layering (ADR-0017, fabro-66db): the engine's clone
+# contract places this repository at /repos/denkhaus/fabro with a
+# /workspace/fabro execution symlink. Trusting that path here keeps
+# mise knowledge in this project artifact; repo configs with settings
+# sections (like [settings.npm]) are not "safe files" and would
+# otherwise fail every shim call until someone runs `mise trust`.
+# Path-based trust is content-independent, unlike a baked `mise trust`
+# hash which would go stale on every .mise.toml change. NOTE (verified
+# in pristine containers, mise 2026.8.10): this setting takes ONE path
+# or directory - no globs, no comma lists. Moving/renaming the repo
+# requires updating this ENV; this image is repo-scoped anyway (it
+# bakes this repo's toolset pins).
 ENV MISE_DATA_DIR=/mise \
+    MISE_TRUSTED_CONFIG_PATHS=/repos/denkhaus/fabro \
     BUN_INSTALL=/mise/bun-global \
     PATH=/mise/shims:/mise/bun-global/bin:${PATH}
 

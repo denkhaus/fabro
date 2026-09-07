@@ -28,6 +28,13 @@ macOS note: if `cargo nextest run` fails with `Too many open files (os error 24)
 - `cargo dev docker-build` — builds the local Docker image from the current tree using the release pipeline's cargo-zigbuild approach. Honors `--arch amd64|arm64`, `--tag <name>` (default `fabro-sh/fabro`), `--compile-only` (stages `tmp/docker-context/<arch>/fabro` without `docker build`), and `--dry-run` (prints the Docker commands without running them). Prefer this over writing a throwaway Dockerfile; the release pipeline, `Dockerfile`, and this command share the same binary layout.
 
 ### Docker sandbox provider
+
+Tool-agnostic layering (ADR-0017): engine code never references
+project-scope tooling (mise, asdf, direnv, ...). Project tooling
+bootstrap belongs in project artifacts — the toolchain image
+(`.fabro/Dockerfile.toolchain`), server environment `env` config, or
+workflow hooks — and may rely on the stable clone layout
+(`/repos/<owner>/<repo>`, `/workspace/<repo>` symlink).
 - Docker is the default runtime sandbox provider from `defaults.toml`. The Fabro process must have a working Docker client environment (`DOCKER_HOST`, socket access, Docker Desktop behavior, TLS settings, groups/permissions, and any remote daemon policy are operator responsibilities).
 - The packaged compose service mounts `/var/run/docker.sock` so the server can create sibling run containers on the host daemon. This is host-root-equivalent under Docker's security model; only use it in the trusted, single-tenant deployment model described by the sandbox code/docs.
 - Docker and Daytona are clone-based providers. When a run manifest has a GitHub origin, they clone it into the provider workspace. Present non-GitHub origins fail unless the provider has `skip_clone = true`; absent origins or `skip_clone = true` create an empty workspace without repository files. For an exact commit, the submitted branch names the working branch and the syntactically valid SHA is requested directly. No layer proves branch/SHA ancestry: a fetchable commit is checked out, an unavailable commit fails setup, and branch HEAD is never substituted.

@@ -245,7 +245,13 @@ decision, not an accident - it needs the user plus an ADR.
    flags), then `ml sync`. Real insights only - no ritual filler.
 3. **New demands -> seeds**: feature requests, bug demand, and gaps
    observed on the way are filed autonomously with `sd create` -
-   never parked in chat.
+   never parked in chat. SEARCH BEFORE FILING (user correction
+   2026-09-07): run `sd search` with the finding's key terms (failure
+   mode, tool name, script path, error string) before every `sd
+   create` - most autonomous-line failures already have a seed
+   (rate-limit windows, watchdog, journal hook, mise trust all did).
+   When covered, extend THAT seed with the fresh run evidence
+   instead of filing a duplicate.
 4. **Open forks ahead**: note uncertainties and upcoming pivotal
    decisions for the next grill-with-docs; the user makes weichenstellende
    calls.
@@ -256,6 +262,15 @@ decision, not an accident - it needs the user plus an ADR.
 
 ## Standing rules
 
+- Tool-agnostic engine (ADR-0017, user decision 2026-09-07): fabro
+  engine components (sandbox providers, workflow engine, server, CLI)
+  never reference project-scope tooling by name or behavior (mise,
+  asdf, direnv, nvm, ...). Project tooling bootstrap lives in project
+  artifacts: .fabro/Dockerfile.toolchain, server environment env,
+  workflow hooks/scripts. The engine's stable contract is the clone
+  layout (/repos/<owner>/<repo>, /workspace/<repo> symlink). Any
+  'bootstrap tool X in run containers' demand maps to project
+  artifacts first, never to engine seams.
 - Upstream posture: we offer nothing until upstream reacts to our open
   issues/PRs (fabro-f251 parked, no priority).
 - The two worlds are temporary (fabro-a9bb): the envelope family feeds
