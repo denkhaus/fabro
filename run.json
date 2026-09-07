@@ -485,7 +485,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T13:08:07.498430855Z",
-  "last_event_at": "2026-09-07T13:16:58.802372998Z",
+  "last_event_at": "2026-09-07T13:17:04.174466019Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -889,9 +889,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 159,
       "checkpoint": {
-        "timestamp": "2026-09-07T13:16:59.013797089Z",
+        "timestamp": "2026-09-07T13:17:03.222789294Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -901,15 +901,71 @@
         ],
         "node_retries": {},
         "context_values": {
+          "outcome": "succeeded",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 690,
+            "preview": "Revision complete: duplicate searches found no matches, seeds `fabro-bbbb` and `fabro-d5fd` filed with basis lines, marker written to `/workspace/fabro/.fabro/revisions/01M1XZCWNBR33BZGHQXNRA80J9.md`,"
+          },
+          "revisor_target_wall": "4.1 min",
           "last_stage": "file",
+          "filed_seed_ids": [
+            "fabro-bbbb",
+            "fabro-d5fd"
+          ],
+          "internal.retry_count.file": 0,
+          "internal.retry_count.start": 0,
+          "failure_signature": "",
+          "graph.preamble_budget_kb": "24",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "fabro-d5fd cross-references fabro-5e09 as complementary (same mechanism area, different files) — nothing superseded",
+              "marker commit is 79f6218, one commit ahead of basis commit 6677e20 due to the seeds+marker commit itself"
+            ]
+          },
+          "internal.node_visit_count": 1,
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 3332,
+            "preview": "Pass complete: ask succeeded once, the verbatim answer is persisted at `.fabro/reviews/develop/01M1XZCWNBR33BZGHQXNRA80J9.md`, and tracker checks withheld 4 duplicates (`fabro-8d2c`, `fabro-4881`, `fa"
+          },
+          "internal.retry_count.select": 0,
+          "internal.run_id": "01M1XZPWJMRXB4PQJYTVANFVJG",
+          "internal.seed_cycle_anchor": "01M1XZCWNBR33BZGHQXNRA80J9",
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 1225,
+            "preview": "Run selected: the newest develop run `01M1XZCWNBR33BZGHQXNRA80J9` is terminal (succeeded), has a live sandbox, matches the current develop baseline version `2232aaf0…`, and has no marker at `.fabro/"
+          },
+          "revisor_target_workflow_version": "2232aaf05c7a93b3557b65ef13543486edcf917d0a735f9cb430280339b647a2",
+          "revisor_target_title": "Develop one seed per run: claim, implement, gate, review, exit",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "internal.fidelity": "compact",
+          "preferred_label": "Staged",
+          "graph.inspects": "develop,merge-upstream",
+          "failure_class": "",
+          "graph.rankdir": "LR",
+          "revisor_target_run_id": "01M1XZCWNBR33BZGHQXNRA80J9",
+          "internal.retry_count.analyze": 0,
+          "thread.select.current_node": "analyze",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "internal.exit_kind": "natural",
+          "internal.thread_id": "analyze",
+          "last_response": "Revision complete: duplicate searches found no matches, seeds `fabro-bbbb` and `fabro-d5fd` filed with basis lines, marker written to `/workspace/fabro/.fabro/revisions/01M1XZCWNBR33BZGHQXNRA80J9.md`,",
           "seed_cycles": {
             "select": 1,
             "analyze": 1,
             "file": 1
           },
-          "graph.inspects": "develop,merge-upstream",
-          "thread.select.current_node": "analyze",
+          "graph.max_node_visits": "30",
+          "thread.analyze.current_node": "file",
           "thread.start.current_node": "select",
+          "internal.work_dir": "/workspace/fabro",
+          "current_node": "file",
           "revision_findings": [
             {
               "title": "Develop planner: drop reasoning_effort from high to low for first-pass claims",
@@ -922,122 +978,9 @@
               "priority": 2
             }
           ],
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.thread_id": "analyze",
-          "revisor_target_status": "succeeded",
-          "revisor_target_title": "Develop one seed per run: claim, implement, gate, review, exit",
-          "last_response": "Revision complete: duplicate searches found no matches, seeds `fabro-bbbb` and `fabro-d5fd` filed with basis lines, marker written to `/workspace/fabro/.fabro/revisions/01M1XZCWNBR33BZGHQXNRA80J9.md`,",
-          "revisor_target_wall": "4.1 min",
-          "response.select": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.select",
-            "chars": 1225,
-            "preview": "Run selected: the newest develop run `01M1XZCWNBR33BZGHQXNRA80J9` is terminal (succeeded), has a live sandbox, matches the current develop baseline version `2232aaf0…`, and has no marker at `.fabro/"
-          },
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "outcome": "succeeded",
-          "revisor_target_run_id": "01M1XZCWNBR33BZGHQXNRA80J9",
-          "internal.node_visit_count": 1,
-          "revisor_target_workflow_version": "2232aaf05c7a93b3557b65ef13543486edcf917d0a735f9cb430280339b647a2",
-          "filed_seed_ids": [
-            "fabro-bbbb",
-            "fabro-d5fd"
-          ],
-          "internal.retry_count.file": 0,
-          "internal.run_id": "01M1XZPWJMRXB4PQJYTVANFVJG",
-          "failure_signature": "",
-          "internal.retry_count.start": 0,
-          "response.analyze": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "chars": 3332,
-            "preview": "Pass complete: ask succeeded once, the verbatim answer is persisted at `.fabro/reviews/develop/01M1XZCWNBR33BZGHQXNRA80J9.md`, and tracker checks withheld 4 duplicates (`fabro-8d2c`, `fabro-4881`, `fa"
-          },
-          "current_node": "file",
-          "graph.preamble_budget_kb": "24",
-          "preferred_label": "Staged",
-          "graph.rankdir": "LR",
-          "internal.retry_count.analyze": 0,
-          "internal.seed_cycle_anchor": "01M1XZCWNBR33BZGHQXNRA80J9",
-          "internal.fidelity": "compact",
-          "failure_class": "",
-          "internal.retry_count.select": 0,
-          "journal": {
-            "painpoints": [],
-            "observations": [
-              "fabro-d5fd cross-references fabro-5e09 as complementary (same mechanism area, different files) — nothing superseded",
-              "marker commit is 79f6218, one commit ahead of basis commit 6677e20 due to the seeds+marker commit itself"
-            ]
-          },
-          "thread.analyze.current_node": "file",
-          "graph.max_node_visits": "30",
-          "response.file": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.file",
-            "chars": 690,
-            "preview": "Revision complete: duplicate searches found no matches, seeds `fabro-bbbb` and `fabro-d5fd` filed with basis lines, marker written to `/workspace/fabro/.fabro/revisions/01M1XZCWNBR33BZGHQXNRA80J9.md`,"
-          },
-          "internal.exit_kind": "natural"
+          "revisor_target_status": "succeeded"
         },
         "node_outcomes": {
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
-          "select": {
-            "status": "succeeded",
-            "preferred_label": "Run selected",
-            "context_updates": {
-              "last_stage": "select",
-              "revisor_target_run_id": "01M1XZCWNBR33BZGHQXNRA80J9",
-              "revisor_target_status": "succeeded",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "Selected newest develop run; 7 older develop runs are stale-evidence (version drift from baseline 2232aaf0), all 5 merge-upstream runs are stale-evidence vs their 5a4438be baseline, 12 runs lack live sandbox; no active develop run observed"
-                ]
-              },
-              "revisor_target_title": "Develop one seed per run: claim, implement, gate, review, exit",
-              "revisor_target_wall": "4.1 min",
-              "response.select": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.select",
-                "chars": 1225,
-                "preview": "Run selected: the newest develop run `01M1XZCWNBR33BZGHQXNRA80J9` is terminal (succeeded), has a live sandbox, matches the current develop baseline version `2232aaf0…`, and has no marker at `.fabro/"
-              },
-              "last_response": "Run selected: the newest develop run `01M1XZCWNBR33BZGHQXNRA80J9` is terminal (succeeded), has a live sandbox, matches the current develop baseline version `2232aaf0…`, and has no marker at `.fabro/",
-              "revisor_target_workflow_version": "2232aaf05c7a93b3557b65ef13543486edcf917d0a735f9cb430280339b647a2"
-            },
-            "notes": "Stage completed: select",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 27615,
-                    "output_tokens": 429,
-                    "reasoning_tokens": 184,
-                    "cache_read_tokens": 37312,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 51057
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 23639,
-              "tool_time_ms": 2005,
-              "active_time_ms": 25644
-            }
-          },
           "file": {
             "status": "succeeded",
             "preferred_label": "Staged",
@@ -1162,9 +1105,67 @@
               "tool_time_ms": 176127,
               "active_time_ms": 396630
             }
+          },
+          "select": {
+            "status": "succeeded",
+            "preferred_label": "Run selected",
+            "context_updates": {
+              "last_stage": "select",
+              "revisor_target_run_id": "01M1XZCWNBR33BZGHQXNRA80J9",
+              "revisor_target_status": "succeeded",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Selected newest develop run; 7 older develop runs are stale-evidence (version drift from baseline 2232aaf0), all 5 merge-upstream runs are stale-evidence vs their 5a4438be baseline, 12 runs lack live sandbox; no active develop run observed"
+                ]
+              },
+              "revisor_target_title": "Develop one seed per run: claim, implement, gate, review, exit",
+              "revisor_target_wall": "4.1 min",
+              "response.select": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.select",
+                "chars": 1225,
+                "preview": "Run selected: the newest develop run `01M1XZCWNBR33BZGHQXNRA80J9` is terminal (succeeded), has a live sandbox, matches the current develop baseline version `2232aaf0…`, and has no marker at `.fabro/"
+              },
+              "last_response": "Run selected: the newest develop run `01M1XZCWNBR33BZGHQXNRA80J9` is terminal (succeeded), has a live sandbox, matches the current develop baseline version `2232aaf0…`, and has no marker at `.fabro/",
+              "revisor_target_workflow_version": "2232aaf05c7a93b3557b65ef13543486edcf917d0a735f9cb430280339b647a2"
+            },
+            "notes": "Stage completed: select",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 27615,
+                    "output_tokens": 429,
+                    "reasoning_tokens": 184,
+                    "cache_read_tokens": 37312,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 51057
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 23639,
+              "tool_time_ms": 2005,
+              "active_time_ms": 25644
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "8ab320b74cb6cde8e45d6bef5d86380317faf3f4",
         "node_visits": {
           "analyze": 1,
           "select": 1,
@@ -1172,10 +1173,95 @@
           "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1XZPWJMRXB4PQJYTVANFVJG.jsonl b/.fabro/journal/01M1XZPWJMRXB4PQJYTVANFVJG.jsonl\nindex bf613b0..6b054b9 100644\n--- a/.fabro/journal/01M1XZPWJMRXB4PQJYTVANFVJG.jsonl\n+++ b/.fabro/journal/01M1XZPWJMRXB4PQJYTVANFVJG.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XZPWJMRXB4PQJYTVANFVJG\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:08:09Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XZPWJMRXB4PQJYTVANFVJG\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:08:39Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected newest develop run; 7 older develop runs are stale-evidence (version drift from baseline 2232aaf0), all 5 merge-upstream runs are stale-evidence vs their 5a4438be baseline, 12 runs lack live sandbox; no active develop run observed\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XZPWJMRXB4PQJYTVANFVJG\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:16:02Z\",\"data\":{\"painpoints\":[{\"text\":\"`sd list --format compact` output omitted open seeds that `sd search` finds (fabro-8d2c, fabro-4881, fabro-c2ca, fabro-890d were all absent from the list but open per search) — a list-only tracker check in this pass would have re-filed 4 duplicates; fix idea: raise or remove the list cap, and make the revisor prompt rely on per-theme sd search as the primary duplicate check.\"}],\"observations\":[\"Withheld 4 of 6 analyst recommendations as duplicates of open seeds: preamble_budget_kb 24→32 duplicate_of fabro-8d2c (related variants fabro-35ab, fabro-cf3e); conditional sd-show re-fetch duplicate_of fabro-4881 (partially covered by fabro-a67f); metadata-snapshot skip on non-agent stages duplicate_of fabro-c2ca (async variant fabro-cf03); planner step renumber duplicate_of fabro-890d.\",\"Sequence the park-probe finding before relying on reasoning-effort savings: the planner journaled that the next run parks until backlog assignment is curated, so #2's numbers depend on that curation.\",\"Target run was healthy (210 s wall, $0.178, zero retries, seed fabro-5e09 approved and closed via PR #38) — this is a marker-plus-2-findings revision, not a repair pass.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XZPWJMRXB4PQJYTVANFVJG\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:16:58Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-d5fd cross-references fabro-5e09 as complementary (same mechanism area, different files) — nothing superseded\",\"marker commit is 79f6218, one commit ahead of basis commit 6677e20 due to the seeds+marker commit itself\"]}}\ndiff --git a/.fabro/revisions/01M1XZCWNBR33BZGHQXNRA80J9.md b/.fabro/revisions/01M1XZCWNBR33BZGHQXNRA80J9.md\nnew file mode 100644\nindex 0000000..cfc92f1\n--- /dev/null\n+++ b/.fabro/revisions/01M1XZCWNBR33BZGHQXNRA80J9.md\n@@ -0,0 +1,29 @@\n+# Revision — run 01M1XZCWNBR33BZGHQXNRA80J9\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M1XZCWNBR33BZGHQXNRA80J9.md\n+- seeds filed: fabro-bbbb — Develop planner: drop reasoning_effort from high to low for first-pass claims; fabro-d5fd — Develop planner: probe unfiltered sd list before parking on an empty assignee-filtered view\n+- basis: run 01M1XZCWNBR33BZGHQXNRA80J9, workflow version 2232aaf05c7a93b3557b65ef13543486edcf917d0a735f9cb430280339b647a2, commit 6677e200fb8d35e90c2a554bdebe0edc69340394\n+- revised_at_commit: 6677e200fb8d35e90c2a554bdebe0edc69340394 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Develop planner: drop reasoning_effort from high to low for first-pass claims — filed fabro-bbbb\n+\n+Planner was the most expensive stage of the run (83.6 s wall = 40% of run, $0.080 = 45% of cost,\n+4,469 of 5,899 reasoning tokens), mostly tie-breaking two High seeds. With the deterministic\n+assignee filter shipped in fabro-5e09 (PR #38), that reasoning is wasted. Change: set\n+`reasoning_effort=\"low\"` on the planner node at `.fabro/workflows/develop/workflow.fabro:49`\n+(keep high semantics for changes_requested re-plans if conditional effort isn't available;\n+re-measure one run). Expected effect: ~$0.03–0.05 and 20–40 s off every claim pass.\n+\n+### Develop planner: probe unfiltered sd list before parking on an empty assignee-filtered view — filed fabro-d5fd\n+\n+The run's implementer smoke test showed `sd ready --assignee nonexistentuser` exits 0 with\n+\"No ready issues.\" — byte-identical to a legitimately empty pool — so a typo'd or renamed\n+assignee silently parks the line forever under the new park semantics. Change: in the\n+FAIL-CLOSED paragraph at `.fabro/workflows/develop/prompts/planner.md:46`, before routing\n+Tracker empty, run one unfiltered `sd list --limit 5` probe; if open seeds exist but the\n+filtered view is empty, journal \"park: N open seeds, none assigned to fabro\" so the terminal\n+Slack notification shows a cause. Cross-references fabro-5e09 (complementary, not superseding).\n+Expected effect: converts a silent permanent outage into a visible, diagnosable park.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex fba1c51..ce4ef14 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -240,3 +240,5 @@\n {\"id\":\"fabro-21c0\",\"title\":\"Port the workaround-is-a-painpoint clause to the implementer prompt's journal section\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T12:40:23.778Z\",\"updatedAt\":\"2026-09-07T12:40:23.778Z\",\"description\":\"The run's single most expensive friction (the 7.1-min validation cold build) was journaled under observations with a complete fix idea, not under painpoints — the improve loop that scans journals missed it as a result. The reviewer prompt already says 'a workaround you performed is a painpoint, not an observation'; the implementer prompt's journal definition ('dev-loop friction in platform assets') lacks the clause. Change .fabro/workflows/develop/prompts/implementer.md Journal section to add the same clause. Expected effect: cost-bearing friction reliably lands as painpoints; fix ideas like the validate-workflows recipe (fabro-513e) get filed at correct priority without a human rereading observations. Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-59b0\",\"title\":\"Extend the mechanical-edit rule to comment blocks and fix the duplicated phrase in the Evidence node comment\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T12:40:35.095Z\",\"updatedAt\":\"2026-09-07T12:40:35.095Z\",\"description\":\"The diff introduced a duplicated phrase in the Evidence node comment ('…what the read-only reviewer needs. of what the read-only reviewer needs.'), flagged as a non-blocking nit and shipped (reviewer journal obs 3) — a hand-edit slip in a large comment rewrite; closed seed fabro-37a6's mechanical-transform rule covers code only. Fix the one-word duplication in .fabro/workflows/develop/workflow.fabro (Evidence node comment) with the next loop-touching seed, and extend .fabro/workflows/develop/prompts/implementer.md step 4 so comment-block rewrites get the same one-pass sed + grep-anchor check. Expected effect: recurrence prevented at negligible cost. Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-5e09\",\"title\":\"Develop planner: pick only seeds assigned to fabro (sd ready --assignee fabro) — deterministic line/user ownership split\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T12:16:32.837Z\",\"updatedAt\":\"2026-09-07T13:07:20.678Z\",\"assignee\":\"fabro\",\"description\":\"GRILL SETTLED 2026-09-07 (user decisions in session):\\n\\nDECIDED: (D1) The assignee filter for the develop workflow is APPROVED — 'sd ready --assignee fabro' becomes the planner's candidate source. (D2) The REVISOR ASSIGNS NOBODY: filing seeds is its job, ownership is NOT — revisor-filed seeds land UNASSIGNED in the backlog. (D3) Who executes a seed is decided JOINTLY by user + agent (cycle report / grill / chat is the forum; the agent's @fabro assignment is a proposal the user can veto by reassigning anytime). (D4) Fail-closed default (Opt-in): nothing belongs to the line until @fabro is explicitly set. (D5) Emergency channel stays as the standing user directive: when the line/engine is DOWN the agent repairs directly with the user's knowledge (no seed picker involved); the seed is filed retroactively for documentation. No emergency self-service class exists for the revisor or the line.\\n\\nMECHANISM (line implements, from D1): (1) develop planner prompt candidate source: 'sd ready --assignee fabro --limit 200' (CLI pre-filters — the LLM never sees unassigned/user-owned seeds); (2) goal fast-path honors a named seed id ONLY when assignee is fabro; (3) claim: 'sd update <id> --status in_progress --assignee fabro'; (4) Tracker-empty on the filtered view = legitimate end of work (park) — while the backlog is unassigned the line does NOTHING rather than something; (5) docs/agents/issue-tracker.md documents: assignee is the ownership switch; filers (agent, revisor) file UNASSIGNED; assignment is a joint user+agent decision recorded in the cycle report; (6) revisor seed-intake prompt: remove any language implying the revisor decides execution — it only files.\\n\\nOWNERSHIP (user decides, NOT the implementer): the existing backlog assignment list is a user+agent joint decision (category proposal from the agent, approval by the user); NO bulk-assign by the develop run. Sentinels (fabro-919b/fabro-80cc) stay until mechanism landed AND backlog curated.\\n\\nAcceptance: planner prompt ships the filtered command; an unassigned or user-assigned open seed never appears in develop candidates; empty filtered view parks; revisor files unassigned; docs updated; ownership list untouched by the implementer.\",\"labels\":[\"workflows\",\"revision\"]}\n+{\"id\":\"fabro-d5fd\",\"title\":\"Develop planner: probe unfiltered sd list before parking on an empty assignee-filtered view\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T13:16:29.219Z\",\"updatedAt\":\"2026-09-07T13:16:29.219Z\",\"description\":\"This run's implementer smoke test showed 'sd ready --assignee nonexistentuser' exits 0 with \\\"No ready issues.\\\" — byte-identical to a legitimately empty pool — so under the new park semantics a typo'd or renamed assignee silently parks the line forever. Change: in the FAIL-CLOSED paragraph at .fabro/workflows/develop/prompts/planner.md:46, before routing Tracker empty, run one unfiltered 'sd list --limit 5' probe; if open seeds exist but the filtered view is empty, journal \\\"park: N open seeds, none assigned to fabro\\\" so the terminal Slack notification shows a cause. Effect: converts a silent permanent outage into a visible, diagnosable park; zero added cost in normal runs. Related: fabro-5e09 (the assignee filter this builds on).\\nBasis: run 01M1XZCWNBR33BZGHQXNRA80J9, workflow version 2232aaf05c7a93b3557b65ef13543486edcf917d0a735f9cb430280339b647a2, commit 6677e200fb8d35e90c2a554bdebe0edc69340394\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-bbbb\",\"title\":\"Develop planner: drop reasoning_effort from high to low for first-pass claims\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T13:16:29.325Z\",\"updatedAt\":\"2026-09-07T13:16:29.325Z\",\"description\":\"In run 01M1XZCWNBR33BZGHQXNRA80J9 the planner was the most expensive stage (83.6 s wall = 40% of run, $0.080 = 45% of cost, 4,469 of 5,899 reasoning tokens), mostly tie-breaking two High seeds. The assignee filter this run shipped (fabro-5e09, PR #38) makes 'sd ready --assignee fabro' deterministic, so the tie-break reasoning is wasted. Change: set reasoning_effort=\\\"low\\\" on the planner node at .fabro/workflows/develop/workflow.fabro:49 (keep high semantics for changes_requested re-plans if conditional effort isn't available; re-measure one run). Effect: ~$0.03-0.05 and 20-40 s off every claim pass.\\nBasis: run 01M1XZCWNBR33BZGHQXNRA80J9, workflow version 2232aaf05c7a93b3557b65ef13543486edcf917d0a735f9cb430280339b647a2, commit 6677e200fb8d35e90c2a554bdebe0edc69340394\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 76,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T13:17:03.272150872Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 485840,
+      "inference_time_ms": 288667,
+      "tool_time_ms": 179238,
+      "active_time_ms": 467905
+    },
+    "final_git_commit_sha": "8ab320b74cb6cde8e45d6bef5d86380317faf3f4",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 26212,
+          "inference_time_ms": 23639,
+          "tool_time_ms": 2005,
+          "active_time_ms": 25644
+        },
+        "billing_usd_micros": 51057,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 397215,
+          "inference_time_ms": 220503,
+          "tool_time_ms": 176127,
+          "active_time_ms": 396630
+        },
+        "billing_usd_micros": 97069,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 46149,
+          "inference_time_ms": 44525,
+          "tool_time_ms": 1106,
+          "active_time_ms": 45631
+        },
+        "billing_usd_micros": 48954,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 68847,
+      "output_tokens": 5359,
+      "total_tokens": 262575,
+      "reasoning_tokens": 6801,
+      "cache_read_tokens": 181568,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 197080
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1XZPWJMRXB4PQJYTVANFVJG.jsonl b/.fabro/journal/01M1XZPWJMRXB4PQJYTVANFVJG.jsonl\nnew file mode 100644\nindex 0000000..6b054b9\n--- /dev/null\n+++ b/.fabro/journal/01M1XZPWJMRXB4PQJYTVANFVJG.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XZPWJMRXB4PQJYTVANFVJG\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:08:09Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XZPWJMRXB4PQJYTVANFVJG\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:08:39Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected newest develop run; 7 older develop runs are stale-evidence (version drift from baseline 2232aaf0), all 5 merge-upstream runs are stale-evidence vs their 5a4438be baseline, 12 runs lack live sandbox; no active develop run observed\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XZPWJMRXB4PQJYTVANFVJG\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:16:02Z\",\"data\":{\"painpoints\":[{\"text\":\"`sd list --format compact` output omitted open seeds that `sd search` finds (fabro-8d2c, fabro-4881, fabro-c2ca, fabro-890d were all absent from the list but open per search) — a list-only tracker check in this pass would have re-filed 4 duplicates; fix idea: raise or remove the list cap, and make the revisor prompt rely on per-theme sd search as the primary duplicate check.\"}],\"observations\":[\"Withheld 4 of 6 analyst recommendations as duplicates of open seeds: preamble_budget_kb 24→32 duplicate_of fabro-8d2c (related variants fabro-35ab, fabro-cf3e); conditional sd-show re-fetch duplicate_of fabro-4881 (partially covered by fabro-a67f); metadata-snapshot skip on non-agent stages duplicate_of fabro-c2ca (async variant fabro-cf03); planner step renumber duplicate_of fabro-890d.\",\"Sequence the park-probe finding before relying on reasoning-effort savings: the planner journaled that the next run parks until backlog assignment is curated, so #2's numbers depend on that curation.\",\"Target run was healthy (210 s wall, $0.178, zero retries, seed fabro-5e09 approved and closed via PR #38) — this is a marker-plus-2-findings revision, not a repair pass.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1XZPWJMRXB4PQJYTVANFVJG\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T13:16:58Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-d5fd cross-references fabro-5e09 as complementary (same mechanism area, different files) — nothing superseded\",\"marker commit is 79f6218, one commit ahead of basis commit 6677e20 due to the seeds+marker commit itself\"]}}\ndiff --git a/.fabro/reviews/develop/01M1XZCWNBR33BZGHQXNRA80J9.md b/.fabro/reviews/develop/01M1XZCWNBR33BZGHQXNRA80J9.md\nnew file mode 100644\nindex 0000000..b2dc6c7\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M1XZCWNBR33BZGHQXNRA80J9.md\n@@ -0,0 +1,41 @@\n+# Improve review — run 01M1XZCWNBR33BZGHQXNRA80J9\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (4.1 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-07 13:12+0000 by revisor `fabro_ask`\n+\n+---\n+\n+All evidence below is from this run's events, worker logs, stage journals, and the workspace files on `fabro/run/01M1XZCWNBR33BZGHQXNRA80J9` (seed `fabro-5e09`, approved and closed; PR #38). Run totals: 210 s wall, $0.178, zero retries — the loop is healthy, so these are incremental, ranked by expected impact.\n+\n+**1. Raise the graph preamble budget 24→32 KB — `.fabro/workflows/develop/workflow.fabro:16` (`preamble_budget_kb`).**\n+What happened: the 10.7 KB evidence capture was demoted to a blob ref even though it's under the reviewer's 16 KB per-key cap, because the *aggregate* 24 KB budget (prompt + seed brief + implementation summary + capture) was exceeded. The reviewer's first LLM turn (11.9k input tokens, $0.018, ~13 s — 58% of its $0.031 stage cost) existed only to decide-and-read the blob; its journal painpoint names exactly this. Context usage was 1.4% of the 1M window — the budget is the constraint, not the window (the file's own comment at the graph attr admits \"the blob detour is\").\n+Change: `preamble_budget_kb=32` (matches open seeds fabro-8d2c/fabro-cf3e).\n+Effect: capture renders inline every run — saves ~13 s and ~$0.02 per review and removes the unread-blob → Verification-blocked cycle risk.\n+\n+**2. Drop planner `reasoning_effort` from high to low for first-pass claims — `workflow.fabro:49`.**\n+What happened: the planner was the most expensive stage (83.6 s wall = 40% of run; $0.080 = 45% of cost; 4,469 of the run's 5,899 reasoning tokens), and the reasoning trace shows most of it was the tie-break between two High seeds (`fabro-513e` vs `fabro-5e09`). The assignee filter this run just shipped makes that decision deterministic — `sd ready --assignee fabro` currently returns exactly one seed.\n+Change: `reasoning_effort=\"low\"` on the planner (keep high semantics for `changes_requested` re-plans if conditional effort isn't available; re-measure one run).\n+Effect: roughly $0.03–0.05 and 20–40 s off every claim pass once the backlog is curated.\n+\n+**3. Make \"empty filtered view\" distinguishable from a broken assignee string — `.fabro/workflows/develop/prompts/planner.md:46` (the FAIL-CLOSED paragraph this run added).**\n+What happened: the implementer's live smoke test showed `sd ready --assignee nonexistentuser` exits 0 with \"No ready issues.\" — byte-identical to a legitimately empty pool (implementer journal observation). Combined with the new park semantics, a typo'd or renamed assignee silently parks the line forever.\n+Change: one sentence in that paragraph — before routing Tracker empty, run one unfiltered `sd list --limit 5` probe; if open seeds exist but the filtered view is empty, journal \"park: N open seeds, none assigned to fabro\" so the terminal Slack notification shows a cause.\n+Effect: converts a silent permanent outage into a visible, diagnosable park; zero added cost in normal runs.\n+\n+**4. Gate the implementer's seed re-fetch on brief quality — `.fabro/workflows/develop/prompts/implementer.md`, step 1.**\n+What happened: step 1 mandates \"Re-read the seed requirements from `sd show`\" unconditionally; this run's brief already carried every criterion plus resolved ambiguities, so the `sd show` call and its LLM turn (events seq 92–97, ~7 s, ~$0.016) duplicated context the planner had already distilled.\n+Change: \"re-fetch via `sd show` only if the brief is thin or a criterion is ambiguous.\"\n+Effect: one fewer LLM round-trip per implementer pass (~7 s, ~$0.01–0.02). (Open seed fabro-4881 already proposes this; this run supplies the evidence.)\n+\n+**5. Skip metadata snapshots on deterministic command stages — engine checkpoint path (tracer: `fabro_workflow::event::events: Metadata snapshot completed`; open seed fabro-c2ca).**\n+What happened: worker logs show 8 metadata snapshots at 1.68–2.05 s each (~14 s serial) plus a per-stage git push, on a run where tester (5.4 s, \"no crates touched\"), evidence (0.5 s), and closeout (0.3 s) contributed nothing snapshot-worthy beyond one journal line each.\n+Change: snapshot only after agent stages (planner, implementer, reviewer).\n+Effect: ~7–10 s (~4–5%) off every run's wall time.\n+\n+**6. Renumber the duplicate step \"4.\" — `planner.md:37` (→ \"5.\", renumber the current 5 → 6).**\n+What happened: the reviewer flagged the pre-existing duplicate (\"4. Claim it\" at line 36 followed by \"4. Write the implementation brief\" at line 37); this run edited line 36 and left the duplicate. Any future instruction citing \"step 4\" is ambiguous between claiming and brief-writing.\n+Change: one-line renumber. Effect: removes an ambiguity in the most load-bearing prompt file. (Open seed fabro-890d.)\n+\n+Not recommended (already working): the tester gate — 5.4 s because it correctly detected \"no crates touched\"; and the journal loop — every stage reported, and the reviewer's painpoint is literally recommendation #1 arriving through the designed channel. One caveat: #2's savings depend on the user curating backlog assignment (the planner journaled that the next run will park until then), so sequence #3 before relying on #2's numbers.\ndiff --git a/.fabro/revisions/01M1XZCWNBR33BZGHQXNRA80J9.md b/.fabro/revisions/01M1XZCWNBR33BZGHQXNRA80J9.md\nnew file mode 100644\nindex 0000000..cfc92f1\n--- /dev/null\n+++ b/.fabro/revisions/01M1XZCWNBR33BZGHQXNRA80J9.md\n@@ -0,0 +1,29 @@\n+# Revision — run 01M1XZCWNBR33BZGHQXNRA80J9\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M1XZCWNBR33BZGHQXNRA80J9.md\n+- seeds filed: fabro-bbbb — Develop planner: drop reasoning_effort from high to low for first-pass claims; fabro-d5fd — Develop planner: probe unfiltered sd list before parking on an empty assignee-filtered view\n+- basis: run 01M1XZCWNBR33BZGHQXNRA80J9, workflow version 2232aaf05c7a93b3557b65ef13543486edcf917d0a735f9cb430280339b647a2, commit 6677e200fb8d35e90c2a554bdebe0edc69340394\n+- revised_at_commit: 6677e200fb8d35e90c2a554bdebe0edc69340394 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Develop planner: drop reasoning_effort from high to low for first-pass claims — filed fabro-bbbb\n+\n+Planner was the most expensive stage of the run (83.6 s wall = 40% of run, $0.080 = 45% of cost,\n+4,469 of 5,899 reasoning tokens), mostly tie-breaking two High seeds. With the deterministic\n+assignee filter shipped in fabro-5e09 (PR #38), that reasoning is wasted. Change: set\n+`reasoning_effort=\"low\"` on the planner node at `.fabro/workflows/develop/workflow.fabro:49`\n+(keep high semantics for changes_requested re-plans if conditional effort isn't available;\n+re-measure one run). Expected effect: ~$0.03–0.05 and 20–40 s off every claim pass.\n+\n+### Develop planner: probe unfiltered sd list before parking on an empty assignee-filtered view — filed fabro-d5fd\n+\n+The run's implementer smoke test showed `sd ready --assignee nonexistentuser` exits 0 with\n+\"No ready issues.\" — byte-identical to a legitimately empty pool — so a typo'd or renamed\n+assignee silently parks the line forever under the new park semantics. Change: in the\n+FAIL-CLOSED paragraph at `.fabro/workflows/develop/prompts/planner.md:46`, before routing\n+Tracker empty, run one unfiltered `sd list --limit 5` probe; if open seeds exist but the\n+filtered view is empty, journal \"park: N open seeds, none assigned to fabro\" so the terminal\n+Slack notification shows a cause. Cross-references fabro-5e09 (complementary, not superseding).\n+Expected effect: converts a silent permanent outage into a visible, diagnosable park.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex fba1c51..ce4ef14 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -240,3 +240,5 @@\n {\"id\":\"fabro-21c0\",\"title\":\"Port the workaround-is-a-painpoint clause to the implementer prompt's journal section\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T12:40:23.778Z\",\"updatedAt\":\"2026-09-07T12:40:23.778Z\",\"description\":\"The run's single most expensive friction (the 7.1-min validation cold build) was journaled under observations with a complete fix idea, not under painpoints — the improve loop that scans journals missed it as a result. The reviewer prompt already says 'a workaround you performed is a painpoint, not an observation'; the implementer prompt's journal definition ('dev-loop friction in platform assets') lacks the clause. Change .fabro/workflows/develop/prompts/implementer.md Journal section to add the same clause. Expected effect: cost-bearing friction reliably lands as painpoints; fix ideas like the validate-workflows recipe (fabro-513e) get filed at correct priority without a human rereading observations. Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-59b0\",\"title\":\"Extend the mechanical-edit rule to comment blocks and fix the duplicated phrase in the Evidence node comment\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T12:40:35.095Z\",\"updatedAt\":\"2026-09-07T12:40:35.095Z\",\"description\":\"The diff introduced a duplicated phrase in the Evidence node comment ('…what the read-only reviewer needs. of what the read-only reviewer needs.'), flagged as a non-blocking nit and shipped (reviewer journal obs 3) — a hand-edit slip in a large comment rewrite; closed seed fabro-37a6's mechanical-transform rule covers code only. Fix the one-word duplication in .fabro/workflows/develop/workflow.fabro (Evidence node comment) with the next loop-touching seed, and extend .fabro/workflows/develop/prompts/implementer.md step 4 so comment-block rewrites get the same one-pass sed + grep-anchor check. Expected effect: recurrence prevented at negligible cost. Basis: run 01M1XVXF3MJHD0DXVCA7YXDH9G, workflow version 8afe037fc8c61680097f808a27f66ee20da8b546373f6e6e69ad4a09aee94a98, commit 9655d15457db349b4920de1f37eb76338e43eab9\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-5e09\",\"title\":\"Develop planner: pick only seeds assigned to fabro (sd ready --assignee fabro) — deterministic line/user ownership split\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T12:16:32.837Z\",\"updatedAt\":\"2026-09-07T13:07:20.678Z\",\"assignee\":\"fabro\",\"description\":\"GRILL SETTLED 2026-09-07 (user decisions in session):\\n\\nDECIDED: (D1) The assignee filter for the develop workflow is APPROVED — 'sd ready --assignee fabro' becomes the planner's candidate source. (D2) The REVISOR ASSIGNS NOBODY: filing seeds is its job, ownership is NOT — revisor-filed seeds land UNASSIGNED in the backlog. (D3) Who executes a seed is decided JOINTLY by user + agent (cycle report / grill / chat is the forum; the agent's @fabro assignment is a proposal the user can veto by reassigning anytime). (D4) Fail-closed default (Opt-in): nothing belongs to the line until @fabro is explicitly set. (D5) Emergency channel stays as the standing user directive: when the line/engine is DOWN the agent repairs directly with the user's knowledge (no seed picker involved); the seed is filed retroactively for documentation. No emergency self-service class exists for the revisor or the line.\\n\\nMECHANISM (line implements, from D1): (1) develop planner prompt candidate source: 'sd ready --assignee fabro --limit 200' (CLI pre-filters — the LLM never sees unassigned/user-owned seeds); (2) goal fast-path honors a named seed id ONLY when assignee is fabro; (3) claim: 'sd update <id> --status in_progress --assignee fabro'; (4) Tracker-empty on the filtered view = legitimate end of work (park) — while the backlog is unassigned the line does NOTHING rather than something; (5) docs/agents/issue-tracker.md documents: assignee is the ownership switch; filers (agent, revisor) file UNASSIGNED; assignment is a joint user+agent decision recorded in the cycle report; (6) revisor seed-intake prompt: remove any language implying the revisor decides execution — it only files.\\n\\nOWNERSHIP (user decides, NOT the implementer): the existing backlog assignment list is a user+agent joint decision (category proposal from the agent, approval by the user); NO bulk-assign by the develop run. Sentinels (fabro-919b/fabro-80cc) stay until mechanism landed AND backlog curated.\\n\\nAcceptance: planner prompt ships the filtered command; an unassigned or user-assigned open seed never appears in develop candidates; empty filtered view parks; revisor files unassigned; docs updated; ownership list untouched by the implementer.\",\"labels\":[\"workflows\",\"revision\"]}\n+{\"id\":\"fabro-d5fd\",\"title\":\"Develop planner: probe unfiltered sd list before parking on an empty assignee-filtered view\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T13:16:29.219Z\",\"updatedAt\":\"2026-09-07T13:16:29.219Z\",\"description\":\"This run's implementer smoke test showed 'sd ready --assignee nonexistentuser' exits 0 with \\\"No ready issues.\\\" — byte-identical to a legitimately empty pool — so under the new park semantics a typo'd or renamed assignee silently parks the line forever. Change: in the FAIL-CLOSED paragraph at .fabro/workflows/develop/prompts/planner.md:46, before routing Tracker empty, run one unfiltered 'sd list --limit 5' probe; if open seeds exist but the filtered view is empty, journal \\\"park: N open seeds, none assigned to fabro\\\" so the terminal Slack notification shows a cause. Effect: converts a silent permanent outage into a visible, diagnosable park; zero added cost in normal runs. Related: fabro-5e09 (the assignee filter this builds on).\\nBasis: run 01M1XZCWNBR33BZGHQXNRA80J9, workflow version 2232aaf05c7a93b3557b65ef13543486edcf917d0a735f9cb430280339b647a2, commit 6677e200fb8d35e90c2a554bdebe0edc69340394\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-bbbb\",\"title\":\"Develop planner: drop reasoning_effort from high to low for first-pass claims\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T13:16:29.325Z\",\"updatedAt\":\"2026-09-07T13:16:29.325Z\",\"description\":\"In run 01M1XZCWNBR33BZGHQXNRA80J9 the planner was the most expensive stage (83.6 s wall = 40% of run, $0.080 = 45% of cost, 4,469 of 5,899 reasoning tokens), mostly tie-breaking two High seeds. The assignee filter this run shipped (fabro-5e09, PR #38) makes 'sd ready --assignee fabro' deterministic, so the tie-break reasoning is wasted. Change: set reasoning_effort=\\\"low\\\" on the planner node at .fabro/workflows/develop/workflow.fabro:49 (keep high semantics for changes_requested re-plans if conditional effort isn't available; re-measure one run). Effect: ~$0.03-0.05 and 20-40 s off every claim pass.\\nBasis: run 01M1XZCWNBR33BZGHQXNRA80J9, workflow version 2232aaf05c7a93b3557b65ef13543486edcf917d0a735f9cb430280339b647a2, commit 6677e200fb8d35e90c2a554bdebe0edc69340394\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 76,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2026,6 +2112,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 162,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T13:17:03.223415450Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T13:17:03.223185811Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
