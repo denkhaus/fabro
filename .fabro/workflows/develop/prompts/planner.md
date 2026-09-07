@@ -22,18 +22,18 @@ The engine maintains `seed_cycles` deterministically: `{ node -> completed visit
 
 | Command | Purpose |
 |---|---|
-| `sd ready --limit 200` | Unblocked open seeds — start here. If it answers the question, do NOT also run `sd list`. ALWAYS pass `--limit 200`: the default limit 50 silently truncates lower-priority seeds out of the listing (fabro-c16d). |
-| `sd list --format json --limit 200` | Full tracker picture (only when `sd ready` was not enough). Same limit rule as `sd ready`. |
+| `sd ready --assignee fabro --limit 200` | Unblocked open seeds ASSIGNED TO fabro — start here, and the ONLY candidate source: the develop line works exclusively on seeds the user assigned to fabro (assignee is the ownership switch, see `docs/agents/issue-tracker.md`). If it answers the question, do NOT also run `sd list`. ALWAYS pass `--limit 200`: the default limit 50 silently truncates lower-priority seeds out of the listing (fabro-c16d). |
+| `sd list --format json --assignee fabro --limit 200` | Full tracker picture, still filtered to fabro-assigned seeds only (only when `sd ready` was not enough). Same limit rule as `sd ready`. NEVER list without the `--assignee fabro` filter: unassigned or user-owned seeds are not the line's business. |
 | `sd show <id> --format json` | One seed in full (the supported path — never parse `.seeds/issues.jsonl` by hand). |
-| `sd update <id> --status <status>` | Claim / re-status. Takes NO `--format` flag (observed failure, run 01M0T9B7T6: `unknown option '--format'`). |
+| `sd update <id> --status in_progress --assignee fabro` | Claim (the exact claim form). Takes NO `--format` flag (observed failure, run 01M0T9B7T6: `unknown option '--format'`). |
 | `sd close <id>` | NEVER yours — the deterministic Closeout step closes approved seeds. Do not run it. |
 
 ## Plan the next seed
 
-1. FAST-PATH: first check the `<goal>` text for a seed id (e.g. fabro-37a6). When one is named, the FIRST tracker call is `sd show <id> --format json`, not `sd ready`; judge resolution from the JSON `success` field / issue body, NOT the process exit code (seeds-cli exits 0 on errors, fabro-d936). If the resolved seed is open and unblocked, continue at step 2 with it. Otherwise — goal names no seed id, the id does not resolve, or the seed cannot be claimed (closed or blocked) — run `sd ready --limit 200` to list unblocked open seeds; `sd list --format json --limit 200` for the full picture if needed (do NOT also run `sd list` when `sd ready` suffices).
+1. FAST-PATH: first check the `<goal>` text for a seed id (e.g. fabro-37a6). When one is named, the FIRST tracker call is `sd show <id> --format json`, not `sd ready`; judge resolution from the JSON `success` field / issue body, NOT the process exit code (seeds-cli exits 0 on errors, fabro-d936). A named seed is honored ONLY when its JSON `assignee` is exactly `fabro` AND it is open and unblocked — continue at step 2 with it. A named-but-unassigned seed, one assigned to someone else, one that does not resolve, or one that cannot be claimed (closed or blocked) must NOT be claimed: fall through and run `sd ready --assignee fabro --limit 200` to list unblocked fabro-assigned seeds; `sd list --format json --assignee fabro --limit 200` for the full picture if needed (do NOT also run `sd list` when `sd ready` suffices). The user naming a seed in the goal is a request, not an override of their ownership decision — if they wanted the line to take it, they would have assigned it to fabro.
 2. Pick the highest-priority unblocked seed that serves the goal. If two compete, prefer the one with fewest blockers.
 3. STALE-BASIS CHECK (ADR-0015): before claiming, read the seed body for its `Basis:` line (source run id, workflow version, repo commit). Open the referenced files/prompts in the CURRENT worktree: if the behavior the seed describes no longer exists, already changed, or the finding is moot against the current tree, the seed is superseded — close it with `sd close <id> --reason "superseded: basis stale (<what changed>)"` and pick the next candidate. Never implement a seed whose basis does not resolve. When a seed's `Basis:` references platform paths (`.fabro/**` etc.), open them through the shell — fs_hide binds tool calls only, so read_file fails while sed/grep/cat succeed; never burn tool calls discovering the denial. Seeds without a Basis line are legacy (pre-2026-09-05): judge them the same way against the current tree before claiming.
-4. Claim it: `sd update <id> --status in_progress`.
+4. Claim it: `sd update <id> --status in_progress --assignee fabro`.
 4. Write the implementation brief into the context as BULLETED acceptance criteria, not prose: seed id, title, then one bullet per requirement, plus review feedback if this is a re-plan. Bullets are cheaper to re-read, harder to misparse, and the reviewer and the implementer's PASS/FAIL report check them item-by-item. Shape each bullet as a checkable statement, e.g.:
 
    - `-pretty flag: aligned column output, combines with -json`
@@ -43,7 +43,7 @@ The engine maintains `seed_cycles` deterministically: `{ node -> completed visit
 
 If the top candidate looks already implemented (its acceptance criteria appear satisfied in the worktree — often a stale tracker from an earlier run), do NOT close it yourself and do NOT skip it. Claim it normally and mark the brief as verification-only (see below). The normal cycle then proves it: implementer verifies, gate runs, reviewer approves. Only an approved review closes a seed.
 
-If `sd ready` returns nothing and no seed is in progress for this effort, the tracker is empty — route Tracker empty instead of inventing work.
+If `sd ready --assignee fabro --limit 200` returns nothing and no fabro-assigned seed is in progress for this effort, the FILTERED view is empty — that is a legitimate park, not a broken tracker. Route Tracker empty. NEVER fall back to unassigned seeds and never invent work: while the backlog is unassigned the line does nothing rather than something (FAIL-CLOSED). Assigning backlog seeds is the user's decision (see `docs/agents/issue-tracker.md`), never yours.
 
 Do not implement anything yourself. Do not review. Planning and tracker writes only.
 
