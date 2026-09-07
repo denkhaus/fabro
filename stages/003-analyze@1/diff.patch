@@ -1,0 +1,56 @@
+diff --git a/.fabro/journal/01M1XXS4T13GQS8XKA3FX25D8D.jsonl b/.fabro/journal/01M1XXS4T13GQS8XKA3FX25D8D.jsonl
+index 09ed80a..bcca8c9 100644
+--- a/.fabro/journal/01M1XXS4T13GQS8XKA3FX25D8D.jsonl
++++ b/.fabro/journal/01M1XXS4T13GQS8XKA3FX25D8D.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1XXS4T13GQS8XKA3FX25D8D","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T12:34:26Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1XXS4T13GQS8XKA3FX25D8D","node":"select","visit":1,"status":"succeeded","ts":"2026-09-07T12:34:46Z","data":{"painpoints":[],"observations":["Backlog after this pass: 5 more unrevised fresh live-sandbox develop runs (01M1XE69..., 01M1XCHJT..., 01M1W38BM9..., 01M1W1HHCE..., 01M1VZTJSZ...) plus 4 merge-upstream baseline runs (newest 01M1VJ4TE...); ~20 develop runs stale-evidence (version drift or pre-intent), 16 older develop runs no live sandbox (fabro-8d30a)"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1XXS4T13GQS8XKA3FX25D8D","node":"analyze","visit":1,"status":"succeeded","ts":"2026-09-07T12:39:21Z","data":{"painpoints":[],"observations":["Duplicates withheld from filing (tracker check per fabro-7461 fix): analyst rec 2 (raise preamble_inline_max_kb 16→32 AND preamble_budget_kb 24→32) duplicate_of open seeds fabro-cf3e + fabro-8d2c — exact same knobs already tracked; analyst rec 6 (top-N sd ready listing) duplicate_of open seed fabro-c3b4 — exact match.","Analyst rec 3 (churn annotation) kept despite overlap: different mechanism than open fabro-1e9f (diff base change) and open fabro-93a7 (seed-work classification); closed fabro-4b57 covered only the empty-loop-work-diff case.","The top finding (just validate-workflows) was already present in the target run's implementer journal under observations, not painpoints — surviving finding 4 (workaround-is-a-painpoint clause) fixes that intake gap upstream.","Backlog after this pass: 4 more unrevised fresh live-sandbox develop runs (01M1XE69..., 01M1XCHJT..., 01M1W38BM9..., 01M1W1HHCE...) plus 01M1VZTJSZ... and 4 merge-upstream baseline runs (newest 01M1VJ4TE...); ~20 develop runs still stale-evidence, 16 older runs no live sandbox (fabro-8d30a)."]}}
+diff --git a/.fabro/reviews/develop/01M1XVXF3MJHD0DXVCA7YXDH9G.md b/.fabro/reviews/develop/01M1XVXF3MJHD0DXVCA7YXDH9G.md
+new file mode 100644
+index 0000000..1635d56
+--- /dev/null
++++ b/.fabro/reviews/develop/01M1XVXF3MJHD0DXVCA7YXDH9G.md
+@@ -0,0 +1,42 @@
++# Improve review — run 01M1XVXF3MJHD0DXVCA7YXDH9G
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: succeeded (31.2 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-07 12:37+0000 by revisor `fabro_ask`
++
++---
++
++All evidence below is from this run's events, stage transcripts, and stage journals (run 01M1XVXF3MJHD0DXVCA7YXDH9G, seed fabro-56f4, succeeded in 28m15s active / $1.256 total; implementer = 22.5m wall and $1.084 — 86% of run cost; planner $0.119/220s; reviewer $0.053/80s; tester 5.7s; evidence 0.4s; closeout 0.3s; zero retries, zero warn/error log lines).
++
++## Recommendations, by expected impact
++
++**1. Add a `just validate-workflows` recipe (graph parse+lint without a Rust cold build) — file: `justfile` + a small nu wrapper around fabro-validate**
++What happened: to verify a pure workflow-graph edit, the implementer wrote a temporary integration test `lib/components/fabro-validate/tests/tmp_validate_develop.rs` and ran it — that single shell call took **427,565 ms (~7.1 min cold build)**, failed once on `unresolved_file_ref` (`@prompts/*.md` refs aren't resolved by raw parse+lint), got special-cased, re-run (2.9s warm), then deleted (from run events, seq 382–394). That one call is 427s of the stage's 445s tool time — ~25% of total run wall time — and it created a temp artifact that had to be manually removed. This exact fix was already proposed in the implementer journal but filed under `observations`, so the actionable step is: file it as a seed (or land it directly). The recipe must resolve workflow-relative `@`-refs (or scope out `unresolved_file_ref`) — that's the trap the temp test hit.
++Expected effect: ~7 minutes and the temp-file dance eliminated on every platform-targeting seed (most of the current tracker's High queue); implementer wall drops ~30% on this seed class.
++
++**2. Raise both inline caps together: reviewer `preamble_inline_max_kb` 16→32 AND graph `preamble_budget_kb` 24→32 — file: `.fabro/workflows/develop/workflow.fabro` (reviewer node + graph attrs; open seeds fabro-cf3e + fabro-8d2c)**
++What happened: this run's evidence capture was **20,932 bytes** and was demoted to a blob ref (`Output (21.1 KB; full value: /tmp/fabro/runtime/blobs/31b00…json)` in the reviewer's stage prompt, from run events). The reviewer had to burn a `read_file` round trip before judging (reviewer journal: "Verified all … from the blob evidence"). Raising only the per-node knob to 32 won't help while the aggregate budget stays 24 KB — a 21 KB capture plus the other preamble sections still trips the aggregate demote.
++Expected effect: captures up to ~30 KB arrive inline; one fewer tool round trip per review and the "unread blob ref → Verification blocked" rejection class disappears (that route costs a full evidence re-cycle when it fires).
++
++**3. Annotate no-net-diff churn files in the evidence capture — file: `.fabro/workflows/develop/scripts/evidence.nu`**
++What happened: the loop-work diff omitted `.seeds/issues.jsonl` (+1/−1 churn), so the reviewer ran `git diff 31f7b88 -- .seeds/issues.jsonl` itself and found it empty — transient tracker status churn (reviewer journal, observation 2). Every run churns `issues.jsonl` on claim and close, so this manual fallback fires constantly.
++Expected effect: churn entries whose net diff vs the claim base is empty get marked "(transient, no net diff)" or dropped — removes the reviewer's manual git-diff fallback and the chance it escalates to a Verification-blocked cycle. (Complements open seed fabro-93a7, the seed-work side of the same classification problem.)
++
++**4. Planner briefs should inline load-bearing engine facts instead of citing file paths — file: `.fabro/workflows/develop/prompts/planner.md` (brief-shaping rule, step 5)**
++What happened: the planner spent ~4 minutes verifying engine mechanics (`stdin_source` ref resolution, `command.output`, custom `output.*` keys — reading `command.rs`, `context_keys.rs`; run events seq 65–91), then recorded them as two terse observations citing source paths. The implementer **re-derived the same mechanics anyway** (grep/read of `command.rs`, `graph.rs`, `preamble_allow_keys_exist.rs`, `context_keys.rs` at seq 147–226, minutes of the 15-minute inference), and only at the end distilled them into lesson mx-2eb2e0. The facts that mattered were narrow and stable: attr names, the brace-free-stderr constraint, the `output.<node_id>` key convention.
++Expected effect: when a brief depends on verified engine mechanics, 2–3 inlined facts (exact attribute names + constraints) replace the implementer's re-exploration — a direct cut into the stage that consumes 86% of run cost.
++
++**5. Port the "workaround = painpoint" clause to the implementer prompt — file: `.fabro/workflows/develop/prompts/implementer.md` (Journal section)**
++What happened: the single most expensive friction of the run (the 7-minute validation build, recommendation 1) was reported under `observations` with a complete fix idea, not under `painpoints`. The reviewer prompt explicitly says "a workaround you performed is a painpoint, not an observation"; the implementer prompt's definition ("dev-loop friction in platform assets") lacks that clause — and the implementer performed exactly that kind of workaround.
++Expected effect: the improve loop that scans journals reliably receives cost-bearing friction as painpoints; seeds like `validate-workflows` get filed with correct priority instead of depending on a human rereading observations.
++
++**6. Top-N the planner's seed listing — file: `.fabro/workflows/develop/prompts/planner.md` (sd command table; open seed fabro-c3b4)**
++What happened: `sd ready --limit 200` returned a ~12.3 KB firehose (100+ seeds, output truncated by the agent's own `head -100`; run events seq 33–34) — and the planner picked the **first** entry. The `--limit 200` rule exists to defeat truncation of *lower-priority* seeds, but the planner only ever needs the top few of a priority-ordered list.
++Expected effect: `sd ready --limit 200 | head -40` (documented in the prompt table) halves the planner's tracker context and trims its 220s/$0.119 pass without changing pick quality.
++
++**7. Fold the shipped cosmetic nit into the next loop-touching seed and extend the mechanical-edit rule to comment blocks — file: `.fabro/workflows/develop/workflow.fabro` (Evidence node comment) + `prompts/implementer.md` step 4**
++What happened: the diff introduced a duplicated phrase in the Evidence node comment ("…what the read-only reviewer needs. of what the read-only reviewer needs."), flagged by the reviewer as a non-blocking nit and shipped anyway (reviewer journal, observation 3) — a hand-edit slip in a large comment rewrite, the same class the mechanical-transform rule already guards for code.
++Expected effect: one-word fix lands with the next platform seed; the prompt tweak ("comment-block rewrites get the same one-pass sed + grep-anchor check") prevents recurrence at negligible cost.
++
++**What's already working (don't touch):** deterministic nodes are effectively free (tester 5.7s warm, evidence 0.4s, closeout 0.3s); first-pass approval with zero retries across all stages; the reviewer's inline PASS/FAIL report let it approve mostly from context (80s total). The cost and time concentration is entirely in the implementer stage — recommendations 1 and 4 are where the leverage is.
