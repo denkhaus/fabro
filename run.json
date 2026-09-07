@@ -485,7 +485,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-07T18:12:01.454573550Z",
-  "last_event_at": "2026-09-07T18:17:54.813399781Z",
+  "last_event_at": "2026-09-07T18:18:00.607244728Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -884,9 +884,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 185,
       "checkpoint": {
-        "timestamp": "2026-09-07T18:17:55.083188845Z",
+        "timestamp": "2026-09-07T18:17:59.310392567Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -896,7 +896,47 @@
         ],
         "node_retries": {},
         "context_values": {
+          "last_stage": "file",
+          "revisor_target_status": "succeeded",
+          "last_response": "Filed `fabro-8275` (no duplicates; `fabro-meta-c454` is thematic overlap only, cross-referenced), wrote the marker at `/workspace/fabro/.fabro/revisions/01M1YGJ7JSWAVWJT45DRDZ89Z6.md`, and committed e",
+          "internal.fidelity": "compact",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 657,
+            "preview": "Filed `fabro-8275` (no duplicates; `fabro-meta-c454` is thematic overlap only, cross-referenced), wrote the marker at `/workspace/fabro/.fabro/revisions/01M1YGJ7JSWAVWJT45DRDZ89Z6.md`, and committed e"
+          },
+          "outcome": "succeeded",
+          "internal.retry_count.select": 0,
+          "internal.node_visit_count": 1,
+          "failure_signature": "",
+          "filed_seed_ids": [
+            "fabro-8275"
+          ],
+          "graph.inspects": "develop,merge-upstream",
+          "thread.analyze.current_node": "file",
+          "internal.exit_kind": "natural",
+          "current_node": "file",
+          "graph.preamble_budget_kb": "24",
+          "internal.seed_cycle_anchor": "01M1YGJ7JSWAVWJT45DRDZ89Z6",
           "internal.retry_count.start": 0,
+          "preferred_label": "Staged",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.analyze": 0,
+          "internal.retry_count.file": 0,
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "thread.select.current_node": "analyze",
+          "graph.rankdir": "LR",
+          "internal.run_id": "01M1YH3BBSM6Z09S64HYN131DV",
+          "internal.thread_id": "analyze",
+          "failure_class": "",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 3007,
+            "preview": "Review persisted to `.fabro/reviews/develop/01M1YGJ7JSWAVWJT45DRDZ89Z6.md`; the ask succeeded on the first (and only) call. Tracker check shows 7 of 8 analyst recommendations duplicate already-open se"
+          },
           "revision_findings": [
             {
               "title": "Downgrade the by-design preamble allow-key absence warn to info",
@@ -904,69 +944,29 @@
               "priority": 2
             }
           ],
-          "internal.retry_count.file": 0,
-          "last_stage": "file",
+          "revisor_target_title": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "graph.max_node_visits": "30",
-          "internal.work_dir": "/workspace/fabro",
-          "response.analyze": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "chars": 3007,
-            "preview": "Review persisted to `.fabro/reviews/develop/01M1YGJ7JSWAVWJT45DRDZ89Z6.md`; the ask succeeded on the first (and only) call. Tracker check shows 7 of 8 analyst recommendations duplicate already-open se"
+          "revisor_target_wall": "7.7 min",
+          "revisor_target_workflow_version": "4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
           },
-          "revisor_target_status": "succeeded",
           "thread.start.current_node": "select",
-          "graph.rankdir": "LR",
           "response.select": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.select",
             "chars": 1413,
             "preview": "Candidate evaluation: develop baseline is `4ff76f32…` (from the newest develop run), merge-upstream baseline is `5a4438be…`. Five develop runs sit on the current baseline and none has a marker in "
           },
-          "failure_class": "",
-          "internal.exit_kind": "natural",
-          "internal.seed_cycle_anchor": "01M1YGJ7JSWAVWJT45DRDZ89Z6",
-          "internal.run_id": "01M1YH3BBSM6Z09S64HYN131DV",
-          "thread.select.current_node": "analyze",
-          "revisor_target_run_id": "01M1YGJ7JSWAVWJT45DRDZ89Z6",
-          "seed_cycles": {
-            "select": 1,
-            "analyze": 1,
-            "file": 1
-          },
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "current_node": "file",
-          "internal.thread_id": "analyze",
-          "internal.retry_count.select": 0,
-          "revisor_target_title": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "internal.retry_count.analyze": 0,
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "revisor_target_wall": "7.7 min",
-          "thread.analyze.current_node": "file",
-          "outcome": "succeeded",
-          "preferred_label": "Staged",
-          "graph.inspects": "develop,merge-upstream",
-          "filed_seed_ids": [
-            "fabro-8275"
-          ],
-          "internal.fidelity": "compact",
           "journal": {
             "painpoints": [],
             "observations": [
               "Seed dedup around preamble fidelity required reading fabro-meta-c454 and fabro-e47c closely — title keywords overlap heavily with the log-level finding; recorded the thematic-vs-supersession reasoning in the marker."
             ]
           },
-          "graph.preamble_budget_kb": "24",
-          "last_response": "Filed `fabro-8275` (no duplicates; `fabro-meta-c454` is thematic overlap only, cross-referenced), wrote the marker at `/workspace/fabro/.fabro/revisions/01M1YGJ7JSWAVWJT45DRDZ89Z6.md`, and committed e",
-          "internal.node_visit_count": 1,
-          "failure_signature": "",
-          "response.file": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.file",
-            "chars": 657,
-            "preview": "Filed `fabro-8275` (no duplicates; `fabro-meta-c454` is thematic overlap only, cross-referenced), wrote the marker at `/workspace/fabro/.fabro/revisions/01M1YGJ7JSWAVWJT45DRDZ89Z6.md`, and committed e"
-          },
-          "revisor_target_workflow_version": "4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10"
+          "revisor_target_run_id": "01M1YGJ7JSWAVWJT45DRDZ89Z6"
         },
         "node_outcomes": {
           "file": {
@@ -1088,6 +1088,10 @@
               "active_time_ms": 243745
             }
           },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "select": {
             "status": "succeeded",
             "preferred_label": "Run selected",
@@ -1141,24 +1145,106 @@
               "tool_time_ms": 2159,
               "active_time_ms": 26834
             }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "dba18df894253962222b60fbef83ca36a4e85b3d",
         "node_visits": {
-          "start": 1,
           "analyze": 1,
-          "file": 1,
-          "select": 1
+          "select": 1,
+          "start": 1,
+          "file": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1YH3BBSM6Z09S64HYN131DV.jsonl b/.fabro/journal/01M1YH3BBSM6Z09S64HYN131DV.jsonl\nindex 725c279..bd9e820 100644\n--- a/.fabro/journal/01M1YH3BBSM6Z09S64HYN131DV.jsonl\n+++ b/.fabro/journal/01M1YH3BBSM6Z09S64HYN131DV.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YH3BBSM6Z09S64HYN131DV\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:12:04Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YH3BBSM6Z09S64HYN131DV\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:12:35Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected develop run `01M1YGJ7JSWAVWJT45DRDZ89Z6` (newest, terminal, live sandbox, on baseline `4ff76f32…`); 4 further fresh develop runs on the same baseline remain unrevised as backlog\",\"Of 63 develop runs listed, most are stale-evidence (version drift or absent pre-intent versions) or lack a live sandbox; older merge-upstream runs are all off-baseline or superseded by the newer develop evidence\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YH3BBSM6Z09S64HYN131DV\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:17:11Z\",\"data\":{\"painpoints\":[{\"text\":\"7 of 8 Ask-Fabro recommendations duplicated already-open seeds (the analyst has no tracker visibility), forcing a full manual dedupe pass. Fix idea: let the Selector attach a compact open-seed snapshot to the ask context so the analyst can self-dedupe before answering.\"}],\"observations\":[\"Review file written: `.fabro/reviews/develop/01M1YGJ7JSWAVWJT45DRDZ89Z6.md` (one `fabro_ask` call, verbatim proven question).\",\"Dropped duplicates (same concrete change as open seeds): rec 1 tester-gating fold → duplicate_of fabro-01b9 (its missing-timeout aspect already covered by open fabro-e702); rec 2 workaround-painpoint clause → duplicate_of fabro-21c0; rec 3 preamble budgets 24→32 and 16→32 → duplicate_of fabro-8d2c and fabro-cf3e; rec 4 output_schema enum → duplicate_of fabro-de4d; rec 5 planner top-N view → duplicate_of fabro-c3b4; rec 6 sd show re-fetch gating → duplicate_of fabro-4881; rec 7a metadata-snapshot retry/local-first → duplicate_of fabro-cf03 (mechanism variant of the open async/branch-point-only fix; fabro-c2ca related); rec 8 per-node memory scoping and cache prefix sharing → duplicate_of fabro-9588 and fabro-944d.\",\"Run evidence quality was high (stage-split costs, tool seq numbers, journal quotes); the develop backlog on baseline `4ff76f32…` still has 4 unrevised fresh runs for future passes.\",\"none\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YH3BBSM6Z09S64HYN131DV\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:17:55Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Seed dedup around preamble fidelity required reading fabro-meta-c454 and fabro-e47c closely — title keywords overlap heavily with the log-level finding; recorded the thematic-vs-supersession reasoning in the marker.\"]}}\ndiff --git a/.fabro/revisions/01M1YGJ7JSWAVWJT45DRDZ89Z6.md b/.fabro/revisions/01M1YGJ7JSWAVWJT45DRDZ89Z6.md\nnew file mode 100644\nindex 0000000..f56c026\n--- /dev/null\n+++ b/.fabro/revisions/01M1YGJ7JSWAVWJT45DRDZ89Z6.md\n@@ -0,0 +1,15 @@\n+# Revision — run 01M1YGJ7JSWAVWJT45DRDZ89Z6\n+\n+- status reviewed: succeeded\n+- review: `.fabro/reviews/develop/01M1YGJ7JSWAVWJT45DRDZ89Z6.md`\n+- seeds filed: fabro-8275 — Downgrade the by-design preamble allow-key absence warn to info\n+- basis: run 01M1YGJ7JSWAVWJT45DRDZ89Z6, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit f7126d9612d28110fca518d3aeeeb941bd7b659d\n+- revised_at_commit: f7126d9612d28110fca518d3aeeeb941bd7b659d (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Downgrade the by-design preamble allow-key absence warn to info\n+- filed: fabro-8275\n+- Change: in the preamble fidelity module of `fabro-workflow`, emit info (not warn) when an allow-listed context key is absent on a node's first visit; keep warn for repeat visits or genuine contract regressions. Evidence: the warn fired on a green first-visit stage of this run even though absence on first visit is by design.\n+- Expected effect: warn-level logs stop crying wolf on every green run while real fidelity regressions stay visible.\n+- Dedup note: searched `preamble_allow_keys` and related themes; no seed covers the log-level change (`fabro-meta-c454` targets the input-contract closure, cross-referenced in the description — thematic overlap, not supersession).\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex d9cfffd..f2b5dba 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -244,3 +244,4 @@\n {\"id\":\"fabro-b7ab\",\"title\":\"docs: codify fs_hide semantics — tool-affordance boundary with intended shell bypass, not access control\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T13:39:57.602Z\",\"updatedAt\":\"2026-09-07T13:39:57.602Z\",\"assignee\":\"fabro\",\"description\":\"Planner observation 2026-09-07 (run journal): 'The qualitygate script is under scripts/ (fs_hide for me, readable via shell)' — the agent correctly noticed that fs_hide hides paths from FILE TOOLS only while shell reads still work. This is intended, load-bearing design, but the semantics live only in prompt comments (planner.md stale-basis note; workflow.fabro node comments from fabro-23/a512). Wanted: ONE canonical statement of the boundary model, e.g. a short section in docs/agents/ (new fs-boundary.md or an existing agent doc) plus a pointer comment where fs_hide is configured: (1) fs_hide shapes tool affordances and context hygiene — file tools see the product code, structured access to tracker/expertise/platform files goes through sd/ml/shell on purpose; (2) the shell bypass is intended and necessary (sd CLI must reach .seeds/, qualitygate runs scripts/, stale-basis checks read .fabro/); (3) fs_hide is NOT access control — the hard boundary is the sandbox perimeter, and secrets never live in the run workspace (server-secrets strategy); enforcing fs_hide inside arbitrary shell is unenforceable theater. Acceptance: canonical doc section exists; workflow.fabro fs_hide comments reference it; no behavioral change.\",\"labels\":[\"engine\",\"agent\"]}\n {\"id\":\"fabro-1dc9\",\"title\":\"conductor: reached=blocked routes as 'Develop child failed' — revisor leg skipped for every slow-gate PR since deploy #6\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T16:44:03.054Z\",\"updatedAt\":\"2026-09-07T18:10:15.437Z\",\"assignee\":\"fabro\",\"description\":\"REGRESSION since deploy #6 (2026-09-07 ~13:29 Berlin): conductor passes 01M1Y0ZE7K (15:30), 01M1Y2PF7V (16:00... UTC 13:30/14:00/15:34/16:00) ALL skip the revise leg. Evidence (16:00 UTC pass 01M1Y9J6J3DN server.log): develop child 01M1Y9N7R4 succeeded and PR #43 sat in a running gate; the develop-leg's second fabro_run_wait (until=merged) returned after 3s with reached=blocked (PR #34 semantics: open PR + non-green gate); the leg routed Edge 'develop -> exit' label='Develop child failed' -> soft park. The revise leg ONLY ran on passes whose PR was already merged at wait time (10:00/12:00/13:00 UTC passes, revisors 11:07/12:34/13:08). CONSEQUENCE: four develop runs unreviewed, no revisor seeds for them, and the line burns develop cycles without its feedback organ. FIX DIRECTIONS: (a) develop-leg routing must treat reached=blocked as 'merge pending', not failure: re-wait until=merged with a bounded deadline (e.g. 2-3 chained waits), and only route Failed on terminal-failed children (child status, not PR state); (b) after merged OR after child-terminal+parked-for-gate, ALWAYS run the revise leg; (c) backfill: the survey leg should detect completed develop runs without a revisor pass (no revisor journal/review artifact for the run id) and trigger a catch-up revise; (d) regression test: conductor graph routing on wait results terminal|merged|closed_unmerged|blocked|timeout maps blocked to wait-again/revise, never to the failed exit.\",\"labels\":[\"workflows\",\"revision\"],\"closedAt\":\"2026-09-07T18:10:15.437Z\"}\n {\"id\":\"fabro-5bee\",\"title\":\"ci: bump Swatinem/rust-cache to v2.9.2 — Node 20 deprecation warning in the action gates\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T17:25:44.212Z\",\"updatedAt\":\"2026-09-07T17:27:49.436Z\",\"assignee\":\"fabro\",\"description\":\"Evidence: the warning was observed in the dogfood-gate run of PR #33 (2026-09-07 morning, user finding) — not in a current run; it fires on EVERY gate run as long as the old pin stands (GitHub changelog 2025-09-19: deprecation of Node 20 runners): 'Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5'. The pinned SHA (comment '# v2') is an old v2 tag predating the node24 runtime. FIX: bump all 5 occurrences (.github/workflows/dogfood-gate.yml:62, .github/workflows/rust.yml:66,95,112,138) to Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 with comment '# v2.9.2' (v2.9.2 released 2026-08-06, commit SHA resolved via the annotated tag 63fed3e2 -> 6323deb1). Keep the repo's SHA-pinning style (no floating tags). Acceptance: grep shows the new SHA at all 5 sites; one gate run after the change shows no Node deprecation warning.\",\"labels\":[\"ci\"]}\n+{\"id\":\"fabro-8275\",\"title\":\"Downgrade the by-design preamble allow-key absence warn to info\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:17:29.202Z\",\"updatedAt\":\"2026-09-07T18:17:29.202Z\",\"description\":\"In the preamble fidelity module of fabro-workflow, the warn 'preamble_allow_keys entry absent … key=output.gate_known_bug_hits' fired on a green first-visit stage of develop run 01M1YGJ7JSWAVWJT45DRDZ89Z6, even though key absence on first visit is by design and fires on every clean run. Change: emit info (not warn) when an allow-listed context key is absent on a node's first visit; keep warn for repeat visits or genuine contract regressions. Expected effect: warn-level logs stop crying wolf on every green run while real fidelity regressions stay visible. Related but distinct from fabro-meta-c454 (input-contract closure, not log level).\\nBasis: run 01M1YGJ7JSWAVWJT45DRDZ89Z6, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit f7126d9612d28110fca518d3aeeeb941bd7b659d\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 62,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-07T18:17:59.362843028Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 324504,
+      "inference_time_ms": 199499,
+      "tool_time_ms": 106351,
+      "active_time_ms": 305850
+    },
+    "final_git_commit_sha": "dba18df894253962222b60fbef83ca36a4e85b3d",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 27448,
+          "inference_time_ms": 24675,
+          "tool_time_ms": 2159,
+          "active_time_ms": 26834
+        },
+        "billing_usd_micros": 56478,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 244290,
+          "inference_time_ms": 140572,
+          "tool_time_ms": 103173,
+          "active_time_ms": 243745
+        },
+        "billing_usd_micros": 99744,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 35813,
+          "inference_time_ms": 34252,
+          "tool_time_ms": 1019,
+          "active_time_ms": 35271
+        },
+        "billing_usd_micros": 43445,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 68691,
+      "output_tokens": 4753,
+      "total_tokens": 290938,
+      "reasoning_tokens": 6294,
+      "cache_read_tokens": 211200,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 199667
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1YH3BBSM6Z09S64HYN131DV.jsonl b/.fabro/journal/01M1YH3BBSM6Z09S64HYN131DV.jsonl\nnew file mode 100644\nindex 0000000..bd9e820\n--- /dev/null\n+++ b/.fabro/journal/01M1YH3BBSM6Z09S64HYN131DV.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YH3BBSM6Z09S64HYN131DV\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:12:04Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YH3BBSM6Z09S64HYN131DV\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:12:35Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected develop run `01M1YGJ7JSWAVWJT45DRDZ89Z6` (newest, terminal, live sandbox, on baseline `4ff76f32…`); 4 further fresh develop runs on the same baseline remain unrevised as backlog\",\"Of 63 develop runs listed, most are stale-evidence (version drift or absent pre-intent versions) or lack a live sandbox; older merge-upstream runs are all off-baseline or superseded by the newer develop evidence\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YH3BBSM6Z09S64HYN131DV\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:17:11Z\",\"data\":{\"painpoints\":[{\"text\":\"7 of 8 Ask-Fabro recommendations duplicated already-open seeds (the analyst has no tracker visibility), forcing a full manual dedupe pass. Fix idea: let the Selector attach a compact open-seed snapshot to the ask context so the analyst can self-dedupe before answering.\"}],\"observations\":[\"Review file written: `.fabro/reviews/develop/01M1YGJ7JSWAVWJT45DRDZ89Z6.md` (one `fabro_ask` call, verbatim proven question).\",\"Dropped duplicates (same concrete change as open seeds): rec 1 tester-gating fold → duplicate_of fabro-01b9 (its missing-timeout aspect already covered by open fabro-e702); rec 2 workaround-painpoint clause → duplicate_of fabro-21c0; rec 3 preamble budgets 24→32 and 16→32 → duplicate_of fabro-8d2c and fabro-cf3e; rec 4 output_schema enum → duplicate_of fabro-de4d; rec 5 planner top-N view → duplicate_of fabro-c3b4; rec 6 sd show re-fetch gating → duplicate_of fabro-4881; rec 7a metadata-snapshot retry/local-first → duplicate_of fabro-cf03 (mechanism variant of the open async/branch-point-only fix; fabro-c2ca related); rec 8 per-node memory scoping and cache prefix sharing → duplicate_of fabro-9588 and fabro-944d.\",\"Run evidence quality was high (stage-split costs, tool seq numbers, journal quotes); the develop backlog on baseline `4ff76f32…` still has 4 unrevised fresh runs for future passes.\",\"none\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1YH3BBSM6Z09S64HYN131DV\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-07T18:17:55Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Seed dedup around preamble fidelity required reading fabro-meta-c454 and fabro-e47c closely — title keywords overlap heavily with the log-level finding; recorded the thematic-vs-supersession reasoning in the marker.\"]}}\ndiff --git a/.fabro/reviews/develop/01M1YGJ7JSWAVWJT45DRDZ89Z6.md b/.fabro/reviews/develop/01M1YGJ7JSWAVWJT45DRDZ89Z6.md\nnew file mode 100644\nindex 0000000..ae4542d\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M1YGJ7JSWAVWJT45DRDZ89Z6.md\n@@ -0,0 +1,42 @@\n+# Improve review — run 01M1YGJ7JSWAVWJT45DRDZ89Z6\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (7.7 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-07 18:14+0000 by revisor `fabro_ask`\n+\n+---\n+\n+All evidence gathered from run events, stage transcripts, the run journal, and worker logs. Grounding numbers first, then the recommendations.\n+\n+## What this run actually was (from run events + conclusion)\n+\n+Seed `fabro-1dc9` — a churn-only platform seed (3 conductor files, +27/−3, plus tracker lines). 7m45s wall, **$0.197** total, 387.7k tokens. Stage split: implementer 267s/$0.093 (69% of wall, 47% of cost), planner 64s/$0.067 (34% of cost), reviewer 45s/$0.037, tester 5.4s/$0, evidence 0.5s, closeout 0.3s. Zero retries, zero review cycles — a clean single-pass run, which makes the residual waste below all the more actionable.\n+\n+## Recommendations, by expected impact\n+\n+**1. Make the tester gate actually gate this change class — fold `validate-workflows` into `qualitygate`.**\n+The only real validation of this run's graph/prompt change was an ad-hoc `just validate-workflows` the *implementer* ran (seq 147–155): it first **timed out at 10.3s** (no `timeout_ms` passed), then took **134s on retry — 92% of implementer tool time and ~35% of run wall**. The deterministic tester meanwhile ran green in 5.4s with an 87-byte output: \"no crates touched / format clean\" — it checked nothing about the change that was shipped. Change: add the validator to the `qualitygate` recipe in the `justfile` (or path-scope the tester for `.fabro/**`-only diffs, seed fabro-01b9), and drop the validate step from implementer.md's guidance. Effect: the gate validates prompt/graph seeds deterministically, and the 10s-timeout-then-134s dance leaves the LLM stage.\n+\n+**2. Port the \"workaround-is-a-painpoint\" clause into the implementer journal contract.**\n+The implementer hit the run's single biggest friction (timeout + 134s cold validate) and journaled `painpoints: []` — the improve loop that scans journals will never see it. This is live evidence for open seed fabro-21c0. Change: `.fabro/workflows/develop/prompts/implementer.md`, Journal section — copy the clause from `reviewer.md` (\"a workaround you performed is a painpoint, not an observation\"). Effect: cost-bearing friction reaches the improve loop and gets filed as a seed instead of vanishing.\n+\n+**3. Raise the preamble budget so the evidence capture stops blob-ref'ing.**\n+The 9.1KB capture was demoted to a blob ref even though the reviewer sat at **1.5% of the 1M window**, forcing a tool round-trip before judging (reviewer response opens \"Evidence blob read in full\"). The 24KB graph budget was eaten by brief (~2.4KB) + summary + tester section. Change: `.fabro/workflows/develop/workflow.fabro` graph attr `preamble_budget_kb` 24→32 and reviewer `preamble_inline_max_kb` 16→32 (seeds fabro-8d2c/fabro-cf3e). Effect: capture arrives inline; reviewer saves a tool call + LLM turn per review and can't reject on preview-only grounds.\n+\n+**4. Constrain the conductor's routing label to an enum — the reviewer flagged the exact failure mode this seed was fixing.**\n+Reviewer journal: the new `develop -> revise` edge \"relies on the LLM driver emitting the exact preferred_label string; a typo … would fall through to the existing 'Develop child failed' soft exit.\" The magic string now appears in 3 places (`develop-leg.md` step 5, its outcome contract, and the edge condition in `workflow.fabro`). Change: in `.fabro/workflows/conductor/workflow.fabro`, give the develop node an `output_schema` enum of its outgoing edge labels (seed fabro-de4d). Effect: a mistyped label becomes a schema validation error instead of silently re-triggering the original bug.\n+\n+**5. Give the planner a top-N tracker view instead of the 150-issue firehose.**\n+`sd ready --assignee fabro --limit 200` poured **~20KB / 150 issues (truncated at 19,918 bytes)** into planner context for a decision that needs the top of the list; conversation tokens grew 2.6k→11.7k across the stage, and the planner was 34% of run cost. Change: `.fabro/workflows/develop/prompts/planner.md` sd table — use a bounded view (`--limit 10`) for the claim decision (seed fabro-c3b4). Effect: smaller context per planner turn, fewer dollars on every run's most predictable stage.\n+\n+**6. Make the implementer's `sd show` re-fetch conditional on brief quality.**\n+The brief already carried the full seed spec verbatim; the implementer still re-ran `sd show fabro-1dc9` (~1.8KB, one LLM turn) because `implementer.md` step 1 mandates it unconditionally (seed fabro-4881). Change: step 1 → \"re-fetch only if the brief is thin or a re-plan\". Effect: −1 tool call, −1 LLM turn per implementer pass.\n+\n+**7. Error handling (engine): retry or quietly defer metadata snapshots; downgrade a known-benign warn.**\n+From run logs: the init metadata snapshot **failed on DNS (`github.com: Try again`), stalled 5s, and checkpoint metadata stayed degraded for the entire run** (final notice `checkpoint_metadata_degraded`). Change: retry with backoff or write local-first in `fabro_workflow` (event source of the warn). Also `preamble_allow_keys entry absent … key=output.gate_known_bug_hits` (fidelity module) fires on every green first visit by design — downgrade to info. Effect: no 5s init stall on transient DNS, and warn-level logs stop crying wolf.\n+\n+**8. Stop paying the same 24KB memory three times per run.**\n+All three agent stages loaded `AGENTS.md` in full (23,967 bytes; ~5.2–5.8k memory tokens each), and `cache_write_tokens=0` across the whole run — no cross-stage prefix sharing (seeds fabro-944d/fabro-9588). Change: per-node memory scoping (planner needs tracker mechanics, not the full build/gate doc). Effect: ~5k fewer input tokens per stage; modest at $0.20/run but scales with every review cycle.\n+\n+Not inspected: the reviewer's blob-read tool transcript beyond the invocation flags, and PR #45's post-run merge state — both outside what the run events exposed here.\ndiff --git a/.fabro/revisions/01M1YGJ7JSWAVWJT45DRDZ89Z6.md b/.fabro/revisions/01M1YGJ7JSWAVWJT45DRDZ89Z6.md\nnew file mode 100644\nindex 0000000..f56c026\n--- /dev/null\n+++ b/.fabro/revisions/01M1YGJ7JSWAVWJT45DRDZ89Z6.md\n@@ -0,0 +1,15 @@\n+# Revision — run 01M1YGJ7JSWAVWJT45DRDZ89Z6\n+\n+- status reviewed: succeeded\n+- review: `.fabro/reviews/develop/01M1YGJ7JSWAVWJT45DRDZ89Z6.md`\n+- seeds filed: fabro-8275 — Downgrade the by-design preamble allow-key absence warn to info\n+- basis: run 01M1YGJ7JSWAVWJT45DRDZ89Z6, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit f7126d9612d28110fca518d3aeeeb941bd7b659d\n+- revised_at_commit: f7126d9612d28110fca518d3aeeeb941bd7b659d (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Downgrade the by-design preamble allow-key absence warn to info\n+- filed: fabro-8275\n+- Change: in the preamble fidelity module of `fabro-workflow`, emit info (not warn) when an allow-listed context key is absent on a node's first visit; keep warn for repeat visits or genuine contract regressions. Evidence: the warn fired on a green first-visit stage of this run even though absence on first visit is by design.\n+- Expected effect: warn-level logs stop crying wolf on every green run while real fidelity regressions stay visible.\n+- Dedup note: searched `preamble_allow_keys` and related themes; no seed covers the log-level change (`fabro-meta-c454` targets the input-contract closure, cross-referenced in the description — thematic overlap, not supersession).\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex d9cfffd..f2b5dba 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -244,3 +244,4 @@\n {\"id\":\"fabro-b7ab\",\"title\":\"docs: codify fs_hide semantics — tool-affordance boundary with intended shell bypass, not access control\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T13:39:57.602Z\",\"updatedAt\":\"2026-09-07T13:39:57.602Z\",\"assignee\":\"fabro\",\"description\":\"Planner observation 2026-09-07 (run journal): 'The qualitygate script is under scripts/ (fs_hide for me, readable via shell)' — the agent correctly noticed that fs_hide hides paths from FILE TOOLS only while shell reads still work. This is intended, load-bearing design, but the semantics live only in prompt comments (planner.md stale-basis note; workflow.fabro node comments from fabro-23/a512). Wanted: ONE canonical statement of the boundary model, e.g. a short section in docs/agents/ (new fs-boundary.md or an existing agent doc) plus a pointer comment where fs_hide is configured: (1) fs_hide shapes tool affordances and context hygiene — file tools see the product code, structured access to tracker/expertise/platform files goes through sd/ml/shell on purpose; (2) the shell bypass is intended and necessary (sd CLI must reach .seeds/, qualitygate runs scripts/, stale-basis checks read .fabro/); (3) fs_hide is NOT access control — the hard boundary is the sandbox perimeter, and secrets never live in the run workspace (server-secrets strategy); enforcing fs_hide inside arbitrary shell is unenforceable theater. Acceptance: canonical doc section exists; workflow.fabro fs_hide comments reference it; no behavioral change.\",\"labels\":[\"engine\",\"agent\"]}\n {\"id\":\"fabro-1dc9\",\"title\":\"conductor: reached=blocked routes as 'Develop child failed' — revisor leg skipped for every slow-gate PR since deploy #6\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T16:44:03.054Z\",\"updatedAt\":\"2026-09-07T18:10:15.437Z\",\"assignee\":\"fabro\",\"description\":\"REGRESSION since deploy #6 (2026-09-07 ~13:29 Berlin): conductor passes 01M1Y0ZE7K (15:30), 01M1Y2PF7V (16:00... UTC 13:30/14:00/15:34/16:00) ALL skip the revise leg. Evidence (16:00 UTC pass 01M1Y9J6J3DN server.log): develop child 01M1Y9N7R4 succeeded and PR #43 sat in a running gate; the develop-leg's second fabro_run_wait (until=merged) returned after 3s with reached=blocked (PR #34 semantics: open PR + non-green gate); the leg routed Edge 'develop -> exit' label='Develop child failed' -> soft park. The revise leg ONLY ran on passes whose PR was already merged at wait time (10:00/12:00/13:00 UTC passes, revisors 11:07/12:34/13:08). CONSEQUENCE: four develop runs unreviewed, no revisor seeds for them, and the line burns develop cycles without its feedback organ. FIX DIRECTIONS: (a) develop-leg routing must treat reached=blocked as 'merge pending', not failure: re-wait until=merged with a bounded deadline (e.g. 2-3 chained waits), and only route Failed on terminal-failed children (child status, not PR state); (b) after merged OR after child-terminal+parked-for-gate, ALWAYS run the revise leg; (c) backfill: the survey leg should detect completed develop runs without a revisor pass (no revisor journal/review artifact for the run id) and trigger a catch-up revise; (d) regression test: conductor graph routing on wait results terminal|merged|closed_unmerged|blocked|timeout maps blocked to wait-again/revise, never to the failed exit.\",\"labels\":[\"workflows\",\"revision\"],\"closedAt\":\"2026-09-07T18:10:15.437Z\"}\n {\"id\":\"fabro-5bee\",\"title\":\"ci: bump Swatinem/rust-cache to v2.9.2 — Node 20 deprecation warning in the action gates\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T17:25:44.212Z\",\"updatedAt\":\"2026-09-07T17:27:49.436Z\",\"assignee\":\"fabro\",\"description\":\"Evidence: the warning was observed in the dogfood-gate run of PR #33 (2026-09-07 morning, user finding) — not in a current run; it fires on EVERY gate run as long as the old pin stands (GitHub changelog 2025-09-19: deprecation of Node 20 runners): 'Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5'. The pinned SHA (comment '# v2') is an old v2 tag predating the node24 runtime. FIX: bump all 5 occurrences (.github/workflows/dogfood-gate.yml:62, .github/workflows/rust.yml:66,95,112,138) to Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 with comment '# v2.9.2' (v2.9.2 released 2026-08-06, commit SHA resolved via the annotated tag 63fed3e2 -> 6323deb1). Keep the repo's SHA-pinning style (no floating tags). Acceptance: grep shows the new SHA at all 5 sites; one gate run after the change shows no Node deprecation warning.\",\"labels\":[\"ci\"]}\n+{\"id\":\"fabro-8275\",\"title\":\"Downgrade the by-design preamble allow-key absence warn to info\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T18:17:29.202Z\",\"updatedAt\":\"2026-09-07T18:17:29.202Z\",\"description\":\"In the preamble fidelity module of fabro-workflow, the warn 'preamble_allow_keys entry absent … key=output.gate_known_bug_hits' fired on a green first-visit stage of develop run 01M1YGJ7JSWAVWJT45DRDZ89Z6, even though key absence on first visit is by design and fires on every clean run. Change: emit info (not warn) when an allow-listed context key is absent on a node's first visit; keep warn for repeat visits or genuine contract regressions. Expected effect: warn-level logs stop crying wolf on every green run while real fidelity regressions stay visible. Related but distinct from fabro-meta-c454 (input-contract closure, not log level).\\nBasis: run 01M1YGJ7JSWAVWJT45DRDZ89Z6, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit f7126d9612d28110fca518d3aeeeb941bd7b659d\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 62,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2009,6 +2095,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 188,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-07T18:17:59.310923924Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-07T18:17:59.310778792Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
