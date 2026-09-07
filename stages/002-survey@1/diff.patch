@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1YGDXXQKT56AV83974FGGEY.jsonl b/.fabro/journal/01M1YGDXXQKT56AV83974FGGEY.jsonl
+new file mode 100644
+index 000000000..a87db8d21
+--- /dev/null
++++ b/.fabro/journal/01M1YGDXXQKT56AV83974FGGEY.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1YGDXXQKT56AV83974FGGEY","node":"start","visit":1,"status":"succeeded","ts":"2026-09-07T18:00:44Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1YGDXXQKT56AV83974FGGEY","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-07T18:02:09Z","data":"Upstream count origin/denkhaus..upstream/main = 0 (fetch succeeded with --prune for both remotes; upstream remote already configured). Newest upstream subject: 'Bump version to 0.348.0-nightly.0'. Count 0 < 5 MIN threshold -> route Work (develop+revisor cycle). Nothing hurt beyond a very large first-fetch branch listing (hundreds of fabro/run/* refs) inflating fetch output."}
