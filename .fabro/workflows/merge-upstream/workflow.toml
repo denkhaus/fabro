@@ -26,6 +26,18 @@ sandbox = true
 provider = "zai"
 name = "glm-5.3"
 
+# Full-history clone: merge-child runs clone origin/denkhaus fresh at
+# depth 100 by default, and the shallow boundary broke range math in 3
+# consecutive merge runs (01M20E43YS, 01M20N60ZY): git rev-list --count
+# origin/denkhaus..upstream/main over-reported and git merge-base
+# returned nothing until the merger unshallowed mid-pass. depth = 0
+# (full clone) makes the math deterministic. Volume is ~neutral: the
+# unbounded `git fetch upstream` pulled the full shared history into
+# the shallow clone anyway (~150 MB either way). Mirrors conductor fix
+# a4850e681.
+[run.clone]
+depth = 0
+
 [run.run_branch]
 push = true
 
