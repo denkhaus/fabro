@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl b/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl
+index 471b1a7..63b1639 100644
+--- a/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl
++++ b/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl
+@@ -1,3 +1,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M2183254XQ3HJ45SR4P1Y2X6","node":"start","visit":1,"status":"succeeded","ts":"2026-09-08T19:32:19Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M2183254XQ3HJ45SR4P1Y2X6","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-08T19:32:47Z","data":{"painpoints":[{"text":"Planner prompt mandates a fabro_runs_list in-flight PR check (fabro-06e0), but this stage's toolset exposes no such tool — the check degraded to a no-op. Fix: either expose fabro_runs_list to the planner stage or make the prompt state the degraded fallback explicitly when the tool is absent (run 01M2183254XQ3HJ45SR4P1Y2X6)."}],"observations":["Claimed fabro-85a1 (top High bug, no blockers). Basis resolved: merge-upstream workflow.toml lacks [run.clone] while conductor has depth=0 (commit a4850e681 pattern to mirror). In-flight PR check could not run (tool unavailable); no exclusions applied."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M2183254XQ3HJ45SR4P1Y2X6","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-08T19:44:27Z","data":{"painpoints":[],"observations":["Cold `cargo run -p fabro-cli -- validate` from a clean target dir took ~7 min build; building once with `cargo build -q -p fabro-cli` then reusing `target/debug/fabro` is the cheaper path for config-only smoke checks (target/ is gitignored, no artifact-hygiene impact)."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M2183254XQ3HJ45SR4P1Y2X6","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-08T19:44:38Z","data":{}}
