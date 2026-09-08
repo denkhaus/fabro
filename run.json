@@ -369,14 +369,192 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M1ZVH0B5V5RHRCY393T24GXG",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-09-08T06:33:50.818481154Z",
+    "run_branch": "fabro/run/01M1ZVH0B5V5RHRCY393T24GXG",
+    "base_sha": "aaa431e5c77b68e25554e81e142be1d95104470b"
   },
-  "status_updated_at": "2026-09-08T06:33:13.497407384Z",
-  "last_event_at": "2026-09-08T06:33:50.043488855Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-09-08T06:33:50.818551743Z",
+  "last_event_at": "2026-09-08T06:42:20.852802261Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 20,
+      "checkpoint": {
+        "timestamp": "2026-09-08T06:33:53.703957707Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_class": "",
+          "seed_cycles": {
+            "start": 1
+          },
+          "internal.seed_cycle_anchor": "",
+          "graph.cycle_counter_reset_key": "merge_target_sha",
+          "graph.max_node_visits": "6",
+          "failure_signature": "",
+          "outcome": "succeeded",
+          "graph.preamble_budget_kb": "12",
+          "current_node": "start",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.goal": "Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; deploy is host-side",
+          "graph.rankdir": "LR",
+          "internal.fidelity": "compact",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.start": 0,
+          "internal.thread_id": null,
+          "internal.run_id": "01M1ZVH0B5V5RHRCY393T24GXG"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "merge",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-08T06:42:21.491467077Z",
+        "current_node": "merge",
+        "completed_nodes": [
+          "start",
+          "merge"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "last_stage": "merge",
+          "graph.preamble_budget_kb": "12",
+          "seed_cycles": {
+            "start": 1,
+            "merge": 1
+          },
+          "internal.retry_count.merge": 0,
+          "preferred_label": "review",
+          "failure_class": "",
+          "graph.rankdir": "LR",
+          "internal.thread_id": "start",
+          "graph.goal": "Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; deploy is host-side",
+          "journal": {
+            "painpoints": [
+              "Run sandbox clone was shallow (boundary 661fa2a1e): first range count showed a misleading 4919 upstream commits because denkhaus-side shared ancestry was cut off; `git fetch origin --deepen=300` was required before merge-base resolution showed true containment (0 commits). Future merger passes in fresh sandboxes should check `git rev-parse --is-shallow-repository` first.",
+              "Procedure prescribes report filename `<upstream-short-sha>.md`, but `2f326a13c.md` already exists from the real 2026-09-06 merge; used `-noop-2026-09-08` suffix to avoid clobbering history — consider codifying a no-op naming rule."
+            ],
+            "observations": [
+              "Upstream commit count: 0 — upstream/main static at 2f326a13c (v0.348.0-nightly.0) since 2026-09-06; no upstream ref of any kind is newer. Fork remains 417 commits ahead with restored true ancestry.",
+              "Conflict classes seen: none (no merge content; no fork call-site adaptations).",
+              "Gate: `just qualitygate` green in ~6s — empty merge diff -> touched-crates = none -> fmt-only per `/workspace/fabro/scripts/qualitygate.nu` scope rules; format clean.",
+              "Feature-regression walk: all 12 touchpoints present (publish-blocked taxonomy, boundary exit kind incl. tests at finalize.rs, PR create retry, resolve_pr_model, spa_refresh, ask render_event, attach replay at `lib/apps/fabro-cli/src/commands/run/attach.rs`, demote_large_values_for_prompt, just-up smoke scripts, run_workflow.nu, dogfood-gate.yml).",
+              "Commit fa3855baa2 on `fabro/run/01M1ZVH0B5V5RHRCY393T24GXG`; not pushed — engine owns push/PR; deploy is host-side.",
+              "No obsolescence this pass; standing watchlist unchanged (load_run_projection read line, RunIntent admission matrix, fabro-b7c4 catalog fix still un-offered upstream)."
+            ]
+          },
+          "internal.retry_count.start": 0,
+          "internal.run_id": "01M1ZVH0B5V5RHRCY393T24GXG",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.start.current_node": "merge",
+          "graph.max_node_visits": "6",
+          "current_node": "merge",
+          "internal.seed_cycle_anchor": "",
+          "last_response": "{\"preferred_next_label\": \"review\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [\"Run sandbox clone was shallow (boundary 661fa",
+          "graph.cycle_counter_reset_key": "merge_target_sha",
+          "response.merge": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.merge",
+            "chars": 1887,
+            "preview": "{\"preferred_next_label\": \"review\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [\"Run sandbox clone was shallow (boundary 661fa"
+          },
+          "internal.node_visit_count": 1,
+          "outcome": "succeeded",
+          "internal.fidelity": "compact",
+          "failure_signature": ""
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "merge": {
+            "status": "succeeded",
+            "preferred_label": "review",
+            "context_updates": {
+              "last_response": "{\"preferred_next_label\": \"review\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [\"Run sandbox clone was shallow (boundary 661fa",
+              "journal": {
+                "painpoints": [
+                  "Run sandbox clone was shallow (boundary 661fa2a1e): first range count showed a misleading 4919 upstream commits because denkhaus-side shared ancestry was cut off; `git fetch origin --deepen=300` was required before merge-base resolution showed true containment (0 commits). Future merger passes in fresh sandboxes should check `git rev-parse --is-shallow-repository` first.",
+                  "Procedure prescribes report filename `<upstream-short-sha>.md`, but `2f326a13c.md` already exists from the real 2026-09-06 merge; used `-noop-2026-09-08` suffix to avoid clobbering history — consider codifying a no-op naming rule."
+                ],
+                "observations": [
+                  "Upstream commit count: 0 — upstream/main static at 2f326a13c (v0.348.0-nightly.0) since 2026-09-06; no upstream ref of any kind is newer. Fork remains 417 commits ahead with restored true ancestry.",
+                  "Conflict classes seen: none (no merge content; no fork call-site adaptations).",
+                  "Gate: `just qualitygate` green in ~6s — empty merge diff -> touched-crates = none -> fmt-only per `/workspace/fabro/scripts/qualitygate.nu` scope rules; format clean.",
+                  "Feature-regression walk: all 12 touchpoints present (publish-blocked taxonomy, boundary exit kind incl. tests at finalize.rs, PR create retry, resolve_pr_model, spa_refresh, ask render_event, attach replay at `lib/apps/fabro-cli/src/commands/run/attach.rs`, demote_large_values_for_prompt, just-up smoke scripts, run_workflow.nu, dogfood-gate.yml).",
+                  "Commit fa3855baa2 on `fabro/run/01M1ZVH0B5V5RHRCY393T24GXG`; not pushed — engine owns push/PR; deploy is host-side.",
+                  "No obsolescence this pass; standing watchlist unchanged (load_run_projection read line, RunIntent admission matrix, fabro-b7c4 catalog fix still un-offered upstream)."
+                ]
+              },
+              "response.merge": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.merge",
+                "chars": 1887,
+                "preview": "{\"preferred_next_label\": \"review\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [\"Run sandbox clone was shallow (boundary 661fa"
+              },
+              "last_stage": "merge"
+            },
+            "notes": "Stage completed: merge",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 41613,
+                    "output_tokens": 6122,
+                    "reasoning_tokens": 9573,
+                    "cache_read_tokens": 784512,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 331256
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reports/merge-upstream/2f326a13c-noop-2026-09-08.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 302719,
+              "tool_time_ms": 190723,
+              "active_time_ms": 493442
+            }
+          }
+        },
+        "next_node_id": "reviewer",
+        "node_visits": {
+          "merge": 1,
+          "start": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -403,5 +581,279 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-08T06:33:53.465569410Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T06:33:53.450996244Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "merge@1": {
+      "first_event_seq": 21,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: merge",
+        "failure_reason": null,
+        "timestamp": "2026-09-08T06:42:20.852802261Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "high"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T06:33:53.722489559Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 494109,
+        "inference_time_ms": 302719,
+        "tool_time_ms": 190723,
+        "active_time_ms": 493442
+      },
+      "usage": {
+        "input_tokens": 41613,
+        "output_tokens": 6122,
+        "total_tokens": 841820,
+        "reasoning_tokens": 9573,
+        "cache_read_tokens": 784512,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 331256
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 40664,
+        "usage_percent": 3.878021240234375,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-08T06:42:20.770858221Z",
+        "event_seq": 210,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1118,
+            "usage_percent": 0.10662078857421875
+          },
+          {
+            "category": "tools",
+            "tokens": 1602,
+            "usage_percent": 0.15277862548828125
+          },
+          {
+            "category": "skills",
+            "tokens": 217,
+            "usage_percent": 0.020694732666015625
+          },
+          {
+            "category": "memory",
+            "tokens": 5627,
+            "usage_percent": 0.5366325378417969
+          },
+          {
+            "category": "conversation",
+            "tokens": 32093,
+            "usage_percent": 3.060626983642578
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
