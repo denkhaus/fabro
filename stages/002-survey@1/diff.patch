@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M20N33G1T3MHVAJ4T3KJ1NRG.jsonl b/.fabro/journal/01M20N33G1T3MHVAJ4T3KJ1NRG.jsonl
+new file mode 100644
+index 000000000..6ba0786b1
+--- /dev/null
++++ b/.fabro/journal/01M20N33G1T3MHVAJ4T3KJ1NRG.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M20N33G1T3MHVAJ4T3KJ1NRG","node":"start","visit":1,"status":"succeeded","ts":"2026-09-08T14:00:16Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M20N33G1T3MHVAJ4T3KJ1NRG","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-08T14:01:15Z","data":{"painpoints":[{"text":"Upstream count exploded to 4919 because `origin/denkhaus` and `upstream/main` share almost no recent history in this clone's rev-list graph; the raw `git rev-list --count origin/denkhaus..upstream/main` number is technically >= 5 but likely overstates real actionable drift (evidence: upstream merge pass commit 9613ec4 recently reported no-op). Suggest the merge leg verify actual diff (`git rev-list --left-right --cherry-pick origin/denkhaus...upstream/main | wc -l`) before attempting a giant merge."}],"observations":["upstream count: 4919 commits ahead (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0'","revisor backlog: none — fabro_runs_list returned 0 runs for both 'develop' and 'revisor' workflows, so no unreviewed completed develop runs detected; signal is unambiguous (empty), though the empty listing may also mean this fabro instance tracks no runs for those slugs","next surveyor: upstream remote was missing and was added this pass pointing at `https://github.com/fabro-sh/fabro`; both fetches succeeded with heavy new-branch output — consider `--no-tags` or scoped refspecs if fetch noise hurts"]}}
