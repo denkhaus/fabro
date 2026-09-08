@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use fabro_types::RunId;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -86,6 +87,7 @@ pub async fn runs_list(
     let mut results: Vec<RunSummaryResult> =
         runs.iter().map(super::common::run_summary_result).collect();
     annotate_sandbox_availability(&mut results, &backend).await;
+    annotate_pull_request_states(&mut results, &backend).await;
     Ok(RunsListResult {
         workflow: workflow.to_string(),
         runs:     results,
@@ -103,6 +105,49 @@ async fn annotate_sandbox_availability(
     let Some(existing) = existing else { return };
     for result in results {
         result.sandbox_available = Some(existing.contains(&result.run_id));
+    }
+}
+
+/// Fill each linked pull request's live `state` (fabro-06e0) through the
+/// backend's server-side GitHub client path. A run without a stored link,
+/// a failed lookup, or an unwired backend leaves `state` as `None` —
+/// callers treat that as unknown, never as terminal. Concurrency is
+/// bounded so a long run history cannot stampede the server.
+async fn annotate_pull_request_states(
+    results: &mut [RunSummaryResult],
+    backend: &Arc<dyn FabroToolBackend>,
+) {
+    use futures::future::BoxFuture;
+    use futures::{FutureExt, StreamExt, stream};
+
+    const MAX_CONCURRENT_PR_LOOKUPS: usize = 8;
+
+    let lookups: Vec<BoxFuture<'static, Option<String>>> = results
+        .iter()
+        .map(|result| {
+            let backend = Arc::clone(backend);
+            let raw_run_id = result.run_id.clone();
+            // Only runs with a stored link cost a live lookup; the
+            // placeholder keeps states zip-aligned with results.
+            let has_link = result.pull_request.is_some();
+            async move {
+                if !has_link {
+                    return None;
+                }
+                let run_id: RunId = raw_run_id.parse().ok()?;
+                backend.run_pull_request_state(&run_id).await.ok().flatten()
+            }
+            .boxed()
+        })
+        .collect();
+    let states: Vec<Option<String>> = stream::iter(lookups)
+        .buffer_unordered(MAX_CONCURRENT_PR_LOOKUPS)
+        .collect()
+        .await;
+    for (result, state) in results.iter_mut().zip(states) {
+        if let Some(pull_request) = result.pull_request.as_mut() {
+            pull_request.state = state;
+        }
     }
 }
 

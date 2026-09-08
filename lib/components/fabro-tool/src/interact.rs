@@ -753,6 +753,10 @@ mod tests {
             anyhow::bail!("run waits are not supported by this mock")
         }
 
+        async fn run_pull_request_state(&self, _run_id: &RunId) -> anyhow::Result<Option<String>> {
+            anyhow::bail!("pull request state lookups are not supported by this mock")
+        }
+
         async fn create_ask_session(
             &self,
             _run_id: &RunId,

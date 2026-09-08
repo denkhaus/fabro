@@ -212,6 +212,19 @@ impl FabroToolBackend for ClientBackend {
             .await
     }
 
+    async fn run_pull_request_state(&self, run_id: &RunId) -> anyhow::Result<Option<String>> {
+        // fabro-06e0: reuse the server's live pull request details route —
+        // the server holds the GitHub credentials, the worker never does.
+        let response = self.client.get_run_pull_request(run_id).await?;
+        Ok(response.data.details.map(|details| {
+            if details.merged {
+                "merged".to_string()
+            } else {
+                details.state
+            }
+        }))
+    }
+
     async fn existing_sandbox_run_ids(
         &self,
     ) -> anyhow::Result<Option<std::collections::HashSet<String>>> {

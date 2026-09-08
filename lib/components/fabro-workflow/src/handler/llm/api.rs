@@ -3044,6 +3044,105 @@ reasoning = false
     }
 
     #[tokio::test]
+    async fn runs_list_annotates_live_pull_request_states() {
+        // fabro-06e0: every run with a stored PR link gets its live
+        // open/closed/merged state through the backend's server-side
+        // GitHub client path; runs without a link are never queried.
+        let open_run_id = run_id("01KRBZW5C0000000000000000D");
+        let merged_run_id = run_id("01KRBZW5C0000000000000000E");
+        let bare_run_id = run_id("01KRBZW5C0000000000000000F");
+        let mut open_run = run(open_run_id, None, 0);
+        open_run.pull_request = Some(fabro_types::PullRequestLink {
+            owner:  "fabro-sh".to_string(),
+            repo:   "fabro".to_string(),
+            number: 47,
+        });
+        let mut merged_run = run(merged_run_id, None, 0);
+        merged_run.pull_request = Some(fabro_types::PullRequestLink {
+            owner:  "fabro-sh".to_string(),
+            repo:   "fabro".to_string(),
+            number: 31,
+        });
+        let backend = Arc::new(MockRunToolBackend {
+            runs_to_list: vec![open_run, merged_run, run(bare_run_id, None, 0)],
+            pull_request_states: Mutex::new(std::collections::HashMap::from([
+                (open_run_id.to_string(), "open".to_string()),
+                (merged_run_id.to_string(), "merged".to_string()),
+            ])),
+            ..mock_backend()
+        });
+        let result = fabro_tool::runs_list(
+            Arc::clone(&backend) as Arc<dyn fabro_tool::FabroToolBackend>,
+            fabro_tool::ValidatedRunsList::try_from(fabro_tool::FabroRunsListParams {
+                workflow:      Some("develop".to_string()),
+                created_since: None,
+            })
+            .unwrap(),
+            &["develop".to_string()],
+        )
+        .await
+        .expect("in-scope enumeration succeeds");
+        assert_eq!(result.runs.len(), 3);
+        assert_eq!(
+            result.runs[0].pull_request,
+            Some(fabro_tool::RunPullRequestSummary {
+                number: 47,
+                state:  Some("open".to_string()),
+            })
+        );
+        assert_eq!(
+            result.runs[1].pull_request,
+            Some(fabro_tool::RunPullRequestSummary {
+                number: 31,
+                state:  Some("merged".to_string()),
+            })
+        );
+        assert_eq!(result.runs[2].pull_request, None);
+        assert_eq!(
+            serde_json::to_value(&result.runs[0]).unwrap()["pull_request"],
+            serde_json::json!({ "number": 47, "state": "open" })
+        );
+        // Only runs with a stored link are looked up.
+        let queried = backend.pr_state_queried_run_ids.lock().unwrap().clone();
+        assert_eq!(queried, [open_run_id, merged_run_id]);
+    }
+
+    #[tokio::test]
+    async fn runs_list_leaves_pr_state_unknown_without_a_live_view() {
+        let linked_run_id = run_id("01KRBZW5C0000000000000000G");
+        let mut linked_run = run(linked_run_id, None, 0);
+        linked_run.pull_request = Some(fabro_types::PullRequestLink {
+            owner:  "fabro-sh".to_string(),
+            repo:   "fabro".to_string(),
+            number: 9,
+        });
+        let backend = Arc::new(MockRunToolBackend {
+            runs_to_list: vec![linked_run],
+            ..mock_backend()
+        });
+        let result = fabro_tool::runs_list(
+            Arc::clone(&backend) as Arc<dyn fabro_tool::FabroToolBackend>,
+            fabro_tool::ValidatedRunsList::try_from(fabro_tool::FabroRunsListParams {
+                workflow:      Some("develop".to_string()),
+                created_since: None,
+            })
+            .unwrap(),
+            &["develop".to_string()],
+        )
+        .await
+        .expect("in-scope enumeration succeeds");
+        // Unknown, not terminal: an unavailable live view must never read
+        // as "closed"/"merged" to the planner's in-flight guard.
+        assert_eq!(
+            result.runs[0].pull_request,
+            Some(fabro_tool::RunPullRequestSummary {
+                number: 9,
+                state:  None,
+            })
+        );
+    }
+
+    #[tokio::test]
     async fn agent_run_interact_rejects_approval_actions_before_backend_dispatch() {
         for action in ["approve", "deny"] {
             let (services, backend) = fabro_run_tool_services();
@@ -3103,21 +3202,23 @@ reasoning = false
 
     fn fabro_run_tool_services() -> (FabroRunToolServices, Arc<MockRunToolBackend>) {
         let backend = Arc::new(MockRunToolBackend {
-            waited_runs:           Mutex::new(Vec::new()),
-            wait_reached:          RunWaitResultReached::Terminal,
-            child_id:              child_run_id(),
-            created_parent_ids:    Mutex::new(Vec::new()),
-            started_run_ids:       Mutex::new(Vec::new()),
-            approved_run_ids:      Mutex::new(Vec::new()),
-            denied_run_ids:        Mutex::new(Vec::new()),
-            pair_status_run_ids:   Mutex::new(Vec::new()),
-            resolve_workflow_slug: "simple".to_string(),
-            ask_answer:            "the reviewer failed because the gate timed out".to_string(),
-            ask_session_run_ids:   Mutex::new(Vec::new()),
-            ask_turns:             Mutex::new(Vec::new()),
-            listed_workflows:      Mutex::new(Vec::new()),
-            runs_to_list:          Vec::new(),
-            existing_sandboxes:    None,
+            waited_runs:              Mutex::new(Vec::new()),
+            wait_reached:             RunWaitResultReached::Terminal,
+            pull_request_states:      Mutex::new(std::collections::HashMap::new()),
+            pr_state_queried_run_ids: Mutex::new(Vec::new()),
+            child_id:                 child_run_id(),
+            created_parent_ids:       Mutex::new(Vec::new()),
+            started_run_ids:          Mutex::new(Vec::new()),
+            approved_run_ids:         Mutex::new(Vec::new()),
+            denied_run_ids:           Mutex::new(Vec::new()),
+            pair_status_run_ids:      Mutex::new(Vec::new()),
+            resolve_workflow_slug:    "simple".to_string(),
+            ask_answer:               "the reviewer failed because the gate timed out".to_string(),
+            ask_session_run_ids:      Mutex::new(Vec::new()),
+            ask_turns:                Mutex::new(Vec::new()),
+            listed_workflows:         Mutex::new(Vec::new()),
+            runs_to_list:             Vec::new(),
+            existing_sandboxes:       None,
         });
         let services = FabroRunToolServices {
             backend:            backend.clone(),
@@ -3131,21 +3232,23 @@ reasoning = false
 
     fn mock_backend() -> MockRunToolBackend {
         MockRunToolBackend {
-            child_id:              child_run_id(),
-            created_parent_ids:    Mutex::new(Vec::new()),
-            started_run_ids:       Mutex::new(Vec::new()),
-            approved_run_ids:      Mutex::new(Vec::new()),
-            denied_run_ids:        Mutex::new(Vec::new()),
-            pair_status_run_ids:   Mutex::new(Vec::new()),
-            resolve_workflow_slug: "simple".to_string(),
-            ask_answer:            "mock answer".to_string(),
-            ask_session_run_ids:   Mutex::new(Vec::new()),
-            ask_turns:             Mutex::new(Vec::new()),
-            listed_workflows:      Mutex::new(Vec::new()),
-            runs_to_list:          Vec::new(),
-            existing_sandboxes:    None,
-            waited_runs:           Mutex::new(Vec::new()),
-            wait_reached:          RunWaitResultReached::Terminal,
+            child_id:                 child_run_id(),
+            created_parent_ids:       Mutex::new(Vec::new()),
+            started_run_ids:          Mutex::new(Vec::new()),
+            approved_run_ids:         Mutex::new(Vec::new()),
+            denied_run_ids:           Mutex::new(Vec::new()),
+            pair_status_run_ids:      Mutex::new(Vec::new()),
+            resolve_workflow_slug:    "simple".to_string(),
+            ask_answer:               "mock answer".to_string(),
+            ask_session_run_ids:      Mutex::new(Vec::new()),
+            ask_turns:                Mutex::new(Vec::new()),
+            listed_workflows:         Mutex::new(Vec::new()),
+            runs_to_list:             Vec::new(),
+            existing_sandboxes:       None,
+            waited_runs:              Mutex::new(Vec::new()),
+            wait_reached:             RunWaitResultReached::Terminal,
+            pull_request_states:      Mutex::new(std::collections::HashMap::new()),
+            pr_state_queried_run_ids: Mutex::new(Vec::new()),
         }
     }
 
@@ -3238,21 +3341,23 @@ reasoning = false
     }
 
     struct MockRunToolBackend {
-        child_id:              RunId,
-        created_parent_ids:    Mutex<Vec<Option<RunId>>>,
-        started_run_ids:       Mutex<Vec<RunId>>,
-        approved_run_ids:      Mutex<Vec<RunId>>,
-        denied_run_ids:        Mutex<Vec<RunId>>,
-        pair_status_run_ids:   Mutex<Vec<RunId>>,
-        resolve_workflow_slug: String,
-        ask_answer:            String,
-        ask_session_run_ids:   Mutex<Vec<RunId>>,
-        ask_turns:             Mutex<Vec<(String, String)>>,
-        listed_workflows:      Mutex<Vec<(String, Option<chrono::DateTime<chrono::Utc>>)>>,
-        runs_to_list:          Vec<Run>,
-        existing_sandboxes:    Option<std::collections::HashSet<String>>,
-        waited_runs:           Mutex<Vec<(RunId, fabro_tool::RunWaitUntil, u64)>>,
-        wait_reached:          RunWaitResultReached,
+        child_id:                 RunId,
+        created_parent_ids:       Mutex<Vec<Option<RunId>>>,
+        started_run_ids:          Mutex<Vec<RunId>>,
+        approved_run_ids:         Mutex<Vec<RunId>>,
+        denied_run_ids:           Mutex<Vec<RunId>>,
+        pair_status_run_ids:      Mutex<Vec<RunId>>,
+        resolve_workflow_slug:    String,
+        ask_answer:               String,
+        ask_session_run_ids:      Mutex<Vec<RunId>>,
+        ask_turns:                Mutex<Vec<(String, String)>>,
+        listed_workflows:         Mutex<Vec<(String, Option<chrono::DateTime<chrono::Utc>>)>>,
+        runs_to_list:             Vec<Run>,
+        existing_sandboxes:       Option<std::collections::HashSet<String>>,
+        waited_runs:              Mutex<Vec<(RunId, fabro_tool::RunWaitUntil, u64)>>,
+        wait_reached:             RunWaitResultReached,
+        pull_request_states:      Mutex<std::collections::HashMap<String, String>>,
+        pr_state_queried_run_ids: Mutex<Vec<RunId>>,
     }
 
     #[async_trait]
@@ -3338,6 +3443,16 @@ reasoning = false
             &self,
         ) -> anyhow::Result<Option<std::collections::HashSet<String>>> {
             Ok(self.existing_sandboxes.clone())
+        }
+
+        async fn run_pull_request_state(&self, run_id: &RunId) -> anyhow::Result<Option<String>> {
+            self.pr_state_queried_run_ids.lock().unwrap().push(*run_id);
+            Ok(self
+                .pull_request_states
+                .lock()
+                .unwrap()
+                .get(&run_id.to_string())
+                .cloned())
         }
 
         async fn start_run(&self, run_id: &RunId, resume: bool) -> anyhow::Result<Run> {

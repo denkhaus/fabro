@@ -83,6 +83,18 @@ pub trait FabroToolBackend: Send + Sync {
         after: Option<u32>,
         limit: usize,
     ) -> anyhow::Result<Vec<fabro_types::EventEnvelope>>;
+    /// Live open/closed/merged state of a run's linked pull request,
+    /// read-only, resolved through the server's GitHub client (the same
+    /// path as `GET /runs/{id}/pull_request` live details — fabro-06e0).
+    /// `Ok(None)` means no live view: the run has no stored link, the
+    /// details are unavailable, or the backend is unwired. Callers treat
+    /// `None` as unknown, never as terminal.
+    ///
+    /// Required (no default body): async-trait default methods break
+    /// `dyn FabroToolBackend` usage with "implementation of Send is not
+    /// general enough" (async-trait#152 class).
+    async fn run_pull_request_state(&self, run_id: &RunId) -> anyhow::Result<Option<String>>;
+
     /// Open an Ask-Fabro session on `run_id` and return its session id.
     async fn create_ask_session(&self, run_id: &RunId, title: &str) -> anyhow::Result<String>;
 
@@ -193,6 +205,16 @@ pub trait RunManifestBuilder: Send + Sync {
     ) -> ToolResult<types::RunManifest>;
 }
 
+/// A run's linked pull request as exposed to agents: the stored number
+/// plus the live open/closed/merged state when the calling surface
+/// enriched it (fabro-06e0). `state` is `None` when no live view was
+/// fetched — callers must treat that as "unknown", never "closed".
+#[derive(Debug, PartialEq, Serialize, JsonSchema)]
+pub struct RunPullRequestSummary {
+    pub number: u64,
+    pub state:  Option<String>,
+}
+
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct RunSummaryResult {
     pub run_id:              String,
@@ -212,6 +234,11 @@ pub struct RunSummaryResult {
     /// exists. Only `fabro_runs_list` populates it (fabro-8d30a).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox_available:   Option<bool>,
+    /// Linked pull request (stored number). Only `fabro_runs_list`
+    /// enriches `state` live (fabro-06e0); other surfaces leave it
+    /// absent or state-unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pull_request:        Option<RunPullRequestSummary>,
     pub archived:            bool,
     pub created_at:          String,
     pub started_at:          Option<String>,
@@ -346,6 +373,10 @@ pub(crate) fn run_summary_result(run: &Run) -> RunSummaryResult {
             .map(ToString::to_string),
         status:              run.lifecycle.status.kind().to_string(),
         sandbox_available:   None,
+        pull_request:        run.pull_request.as_ref().map(|link| RunPullRequestSummary {
+            number: link.number,
+            state:  None,
+        }),
         archived:            run.lifecycle.archived,
         created_at:          run.timestamps.created_at.to_rfc3339(),
         started_at:          run
@@ -549,6 +580,75 @@ mod tests {
             summary.workflow_version_id.as_deref(),
             Some(expected_version_id.as_str())
         );
+    }
+
+    #[test]
+    fn run_summary_result_includes_pull_request_number_without_live_state() {
+        let mut run = Run {
+            id:               run_id("01KRBZW5C00000000000000001"),
+            parent_id:        None,
+            children_count:   0,
+            title:            "test".to_string(),
+            goal:             "test".to_string(),
+            workflow:         WorkflowRef {
+                slug:                None,
+                name:                None,
+                graph_name:          None,
+                workflow_version_id: None,
+                node_count:          0,
+                edge_count:          0,
+            },
+            automation:       None,
+            repository:       None,
+            created_by:       test_support::test_principal(),
+            origin:           RunOrigin::default(),
+            labels:           HashMap::new(),
+            lifecycle:        RunLifecycle {
+                status:          RunStatus::Submitted,
+                approval:        None,
+                pending_control: None,
+                queue_position:  None,
+                error:           None,
+                archived:        false,
+                archived_at:     None,
+            },
+            sandbox:          None,
+            models:           Vec::new(),
+            source_directory: None,
+            timestamps:       RunTimestamps {
+                created_at:    Utc.with_ymd_and_hms(2026, 5, 11, 12, 0, 0).unwrap(),
+                started_at:    None,
+                last_event_at: None,
+                completed_at:  None,
+            },
+            timing:           None,
+            billing:          None,
+            size:             fabro_types::RunSize::default(),
+            ask_fabro:        fabro_types::AskFabro::default(),
+            diff:             None,
+            pull_request:     Some(fabro_types::PullRequestLink {
+                owner:  "fabro-sh".to_string(),
+                repo:   "fabro".to_string(),
+                number: 47,
+            }),
+            current_question: None,
+            superseded_by:    None,
+            retried_from:     None,
+            links:            RunLinks { web: None },
+        };
+
+        let with_link = run_summary_result(&run);
+        assert_eq!(
+            with_link.pull_request,
+            Some(RunPullRequestSummary {
+                number: 47,
+                state:  None,
+            })
+        );
+
+        run.pull_request = None;
+        let without_link = run_summary_result(&run);
+        assert_eq!(without_link.pull_request, None);
     }
 
     fn run_id(raw: &str) -> RunId {
