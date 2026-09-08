@@ -39,9 +39,19 @@ the agent recreated a child after an approval_required start error and
 produced two parallel develops — a serialization violation cleaned up
 manually, 2026-09-05).
 
-## Journal
+## Journal — every pass
 
-child id, seed title if visible, status, gate wait.
+Report through `context_updates.journal` on EVERY pass. Silence is a missing report, not an empty one. Always emit BOTH keys:
+
+{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}], "observations": ["<child run id, seed title if visible, child status, gate wait outcome (`merged`/`blocked`/`closed_unmerged`) — what the next develop leg should know>"]}}
+
+- `painpoints`: friction in the orchestration loop itself (tool schema misses, wait semantics surprises).
+  Do not fix platform assets — report them here. `[]` when nothing hurt.
+- `observations`: at least one entry. The literal `"none"` is a valid
+  answer when the pass was genuinely unremarkable — but the key must be
+  present every time.
+The engine records it durably per stage (no restating, no rewriting);
+nobody re-reads your prose, only the JSON survives.
 
 ## Outcome contract
 

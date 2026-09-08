@@ -21,8 +21,18 @@ exit:
 - "Changes requested" (context key `review_feedback`: concrete objections phrased as instructions): any touchpoint regressed, resolution violates the policy, or evidence is incomplete.
 - "Verification blocked": you cannot read what you must review (missing report, unreadable diff).
 
-## Journal
+## Journal — every pass
 
-Report through `context_updates.journal`: painpoints + observations (touchpoints checked, time spent, upstream themes worth an obsolescence flag).
+Report through `context_updates.journal` on EVERY pass. Silence is a missing report, not an empty one. Always emit BOTH keys:
+
+{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}], "observations": ["<touchpoints checked, time spent, upstream themes worth an obsolescence flag — what the next reviewer should know>"]}}
+
+- `painpoints`: friction in the review loop itself (unreadable reports, missing evidence, tooling gaps).
+  Do not fix platform assets — report them here. `[]` when nothing hurt.
+- `observations`: at least one entry. The literal `"none"` is a valid
+  answer when the pass was genuinely unremarkable — but the key must be
+  present every time.
+The engine records it durably per stage (no restating, no rewriting);
+nobody re-reads your prose, only the JSON survives.
 
 Hygiene: wrap absolute paths in backticks; never write bare slash-words.

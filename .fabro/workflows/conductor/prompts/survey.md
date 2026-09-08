@@ -20,9 +20,19 @@ each subsequent pass burns the backlog down one run at a time; do NOT
 create any run here (this leg never starts runs). Keep it best-effort: if
 the signal is ambiguous, say so in the journal and move on.
 
-## Journal
+## Journal — every pass
 
-Report through `context_updates.journal`: upstream count, newest upstream subject, revisor backlog (if any), anything that hurt.
+Report through `context_updates.journal` on EVERY pass. Silence is a missing report, not an empty one. Always emit BOTH keys:
+
+{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}], "observations": ["<upstream count + newest upstream subject, revisor backlog if any (`revisor backlog: <ids>`), what the next surveyor should know>"]}}
+
+- `painpoints`: friction in the survey loop itself (shell/git traps, ambiguous backlog signals).
+  Do not fix platform assets — report them here. `[]` when nothing hurt.
+- `observations`: at least one entry. The literal `"none"` is a valid
+  answer when the pass was genuinely unremarkable — but the key must be
+  present every time.
+The engine records it durably per stage (no restating, no rewriting);
+nobody re-reads your prose, only the JSON survives.
 
 ## Outcome contract
 

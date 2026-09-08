@@ -23,9 +23,19 @@ is wrong):
 Create child runs with the git workflow source — the server resolves and
 registers the workflow versions; the sandbox filesystem never participates:
 `{"runs": [{"workflow": "<name>", "workflow_source": {"repo": "denkhaus/fabro", "branch": "denkhaus", "workflow": "<name>"}, "environment": "toolchain"}]}`. The `workflow` slug is REQUIRED alongside `workflow_source` (the spec schema rejects workflow_source-only payloads).
-## Journal
+## Journal — every pass
 
-child id, status, gate wait duration, upstream range from the child report if visible.
+Report through `context_updates.journal` on EVERY pass. Silence is a missing report, not an empty one. Always emit BOTH keys:
+
+{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}], "observations": ["<child run id, child status, gate wait duration, upstream range from the child report if visible — what the next merge leg should know>"]}}
+
+- `painpoints`: friction in the orchestration loop itself (tool schema misses, wait semantics surprises).
+  Do not fix platform assets — report them here. `[]` when nothing hurt.
+- `observations`: at least one entry. The literal `"none"` is a valid
+  answer when the pass was genuinely unremarkable — but the key must be
+  present every time.
+The engine records it durably per stage (no restating, no rewriting);
+nobody re-reads your prose, only the JSON survives.
 
 ## Outcome contract
 
