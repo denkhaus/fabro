@@ -571,7 +571,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-08T14:30:10.137575918Z",
-  "last_event_at": "2026-09-08T14:45:14.953225716Z",
+  "last_event_at": "2026-09-08T14:45:19.815339216Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -940,9 +940,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 168,
       "checkpoint": {
-        "timestamp": "2026-09-08T14:45:15.180813073Z",
+        "timestamp": "2026-09-08T14:45:19.815097144Z",
         "current_node": "revise",
         "completed_nodes": [
           "start",
@@ -952,28 +952,50 @@
         ],
         "node_retries": {},
         "context_values": {
-          "response.survey": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.survey",
-            "chars": 1460,
-            "preview": "{\"preferred_next_label\": \"Work\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"Upstream count was initially 4919 beca"
-          },
+          "failure_class": "",
           "internal.retry_count.develop": 0,
-          "thread.survey.current_node": "develop",
-          "internal.retry_count.revise": 0,
-          "internal.fidelity": "compact",
-          "thread.develop.current_node": "revise",
-          "internal.exit_kind": "natural",
           "graph.rankdir": "LR",
-          "last_response": "Revisor child 01M20QA6PBYAGR1TG8MGR8KGTF succeeded: it selected develop run 01M20PXPFESQM8HAWF4MSXAKX5, filed one new seed (fabro-d02d), dropped 6 duplicates of open seeds, wrote the revision marker, ",
-          "preferred_label": "Cycle complete",
+          "thread.develop.current_node": "revise",
+          "failure_signature": "",
+          "child_run_id": "01M20PXPFESQM8HAWF4MSXAKX5",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "outcome": "succeeded",
+          "thread.survey.current_node": "develop",
+          "response.develop": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.develop",
+            "chars": 988,
+            "preview": "PR merged. Develop leg complete: child `01M20PXPFESQM8HAWF4MSXAKX5` succeeded (seed `fabro-0b41` implemented, gated, approved, closed) and PR #66 auto-merged on the first wait.\n\n{\"outcome\": \"succeeded"
+          },
+          "graph.max_node_visits": "12",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "develop": 1,
+            "revise": 1
+          },
+          "graph.preamble_budget_kb": "12",
           "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.revise": 0,
+          "internal.exit_kind": "natural",
+          "internal.run_id": "01M20PT1A22PAJK36F0ESZWCZR",
           "response.revise": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.revise",
             "chars": 1038,
             "preview": "Revisor child 01M20QA6PBYAGR1TG8MGR8KGTF succeeded: it selected develop run 01M20PXPFESQM8HAWF4MSXAKX5, filed one new seed (fabro-d02d), dropped 6 duplicates of open seeds, wrote the revision marker, "
           },
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "internal.retry_count.start": 0,
+          "internal.thread_id": "develop",
+          "last_stage": "revise",
+          "last_response": "Revisor child 01M20QA6PBYAGR1TG8MGR8KGTF succeeded: it selected develop run 01M20PXPFESQM8HAWF4MSXAKX5, filed one new seed (fabro-d02d), dropped 6 duplicates of open seeds, wrote the revision marker, ",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "thread.start.current_node": "survey",
+          "internal.seed_cycle_anchor": "",
+          "current_node": "revise",
+          "internal.fidelity": "compact",
+          "preferred_label": "Cycle complete",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -982,36 +1004,14 @@
               "Open develop backlog: fabro-9e49 (P2), fabro-8be7 (P3), fabro-d02d (new), plus fabro-16ff sequenced after the revisor file.md change from PR #66."
             ]
           },
-          "graph.max_node_visits": "12",
-          "failure_signature": "",
-          "internal.node_visit_count": 1,
-          "internal.thread_id": "develop",
-          "internal.seed_cycle_anchor": "",
-          "internal.retry_count.start": 0,
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "last_stage": "revise",
-          "internal.run_id": "01M20PT1A22PAJK36F0ESZWCZR",
-          "child_run_id": "01M20PXPFESQM8HAWF4MSXAKX5",
-          "graph.cycle_counter_reset_key": "pass_id",
-          "seed_cycles": {
-            "start": 1,
-            "survey": 1,
-            "develop": 1,
-            "revise": 1
-          },
-          "thread.start.current_node": "survey",
-          "failure_class": "",
-          "graph.preamble_budget_kb": "12",
-          "response.develop": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.develop",
-            "chars": 988,
-            "preview": "PR merged. Develop leg complete: child `01M20PXPFESQM8HAWF4MSXAKX5` succeeded (seed `fabro-0b41` implemented, gated, approved, closed) and PR #66 auto-merged on the first wait.\n\n{\"outcome\": \"succeeded"
-          },
           "internal.retry_count.survey": 0,
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "outcome": "succeeded",
-          "current_node": "revise"
+          "internal.node_visit_count": 1,
+          "response.survey": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.survey",
+            "chars": 1460,
+            "preview": "{\"preferred_next_label\": \"Work\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"Upstream count was initially 4919 beca"
+          }
         },
         "node_outcomes": {
           "start": {
@@ -1174,17 +1174,103 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "5083bfde6a3d9a563e35cc23a0d865d684f96858",
         "node_visits": {
-          "start": 1,
-          "survey": 1,
+          "revise": 1,
           "develop": 1,
-          "revise": 1
+          "start": 1,
+          "survey": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M20PT1A22PAJK36F0ESZWCZR.jsonl b/.fabro/journal/01M20PT1A22PAJK36F0ESZWCZR.jsonl\nindex 080786570..42341498e 100644\n--- a/.fabro/journal/01M20PT1A22PAJK36F0ESZWCZR.jsonl\n+++ b/.fabro/journal/01M20PT1A22PAJK36F0ESZWCZR.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PT1A22PAJK36F0ESZWCZR\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:30:12Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PT1A22PAJK36F0ESZWCZR\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:31:48Z\",\"data\":{\"painpoints\":[{\"text\":\"Upstream count was initially 4919 because this checkout is a shallow clone (`.git/shallow` present; `git merge-base origin/denkhaus upstream/main` failed with exit 1, making `git rev-list --count` count entire unrelated-looking histories). Fix that already worked: `git fetch origin --deepen=2000 denkhaus`, then merge-base resolves to `2f326a13c4c0` and the count drops to 0. Suggestion: the surveyor procedure should deepen or unshallow before trusting `git rev-list --count`, or the merge step should fetch with `--unshallow`/sufficient `--depth` so drift counts are never inflated by shallowness.\"}],\"observations\":[\"Upstream drift count = 0 (merge-base `2f326a13c4c0` == upstream/main tip; newest upstream subject: 'Bump version to 0.348.0-nightly.0'). 0 < 5 threshold → routed 'Work'; drift is genuinely zero, not accumulating.\",\"Revisor backlog check: `fabro_runs_list` returned 0 runs for both 'develop' and 'revisor' workflows — ambiguous signal (fresh tracker or different workflow slugs), so no `revisor backlog` line emitted; next surveyor should re-check once run records exist.\",\"This pass fetched new upstream tags (v0.343–v0.347-nightly) and new origin branches (e.g. `origin/main`, `origin/fix/subagent-billing-spend`); nothing else actionable for the next surveyor.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PT1A22PAJK36F0ESZWCZR\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:38:37Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Child 01M20PXPFESQM8HAWF4MSXAKX5 (develop) succeeded in ~5 min: claimed seed fabro-0b41 (revisor seed-write ownership scoping, ADR-0018 D2), gate green on first pass, reviewer approved, closeout closed the seed; PR #66 merged on the first gate wait (reached=merged, no blocked re-waits).\",\"Next develop leg: seed fabro-9e49 (newline-bulleted current_seed_brief, P2) and fabro-8be7 (FABRO_SERVER env-dependent test, P3) remain open fabro-assigned; the revisor prompt file `.fabro/workflows/revisor/prompts/file.md` just changed in PR #66 — fabro-16ff (security-affine revisor) targets the same file, sequence after it.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PT1A22PAJK36F0ESZWCZR\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:45:15Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Revisor child 01M20QA6PBYAGR1TG8MGR8KGTF succeeded in ~6 min: revised develop run 01M20PXPFESQM8HAWF4MSXAKX5 (the pass child), filed 1 seed fabro-d02d (fs_hide read_file denial text should name the shell bypass), dropped 6 findings as duplicates of open seeds (fabro-06e0, fabro-meta-c9f2, fabro-c3b4, fabro-4881, fabro-8275, fabro-cf03); PR #67 opened with auto-merge enabled.\",\"2 older merge-upstream runs (01M20N60ZY6DZDTX60WW0161KP, 01M20E43YS004DCEYPJ0GJQH4B) remain unrevised for later revisor passes.\",\"Open develop backlog: fabro-9e49 (P2), fabro-8be7 (P3), fabro-d02d (new), plus fabro-16ff sequenced after the revisor file.md change from PR #66.\"]}}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 4,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-08T14:45:19.862146785Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 905935,
+      "inference_time_ms": 120246,
+      "tool_time_ms": 765213,
+      "active_time_ms": 885459
+    },
+    "final_git_commit_sha": "5083bfde6a3d9a563e35cc23a0d865d684f96858",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 94761,
+          "inference_time_ms": 63155,
+          "tool_time_ms": 31030,
+          "active_time_ms": 94185
+        },
+        "billing_usd_micros": 54250,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 402201,
+          "inference_time_ms": 36076,
+          "tool_time_ms": 365577,
+          "active_time_ms": 401653
+        },
+        "billing_usd_micros": 196089,
+        "retries": 0
+      },
+      {
+        "stage_id": "revise",
+        "stage_label": "revise",
+        "timing": {
+          "wall_time_ms": 390274,
+          "inference_time_ms": 21015,
+          "tool_time_ms": 368606,
+          "active_time_ms": 389621
+        },
+        "billing_usd_micros": 100378,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 187673,
+      "output_tokens": 2506,
+      "total_tokens": 470344,
+      "reasoning_tokens": 997,
+      "cache_read_tokens": 279168,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 350717
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M20PT1A22PAJK36F0ESZWCZR.jsonl b/.fabro/journal/01M20PT1A22PAJK36F0ESZWCZR.jsonl\nnew file mode 100644\nindex 000000000..42341498e\n--- /dev/null\n+++ b/.fabro/journal/01M20PT1A22PAJK36F0ESZWCZR.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PT1A22PAJK36F0ESZWCZR\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:30:12Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PT1A22PAJK36F0ESZWCZR\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:31:48Z\",\"data\":{\"painpoints\":[{\"text\":\"Upstream count was initially 4919 because this checkout is a shallow clone (`.git/shallow` present; `git merge-base origin/denkhaus upstream/main` failed with exit 1, making `git rev-list --count` count entire unrelated-looking histories). Fix that already worked: `git fetch origin --deepen=2000 denkhaus`, then merge-base resolves to `2f326a13c4c0` and the count drops to 0. Suggestion: the surveyor procedure should deepen or unshallow before trusting `git rev-list --count`, or the merge step should fetch with `--unshallow`/sufficient `--depth` so drift counts are never inflated by shallowness.\"}],\"observations\":[\"Upstream drift count = 0 (merge-base `2f326a13c4c0` == upstream/main tip; newest upstream subject: 'Bump version to 0.348.0-nightly.0'). 0 < 5 threshold → routed 'Work'; drift is genuinely zero, not accumulating.\",\"Revisor backlog check: `fabro_runs_list` returned 0 runs for both 'develop' and 'revisor' workflows — ambiguous signal (fresh tracker or different workflow slugs), so no `revisor backlog` line emitted; next surveyor should re-check once run records exist.\",\"This pass fetched new upstream tags (v0.343–v0.347-nightly) and new origin branches (e.g. `origin/main`, `origin/fix/subagent-billing-spend`); nothing else actionable for the next surveyor.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PT1A22PAJK36F0ESZWCZR\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:38:37Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Child 01M20PXPFESQM8HAWF4MSXAKX5 (develop) succeeded in ~5 min: claimed seed fabro-0b41 (revisor seed-write ownership scoping, ADR-0018 D2), gate green on first pass, reviewer approved, closeout closed the seed; PR #66 merged on the first gate wait (reached=merged, no blocked re-waits).\",\"Next develop leg: seed fabro-9e49 (newline-bulleted current_seed_brief, P2) and fabro-8be7 (FABRO_SERVER env-dependent test, P3) remain open fabro-assigned; the revisor prompt file `.fabro/workflows/revisor/prompts/file.md` just changed in PR #66 — fabro-16ff (security-affine revisor) targets the same file, sequence after it.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PT1A22PAJK36F0ESZWCZR\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:45:15Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Revisor child 01M20QA6PBYAGR1TG8MGR8KGTF succeeded in ~6 min: revised develop run 01M20PXPFESQM8HAWF4MSXAKX5 (the pass child), filed 1 seed fabro-d02d (fs_hide read_file denial text should name the shell bypass), dropped 6 findings as duplicates of open seeds (fabro-06e0, fabro-meta-c9f2, fabro-c3b4, fabro-4881, fabro-8275, fabro-cf03); PR #67 opened with auto-merge enabled.\",\"2 older merge-upstream runs (01M20N60ZY6DZDTX60WW0161KP, 01M20E43YS004DCEYPJ0GJQH4B) remain unrevised for later revisor passes.\",\"Open develop backlog: fabro-9e49 (P2), fabro-8be7 (P3), fabro-d02d (new), plus fabro-16ff sequenced after the revisor file.md change from PR #66.\"]}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 4,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1747,6 +1833,42 @@
       "output": null,
       "started_at": "2026-09-08T14:30:12.668783241Z",
       "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 171,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-08T14:45:19.815339216Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T14:45:19.815304248Z",
+      "handler": "exit",
       "graph_visit": 1,
       "timing": {
         "wall_time_ms": 0,
