@@ -692,7 +692,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-08T15:01:21.764445032Z",
-  "last_event_at": "2026-09-08T15:04:30.272699891Z",
+  "last_event_at": "2026-09-08T15:05:18.746247856Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1277,9 +1277,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 214,
       "checkpoint": {
-        "timestamp": "2026-09-08T15:04:30.497332780Z",
+        "timestamp": "2026-09-08T15:04:35.277050972Z",
         "current_node": "evidence",
         "completed_nodes": [
           "start",
@@ -1290,14 +1290,250 @@
         ],
         "node_retries": {},
         "context_values": {
+          "lesson_capture": "mx-0b3256",
+          "current_node": "evidence",
+          "internal.seed_cycle_anchor": "fabro-16ff",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "The seed's engine-capability claims checked out exactly against the tree (resolve_workflow_env in lib/components/fabro-workflow/src/services.rs, git_bridge.rs in the same crate), but services.rs tests at lines 410/423 show GITHUB_TOKEN injection is conditional — the prompts deliberately avoid claiming it is unconditional, saying 'every agent shell call' only where the seed's evidence does; future engine changes to that injection condition should trigger a prompt touch-up."
+            ]
+          },
+          "current_seed_id": "fabro-16ff",
+          "internal.retry_count.planner": 0,
+          "internal.retry_count.start": 0,
+          "thread.implementer.current_node": "tester",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 4420,
+            "preview": "All work is done. Both prompt files updated, decision recorded as `mx-0b3256`, and the staged verification performed as a documented dry-run (detailed below). No Rust crates were touched, so no fmt/cl"
+          },
+          "thread.start.current_node": "planner",
+          "preferred_label": "Implemented",
+          "internal.fidelity": "compact",
+          "last_response": "All work is done. Both prompt files updated, decision recorded as `mx-0b3256`, and the staged verification performed as a documented dry-run (detailed below). No Rust crates were touched, so no fmt/cl",
+          "last_stage": "implementer",
+          "implementation_summary": "Extended `.fabro/workflows/develop/prompts/reviewer.md` checklist item 5 (CAPABILITY DELTA axis) to judge ENGINE-provided capability — `GITHUB_TOKEN` injection via `resolve_workflow_env` in `lib/components/fabro-workflow/src/services.rs` and the credential bridge in `lib/components/fabro-workflow/src/git_bridge.rs` — with a new clause (b) making a diff that merely USES an engine-provided credential on a new code path a capability delta requiring recorded user approval; extended the capability gate in `.fabro/workflows/revisor/prompts/file.md` with the same framing, ruling engine-credential-reliant fix directions out of revisor vocabulary even when the revisor adds no credential. Engine facts were verified against the source tree before wording the prompts. Lesson captured as mulch decision mx-0b3256. Staged verification was a documented dry-run: a synthetic diff (new `github.rs` reading `GITHUB_TOKEN` for a bearer-auth API call, seed with no ADR-0019 citation/approval) walked through the post-edit reviewer item 5 — clause (a) old-axis passes clean (the PR #53 blind spot), clause (b) flags it as a capability delta, missing approval yields the blocking Changes-requested path naming ADR-0019. Per-criterion report: - PASS — reviewer CAPABILITY DELTA axis extended to engine-provided capability: `.fabro/workflows/develop/prompts/reviewer.md` item 5, clause (b). - PASS — revisor capability gate gains engine-provided-credential framing: `.fabro/workflows/revisor/prompts/file.md` capability gate section, new bullet. - PASS — staged verification demonstrating blocking Changes-requested naming ADR-0019: documented dry-run above (prompt-only seed, no runnable review harness exists; brief allows 'test or documented dry-run'), cited here per the brief.",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1
+          },
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 5265,
+            "preview": "Seed fabro-16ff claimed. The ADR-0019 capability gate landed in PR #59, but the seed's 2026-09-08 addendum — engine-side capability teaching (GITHUB_TOKEN env injection, git_bridge) — is missing f"
+          },
+          "graph.max_node_visits": "40",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.implementer": 0,
+          "internal.run_id": "01M20RK7XFNPJRZ2T437XGDEP8",
+          "thread.tester.current_node": "evidence",
+          "command.output": "blob://sha256/9bece6829bb8217ddd6480c35bf2dc7a64fa5b5430b3c19a859273e10131b797",
+          "graph.preamble_budget_kb": "24",
+          "current_seed_title": "revisor + reviewer must become security-affine (ADR-0019): capability-affecting ideas get shot down at filing and review time",
+          "internal.node_visit_count": 1,
+          "internal.work_dir": "/workspace/fabro",
+          "thread.planner.current_node": "implementer",
+          "internal.thread_id": "tester",
+          "failure_class": "",
+          "internal.retry_count.tester": 0,
+          "outcome": "succeeded",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "current_seed_brief": "Partial re-implementation. FIX 1 (revisor capability gate) and FIX 2 (reviewer CAPABILITY DELTA axis) already landed in PR #59 (commit de83a22) — do NOT redo them. Remaining delta from the seed's 2026-09-08 ADDITIONAL EVIDENCE: the gh incident showed the engine itself hands capability to agent shells (GITHUB_TOKEN injected into every agent shell call via resolve_workflow_env, plus a git credential bridge in `git_bridge.rs`), invisible to reviewers judging container env alone. Acceptance criteria: (1) `​.fabro/workflows/develop/prompts/reviewer.md` CAPABILITY DELTA axis (item 5) extended to check what the ENGINE provides to agent surfaces — engine env injection (GITHUB_TOKEN via resolve_workflow_env) and credential bridges (git_bridge) — not only what the diff adds; a diff that merely USES an engine-provided credential on a new code path is still a capability delta requiring recorded user approval. (2) `​.fabro/workflows/revisor/prompts/file.md` capability gate section gains the same framing: engine-provided credentials/env are agent-reachable capability, so fix directions relying on them (token-bearing calls, bridge-assumed pushes) are out of vocabulary even when the revisor adds no credential itself. (3) Staged verification (test or documented dry-run of the review logic against a synthetic capability-delta diff with no recorded approval) demonstrating the blocking Changes-requested path naming ADR-0019 — cite how it was demonstrated in the implementation summary. Prompt-only, minimal edits; no engine code changes.",
+          "graph.rankdir": "LR",
+          "internal.retry_count.evidence": 0,
+          "failure_signature": ""
+        },
+        "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "Extended `.fabro/workflows/develop/prompts/reviewer.md` checklist item 5 (CAPABILITY DELTA axis) to judge ENGINE-provided capability — `GITHUB_TOKEN` injection via `resolve_workflow_env` in `lib/components/fabro-workflow/src/services.rs` and the credential bridge in `lib/components/fabro-workflow/src/git_bridge.rs` — with a new clause (b) making a diff that merely USES an engine-provided credential on a new code path a capability delta requiring recorded user approval; extended the capability gate in `.fabro/workflows/revisor/prompts/file.md` with the same framing, ruling engine-credential-reliant fix directions out of revisor vocabulary even when the revisor adds no credential. Engine facts were verified against the source tree before wording the prompts. Lesson captured as mulch decision mx-0b3256. Staged verification was a documented dry-run: a synthetic diff (new `github.rs` reading `GITHUB_TOKEN` for a bearer-auth API call, seed with no ADR-0019 citation/approval) walked through the post-edit reviewer item 5 — clause (a) old-axis passes clean (the PR #53 blind spot), clause (b) flags it as a capability delta, missing approval yields the blocking Changes-requested path naming ADR-0019. Per-criterion report: - PASS — reviewer CAPABILITY DELTA axis extended to engine-provided capability: `.fabro/workflows/develop/prompts/reviewer.md` item 5, clause (b). - PASS — revisor capability gate gains engine-provided-credential framing: `.fabro/workflows/revisor/prompts/file.md` capability gate section, new bullet. - PASS — staged verification demonstrating blocking Changes-requested naming ADR-0019: documented dry-run above (prompt-only seed, no runnable review harness exists; brief allows 'test or documented dry-run'), cited here per the brief.",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The seed's engine-capability claims checked out exactly against the tree (resolve_workflow_env in lib/components/fabro-workflow/src/services.rs, git_bridge.rs in the same crate), but services.rs tests at lines 410/423 show GITHUB_TOKEN injection is conditional — the prompts deliberately avoid claiming it is unconditional, saying 'every agent shell call' only where the seed's evidence does; future engine changes to that injection condition should trigger a prompt touch-up."
+                ]
+              },
+              "last_response": "All work is done. Both prompt files updated, decision recorded as `mx-0b3256`, and the staged verification performed as a documented dry-run (detailed below). No Rust crates were touched, so no fmt/cl",
+              "lesson_capture": "mx-0b3256",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 4420,
+                "preview": "All work is done. Both prompt files updated, decision recorded as `mx-0b3256`, and the staged verification performed as a documented dry-run (detailed below). No Rust crates were touched, so no fmt/cl"
+              },
+              "last_stage": "implementer"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 20152,
+                    "output_tokens": 3624,
+                    "reasoning_tokens": 1853,
+                    "cache_read_tokens": 212736,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 107608
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 100363,
+              "tool_time_ms": 3879,
+              "active_time_ms": 104242
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 4349,
+              "active_time_ms": 4349
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Seed fabro-16ff claimed. The ADR-0019 capability gate landed in PR #59, but the seed's 2026-09-08 addendum — engine-side capability teaching (GITHUB_TOKEN env injection, git_bridge) — is missing f",
+              "current_seed_brief": "Partial re-implementation. FIX 1 (revisor capability gate) and FIX 2 (reviewer CAPABILITY DELTA axis) already landed in PR #59 (commit de83a22) — do NOT redo them. Remaining delta from the seed's 2026-09-08 ADDITIONAL EVIDENCE: the gh incident showed the engine itself hands capability to agent shells (GITHUB_TOKEN injected into every agent shell call via resolve_workflow_env, plus a git credential bridge in `git_bridge.rs`), invisible to reviewers judging container env alone. Acceptance criteria: (1) `​.fabro/workflows/develop/prompts/reviewer.md` CAPABILITY DELTA axis (item 5) extended to check what the ENGINE provides to agent surfaces — engine env injection (GITHUB_TOKEN via resolve_workflow_env) and credential bridges (git_bridge) — not only what the diff adds; a diff that merely USES an engine-provided credential on a new code path is still a capability delta requiring recorded user approval. (2) `​.fabro/workflows/revisor/prompts/file.md` capability gate section gains the same framing: engine-provided credentials/env are agent-reachable capability, so fix directions relying on them (token-bearing calls, bridge-assumed pushes) are out of vocabulary even when the revisor adds no credential itself. (3) Staged verification (test or documented dry-run of the review logic against a synthetic capability-delta diff with no recorded approval) demonstrating the blocking Changes-requested path naming ADR-0019 — cite how it was demonstrated in the implementation summary. Prompt-only, minimal edits; no engine code changes.",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "gh CLI is not installed in the planner sandbox (run 01M20RK7XFNPJRZ2T437XGDEP8): the mandated in-flight PR check cannot run; degraded safely to no in-flight PRs. Seed fabro-06e0 (replace gh with fabro_runs_list) would fix this denial too."
+                  }
+                ],
+                "observations": [
+                  "Seed fabro-16ff is partially satisfied by PR #59 (de83a22): both prompt edits landed, but the 2026-09-08 engine-capability addendum (GITHUB_TOKEN env injection, git_bridge) is absent from both prompts — claimed with a delta-only brief instead of verification-only.",
+                  "gh unavailable, so the in-flight PR check degraded to none; no open-PR view exists for this run."
+                ]
+              },
+              "current_seed_id": "fabro-16ff",
+              "current_seed_title": "revisor + reviewer must become security-affine (ADR-0019): capability-affecting ideas get shot down at filing and review time",
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 5265,
+                "preview": "Seed fabro-16ff claimed. The ADR-0019 capability gate landed in PR #59, but the seed's 2026-09-08 addendum — engine-side capability teaching (GITHUB_TOKEN env injection, git_bridge) — is missing f"
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 22351,
+                    "output_tokens": 1878,
+                    "reasoning_tokens": 473,
+                    "cache_read_tokens": 122368,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 73441
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 57723,
+              "tool_time_ms": 1352,
+              "active_time_ms": 59075
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/9bece6829bb8217ddd6480c35bf2dc7a64fa5b5430b3c19a859273e10131b797"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 377,
+              "active_time_ms": 377
+            }
+          }
+        },
+        "next_node_id": "reviewer",
+        "git_commit_sha": "3744ef5c6a0a1c3063dcae3f636ddb6cfa5e5e23",
+        "node_visits": {
+          "implementer": 1,
+          "evidence": 1,
+          "tester": 1,
+          "planner": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M20RK7XFNPJRZ2T437XGDEP8.jsonl b/.fabro/journal/01M20RK7XFNPJRZ2T437XGDEP8.jsonl\nindex 55d9402..f4c865e 100644\n--- a/.fabro/journal/01M20RK7XFNPJRZ2T437XGDEP8.jsonl\n+++ b/.fabro/journal/01M20RK7XFNPJRZ2T437XGDEP8.jsonl\n@@ -2,3 +2,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20RK7XFNPJRZ2T437XGDEP8\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T15:02:24Z\",\"data\":{\"painpoints\":[{\"text\":\"gh CLI is not installed in the planner sandbox (run 01M20RK7XFNPJRZ2T437XGDEP8): the mandated in-flight PR check cannot run; degraded safely to no in-flight PRs. Seed fabro-06e0 (replace gh with fabro_runs_list) would fix this denial too.\"}],\"observations\":[\"Seed fabro-16ff is partially satisfied by PR #59 (de83a22): both prompt edits landed, but the 2026-09-08 engine-capability addendum (GITHUB_TOKEN env injection, git_bridge) is absent from both prompts — claimed with a delta-only brief instead of verification-only.\",\"gh unavailable, so the in-flight PR check degraded to none; no open-PR view exists for this run.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20RK7XFNPJRZ2T437XGDEP8\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T15:04:15Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The seed's engine-capability claims checked out exactly against the tree (resolve_workflow_env in lib/components/fabro-workflow/src/services.rs, git_bridge.rs in the same crate), but services.rs tests at lines 410/423 show GITHUB_TOKEN injection is conditional — the prompts deliberately avoid claiming it is unconditional, saying 'every agent shell call' only where the seed's evidence does; future engine changes to that injection condition should trigger a prompt touch-up.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20RK7XFNPJRZ2T437XGDEP8\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T15:04:25Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20RK7XFNPJRZ2T437XGDEP8\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T15:04:30Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 9,
+          "deletions": 2
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-08T15:05:18.999635955Z",
+        "current_node": "reviewer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer"
+        ],
+        "node_retries": {},
+        "context_values": {
           "internal.seed_cycle_anchor": "fabro-16ff",
           "thread.tester.current_node": "evidence",
           "failure_class": "",
           "internal.run_id": "01M20RK7XFNPJRZ2T437XGDEP8",
           "journal": {
-            "painpoints": [],
+            "painpoints": [
+              {
+                "text": "The evidence preamble for run 01M20RK7XFNPJRZ2T437XGDEP8 shipped a 12.4 KB blob ref with only a ~300-byte preview, forcing a tool round-trip to read the full capture (the exact 'output-schema avoids blob refs' pattern documented in mx-2eb2e0). Suggestion: since this reviewer stage is the capture's primary consumer, consider an output_schema on evidence.nu so the capture lands inline under a dedicated context key, as already proven for implementer-node outputs."
+              }
+            ],
             "observations": [
-              "The seed's engine-capability claims checked out exactly against the tree (resolve_workflow_env in lib/components/fabro-workflow/src/services.rs, git_bridge.rs in the same crate), but services.rs tests at lines 410/423 show GITHUB_TOKEN injection is conditional — the prompts deliberately avoid claiming it is unconditional, saying 'every agent shell call' only where the seed's evidence does; future engine changes to that injection condition should trigger a prompt touch-up."
+              "Verified all three acceptance criteria against the loop-work diff and the on-disk prompt files; additionally verified the engine facts the prompts cite (GITHUB_TOKEN insertion at services.rs:365-368, git_bridge.rs existence) rather than trusting the summary. Criterion 3's dry-run is summary-claimed but its walkthrough is directly derivable from the merged prompt text, so it does not count as an unverifiable claim."
             ]
           },
           "internal.retry_count.implementer": 0,
@@ -1315,25 +1551,34 @@
             "preview": "Seed fabro-16ff claimed. The ADR-0019 capability gate landed in PR #59, but the seed's 2026-09-08 addendum — engine-side capability teaching (GITHUB_TOKEN env injection, git_bridge) — is missing f"
           },
           "internal.node_visit_count": 1,
+          "thread.evidence.current_node": "reviewer",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "internal.work_dir": "/workspace/fabro",
-          "current_node": "evidence",
+          "current_node": "reviewer",
           "failure_signature": "",
-          "last_response": "All work is done. Both prompt files updated, decision recorded as `mx-0b3256`, and the staged verification performed as a documented dry-run (detailed below). No Rust crates were touched, so no fmt/cl",
-          "internal.fidelity": "compact",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 3009,
+            "preview": "All checks complete. Verification summary:\n\n**Evidence**: The 12.4 KB blob ref was readable in full — integrity header consistent (seed-work=0, churn=4, worktree clean), the churn-only loop-work dif"
+          },
+          "internal.retry_count.reviewer": 0,
+          "last_response": "All checks complete. Verification summary:\n\n**Evidence**: The 12.4 KB blob ref was readable in full — integrity header consistent (seed-work=0, churn=4, worktree clean), the churn-only loop-work dif",
+          "internal.fidelity": "summary:high",
           "thread.start.current_node": "planner",
           "graph.preamble_budget_kb": "24",
-          "internal.thread_id": "tester",
+          "internal.thread_id": "evidence",
           "graph.max_node_visits": "40",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
             "tester": 1,
-            "evidence": 1
+            "evidence": 1,
+            "reviewer": 1
           },
           "lesson_capture": "mx-0b3256",
-          "preferred_label": "Implemented",
-          "last_stage": "implementer",
+          "preferred_label": "Approved",
+          "last_stage": "reviewer",
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.implementer",
@@ -1345,6 +1590,7 @@
           "graph.rankdir": "LR",
           "current_seed_brief": "Partial re-implementation. FIX 1 (revisor capability gate) and FIX 2 (reviewer CAPABILITY DELTA axis) already landed in PR #59 (commit de83a22) — do NOT redo them. Remaining delta from the seed's 2026-09-08 ADDITIONAL EVIDENCE: the gh incident showed the engine itself hands capability to agent shells (GITHUB_TOKEN injected into every agent shell call via resolve_workflow_env, plus a git credential bridge in `git_bridge.rs`), invisible to reviewers judging container env alone. Acceptance criteria: (1) `​.fabro/workflows/develop/prompts/reviewer.md` CAPABILITY DELTA axis (item 5) extended to check what the ENGINE provides to agent surfaces — engine env injection (GITHUB_TOKEN via resolve_workflow_env) and credential bridges (git_bridge) — not only what the diff adds; a diff that merely USES an engine-provided credential on a new code path is still a capability delta requiring recorded user approval. (2) `​.fabro/workflows/revisor/prompts/file.md` capability gate section gains the same framing: engine-provided credentials/env are agent-reachable capability, so fix directions relying on them (token-bearing calls, bridge-assumed pushes) are out of vocabulary even when the revisor adds no credential itself. (3) Staged verification (test or documented dry-run of the review logic against a synthetic capability-delta diff with no recorded approval) demonstrating the blocking Changes-requested path naming ADR-0019 — cite how it was demonstrated in the implementation summary. Prompt-only, minimal edits; no engine code changes.",
           "internal.retry_count.tester": 0,
+          "review_verdict": "approved",
           "command.output": "blob://sha256/9bece6829bb8217ddd6480c35bf2dc7a64fa5b5430b3c19a859273e10131b797",
           "graph.cycle_counter_reset_key": "current_seed_id"
         },
@@ -1473,6 +1719,59 @@
               "active_time_ms": 4349
             }
           },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 3009,
+                "preview": "All checks complete. Verification summary:\n\n**Evidence**: The 12.4 KB blob ref was readable in full — integrity header consistent (seed-work=0, churn=4, worktree clean), the churn-only loop-work dif"
+              },
+              "last_response": "All checks complete. Verification summary:\n\n**Evidence**: The 12.4 KB blob ref was readable in full — integrity header consistent (seed-work=0, churn=4, worktree clean), the churn-only loop-work dif",
+              "last_stage": "reviewer",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "The evidence preamble for run 01M20RK7XFNPJRZ2T437XGDEP8 shipped a 12.4 KB blob ref with only a ~300-byte preview, forcing a tool round-trip to read the full capture (the exact 'output-schema avoids blob refs' pattern documented in mx-2eb2e0). Suggestion: since this reviewer stage is the capture's primary consumer, consider an output_schema on evidence.nu so the capture lands inline under a dedicated context key, as already proven for implementer-node outputs."
+                  }
+                ],
+                "observations": [
+                  "Verified all three acceptance criteria against the loop-work diff and the on-disk prompt files; additionally verified the engine facts the prompts cite (GITHUB_TOKEN insertion at services.rs:365-368, git_bridge.rs existence) rather than trusting the summary. Criterion 3's dry-run is summary-claimed but its walkthrough is directly derivable from the merged prompt text, so it does not count as an unverifiable claim."
+                ]
+              },
+              "review_verdict": "approved"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16983,
+                    "output_tokens": 985,
+                    "reasoning_tokens": 685,
+                    "cache_read_tokens": 43712,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 42486
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 41960,
+              "tool_time_ms": 247,
+              "active_time_ms": 42207
+            }
+          },
           "evidence": {
             "status": "succeeded",
             "context_updates": {
@@ -1488,12 +1787,13 @@
             }
           }
         },
-        "next_node_id": "reviewer",
+        "next_node_id": "closeout",
         "node_visits": {
           "planner": 1,
           "tester": 1,
           "implementer": 1,
           "evidence": 1,
+          "reviewer": 1,
           "start": 1
         }
       },
@@ -1526,6 +1826,243 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "reviewer@1": {
+      "first_event_seq": 217,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: reviewer",
+        "failure_reason": null,
+        "timestamp": "2026-09-08T15:05:18.746247856Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T15:04:35.672839150Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 42815,
+        "inference_time_ms": 41960,
+        "tool_time_ms": 247,
+        "active_time_ms": 42207
+      },
+      "usage": {
+        "input_tokens": 16983,
+        "output_tokens": 985,
+        "total_tokens": 62365,
+        "reasoning_tokens": 685,
+        "cache_read_tokens": 43712,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 42486
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 16828,
+        "usage_percent": 1.6048431396484375,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-08T15:05:18.734386137Z",
+        "event_seq": 250,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1132,
+            "usage_percent": 0.1079559326171875
+          },
+          {
+            "category": "tools",
+            "tokens": 1607,
+            "usage_percent": 0.15325546264648438
+          },
+          {
+            "category": "skills",
+            "tokens": 218,
+            "usage_percent": 0.02079010009765625
+          },
+          {
+            "category": "memory",
+            "tokens": 5644,
+            "usage_percent": 0.5382537841796875
+          },
+          {
+            "category": "conversation",
+            "tokens": 8222,
+            "usage_percent": 0.7841110229492188
+          },
+          {
+            "category": "other",
+            "tokens": 5,
+            "usage_percent": 0.000476837158203125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 16,
       "prompt": null,
