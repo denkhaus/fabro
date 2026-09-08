@@ -1233,11 +1233,11 @@ async fn validate_intent_environment(
 ) -> Result<(), EnvironmentSelectionError> {
     let configured_provider = run_manifest::configured_sandbox_provider(&settings.run);
     let effective_provider = run_manifest::effective_sandbox_provider(&settings.run);
-    let image = &settings.run.environment.image;
-    let image_incompatible = match effective_provider {
-        SandboxProviderKind::Docker => image.docker.is_none() && image.dockerfile.is_some(),
-        SandboxProviderKind::Local | SandboxProviderKind::Daytona => false,
-    };
+    // Image-source compatibility is intentionally not checked here: docker
+    // environments with only `image.dockerfile` (inline content) are built
+    // into `fabro-runner-<sha12>` by the sandbox layer on first use
+    // (fabro-969f auto-build), so both image sources are valid for every
+    // target kind.
     let (target_incompatible, detail) = match target {
         RunTarget::Git(_) => (
             configured_provider == SandboxProviderKind::Local || !settings.run.clone.enabled,
@@ -1252,7 +1252,7 @@ async fn validate_intent_environment(
             "folder targets require a Local environment",
         ),
     };
-    if image_incompatible || target_incompatible {
+    if target_incompatible {
         return Err(EnvironmentSelectionError::TargetUnsupported { detail });
     }
     // Settings resolution drops `run.pull_request` unless it is enabled, so

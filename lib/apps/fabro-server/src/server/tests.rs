@@ -5075,6 +5075,82 @@ async fn create_run_from_intent_helper_persists_automation_version_and_exact_tar
 }
 
 #[tokio::test]
+async fn create_run_from_intent_accepts_git_target_with_inline_dockerfile_environment() {
+    // fabro-0253: admission used to reject docker environments whose only
+    // image source is `image.dockerfile` (inline) even though the sandbox
+    // layer auto-builds them (`fabro-runner-<sha12>`, fabro-969f) and the
+    // environments API only persists inline dockerfiles. That made every
+    // stored toolchain-style environment unusable for git-target intents.
+    let state = TestAppStateBuilder::new()
+        .env_lookup(|_| None)
+        .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .build();
+    state
+        .environment_store()
+        .create(fabro_environment::EnvironmentDraft {
+            id:       fabro_environment::EnvironmentId::new("toolchain-inline")
+                .expect("valid environment id"),
+            settings: fabro_types::settings::run::EnvironmentSettings {
+                provider: EnvironmentProvider::Docker,
+                image: fabro_types::settings::run::EnvironmentImageSettings {
+                    docker:     None,
+                    dockerfile: Some(fabro_types::settings::run::DockerfileSource::Inline(
+                        "FROM alpine:3\n".to_string(),
+                    )),
+                },
+                ..fabro_types::settings::run::EnvironmentSettings::default()
+            },
+        })
+        .await
+        .expect("inline dockerfile environment should persist");
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+    let target = RunTarget::Git(GitRunTarget {
+        repo:   "fabro-sh/fabro".to_string(),
+        branch: "main".to_string(),
+        tag:    None,
+        sha:    None,
+    });
+
+    let response = Box::pin(handler::runs::create_run_from_intent(
+        Arc::clone(&state),
+        handler::runs::CreateRunFromIntentRequest {
+            intent:          fabro_api::types::RunIntent {
+                workflow_version_id,
+                target: target.clone(),
+                args: fabro_api::types::RunIntentArgs::default(),
+                environment_id: Some("toolchain-inline".to_string()),
+                parent_id: None,
+                title: None,
+                goal: None,
+            },
+            explicit_run_id: None,
+            actor:           Principal::System {
+                system_kind: SystemActorKind::Engine,
+            },
+            headers:         HeaderMap::new(),
+            automation:      None,
+        },
+    ))
+    .await;
+
+    let body = response_json!(response, StatusCode::CREATED).await;
+    let run_id: RunId = body["id"].as_str().unwrap().parse().unwrap();
+    let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+    let projection = run_store.state().await.unwrap();
+    assert_eq!(
+        projection.spec.settings.run.environment.id, "toolchain-inline",
+        "the admitted intent environment must survive into the run settings"
+    );
+    assert_eq!(
+        projection.spec.settings.run.environment.image.dockerfile,
+        Some(fabro_types::settings::run::DockerfileSource::Inline(
+            "FROM alpine:3\n".to_string()
+        )),
+        "the stored inline dockerfile must be the run's image source"
+    );
+}
+
+#[tokio::test]
 async fn create_run_from_manifest_pins_compiled_and_persisted_behavior() {
     let state = TestAppStateBuilder::new()
         .runtime_settings(
