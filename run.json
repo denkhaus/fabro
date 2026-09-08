@@ -570,7 +570,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-08T20:30:31.667933151Z",
-  "last_event_at": "2026-09-08T21:18:02.952136240Z",
+  "last_event_at": "2026-09-08T21:26:00.233611439Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -750,9 +750,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 103,
       "checkpoint": {
-        "timestamp": "2026-09-08T21:18:03.175846311Z",
+        "timestamp": "2026-09-08T21:18:08.093915927Z",
         "current_node": "develop",
         "completed_nodes": [
           "start",
@@ -761,32 +761,45 @@
         ],
         "node_retries": {},
         "context_values": {
-          "response.develop": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.develop",
-            "chars": 1476,
-            "preview": "Child 01M21BG1TG9SNM4QAS2A33W6GF succeeded (seed fabro-c419, gate green, review approved, seed closed, PR #76 opened), but the PR gate remained blocked across all 3 bounded merge waits (~60 min) — r"
-          },
-          "graph.max_node_visits": "12",
-          "internal.thread_id": "survey",
-          "internal.seed_cycle_anchor": "",
-          "last_response": "Child 01M21BG1TG9SNM4QAS2A33W6GF succeeded (seed fabro-c419, gate green, review approved, seed closed, PR #76 opened), but the PR gate remained blocked across all 3 bounded merge waits (~60 min) — r",
-          "graph.cycle_counter_reset_key": "pass_id",
           "failure_class": "",
-          "thread.survey.current_node": "develop",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "internal.run_id": "01M21BD6HGAJCQ4FHN0BZSGHTY",
+          "graph.rankdir": "LR",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.thread_id": "survey",
+          "internal.node_visit_count": 1,
+          "graph.cycle_counter_reset_key": "pass_id",
+          "child_run_id": "01M21BG1TG9SNM4QAS2A33W6GF",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "outcome": "succeeded",
+          "internal.retry_count.develop": 0,
+          "internal.seed_cycle_anchor": "",
+          "internal.retry_count.start": 0,
+          "last_response": "Child 01M21BG1TG9SNM4QAS2A33W6GF succeeded (seed fabro-c419, gate green, review approved, seed closed, PR #76 opened), but the PR gate remained blocked across all 3 bounded merge waits (~60 min) — r",
+          "graph.max_node_visits": "12",
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 1506,
             "preview": "Upstream count is 0 (threshold 5 not met) and the revisor backlog is empty: the newest develop run `01M219SFJ6A75DS2BP77TBENQZ` was already distilled by revisor run `01M21A1BWEYCQ03E4A8SRXCKTJ` (PR #7"
           },
-          "graph.preamble_budget_kb": "12",
+          "response.develop": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.develop",
+            "chars": 1476,
+            "preview": "Child 01M21BG1TG9SNM4QAS2A33W6GF succeeded (seed fabro-c419, gate green, review approved, seed closed, PR #76 opened), but the PR gate remained blocked across all 3 bounded merge waits (~60 min) — r"
+          },
+          "internal.fidelity": "compact",
+          "thread.survey.current_node": "develop",
+          "preferred_label": "Gate stuck — revise anyway",
+          "last_stage": "develop",
+          "internal.retry_count.survey": 0,
           "seed_cycles": {
             "start": 1,
             "survey": 1,
             "develop": 1
           },
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "graph.preamble_budget_kb": "12",
           "journal": {
             "painpoints": [
               {
@@ -798,24 +811,264 @@
               "child_run_id 01M21BG1TG9SNM4QAS2A33W6GF stays in context for the revisor leg; the next surveyor fire re-enters via survey and can re-check PR #76 merge state."
             ]
           },
+          "thread.start.current_node": "survey",
+          "failure_signature": "",
+          "current_node": "develop"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "survey": {
+            "status": "succeeded",
+            "preferred_label": "Work",
+            "context_updates": {
+              "last_response": "Upstream count is 0 (threshold 5 not met) and the revisor backlog is empty: the newest develop run `01M219SFJ6A75DS2BP77TBENQZ` was already distilled by revisor run `01M21A1BWEYCQ03E4A8SRXCKTJ` (PR #7",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Remote `upstream` was missing from the workspace clone (first pass in this container), so step 1 had to create it (`git remote add upstream https://github.com/fabro-sh/fabro`). Fix idea: the surveyor procedure already handles this, but persisting remotes across sandbox rebuilds (or a bootstrap check earlier in the Conductor) would remove the trap for future surveyor passes."
+                  }
+                ],
+                "observations": [
+                  "upstream count 0 (origin/denkhaus..upstream/main), newest upstream subject: 'Bump version to 0.348.0-nightly.0' — no drift accumulating, well below the 5-commit merge threshold; route Work.",
+                  "revisor backlog: none — newest completed develop run 01M219SFJ6A75DS2BP77TBENQZ was already revised by revisor run 01M21A1BWEYCQ03E4A8SRXCKTJ (PR #75, merged); no develop run newer than the newest revisor run.",
+                  "Next surveyor: fetch of origin also brought new nightly tags (v0.347/v0.348) and new branches (`rule-files-sync-733cf9ca`, `virtual-weaving-firefly`); count was 0 immediately after, so expect it to start re-accumulating from this pass onward."
+                ]
+              },
+              "last_stage": "survey",
+              "response.survey": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.survey",
+                "chars": 1506,
+                "preview": "Upstream count is 0 (threshold 5 not met) and the revisor backlog is empty: the newest develop run `01M219SFJ6A75DS2BP77TBENQZ` was already distilled by revisor run `01M21A1BWEYCQ03E4A8SRXCKTJ` (PR #7"
+              }
+            },
+            "notes": "Stage completed: survey",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 39793,
+                    "output_tokens": 592,
+                    "reasoning_tokens": 357,
+                    "cache_read_tokens": 40960,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 70534
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 24048,
+              "tool_time_ms": 18493,
+              "active_time_ms": 42541
+            }
+          },
+          "develop": {
+            "status": "succeeded",
+            "preferred_label": "Gate stuck — revise anyway",
+            "context_updates": {
+              "child_run_id": "01M21BG1TG9SNM4QAS2A33W6GF",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Merge-wait returned reached=blocked on all 3 bounded waits (~60 min total) for a succeeded child with PR #76 (run 01M21BG1TG9SNM4QAS2A33W6GF), with no reason field in the wait response distinguishing young-blocked (checks running) from persistently stuck (failed required checks / dirty base). Fix idea: include PR state, mergeable/merge_state, and failing check names in the fabro_run_wait blocked payload so the conductor leg can distinguish slow-gate from stuck-gate without an extra fabro_run_get and does not have to burn the full 3-wait ceiling when checks have already failed."
+                  }
+                ],
+                "observations": [
+                  "Child 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419 'Wire the planner's fabro_runs_list binding') succeeded: planner→implementer→gate green→evidence→review approved→closeout closed the seed; PR #76 auto-merge pending, gate stuck after 3 blocked merge waits.",
+                  "child_run_id 01M21BG1TG9SNM4QAS2A33W6GF stays in context for the revisor leg; the next surveyor fire re-enters via survey and can re-check PR #76 merge state."
+                ]
+              },
+              "response.develop": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.develop",
+                "chars": 1476,
+                "preview": "Child 01M21BG1TG9SNM4QAS2A33W6GF succeeded (seed fabro-c419, gate green, review approved, seed closed, PR #76 opened), but the PR gate remained blocked across all 3 bounded merge waits (~60 min) — r"
+              },
+              "last_response": "Child 01M21BG1TG9SNM4QAS2A33W6GF succeeded (seed fabro-c419, gate green, review approved, seed closed, PR #76 opened), but the PR gate remained blocked across all 3 bounded merge waits (~60 min) — r",
+              "last_stage": "develop"
+            },
+            "notes": "Stage completed: develop",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 141123,
+                    "output_tokens": 763,
+                    "reasoning_tokens": 104,
+                    "cache_read_tokens": 409088,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 307743
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 43325,
+              "tool_time_ms": 2576807,
+              "active_time_ms": 2620132
+            }
+          }
+        },
+        "next_node_id": "revise",
+        "git_commit_sha": "dd01b1e5eebd7c98f4affc8f7dbc726b1d6a1254",
+        "node_visits": {
+          "survey": 1,
+          "start": 1,
+          "develop": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M21BD6HGAJCQ4FHN0BZSGHTY.jsonl b/.fabro/journal/01M21BD6HGAJCQ4FHN0BZSGHTY.jsonl\nindex 8984bb3cb..fc5e715fc 100644\n--- a/.fabro/journal/01M21BD6HGAJCQ4FHN0BZSGHTY.jsonl\n+++ b/.fabro/journal/01M21BD6HGAJCQ4FHN0BZSGHTY.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21BD6HGAJCQ4FHN0BZSGHTY\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T20:30:34Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21BD6HGAJCQ4FHN0BZSGHTY\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T20:31:20Z\",\"data\":{\"painpoints\":[{\"text\":\"Remote `upstream` was missing from the workspace clone (first pass in this container), so step 1 had to create it (`git remote add upstream https://github.com/fabro-sh/fabro`). Fix idea: the surveyor procedure already handles this, but persisting remotes across sandbox rebuilds (or a bootstrap check earlier in the Conductor) would remove the trap for future surveyor passes.\"}],\"observations\":[\"upstream count 0 (origin/denkhaus..upstream/main), newest upstream subject: 'Bump version to 0.348.0-nightly.0' — no drift accumulating, well below the 5-commit merge threshold; route Work.\",\"revisor backlog: none — newest completed develop run 01M219SFJ6A75DS2BP77TBENQZ was already revised by revisor run 01M21A1BWEYCQ03E4A8SRXCKTJ (PR #75, merged); no develop run newer than the newest revisor run.\",\"Next surveyor: fetch of origin also brought new nightly tags (v0.347/v0.348) and new branches (`rule-files-sync-733cf9ca`, `virtual-weaving-firefly`); count was 0 immediately after, so expect it to start re-accumulating from this pass onward.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21BD6HGAJCQ4FHN0BZSGHTY\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T21:18:03Z\",\"data\":{\"painpoints\":[{\"text\":\"Merge-wait returned reached=blocked on all 3 bounded waits (~60 min total) for a succeeded child with PR #76 (run 01M21BG1TG9SNM4QAS2A33W6GF), with no reason field in the wait response distinguishing young-blocked (checks running) from persistently stuck (failed required checks / dirty base). Fix idea: include PR state, mergeable/merge_state, and failing check names in the fabro_run_wait blocked payload so the conductor leg can distinguish slow-gate from stuck-gate without an extra fabro_run_get and does not have to burn the full 3-wait ceiling when checks have already failed.\"}],\"observations\":[\"Child 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419 'Wire the planner's fabro_runs_list binding') succeeded: planner→implementer→gate green→evidence→review approved→closeout closed the seed; PR #76 auto-merge pending, gate stuck after 3 blocked merge waits.\",\"child_run_id 01M21BG1TG9SNM4QAS2A33W6GF stays in context for the revisor leg; the next surveyor fire re-enters via survey and can re-check PR #76 merge state.\"]}}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 3,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-08T21:26:00.468154545Z",
+        "current_node": "revise",
+        "completed_nodes": [
+          "start",
+          "survey",
+          "develop",
+          "revise"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "response.develop": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.develop",
+            "chars": 1476,
+            "preview": "Child 01M21BG1TG9SNM4QAS2A33W6GF succeeded (seed fabro-c419, gate green, review approved, seed closed, PR #76 opened), but the PR gate remained blocked across all 3 bounded merge waits (~60 min) — r"
+          },
+          "graph.max_node_visits": "12",
+          "internal.thread_id": "develop",
+          "internal.seed_cycle_anchor": "",
+          "last_response": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"Revisor run 01M21",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "failure_class": "",
+          "thread.survey.current_node": "develop",
+          "response.revise": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.revise",
+            "chars": 672,
+            "preview": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"Revisor run 01M21"
+          },
+          "response.survey": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.survey",
+            "chars": 1506,
+            "preview": "Upstream count is 0 (threshold 5 not met) and the revisor backlog is empty: the newest develop run `01M219SFJ6A75DS2BP77TBENQZ` was already distilled by revisor run `01M21A1BWEYCQ03E4A8SRXCKTJ` (PR #7"
+          },
+          "graph.preamble_budget_kb": "12",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "develop": 1,
+            "revise": 1
+          },
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Revisor run 01M21E5PRBNZGDTSEC6RBTMT0X (child of 01M21BD6HGAJCQ4FHN0BZSGHTY, workflow 'revisor') reached terminal status succeeded (reason: completed); created via git workflow source denkhaus/fabro@denkhaus, environment toolchain.",
+              "Revised pass child 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419) this cycle; its PR #76 was still pending auto-merge after 3 blocked merge waits last pass — next surveyor fire should re-check PR #76 merge state before spawning new develop children."
+            ]
+          },
           "internal.fidelity": "compact",
           "internal.node_visit_count": 1,
           "internal.retry_count.start": 0,
           "internal.retry_count.survey": 0,
-          "current_node": "develop",
+          "current_node": "revise",
           "internal.run_id": "01M21BD6HGAJCQ4FHN0BZSGHTY",
           "outcome": "succeeded",
-          "preferred_label": "Gate stuck — revise anyway",
+          "preferred_label": "Cycle complete",
+          "internal.retry_count.revise": 0,
+          "internal.exit_kind": "natural",
           "failure_signature": "",
           "graph.inspects": "develop,merge-upstream,revisor",
-          "last_stage": "develop",
+          "last_stage": "revise",
           "graph.rankdir": "LR",
+          "thread.develop.current_node": "revise",
           "internal.work_dir": "/workspace/fabro",
           "thread.start.current_node": "survey",
           "child_run_id": "01M21BG1TG9SNM4QAS2A33W6GF",
           "internal.retry_count.develop": 0
         },
         "node_outcomes": {
+          "revise": {
+            "status": "succeeded",
+            "preferred_label": "Cycle complete",
+            "context_updates": {
+              "response.revise": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.revise",
+                "chars": 672,
+                "preview": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"Revisor run 01M21"
+              },
+              "last_response": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"Revisor run 01M21",
+              "last_stage": "revise",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Revisor run 01M21E5PRBNZGDTSEC6RBTMT0X (child of 01M21BD6HGAJCQ4FHN0BZSGHTY, workflow 'revisor') reached terminal status succeeded (reason: completed); created via git workflow source denkhaus/fabro@denkhaus, environment toolchain.",
+                  "Revised pass child 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419) this cycle; its PR #76 was still pending auto-merge after 3 blocked merge waits last pass — next surveyor fire should re-check PR #76 merge state before spawning new develop children."
+                ]
+              }
+            },
+            "notes": "Stage completed: revise",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 12241,
+                    "output_tokens": 504,
+                    "reasoning_tokens": 75,
+                    "cache_read_tokens": 34624,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 28682
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 20818,
+              "tool_time_ms": 418838,
+              "active_time_ms": 439656
+            }
+          },
           "survey": {
             "status": "succeeded",
             "preferred_label": "Work",
@@ -929,11 +1182,12 @@
             }
           }
         },
-        "next_node_id": "revise",
+        "next_node_id": "exit",
         "node_visits": {
-          "start": 1,
           "survey": 1,
-          "develop": 1
+          "develop": 1,
+          "revise": 1,
+          "start": 1
         }
       },
       "diff": {}
@@ -1478,6 +1732,279 @@
             "category": "other",
             "tokens": 7,
             "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "revise@1": {
+      "first_event_seq": 106,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: revise",
+        "failure_reason": null,
+        "timestamp": "2026-09-08T21:26:00.233611439Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T21:18:08.110875100Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 440251,
+        "inference_time_ms": 20818,
+        "tool_time_ms": 418838,
+        "active_time_ms": 439656
+      },
+      "usage": {
+        "input_tokens": 12241,
+        "output_tokens": 504,
+        "total_tokens": 47444,
+        "reasoning_tokens": 75,
+        "cache_read_tokens": 34624,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 28682
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_create",
+          "description": "Create one or more Fabro workflow runs, optionally under a parent run, starting them by default.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "fabro_run_get",
+          "description": "Read-only inspection of a Fabro run: returns its summary, projection, and pending questions without mutating state.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_wait",
+          "description": "Block until ONE Fabro run reaches a terminal state (until=terminal) or its pull request merges (until=merged). Server-side long-poll, one call up to 3600000ms; a timeout returns reached=timeout with the current status so callers can re-wait. For multi-run fan-in with short bounds use fabro_run_gather instead (ADR-0016).",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": false
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 12074,
+        "usage_percent": 1.1514663696289062,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-08T21:26:00.211792290Z",
+        "event_seq": 131,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1156,
+            "usage_percent": 0.1102447509765625
+          },
+          {
+            "category": "tools",
+            "tokens": 2810,
+            "usage_percent": 0.26798248291015625
+          },
+          {
+            "category": "skills",
+            "tokens": 227,
+            "usage_percent": 0.021648406982421875
+          },
+          {
+            "category": "memory",
+            "tokens": 5890,
+            "usage_percent": 0.5617141723632812
+          },
+          {
+            "category": "conversation",
+            "tokens": 1983,
+            "usage_percent": 0.18911361694335938
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
           }
         ],
         "warnings": []
