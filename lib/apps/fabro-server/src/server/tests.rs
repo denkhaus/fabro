@@ -9002,6 +9002,90 @@ contents = "read"
     );
 }
 
+/// ADR-0019.6 (fabro-c274): a Worker-principal run whose config declares
+/// GitHub permissions must NOT depend on server-side GitHub credentials.
+/// With no GITHUB_TOKEN in the vault the run starts, succeeds, and executes
+/// nodes credential-free instead of hard-failing at credential resolution.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn worker_principal_run_without_vault_token_takes_no_token_path() {
+    let source = r#"
+_version = 1
+
+[server.auth]
+methods = ["dev-token"]
+
+[run.integrations.github.permissions]
+contents = "read"
+"#;
+    let observations = StdArc::new(StdMutex::new(Vec::new()));
+    let capturing = StdArc::clone(&observations);
+    let state = test_app_state_with_runtime_settings_and_registry_factory(
+        server_settings_from_toml(source),
+        manifest_run_defaults_from_toml(source),
+        move |interviewer| {
+            let mut registry = fabro_workflow::handler::default_registry(interviewer, || None);
+            registry.register(
+                "wait",
+                Box::new(BridgeCapturingWaitHandler {
+                    observations: StdArc::clone(&capturing),
+                }),
+            );
+            registry
+        },
+    );
+    // Deliberately NO GITHUB_TOKEN in the vault: a token-requesting User run
+    // would hard-fail here, the gated Worker run must not care.
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+
+    let parent_run_id = create_run(&app, BRIDGE_CAPTURE_DOT)
+        .await
+        .parse::<RunId>()
+        .unwrap();
+    let worker_token = issue_test_run_tools_worker_token(&parent_run_id);
+    let worker_run_id =
+        create_run_with_bearer_for_graph(&app, &worker_token, BRIDGE_CAPTURE_DOT).await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(api(&format!("/runs/{worker_run_id}/start")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    response_json!(response, StatusCode::OK).await;
+    execute_run(Arc::clone(&state), worker_run_id).await;
+    assert_eq!(
+        state
+            .stores
+            .runs
+            .open_run_reader(&worker_run_id)
+            .await
+            .unwrap()
+            .state()
+            .await
+            .unwrap()
+            .status,
+        RunStatus::Succeeded {
+            reason: SuccessReason::Completed,
+        },
+        "worker run with permissions config must succeed without any vault token"
+    );
+    assert_eq!(
+        observations
+            .lock()
+            .expect("bridge observation lock poisoned")
+            .clone(),
+        vec![GithubBridgeObservation {
+            token_source_present: false,
+            env_has_github_token: false,
+        }],
+        "no credential bridge, no GITHUB_TOKEN in the stage env"
+    );
+}
+
 /// Build the (state, router, run_id) triple every PR-endpoint test
 /// needs. Use this instead of repeating the
 /// state/build_router/fixtures::RUN_1 incantation per test.

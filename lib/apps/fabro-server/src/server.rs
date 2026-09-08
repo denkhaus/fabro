@@ -4237,6 +4237,41 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
     {
         return;
     }
+    let github_integration = match persisted
+        .run_spec()
+        .settings
+        .run
+        .integrations
+        .github
+        .resolve_integration()
+    {
+        // ADR-0019.6 (credential-free sandbox): only a human User principal
+        // may resolve a GitHub integration; agent-side principals
+        // (Worker/Agent/Webhook/Slack/System) get the no-token path even
+        // when their workflow config declares permissions. Resolving and
+        // gating BEFORE the credential lookup means agent-authored
+        // permission requests can never make a run depend on server-side
+        // GitHub credentials (fabro-c274).
+        Ok(integration) => capability_gate::gate_github_integration(
+            &persisted.run_spec().provenance.subject,
+            integration,
+        ),
+        Err(err) => {
+            tracing::error!(
+                run_id = %run_id,
+                error = %err,
+                "GitHub permission interpolation failed"
+            );
+            fail_run_before_execution(
+                &state,
+                run_id,
+                FailureReason::WorkflowError,
+                format!("Failed to resolve GitHub permissions: {err}"),
+            )
+            .await;
+            return;
+        }
+    };
     let github_app_result = {
         let run_spec = persisted.run_spec();
         let settings = &run_spec.settings.run;
@@ -4247,7 +4282,11 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
                 .is_some_and(|origin| !origin.trim().is_empty());
         let pull_request_can_use_github_credentials =
             settings.execution.mode != RunMode::DryRun && settings.pull_request.is_some();
-        if settings.integrations.github.is_token_requested() {
+        // The gated integration is empty for every non-User principal, so
+        // this hard-fail branch is reachable for User principals only;
+        // agent-side runs with permissions-declaring config fall through
+        // to the best-effort clone/pull-request branches below.
+        if github_integration.is_token_requested() {
             state.github_credentials(github_settings).await
         } else if clone_can_use_github_credentials || pull_request_can_use_github_credentials {
             match state.github_credentials(github_settings).await {
@@ -4278,38 +4317,6 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
                 run_id,
                 FailureReason::WorkflowError,
                 format!("Invalid GitHub credentials: {e}"),
-            )
-            .await;
-            return;
-        }
-    };
-    let github_integration = match persisted
-        .run_spec()
-        .settings
-        .run
-        .integrations
-        .github
-        .resolve_integration()
-    {
-        // ADR-0019.6 (credential-free sandbox): only a human User principal
-        // may resolve a GitHub integration; agent-side principals
-        // (Worker/Agent/Webhook/Slack/System) get the no-token path even
-        // when their workflow config declares permissions.
-        Ok(integration) => capability_gate::gate_github_integration(
-            &persisted.run_spec().provenance.subject,
-            integration,
-        ),
-        Err(err) => {
-            tracing::error!(
-                run_id = %run_id,
-                error = %err,
-                "GitHub permission interpolation failed"
-            );
-            fail_run_before_execution(
-                &state,
-                run_id,
-                FailureReason::WorkflowError,
-                format!("Failed to resolve GitHub permissions: {err}"),
             )
             .await;
             return;
