@@ -483,7 +483,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-08T16:27:27.522711487Z",
-  "last_event_at": "2026-09-08T16:35:22.111832203Z",
+  "last_event_at": "2026-09-08T16:35:28.328244466Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -877,9 +877,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 190,
       "checkpoint": {
-        "timestamp": "2026-09-08T16:35:22.342485967Z",
+        "timestamp": "2026-09-08T16:35:27.205574951Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -889,23 +889,15 @@
         ],
         "node_retries": {},
         "context_values": {
-          "graph.inspects": "develop,merge-upstream",
-          "outcome": "succeeded",
+          "graph.rankdir": "LR",
+          "internal.exit_kind": "natural",
           "internal.retry_count.analyze": 0,
-          "thread.select.current_node": "analyze",
-          "response.file": {
+          "response.analyze": {
             "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.file",
-            "chars": 638,
-            "preview": "Searched first (no duplicate — closed fabro-0d56/fabro-2254 cover lint scope only), filed seed `fabro-fc1b` with basis line, wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M20T9S8"
+            "output_key": "output.analyze",
+            "chars": 4259,
+            "preview": "Review file written. Distillation complete: tracker check dropped 7 of 8 recommendations as duplicates of existing open seeds (the analyst itself flagged most with seed ids, and `sd show` confirmed th"
           },
-          "preferred_label": "Staged",
-          "internal.fidelity": "compact",
-          "internal.retry_count.file": 0,
-          "revisor_target_status": "succeeded",
-          "internal.thread_id": "analyze",
-          "internal.run_id": "01M20XGWE2ZYM9ADRM2PVE322F",
-          "failure_signature": "",
           "revision_findings": [
             {
               "title": "Implementer prompt: require the full touched-crate test suite when the seed touches tests",
@@ -913,80 +905,86 @@
               "priority": 1
             }
           ],
-          "revisor_target_wall": "55.0 min",
-          "graph.preamble_budget_kb": "24",
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "seed_cycles": {
-            "select": 1,
-            "analyze": 1,
-            "file": 1
-          },
-          "last_response": "Searched first (no duplicate — closed fabro-0d56/fabro-2254 cover lint scope only), filed seed `fabro-fc1b` with basis line, wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M20T9S8",
-          "internal.seed_cycle_anchor": "01M20T9S8JRXETASN64768TRRP",
-          "thread.analyze.current_node": "file",
-          "internal.exit_kind": "natural",
-          "revisor_target_workflow_version": "8aedc5a9bbdd71b2f882af0b6c7d28a947212553646a31a390f5d173a91c8a69",
-          "internal.retry_count.select": 0,
-          "filed_seed_ids": [
-            "fabro-fc1b"
-          ],
-          "graph.rankdir": "LR",
           "journal": {
             "painpoints": [],
             "observations": [
               "sd search returned empty output for the theme keyword; duplicate guard relied on the analyst's pre-dedup plus finding's own cross-references to fabro-0d56/fabro-2254"
             ]
           },
-          "response.analyze": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "chars": 4259,
-            "preview": "Review file written. Distillation complete: tracker check dropped 7 of 8 recommendations as duplicates of existing open seeds (the analyst itself flagged most with seed ids, and `sd show` confirmed th"
-          },
+          "graph.preamble_budget_kb": "24",
+          "last_response": "Searched first (no duplicate — closed fabro-0d56/fabro-2254 cover lint scope only), filed seed `fabro-fc1b` with basis line, wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M20T9S8",
+          "filed_seed_ids": [
+            "fabro-fc1b"
+          ],
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "internal.seed_cycle_anchor": "01M20T9S8JRXETASN64768TRRP",
+          "revisor_target_wall": "55.0 min",
+          "revisor_target_workflow_version": "8aedc5a9bbdd71b2f882af0b6c7d28a947212553646a31a390f5d173a91c8a69",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "thread.start.current_node": "select",
+          "internal.fidelity": "compact",
           "internal.node_visit_count": 1,
-          "internal.retry_count.start": 0,
+          "internal.thread_id": "analyze",
+          "graph.inspects": "develop,merge-upstream",
+          "current_node": "file",
+          "failure_signature": "",
+          "internal.run_id": "01M20XGWE2ZYM9ADRM2PVE322F",
+          "last_stage": "file",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.analyze.current_node": "file",
           "response.select": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.select",
             "chars": 1307,
             "preview": "Selected the newest qualifying run: develop run `01M20T9S8JRXETASN64768TRRP` (succeeded, created 2026-09-08T15:31Z, wall ≈ 55 min, `sandbox_available: true`, version matches the newest develop basel"
           },
-          "thread.start.current_node": "select",
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "graph.max_node_visits": "30",
-          "internal.work_dir": "/workspace/fabro",
-          "failure_class": "",
-          "last_stage": "file",
+          "preferred_label": "Staged",
           "revisor_target_run_id": "01M20T9S8JRXETASN64768TRRP",
+          "outcome": "succeeded",
+          "failure_class": "",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "revisor_target_status": "succeeded",
+          "internal.retry_count.file": 0,
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 638,
+            "preview": "Searched first (no duplicate — closed fabro-0d56/fabro-2254 cover lint scope only), filed seed `fabro-fc1b` with basis line, wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M20T9S8"
+          },
+          "graph.max_node_visits": "30",
+          "internal.retry_count.select": 0,
+          "internal.retry_count.start": 0,
           "revisor_target_title": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "current_node": "file"
+          "thread.select.current_node": "analyze"
         },
         "node_outcomes": {
-          "select": {
+          "file": {
             "status": "succeeded",
-            "preferred_label": "Run selected",
+            "preferred_label": "Staged",
             "context_updates": {
-              "revisor_target_workflow_version": "8aedc5a9bbdd71b2f882af0b6c7d28a947212553646a31a390f5d173a91c8a69",
-              "response.select": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.select",
-                "chars": 1307,
-                "preview": "Selected the newest qualifying run: develop run `01M20T9S8JRXETASN64768TRRP` (succeeded, created 2026-09-08T15:31Z, wall ≈ 55 min, `sandbox_available: true`, version matches the newest develop basel"
-              },
-              "revisor_target_wall": "55.0 min",
-              "revisor_target_run_id": "01M20T9S8JRXETASN64768TRRP",
-              "revisor_target_title": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-              "revisor_target_status": "succeeded",
-              "last_stage": "select",
-              "last_response": "Selected the newest qualifying run: develop run `01M20T9S8JRXETASN64768TRRP` (succeeded, created 2026-09-08T15:31Z, wall ≈ 55 min, `sandbox_available: true`, version matches the newest develop basel",
               "journal": {
                 "painpoints": [],
                 "observations": [
-                  "5 runs listed; 2 develop runs already revised (markers present), 2 merge-upstream runs unrevised+fresh but older than the selected develop run, 0 stale-evidence against per-workflow baselines, 0 sandbox-disqualified"
+                  "sd search returned empty output for the theme keyword; duplicate guard relied on the analyst's pre-dedup plus finding's own cross-references to fabro-0d56/fabro-2254"
                 ]
+              },
+              "last_stage": "file",
+              "last_response": "Searched first (no duplicate — closed fabro-0d56/fabro-2254 cover lint scope only), filed seed `fabro-fc1b` with basis line, wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M20T9S8",
+              "filed_seed_ids": [
+                "fabro-fc1b"
+              ],
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 638,
+                "preview": "Searched first (no duplicate — closed fabro-0d56/fabro-2254 cover lint scope only), filed seed `fabro-fc1b` with basis line, wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M20T9S8"
               }
             },
-            "notes": "Stage completed: select",
+            "notes": "Stage completed: file",
             "usage": {
               "input": {
                 "usage": {
@@ -995,10 +993,10 @@
                     "model_id": "glm-5.3"
                   },
                   "tokens": {
-                    "input_tokens": 12977,
-                    "output_tokens": 443,
-                    "reasoning_tokens": 198,
-                    "cache_read_tokens": 22400,
+                    "input_tokens": 16483,
+                    "output_tokens": 1262,
+                    "reasoning_tokens": 284,
+                    "cache_read_tokens": 61312,
                     "cache_write_tokens": 0
                   }
                 },
@@ -1006,13 +1004,16 @@
                   "algorithm": "openai"
                 }
               },
-              "total_usd_micros": 26808
+              "total_usd_micros": 45814
             },
+            "files_touched": [
+              "/workspace/fabro/.fabro/revisions/01M20T9S8JRXETASN64768TRRP.md"
+            ],
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 24049,
-              "tool_time_ms": 339,
-              "active_time_ms": 24388
+              "inference_time_ms": 48598,
+              "tool_time_ms": 647,
+              "active_time_ms": 49245
             }
           },
           "analyze": {
@@ -1079,33 +1080,31 @@
               "active_time_ms": 385630
             }
           },
-          "start": {
+          "select": {
             "status": "succeeded",
-            "usage": null
-          },
-          "file": {
-            "status": "succeeded",
-            "preferred_label": "Staged",
+            "preferred_label": "Run selected",
             "context_updates": {
+              "revisor_target_workflow_version": "8aedc5a9bbdd71b2f882af0b6c7d28a947212553646a31a390f5d173a91c8a69",
+              "response.select": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.select",
+                "chars": 1307,
+                "preview": "Selected the newest qualifying run: develop run `01M20T9S8JRXETASN64768TRRP` (succeeded, created 2026-09-08T15:31Z, wall ≈ 55 min, `sandbox_available: true`, version matches the newest develop basel"
+              },
+              "revisor_target_wall": "55.0 min",
+              "revisor_target_run_id": "01M20T9S8JRXETASN64768TRRP",
+              "revisor_target_title": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+              "revisor_target_status": "succeeded",
+              "last_stage": "select",
+              "last_response": "Selected the newest qualifying run: develop run `01M20T9S8JRXETASN64768TRRP` (succeeded, created 2026-09-08T15:31Z, wall ≈ 55 min, `sandbox_available: true`, version matches the newest develop basel",
               "journal": {
                 "painpoints": [],
                 "observations": [
-                  "sd search returned empty output for the theme keyword; duplicate guard relied on the analyst's pre-dedup plus finding's own cross-references to fabro-0d56/fabro-2254"
+                  "5 runs listed; 2 develop runs already revised (markers present), 2 merge-upstream runs unrevised+fresh but older than the selected develop run, 0 stale-evidence against per-workflow baselines, 0 sandbox-disqualified"
                 ]
-              },
-              "last_stage": "file",
-              "last_response": "Searched first (no duplicate — closed fabro-0d56/fabro-2254 cover lint scope only), filed seed `fabro-fc1b` with basis line, wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M20T9S8",
-              "filed_seed_ids": [
-                "fabro-fc1b"
-              ],
-              "response.file": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.file",
-                "chars": 638,
-                "preview": "Searched first (no duplicate — closed fabro-0d56/fabro-2254 cover lint scope only), filed seed `fabro-fc1b` with basis line, wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M20T9S8"
               }
             },
-            "notes": "Stage completed: file",
+            "notes": "Stage completed: select",
             "usage": {
               "input": {
                 "usage": {
@@ -1114,10 +1113,10 @@
                     "model_id": "glm-5.3"
                   },
                   "tokens": {
-                    "input_tokens": 16483,
-                    "output_tokens": 1262,
-                    "reasoning_tokens": 284,
-                    "cache_read_tokens": 61312,
+                    "input_tokens": 12977,
+                    "output_tokens": 443,
+                    "reasoning_tokens": 198,
+                    "cache_read_tokens": 22400,
                     "cache_write_tokens": 0
                   }
                 },
@@ -1125,31 +1124,118 @@
                   "algorithm": "openai"
                 }
               },
-              "total_usd_micros": 45814
+              "total_usd_micros": 26808
             },
-            "files_touched": [
-              "/workspace/fabro/.fabro/revisions/01M20T9S8JRXETASN64768TRRP.md"
-            ],
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 48598,
-              "tool_time_ms": 647,
-              "active_time_ms": 49245
+              "inference_time_ms": 24049,
+              "tool_time_ms": 339,
+              "active_time_ms": 24388
             }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "251660dbb588ab1f6b31be5d8c87af843e100c88",
         "node_visits": {
           "start": 1,
-          "select": 1,
           "analyze": 1,
+          "select": 1,
           "file": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M20XGWE2ZYM9ADRM2PVE322F.jsonl b/.fabro/journal/01M20XGWE2ZYM9ADRM2PVE322F.jsonl\nindex 83a3e89..2268be8 100644\n--- a/.fabro/journal/01M20XGWE2ZYM9ADRM2PVE322F.jsonl\n+++ b/.fabro/journal/01M20XGWE2ZYM9ADRM2PVE322F.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20XGWE2ZYM9ADRM2PVE322F\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T16:27:29Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20XGWE2ZYM9ADRM2PVE322F\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T16:27:55Z\",\"data\":{\"painpoints\":[],\"observations\":[\"5 runs listed; 2 develop runs already revised (markers present), 2 merge-upstream runs unrevised+fresh but older than the selected develop run, 0 stale-evidence against per-workflow baselines, 0 sandbox-disqualified\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20XGWE2ZYM9ADRM2PVE322F\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T16:34:27Z\",\"data\":{\"painpoints\":[{\"text\":\"Tracker check was nearly defeated by tooling caps: `sd list --format compact` returned only 50 lines while more open seeds exist (analyst-cited fabro-93a7, fabro-4815, fabro-a0e3, fabro-45bf, fabro-edac, fabro-850f were all absent from it), and `sd search` returned empty for themes those seeds match by title+description (e.g. 'qualitygate transient deterministic' vs fabro-4815). Fix idea: the revisor step should mandate `sd show` on every seed id cited in the analyst answer, or `sd list` with an explicit raised limit; otherwise content duplicates get re-filed (fabro-c16d already documents the default --limit 50 problem for the planner).\"}],\"observations\":[\"Dropped 7 of 8 analyst recommendations as duplicates of existing OPEN seeds — same concrete change, file, and effect: rec2 evidence.nu seed-spec paths → duplicate_of: fabro-93a7; rec3 gate-bounce signature matching → duplicate_of: fabro-c841; rec4 bounded planner sd ready view → duplicate_of: fabro-c3b4; rec5 drop current_seed_brief from reviewer preamble_allow_keys → duplicate_of: fabro-c1bb; rec6 qualitygate deterministic-vs-transient exit codes → duplicate_of: fabro-4815; rec7 progress denominator + preamble stage dedup → duplicate_of: fabro-a0e3, fabro-45bf, fabro-edac (also fabro-38f4 for the server-side denominator); rec8 skip empty stage-journal writes → duplicate_of: fabro-850f. Only rec1 (implementer focused check = full touched-crate test suite when seed touches tests) survived as genuinely new.\",\"The analyst's structural note about the self-referential planner prompt (seed fabro-06e0's gh-guard taking effect on the NEXT develop run) is a watch-item, not a finding — do not re-file; the closing proof is the `skipped: in-flight PR <n>` journal line on a future run.\",\"Review persisted at `.fabro/reviews/develop/01M20T9S8JRXETASN64768TRRP.md` with the verbatim analyst answer for diff-compatibility with the manual pipeline.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20XGWE2ZYM9ADRM2PVE322F\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T16:35:22Z\",\"data\":{\"painpoints\":[],\"observations\":[\"sd search returned empty output for the theme keyword; duplicate guard relied on the analyst's pre-dedup plus finding's own cross-references to fabro-0d56/fabro-2254\"]}}\ndiff --git a/.fabro/revisions/01M20T9S8JRXETASN64768TRRP.md b/.fabro/revisions/01M20T9S8JRXETASN64768TRRP.md\nnew file mode 100644\nindex 0000000..c82fedb\n--- /dev/null\n+++ b/.fabro/revisions/01M20T9S8JRXETASN64768TRRP.md\n@@ -0,0 +1,14 @@\n+# Revision — run 01M20T9S8JRXETASN64768TRRP\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M20T9S8JRXETASN64768TRRP.md\n+- seeds filed: fabro-fc1b — Implementer prompt: require the full touched-crate test suite when the seed touches tests\n+- basis: run 01M20T9S8JRXETASN64768TRRP, workflow version 8aedc5a9bbdd71b2f882af0b6c7d28a947212553646a31a390f5d173a91c8a69, commit 9966d125e665593fcd4f21137a19659625d58ed0\n+- revised_at_commit: 9966d125e665593fcd4f21137a19659625d58ed0 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Implementer prompt: require the full touched-crate test suite when the seed touches tests\n+- filed: fabro-fc1b\n+- change: in `.fabro/workflows/develop/prompts/implementer.md` step 4, replace the \"ONE focused test\" rule with a full touched-crate pre-gate (`cargo nextest -p <touched-crate>` when the seed adds or edits tests in a crate), never the workspace suite.\n+- expected effect: implementer@1's targeted-only testing missed two pre-existing Docker-socket failures in the full fabro-server suite; the gate-red bounce cost ~22 min (~40% of the 55-min run wall) and ~$0.8 to apply a 6-line `[run.environment] id = \"local\"` pin. Full-crate pre-gating surfaces such breaks in the same implementer pass. No duplicate: closed fabro-0d56/fabro-2254 cover fmt/clippy scope, not test-suite scope.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 6db3705..13f46ed 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -282,3 +282,4 @@\n {\"id\":\"fabro-ee5d\",\"title\":\"fabro_run_wait until=merged returns blocked immediately; conductor misjudges successful merge pass as \\\"Merge child failed\\\"\",\"status\":\"open\",\"type\":\"bug\",\"priority\":2,\"createdAt\":\"2026-09-08T13:53:47.604Z\",\"updatedAt\":\"2026-09-08T15:25:10.439Z\",\"assignee\":\"fabro\",\"description\":\"fabro_run_wait until=merged returns blocked immediately; conductor misjudges successful merge pass as \\\"Merge child failed\\\"\\n\\nSYMPTOM (conductor run 01M20DMYEK5B3GDQAYFR83DNGN, pass 11:49 2026-09-08):\\nmerge child 01M20E43YS004DCEYPJ0GJQH4B succeeded and opened PR #64, but the conductor merge leg labeled \\\"Merge child failed\\\" and parked at the kind=\\\"soft\\\" exit (failed/soft_stop). The PR merged seconds later (squash commit 9613ec4d8) - the pass was actually successful. Reproduced identically at 14:00 (child 01M20N60ZY6DZDTX60WW0161KP, PR #65, conductor 01M20N33G1T3MHVAJ4T3KJ1NRG).\\n\\nEVIDENCE (conductor events, run 01M20DMYEK5B3GDQAYFR83DNGN):\\n- seq 75/76: fabro_run_wait {run_id: child, timeout_ms: 2400000, until: \\\"terminal\\\"} -> reached=terminal, status succeeded. Correct.\\n- seq 80/81: fabro_run_wait {run_id: child, timeout_ms: 1200000, until: \\\"merged\\\"} -> reached=blocked IMMEDIATELY (child completed 12:07:09, stage concluded ~12:07:3x). PR #64 existed at that point with auto-merge pending. The wait should have polled until the 20-min timeout or the merge, not returned blocked at once.\\n- The merge-leg journal: \\\"returned reached=blocked on the first wait call (~immediate); merge gate stuck - failed required checks or dirty/blocked base. Never re-wait (fabro-bde4).\\\"\\n\\nHYPOTHESIS: the until=merged wait path treats a PR whose merge is merely PENDING (checks running / auto-merge enabled but not yet merged) as blocked, instead of waiting. Likely in the wait/merge-detection implementation (server run_wait handler or its GitHub merge check).\\n\\nACCEPTANCE: until=merged with a 20-min timeout keeps polling while the PR is open, auto-merge-enabled, and not failed; blocked only on a terminal unmergeable state (failed required checks, conflict, closed). Add a regression test with a PR that merges 30s after terminal.\\n\\nNOTE: secondary effect - Failed{SoftStop} counts as a breaker failure for the schedule breaker (3 consecutive same-signature pauses the trigger). A conductor that soft-parks normally must not get its cron paused; revisit counts_as_breaker_failure if soft parks stay common.\",\"labels\":[\"engine\",\"workflows\"]}\n {\"id\":\"fabro-e4c4\",\"title\":\"Develop evidence node: deliver the capture inline via output_schema\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T15:14:48.322Z\",\"updatedAt\":\"2026-09-08T15:24:21.820Z\",\"description\":\"In .fabro/workflows/develop/workflow.fabro, give the evidence node an output_schema (e.g. @schemas/evidence-capture.schema.json) and declare it in context_allow_keys, mirroring how gatebounce ships stdout inline as output.gate_known_bug_hits; swap the reviewer's preamble_allow_keys entry from command.output to output.evidence. In run 01M20RK7XFNPJRZ2T437XGDEP8 the 12.4 KB capture reached the reviewer as a blob ref with a ~300-byte preview, forcing a read_file detour plus one extra model round inside its 42.0s inference (the reviewer's own journal painpoint). Expected effect: one tool call and one model round removed per review, and the verification_blocked-on-blob failure mode disappears; composes with open seeds fabro-9ef9 (evidence re-key, overwrite fix) and fabro-c1bb (drop duplicated brief spec) rather than duplicating them — 12.4 KB fits the 16 KB inline ceiling once the duplicated spec is dropped. Basis: run 01M20RK7XFNPJRZ2T437XGDEP8, workflow version af036506627c2c235dc58d52e1ceda475fc4053f219b513e9582f644224dc129, commit 6f23b48525bf1ff7b11d3a4c49ad43681a9ff1fb\",\"labels\":[\"revision\",\"workflows\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-a08a\",\"title\":\"Develop planner prompt: visit-1 fresh-cycle line to skip dead context reads\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T15:14:55.468Z\",\"updatedAt\":\"2026-09-08T15:24:21.706Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 1, add one line: 'visit 1 with no current_seed_id in ## Context = fresh cycle; go straight to sd ready'. In run 01M20RK7XFNPJRZ2T437XGDEP8 the planner opened with two context_read calls at pass start, one erroring with unknown context key 'current_seed_id' because it was visit 1 and nothing existed to read (events seq 31-34). Expected effect: two fewer tool rounds per fresh planner pass (~$0.02, ~8 s of the 59.7 s stage); orthogonal to fabro-c3b4 (top-N view, output volume) and fabro-e4fa (call economy). Basis: run 01M20RK7XFNPJRZ2T437XGDEP8, workflow version af036506627c2c235dc58d52e1ceda475fc4053f219b513e9582f644224dc129, commit 6f23b48525bf1ff7b11d3a4c49ad43681a9ff1fb\",\"labels\":[\"revision\",\"workflows\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-fc1b\",\"title\":\"Implementer prompt: require the full touched-crate test suite when the seed touches tests\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T16:34:54.153Z\",\"updatedAt\":\"2026-09-08T16:34:54.153Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, replace the 'ONE focused test' verification rule with: when the seed adds or edits tests in a crate, the pre-gate check is cargo nextest -p <touched-crate> (full crate suite), still never the workspace suite. Evidence from run 01M20T9S8JRXETASN64768TRRP: implementer@1 ran targeted fabro-server tests only and missed the two pre-existing Docker-socket failures (run_start_grants_github_token_bridge_only_to_user_principals, worker_principal_run_without_vault_token_takes_no_token_path) that live in the full fabro-server suite; the resulting gate-red bounce (tester@1 340s + implementer@2 915s/$0.769 + tester@2 91s) cost ~22 min, ~40% of the 55-min run wall, to apply a 6-line [run.environment] id = \\\"local\\\" pin. Expected effect: pre-existing or adjacent breaks in the touched crate surface in the same implementer pass, eliminating ~20 min / ~$0.8 per bounce of this class. Distinct from closed seeds fabro-0d56/fabro-2254 (fmt/clippy scope) which cover lint checks, not the test-suite scope. Basis: run 01M20T9S8JRXETASN64768TRRP, workflow version 8aedc5a9bbdd71b2f882af0b6c7d28a947212553646a31a390f5d173a91c8a69, commit 9966d125e665593fcd4f21137a19659625d58ed0\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 73,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-08T16:35:27.258157590Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 478767,
+      "inference_time_ms": 299379,
+      "tool_time_ms": 159884,
+      "active_time_ms": 459263
+    },
+    "final_git_commit_sha": "251660dbb588ab1f6b31be5d8c87af843e100c88",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 24999,
+          "inference_time_ms": 24049,
+          "tool_time_ms": 339,
+          "active_time_ms": 24388
+        },
+        "billing_usd_micros": 26808,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 386273,
+          "inference_time_ms": 226732,
+          "tool_time_ms": 158898,
+          "active_time_ms": 385630
+        },
+        "billing_usd_micros": 121425,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 49911,
+          "inference_time_ms": 48598,
+          "tool_time_ms": 647,
+          "active_time_ms": 49245
+        },
+        "billing_usd_micros": 45814,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 55216,
+      "output_tokens": 5995,
+      "total_tokens": 321182,
+      "reasoning_tokens": 5507,
+      "cache_read_tokens": 254464,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 194047
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M20XGWE2ZYM9ADRM2PVE322F.jsonl b/.fabro/journal/01M20XGWE2ZYM9ADRM2PVE322F.jsonl\nnew file mode 100644\nindex 0000000..2268be8\n--- /dev/null\n+++ b/.fabro/journal/01M20XGWE2ZYM9ADRM2PVE322F.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20XGWE2ZYM9ADRM2PVE322F\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T16:27:29Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20XGWE2ZYM9ADRM2PVE322F\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T16:27:55Z\",\"data\":{\"painpoints\":[],\"observations\":[\"5 runs listed; 2 develop runs already revised (markers present), 2 merge-upstream runs unrevised+fresh but older than the selected develop run, 0 stale-evidence against per-workflow baselines, 0 sandbox-disqualified\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20XGWE2ZYM9ADRM2PVE322F\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T16:34:27Z\",\"data\":{\"painpoints\":[{\"text\":\"Tracker check was nearly defeated by tooling caps: `sd list --format compact` returned only 50 lines while more open seeds exist (analyst-cited fabro-93a7, fabro-4815, fabro-a0e3, fabro-45bf, fabro-edac, fabro-850f were all absent from it), and `sd search` returned empty for themes those seeds match by title+description (e.g. 'qualitygate transient deterministic' vs fabro-4815). Fix idea: the revisor step should mandate `sd show` on every seed id cited in the analyst answer, or `sd list` with an explicit raised limit; otherwise content duplicates get re-filed (fabro-c16d already documents the default --limit 50 problem for the planner).\"}],\"observations\":[\"Dropped 7 of 8 analyst recommendations as duplicates of existing OPEN seeds — same concrete change, file, and effect: rec2 evidence.nu seed-spec paths → duplicate_of: fabro-93a7; rec3 gate-bounce signature matching → duplicate_of: fabro-c841; rec4 bounded planner sd ready view → duplicate_of: fabro-c3b4; rec5 drop current_seed_brief from reviewer preamble_allow_keys → duplicate_of: fabro-c1bb; rec6 qualitygate deterministic-vs-transient exit codes → duplicate_of: fabro-4815; rec7 progress denominator + preamble stage dedup → duplicate_of: fabro-a0e3, fabro-45bf, fabro-edac (also fabro-38f4 for the server-side denominator); rec8 skip empty stage-journal writes → duplicate_of: fabro-850f. Only rec1 (implementer focused check = full touched-crate test suite when seed touches tests) survived as genuinely new.\",\"The analyst's structural note about the self-referential planner prompt (seed fabro-06e0's gh-guard taking effect on the NEXT develop run) is a watch-item, not a finding — do not re-file; the closing proof is the `skipped: in-flight PR <n>` journal line on a future run.\",\"Review persisted at `.fabro/reviews/develop/01M20T9S8JRXETASN64768TRRP.md` with the verbatim analyst answer for diff-compatibility with the manual pipeline.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20XGWE2ZYM9ADRM2PVE322F\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T16:35:22Z\",\"data\":{\"painpoints\":[],\"observations\":[\"sd search returned empty output for the theme keyword; duplicate guard relied on the analyst's pre-dedup plus finding's own cross-references to fabro-0d56/fabro-2254\"]}}\ndiff --git a/.fabro/reviews/develop/01M20T9S8JRXETASN64768TRRP.md b/.fabro/reviews/develop/01M20T9S8JRXETASN64768TRRP.md\nnew file mode 100644\nindex 0000000..554e36d\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M20T9S8JRXETASN64768TRRP.md\n@@ -0,0 +1,54 @@\n+# Improve review — run 01M20T9S8JRXETASN64768TRRP\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (55.0 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-08 16:31+0000 by revisor `fabro_ask`\n+\n+---\n+\n+All grounding below is from this run's events, checkpoints, stage timings, and the stage journals (`.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl`). Run totals: ~55 min wall, $3.39 LLM (implementer = $2.39 + $0.77 of it), 9 stage visits because of one gate-red bounce.\n+\n+## Recommendations, ordered by expected impact\n+\n+**1. Implementer's \"one focused check\" must be the full touched-crate test suite when the seed touches tests — not targeted tests.**\n+What happened: implementer@1 verified with \"1595 fabro-tool/fabro-workflow tests, **targeted** fabro-server tests\" (implementation_summary, checkpoint seq 835). The two pre-existing Docker-socket failures (`run_start_grants_github_token_bridge_only_to_user_principals`, `worker_principal_run_without_vault_token_takes_no_token_path`) live in fabro-server's full suite and were missed. Cost of the resulting bounce: tester@1 red (340 s) + gatebounce + implementer@2 (915 s, $0.769) + tester@2 (91 s) ≈ 22 min, ~40% of run wall — to apply a 6-line `[run.environment] id = \"local\"` pin.\n+Change: `.fabro/workflows/develop/prompts/implementer.md`, step 4 — replace \"ONE focused test\" with: when the seed adds/edits tests in a crate, the check is `cargo nextest -p <touched-crate>` (full crate suite), still never the workspace suite.\n+Expected effect: pre-existing or adjacent breaks surface in the same implementer pass; eliminates ~20 min / ~$0.8 per bounce of this class.\n+\n+**2. Evidence classifier: treat paths cited in the in-progress seed spec as seed-work.**\n+What happened: the two acceptance-critical deliverables of this seed — `.fabro/workflows/develop/workflow.fabro` (inspects declaration) and `prompts/planner.md` step 4 rewrite — were classified as loop-churn, rendered as counts-only (+8/-1, +1/-1) with no diff (reviewer journal, reviewer@1 painpoint). The reviewer reconstructed them via `git diff 9eeab20 -- <paths>`; a tool-less reviewer would have had to route Changes-requested on unread evidence, burning a full implement+gate cycle.\n+Change: `.fabro/workflows/develop/scripts/evidence.nu` — in the partition that feeds `is-loop-path` (line 145, `LOOP_PREFIXES` includes `.fabro/`), exempt any path that appears as a substring in the in-progress seed's `current_seed_brief`/seed description (this is exactly open seed fabro-93a7).\n+Expected effect: platform-targeting seeds — the tracker's most common class — get their core diffs into the capture; removes the false-Changes-requested failure mode and the reviewer's manual git-diff detour.\n+\n+**3. Gate-bounce matching is producing false-positive noise, not root causes.**\n+What happened: tester@1 failed on Docker-socket test errors; `gate-bounce.nu` matched three irrelevant seeds (fabro-5453 world-merger, fabro-5a25 stage records, fabro-f18a prompt lint — 3.3 KB injected into the bounce preamble via `output.gate_known_bug_hits`). None mentioned docker.sock; the implementer ignored them and re-derived root cause itself (lesson mx-9df484). The current heuristic (`compound_hits`, `MIN_COMPOUND_HITS=2` against the whole 120-line tail) matches generic prose compounds.\n+Change: `.fabro/workflows/develop/scripts/gate-bounce.nu` — match only against extracted failure signatures (the `FAIL`/`TRY 2 FAIL` test names and error lines from the tail), not the full tail text; require at least one signature-token hit (open seed fabro-c841).\n+Expected effect: bounce passes start at the real root cause or get honest empty hits; removes ~3 KB misleading context per red gate and the risk of fixing the wrong bug.\n+\n+**4. Bound the planner's candidate listing.**\n+What happened: the planner's first tracker call (`sd ready --assignee fabro --limit 200`, event seq 35) returned 171 issues — 22,948 bytes observed, `stdout_truncated: true` — and the planner only needed the top unblocked High-priority candidate (it picked fabro-06e0 immediately). Also, one wasted `gh pr list` call (exit 127, seq 33–34) because this run still executed the pre-fix prompt — the fix only applies to future runs since the workflow version is pinned at submit.\n+Change: `.fabro/workflows/develop/prompts/planner.md` step 1/2 — keep `--limit 200` for correctness but render a bounded view (e.g. `| head -25` plus the \"N ready\" count line) before feeding it to the model.\n+Expected effect: ~20 KB less planner context every pass, faster candidate selection, same coverage (priority-ordered list).\n+\n+**5. Drop `current_seed_brief` from the reviewer's `preamble_allow_keys`.**\n+What happened: the reviewer's `## Context` carried the ~2.4 KB brief **and** the 33.5 KB evidence capture whose own `== in-progress seed spec ==` section delivers the same spec — and the capture exceeded the 16 KB inline cap anyway, arriving as a blob-ref the reviewer had to open with tools (reviewer@1 preamble, evidence blob `85ee02d2…`). This is a duplication of exactly the kind open seed fabro-c1bb describes.\n+Change: `.fabro/workflows/develop/workflow.fabro`, reviewer node — remove `current_seed_brief` from `preamble_allow_keys`.\n+Expected effect: ~2.4 KB deduped per review; fewer blob-ref demotions of the capture at the 24 KB budget; one fewer tool round-trip per review.\n+\n+**6. Give the quality gate a deterministic-vs-transient exit status.**\n+What happened: the engine tagged the tester failure `failure_class: transient_infra` (checkpoint seq 845) for a break the implementer then *proved* deterministic by reproducing it on the untouched parent commit 22e03c3. Misclassification skews retry semantics (tester `max_retries=1`) and triage.\n+Change: `scripts/qualitygate.nu` + `justfile` recipe — exit with distinct codes for deterministic failures vs infra flakes (open seed fabro-4815); map them in the tester node.\n+Expected effect: no phantom \"transient\" expectations; deterministic reds route straight to the bounce path with correct failure classes in events.\n+\n+**7. Fix the progress denominator and preamble stage duplication (UX trust).**\n+What happened: this run's own header reads \"Progress: **9 of 7** non-meta stages completed\" (cyclic-graph denominator bug, fabro-a0e3/fabro-45bf), and the reviewer's prompt rendered the tester stage section twice (dedup gap, fabro-edac).\n+Change: engine-side — count unique completed nodes for the denominator; dedupe preamble stage sections to the latest visit per node.\n+Expected effect: trustworthy progress reporting and smaller, non-repetitive preambles; no behavior change in routing.\n+\n+**8. Stop writing empty stage-journal entries.**\n+What happened: 5 of this run's 9 journal lines are `data:{}` no-ops (start, gatebounce, tester, evidence, closeout), committed into every checkpoint diff (journal file in each checkpoint patch).\n+Change: `.fabro/workflows/develop/scripts/stage-journal.nu` — skip emission when the payload is empty (open seed fabro-850f).\n+Expected effect: less checkpoint/journal churn per run; the journal file carries only signal.\n+\n+One structural note, not a defect: this run is the self-referential case — the seed that rewrites planner.md step 4 must run under the old prompt, so the planner's `gh` call failed fail-open exactly as designed. The credential-less guard this run built (inspects + `fabro_tools=\"fabro_runs_list\"` in `workflow.fabro`) takes effect on the **next** develop run; the reviewer already flagged watching for the `skipped: in-flight PR <n>` journal line there as the closing proof. No change needed — just don't re-file it.\ndiff --git a/.fabro/revisions/01M20T9S8JRXETASN64768TRRP.md b/.fabro/revisions/01M20T9S8JRXETASN64768TRRP.md\nnew file mode 100644\nindex 0000000..c82fedb\n--- /dev/null\n+++ b/.fabro/revisions/01M20T9S8JRXETASN64768TRRP.md\n@@ -0,0 +1,14 @@\n+# Revision — run 01M20T9S8JRXETASN64768TRRP\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M20T9S8JRXETASN64768TRRP.md\n+- seeds filed: fabro-fc1b — Implementer prompt: require the full touched-crate test suite when the seed touches tests\n+- basis: run 01M20T9S8JRXETASN64768TRRP, workflow version 8aedc5a9bbdd71b2f882af0b6c7d28a947212553646a31a390f5d173a91c8a69, commit 9966d125e665593fcd4f21137a19659625d58ed0\n+- revised_at_commit: 9966d125e665593fcd4f21137a19659625d58ed0 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Implementer prompt: require the full touched-crate test suite when the seed touches tests\n+- filed: fabro-fc1b\n+- change: in `.fabro/workflows/develop/prompts/implementer.md` step 4, replace the \"ONE focused test\" rule with a full touched-crate pre-gate (`cargo nextest -p <touched-crate>` when the seed adds or edits tests in a crate), never the workspace suite.\n+- expected effect: implementer@1's targeted-only testing missed two pre-existing Docker-socket failures in the full fabro-server suite; the gate-red bounce cost ~22 min (~40% of the 55-min run wall) and ~$0.8 to apply a 6-line `[run.environment] id = \"local\"` pin. Full-crate pre-gating surfaces such breaks in the same implementer pass. No duplicate: closed fabro-0d56/fabro-2254 cover fmt/clippy scope, not test-suite scope.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 6db3705..13f46ed 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -282,3 +282,4 @@\n {\"id\":\"fabro-ee5d\",\"title\":\"fabro_run_wait until=merged returns blocked immediately; conductor misjudges successful merge pass as \\\"Merge child failed\\\"\",\"status\":\"open\",\"type\":\"bug\",\"priority\":2,\"createdAt\":\"2026-09-08T13:53:47.604Z\",\"updatedAt\":\"2026-09-08T15:25:10.439Z\",\"assignee\":\"fabro\",\"description\":\"fabro_run_wait until=merged returns blocked immediately; conductor misjudges successful merge pass as \\\"Merge child failed\\\"\\n\\nSYMPTOM (conductor run 01M20DMYEK5B3GDQAYFR83DNGN, pass 11:49 2026-09-08):\\nmerge child 01M20E43YS004DCEYPJ0GJQH4B succeeded and opened PR #64, but the conductor merge leg labeled \\\"Merge child failed\\\" and parked at the kind=\\\"soft\\\" exit (failed/soft_stop). The PR merged seconds later (squash commit 9613ec4d8) - the pass was actually successful. Reproduced identically at 14:00 (child 01M20N60ZY6DZDTX60WW0161KP, PR #65, conductor 01M20N33G1T3MHVAJ4T3KJ1NRG).\\n\\nEVIDENCE (conductor events, run 01M20DMYEK5B3GDQAYFR83DNGN):\\n- seq 75/76: fabro_run_wait {run_id: child, timeout_ms: 2400000, until: \\\"terminal\\\"} -> reached=terminal, status succeeded. Correct.\\n- seq 80/81: fabro_run_wait {run_id: child, timeout_ms: 1200000, until: \\\"merged\\\"} -> reached=blocked IMMEDIATELY (child completed 12:07:09, stage concluded ~12:07:3x). PR #64 existed at that point with auto-merge pending. The wait should have polled until the 20-min timeout or the merge, not returned blocked at once.\\n- The merge-leg journal: \\\"returned reached=blocked on the first wait call (~immediate); merge gate stuck - failed required checks or dirty/blocked base. Never re-wait (fabro-bde4).\\\"\\n\\nHYPOTHESIS: the until=merged wait path treats a PR whose merge is merely PENDING (checks running / auto-merge enabled but not yet merged) as blocked, instead of waiting. Likely in the wait/merge-detection implementation (server run_wait handler or its GitHub merge check).\\n\\nACCEPTANCE: until=merged with a 20-min timeout keeps polling while the PR is open, auto-merge-enabled, and not failed; blocked only on a terminal unmergeable state (failed required checks, conflict, closed). Add a regression test with a PR that merges 30s after terminal.\\n\\nNOTE: secondary effect - Failed{SoftStop} counts as a breaker failure for the schedule breaker (3 consecutive same-signature pauses the trigger). A conductor that soft-parks normally must not get its cron paused; revisit counts_as_breaker_failure if soft parks stay common.\",\"labels\":[\"engine\",\"workflows\"]}\n {\"id\":\"fabro-e4c4\",\"title\":\"Develop evidence node: deliver the capture inline via output_schema\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T15:14:48.322Z\",\"updatedAt\":\"2026-09-08T15:24:21.820Z\",\"description\":\"In .fabro/workflows/develop/workflow.fabro, give the evidence node an output_schema (e.g. @schemas/evidence-capture.schema.json) and declare it in context_allow_keys, mirroring how gatebounce ships stdout inline as output.gate_known_bug_hits; swap the reviewer's preamble_allow_keys entry from command.output to output.evidence. In run 01M20RK7XFNPJRZ2T437XGDEP8 the 12.4 KB capture reached the reviewer as a blob ref with a ~300-byte preview, forcing a read_file detour plus one extra model round inside its 42.0s inference (the reviewer's own journal painpoint). Expected effect: one tool call and one model round removed per review, and the verification_blocked-on-blob failure mode disappears; composes with open seeds fabro-9ef9 (evidence re-key, overwrite fix) and fabro-c1bb (drop duplicated brief spec) rather than duplicating them — 12.4 KB fits the 16 KB inline ceiling once the duplicated spec is dropped. Basis: run 01M20RK7XFNPJRZ2T437XGDEP8, workflow version af036506627c2c235dc58d52e1ceda475fc4053f219b513e9582f644224dc129, commit 6f23b48525bf1ff7b11d3a4c49ad43681a9ff1fb\",\"labels\":[\"revision\",\"workflows\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-a08a\",\"title\":\"Develop planner prompt: visit-1 fresh-cycle line to skip dead context reads\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T15:14:55.468Z\",\"updatedAt\":\"2026-09-08T15:24:21.706Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 1, add one line: 'visit 1 with no current_seed_id in ## Context = fresh cycle; go straight to sd ready'. In run 01M20RK7XFNPJRZ2T437XGDEP8 the planner opened with two context_read calls at pass start, one erroring with unknown context key 'current_seed_id' because it was visit 1 and nothing existed to read (events seq 31-34). Expected effect: two fewer tool rounds per fresh planner pass (~$0.02, ~8 s of the 59.7 s stage); orthogonal to fabro-c3b4 (top-N view, output volume) and fabro-e4fa (call economy). Basis: run 01M20RK7XFNPJRZ2T437XGDEP8, workflow version af036506627c2c235dc58d52e1ceda475fc4053f219b513e9582f644224dc129, commit 6f23b48525bf1ff7b11d3a4c49ad43681a9ff1fb\",\"labels\":[\"revision\",\"workflows\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-fc1b\",\"title\":\"Implementer prompt: require the full touched-crate test suite when the seed touches tests\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T16:34:54.153Z\",\"updatedAt\":\"2026-09-08T16:34:54.153Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, replace the 'ONE focused test' verification rule with: when the seed adds or edits tests in a crate, the pre-gate check is cargo nextest -p <touched-crate> (full crate suite), still never the workspace suite. Evidence from run 01M20T9S8JRXETASN64768TRRP: implementer@1 ran targeted fabro-server tests only and missed the two pre-existing Docker-socket failures (run_start_grants_github_token_bridge_only_to_user_principals, worker_principal_run_without_vault_token_takes_no_token_path) that live in the full fabro-server suite; the resulting gate-red bounce (tester@1 340s + implementer@2 915s/$0.769 + tester@2 91s) cost ~22 min, ~40% of the 55-min run wall, to apply a 6-line [run.environment] id = \\\"local\\\" pin. Expected effect: pre-existing or adjacent breaks in the touched crate surface in the same implementer pass, eliminating ~20 min / ~$0.8 per bounce of this class. Distinct from closed seeds fabro-0d56/fabro-2254 (fmt/clippy scope) which cover lint checks, not the test-suite scope. Basis: run 01M20T9S8JRXETASN64768TRRP, workflow version 8aedc5a9bbdd71b2f882af0b6c7d28a947212553646a31a390f5d173a91c8a69, commit 9966d125e665593fcd4f21137a19659625d58ed0\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 73,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1175,6 +1261,42 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 193,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-08T16:35:27.205911678Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T16:35:27.205878765Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 16,
       "prompt": null,
