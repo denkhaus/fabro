@@ -379,7 +379,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-08T11:58:20.151574480Z",
-  "last_event_at": "2026-09-08T12:06:50.966567309Z",
+  "last_event_at": "2026-09-08T12:06:57.009538576Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -558,9 +558,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 230,
       "checkpoint": {
-        "timestamp": "2026-09-08T12:06:51.240087236Z",
+        "timestamp": "2026-09-08T12:06:55.955021631Z",
         "current_node": "reviewer",
         "completed_nodes": [
           "start",
@@ -569,22 +569,28 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.work_dir": "/workspace/fabro",
-          "internal.retry_count.merge": 0,
-          "graph.goal": "Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; deploy is host-side",
-          "graph.preamble_budget_kb": "12",
-          "internal.thread_id": "merge",
+          "response.merge": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.merge",
+            "chars": 1431,
+            "preview": "{\"preferred_next_label\": \"review\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"Shallow-clone trap RECURRED (2nd con"
+          },
           "thread.merge.current_node": "reviewer",
-          "thread.start.current_node": "merge",
-          "last_response": "{\"preferred_next_label\": \"Approved\", \"preferred_label\": \"Approved\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observati",
-          "internal.run_id": "01M20E43YS004DCEYPJ0GJQH4B",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.seed_cycle_anchor": "",
           "response.reviewer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.reviewer",
             "chars": 1904,
             "preview": "{\"preferred_next_label\": \"Approved\", \"preferred_label\": \"Approved\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observati"
           },
+          "failure_class": "",
+          "internal.fidelity": "compact",
+          "internal.retry_count.reviewer": 0,
+          "failure_signature": "",
+          "current_node": "reviewer",
           "internal.retry_count.start": 0,
+          "internal.run_id": "01M20E43YS004DCEYPJ0GJQH4B",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -595,89 +601,27 @@
               "Review took ~3 min. Fork lead now 551 (report said 549 — measured before marker + checkpoint commits). Next real merge: expect lib/apps/fabro-server and workflow admission paths to be conflict hotspots."
             ]
           },
-          "graph.rankdir": "LR",
-          "internal.seed_cycle_anchor": "",
+          "internal.thread_id": "merge",
+          "last_response": "{\"preferred_next_label\": \"Approved\", \"preferred_label\": \"Approved\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observati",
           "last_stage": "reviewer",
+          "preferred_label": "Approved",
+          "graph.preamble_budget_kb": "12",
+          "graph.cycle_counter_reset_key": "merge_target_sha",
+          "graph.goal": "Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; deploy is host-side",
+          "graph.rankdir": "LR",
           "internal.node_visit_count": 1,
-          "failure_signature": "",
-          "current_node": "reviewer",
-          "internal.retry_count.reviewer": 0,
-          "response.merge": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.merge",
-            "chars": 1431,
-            "preview": "{\"preferred_next_label\": \"review\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"Shallow-clone trap RECURRED (2nd con"
-          },
-          "internal.fidelity": "compact",
+          "outcome": "succeeded",
+          "thread.start.current_node": "merge",
+          "internal.exit_kind": "natural",
+          "graph.max_node_visits": "6",
+          "internal.retry_count.merge": 0,
           "seed_cycles": {
             "start": 1,
             "merge": 1,
             "reviewer": 1
-          },
-          "graph.max_node_visits": "6",
-          "failure_class": "",
-          "internal.exit_kind": "natural",
-          "preferred_label": "Approved",
-          "graph.cycle_counter_reset_key": "merge_target_sha",
-          "outcome": "succeeded"
+          }
         },
         "node_outcomes": {
-          "merge": {
-            "status": "succeeded",
-            "preferred_label": "review",
-            "context_updates": {
-              "last_stage": "merge",
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "Shallow-clone trap RECURRED (2nd consecutive run): the run-sandbox clone arrived at depth 100 (`.git/shallow` boundary 9cf304339), and the first `git rev-list --count origin/denkhaus..upstream/main` reported a misleading 4919 with contradictory merge-base/--contains output. Fix idea (platform, not mine to patch): the sandbox git provisioning step should run `git fetch --unshallow` — or clone with depth covering the last merge — whenever `git rev-parse --is-shallow-repository` is true, before any agent does range math. Evidence: run 01M20E43YS004DCEYPJ0GJQH4B; unshallow took ~8s and restored the true count of 0."
-                  }
-                ],
-                "observations": [
-                  "Upstream count 0 — tip 2f326a13c 'Bump version to 0.348.0-nightly.0' unchanged since the 2026-09-06 merge; no conflicts (no-op pass); gate ≈6s (fmt-only degradation on empty merge diff, per scripts/qualitygate.nu design).",
-                  "Fork is now 549 commits ahead of upstream (was 417 at the previous no-op pass); new server-side fork surface since the last real merge — fabro-0253 (docker inline-only dockerfiles), fabro-c274 (github integration gate), fabro-e505 (ADR-0019.6 principal capability gate) — is the likely conflict hotspot set in lib/apps/fabro-server and workflow admission paths at the next real merge."
-                ]
-              },
-              "last_response": "{\"preferred_next_label\": \"review\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"Shallow-clone trap RECURRED (2nd con",
-              "response.merge": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.merge",
-                "chars": 1431,
-                "preview": "{\"preferred_next_label\": \"review\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"Shallow-clone trap RECURRED (2nd con"
-              }
-            },
-            "notes": "Stage completed: merge",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 40806,
-                    "output_tokens": 4984,
-                    "reasoning_tokens": 11727,
-                    "cache_read_tokens": 357888,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 223686
-            },
-            "files_touched": [
-              "/workspace/fabro/.fabro/reports/merge-upstream/2f326a13c-noop.md"
-            ],
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 299754,
-              "tool_time_ms": 35218,
-              "active_time_ms": 334972
-            }
-          },
           "reviewer": {
             "status": "succeeded",
             "preferred_label": "Approved",
@@ -733,19 +677,149 @@
           "start": {
             "status": "succeeded",
             "usage": null
+          },
+          "merge": {
+            "status": "succeeded",
+            "preferred_label": "review",
+            "context_updates": {
+              "last_stage": "merge",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Shallow-clone trap RECURRED (2nd consecutive run): the run-sandbox clone arrived at depth 100 (`.git/shallow` boundary 9cf304339), and the first `git rev-list --count origin/denkhaus..upstream/main` reported a misleading 4919 with contradictory merge-base/--contains output. Fix idea (platform, not mine to patch): the sandbox git provisioning step should run `git fetch --unshallow` — or clone with depth covering the last merge — whenever `git rev-parse --is-shallow-repository` is true, before any agent does range math. Evidence: run 01M20E43YS004DCEYPJ0GJQH4B; unshallow took ~8s and restored the true count of 0."
+                  }
+                ],
+                "observations": [
+                  "Upstream count 0 — tip 2f326a13c 'Bump version to 0.348.0-nightly.0' unchanged since the 2026-09-06 merge; no conflicts (no-op pass); gate ≈6s (fmt-only degradation on empty merge diff, per scripts/qualitygate.nu design).",
+                  "Fork is now 549 commits ahead of upstream (was 417 at the previous no-op pass); new server-side fork surface since the last real merge — fabro-0253 (docker inline-only dockerfiles), fabro-c274 (github integration gate), fabro-e505 (ADR-0019.6 principal capability gate) — is the likely conflict hotspot set in lib/apps/fabro-server and workflow admission paths at the next real merge."
+                ]
+              },
+              "last_response": "{\"preferred_next_label\": \"review\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"Shallow-clone trap RECURRED (2nd con",
+              "response.merge": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.merge",
+                "chars": 1431,
+                "preview": "{\"preferred_next_label\": \"review\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"Shallow-clone trap RECURRED (2nd con"
+              }
+            },
+            "notes": "Stage completed: merge",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 40806,
+                    "output_tokens": 4984,
+                    "reasoning_tokens": 11727,
+                    "cache_read_tokens": 357888,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 223686
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reports/merge-upstream/2f326a13c-noop.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 299754,
+              "tool_time_ms": 35218,
+              "active_time_ms": 334972
+            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "e28fac8de84303ac0006c8eeda724e4f3bb7250a",
         "node_visits": {
           "reviewer": 1,
           "start": 1,
           "merge": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M20E43YS004DCEYPJ0GJQH4B.jsonl b/.fabro/journal/01M20E43YS004DCEYPJ0GJQH4B.jsonl\nindex 0f3c788b5..a2470c21a 100644\n--- a/.fabro/journal/01M20E43YS004DCEYPJ0GJQH4B.jsonl\n+++ b/.fabro/journal/01M20E43YS004DCEYPJ0GJQH4B.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20E43YS004DCEYPJ0GJQH4B\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T11:58:22Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20E43YS004DCEYPJ0GJQH4B\",\"node\":\"merge\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T12:03:58Z\",\"data\":{\"painpoints\":[{\"text\":\"Shallow-clone trap RECURRED (2nd consecutive run): the run-sandbox clone arrived at depth 100 (`.git/shallow` boundary 9cf304339), and the first `git rev-list --count origin/denkhaus..upstream/main` reported a misleading 4919 with contradictory merge-base/--contains output. Fix idea (platform, not mine to patch): the sandbox git provisioning step should run `git fetch --unshallow` — or clone with depth covering the last merge — whenever `git rev-parse --is-shallow-repository` is true, before any agent does range math. Evidence: run 01M20E43YS004DCEYPJ0GJQH4B; unshallow took ~8s and restored the true count of 0.\"}],\"observations\":[\"Upstream count 0 — tip 2f326a13c 'Bump version to 0.348.0-nightly.0' unchanged since the 2026-09-06 merge; no conflicts (no-op pass); gate ≈6s (fmt-only degradation on empty merge diff, per scripts/qualitygate.nu design).\",\"Fork is now 549 commits ahead of upstream (was 417 at the previous no-op pass); new server-side fork surface since the last real merge — fabro-0253 (docker inline-only dockerfiles), fabro-c274 (github integration gate), fabro-e505 (ADR-0019.6 principal capability gate) — is the likely conflict hotspot set in lib/apps/fabro-server and workflow admission paths at the next real merge.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20E43YS004DCEYPJ0GJQH4B\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T12:06:51Z\",\"data\":{\"painpoints\":[],\"observations\":[\"No-op merge pass verified end-to-end: re-fetched upstream live during review (tip 2f326a13c unchanged, count still 0), so the containment claim is not stale; merge-base equals upstream tip; diff cb805bc65..a3de3d56d touches only .fabro report/journal metadata, product tree byte-identical to origin/denkhaus.\",\"All 11 touchpoints from references/touchpoints.md independently re-probed green at HEAD: SuccessReason x9 + publish_blocked_status() (server.rs:1037), build_terminal_event/apply_boundary_upgrade x14 (finalize.rs), create_pull_request_with_attempts (pull_request.rs:650), resolve_pr_model (start.rs:849), spa_refresh.rs, ask render_event, replay_run_with_client (attach.rs:192/227), demote_large_values_for_prompt x11 (artifact.rs), scripts/smoke.nu + wait-healthy.nu + run_workflow.nu, dogfood-gate.yml. Minor cite drift in report (667 vs 650) — symbols present, not a finding.\",\"ADR-0019 capability scan: zero-commit upstream delta means no credential/sandbox/tool-catalog/config-model surface changed this pass, no needs-user seed required; fork-side capability work since 2026-09-06 (66043eabc docker inline-only dockerfiles, 9d1ae6162 github-integration gate, 52fbb843c principal gate) is our own already-reviewed code, not an upstream adoption decision.\",\"Obsolescence: upstream static since 2026-09-06, no candidates, standing watchlist unchanged. Evidence table complete; gate claim (fmt-only degradation, exit 0) matches scripts/qualitygate.nu:162-163 design.\",\"Review took ~3 min. Fork lead now 551 (report said 549 — measured before marker + checkpoint commits). Next real merge: expect lib/apps/fabro-server and workflow admission paths to be conflict hotspots.\"]}}\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 71,
+          "deletions": 54
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-08T12:06:56.014363324Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 515595,
+      "inference_time_ms": 461759,
+      "tool_time_ms": 38071,
+      "active_time_ms": 499830
+    },
+    "final_git_commit_sha": "e28fac8de84303ac0006c8eeda724e4f3bb7250a",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "merge",
+        "stage_label": "merge",
+        "timing": {
+          "wall_time_ms": 335691,
+          "inference_time_ms": 299754,
+          "tool_time_ms": 35218,
+          "active_time_ms": 334972
+        },
+        "billing_usd_micros": 223686,
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 165547,
+          "inference_time_ms": 162005,
+          "tool_time_ms": 2853,
+          "active_time_ms": 164858
+        },
+        "billing_usd_micros": 128086,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 69073,
+      "output_tokens": 8291,
+      "total_tokens": 642158,
+      "reasoning_tokens": 17338,
+      "cache_read_tokens": 547456,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 351772
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M20E43YS004DCEYPJ0GJQH4B.jsonl b/.fabro/journal/01M20E43YS004DCEYPJ0GJQH4B.jsonl\nnew file mode 100644\nindex 000000000..a2470c21a\n--- /dev/null\n+++ b/.fabro/journal/01M20E43YS004DCEYPJ0GJQH4B.jsonl\n@@ -0,0 +1,3 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20E43YS004DCEYPJ0GJQH4B\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T11:58:22Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20E43YS004DCEYPJ0GJQH4B\",\"node\":\"merge\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T12:03:58Z\",\"data\":{\"painpoints\":[{\"text\":\"Shallow-clone trap RECURRED (2nd consecutive run): the run-sandbox clone arrived at depth 100 (`.git/shallow` boundary 9cf304339), and the first `git rev-list --count origin/denkhaus..upstream/main` reported a misleading 4919 with contradictory merge-base/--contains output. Fix idea (platform, not mine to patch): the sandbox git provisioning step should run `git fetch --unshallow` — or clone with depth covering the last merge — whenever `git rev-parse --is-shallow-repository` is true, before any agent does range math. Evidence: run 01M20E43YS004DCEYPJ0GJQH4B; unshallow took ~8s and restored the true count of 0.\"}],\"observations\":[\"Upstream count 0 — tip 2f326a13c 'Bump version to 0.348.0-nightly.0' unchanged since the 2026-09-06 merge; no conflicts (no-op pass); gate ≈6s (fmt-only degradation on empty merge diff, per scripts/qualitygate.nu design).\",\"Fork is now 549 commits ahead of upstream (was 417 at the previous no-op pass); new server-side fork surface since the last real merge — fabro-0253 (docker inline-only dockerfiles), fabro-c274 (github integration gate), fabro-e505 (ADR-0019.6 principal capability gate) — is the likely conflict hotspot set in lib/apps/fabro-server and workflow admission paths at the next real merge.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20E43YS004DCEYPJ0GJQH4B\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T12:06:51Z\",\"data\":{\"painpoints\":[],\"observations\":[\"No-op merge pass verified end-to-end: re-fetched upstream live during review (tip 2f326a13c unchanged, count still 0), so the containment claim is not stale; merge-base equals upstream tip; diff cb805bc65..a3de3d56d touches only .fabro report/journal metadata, product tree byte-identical to origin/denkhaus.\",\"All 11 touchpoints from references/touchpoints.md independently re-probed green at HEAD: SuccessReason x9 + publish_blocked_status() (server.rs:1037), build_terminal_event/apply_boundary_upgrade x14 (finalize.rs), create_pull_request_with_attempts (pull_request.rs:650), resolve_pr_model (start.rs:849), spa_refresh.rs, ask render_event, replay_run_with_client (attach.rs:192/227), demote_large_values_for_prompt x11 (artifact.rs), scripts/smoke.nu + wait-healthy.nu + run_workflow.nu, dogfood-gate.yml. Minor cite drift in report (667 vs 650) — symbols present, not a finding.\",\"ADR-0019 capability scan: zero-commit upstream delta means no credential/sandbox/tool-catalog/config-model surface changed this pass, no needs-user seed required; fork-side capability work since 2026-09-06 (66043eabc docker inline-only dockerfiles, 9d1ae6162 github-integration gate, 52fbb843c principal gate) is our own already-reviewed code, not an upstream adoption decision.\",\"Obsolescence: upstream static since 2026-09-06, no candidates, standing watchlist unchanged. Evidence table complete; gate claim (fmt-only degradation, exit 0) matches scripts/qualitygate.nu:162-163 design.\",\"Review took ~3 min. Fork lead now 551 (report said 549 — measured before marker + checkpoint commits). Next real merge: expect lib/apps/fabro-server and workflow admission paths to be conflict hotspots.\"]}}\ndiff --git a/.fabro/reports/merge-upstream/2f326a13c-noop.md b/.fabro/reports/merge-upstream/2f326a13c-noop.md\nindex 5372b7399..9bf2f41c4 100644\n--- a/.fabro/reports/merge-upstream/2f326a13c-noop.md\n+++ b/.fabro/reports/merge-upstream/2f326a13c-noop.md\n@@ -1,70 +1,74 @@\n-# Upstream merge report — 2f326a13c (no-op verification pass)\n+# Upstream merge report — 2f326a13c (no-op pass)\n \n-**Date:** 2026-09-08 · **Branch:** `fabro/run/01M1ZVH0B5V5RHRCY393T24GXG`\n-(aligned with `origin/denkhaus` at `aaa431e5c`)\n+**Date:** 2026-09-08 · **Branch:** `fabro/run/01M20E43YS004DCEYPJ0GJQH4B`\n+(aligned with `origin/denkhaus` at `cb805bc65`)\n \n **Outcome:** no-op — `upstream/main` is already fully contained in\n-`origin/denkhaus`. Nothing to merge, no merge commit created. This file is\n-named with a `-noop-2026-09-08` suffix to preserve the real merge report\n-`2f326a13c.md` (2026-09-06), which covers the merge that brought this exact\n-upstream head in.\n+`origin/denkhaus`. Nothing merged, no merge commit created, tree\n+byte-identical to pre-merge HEAD. Per the uniform filename contract this\n+report overwrites the previous `2f326a13c-noop.md` (written at base\n+`aaa431e5c` earlier today; git history keeps the prior version). The real\n+merge of this upstream head is covered by `2f326a13c.md` (2026-09-06).\n \n ## Merge identity\n \n - Range: `origin/denkhaus..upstream/main` = **0 commits**; upstream head\n   `2f326a13c4c04e5f655d8d7c35a065653a411999` (`Bump version to\n-  0.348.0-nightly.0`, 2026-09-06T09:29:10Z) — newest upstream ref of any\n-  kind (branches checked).\n-- Proof of containment: `git merge-base --is-ancestor upstream/main\n-  origin/denkhaus` → exit 0; merge-base equals `2f326a13c` itself.\n-- `git merge upstream/main --no-commit` → `Already up to date.` — zero\n-  conflicts, zero tree delta (`git status` clean except this run's journal).\n-\n-### Environment pitfall (process note, not a merge issue)\n-\n-The run sandbox clone arrived **shallow** (boundary `661fa2a1e`, \"seeds:\n-sync 2026-09-06\"), so the first `git rev-list --count\n-origin/denkhaus..upstream/main` reported a misleading **4919** — the\n-denkhaus side of the shared ancestry was cut off, not actually diverged.\n-`git fetch origin --deepen=300` restored enough history for merge-base\n-resolution; the true count is 0. Any merger seeing a huge sudden range in\n-this environment should check `git rev-parse --is-shallow-repository`\n-before concluding upstream moved.\n+  0.348.0-nightly.0`) — unchanged since the 2026-09-06 merge.\n+- Containment proof: `git merge-base HEAD upstream/main` = `2f326a13c`\n+  (equals the upstream tip); `git branch -a --contains 2f326a13c` lists\n+  `denkhaus`, `origin/denkhaus`, and this run branch.\n+- `git merge upstream/main --no-commit` → `Already up to date.` (exit 0).\n+- Fork lead over upstream: 549 commits (`git rev-list --count\n+  2f326a13c..HEAD`), was 417 at the previous no-op pass.\n+\n+### Environment pitfall (recurring, process note)\n+\n+The run sandbox clone arrived **shallow** again (depth 100, boundary\n+`9cf304339`), and the first `git rev-list --count\n+origin/denkhaus..upstream/main` reported a misleading **4919** with a\n+contradictory merge-base/`--contains` picture. `git fetch --unshallow\n+upstream` completed the repository; the true count is 0. This is the\n+second consecutive run to hit the trap (previous boundary `661fa2a1e`).\n+Mergers: check `git rev-parse --is-shallow-repository` before trusting\n+any range math in this environment.\n \n ## Conflicts resolved (by class)\n \n-None — no merge content. No conflict classes seen this pass. No fork call\n-sites required adaptation (adapted call sites: **none**; empty merge diff\n-means the tree is byte-identical to pre-merge `origin/denkhaus`).\n+None — no merge content. No conflict classes seen. Adapted fork call\n+sites: **none** (empty merge diff).\n \n ## Verification commands + results\n \n | Command | Result |\n |---|---|\n-| `git fetch upstream --prune` + `git fetch origin` (+ `git fetch origin --deepen=300`) | green |\n-| `git merge-base --is-ancestor upstream/main origin/denkhaus` | exit 0 (contained) |\n-| `git merge upstream/main --no-commit` | `Already up to date.` |\n-| `just qualitygate` | **GATE GREEN** (exit 0): merge diff empty → touched-crates = ∅ → gate degraded to `cargo +nightly-2026-04-14 fmt --check --all` per `scripts/qualitygate.nu` design (\"no crates touched\", \"format clean\"). Duration ≈ 6 s. |\n-\n-Gate-scope note: with a zero-file merge delta there is no code change that\n-clippy/nextest could newly break; the current tree's crate-level gates were\n-carried by the runs that landed each fork commit since 2026-09-06, and the\n-2026-09-06 merge itself ran the full gate (see `2f326a13c.md`).\n+| `git remote add upstream …` + `git fetch upstream --prune` + `git fetch origin` | green |\n+| `git fetch --unshallow upstream` | green (repo now complete; range math reliable) |\n+| `git rev-list --count origin/denkhaus..upstream/main` | **0** |\n+| `git merge-base HEAD upstream/main` | `2f326a13c` (= upstream tip, contained) |\n+| `git merge upstream/main --no-commit` | `Already up to date.` (exit 0) |\n+| `just qualitygate` | **GATE GREEN** (exit 0): run branch pre-checkpoint → base ungrounded → working-tree diff has no `lib/` paths → gate degraded to `cargo +nightly-2026-04-14 fmt --check --all` per `scripts/qualitygate.nu` design (\"no crates touched\", \"format clean\"). Duration ≈ 6 s. |\n+\n+Gate-scope note: with a zero-commit upstream delta there is no merge diff\n+for clippy/nextest to newly break; the current tree's crate-level gates\n+were carried by the runs that landed each fork commit since 2026-09-06,\n+and the 2026-09-06 merge itself ran the full gate (see `2f326a13c.md`).\n \n ## Feature-regression analysis (touchpoint walk)\n \n-Tree is byte-identical to `origin/denkhaus`, so regression through this pass\n-is impossible by construction; every touchpoint was re-probed anyway.\n+Tree is byte-identical to `origin/denkhaus`, so regression through this\n+pass is impossible by construction; every touchpoint was re-probed with\n+fresh evidence at the current HEAD.\n \n-| Feature (seed) | Status | Evidence in merged tree |\n+| Feature (seed) | Status | Evidence in tree at `cb805bc65` |\n |---|---|---|\n-| Publish-blocked taxonomy (fabro-67e5, closed) | ✅ present | `SuccessReason` ×9 in `lib/foundation/fabro-types/src/status.rs`; `build_terminal_event` ×9 in `lib/components/fabro-workflow/src/pipeline/finalize.rs`; `publish_blocked` ×4 in `lib/apps/fabro-server/src/server.rs` |\n-| Boundary exit kind (fabro-08b4, closed) | ✅ present | `apply_boundary_upgrade` at `lib/components/fabro-workflow/src/pipeline/finalize.rs:68`; tests `boundary_upgrade_parks_engine_error_green`, `boundary_upgrade_ignores_other_exit_kinds`, `boundary_exit_kind_reports_boundary_reason`; key `INTERNAL_EXIT_KIND` defined `lib/foundation/fabro-types/src/context_keys.rs:55`, used `finalize.rs:584/1134`, `lifecycle/mod.rs:435` |\n-| PR create retry (fabro-67e5, closed) | ✅ present | `create_pull_request_with_attempts` `lib/components/fabro-workflow/src/pipeline/pull_request.rs:667` (prod call :650; tests :2397/:2420); `CreatePullRequestError` in `lib/components/fabro-github/src/lib.rs` |\n-| PR model plumbing (fabro-890b, closed) | ✅ present | `resolve_pr_model` ×2 in `lib/components/fabro-workflow/src/operations/start.rs` |\n-| spa_refresh mirror race (fabro-332e, OPEN) | ✅ present | `lib/foundation/fabro-dev/src/commands/spa_refresh.rs` (+ `spa_check.rs`); smoke = deploy-side (`just smoke`) |\n-| ask duplication (fabro-bd6c, OPEN) | ✅ present | `render_event` ×2 in `lib/apps/fabro-cli/src/commands/run/ask.rs` |\n-| attach replay indistinguishable (fabro-204e, OPEN) | ✅ present | attach command at `lib/apps/fabro-cli/src/commands/run/attach.rs` (replay via `replay_run_with_client`, :227) — note: module moved from `cli attach.rs` in earlier history; UX seed still open, code intact |\n+| Publish-blocked taxonomy (fabro-67e5, closed) | ✅ present | `SuccessReason` ×9 in `lib/foundation/fabro-types/src/status.rs`; `publish_blocked_status()` `lib/apps/fabro-server/src/server.rs:1037`, publish-blocked routing at `:1054/:1066` |\n+| Boundary exit kind (fabro-08b4, closed) | ✅ present | `build_terminal_event`/`apply_boundary_upgrade` ×14 matches in `lib/components/fabro-workflow/src/pipeline/finalize.rs`; `seed_cycles`-style lifecycle wiring intact (`lifecycle/mod.rs:404` via `context::update_seed_cycles`) |\n+| PR create retry (fabro-67e5, closed) | ✅ present | `create_pull_request_with_attempts` at `lib/components/fabro-workflow/src/pipeline/pull_request.rs:667` |\n+| PR model plumbing (fabro-890b, closed) | ✅ present | `resolve_pr_model` at `lib/components/fabro-workflow/src/operations/start.rs:849` |\n+| spa_refresh mirror race (fabro-332e, OPEN) | ✅ present | `lib/foundation/fabro-dev/src/commands/spa_refresh.rs`; smoke is deploy-side (`just smoke`), out of scope here |\n+| ask duplication (fabro-bd6c, OPEN) | ✅ present | `render_event` in `lib/apps/fabro-cli/src/commands/run/ask.rs`; UX seed still open, code intact |\n+| attach replay indistinguishable (fabro-204e, OPEN) | ✅ present | `replay_run_with_client` at `lib/apps/fabro-cli/src/commands/run/attach.rs:227` (call site `:192`) |\n | Preamble aggregate budget (fabro-a85b, OPEN) | ✅ present | `demote_large_values_for_prompt` ×11 in `lib/components/fabro-workflow/src/artifact.rs` (incl. tests) |\n | just-up lock + smoke (landed) | ✅ present | `scripts/smoke.nu`, `scripts/wait-healthy.nu`, justfile recipes |\n | run_workflow.nu pipeline (landed) | ✅ present | `scripts/run_workflow.nu` |\n@@ -72,10 +76,19 @@ is impossible by construction; every touchpoint was re-probed anyway.\n \n **Adapted fork call sites this pass: none** (empty merge diff).\n \n+Fork-surface note for the next real merge: since the 2026-09-06 merge the\n+fork added server-side admission work that upstream will meet for the\n+first time — docker environments with inline-only dockerfiles for git\n+intents (fabro-0253, `66043eab`), the GitHub-integration gate before\n+credential lookup (fabro-c274, `9d1ae616`), and the ADR-0019.6 principal\n+capability gate line (fabro-e505). Expect `lib/apps/fabro-server` and\n+`lib/components/fabro-workflow` admission paths to become conflict\n+hotspots when upstream moves.\n+\n ## Obsolescence notes\n \n-- Upstream has not moved since 2026-09-06 (`2f326a13c`, v0.348.0-nightly.0)\n-  — no seeds or fork features superseded this pass.\n+- Upstream has not moved since 2026-09-06 — no seeds or fork features\n+  superseded this pass; nothing to file or update.\n - Standing watchlist (from `references/touchpoints.md`) unchanged:\n   SQLite read-model line (`AppState::load_run_projection`), RunIntent\n   admission matrix (branch/tag/SHA), node-on-failure exclusion for\n@@ -83,9 +96,10 @@ is impossible by construction; every touchpoint was re-probed anyway.\n \n ## What it means for us\n \n-- No new upstream themes this pass — fork stays 417 commits ahead of\n-  `upstream/main` with full shared ancestry restored (since the 2026-09-06\n-  merge repaired the PR #30 squash divergence).\n-- Next merge pass should re-run this procedure when `upstream/main` moves\n-  past `2f326a13c`; expect the shallow-clone deepen step to be needed again\n-  in fresh run sandboxes.\n+- No new upstream themes this pass — no per-theme lines apply.\n+\n+## Workflow changes\n+\n+None: the merge delta is empty, so `develop` and its scripts\n+(`scripts/run_workflow.nu`, `scripts/qualitygate.nu`) need no adjustment;\n+the next real upstream move is the trigger to re-evaluate.\n",
+      "summary": {
+        "files_changed": 2,
+        "additions": 71,
+        "deletions": 54
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -771,6 +845,42 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 233,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-08T12:06:55.955405208Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T12:06:55.955377906Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 16,
       "prompt": null,
