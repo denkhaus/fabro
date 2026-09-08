@@ -1,0 +1,40 @@
+diff --git a/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl b/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl
+index 44b3a65..471b1a7 100644
+--- a/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl
++++ b/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M2183254XQ3HJ45SR4P1Y2X6","node":"start","visit":1,"status":"succeeded","ts":"2026-09-08T19:32:19Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M2183254XQ3HJ45SR4P1Y2X6","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-08T19:32:47Z","data":{"painpoints":[{"text":"Planner prompt mandates a fabro_runs_list in-flight PR check (fabro-06e0), but this stage's toolset exposes no such tool — the check degraded to a no-op. Fix: either expose fabro_runs_list to the planner stage or make the prompt state the degraded fallback explicitly when the tool is absent (run 01M2183254XQ3HJ45SR4P1Y2X6)."}],"observations":["Claimed fabro-85a1 (top High bug, no blockers). Basis resolved: merge-upstream workflow.toml lacks [run.clone] while conductor has depth=0 (commit a4850e681 pattern to mirror). In-flight PR check could not run (tool unavailable); no exclusions applied."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M2183254XQ3HJ45SR4P1Y2X6","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-08T19:44:27Z","data":{"painpoints":[],"observations":["Cold `cargo run -p fabro-cli -- validate` from a clean target dir took ~7 min build; building once with `cargo build -q -p fabro-cli` then reusing `target/debug/fabro` is the cheaper path for config-only smoke checks (target/ is gitignored, no artifact-hygiene impact)."]}}
+diff --git a/.fabro/workflows/merge-upstream/workflow.toml b/.fabro/workflows/merge-upstream/workflow.toml
+index 5080de1..a641ef0 100644
+--- a/.fabro/workflows/merge-upstream/workflow.toml
++++ b/.fabro/workflows/merge-upstream/workflow.toml
+@@ -26,6 +26,18 @@ sandbox = true
+ provider = "zai"
+ name = "glm-5.3"
+ 
++# Full-history clone: merge-child runs clone origin/denkhaus fresh at
++# depth 100 by default, and the shallow boundary broke range math in 3
++# consecutive merge runs (01M20E43YS, 01M20N60ZY): git rev-list --count
++# origin/denkhaus..upstream/main over-reported and git merge-base
++# returned nothing until the merger unshallowed mid-pass. depth = 0
++# (full clone) makes the math deterministic. Volume is ~neutral: the
++# unbounded `git fetch upstream` pulled the full shared history into
++# the shallow clone anyway (~150 MB either way). Mirrors conductor fix
++# a4850e681.
++[run.clone]
++depth = 0
++
+ [run.run_branch]
+ push = true
+ 
+diff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl
+index 83205f6..b8165d5 100644
+--- a/.mulch/expertise/engine.jsonl
++++ b/.mulch/expertise/engine.jsonl
+@@ -45,3 +45,4 @@
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-08T06:52:49.142Z","evidence":{"commit":"919b0d18c"},"name":"server-seam-wire-test-without-docker","description":"create_run_with_bearer_for_graph + issue_test_run_tools_worker_token produce Worker-principal runs through the real HTTP API; dev-user bearer (auto-injected by build_test_router) provides the User-principal differential.","files":[".mulch/expertise/engine.jsonl"],"id":"mx-1a6203"}
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-08T16:22:28.999Z","evidence":{"commit":"97c095b0a8724d92b039883354b14dd54ce7812e"},"description":"fabro-server tests that execute runs in-process with default settings resolve the seeded 'default' environment (Docker provider) and hard-fail with WorkflowError 'Socket not found: /var/run/docker.sock' in Docker-less gate sandboxes (run 01M20T9S8JRXETASN64768TRRP: fabro-e505/fabro-c274 bridge tests). Pin such tests to the reserved local environment via '[run.environment] id = \"local\"' in the test TOML — Normal mode keeps real handler dispatch, unlike mode = \"dry_run\" which routes handlers to simulate() and silently skips execute-path assertions (empty observation vectors).","resolution":"Both bridge tests pinned to id = \"local\"; full fabro-server suite 929/929 green without Docker; gate now environment-independent","id":"mx-9df484"}
+ {"type":"convention","classification":"tactical","recorded_at":"2026-09-08T18:20:29.952Z","evidence":{"commit":"a4850e681"},"content":"Set [run.clone] depth = 0 in workflow.toml for any workflow whose stages run git rev-list --count or git merge-base across origin and upstream remotes; verify with git rev-parse --is-shallow-repository in the sandbox when counts look inflated.","id":"mx-588afd"}
++{"type":"pattern","classification":"tactical","recorded_at":"2026-09-08T19:44:10.382Z","evidence":{"seeds":"fabro-85a1","commit":"3e23ee57c98bd03e1556f32c4dc13e867c6e3893"},"name":"run-clone-depth-zero-for-range-math","description":"Workflows doing git range math against upstream (rev-list --count, merge-base) need [run.clone] depth = 0 in their .fabro/workflows/<name>/workflow.toml; default depth-100 shallow clone breaks the math. Conductor (a4850e681) and merge-upstream (fabro-85a1) both set it; audit any new clone-based workflow that compares upstream refs. Volume is ~neutral (~150 MB either way).","files":[".fabro/workflows/merge-upstream/workflow.toml"],"id":"mx-10bfb8"}
