@@ -718,6 +718,18 @@ impl Graph {
         }
     }
 
+    /// Whether any node in the graph declares a non-empty node-level
+    /// `fabro_tools` opt-in list (fabro-c419). The server uses this to
+    /// provision the fabro run tool services for the run even when the
+    /// run-wide `run.agent.fabro_tools` flag is off: per-node named-only
+    /// registration remains the least-privilege mechanism.
+    #[must_use]
+    pub fn any_node_fabro_tools(&self) -> bool {
+        self.nodes
+            .values()
+            .any(|node| !node.fabro_tools().is_empty())
+    }
+
     /// Returns all outgoing edges from the given node.
     #[must_use]
     pub fn outgoing_edges(&self, node_id: &str) -> Vec<&Edge> {
@@ -1088,6 +1100,29 @@ mod tests {
         node.attrs
             .insert("tools".to_string(), AttrValue::String(String::new()));
         assert!(node.tools().is_empty());
+    }
+
+    #[test]
+    fn any_node_fabro_tools_detects_node_level_opt_in() {
+        let mut graph = Graph::new("develop");
+        assert!(!graph.any_node_fabro_tools());
+
+        let mut planner = Node::new("planner");
+        planner.attrs.insert(
+            "fabro_tools".to_string(),
+            AttrValue::String("fabro_runs_list".to_string()),
+        );
+        graph.nodes.insert("planner".to_string(), planner);
+        assert!(graph.any_node_fabro_tools());
+
+        // An explicitly empty attribute is not an opt-in.
+        let mut other = Node::new("other");
+        other
+            .attrs
+            .insert("fabro_tools".to_string(), AttrValue::String(String::new()));
+        let mut bare = Graph::new("bare");
+        bare.nodes.insert("other".to_string(), other);
+        assert!(!bare.any_node_fabro_tools());
     }
 
     #[test]

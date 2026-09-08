@@ -85,6 +85,12 @@ pub struct FabroRunToolServices {
     /// Empty means no revisor authority: `fabro_ask` and
     /// `fabro_runs_list` are not registered.
     pub inspects:           Vec<String>,
+    /// Whether the run-wide `run.agent.fabro_tools` flag provisioned
+    /// these services (fabro-c419). When false, services exist only
+    /// because some node declares a node-level `fabro_tools` opt-in:
+    /// only those nodes get tools (named-only), and stages without the
+    /// attribute register none — least privilege per stage.
+    pub run_wide:           bool,
 }
 
 /// Services shared across workflow phases.

@@ -228,6 +228,28 @@ pub fn register_named_fabro_run_tools(
     }
 }
 
+/// Register a stage's fabro run tools from the node-level opt-in list
+/// (fabro-47b5, fabro-c419). A node with a non-empty `fabro_tools`
+/// attribute registers exactly those named tools. A node without the
+/// attribute registers the full set ONLY when the run-wide
+/// `run.agent.fabro_tools` flag provisioned the services (`run_wide`);
+/// node-level opt-in never widens attribute-less stages.
+pub fn register_stage_fabro_run_tools(
+    registry: &mut ToolRegistry,
+    services: Option<&FabroRunToolServices>,
+    node_fabro_tools: &[&str],
+) {
+    match services {
+        Some(services) if !node_fabro_tools.is_empty() => {
+            register_named_fabro_run_tools(registry, services, node_fabro_tools);
+        }
+        Some(services) if services.run_wide => {
+            register_fabro_run_tools(registry, services);
+        }
+        _ => {}
+    }
+}
+
 fn fabro_run_tool(
     definition: &fabro_tool::ToolDefinition,
     services: FabroRunToolServices,
@@ -1303,15 +1325,13 @@ impl AgentApiBackend {
                     .iter()
                     .map(String::as_str)
                     .collect();
-                if names.is_empty() {
-                    register_fabro_run_tools(child_profile.tool_registry_mut(), &services);
-                } else {
-                    register_named_fabro_run_tools(
-                        child_profile.tool_registry_mut(),
-                        &services,
-                        &names,
-                    );
-                }
+                // Same per-stage semantics as the parent registration:
+                // named-only for node opt-ins, full set only run-wide.
+                register_stage_fabro_run_tools(
+                    child_profile.tool_registry_mut(),
+                    Some(&services),
+                    &names,
+                );
             }
             child_profile
                 .tool_registry_mut()
@@ -1344,17 +1364,11 @@ impl AgentApiBackend {
         register_question_tools(provider.profile_kind, profile.tool_registry_mut());
         // Node-level `fabro_tools` (fabro-47b5) overrides the run-wide
         // `run.agent.fabro_tools` flag with an explicit opt-in list.
-        if !node_fabro_tools.is_empty() {
-            if let Some(services) = &fabro_run_tools {
-                register_named_fabro_run_tools(
-                    profile.tool_registry_mut(),
-                    services,
-                    &node_fabro_tools,
-                );
-            }
-        } else if let Some(services) = fabro_run_tools {
-            register_fabro_run_tools(profile.tool_registry_mut(), &services);
-        }
+        register_stage_fabro_run_tools(
+            profile.tool_registry_mut(),
+            fabro_run_tools.as_ref(),
+            &node_fabro_tools,
+        );
 
         // Stage context pull (fabro-e804): default-registered for every
         // agent stage; a node `tools` allowlist excludes it like any other
@@ -2672,6 +2686,81 @@ reasoning = false
         assert_eq!(registered, vec![fabro_tool::FABRO_RUN_EVENTS_TOOL_NAME]);
     }
 
+    #[test]
+    fn register_stage_fabro_run_tools_node_opt_in_without_run_wide_flag() {
+        // (a) fabro-c419: node-level `fabro_tools` with the run-wide
+        // flag off registers exactly the named tools — the planner's
+        // `fabro_runs_list` binding.
+        let mut registry = ToolRegistry::new();
+        let (mut services, _backend) = fabro_run_tool_services();
+        services.run_wide = false;
+        services.inspects = vec!["develop".to_string()];
+        register_stage_fabro_run_tools(&mut registry, Some(&services), &[
+            fabro_tool::FABRO_RUNS_LIST_TOOL_NAME,
+        ]);
+
+        assert!(
+            registry
+                .get(fabro_tool::FABRO_RUNS_LIST_TOOL_NAME)
+                .is_some(),
+            "named node-level opt-in must register the tool without the run-wide flag"
+        );
+        assert!(
+            registry
+                .get(fabro_tool::FABRO_RUN_CREATE_TOOL_NAME)
+                .is_none(),
+            "node-level opt-in must not widen to unlisted tools"
+        );
+    }
+
+    #[test]
+    fn register_stage_fabro_run_tools_node_opt_in_absent_and_flag_off_registers_nothing() {
+        // (b) A node without the attribute gets NO tools when the
+        // services were provisioned only by another node's opt-in.
+        let mut registry = ToolRegistry::new();
+        let (mut services, _backend) = fabro_run_tool_services();
+        services.run_wide = false;
+        services.inspects = vec!["develop".to_string()];
+        register_stage_fabro_run_tools(&mut registry, Some(&services), &[]);
+
+        assert!(
+            !registry
+                .names()
+                .into_iter()
+                .any(|name| name.starts_with("fabro_run_"))
+        );
+    }
+
+    #[test]
+    fn register_stage_fabro_run_tools_run_wide_flag_registers_full_set() {
+        // (c) Run-wide flag semantics unchanged: an attribute-less node
+        // registers the full tool set.
+        let mut registry = ToolRegistry::new();
+        let (services, _backend) = fabro_run_tool_services();
+        register_stage_fabro_run_tools(&mut registry, Some(&services), &[]);
+
+        assert!(
+            registry
+                .get(fabro_tool::FABRO_RUN_CREATE_TOOL_NAME)
+                .is_some(),
+            "run-wide flag keeps registering the full set on attribute-less nodes"
+        );
+    }
+
+    #[test]
+    fn register_stage_fabro_run_tools_no_services_registers_nothing() {
+        let mut registry = ToolRegistry::new();
+        register_stage_fabro_run_tools(&mut registry, None, &[
+            fabro_tool::FABRO_RUNS_LIST_TOOL_NAME,
+        ]);
+        assert!(
+            !registry
+                .names()
+                .into_iter()
+                .any(|name| name.starts_with("fabro_run_"))
+        );
+    }
+
     #[tokio::test]
     async fn agent_run_create_injects_current_run_as_parent() {
         let (services, backend) = fabro_run_tool_services();
@@ -2877,6 +2966,7 @@ reasoning = false
             base_cwd:           PathBuf::from("/tmp/fabro-test"),
             user_settings_path: PathBuf::from("/tmp/fabro-test/settings.toml"),
             inspects:           vec!["develop".to_string()],
+            run_wide:           true,
         };
         let mut registry = ToolRegistry::new();
         register_fabro_run_tools(&mut registry, &services);
@@ -2913,6 +3003,7 @@ reasoning = false
             base_cwd:           PathBuf::from("/tmp/fabro-test"),
             user_settings_path: PathBuf::from("/tmp/fabro-test/settings.toml"),
             inspects:           vec!["develop".to_string()],
+            run_wide:           true,
         };
 
         let err = fabro_tool::ask_run(
@@ -2943,6 +3034,7 @@ reasoning = false
             base_cwd:           PathBuf::from("/tmp/fabro-test"),
             user_settings_path: PathBuf::from("/tmp/fabro-test/settings.toml"),
             inspects:           vec!["develop".to_string()],
+            run_wide:           true,
         };
         let make_params = |workflow: Option<&str>| {
             fabro_tool::ValidatedRunsList::try_from(fabro_tool::FabroRunsListParams {
@@ -3226,6 +3318,7 @@ reasoning = false
             base_cwd:           PathBuf::from("/tmp/fabro-test"),
             user_settings_path: PathBuf::from("/tmp/fabro-test/settings.toml"),
             inspects:           Vec::new(),
+            run_wide:           true,
         };
         (services, backend)
     }
