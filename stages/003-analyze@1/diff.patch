@@ -1,0 +1,60 @@
+diff --git a/.fabro/journal/01M21E5PRBNZGDTSEC6RBTMT0X.jsonl b/.fabro/journal/01M21E5PRBNZGDTSEC6RBTMT0X.jsonl
+index 62be6c7..c7dc91f 100644
+--- a/.fabro/journal/01M21E5PRBNZGDTSEC6RBTMT0X.jsonl
++++ b/.fabro/journal/01M21E5PRBNZGDTSEC6RBTMT0X.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M21E5PRBNZGDTSEC6RBTMT0X","node":"start","visit":1,"status":"succeeded","ts":"2026-09-08T21:18:39Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M21E5PRBNZGDTSEC6RBTMT0X","node":"select","visit":1,"status":"succeeded","ts":"2026-09-08T21:19:16Z","data":{"painpoints":[],"observations":["Selected develop run `01M21BG1TG9SNM4QAS2A33W6GF` (newest overall, baseline version match, sandbox live, no marker in `.fabro/revisions/`).","Backlog: 30+ runs blocked — the large majority stale-evidence (version drift or absent pre-intent version, incl. 3 merge-upstream runs on older merge versions), and ~14 old runs have no live sandbox.","No develop run is currently active."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M21E5PRBNZGDTSEC6RBTMT0X","node":"analyze","visit":1,"status":"succeeded","ts":"2026-09-08T21:24:19Z","data":{"painpoints":[{"text":"4 of 6 analyst recommendations duplicated existing seeds (fabro-fe15, fabro-93a7, closed fabro-c0a8, fabro-cf3e) because the Ask-Fabro analyst has no open-backlog digest and re-derives known findings — corroborates open seed fabro-88a4; no new action needed here"},{"text":"Two survivors overlapped existing seeds only partially (rec 3 vs fabro-017f output-schema enforcement; rec 6 vs fabro-5b0a degraded-notice surfacing) and required manual scope narrowing — the revisor dedupe rule only handles full duplicates; a partial-overlap narrowing rule would make filed scopes crisper"}],"observations":["Review answer persisted verbatim to `.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md` (generated 2026-09-08 21:22+0000).","Dropped duplicates: warm-build rec → duplicate_of fabro-fe15 (open); evidence.nu prompt-file seed-work classification → duplicate_of fabro-93a7 (open; closed fabro-2992 was the earlier partial classifier fix and this run shows it is incomplete — 93a7 already tracks the gap); planner `sd update --description` correction sub-step → duplicate_of fabro-c0a8 (closed — the run's skip is prompt compliance, not a missing rule); reviewer inline ceiling 16→24 → duplicate_of fabro-cf3e (open 16→32 supersedes it).","Survivors narrowed: engine lint scoped to general `context_allow_keys` visibility (journal enforcement stays with fabro-017f); PR-body change scoped to cost/time table + painpoint digest (degraded notices stay with fabro-5b0a).","Run was otherwise healthy (all stages green first-pass, $0.944, 45.5 min); dominant cost is cold compile/test tool time already owned by fabro-fe15."]}}
+diff --git a/.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md b/.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md
+new file mode 100644
+index 0000000..42a42cb
+--- /dev/null
++++ b/.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md
+@@ -0,0 +1,46 @@
++# Improve review — run 01M21BG1TG9SNM4QAS2A33W6GF
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: succeeded (45.5 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-08 21:22+0000 by revisor `fabro_ask`
++
++---
++
++Recommendations for the Develop workflow, grounded in run `01M21BG1TG9SNM4QAS2A33W6GF` (seed fabro-c419, PR #76, 42.4 min wall, $0.944 total, all stages green first-pass). Ordered by expected impact.
++
++---
++
++**1. Warm the build environment — 77% of run wall was cold compile/test tool time.**
++- **Evidence (run conclusion + stage timings):** implementer tool_time 1,518.9s (25.3 min — cold crate-scoped fmt/clippy/nextest on 4 touched crates) + tester 438.8s (7.3 min gate, whose own log includes `== building fabro CLI renderer binary (fabro-server graph-render tests invoke it) ==`). Total tool_time 1,961s of 2,542s wall. The container starts with an empty `target/` (open seed fabro-fe15 documents this).
++- **Change:** bake a debug `fabro-cli` + warm cargo cache into `fabro-toolchain:noble` (`.fabro/Dockerfile*`), or mount an engine-managed shared cargo cache via the develop `workflow.toml` environment block. (Capability-affecting → needs the ADR-0019 user decision fabro-fe15 already requests.)
++- **Expected effect:** lib-touching runs drop from ~42 min to roughly 12–18 min; independent of any prompt compliance.
++
++**2. Fix the evidence churn classifier that hid a seed-required diff from review.**
++- **Evidence (reviewer@1 journal, run events):** the capture header reads `seed-work=7 files +228/-23 | loop-churn=3 files +3/-2` — the seed-mandated `planner.md` reword (+1/−1) was classified as loop churn (counts only). The reviewer journaled: *"a seed acceptance criterion was reviewable only because I re-read the file with tools."*
++- **Change:** in `.fabro/workflows/develop/scripts/evidence.nu`, when the in-progress seed spec names a file under `.fabro/workflows/<slug>/prompts/**`, classify that file as seed work so its full diff renders in the seed-work section.
++- **Expected effect:** prompt-targeting seeds review from the capture alone; removes a latent Changes-requested / Verification-blocked bounce (~$0.85 + ~35 min per avoided cycle) whenever the reviewer doesn't happen to re-read the file.
++
++**3. Enforce the journal contract mechanically — the planner shipped zero journal keys while running the in-flight-PR guard degraded.**
++- **Evidence (checkpoint + events):** planner@1's `context_updates` contain no `journal` key at all (journal file line for planner is `"data":{}`), although the node declares `context_allow_keys="...,journal"` and the prompt says silence is a violation. That same pass had no `fabro_runs_list` in its toolset (seq 27 `agent.tools.available`) and never ran the in-flight PR check — the guard silently degraded to a no-op, the exact failure fabro-c419 fixes, and nothing recorded it.
++- **Change:** engine-side completion lint (in the stage-envelope validation in `lib/components/fabro-workflow`, alongside the existing fabro-900e/e47c producer lints): a stage completing without emitting a key declared in its `context_allow_keys` emits a visible warning (or consumes one `output_retries` nudge).
++- **Expected effect:** fail-open guards become auditable; the improve workflow actually receives the painpoint instead of the loop silently losing it (a missed double-pick costs ~$0.15 + 12 min per the seed's own estimate).
++
++**4. Add a stale-basis fast path and harden the correction step in the planner prompt.**
++- **Evidence (planner transcript, seq 32–99):** ~13 sequential read probes and 98.3s inference / $0.123 re-deriving the exact line numbers the seed's USER DECISION note already pinned (`api.rs:1345-1357`, `server.rs:4514`); its reasoning trace (seq 55/67) nearly misjudged the seed as already-implemented ("Stale basis?"). It also skipped the mandated `sd update --description` correction for the seed's wrong `planner.md` path (seq 45: grep of nonexistent `.fabro/workflows/develop/planner.md`), annotating only the brief — so the wrong path persists in the seed body.
++- **Change:** `.fabro/workflows/develop/prompts/planner.md` step 3: (a) when the seed body carries a line-pinned USER DECISION/verified basis, one spot-check grep suffices instead of full re-derivation; (b) make the `sd update --description` correction an explicit checklist sub-step, not prose.
++- **Expected effect:** planner passes drop from ~13 calls/98s toward ~5 calls/40s (~$0.05 + ~1 min per run), lower risk of wrongly closing a valid seed as superseded, and path corrections actually land in the tracker for later readers.
++
++**5. Raise the reviewer's inline ceiling so real captures stop demoting to blob refs.**
++- **Evidence (reviewer@1 prompt):** the evidence capture arrived as `Output (21.3 KB; full value: /tmp/fabro/runtime/blobs/c655…json)` because 21.3 KB exceeds the reviewer node's `preamble_inline_max_kb=16` — while the graph budget is already 24 KB. The reviewer's only two tool calls (159ms) went to paging the blob.
++- **Change:** `.fabro/workflows/develop/workflow.fabro`, reviewer node: `preamble_inline_max_kb` 16 → 24 (or adopt open seed fabro-e4c4's output_schema delivery).
++- **Expected effect:** typical 14–21 KB captures render inline; one fewer tool round-trip per review and less temptation to route Verification blocked on an unread blob. Small this run, but it fires on every review.
++
++**6. Surface per-stage cost/time and degraded-guard state in the PR body.**
++- **Evidence (run events seq 607–615):** publish path was clean (branch pushed, PR #76 created, run completed) — but 82% of spend ($0.775) and 60% of wall sat in the implementer stage, and that breakdown is only visible inside the run conclusion, not on the PR the user actually merges.
++- **Change:** where the PR postlude is composed (engine publish path; note open seed fabro-6a5a already targets it), append the per-stage timing/cost table plus a digest of journal `painpoints` and any degraded-mode notices.
++- **Expected effect:** at merge time the user sees that builds dominate (the case for rec 1) and any fail-open guard state, without opening the run dashboard.
++
++---
++
++**Not inspectable from here:** the PR #76 body content and its merge state (`pull_request.state` was still `null` in the run summary after completion), so rec 6's "if not already present" caveat stands. The gate-bounce/deadlock error paths were never exercised this run (gate green, review approved first pass), so no evidence-based recommendations for them.
