@@ -697,7 +697,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-08T19:32:14.982982702Z",
-  "last_event_at": "2026-09-08T19:45:11.355866642Z",
+  "last_event_at": "2026-09-08T19:45:16.776037168Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1513,9 +1513,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 200,
       "checkpoint": {
-        "timestamp": "2026-09-08T19:45:11.556564999Z",
+        "timestamp": "2026-09-08T19:45:16.263028551Z",
         "current_node": "reviewer",
         "completed_nodes": [
           "start",
@@ -1527,19 +1527,315 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.thread_id": "evidence",
-          "thread.start.current_node": "planner",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.fidelity": "summary:high",
-          "current_seed_brief": "Add `[run.clone]` with `depth = 0` to `.fabro/workflows/merge-upstream/workflow.toml` so merge-child runs get a full-history clone instead of the default depth-100 shallow clone. Acceptance criteria: - `[run.clone]` section with `depth = 0` exists in `.fabro/workflows/merge-upstream/workflow.toml`, mirroring the conductor fix (commit a4850e681, `.fabro/workflows/conductor/workflow.toml` lines 43-44) - a short comment near the new section explains WHY (shallow boundary broke `git rev-list --count` / `git merge-base` range math in 3 consecutive merge runs: 01M20E43YS, 01M20N60ZY) and notes volume is ~neutral (~150 MB either way) - no other behavior of the workflow.toml changes (hooks, model, run_branch, PR config untouched) - TOML validity verified (workflow still parses, e.g. `fabro validate merge-upstream` or equivalent parse check) - verification is config-only: no Rust code changes expected; if a parse/validate command exists for workflows, run it as the smoke check. Basis verified against current tree: merge-upstream/workflow.toml has NO `[run.clone]` section today; conductor/workflow.toml has `depth = 0`.",
-          "thread.tester.current_node": "evidence",
+          "current_node": "reviewer",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.implementer": 0,
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "last_response": "Reviewing seed fabro-85a1 against the evidence capture.\n\n**Requirements check (spec vs. diff):**\n1. ✅ `[run.clone]` section with `depth = 0` exists in `.fabro/workflows/merge-upstream/workflow.toml`",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Verified the committed workflow.toml directly (git show HEAD) rather than trusting the capture alone; diff, file, and seed spec all agree. Noted the comment says '3 consecutive merge runs' while citing 2 run IDs — this matches the seed body (merge+reviewer nodes across those two runs), so not a deviation. Capability-delta check: clone depth is data volume, not agent privilege; ADR-0019 no_token stance in the file is untouched."
+            ]
+          },
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2516,
+            "preview": "Reviewing seed fabro-85a1 against the evidence capture.\n\n**Requirements check (spec vs. diff):**\n1. ✅ `[run.clone]` section with `depth = 0` exists in `.fabro/workflows/merge-upstream/workflow.toml`"
+          },
+          "thread.evidence.current_node": "reviewer",
+          "internal.fidelity": "summary:high",
+          "thread.start.current_node": "planner",
+          "internal.retry_count.evidence": 0,
+          "command.output": "blob://sha256/6d12facac6f4452a9b98e5489f9e46baa708e4a1db5348bca556636c868d9d31",
+          "graph.preamble_budget_kb": "24",
+          "internal.run_id": "01M2183254XQ3HJ45SR4P1Y2X6",
+          "failure_signature": "",
+          "internal.seed_cycle_anchor": "fabro-85a1",
+          "internal.thread_id": "evidence",
+          "review_verdict": "approved",
+          "internal.retry_count.planner": 0,
+          "current_seed_brief": "Add `[run.clone]` with `depth = 0` to `.fabro/workflows/merge-upstream/workflow.toml` so merge-child runs get a full-history clone instead of the default depth-100 shallow clone. Acceptance criteria: - `[run.clone]` section with `depth = 0` exists in `.fabro/workflows/merge-upstream/workflow.toml`, mirroring the conductor fix (commit a4850e681, `.fabro/workflows/conductor/workflow.toml` lines 43-44) - a short comment near the new section explains WHY (shallow boundary broke `git rev-list --count` / `git merge-base` range math in 3 consecutive merge runs: 01M20E43YS, 01M20N60ZY) and notes volume is ~neutral (~150 MB either way) - no other behavior of the workflow.toml changes (hooks, model, run_branch, PR config untouched) - TOML validity verified (workflow still parses, e.g. `fabro validate merge-upstream` or equivalent parse check) - verification is config-only: no Rust code changes expected; if a parse/validate command exists for workflows, run it as the smoke check. Basis verified against current tree: merge-upstream/workflow.toml has NO `[run.clone]` section today; conductor/workflow.toml has `depth = 0`.",
+          "implementation_summary": "Added a commented [run.clone] depth = 0 section to `.fabro/workflows/merge-upstream/workflow.toml` (inserted before [run.run_branch], mirroring conductor commit a4850e681), so merge-child runs get a full-history clone; the comment explains the shallow-boundary range-math failures (01M20E43YS, 01M20N60ZY) and the ~neutral ~150 MB volume. Config-only, no Rust changes; lesson captured as mx-10bfb8. Per-criterion verification: - PASS [run.clone] depth=0 exists mirroring conductor fix: `.fabro/workflows/merge-upstream/workflow.toml` [run.clone] section (tomllib parse shows run.clone.depth = 0) - PASS comment near section explains WHY (3 consecutive merge runs 01M20E43YS/01M20N60ZY broke rev-list --count / merge-base; notes ~neutral ~150 MB volume): comment block directly above [run.clone] - PASS no other behavior changes: git diff shows 12 added lines only, single file; hooks/model/run_branch/PR config untouched - PASS TOML validity verified: `fabro validate merge-upstream` → 'Validation: OK' (plus tomllib parse) - PASS config-only, validate run as smoke check: no Rust code changes, no fmt/clippy applicable",
+          "internal.retry_count.reviewer": 0,
+          "last_stage": "reviewer",
+          "internal.retry_count.tester": 0,
+          "graph.inspects": "develop",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2198,
+            "preview": "Implementation complete. The change is a 12-line addition to `.fabro/workflows/merge-upstream/workflow.toml`: a `[run.clone]` section with `depth = 0` plus a comment explaining the shallow-boundary fa"
+          },
+          "preferred_label": "Approved",
+          "internal.retry_count.start": 0,
+          "outcome": "succeeded",
+          "failure_class": "",
+          "internal.node_visit_count": 1,
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2336,
+            "preview": "Claimed `fabro-85a1`. The `fabro_runs_list` tool is not available in this stage's toolset, so the in-flight PR check ran degraded (no exclusions possible) — noted in observations.\n\n{\n  \"outcome\": \"s"
+          },
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
             "tester": 1,
             "evidence": 1,
             "reviewer": 1
+          },
+          "thread.implementer.current_node": "tester",
+          "thread.planner.current_node": "implementer",
+          "thread.tester.current_node": "evidence",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.rankdir": "LR",
+          "current_seed_title": "merge-upstream: full-history clone (run.clone depth=0) - shallow clone broke range math in 3 consecutive merge runs",
+          "current_seed_id": "fabro-85a1",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "lesson_capture": "mx-10bfb8"
+        },
+        "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Cold `cargo run -p fabro-cli -- validate` from a clean target dir took ~7 min build; building once with `cargo build -q -p fabro-cli` then reusing `target/debug/fabro` is the cheaper path for config-only smoke checks (target/ is gitignored, no artifact-hygiene impact)."
+                ]
+              },
+              "last_response": "Implementation complete. The change is a 12-line addition to `.fabro/workflows/merge-upstream/workflow.toml`: a `[run.clone]` section with `depth = 0` plus a comment explaining the shallow-boundary fa",
+              "implementation_summary": "Added a commented [run.clone] depth = 0 section to `.fabro/workflows/merge-upstream/workflow.toml` (inserted before [run.run_branch], mirroring conductor commit a4850e681), so merge-child runs get a full-history clone; the comment explains the shallow-boundary range-math failures (01M20E43YS, 01M20N60ZY) and the ~neutral ~150 MB volume. Config-only, no Rust changes; lesson captured as mx-10bfb8. Per-criterion verification: - PASS [run.clone] depth=0 exists mirroring conductor fix: `.fabro/workflows/merge-upstream/workflow.toml` [run.clone] section (tomllib parse shows run.clone.depth = 0) - PASS comment near section explains WHY (3 consecutive merge runs 01M20E43YS/01M20N60ZY broke rev-list --count / merge-base; notes ~neutral ~150 MB volume): comment block directly above [run.clone] - PASS no other behavior changes: git diff shows 12 added lines only, single file; hooks/model/run_branch/PR config untouched - PASS TOML validity verified: `fabro validate merge-upstream` → 'Validation: OK' (plus tomllib parse) - PASS config-only, validate run as smoke check: no Rust code changes, no fmt/clippy applicable",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2198,
+                "preview": "Implementation complete. The change is a 12-line addition to `.fabro/workflows/merge-upstream/workflow.toml`: a `[run.clone]` section with `depth = 0` plus a comment explaining the shallow-boundary fa"
+              },
+              "lesson_capture": "mx-10bfb8"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 15245,
+                    "output_tokens": 1722,
+                    "reasoning_tokens": 330,
+                    "cache_read_tokens": 136768,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 65918
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 53500,
+              "tool_time_ms": 600523,
+              "active_time_ms": 654023
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/6d12facac6f4452a9b98e5489f9e46baa708e4a1db5348bca556636c868d9d31"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 367,
+              "active_time_ms": 367
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "review_verdict": "approved",
+              "last_response": "Reviewing seed fabro-85a1 against the evidence capture.\n\n**Requirements check (spec vs. diff):**\n1. ✅ `[run.clone]` section with `depth = 0` exists in `.fabro/workflows/merge-upstream/workflow.toml`",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 2516,
+                "preview": "Reviewing seed fabro-85a1 against the evidence capture.\n\n**Requirements check (spec vs. diff):**\n1. ✅ `[run.clone]` section with `depth = 0` exists in `.fabro/workflows/merge-upstream/workflow.toml`"
+              },
+              "last_stage": "reviewer",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Verified the committed workflow.toml directly (git show HEAD) rather than trusting the capture alone; diff, file, and seed spec all agree. Noted the comment says '3 consecutive merge runs' while citing 2 run IDs — this matches the seed body (merge+reviewer nodes across those two runs), so not a deviation. Capability-delta check: clone depth is data volume, not agent privilege; ADR-0019 no_token stance in the file is untouched."
+                ]
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14486,
+                    "output_tokens": 724,
+                    "reasoning_tokens": 453,
+                    "cache_read_tokens": 13248,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 28902
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 19159,
+              "tool_time_ms": 275,
+              "active_time_ms": 19434
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5413,
+              "active_time_ms": 5413
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Claimed `fabro-85a1`. The `fabro_runs_list` tool is not available in this stage's toolset, so the in-flight PR check ran degraded (no exclusions possible) — noted in observations.\n\n{\n  \"outcome\": \"s",
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2336,
+                "preview": "Claimed `fabro-85a1`. The `fabro_runs_list` tool is not available in this stage's toolset, so the in-flight PR check ran degraded (no exclusions possible) — noted in observations.\n\n{\n  \"outcome\": \"s"
+              },
+              "current_seed_id": "fabro-85a1",
+              "current_seed_title": "merge-upstream: full-history clone (run.clone depth=0) - shallow clone broke range math in 3 consecutive merge runs",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Planner prompt mandates a fabro_runs_list in-flight PR check (fabro-06e0), but this stage's toolset exposes no such tool — the check degraded to a no-op. Fix: either expose fabro_runs_list to the planner stage or make the prompt state the degraded fallback explicitly when the tool is absent (run 01M2183254XQ3HJ45SR4P1Y2X6)."
+                  }
+                ],
+                "observations": [
+                  "Claimed fabro-85a1 (top High bug, no blockers). Basis resolved: merge-upstream workflow.toml lacks [run.clone] while conductor has depth=0 (commit a4850e681 pattern to mirror). In-flight PR check could not run (tool unavailable); no exclusions applied."
+                ]
+              },
+              "current_seed_brief": "Add `[run.clone]` with `depth = 0` to `.fabro/workflows/merge-upstream/workflow.toml` so merge-child runs get a full-history clone instead of the default depth-100 shallow clone. Acceptance criteria: - `[run.clone]` section with `depth = 0` exists in `.fabro/workflows/merge-upstream/workflow.toml`, mirroring the conductor fix (commit a4850e681, `.fabro/workflows/conductor/workflow.toml` lines 43-44) - a short comment near the new section explains WHY (shallow boundary broke `git rev-list --count` / `git merge-base` range math in 3 consecutive merge runs: 01M20E43YS, 01M20N60ZY) and notes volume is ~neutral (~150 MB either way) - no other behavior of the workflow.toml changes (hooks, model, run_branch, PR config untouched) - TOML validity verified (workflow still parses, e.g. `fabro validate merge-upstream` or equivalent parse check) - verification is config-only: no Rust code changes expected; if a parse/validate command exists for workflows, run it as the smoke check. Basis verified against current tree: merge-upstream/workflow.toml has NO `[run.clone]` section today; conductor/workflow.toml has `depth = 0`."
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 20213,
+                    "output_tokens": 809,
+                    "reasoning_tokens": 260,
+                    "cache_read_tokens": 69504,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 51070
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 25793,
+              "tool_time_ms": 1291,
+              "active_time_ms": 27084
+            }
+          }
+        },
+        "next_node_id": "closeout",
+        "git_commit_sha": "27b13567980aa33cac14601e834baa2cda1ec070",
+        "node_visits": {
+          "implementer": 1,
+          "reviewer": 1,
+          "evidence": 1,
+          "planner": 1,
+          "start": 1,
+          "tester": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl b/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl\nindex 5b00da9..1fdddc5 100644\n--- a/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl\n+++ b/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl\n@@ -3,3 +3,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2183254XQ3HJ45SR4P1Y2X6\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:44:27Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Cold `cargo run -p fabro-cli -- validate` from a clean target dir took ~7 min build; building once with `cargo build -q -p fabro-cli` then reusing `target/debug/fabro` is the cheaper path for config-only smoke checks (target/ is gitignored, no artifact-hygiene impact).\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2183254XQ3HJ45SR4P1Y2X6\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:44:38Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2183254XQ3HJ45SR4P1Y2X6\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:44:44Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2183254XQ3HJ45SR4P1Y2X6\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:45:11Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified the committed workflow.toml directly (git show HEAD) rather than trusting the capture alone; diff, file, and seed spec all agree. Noted the comment says '3 consecutive merge runs' while citing 2 run IDs — this matches the seed body (merge+reviewer nodes across those two runs), so not a deviation. Capability-delta check: clone depth is data volume, not agent privilege; ADR-0019 no_token stance in the file is untouched.\"]}}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 20,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-08T19:45:16.980479029Z",
+        "current_node": "closeout",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.exit_kind": "natural",
+          "internal.thread_id": "reviewer",
+          "thread.start.current_node": "planner",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.fidelity": "compact",
+          "current_seed_brief": "Add `[run.clone]` with `depth = 0` to `.fabro/workflows/merge-upstream/workflow.toml` so merge-child runs get a full-history clone instead of the default depth-100 shallow clone. Acceptance criteria: - `[run.clone]` section with `depth = 0` exists in `.fabro/workflows/merge-upstream/workflow.toml`, mirroring the conductor fix (commit a4850e681, `.fabro/workflows/conductor/workflow.toml` lines 43-44) - a short comment near the new section explains WHY (shallow boundary broke `git rev-list --count` / `git merge-base` range math in 3 consecutive merge runs: 01M20E43YS, 01M20N60ZY) and notes volume is ~neutral (~150 MB either way) - no other behavior of the workflow.toml changes (hooks, model, run_branch, PR config untouched) - TOML validity verified (workflow still parses, e.g. `fabro validate merge-upstream` or equivalent parse check) - verification is config-only: no Rust code changes expected; if a parse/validate command exists for workflows, run it as the smoke check. Basis verified against current tree: merge-upstream/workflow.toml has NO `[run.clone]` section today; conductor/workflow.toml has `depth = 0`.",
+          "thread.tester.current_node": "evidence",
+          "internal.retry_count.closeout": 0,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1,
+            "closeout": 1
           },
           "failure_signature": "",
           "thread.implementer.current_node": "tester",
@@ -1557,10 +1853,11 @@
           "internal.run_id": "01M2183254XQ3HJ45SR4P1Y2X6",
           "internal.work_dir": "/workspace/fabro",
           "graph.max_node_visits": "40",
-          "current_node": "reviewer",
+          "current_node": "closeout",
           "internal.retry_count.tester": 0,
           "current_seed_title": "merge-upstream: full-history clone (run.clone depth=0) - shallow clone broke range math in 3 consecutive merge runs",
-          "command.output": "blob://sha256/6d12facac6f4452a9b98e5489f9e46baa708e4a1db5348bca556636c868d9d31",
+          "command.output": "blob://sha256/a479bacaadebafe650b43131005c6bfbfbc04627b5271245313b34844f251528",
+          "thread.reviewer.current_node": "closeout",
           "outcome": "succeeded",
           "internal.retry_count.start": 0,
           "current_seed_id": "fabro-85a1",
@@ -1656,6 +1953,55 @@
               "active_time_ms": 27084
             }
           },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "review_verdict": "approved",
+              "last_response": "Reviewing seed fabro-85a1 against the evidence capture.\n\n**Requirements check (spec vs. diff):**\n1. ✅ `[run.clone]` section with `depth = 0` exists in `.fabro/workflows/merge-upstream/workflow.toml`",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 2516,
+                "preview": "Reviewing seed fabro-85a1 against the evidence capture.\n\n**Requirements check (spec vs. diff):**\n1. ✅ `[run.clone]` section with `depth = 0` exists in `.fabro/workflows/merge-upstream/workflow.toml`"
+              },
+              "last_stage": "reviewer",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Verified the committed workflow.toml directly (git show HEAD) rather than trusting the capture alone; diff, file, and seed spec all agree. Noted the comment says '3 consecutive merge runs' while citing 2 run IDs — this matches the seed body (merge+reviewer nodes across those two runs), so not a deviation. Capability-delta check: clone depth is data volume, not agent privilege; ADR-0019 no_token stance in the file is untouched."
+                ]
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14486,
+                    "output_tokens": 724,
+                    "reasoning_tokens": 453,
+                    "cache_read_tokens": 13248,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 28902
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 19159,
+              "tool_time_ms": 275,
+              "active_time_ms": 19434
+            }
+          },
           "tester": {
             "status": "succeeded",
             "context_updates": {
@@ -1734,60 +2080,26 @@
               "active_time_ms": 654023
             }
           },
-          "reviewer": {
+          "closeout": {
             "status": "succeeded",
-            "preferred_label": "Approved",
             "context_updates": {
-              "review_verdict": "approved",
-              "last_response": "Reviewing seed fabro-85a1 against the evidence capture.\n\n**Requirements check (spec vs. diff):**\n1. ✅ `[run.clone]` section with `depth = 0` exists in `.fabro/workflows/merge-upstream/workflow.toml`",
-              "response.reviewer": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.reviewer",
-                "chars": 2516,
-                "preview": "Reviewing seed fabro-85a1 against the evidence capture.\n\n**Requirements check (spec vs. diff):**\n1. ✅ `[run.clone]` section with `depth = 0` exists in `.fabro/workflows/merge-upstream/workflow.toml`"
-              },
-              "last_stage": "reviewer",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "Verified the committed workflow.toml directly (git show HEAD) rather than trusting the capture alone; diff, file, and seed spec all agree. Noted the comment says '3 consecutive merge runs' while citing 2 run IDs — this matches the seed body (merge+reviewer nodes across those two runs), so not a deviation. Capability-delta check: clone depth is data volume, not agent privilege; ADR-0019 no_token stance in the file is untouched."
-                ]
-              }
+              "command.output": "blob://sha256/a479bacaadebafe650b43131005c6bfbfbc04627b5271245313b34844f251528"
             },
-            "notes": "Stage completed: reviewer",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 14486,
-                    "output_tokens": 724,
-                    "reasoning_tokens": 453,
-                    "cache_read_tokens": 13248,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 28902
-            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 19159,
-              "tool_time_ms": 275,
-              "active_time_ms": 19434
+              "inference_time_ms": 0,
+              "tool_time_ms": 270,
+              "active_time_ms": 270
             }
           }
         },
-        "next_node_id": "closeout",
+        "next_node_id": "exit",
         "node_visits": {
           "implementer": 1,
           "start": 1,
+          "closeout": 1,
           "planner": 1,
           "evidence": 1,
           "reviewer": 1,
@@ -2151,6 +2463,57 @@
         "inference_time_ms": 0,
         "tool_time_ms": 367,
         "active_time_ms": 367
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "closeout@1": {
+      "first_event_seq": 203,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-08T19:45:16.776037168Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/a479bacaadebafe650b43131005c6bfbfbc04627b5271245313b34844f251528",
+        "exit_code": 0,
+        "duration_ms": 270,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-08T19:45:16.489135003Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 276,
+        "inference_time_ms": 0,
+        "tool_time_ms": 270,
+        "active_time_ms": 270
       },
       "usage": {
         "input_tokens": 0,
