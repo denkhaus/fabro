@@ -12,9 +12,10 @@ use crate::{FabroToolBackend, RunManifestBuilder, ToolError};
 
 #[derive(Clone)]
 pub struct ClientBackend {
-    client:           Arc<::fabro_client::Client>,
+    client: Arc<::fabro_client::Client>,
     manifest_builder: Option<Arc<dyn RunManifestBuilder>>,
-    run_scope:        Option<RunId>,
+    run_scope: Option<RunId>,
+    workflow_version_create_adapter: Option<Arc<dyn crate::WorkflowVersionCreateAdapter>>,
 }
 
 impl ClientBackend {
@@ -24,12 +25,22 @@ impl ClientBackend {
             client,
             manifest_builder: None,
             run_scope: None,
+            workflow_version_create_adapter: None,
         }
     }
 
     #[must_use]
     pub fn with_manifest_builder(mut self, builder: Arc<dyn RunManifestBuilder>) -> Self {
         self.manifest_builder = Some(builder);
+        self
+    }
+
+    #[must_use]
+    pub fn with_workflow_version_create_adapter(
+        mut self,
+        adapter: Arc<dyn crate::WorkflowVersionCreateAdapter>,
+    ) -> Self {
+        self.workflow_version_create_adapter = Some(adapter);
         self
     }
 
@@ -55,6 +66,21 @@ impl ClientBackend {
 
 #[async_trait]
 impl FabroToolBackend for ClientBackend {
+    async fn create_workflow_version(
+        &self,
+        params: crate::FabroWorkflowVersionCreateParams,
+    ) -> anyhow::Result<fabro_types::WorkflowVersionId> {
+        anyhow::ensure!(
+            self.run_scope.is_none(),
+            "workflow version creation is outside this tool session's run scope"
+        );
+        let adapter = self
+            .workflow_version_create_adapter
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("fabro_workflow_version_create is not available"))?;
+        adapter.create_workflow_version(params, &self.client).await
+    }
+
     async fn create_run_from_spec(
         &self,
         spec: &crate::ValidatedCreateRunSpec,

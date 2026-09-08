@@ -14,12 +14,13 @@ mod interact;
 mod manifest;
 mod pair;
 mod search;
+mod workflow_version;
 
 pub use common::{
     FABRO_RUN_CREATE_TOOL_NAME, FABRO_RUN_EVENTS_TOOL_NAME, FABRO_RUN_GATHER_TOOL_NAME,
     FABRO_RUN_GET_TOOL_NAME, FABRO_RUN_INTERACT_TOOL_NAME, FABRO_RUN_PAIR_TOOL_NAME,
-    FABRO_RUN_SEARCH_TOOL_NAME, FabroToolBackend, RunManifestBuilder, RunSummaryResult,
-    ToolDefinition, ToolError, ToolResult, tool_definitions,
+    FABRO_RUN_SEARCH_TOOL_NAME, FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME, FabroToolBackend,
+    RunManifestBuilder, RunSummaryResult, ToolDefinition, ToolError, ToolResult, tool_definitions,
 };
 pub use create::{
     CreateRunOptions, CreateRunSpec, CreateRunSpecInput, CreateRunsResult, CreatedRunResult,
@@ -46,4 +47,8 @@ pub use pair::{
 pub use search::{
     FabroRunSearchParams, SearchRunSummaryResult, SearchRunsResult, ValidatedSearchRuns,
     search_runs, search_runs_text,
+};
+pub use workflow_version::{
+    FabroWorkflowVersionCreateParams, WorkflowVersionCreateAdapter, create_workflow_version,
+    workflow_version_create_text,
 };

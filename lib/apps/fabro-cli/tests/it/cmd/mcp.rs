@@ -38,6 +38,7 @@ const MCP_RUN_TOOL_NAMES: &[&str] = &[
     "fabro_run_interact",
     "fabro_run_pair",
     "fabro_run_search",
+    "fabro_workflow_version_create",
 ];
 
 async fn assert_mcp_run_tool_count(client: &McpClient) {
@@ -1840,6 +1841,24 @@ async fn mcp_get_rejects_blank_run_id_before_auth_or_network() {
     .await;
 
     assert!(error.contains("run_id"), "{error}");
+    assert_mcp_run_tool_count(&client).await;
+    client
+        .shutdown()
+        .await
+        .expect("MCP client should shut down");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mcp_workflow_version_validation_happens_before_auth_or_network() {
+    let context = test_context!();
+    let client = spawn_mcp_client(&context, &["--server", "http://127.0.0.1:9"]).await;
+    let error = call_tool_error_text(
+        &client,
+        "fabro_workflow_version_create",
+        serde_json::json!({"entrypoint":"workflow","files":{}}),
+    )
+    .await;
+    assert_eq!(error, "entrypoint must be an exact supplied file key");
     assert_mcp_run_tool_count(&client).await;
     client
         .shutdown()

@@ -55,6 +55,7 @@ pub mod web_auth;
 mod worker_control;
 mod worker_runtime;
 mod worker_token;
+pub mod workflow_version_tool;
 
 pub use error::{ApiError, Error, Result};
 pub use run_manifest::workflow_bundle_from_manifest;

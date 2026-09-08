@@ -37,6 +37,7 @@ pub use crate::local_workflow_package::{
 use crate::workflow_bundler::WorkflowBundler;
 pub use crate::workflow_version_collector::{
     CollectedWorkflowClosure, WorkflowVersionCollectError, collect_workflow_versions,
+    collect_workflow_versions_at_location,
 };
 
 #[derive(Debug, Default)]

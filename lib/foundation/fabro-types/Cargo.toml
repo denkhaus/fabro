@@ -33,6 +33,8 @@ strum.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 ulid.workspace = true
+unicase = "2"
+unicode-normalization = "0.1"
 url.workspace = true
 
 [dev-dependencies]

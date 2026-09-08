@@ -54,6 +54,21 @@ impl WorkflowLocation {
         }
     }
 
+    /// Resolve an exact file path without workflow-name or ambient config
+    /// lookup. Relative paths are interpreted against the supplied
+    /// directory only.
+    pub fn from_exact_path(path: &Path, directory: &Path) -> Result<Self> {
+        let path = directory.join(path);
+        if path
+            .extension()
+            .is_some_and(|extension| extension == "toml")
+        {
+            Self::from_toml(path)
+        } else {
+            Ok(Self::from_graph(path))
+        }
+    }
+
     fn from_toml(toml_path: PathBuf) -> Result<Self> {
         let cfg = match run::load_run_config(&toml_path) {
             Ok(cfg) => cfg,

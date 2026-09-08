@@ -48,6 +48,13 @@ pub type ToolResult<T> = Result<T, ToolError>;
 
 #[async_trait]
 pub trait FabroToolBackend: Send + Sync {
+    async fn create_workflow_version(
+        &self,
+        _params: crate::FabroWorkflowVersionCreateParams,
+    ) -> anyhow::Result<fabro_types::WorkflowVersionId> {
+        anyhow::bail!("fabro_workflow_version_create is not available")
+    }
+
     async fn create_run_from_spec(
         &self,
         spec: &crate::ValidatedCreateRunSpec,
@@ -170,6 +177,7 @@ pub struct ToolDefinition {
     pub parameters:  Value,
 }
 
+pub const FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME: &str = "fabro_workflow_version_create";
 pub const FABRO_RUN_CREATE_TOOL_NAME: &str = "fabro_run_create";
 pub const FABRO_RUN_SEARCH_TOOL_NAME: &str = "fabro_run_search";
 pub const FABRO_RUN_GET_TOOL_NAME: &str = "fabro_run_get";
@@ -180,6 +188,10 @@ pub const FABRO_RUN_PAIR_TOOL_NAME: &str = "fabro_run_pair";
 
 static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
     vec![
+        tool_definition::<crate::FabroWorkflowVersionCreateParams>(
+            FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME,
+            "Register supplied workflow file contents and all local dependencies as a reusable immutable workflow version ID. Obtain files with shell/read tools first; this does not create or start a run.",
+        ),
         tool_definition::<crate::FabroRunCreateParams>(
             FABRO_RUN_CREATE_TOOL_NAME,
             "Create one or more Fabro workflow runs, optionally under a parent run, starting them by default.",
@@ -323,6 +335,7 @@ mod tests {
     #[test]
     fn shared_tool_definitions_include_run_management_catalog() {
         assert_eq!(shared_tool_names(), vec![
+            FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME,
             FABRO_RUN_CREATE_TOOL_NAME,
             FABRO_RUN_SEARCH_TOOL_NAME,
             FABRO_RUN_GET_TOOL_NAME,
@@ -331,6 +344,21 @@ mod tests {
             FABRO_RUN_PAIR_TOOL_NAME,
             FABRO_RUN_EVENTS_TOOL_NAME,
         ]);
+    }
+
+    #[test]
+    fn workflow_version_create_has_strict_content_schema() {
+        let definition = tool_definitions()
+            .iter()
+            .find(|definition| definition.name == "fabro_workflow_version_create")
+            .expect("workflow version creation should be in the shared catalog");
+        let schema = &definition.parameters;
+        assert_eq!(schema["additionalProperties"], false);
+        assert_eq!(schema["properties"].as_object().unwrap().len(), 2);
+        assert_eq!(
+            schema["required"],
+            serde_json::json!(["entrypoint", "files"])
+        );
     }
 
     #[test]

@@ -5,6 +5,8 @@ use std::marker::PhantomData;
 use serde::de::{Error as _, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
+use unicase::UniCase;
+use unicode_normalization::UnicodeNormalization as _;
 
 use crate::{BlobHash, WorkflowPath, WorkflowVersionId};
 
@@ -149,31 +151,52 @@ impl WorkflowVersion {
     }
 
     fn validate_path_collisions(&self) -> Result<(), WorkflowVersionShapeError> {
-        // Keys are unique within each map, so equality can only collide
-        // across files and workflow dependencies.
-        let mut by_text =
-            HashMap::with_capacity(self.files.len() + self.workflow_dependencies.len());
-        for path in self.files.keys().chain(self.workflow_dependencies.keys()) {
-            if let Some(existing) = by_text.insert(path.as_str(), path) {
+        validate_path_collisions(
+            self.files.keys().chain(self.workflow_dependencies.keys()),
+            false,
+        )
+    }
+}
+
+/// Reject file and directory aliases before materializing a portable source
+/// tree, including Unicode case folding and normalization. Canonical versions
+/// themselves retain their exact, case-sensitive
+/// semantics.
+pub fn validate_workflow_source_paths<'a>(
+    paths: impl IntoIterator<Item = &'a WorkflowPath>,
+) -> Result<(), WorkflowVersionShapeError> {
+    validate_path_collisions(paths, true)
+}
+
+fn validate_path_collisions<'a>(
+    paths: impl IntoIterator<Item = &'a WorkflowPath>,
+    case_insensitive: bool,
+) -> Result<(), WorkflowVersionShapeError> {
+    let mut by_text = HashMap::new();
+    for path in paths {
+        let text = if case_insensitive {
+            UniCase::new(path.as_str()).to_folded_case().nfc().collect()
+        } else {
+            path.as_str().to_owned()
+        };
+        if let Some(existing) = by_text.insert(text, path) {
+            return Err(WorkflowVersionShapeError::PathCollision {
+                first:  existing.clone(),
+                second: path.clone(),
+            });
+        }
+    }
+    for (text, path) in &by_text {
+        for (index, _) in text.match_indices('/') {
+            if let Some(ancestor) = by_text.get(&text[..index]) {
                 return Err(WorkflowVersionShapeError::PathCollision {
-                    first:  existing.clone(),
-                    second: path.clone(),
+                    first:  (*ancestor).clone(),
+                    second: (*path).clone(),
                 });
             }
         }
-        for path in self.files.keys().chain(self.workflow_dependencies.keys()) {
-            let text = path.as_str();
-            for (index, _) in text.match_indices('/') {
-                if let Some(ancestor) = by_text.get(&text[..index]) {
-                    return Err(WorkflowVersionShapeError::PathCollision {
-                        first:  (*ancestor).clone(),
-                        second: path.clone(),
-                    });
-                }
-            }
-        }
-        Ok(())
     }
+    Ok(())
 }
 
 impl<'de> Deserialize<'de> for WorkflowVersion {
@@ -507,5 +530,39 @@ mod tests {
             "workflow_dependencies":{}
         }"#;
         assert!(serde_json::from_str::<WorkflowVersion>(duplicate).is_err());
+    }
+}
+
+#[cfg(test)]
+mod source_path_tests {
+    use super::*;
+
+    #[test]
+    fn workflow_source_collisions_are_portable_in_both_orders() {
+        for pair in [
+            ["A", "a"],
+            ["A", "a/b.md"],
+            ["a", "A/b.md"],
+            ["é", "É/b"],
+            ["ΟΣ", "οσ/b"],
+            ["é", "e\u{301}/b"],
+            ["Straße", "STRASSE/b"],
+        ] {
+            let paths = pair.map(|path| WorkflowPath::new(path).unwrap());
+            assert!(validate_workflow_source_paths(paths.iter()).is_err());
+            assert!(validate_workflow_source_paths(paths.iter().rev()).is_err());
+        }
+        let version = WorkflowVersion::new(
+            WorkflowPath::new("A").unwrap(),
+            BTreeMap::from([
+                (WorkflowPath::new("A").unwrap(), "x".into()),
+                (WorkflowPath::new("a").unwrap(), "y".into()),
+            ]),
+            BTreeMap::new(),
+        );
+        assert!(
+            version.is_ok(),
+            "canonical versions keep exact path semantics"
+        );
     }
 }

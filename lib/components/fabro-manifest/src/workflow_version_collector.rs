@@ -137,7 +137,9 @@ pub(super) fn canonicalize_location<E>(
     })
 }
 
-pub(super) fn collect_workflow_versions_at_location(
+/// Collect an already resolved exact location inside a canonical package root.
+/// Every dependency is validated before this returns; no registration occurs.
+pub fn collect_workflow_versions_at_location(
     location: &WorkflowLocation,
     package_root: &Path,
     workflow: &Path,
@@ -263,6 +265,12 @@ fn workflow_files(
     for (path, file) in workflow.files {
         insert_file(&mut files, entrypoint, workflow_path(&path)?, file.content)?;
     }
+    fabro_types::validate_workflow_source_paths(files.keys()).map_err(|source| {
+        WorkflowVersionCollectError::InvalidShape {
+            entrypoint: entrypoint.clone(),
+            source,
+        }
+    })?;
     Ok(files)
 }
 

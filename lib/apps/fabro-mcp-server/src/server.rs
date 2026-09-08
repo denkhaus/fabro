@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use fabro_server::workflow_version_tool::ServerWorkflowVersionCreateAdapter;
 use fabro_tool::fabro_client::ClientBackend;
 use fabro_tool::{self as run_tools, FabroToolBackend};
 use fabro_util::version::FABRO_VERSION;
@@ -74,7 +75,7 @@ impl ServerHandler for FabroMcpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new(SERVER_NAME, FABRO_VERSION).with_title("Fabro"))
-            .with_instructions("Use these tools to create, inspect, control, wait for, and read events from Fabro workflow runs.")
+            .with_instructions("Use these tools to register workflow versions and create, inspect, control, wait for, and read events from Fabro workflow runs.")
     }
 }
 
@@ -87,6 +88,27 @@ impl FabroMcpServer {
             backend: Arc::new(OnceCell::new()),
             cwd,
             tool_router: Self::tool_router(),
+        }
+    }
+
+    #[tool(
+        name = "fabro_workflow_version_create",
+        description = "Register supplied workflow file contents and all local dependencies as a reusable immutable workflow version ID. Obtain files with shell/read tools first; this does not create or start a run."
+    )]
+    async fn fabro_workflow_version_create(
+        &self,
+        params: Parameters<run_tools::FabroWorkflowVersionCreateParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        if let Err(err) = params.0.validate() {
+            return Ok(error_result(&err));
+        }
+        let backend = match self.backend().await {
+            Ok(backend) => backend,
+            Err(err) => return Ok(error_result(&err)),
+        };
+        match run_tools::create_workflow_version(backend, params.0).await {
+            Ok(result) => success_result(&result, run_tools::workflow_version_create_text(&result)),
+            Err(err) => Ok(error_result(&err)),
         }
     }
 
@@ -252,7 +274,10 @@ impl FabroMcpServer {
                     .map(|client| {
                         Arc::new(
                             ClientBackend::new(Arc::new(client))
-                                .with_manifest_builder(Arc::new(McpRunManifestBuilder)),
+                                .with_manifest_builder(Arc::new(McpRunManifestBuilder))
+                                .with_workflow_version_create_adapter(Arc::new(
+                                    ServerWorkflowVersionCreateAdapter,
+                                )),
                         ) as Arc<dyn FabroToolBackend>
                     })
                     .map_err(|err| run_tools::ToolError::from_anyhow(&err))
@@ -283,6 +308,7 @@ fn error_result(err: &run_tools::ToolError) -> CallToolResult {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::path::PathBuf;
     use std::sync::Arc;
 
@@ -290,6 +316,58 @@ mod tests {
 
     use super::*;
     use crate::FabroMcpServerSettings;
+
+    #[tokio::test]
+    async fn workflow_version_mcp_surface_matches_catalog_and_returns_minimal_result() {
+        let mock = httpmock::MockServer::start_async().await;
+        let version = fabro_types::WorkflowVersion::new(
+            "workflow".parse().unwrap(),
+            BTreeMap::from([("workflow".parse().unwrap(), "digraph W {}".to_string())]),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        let id = version.id().unwrap();
+        let upload = mock
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::POST)
+                    .path("/api/v1/workflow-versions")
+                    .json_body_obj(&version);
+                then.status(201)
+                    .json_body(serde_json::json!({"workflow_version_id":id}));
+            })
+            .await;
+        let url = mock.url("");
+        let server = FabroMcpServer::new(Arc::new(FabroMcpServerSettings {
+            cwd:            PathBuf::from("/does-not-exist"),
+            config_path:    PathBuf::from("/does-not-exist"),
+            client_factory: Arc::new(move || {
+                let url = url.clone();
+                Box::pin(async move { fabro_client::Client::new_no_proxy(&url) })
+            }),
+        }));
+        let tools = server.tool_router.list_all();
+        let tool = tools
+            .iter()
+            .find(|tool| tool.name == "fabro_workflow_version_create")
+            .unwrap();
+        let definition = run_tools::tool_definitions()
+            .iter()
+            .find(|tool| tool.name == "fabro_workflow_version_create")
+            .unwrap();
+        let mut expected = definition.parameters.clone();
+        expected.as_object_mut().unwrap().remove("$schema");
+        let mut actual = Value::Object(tool.input_schema.as_ref().clone());
+        actual.as_object_mut().unwrap().remove("$schema");
+        assert_eq!(actual, expected);
+        assert_eq!(tool.description.as_deref(), Some(definition.description));
+        let result = server.fabro_workflow_version_create(Parameters(serde_json::from_value(serde_json::json!({"entrypoint":"workflow","files":{"workflow":"digraph W {}"}})).unwrap())).await.unwrap();
+        assert_eq!(
+            result.structured_content,
+            Some(serde_json::json!({"workflow_version_id":id}))
+        );
+        assert_ne!(result.is_error, Some(true));
+        upload.assert_calls_async(1).await;
+    }
 
     #[test]
     fn server_info_reports_fabro_version() {
