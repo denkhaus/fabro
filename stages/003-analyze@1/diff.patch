@@ -1,0 +1,69 @@
+diff --git a/.fabro/journal/01M218Y6XTZVV8Z98TCHSNFXAB.jsonl b/.fabro/journal/01M218Y6XTZVV8Z98TCHSNFXAB.jsonl
+index 53b9211..de6b4f9 100644
+--- a/.fabro/journal/01M218Y6XTZVV8Z98TCHSNFXAB.jsonl
++++ b/.fabro/journal/01M218Y6XTZVV8Z98TCHSNFXAB.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M218Y6XTZVV8Z98TCHSNFXAB","node":"start","visit":1,"status":"succeeded","ts":"2026-09-08T19:47:06Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M218Y6XTZVV8Z98TCHSNFXAB","node":"select","visit":1,"status":"succeeded","ts":"2026-09-08T19:47:42Z","data":{"painpoints":[],"observations":["Selected newest qualifying run; merge-upstream run 01M1ZVH0B5V5RHRCY393T24GXG (version 4210c0e5, sandbox true, unrevised) remains the next-best candidate","develop backlog: ~24 terminal runs unrevised but stale-evidence (version drift from baseline 84429d0a) plus pre-intent runs with absent workflow_version_id; 5 old runs sandbox_available=false — all blocked until engine provisions fresh analyst sandboxes or evidence refreshes","No active develop run at selection time; several pre-2026-09-05 runs (01M1Q4P92K5RX8XX990BEB130Y, 01M1PVMS7B6N39MG0041C5F7P6, 01M1NHZVTXRC1AVW28D3FG0XYP, 01M1NGGDVKNJHWP2W0HPJJ84CZ, 01M1EGK6J8CNP9APJ7PWE6WE74, 01M1MMK5C6B313SY70Y2EPKE82, 01M1MHGS7PH26EP20B2RTAPN4G) lack workflow_version_id entirely"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M218Y6XTZVV8Z98TCHSNFXAB","node":"analyze","visit":1,"status":"succeeded","ts":"2026-09-08T19:52:06Z","data":{"painpoints":[{"text":"Duplicate check is blinded by search result caps: `sd search` returns at most ~20 rows, so analyst-cited seed fabro-e4ac (partial stdout on timeout) never appeared across 'timeout', 'partial stdout', 'timed_out', and 'stdout' probes, and the initial `sd list` cap of 50 hid fabro-c3b4. Extends open fabro-5ff7 from list to search — fix idea: paginate search, raise the cap, or authorize `sd show <id>` for analyst-cited ids in the revisor prompt."}],"observations":["Duplicates withheld with reasons: top-N sd ready -> duplicate_of fabro-c3b4 (open, exact match); ml record flag contract -> duplicate_of fabro-96bd (open, exact match, this run reproduces it at seq 119-126); preamble allow-key warn to info -> duplicate_of fabro-8275 (open, exact match); run-level warnings for degraded planner checks -> sub-item duplicate_of fabro-5b0a; partial stdout on timeout -> engine sub-item duplicate_of fabro-e4ac per analyst citation (not independently verifiable through capped search).","Rec 1 and rec 4 were merged into one finding: both target `.fabro/workflows/develop/prompts/implementer.md` step 4 from the same cold-cargo incident (seq 98-115).","The fabro_runs_list fail-open is new evidence against the wiring, not a reopen of closed fabro-06e0 or fabro-0c32 (the tools exist engine-side; the node-level attribute never surfaces them to the planner agent).","No graph-topology findings: the linear planner->implementer->tester->evidence->reviewer->closeout path, deterministic closeout, and cycle guards all behaved as designed with zero retries."]}}
+diff --git a/.fabro/reviews/develop/01M2183254XQ3HJ45SR4P1Y2X6.md b/.fabro/reviews/develop/01M2183254XQ3HJ45SR4P1Y2X6.md
+new file mode 100644
+index 0000000..6e3681e
+--- /dev/null
++++ b/.fabro/reviews/develop/01M2183254XQ3HJ45SR4P1Y2X6.md
+@@ -0,0 +1,55 @@
++# Improve review — run 01M2183254XQ3HJ45SR4P1Y2X6
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: succeeded (13.3 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-08 19:49+0000 by revisor `fabro_ask`
++
++---
++
++## What this run actually was (the basis for everything below)
++
++From run events and the run summary: seed `fabro-85a1` — a 12-line, config-only TOML addition to `.fabro/workflows/merge-upstream/workflow.toml` — went planner → implementer → gate → evidence → review → closeout, all first-pass green, PR #72, total 12m21s wall, $0.146. The interesting part is where the time and friction actually went: the implementer's tool time was **600s of the 741s run (81%)**, almost all of it `cargo` work to "validate" a file that had already passed a 173ms parse check.
++
++---
++
++## Recommendations, by expected impact
++
++**1. Cost-tier the smoke check for config-only seeds — stop cold-building binaries to validate TOML.**
++- What happened (run events seq 98–115): implementer already verified the edit with `python3 -c "import tomllib; ..."` in 173ms, then ran `cargo run -q -p fabro-cli -- validate merge-upstream` (timeout 180s) → **timed out at 180.3s, zero output captured**, then re-ran as `cargo build -q -p fabro-cli && ./target/debug/fabro validate` → **416.9s**. ~10 minutes of cargo to confirm what the parse had proven. The planner's brief made this worse by suggesting "`fabro validate merge-upstream` or equivalent parse check" with no cost qualifier — the expensive option listed first is the one that got run.
++- Change: in `.fabro/workflows/develop/prompts/implementer.md` step 4, add: "Config-only seeds (no Rust touched): a successful parse-level check (tomllib/toml parse) satisfies the smoke check — do NOT build binaries to validate config. If a built check is genuinely required, never `cargo run` cold; `cargo build` once with `timeout_ms ≥ 600000`, then invoke `target/debug/<bin>`." Mirror one line in `.fabro/workflows/develop/prompts/planner.md` step 6 so briefs phrase smoke checks cheapest-first.
++- Expected effect: this run would have finished in ~4 min instead of 12.3; every config-only seed (a large fraction of the `revision`-labelled backlog visible in `sd ready`) saves 8–10 min of wall and one wasted LLM diagnosis turn.
++
++**2. Fix the planner's `fabro_runs_list` binding — the in-flight-PR guard silently failed open.**
++- What happened (run events seq 27 + planner journal): the graph declares `fabro_tools="fabro_runs_list"` on the planner node specifically for the fabro-06e0 in-flight-PR check, but `agent.tools.available` for planner@1 lists no such tool (and run settings show `agent.fabro_tools=false`). The planner journaled this as its **only painpoint**: "the check degraded to a no-op." The exact failure the guard prevents (fabro-22e4: identical fix re-implemented while PR #47 waited in gate) is currently unprotected on every run.
++- Change: node `planner` in `.fabro/workflows/develop/workflow.fabro` — either make the node-level `fabro_tools` attribute actually surface the tool (or set run-level `agent.fabro_tools`), and until the engine honors it, reword planner.md step 4 to say "if the tool is absent from your toolset, journal the degraded mode and proceed" instead of implying the call is always possible. Also surface degraded checks as run-level warnings (matches open seed fabro-5b0a).
++- Expected effect: closes a silent fail-open in the loop's only double-work guard; prevents a duplicated run (~$0.15 + 12 min each) next time a seed's PR sits in the gate.
++
++**3. Top-N the `sd ready` firehose.**
++- What happened (seq 32–34): `sd ready --assignee fabro --limit 200` returned **178 rows / 24,011 bytes**; the planner's conversation tokens jumped 3,371 → 9,733 → 11,130. The planner needed the top 1–3 candidates yet paid for the whole backlog in input tokens every turn — making it the **second-costliest stage ($0.051, 35% of run cost)** for a claim decision, more than the reviewer that judged the actual diff.
++- Change: `.fabro/workflows/develop/prompts/planner.md`, sd command reference — first call becomes `sd ready --assignee fabro --limit 200 | head -15` (priority-sorted top-N view); fall back to the full listing only when top candidates fail the stale-basis/in-flight checks. (Matches open seed fabro-c3b4; this run is fresh evidence for it.)
++- Expected effect: roughly halves planner input tokens (~$0.02/pass) and shortens the stage; paid on the first turn of every develop run.
++
++**4. Timeout sizing and timed-out-build semantics for shell tools.**
++- What happened (seq 99–103): the 180s `cargo run` timeout returned `termination: timed_out, is_error: true` with **0 bytes of output** — the agent burned an LLM turn diagnosing a non-failure and re-issuing at 600s (which succeeded; cargo resumed warm from `target/`). The prompt mandates `timeout_ms` but gives no sizing guidance, and a timeout is indistinguishable from a crash in the tool result.
++- Change: `.fabro/workflows/develop/prompts/implementer.md` step 4 — add: "cold `cargo build/clippy` need `timeout_ms ≥ 600000`; a *timed-out* build is not a failure — retry once with a doubled timeout (artifacts persist in `target/`); only a non-zero *exit* is a failure." Engine-side (matches open seed fabro-e4ac's direction): include partial stdout on timeout.
++- Expected effect: recovers the 3 min + 1 model turn this run wasted, and every cold compile in future runs.
++
++**5. Bake or persist a debug `fabro-cli` so config-validation never cold-builds.**
++- What happened: the run container starts with an empty `target/` (implementer probed `ls target/debug/fabro` → nothing, seq 107), so any run that legitimately needs the CLI pays ~7 min. Complementary to #1: some seeds will still need built checks.
++- Change: runner image (`fabro-toolchain:noble` Dockerfile) — pre-build `fabro-cli` in debug profile, or mount a shared cargo cache across run containers; graph comment already measures cold gate at ~15m worst case, and open seed fabro-cfd6 does this for CI.
++- Expected effect: turns every first cargo invocation in a run from minutes to seconds, independent of prompt compliance.
++
++**6. Document the `ml record` flag contract (one wasted call per recorded pattern).**
++- What happened (seq 119–126): first `ml record ... --type pattern` failed with `Error: pattern records are missing required flag(s): --name`, retried successfully. Same trap as open seed fabro-96bd, now reproduced inside a develop run.
++- Change: one line in `.fabro/workflows/develop/prompts/implementer.md` step 6: "pattern records additionally require `--name <kebab-id>`."
++- Expected effect: one fewer failed tool call + model turn each time a pattern is recorded.
++
++**7. Log hygiene: stop warning on the expected-absent gate-bounce key.**
++- What happened (worker log, the run's only WARN): `preamble_allow_keys entry absent from context node=implementer key=output.gate_known_bug_hits` — this key is *by design* absent on green first passes, so the warning fires on every healthy run and buries real signals.
++- Change: engine preamble lint (fabro-8275, already seeded) — downgrade to info unless the tester stage failed.
++- Expected effect: worker logs become actionable; zero behavioral change.
++
++---
++
++**On graph design specifically:** this run gives no evidence for topology changes — the linear happy path (planner → implementer → tester → evidence → reviewer → closeout), deterministic closeout via `stdin_source="current_seed_id"`, and cycle guards all behaved exactly as designed, with zero retries and one-visit-per-node. The only graph-level defect visible is item 2, which is a node-attribute wiring failure, not a topology problem.
