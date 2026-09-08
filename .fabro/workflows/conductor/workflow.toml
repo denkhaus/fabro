@@ -30,6 +30,19 @@ provider = "zai"
 name = "glm-5.3"
 
 # Orchestration run: no diff, no PR. Its value is the journal + Slack.
+# Full-history clone (fabro-ee5d, 2026-09-08): the survey counts
+# `git rev-list --count origin/denkhaus..upstream/main`, which explodes to
+# ~4900 in a depth-100 shallow clone because the clone boundary cuts below
+# the upstream merge-base (already 550+ commits behind on this busy
+# branch). Every survey then routed "Merge needed" although upstream was
+# fully contained — three no-op merge passes (PRs #64/#65) before an LLM
+# luckily overrode the count. depth = 0 (full clone) makes the count
+# deterministic. Volume is ~neutral: the survey's unbounded
+# `git fetch upstream` already pulled the full shared history into the
+# shallow clone every pass (~150 MB total either way).
+[run.clone]
+depth = 0
+
 [run.run_branch]
 push = true
 
