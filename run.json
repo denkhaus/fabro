@@ -683,14 +683,186 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M20T9S8JRXETASN64768TRRP",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-09-08T15:31:09.140274758Z",
+    "run_branch": "fabro/run/01M20T9S8JRXETASN64768TRRP",
+    "base_sha": "c0db215f375430a2661bacf3ecb8359f17969844"
   },
-  "status_updated_at": "2026-09-08T15:31:02.655893823Z",
-  "last_event_at": "2026-09-08T15:31:08.546087977Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-09-08T15:31:09.140329562Z",
+  "last_event_at": "2026-09-08T15:33:24.761176041Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 19,
+      "checkpoint": {
+        "timestamp": "2026-09-08T15:31:11.547688960Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_signature": "",
+          "internal.thread_id": null,
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.run_id": "01M20T9S8JRXETASN64768TRRP",
+          "internal.fidelity": "compact",
+          "graph.rankdir": "LR",
+          "internal.seed_cycle_anchor": "",
+          "internal.retry_count.start": 0,
+          "graph.preamble_budget_kb": "24",
+          "failure_class": "",
+          "current_node": "start",
+          "graph.max_node_visits": "40",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.work_dir": "/workspace/fabro",
+          "seed_cycles": {
+            "start": 1
+          },
+          "internal.node_visit_count": 1,
+          "outcome": "succeeded"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "planner",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-08T15:33:25.009765869Z",
+        "current_node": "planner",
+        "completed_nodes": [
+          "start",
+          "planner"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.run_id": "01M20T9S8JRXETASN64768TRRP",
+          "internal.seed_cycle_anchor": "fabro-06e0",
+          "internal.retry_count.start": 0,
+          "graph.preamble_budget_kb": "24",
+          "failure_class": "",
+          "current_seed_title": "develop planner: in-flight PR guard is credential-less and must STAY that way — use fabro_runs_list, remove gh from the toolchain image",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.thread_id": "start",
+          "last_response": "Claimed fabro-06e0 with a corrected body (tool-projection target, inspects gap, state-enrichment path) so the Implementer doesn't re-discover those facts.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_nex",
+          "last_stage": "planner",
+          "preferred_label": "Seed claimed",
+          "graph.max_node_visits": "40",
+          "journal": {
+            "painpoints": [
+              "gh is absent from this run's toolchain (exit 127), so the in-flight PR check degraded to fail-open this pass — exactly the gap seed fabro-06e0 fixes; until it lands, planner passes risk double-picking gated seeds",
+              "seed fabro-06e0's body said 'check the OpenAPI/runs list projection' but the real surface is the fabro_runs_list agent tool (RunSummaryResult) which lacks pull_request entirely, and the develop graph lacks the inspects declaration the tool requires — corrected via sd update --description before claiming (run 01M20T9S8JRXETASN64768TRRP)"
+            ],
+            "observations": [
+              "fabro-06e0 claimed after stale-basis check: planner.md step 4 still references gh (basis resolves), corrected body recorded first",
+              "gh pr list unavailable in this environment — treated as no in-flight PRs per prompt degradation rule; noted here for audit"
+            ]
+          },
+          "thread.start.current_node": "planner",
+          "internal.fidelity": "compact",
+          "current_node": "planner",
+          "internal.retry_count.planner": 0,
+          "seed_cycles": {
+            "planner": 1
+          },
+          "current_seed_id": "fabro-06e0",
+          "internal.work_dir": "/workspace/fabro",
+          "outcome": "succeeded",
+          "graph.rankdir": "LR",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3251,
+            "preview": "Claimed fabro-06e0 with a corrected body (tool-projection target, inspects gap, state-enrichment path) so the Implementer doesn't re-discover those facts.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_nex"
+          },
+          "failure_signature": "",
+          "internal.node_visit_count": 1,
+          "current_seed_brief": "Make the develop planner's IN-FLIGHT PR check run credential-less via the engine-mediated fabro_runs_list tool (D1: extend existing surfaces only, no new agent tools; D2 already done: gh removed from toolchain image). Acceptance criteria: - fabro_runs_list projection (RunSummaryResult + run_summary_result in `lib/components/fabro-tool/src/common.rs`) exposes pull_request {number, state} per run; it currently has NO pull_request field — the OpenAPI HTTP Run schema already carries the link and is NOT the target. - PR state (open/closed/merged) is enriched engine-side, read-only, reusing the existing server GitHub client path that powers GET /runs/{id}/pull_request live details; stored PullRequestLink (`lib/foundation/fabro-types/src/pull_request.rs`) only holds owner/repo/number. - Develop graph `.fabro/workflows/develop/workflow.fabro` declares inspects covering 'develop' (fabro_runs_list refuses callers without inspects; conductor precedent: inspects=\"develop,merge-upstream,revisor\"), and the planner agent stage actually receives the runs_list tool. - `.fabro/workflows/develop/prompts/planner.md` step 4 IN-FLIGHT PR CHECK (line 37) replaces `gh pr list --state open` with: call fabro_runs_list -> filter runs whose linked PR is open/non-terminal -> extract seed ids from run goals -> skip matching candidates, journal 'skipped: in-flight PR <n>', continue down `sd ready --assignee fabro --limit 200`; the gh-unavailable fail-open clause is removed entirely. - No credential, no new agent tool, no gh reintroduction. - Live verification: a develop pass with a seed whose PR sits open in the gate journals 'skipped: in-flight PR <n>' and claims a DIFFERENT seed. - Tests: unit tests for the extended projection and prompt-only seed follows repo testing strategy; run workspace tests + fmt + clippy gates."
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Claimed fabro-06e0 with a corrected body (tool-projection target, inspects gap, state-enrichment path) so the Implementer doesn't re-discover those facts.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_nex",
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3251,
+                "preview": "Claimed fabro-06e0 with a corrected body (tool-projection target, inspects gap, state-enrichment path) so the Implementer doesn't re-discover those facts.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_nex"
+              },
+              "current_seed_id": "fabro-06e0",
+              "current_seed_brief": "Make the develop planner's IN-FLIGHT PR check run credential-less via the engine-mediated fabro_runs_list tool (D1: extend existing surfaces only, no new agent tools; D2 already done: gh removed from toolchain image). Acceptance criteria: - fabro_runs_list projection (RunSummaryResult + run_summary_result in `lib/components/fabro-tool/src/common.rs`) exposes pull_request {number, state} per run; it currently has NO pull_request field — the OpenAPI HTTP Run schema already carries the link and is NOT the target. - PR state (open/closed/merged) is enriched engine-side, read-only, reusing the existing server GitHub client path that powers GET /runs/{id}/pull_request live details; stored PullRequestLink (`lib/foundation/fabro-types/src/pull_request.rs`) only holds owner/repo/number. - Develop graph `.fabro/workflows/develop/workflow.fabro` declares inspects covering 'develop' (fabro_runs_list refuses callers without inspects; conductor precedent: inspects=\"develop,merge-upstream,revisor\"), and the planner agent stage actually receives the runs_list tool. - `.fabro/workflows/develop/prompts/planner.md` step 4 IN-FLIGHT PR CHECK (line 37) replaces `gh pr list --state open` with: call fabro_runs_list -> filter runs whose linked PR is open/non-terminal -> extract seed ids from run goals -> skip matching candidates, journal 'skipped: in-flight PR <n>', continue down `sd ready --assignee fabro --limit 200`; the gh-unavailable fail-open clause is removed entirely. - No credential, no new agent tool, no gh reintroduction. - Live verification: a develop pass with a seed whose PR sits open in the gate journals 'skipped: in-flight PR <n>' and claims a DIFFERENT seed. - Tests: unit tests for the extended projection and prompt-only seed follows repo testing strategy; run workspace tests + fmt + clippy gates.",
+              "journal": {
+                "painpoints": [
+                  "gh is absent from this run's toolchain (exit 127), so the in-flight PR check degraded to fail-open this pass — exactly the gap seed fabro-06e0 fixes; until it lands, planner passes risk double-picking gated seeds",
+                  "seed fabro-06e0's body said 'check the OpenAPI/runs list projection' but the real surface is the fabro_runs_list agent tool (RunSummaryResult) which lacks pull_request entirely, and the develop graph lacks the inspects declaration the tool requires — corrected via sd update --description before claiming (run 01M20T9S8JRXETASN64768TRRP)"
+                ],
+                "observations": [
+                  "fabro-06e0 claimed after stale-basis check: planner.md step 4 still references gh (basis resolves), corrected body recorded first",
+                  "gh pr list unavailable in this environment — treated as no in-flight PRs per prompt degradation rule; noted here for audit"
+                ]
+              },
+              "current_seed_title": "develop planner: in-flight PR guard is credential-less and must STAY that way — use fabro_runs_list, remove gh from the toolchain image"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 29008,
+                    "output_tokens": 2716,
+                    "reasoning_tokens": 1323,
+                    "cache_read_tokens": 436928,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 171959
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 127933,
+              "tool_time_ms": 4002,
+              "active_time_ms": 131935
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "implementer",
+        "node_visits": {
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -716,5 +888,256 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-08T15:31:11.299774722Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T15:31:11.289173283Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "planner@1": {
+      "first_event_seq": 20,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-08T15:33:24.761176041Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T15:31:11.558516524Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 132606,
+        "inference_time_ms": 127933,
+        "tool_time_ms": 4002,
+        "active_time_ms": 131935
+      },
+      "usage": {
+        "input_tokens": 29008,
+        "output_tokens": 2716,
+        "total_tokens": 469975,
+        "reasoning_tokens": 1323,
+        "cache_read_tokens": 436928,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 171959
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 28386,
+        "usage_percent": 2.7070999145507812,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-08T15:33:24.749161517Z",
+        "event_seq": 151,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1101,
+            "usage_percent": 0.10499954223632812
+          },
+          {
+            "category": "tools",
+            "tokens": 1550,
+            "usage_percent": 0.14781951904296875
+          },
+          {
+            "category": "memory",
+            "tokens": 5444,
+            "usage_percent": 0.5191802978515625
+          },
+          {
+            "category": "conversation",
+            "tokens": 20285,
+            "usage_percent": 1.9345283508300781
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
