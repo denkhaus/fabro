@@ -6,8 +6,8 @@ use axum::http::{HeaderValue, header};
 use super::super::{
     ApiError, AppState, CloseRunPullRequestResponse, CreateRunPullRequestRequest, IntoResponse,
     Json, LinkRunPullRequestRequest, MergeRunPullRequestRequest, MergeRunPullRequestResponse,
-    PullRequestLink, RequireRunScoped, Response, Router, RunId, State, StatusCode, get, post, warn,
-    workflow_event,
+    PullRequestLink, RequireRunManagementTarget, RequireRunScoped, Response, Router, RunId, State,
+    StatusCode, get, post, warn, workflow_event,
 };
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
@@ -495,8 +495,13 @@ async fn unlink_run_pull_request(
     Json(pull_request).into_response()
 }
 
+// fabro-06e0: the read route uses the ADR-0011 run-management scope so an
+// inspects-declared worker (develop planner, revisor) can fetch live PR
+// state for runs of workflows it inspects — same live-details path, now
+// reachable by the credential-less agent tool chain. Mutating sibling
+// routes below keep the strict own-run/user extractor.
 async fn get_run_pull_request(
-    RequireRunScoped(id): RequireRunScoped,
+    RequireRunManagementTarget(id, _actor): RequireRunManagementTarget,
     State(state): State<Arc<AppState>>,
 ) -> Response {
     let record = match load_pull_request_record(&state, &id).await {

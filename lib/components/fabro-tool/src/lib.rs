@@ -29,7 +29,8 @@ pub use common::{
     FABRO_RUN_GATHER_TOOL_NAME, FABRO_RUN_GET_TOOL_NAME, FABRO_RUN_INTERACT_TOOL_NAME,
     FABRO_RUN_LOG_TOOL_NAME, FABRO_RUN_PAIR_TOOL_NAME, FABRO_RUN_SEARCH_TOOL_NAME,
     FABRO_RUN_WAIT_TOOL_NAME, FABRO_RUNS_LIST_TOOL_NAME, FabroToolBackend, RunManifestBuilder,
-    RunSummaryResult, ToolDefinition, ToolError, ToolResult, tool_definitions,
+    RunPullRequestSummary, RunSummaryResult, ToolDefinition, ToolError, ToolResult,
+    tool_definitions,
 };
 pub use create::{
     CreateRunOptions, CreateRunSpec, CreateRunSpecInput, CreateRunsResult, CreatedRunResult,

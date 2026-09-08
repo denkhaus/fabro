@@ -8967,6 +8967,9 @@ _version = 1
 [server.auth]
 methods = ["dev-token"]
 
+[run.environment]
+id = "local"
+
 [run.integrations.github.permissions]
 contents = "read"
 "#;
@@ -9089,6 +9092,9 @@ _version = 1
 
 [server.auth]
 methods = ["dev-token"]
+
+[run.environment]
+id = "local"
 
 [run.integrations.github.permissions]
 contents = "read"
@@ -14734,6 +14740,86 @@ async fn inspects_worker_lists_runs_only_through_declared_workflow_filter() {
         .await
         .unwrap();
     assert_status!(response, StatusCode::OK).await;
+}
+
+/// fabro-06e0: the live pull request details route is a run-management
+/// read, so an inspects-declared worker (develop planner, revisor) can
+/// enrich linked PR state for runs of workflows it inspects — without
+/// the worker ever holding GitHub credentials.
+#[tokio::test]
+async fn inspects_worker_reads_live_pull_request_details_for_declared_workflow_runs() {
+    let (state, app) = jwt_auth_app();
+    let parent_run_id = unique_run_id();
+    let develop_run_id = unique_run_id();
+    let nightly_run_id = unique_run_id();
+    let develop_run_store = create_slack_notification_run(
+        &state,
+        develop_run_id,
+        fabro_types::WorkflowSettings::default(),
+        "develop",
+        Some("develop"),
+    )
+    .await;
+    create_run_with_workflow_slug(&state, nightly_run_id, "nightly").await;
+    workflow_event::append_event(
+        &develop_run_store,
+        &develop_run_id,
+        &workflow_event::Event::PullRequestLinked {
+            pull_request: PullRequestLink {
+                owner:  "fabro-sh".to_string(),
+                repo:   "fabro".to_string(),
+                number: 47,
+            },
+        },
+    )
+    .await
+    .unwrap();
+    let inspects_token = issue_test_inspects_worker_token(&parent_run_id, &["develop".to_string()]);
+    let plain_run_tools_token = issue_test_run_tools_worker_token(&parent_run_id);
+
+    // Declared workflow: the read reaches the handler and returns the
+    // stored link (details degrade to unavailable — no GitHub creds on
+    // this test app — proving the authz, not the integration, is the
+    // subject here).
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs/{develop_run_id}/pull_request"),
+            &inspects_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::OK).await;
+    assert_eq!(body["data"]["link"]["number"], 47);
+    assert_eq!(body["meta"]["details_status"], "unavailable");
+
+    // Foreign workflow: rejected even though the token is otherwise valid.
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs/{nightly_run_id}/pull_request"),
+            &inspects_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
+
+    // Run-tools workers without inspects authority keep being rejected.
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs/{develop_run_id}/pull_request"),
+            &plain_run_tools_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
 }
 
 #[tokio::test]

@@ -1,6 +1,10 @@
 digraph Develop {
     graph [
         goal="Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+        // fabro-06e0: credential-less in-flight PR guard — the planner
+        // reads run-linked PR state through the inspects-scoped
+        // fabro_runs_list tool (server-side GitHub client), never gh.
+        inspects="develop",
         rankdir=LR,
         max_node_visits=40,
         // 24 KB (was 12): the reviewer's context usage peaked at 1.9% of
@@ -70,7 +74,10 @@ digraph Develop {
         // contract is stable — declare it so the preamble_allow_keys lint
         // (fabro-e47c) can prove producers, and drift (an undocumented new
         // key) drops visibly with a notice instead of leaking silently.
-        context_allow_keys="current_seed_id,current_seed_title,current_seed_brief,review_verdict,journal"
+        context_allow_keys="current_seed_id,current_seed_title,current_seed_brief,review_verdict,journal",
+        // fabro-06e0: in-flight PR check surface — read-only enumeration
+        // of develop runs incl. linked PR live state (open/closed/merged).
+        fabro_tools="fabro_runs_list"
     ]
 
     // Implementer: builds exactly what the claimed seed specifies.
