@@ -1,0 +1,42 @@
+diff --git a/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl b/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl
+index 6977cb4..b791198 100644
+--- a/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl
++++ b/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl
+@@ -2,3 +2,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M20T9S8JRXETASN64768TRRP","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-08T15:33:24Z","data":{"painpoints":["gh is absent from this run's toolchain (exit 127), so the in-flight PR check degraded to fail-open this pass — exactly the gap seed fabro-06e0 fixes; until it lands, planner passes risk double-picking gated seeds","seed fabro-06e0's body said 'check the OpenAPI/runs list projection' but the real surface is the fabro_runs_list agent tool (RunSummaryResult) which lacks pull_request entirely, and the develop graph lacks the inspects declaration the tool requires — corrected via sd update --description before claiming (run 01M20T9S8JRXETASN64768TRRP)"],"observations":["fabro-06e0 claimed after stale-basis check: planner.md step 4 still references gh (basis resolves), corrected body recorded first","gh pr list unavailable in this environment — treated as no in-flight PRs per prompt degradation rule; noted here for audit"]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M20T9S8JRXETASN64768TRRP","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-08T16:01:38Z","data":{"painpoints":[],"observations":["Adding any method to the async-trait FabroToolBackend can newly surface rustc 'implementation of Send is not general enough' at dyn call sites in fabro-workflow — the note misleadingly names an unrelated &Path param; the real trigger was a stream::iter(...).map(async move {...}) closure capturing Arc<dyn FabroToolBackend>. Fixed with 'static BoxFuture collection (runs_list.rs); recorded as mx-af39fe.","The GET /runs/{id}/pull_request route was RequireRunScoped (own-run/user only) — any credential-less cross-run enrichment design must check the extractor first: workers get 403 on RequireRunScoped routes no matter what the tool layer does (lib/apps/fabro-server/src/principal_middleware.rs).","OpenAPI/HTTP Run schema already carried the PR link, so no spec change was needed — the wire-visible change is only tool-layer JSON plus route authz, keeping the conformance test green."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M20T9S8JRXETASN64768TRRP","node":"gatebounce","visit":1,"status":"succeeded","ts":"2026-09-08T16:07:32Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M20T9S8JRXETASN64768TRRP","node":"implementer","visit":2,"status":"succeeded","ts":"2026-09-08T16:22:56Z","data":{"painpoints":[{"text":"fabro-server tests that execute runs in-process with default settings depend on a Docker daemon and hard-fail in Docker-less gate sandboxes (run 01M20T9S8JRXETASN64768TRRP, tests at lib/apps/fabro-server/src/server/tests.rs:8963/9086 failed with WorkflowError/'Socket not found: /var/run/docker.sock'). Fix idea: such tests should pin '[run.environment] id = \"local\"' like cancel_during_startup_persists_cancelled_reason does; consider a lint or convention note so new execute_run tests don't silently reintroduce the Docker dependency."}],"observations":["mode = \"dry_run\" is a trap for execute-path assertions: it coerces the provider to Local but also routes Handler::dispatch to simulate(), so handlers' execute() never runs and observation vectors come back empty with runs still Succeeded — the failure mode looks like a logic bug, not a sandbox bypass."]}}
+diff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl
+index 81b60f8..0221c73 100644
+--- a/.mulch/expertise/engine.jsonl
++++ b/.mulch/expertise/engine.jsonl
+@@ -43,3 +43,4 @@
+ {"type":"decision","classification":"tactical","recorded_at":"2026-09-07T22:38:16.160Z","evidence":{"commit":"dd5cd294c91a9d30c5d9e4d0bd6290c8b729e01b"},"title":"Line workflows run tokenless - lab-era GITHUB_TOKEN permissions removed","rationale":"Follow-up to the gh incident (ADR-0019, user directive 2026-09-08): develop/revisor/merge-upstream carried contents=write + pull_requests=write since the world merger (d9138572c, lab-era heritage) - injecting a write-capable forge token into every agent shell (engine resolve_workflow_env is OPT-IN: empty permissions = no_token). Removed in dd5cd294c after verifying zero shell consumers in the line (no git push, no gh; the engine does all forge ops with its own push_credentials). code-review/gh-list/gh-triage keep explicit scoped integrations (manual workflows needing them). Acceptance signal: next line passes' shells have NO GITHUB_TOKEN; closeout/seeds-sync unaffected (local commits, engine pushes run branches). If a future workflow needs forge access, it must declare scoped permissions AND pass the ADR-0019 capability gate (needs-user).","id":"mx-80dbb8"}
+ {"type":"convention","classification":"tactical","recorded_at":"2026-09-08T06:52:48.763Z","evidence":{"commit":"919b0d18c"},"content":"Terminal workflow nodes (shape Msquare / exit) never dispatch a Handler: fabro-core executor.rs short-circuits them via on_terminal_reached. Test capture points must live on non-terminal nodes (e.g. wait/insulator with duration=1ms).","id":"mx-b25cf9"}
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-08T06:52:49.142Z","evidence":{"commit":"919b0d18c"},"name":"server-seam-wire-test-without-docker","description":"create_run_with_bearer_for_graph + issue_test_run_tools_worker_token produce Worker-principal runs through the real HTTP API; dev-user bearer (auto-injected by build_test_router) provides the User-principal differential.","files":[".mulch/expertise/engine.jsonl"],"id":"mx-1a6203"}
++{"type":"failure","classification":"tactical","recorded_at":"2026-09-08T16:22:28.999Z","evidence":{"commit":"97c095b0a8724d92b039883354b14dd54ce7812e"},"description":"fabro-server tests that execute runs in-process with default settings resolve the seeded 'default' environment (Docker provider) and hard-fail with WorkflowError 'Socket not found: /var/run/docker.sock' in Docker-less gate sandboxes (run 01M20T9S8JRXETASN64768TRRP: fabro-e505/fabro-c274 bridge tests). Pin such tests to the reserved local environment via '[run.environment] id = \"local\"' in the test TOML — Normal mode keeps real handler dispatch, unlike mode = \"dry_run\" which routes handlers to simulate() and silently skips execute-path assertions (empty observation vectors).","resolution":"Both bridge tests pinned to id = \"local\"; full fabro-server suite 929/929 green without Docker; gate now environment-independent","id":"mx-9df484"}
+diff --git a/lib/apps/fabro-server/src/server/tests.rs b/lib/apps/fabro-server/src/server/tests.rs
+index 81a488b..b840b0f 100644
+--- a/lib/apps/fabro-server/src/server/tests.rs
++++ b/lib/apps/fabro-server/src/server/tests.rs
+@@ -8967,6 +8967,9 @@ _version = 1
+ [server.auth]
+ methods = ["dev-token"]
+ 
++[run.environment]
++id = "local"
++
+ [run.integrations.github.permissions]
+ contents = "read"
+ "#;
+@@ -9090,6 +9093,9 @@ _version = 1
+ [server.auth]
+ methods = ["dev-token"]
+ 
++[run.environment]
++id = "local"
++
+ [run.integrations.github.permissions]
+ contents = "read"
+ "#;
