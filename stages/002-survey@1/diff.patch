@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M1ZVB4HD8F3TYDN4KC978JSB.jsonl b/.fabro/journal/01M1ZVB4HD8F3TYDN4KC978JSB.jsonl
+new file mode 100644
+index 000000000..c43af4a60
+--- /dev/null
++++ b/.fabro/journal/01M1ZVB4HD8F3TYDN4KC978JSB.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M1ZVB4HD8F3TYDN4KC978JSB","node":"start","visit":1,"status":"succeeded","ts":"2026-09-08T06:30:43Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1ZVB4HD8F3TYDN4KC978JSB","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-08T06:32:57Z","data":["upstream count: 4919 commits on `upstream/main` not in `origin/denkhaus` (>= 5 threshold) -> Merge needed","newest upstream subject: 'Bump version to 0.348.0-nightly.0'","note: count is very large; recent merge-upstream commits exist on the local branch, so the `origin/denkhaus` remote ref may lag the locally-merged branch — the merge leg should re-verify drift against the local branch before merging","revisor backlog: none — newest develop run 01M1Z1PK3D7R9MEWDP7QDZMA1D already revised by commit 5b0a761; no completed develop runs newer than it","friction: `git fetch upstream` pulled many new tags/branches (v0.346/v0.347-nightly tags), nothing blocking"]}
