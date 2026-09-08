@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M20QA6PBYAGR1TG8MGR8KGTF.jsonl b/.fabro/journal/01M20QA6PBYAGR1TG8MGR8KGTF.jsonl
+new file mode 100644
+index 0000000..ec4fa36
+--- /dev/null
++++ b/.fabro/journal/01M20QA6PBYAGR1TG8MGR8KGTF.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M20QA6PBYAGR1TG8MGR8KGTF","node":"start","visit":1,"status":"succeeded","ts":"2026-09-08T14:38:59Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M20QA6PBYAGR1TG8MGR8KGTF","node":"select","visit":1,"status":"succeeded","ts":"2026-09-08T14:39:28Z","data":{"painpoints":[],"observations":["3 candidate runs (1 develop, 2 merge-upstream), all terminal with live sandboxes and version-fresh; none stale-evidence, none sandbox-less; 0 runs blocked","Selected newest unrevised run `01M20PXPFESQM8HAWF4MSXAKX5` (develop); 2 older merge-upstream runs (`01M20N60ZY6DZDTX60WW0161KP`, `01M20E43YS004DCEYPJ0GJQH4B`) remain unrevised for later passes per one-run-per-invocation budget (ADR-0015)"]}}
