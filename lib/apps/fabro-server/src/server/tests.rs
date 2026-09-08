@@ -664,6 +664,10 @@ fn issue_test_run_tools_worker_token(run_id: &RunId) -> String {
 }
 
 async fn create_run_with_bearer(app: &Router, bearer: &str) -> RunId {
+    create_run_with_bearer_for_graph(app, bearer, MINIMAL_DOT).await
+}
+
+async fn create_run_with_bearer_for_graph(app: &Router, bearer: &str, dot_source: &str) -> RunId {
     let response = app
         .clone()
         .oneshot(
@@ -672,7 +676,7 @@ async fn create_run_with_bearer(app: &Router, bearer: &str) -> RunId {
                 .uri(api("/runs"))
                 .header(header::AUTHORIZATION, format!("Bearer {bearer}"))
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(manifest_body(MINIMAL_DOT))
+                .body(manifest_body(dot_source))
                 .unwrap(),
         )
         .await
@@ -8818,6 +8822,183 @@ async fn github_token_strategy_reads_github_token_from_vault() {
 
     assert!(
         matches!(credentials, fabro_github::GitHubCredentials::Pat(token) if token == "ghu_test")
+    );
+}
+
+/// What a node handler observed about the GitHub credential bridge while the
+/// workflow executed.
+#[derive(Clone, Debug, PartialEq)]
+struct GithubBridgeObservation {
+    token_source_present: bool,
+    env_has_github_token: bool,
+}
+
+/// Wait-node handler that records the credential-bridge state the engine
+/// handed to node execution, then delegates to the real wait handler. The
+/// capture cannot live on the exit node: terminal nodes complete without a
+/// handler dispatch.
+struct BridgeCapturingWaitHandler {
+    observations: StdArc<StdMutex<Vec<GithubBridgeObservation>>>,
+}
+
+#[async_trait::async_trait]
+impl fabro_workflow::handler::Handler for BridgeCapturingWaitHandler {
+    async fn execute(
+        &self,
+        node: &fabro_graphviz::graph::Node,
+        context: &fabro_workflow::context::Context,
+        graph: &fabro_graphviz::graph::Graph,
+        run_dir: &Path,
+        services: &fabro_workflow::handler::EngineServices,
+    ) -> Result<fabro_workflow::outcome::Outcome, fabro_workflow::error::Error> {
+        let stage_env = services
+            .env_for_stage()
+            .await
+            .expect("stage env should resolve for the bridge observation");
+        self.observations
+            .lock()
+            .expect("bridge observation lock poisoned")
+            .push(GithubBridgeObservation {
+                token_source_present: services.github_token.is_some(),
+                env_has_github_token: stage_env.contains_key(EnvVars::GITHUB_TOKEN),
+            });
+        fabro_workflow::handler::wait::WaitHandler
+            .execute(node, context, graph, run_dir, services)
+            .await
+    }
+}
+
+/// start -> work (wait 1ms) -> exit: the work node is the bridge
+/// observation point; the terminal exit node never dispatches a handler.
+const BRIDGE_CAPTURE_DOT: &str = r#"digraph Test {
+    graph [goal="Test"]
+    start [shape=Mdiamond]
+    work  [shape=insulator, duration="1ms"]
+    exit  [shape=Msquare]
+    start -> work
+    work -> exit
+}"#;
+
+/// ADR-0019.6 wire proof (fabro-e505): a Worker-principal run whose
+/// (agent-authored) config declares GitHub permissions executes nodes with
+/// no credential bridge and no GITHUB_TOKEN in the stage env, while a
+/// User-principal run of the same config keeps the scoped grant.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn run_start_grants_github_token_bridge_only_to_user_principals() {
+    let source = r#"
+_version = 1
+
+[server.auth]
+methods = ["dev-token"]
+
+[run.integrations.github.permissions]
+contents = "read"
+"#;
+    let observations = StdArc::new(StdMutex::new(Vec::new()));
+    let capturing = StdArc::clone(&observations);
+    let state = test_app_state_with_runtime_settings_and_registry_factory(
+        server_settings_from_toml(source),
+        manifest_run_defaults_from_toml(source),
+        move |interviewer| {
+            let mut registry = fabro_workflow::handler::default_registry(interviewer, || None);
+            registry.register(
+                "wait",
+                Box::new(BridgeCapturingWaitHandler {
+                    observations: StdArc::clone(&capturing),
+                }),
+            );
+            registry
+        },
+    );
+    state
+        .stores
+        .vault
+        .set(
+            EnvVars::GITHUB_TOKEN,
+            "ghu_e505_wire_test",
+            SecretType::Token,
+            None,
+        )
+        .await
+        .unwrap();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+
+    // User principal (injected dev-user bearer): the declared permissions
+    // resolve into a credential bridge for node execution.
+    let user_run_id = create_and_start_run(&app, BRIDGE_CAPTURE_DOT)
+        .await
+        .parse::<RunId>()
+        .unwrap();
+    execute_run(Arc::clone(&state), user_run_id).await;
+    assert_eq!(
+        state
+            .stores
+            .runs
+            .open_run_reader(&user_run_id)
+            .await
+            .unwrap()
+            .state()
+            .await
+            .unwrap()
+            .status,
+        RunStatus::Succeeded {
+            reason: SuccessReason::Completed,
+        },
+        "user-principal run should complete so its observation is trustworthy"
+    );
+
+    // Worker principal: a run created by the user run's run-tools worker
+    // token gets Worker provenance; the same declared permissions must NOT
+    // mint a bridge.
+    let worker_token = issue_test_run_tools_worker_token(&user_run_id);
+    let worker_run_id =
+        create_run_with_bearer_for_graph(&app, &worker_token, BRIDGE_CAPTURE_DOT).await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(api(&format!("/runs/{worker_run_id}/start")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    response_json!(response, StatusCode::OK).await;
+    execute_run(Arc::clone(&state), worker_run_id).await;
+    assert_eq!(
+        state
+            .stores
+            .runs
+            .open_run_reader(&worker_run_id)
+            .await
+            .unwrap()
+            .state()
+            .await
+            .unwrap()
+            .status,
+        RunStatus::Succeeded {
+            reason: SuccessReason::Completed,
+        },
+        "worker-principal run should complete so its observation is trustworthy"
+    );
+
+    assert_eq!(
+        observations
+            .lock()
+            .expect("bridge observation lock poisoned")
+            .clone(),
+        vec![
+            GithubBridgeObservation {
+                token_source_present: true,
+                env_has_github_token: true,
+            },
+            GithubBridgeObservation {
+                token_source_present: false,
+                env_has_github_token: false,
+            },
+        ],
+        "user run keeps the credential bridge; worker run executes credential-free"
     );
 }
 
