@@ -692,7 +692,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-08T15:31:09.140329562Z",
-  "last_event_at": "2026-09-08T15:33:24.761176041Z",
+  "last_event_at": "2026-09-08T16:01:38.206487493Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -739,9 +739,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 158,
       "checkpoint": {
-        "timestamp": "2026-09-08T15:33:25.009765869Z",
+        "timestamp": "2026-09-08T15:33:30.306216148Z",
         "current_node": "planner",
         "completed_nodes": [
           "start",
@@ -749,18 +749,7 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.run_id": "01M20T9S8JRXETASN64768TRRP",
           "internal.seed_cycle_anchor": "fabro-06e0",
-          "internal.retry_count.start": 0,
-          "graph.preamble_budget_kb": "24",
-          "failure_class": "",
-          "current_seed_title": "develop planner: in-flight PR guard is credential-less and must STAY that way — use fabro_runs_list, remove gh from the toolchain image",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "internal.thread_id": "start",
-          "last_response": "Claimed fabro-06e0 with a corrected body (tool-projection target, inspects gap, state-enrichment path) so the Implementer doesn't re-discover those facts.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_nex",
-          "last_stage": "planner",
-          "preferred_label": "Seed claimed",
-          "graph.max_node_visits": "40",
           "journal": {
             "painpoints": [
               "gh is absent from this run's toolchain (exit 127), so the in-flight PR check degraded to fail-open this pass — exactly the gap seed fabro-06e0 fixes; until it lands, planner passes risk double-picking gated seeds",
@@ -771,27 +760,38 @@
               "gh pr list unavailable in this environment — treated as no in-flight PRs per prompt degradation rule; noted here for audit"
             ]
           },
-          "thread.start.current_node": "planner",
-          "internal.fidelity": "compact",
-          "current_node": "planner",
-          "internal.retry_count.planner": 0,
+          "current_seed_id": "fabro-06e0",
+          "last_stage": "planner",
           "seed_cycles": {
             "planner": 1
           },
-          "current_seed_id": "fabro-06e0",
-          "internal.work_dir": "/workspace/fabro",
+          "current_node": "planner",
           "outcome": "succeeded",
-          "graph.rankdir": "LR",
+          "internal.node_visit_count": 1,
           "graph.cycle_counter_reset_key": "current_seed_id",
+          "failure_class": "",
+          "internal.run_id": "01M20T9S8JRXETASN64768TRRP",
+          "graph.preamble_budget_kb": "24",
+          "internal.thread_id": "start",
+          "preferred_label": "Seed claimed",
+          "graph.rankdir": "LR",
+          "graph.max_node_visits": "40",
+          "current_seed_brief": "Make the develop planner's IN-FLIGHT PR check run credential-less via the engine-mediated fabro_runs_list tool (D1: extend existing surfaces only, no new agent tools; D2 already done: gh removed from toolchain image). Acceptance criteria: - fabro_runs_list projection (RunSummaryResult + run_summary_result in `lib/components/fabro-tool/src/common.rs`) exposes pull_request {number, state} per run; it currently has NO pull_request field — the OpenAPI HTTP Run schema already carries the link and is NOT the target. - PR state (open/closed/merged) is enriched engine-side, read-only, reusing the existing server GitHub client path that powers GET /runs/{id}/pull_request live details; stored PullRequestLink (`lib/foundation/fabro-types/src/pull_request.rs`) only holds owner/repo/number. - Develop graph `.fabro/workflows/develop/workflow.fabro` declares inspects covering 'develop' (fabro_runs_list refuses callers without inspects; conductor precedent: inspects=\"develop,merge-upstream,revisor\"), and the planner agent stage actually receives the runs_list tool. - `.fabro/workflows/develop/prompts/planner.md` step 4 IN-FLIGHT PR CHECK (line 37) replaces `gh pr list --state open` with: call fabro_runs_list -> filter runs whose linked PR is open/non-terminal -> extract seed ids from run goals -> skip matching candidates, journal 'skipped: in-flight PR <n>', continue down `sd ready --assignee fabro --limit 200`; the gh-unavailable fail-open clause is removed entirely. - No credential, no new agent tool, no gh reintroduction. - Live verification: a develop pass with a seed whose PR sits open in the gate journals 'skipped: in-flight PR <n>' and claims a DIFFERENT seed. - Tests: unit tests for the extended projection and prompt-only seed follows repo testing strategy; run workspace tests + fmt + clippy gates.",
+          "internal.retry_count.start": 0,
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
             "chars": 3251,
             "preview": "Claimed fabro-06e0 with a corrected body (tool-projection target, inspects gap, state-enrichment path) so the Implementer doesn't re-discover those facts.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_nex"
           },
+          "internal.work_dir": "/workspace/fabro",
+          "current_seed_title": "develop planner: in-flight PR guard is credential-less and must STAY that way — use fabro_runs_list, remove gh from the toolchain image",
+          "last_response": "Claimed fabro-06e0 with a corrected body (tool-projection target, inspects gap, state-enrichment path) so the Implementer doesn't re-discover those facts.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_nex",
+          "thread.start.current_node": "planner",
           "failure_signature": "",
-          "internal.node_visit_count": 1,
-          "current_seed_brief": "Make the develop planner's IN-FLIGHT PR check run credential-less via the engine-mediated fabro_runs_list tool (D1: extend existing surfaces only, no new agent tools; D2 already done: gh removed from toolchain image). Acceptance criteria: - fabro_runs_list projection (RunSummaryResult + run_summary_result in `lib/components/fabro-tool/src/common.rs`) exposes pull_request {number, state} per run; it currently has NO pull_request field — the OpenAPI HTTP Run schema already carries the link and is NOT the target. - PR state (open/closed/merged) is enriched engine-side, read-only, reusing the existing server GitHub client path that powers GET /runs/{id}/pull_request live details; stored PullRequestLink (`lib/foundation/fabro-types/src/pull_request.rs`) only holds owner/repo/number. - Develop graph `.fabro/workflows/develop/workflow.fabro` declares inspects covering 'develop' (fabro_runs_list refuses callers without inspects; conductor precedent: inspects=\"develop,merge-upstream,revisor\"), and the planner agent stage actually receives the runs_list tool. - `.fabro/workflows/develop/prompts/planner.md` step 4 IN-FLIGHT PR CHECK (line 37) replaces `gh pr list --state open` with: call fabro_runs_list -> filter runs whose linked PR is open/non-terminal -> extract seed ids from run goals -> skip matching candidates, journal 'skipped: in-flight PR <n>', continue down `sd ready --assignee fabro --limit 200`; the gh-unavailable fail-open clause is removed entirely. - No credential, no new agent tool, no gh reintroduction. - Live verification: a develop pass with a seed whose PR sits open in the gate journals 'skipped: in-flight PR <n>' and claims a DIFFERENT seed. - Tests: unit tests for the extended projection and prompt-only seed follows repo testing strategy; run workspace tests + fmt + clippy gates."
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.retry_count.planner": 0,
+          "internal.fidelity": "compact"
         },
         "node_outcomes": {
           "planner": {
@@ -855,9 +855,216 @@
           }
         },
         "next_node_id": "implementer",
+        "git_commit_sha": "9eeab202a19fbda085b1e46ad5ca453318cf615f",
+        "node_visits": {
+          "planner": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl b/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl\nnew file mode 100644\nindex 0000000..bec5150\n--- /dev/null\n+++ b/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20T9S8JRXETASN64768TRRP\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T15:31:11Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20T9S8JRXETASN64768TRRP\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T15:33:24Z\",\"data\":{\"painpoints\":[\"gh is absent from this run's toolchain (exit 127), so the in-flight PR check degraded to fail-open this pass — exactly the gap seed fabro-06e0 fixes; until it lands, planner passes risk double-picking gated seeds\",\"seed fabro-06e0's body said 'check the OpenAPI/runs list projection' but the real surface is the fabro_runs_list agent tool (RunSummaryResult) which lacks pull_request entirely, and the develop graph lacks the inspects declaration the tool requires — corrected via sd update --description before claiming (run 01M20T9S8JRXETASN64768TRRP)\"],\"observations\":[\"fabro-06e0 claimed after stale-basis check: planner.md step 4 still references gh (basis resolves), corrected body recorded first\",\"gh pr list unavailable in this environment — treated as no in-flight PRs per prompt degradation rule; noted here for audit\"]}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 6db3705..d28dc78 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -263,7 +263,7 @@\n {\"id\":\"fabro-c0a8\",\"title\":\"Develop planner: record stale-spec corrections via sd update before claiming\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T21:13:15.362Z\",\"updatedAt\":\"2026-09-07T22:04:39.352Z\",\"description\":\"Seed fabro-05d0 named .fabro/Dockerfile as the fix target; the planner burned ~6 tool calls / ~45 s / $0.097 (39% of run cost, events seq 44-82) proving the path wrong, then the implementer re-hit the contradiction and journaled a suggested sd update that nobody applied — the seed closed with the stale body. Change: .fabro/workflows/develop/prompts/planner.md step 3 (stale-basis check): when the basis resolves but the spec's named path is wrong, the planner (already the sole tracker writer) must record the correction via sd update <id> --description before claiming. Expected effect: ~40% planner time/token cut on platform-path seeds (the tracker's most common class) and the contradiction stops recurring in every future reader's context.\\\\nBasis: run 01M1YTVK73YEJXW4542MWDX4BJ, workflow version 5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21, commit 54612515b569d36aa68872cb119b12ae7f9c4eaf\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-07T22:04:39.352Z\"}\n {\"id\":\"fabro-96bd\",\"title\":\"Implementer prompt: document the ml record flag contract per record type\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T21:13:20.579Z\",\"updatedAt\":\"2026-09-07T21:32:11.677Z\",\"description\":\"The implementer's lesson-capture call failed with 'pattern records are missing required flag(s): --name' yet exited 0 with is_error: false (events seq 163-165) — only the stdout text revealed the failure. .fabro/workflows/develop/prompts/implementer.md step 6 teaches the exact failing form (ml record <domain> --type ... --description ... with no --name). Change: document the exact flag set per record type (pattern requires --name) in step 6, and note the mulch-cli exit-0-on-error bug (same class as sd's fabro-d936) for upstream filing. Expected effect: one fewer failed tool call + LLM round per lesson capture and deterministic error detection.\\\\nBasis: run 01M1YTVK73YEJXW4542MWDX4BJ, workflow version 5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21, commit 54612515b569d36aa68872cb119b12ae7f9c4eaf\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-9a43\",\"title\":\"Point reviewer phrase checks at read_file offset/limit when diff line numbers are known\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T21:40:22.698Z\",\"updatedAt\":\"2026-09-07T21:49:26.064Z\",\"description\":\"In .fabro/workflows/develop/prompts/reviewer.md (tool-guidance/verification section), instruct the reviewer to verify phrase-presence claims with read_file offset/limit on the exact lines the diff already names — or pass an explicit max_results to grep — instead of multi-pattern grep alternations. Grounded in run 01M1YWHK6F8F2VZ6F6FZV8A7VE: the reviewer's first grep alternation returned only the line-25 match in truncated output (journal event seq 174, observation 2), forcing a second targeted grep for the carve-out clause — an extra model round-trip (~3–4 s of the reviewer's 23.7 s) for a verification the diff had already localized to lines 25 and 78. Expected effect: one fewer verification round-trip per review of text-edit seeds. Related to open fabro-a0fe (blob reads with read_file offset/limit) but targets the phrase-check guidance — different section, different mechanism (grep-truncation avoidance vs improvised blob reads).\\nBasis: run 01M1YWHK6F8F2VZ6F6FZV8A7VE, workflow version 5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21, commit 50367ecee388a4806948c80162dc93c2f95f7bb2\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-06e0\",\"title\":\"develop planner: in-flight PR guard is credential-less and must STAY that way — use fabro_runs_list, remove gh from the toolchain image\",\"status\":\"open\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T22:06:56.713Z\",\"updatedAt\":\"2026-09-07T22:33:12.602Z\",\"assignee\":\"fabro\",\"description\":\"USER DECISIONS 2026-09-08: (D1) Weg A ONLY - extend existing surfaces, NO new tools; (D2) gh REMOVED from the toolchain image by direct revert (commit f00fdb102, capability change without user decision gets reverted per ADR-0019) - image rebuilt and verified (gh absent, sd/rg/just/nu + mise trust intact). SECURITY CONTEXT: the engine injects GITHUB_TOKEN + a git credential bridge into agent shell calls - so the brief gh presence was a write-capable forge client in agent shells, NOT a harmless unauthenticated binary as first assumed; the prohibition rationale is documented on fabro-05d0 and ADR-0019.\\n\\nREMAINING WORK (this seed): (1) check the OpenAPI/runs list projection - if it lacks pull_request {number, state}, extend it (read-only data enrichment of the existing engine-mediated response); (2) planner guard (.fabro/workflows/develop/prompts/planner.md step 4 IN-FLIGHT PR CHECK): replace the gh command with fabro_runs_list -> filter runs with open/non-terminal linked PR -> extract seed ids from run goals -> skip matching candidates, journal 'skipped: in-flight PR <n>', continue down sd ready --assignee fabro; remove the gh fail-open clause (no gh exists anymore - the guard must not reference it). Acceptance: a develop pass with a seed whose PR sits open in the gate journals 'skipped: in-flight PR <n>' and claims a DIFFERENT seed - verified live; planner prompt no longer mentions gh; no credential added; no new agent tool exists.\",\"labels\":[\"workflows\",\"revision\",\"engine\"]}\n+{\"id\":\"fabro-06e0\",\"title\":\"develop planner: in-flight PR guard is credential-less and must STAY that way — use fabro_runs_list, remove gh from the toolchain image\",\"status\":\"in_progress\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-07T22:06:56.713Z\",\"updatedAt\":\"2026-09-08T15:33:11.794Z\",\"assignee\":\"fabro\",\"description\":\"USER DECISIONS 2026-09-08: (D1) Weg A ONLY - extend existing surfaces, NO new tools; (D2) gh REMOVED from the toolchain image by direct revert (commit f00fdb102, capability change without user decision gets reverted per ADR-0019) - image rebuilt and verified (gh absent, sd/rg/just/nu + mise trust intact). SECURITY CONTEXT: the engine injects GITHUB_TOKEN + a git credential bridge into agent shell calls - so the brief gh presence was a write-capable forge client in agent shells, NOT a harmless unauthenticated binary as first assumed; the prohibition rationale is documented on fabro-05d0 and ADR-0019.\\n\\nREMAINING WORK (this seed): (1) extend the fabro_runs_list AGENT TOOL projection with pull_request {number, state} - the projection is RunSummaryResult/run_summary_result in lib/components/fabro-tool/src/common.rs, which currently has NO pull_request field at all (planner-verified 2026-09-08; the OpenAPI HTTP Run schema already carries pull_request link and is NOT the surface to change). Live PR open/closed/merged state must be enriched engine-side, read-only, via the existing server GitHub client (same path as GET /runs/{id}/pull_request live details) - stored PullRequestLink (lib/foundation/fabro-types/src/pull_request.rs) holds only owner/repo/number. (2) The develop graph (.fabro/workflows/develop/workflow.fabro) declares no inspects, and fabro_runs_list refuses callers without it - add inspects covering the develop workflow (conductor precedent: inspects=\\\"develop,merge-upstream,revisor\\\") and confirm the planner agent stage actually gets the runs_list tool. (3) Planner guard (.fabro/workflows/develop/prompts/planner.md step 4 IN-FLIGHT PR CHECK): replace the gh command with fabro_runs_list -> filter runs with open/non-terminal linked PR -> extract seed ids from run goals -> skip matching candidates, journal 'skipped: in-flight PR <n>', continue down sd ready --assignee fabro; remove the gh fail-open clause (no gh exists anymore - the guard must not reference it). Acceptance: a develop pass with a seed whose PR sits open in the gate journals 'skipped: in-flight PR <n>' and claims a DIFFERENT seed - verified live; planner prompt no longer mentions gh; no credential added; no new agent tool exists.\",\"labels\":[\"workflows\",\"revision\",\"engine\"]}\n {\"id\":\"fabro-16ff\",\"title\":\"revisor + reviewer must become security-affine (ADR-0019): capability-affecting ideas get shot down at filing and review time\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T22:23:10.858Z\",\"updatedAt\":\"2026-09-08T15:05:24.310Z\",\"assignee\":\"fabro\",\"description\":\"USER DIRECTIVE 2026-09-08: 'der revisor und der reviewer muessen unbedingt sicherheits-affiner werden, sodass solche ideen von vornherein abgeschmettert werden' - the gh incident (PR #53 baked a forge client into the toolchain image; a follow-up seed proposed GH_TOKEN provisioning) only stayed harmless because credentials happen to be absent from sandboxes - luck, not design. The two autonomous gates must enforce ADR-0019 themselves.\\n\\nFIX (1) REVISOR file stage (.fabro/workflows/revisor/prompts/file.md): add to the seed-intake rules - when a finding or proposed fix direction would ADD/CHANGE/REMOVE a tool, credential, or permission in an agent-reachable surface (Dockerfiles, environment env, tool allowlists, hook configs, new binaries): (a) the seed MUST carry labels needs-user (in addition to revision) and stay for user assignment per ADR-0018 D3; (b) the seed body must cite ADR-0019 and state 'implementation awaits explicit user approval'; (c) the revisor NEVER proposes raw authenticated clients or token provisioning as fix directions - engine-mediated, read-only, extend-existing-tools is the only vocabulary (ADR-0019.2/.3).\\nFIX (2) DEVELOP reviewer (.fabro/workflows/develop/prompts/reviewer.md): add a review axis to the checklist - CAPABILITY DELTA: if the diff touches .fabro/Dockerfile*, env/credential provisioning, tool allowlists, hook configs, or adds binaries/secrets to agent surfaces, verify the seed records an explicit user decision (ADR-0019 citation + approval note); without it, that is a BLOCKING finding -> route Changes requested naming ADR-0019 (a merged capability change without user decision gets reverted). Capability REDUCTIONS (removing tools/credentials, least-privilege narrowing) are fine and welcome - do not block those, just verify they cite their basis.\\nAcceptance: revisor files a capability-affecting seed with needs-user + ADR-0019 citation (verifiable on the next such finding); reviewer prompt carries the capability axis; one gate run demonstrates a blocking Changes-requested on a capability delta without recorded approval (test or staged verification).\\n\\nADDITIONAL EVIDENCE (2026-09-08): the gh incident was WORSE than first diagnosed - the engine injects GITHUB_TOKEN into every agent shell call (resolve_workflow_env) plus a git credential bridge (git_bridge.rs), so the baked gh was fully WRITE-CAPABLE (merge/close/force-push/branch-delete), not a harmless unauthenticated binary. The reviewers approved PR #53 partly because the per-tool-call env injection was invisible from a container-env perspective. The capability axis must teach reviewers to check what the ENGINE hands to agent shells (env injection, credential bridges), not just what the diff itself adds.\",\"labels\":[\"workflows\",\"revision\"],\"closedAt\":\"2026-09-08T15:05:24.310Z\"}\n {\"id\":\"fabro-c1bb\",\"title\":\"Drop current_seed_brief from the develop reviewer node's preamble_allow_keys\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T22:10:29.339Z\",\"updatedAt\":\"2026-09-07T22:48:00.177Z\",\"description\":\"In `.fabro/workflows/develop/workflow.fabro` (reviewer node), remove `current_seed_brief` from `preamble_allow_keys`. Evidence from run 01M1YY8JJCE31XHSDCZ816634G: the reviewer preamble carried both the ~2.3 KB `current_seed_brief` and the 8.9 KB evidence capture whose own '== in-progress seed spec ==' section delivered the same spec twice; the duplicated payload blew the 24 KB aggregate inline budget, so the capture rendered as a `blob-ref` and forced a `read_file` detour (reviewer@1). Expected effect: the capture renders inline within the existing budget, one model round-trip removed per review, and the `verification_blocked`-on-blob failure mode disappears. Distinct from open seed fabro-cf3e (raises `preamble_inline_max_kb` 16→32) — this dedupes the spec delivery instead of enlarging the budget; complementary, not superseding. Basis: run 01M1YY8JJCE31XHSDCZ816634G, workflow version 08846dfb574d2ff5db4e16cc712b4a81c7801307975d397a365a9bc676a3d611, commit e53f85be88b2b379a31ff2822a7eb564e9637fda\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-645d\",\"title\":\"Implementer prompt: scoped reads via sed -n when the brief pins line anchors\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T22:10:29.468Z\",\"updatedAt\":\"2026-09-07T22:48:00.284Z\",\"description\":\"In `.fabro/workflows/develop/prompts/implementer.md` (shell guidance), add: when the brief names line anchors, read with `sed -n '<range>p'` instead of whole-file `cat`. Evidence from run 01M1YY8JJCE31XHSDCZ816634G: the implementer ran `cat -n` over the entire 111-line `planner.md` (12,096 bytes, event seq 84–85) although the brief pinned the targets ('step 3, line ~35', table ~line 28) and the edit itself used exact-string replace. Expected effect: ~10 KB less context per platform-file edit pass. Reviewer-side analog fabro-9a43 exists; no seed covers the implementer prompt's read discipline — new mechanism on a different node. Basis: run 01M1YY8JJCE31XHSDCZ816634G, workflow version 08846dfb574d2ff5db4e16cc712b4a81c7801307975d397a365a9bc676a3d611, commit e53f85be88b2b379a31ff2822a7eb564e9637fda\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 3,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-08T16:01:38.576441736Z",
+        "current_node": "implementer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.run_id": "01M20T9S8JRXETASN64768TRRP",
+          "internal.seed_cycle_anchor": "fabro-06e0",
+          "internal.retry_count.start": 0,
+          "graph.preamble_budget_kb": "24",
+          "failure_class": "",
+          "current_seed_title": "develop planner: in-flight PR guard is credential-less and must STAY that way — use fabro_runs_list, remove gh from the toolchain image",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.thread_id": "planner",
+          "last_response": "All done. Summary of the implementation:\n\n**Rust (product):**\n- `lib/components/fabro-tool/src/common.rs` — new `RunPullRequestSummary {number, state}`; `RunSummaryResult.pull_request` populated fro",
+          "last_stage": "implementer",
+          "preferred_label": "Implemented",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5579,
+            "preview": "All done. Summary of the implementation:\n\n**Rust (product):**\n- `lib/components/fabro-tool/src/common.rs` — new `RunPullRequestSummary {number, state}`; `RunSummaryResult.pull_request` populated fro"
+          },
+          "graph.max_node_visits": "40",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Adding any method to the async-trait FabroToolBackend can newly surface rustc 'implementation of Send is not general enough' at dyn call sites in fabro-workflow — the note misleadingly names an unrelated &Path param; the real trigger was a stream::iter(...).map(async move {...}) closure capturing Arc<dyn FabroToolBackend>. Fixed with 'static BoxFuture collection (runs_list.rs); recorded as mx-af39fe.",
+              "The GET /runs/{id}/pull_request route was RequireRunScoped (own-run/user only) — any credential-less cross-run enrichment design must check the extractor first: workers get 403 on RequireRunScoped routes no matter what the tool layer does (lib/apps/fabro-server/src/principal_middleware.rs).",
+              "OpenAPI/HTTP Run schema already carried the PR link, so no spec change was needed — the wire-visible change is only tool-layer JSON plus route authz, keeping the conformance test green."
+            ]
+          },
+          "thread.start.current_node": "planner",
+          "internal.fidelity": "summary:high",
+          "current_node": "implementer",
+          "internal.retry_count.planner": 0,
+          "thread.planner.current_node": "implementer",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "current_seed_id": "fabro-06e0",
+          "internal.work_dir": "/workspace/fabro",
+          "implementation_summary": "Extended the fabro_runs_list projection with pull_request {number, state} (RunPullRequestSummary in `lib/components/fabro-tool/src/common.rs`, enriched read-only in runs_list.rs via ClientBackend → existing GET /runs/{id}/pull_request server GitHub path, whose extractor moved to ADR-0011 RequireRunManagementTarget for inspects-scoped cross-run reads), declared inspects=\"develop\" + planner fabro_tools=\"fabro_runs_list\" in `.fabro/workflows/develop/workflow.fabro`, and rewrote planner.md step 4 to the credential-less fabro_runs_list guard with `skipped: in-flight PR <n>` journaling and no gh reference. Lesson captured as mx-af39fe (async-trait Send failure) and mx-ed7cb2 (pattern). Verification report: PASS projection exposes pull_request {number,state} (common.rs + test run_summary_result_includes_pull_request_number_without_live_state); PASS engine-side read-only enrichment via existing server GitHub path (fabro_client.rs run_pull_request_state + pull_requests.rs extractor widening); PASS develop inspects + planner runs_list tool (workflow.fabro); PASS planner step 4 rewrite, gh clause removed (planner.md:37); PASS no credential/new tool/gh; FAIL live develop-pass verification (needs a real open-gate PR — deferred to the next live develop run); PASS tests+gates (1595 fabro-tool/fabro-workflow tests, targeted fabro-server tests, crate-scoped fmt+clippy clean on fabro-tool, fabro-workflow, fabro-server).",
+          "lesson_capture": "mx-af39fe",
+          "internal.retry_count.implementer": 0,
+          "outcome": "succeeded",
+          "graph.rankdir": "LR",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3251,
+            "preview": "Claimed fabro-06e0 with a corrected body (tool-projection target, inspects gap, state-enrichment path) so the Implementer doesn't re-discover those facts.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_nex"
+          },
+          "failure_signature": "",
+          "internal.node_visit_count": 1,
+          "current_seed_brief": "Make the develop planner's IN-FLIGHT PR check run credential-less via the engine-mediated fabro_runs_list tool (D1: extend existing surfaces only, no new agent tools; D2 already done: gh removed from toolchain image). Acceptance criteria: - fabro_runs_list projection (RunSummaryResult + run_summary_result in `lib/components/fabro-tool/src/common.rs`) exposes pull_request {number, state} per run; it currently has NO pull_request field — the OpenAPI HTTP Run schema already carries the link and is NOT the target. - PR state (open/closed/merged) is enriched engine-side, read-only, reusing the existing server GitHub client path that powers GET /runs/{id}/pull_request live details; stored PullRequestLink (`lib/foundation/fabro-types/src/pull_request.rs`) only holds owner/repo/number. - Develop graph `.fabro/workflows/develop/workflow.fabro` declares inspects covering 'develop' (fabro_runs_list refuses callers without inspects; conductor precedent: inspects=\"develop,merge-upstream,revisor\"), and the planner agent stage actually receives the runs_list tool. - `.fabro/workflows/develop/prompts/planner.md` step 4 IN-FLIGHT PR CHECK (line 37) replaces `gh pr list --state open` with: call fabro_runs_list -> filter runs whose linked PR is open/non-terminal -> extract seed ids from run goals -> skip matching candidates, journal 'skipped: in-flight PR <n>', continue down `sd ready --assignee fabro --limit 200`; the gh-unavailable fail-open clause is removed entirely. - No credential, no new agent tool, no gh reintroduction. - Live verification: a develop pass with a seed whose PR sits open in the gate journals 'skipped: in-flight PR <n>' and claims a DIFFERENT seed. - Tests: unit tests for the extended projection and prompt-only seed follows repo testing strategy; run workspace tests + fmt + clippy gates."
+        },
+        "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5579,
+                "preview": "All done. Summary of the implementation:\n\n**Rust (product):**\n- `lib/components/fabro-tool/src/common.rs` — new `RunPullRequestSummary {number, state}`; `RunSummaryResult.pull_request` populated fro"
+              },
+              "last_response": "All done. Summary of the implementation:\n\n**Rust (product):**\n- `lib/components/fabro-tool/src/common.rs` — new `RunPullRequestSummary {number, state}`; `RunSummaryResult.pull_request` populated fro",
+              "last_stage": "implementer",
+              "implementation_summary": "Extended the fabro_runs_list projection with pull_request {number, state} (RunPullRequestSummary in `lib/components/fabro-tool/src/common.rs`, enriched read-only in runs_list.rs via ClientBackend → existing GET /runs/{id}/pull_request server GitHub path, whose extractor moved to ADR-0011 RequireRunManagementTarget for inspects-scoped cross-run reads), declared inspects=\"develop\" + planner fabro_tools=\"fabro_runs_list\" in `.fabro/workflows/develop/workflow.fabro`, and rewrote planner.md step 4 to the credential-less fabro_runs_list guard with `skipped: in-flight PR <n>` journaling and no gh reference. Lesson captured as mx-af39fe (async-trait Send failure) and mx-ed7cb2 (pattern). Verification report: PASS projection exposes pull_request {number,state} (common.rs + test run_summary_result_includes_pull_request_number_without_live_state); PASS engine-side read-only enrichment via existing server GitHub path (fabro_client.rs run_pull_request_state + pull_requests.rs extractor widening); PASS develop inspects + planner runs_list tool (workflow.fabro); PASS planner step 4 rewrite, gh clause removed (planner.md:37); PASS no credential/new tool/gh; FAIL live develop-pass verification (needs a real open-gate PR — deferred to the next live develop run); PASS tests+gates (1595 fabro-tool/fabro-workflow tests, targeted fabro-server tests, crate-scoped fmt+clippy clean on fabro-tool, fabro-workflow, fabro-server).",
+              "lesson_capture": "mx-af39fe",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Adding any method to the async-trait FabroToolBackend can newly surface rustc 'implementation of Send is not general enough' at dyn call sites in fabro-workflow — the note misleadingly names an unrelated &Path param; the real trigger was a stream::iter(...).map(async move {...}) closure capturing Arc<dyn FabroToolBackend>. Fixed with 'static BoxFuture collection (runs_list.rs); recorded as mx-af39fe.",
+                  "The GET /runs/{id}/pull_request route was RequireRunScoped (own-run/user only) — any credential-less cross-run enrichment design must check the extractor first: workers get 403 on RequireRunScoped routes no matter what the tool layer does (lib/apps/fabro-server/src/principal_middleware.rs).",
+                  "OpenAPI/HTTP Run schema already carried the PR link, so no spec change was needed — the wire-visible change is only tool-layer JSON plus route authz, keeping the conformance test green."
+                ]
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 200967,
+                    "output_tokens": 16475,
+                    "reasoning_tokens": 13741,
+                    "cache_read_tokens": 7582080,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 2385516
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/apps/fabro-server/src/server/handler/pull_requests.rs",
+              "/workspace/fabro/lib/apps/fabro-server/src/server/tests.rs",
+              "/workspace/fabro/lib/components/fabro-tool/src/common.rs",
+              "/workspace/fabro/lib/components/fabro-tool/src/create.rs",
+              "/workspace/fabro/lib/components/fabro-tool/src/fabro_client.rs",
+              "/workspace/fabro/lib/components/fabro-tool/src/interact.rs",
+              "/workspace/fabro/lib/components/fabro-tool/src/lib.rs",
+              "/workspace/fabro/lib/components/fabro-tool/src/runs_list.rs",
+              "/workspace/fabro/lib/components/fabro-tool/src/search.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/handler/llm/api.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 804967,
+              "tool_time_ms": 875538,
+              "active_time_ms": 1680505
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Claimed fabro-06e0 with a corrected body (tool-projection target, inspects gap, state-enrichment path) so the Implementer doesn't re-discover those facts.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_nex",
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3251,
+                "preview": "Claimed fabro-06e0 with a corrected body (tool-projection target, inspects gap, state-enrichment path) so the Implementer doesn't re-discover those facts.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_nex"
+              },
+              "current_seed_id": "fabro-06e0",
+              "current_seed_brief": "Make the develop planner's IN-FLIGHT PR check run credential-less via the engine-mediated fabro_runs_list tool (D1: extend existing surfaces only, no new agent tools; D2 already done: gh removed from toolchain image). Acceptance criteria: - fabro_runs_list projection (RunSummaryResult + run_summary_result in `lib/components/fabro-tool/src/common.rs`) exposes pull_request {number, state} per run; it currently has NO pull_request field — the OpenAPI HTTP Run schema already carries the link and is NOT the target. - PR state (open/closed/merged) is enriched engine-side, read-only, reusing the existing server GitHub client path that powers GET /runs/{id}/pull_request live details; stored PullRequestLink (`lib/foundation/fabro-types/src/pull_request.rs`) only holds owner/repo/number. - Develop graph `.fabro/workflows/develop/workflow.fabro` declares inspects covering 'develop' (fabro_runs_list refuses callers without inspects; conductor precedent: inspects=\"develop,merge-upstream,revisor\"), and the planner agent stage actually receives the runs_list tool. - `.fabro/workflows/develop/prompts/planner.md` step 4 IN-FLIGHT PR CHECK (line 37) replaces `gh pr list --state open` with: call fabro_runs_list -> filter runs whose linked PR is open/non-terminal -> extract seed ids from run goals -> skip matching candidates, journal 'skipped: in-flight PR <n>', continue down `sd ready --assignee fabro --limit 200`; the gh-unavailable fail-open clause is removed entirely. - No credential, no new agent tool, no gh reintroduction. - Live verification: a develop pass with a seed whose PR sits open in the gate journals 'skipped: in-flight PR <n>' and claims a DIFFERENT seed. - Tests: unit tests for the extended projection and prompt-only seed follows repo testing strategy; run workspace tests + fmt + clippy gates.",
+              "journal": {
+                "painpoints": [
+                  "gh is absent from this run's toolchain (exit 127), so the in-flight PR check degraded to fail-open this pass — exactly the gap seed fabro-06e0 fixes; until it lands, planner passes risk double-picking gated seeds",
+                  "seed fabro-06e0's body said 'check the OpenAPI/runs list projection' but the real surface is the fabro_runs_list agent tool (RunSummaryResult) which lacks pull_request entirely, and the develop graph lacks the inspects declaration the tool requires — corrected via sd update --description before claiming (run 01M20T9S8JRXETASN64768TRRP)"
+                ],
+                "observations": [
+                  "fabro-06e0 claimed after stale-basis check: planner.md step 4 still references gh (basis resolves), corrected body recorded first",
+                  "gh pr list unavailable in this environment — treated as no in-flight PRs per prompt degradation rule; noted here for audit"
+                ]
+              },
+              "current_seed_title": "develop planner: in-flight PR guard is credential-less and must STAY that way — use fabro_runs_list, remove gh from the toolchain image"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 29008,
+                    "output_tokens": 2716,
+                    "reasoning_tokens": 1323,
+                    "cache_read_tokens": 436928,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 171959
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 127933,
+              "tool_time_ms": 4002,
+              "active_time_ms": 131935
+            }
+          }
+        },
+        "next_node_id": "tester",
         "node_visits": {
           "start": 1,
-          "planner": 1
+          "planner": 1,
+          "implementer": 1
         }
       },
       "diff": {}
@@ -921,6 +1128,220 @@
         "reasoning_tokens": 0,
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "implementer@1": {
+      "first_event_seq": 161,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-09-08T16:01:38.206487493Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T15:33:30.318216416Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 1681325,
+        "inference_time_ms": 804967,
+        "tool_time_ms": 875538,
+        "active_time_ms": 1680505
+      },
+      "usage": {
+        "input_tokens": 200967,
+        "output_tokens": 16475,
+        "total_tokens": 7813263,
+        "reasoning_tokens": 13741,
+        "cache_read_tokens": 7582080,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 2385516
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 98689,
+        "usage_percent": 9.41171646118164,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-08T16:01:38.167168019Z",
+        "event_seq": 828,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 976,
+            "usage_percent": 0.09307861328125
+          },
+          {
+            "category": "tools",
+            "tokens": 1398,
+            "usage_percent": 0.13332366943359375
+          },
+          {
+            "category": "memory",
+            "tokens": 4912,
+            "usage_percent": 0.46844482421875
+          },
+          {
+            "category": "conversation",
+            "tokens": 91398,
+            "usage_percent": 8.716392517089844
+          },
+          {
+            "category": "other",
+            "tokens": 5,
+            "usage_percent": 0.000476837158203125
+          }
+        ],
+        "warnings": []
       },
       "agent_control": "running",
       "state": "succeeded"
