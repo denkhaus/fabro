@@ -378,7 +378,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-08T06:33:50.818551743Z",
-  "last_event_at": "2026-09-08T06:42:20.852802261Z",
+  "last_event_at": "2026-09-08T06:45:38.104872729Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -425,9 +425,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 217,
       "checkpoint": {
-        "timestamp": "2026-09-08T06:42:21.491467077Z",
+        "timestamp": "2026-09-08T06:42:28.076016804Z",
         "current_node": "merge",
         "completed_nodes": [
           "start",
@@ -435,18 +435,11 @@
         ],
         "node_retries": {},
         "context_values": {
-          "last_stage": "merge",
+          "graph.max_node_visits": "6",
           "graph.preamble_budget_kb": "12",
-          "seed_cycles": {
-            "start": 1,
-            "merge": 1
-          },
           "internal.retry_count.merge": 0,
-          "preferred_label": "review",
-          "failure_class": "",
-          "graph.rankdir": "LR",
-          "internal.thread_id": "start",
-          "graph.goal": "Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; deploy is host-side",
+          "graph.cycle_counter_reset_key": "merge_target_sha",
+          "internal.fidelity": "compact",
           "journal": {
             "painpoints": [
               "Run sandbox clone was shallow (boundary 661fa2a1e): first range count showed a misleading 4919 upstream commits because denkhaus-side shared ancestry was cut off; `git fetch origin --deepen=300` was required before merge-base resolution showed true containment (0 commits). Future merger passes in fresh sandboxes should check `git rev-parse --is-shallow-repository` first.",
@@ -461,24 +454,31 @@
               "No obsolescence this pass; standing watchlist unchanged (load_run_projection read line, RunIntent admission matrix, fabro-b7c4 catalog fix still un-offered upstream)."
             ]
           },
-          "internal.retry_count.start": 0,
-          "internal.run_id": "01M1ZVH0B5V5RHRCY393T24GXG",
-          "internal.work_dir": "/workspace/fabro",
-          "thread.start.current_node": "merge",
-          "graph.max_node_visits": "6",
+          "preferred_label": "review",
           "current_node": "merge",
-          "internal.seed_cycle_anchor": "",
-          "last_response": "{\"preferred_next_label\": \"review\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [\"Run sandbox clone was shallow (boundary 661fa",
-          "graph.cycle_counter_reset_key": "merge_target_sha",
           "response.merge": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.merge",
             "chars": 1887,
             "preview": "{\"preferred_next_label\": \"review\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [\"Run sandbox clone was shallow (boundary 661fa"
           },
+          "seed_cycles": {
+            "start": 1,
+            "merge": 1
+          },
+          "last_response": "{\"preferred_next_label\": \"review\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [\"Run sandbox clone was shallow (boundary 661fa",
+          "last_stage": "merge",
+          "thread.start.current_node": "merge",
+          "internal.seed_cycle_anchor": "",
           "internal.node_visit_count": 1,
+          "internal.thread_id": "start",
+          "graph.goal": "Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; deploy is host-side",
+          "graph.rankdir": "LR",
+          "internal.run_id": "01M1ZVH0B5V5RHRCY393T24GXG",
           "outcome": "succeeded",
-          "internal.fidelity": "compact",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.start": 0,
+          "failure_class": "",
           "failure_signature": ""
         },
         "node_outcomes": {
@@ -547,9 +547,219 @@
           }
         },
         "next_node_id": "reviewer",
+        "git_commit_sha": "d5982170cae678bd7dc41fab944af8c56b73a144",
         "node_visits": {
           "merge": 1,
           "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1ZVH0B5V5RHRCY393T24GXG.jsonl b/.fabro/journal/01M1ZVH0B5V5RHRCY393T24GXG.jsonl\nnew file mode 100644\nindex 0000000000..2d09f3e874\n--- /dev/null\n+++ b/.fabro/journal/01M1ZVH0B5V5RHRCY393T24GXG.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1ZVH0B5V5RHRCY393T24GXG\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T06:33:53Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1ZVH0B5V5RHRCY393T24GXG\",\"node\":\"merge\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T06:42:21Z\",\"data\":{\"painpoints\":[\"Run sandbox clone was shallow (boundary 661fa2a1e): first range count showed a misleading 4919 upstream commits because denkhaus-side shared ancestry was cut off; `git fetch origin --deepen=300` was required before merge-base resolution showed true containment (0 commits). Future merger passes in fresh sandboxes should check `git rev-parse --is-shallow-repository` first.\",\"Procedure prescribes report filename `<upstream-short-sha>.md`, but `2f326a13c.md` already exists from the real 2026-09-06 merge; used `-noop-2026-09-08` suffix to avoid clobbering history — consider codifying a no-op naming rule.\"],\"observations\":[\"Upstream commit count: 0 — upstream/main static at 2f326a13c (v0.348.0-nightly.0) since 2026-09-06; no upstream ref of any kind is newer. Fork remains 417 commits ahead with restored true ancestry.\",\"Conflict classes seen: none (no merge content; no fork call-site adaptations).\",\"Gate: `just qualitygate` green in ~6s — empty merge diff -> touched-crates = none -> fmt-only per `/workspace/fabro/scripts/qualitygate.nu` scope rules; format clean.\",\"Feature-regression walk: all 12 touchpoints present (publish-blocked taxonomy, boundary exit kind incl. tests at finalize.rs, PR create retry, resolve_pr_model, spa_refresh, ask render_event, attach replay at `lib/apps/fabro-cli/src/commands/run/attach.rs`, demote_large_values_for_prompt, just-up smoke scripts, run_workflow.nu, dogfood-gate.yml).\",\"Commit fa3855baa2 on `fabro/run/01M1ZVH0B5V5RHRCY393T24GXG`; not pushed — engine owns push/PR; deploy is host-side.\",\"No obsolescence this pass; standing watchlist unchanged (load_run_projection read line, RunIntent admission matrix, fabro-b7c4 catalog fix still un-offered upstream).\"]}}\ndiff --git a/.fabro/reports/merge-upstream/2f326a13c-noop-2026-09-08.md b/.fabro/reports/merge-upstream/2f326a13c-noop-2026-09-08.md\nnew file mode 100644\nindex 0000000000..5372b73998\n--- /dev/null\n+++ b/.fabro/reports/merge-upstream/2f326a13c-noop-2026-09-08.md\n@@ -0,0 +1,91 @@\n+# Upstream merge report — 2f326a13c (no-op verification pass)\n+\n+**Date:** 2026-09-08 · **Branch:** `fabro/run/01M1ZVH0B5V5RHRCY393T24GXG`\n+(aligned with `origin/denkhaus` at `aaa431e5c`)\n+\n+**Outcome:** no-op — `upstream/main` is already fully contained in\n+`origin/denkhaus`. Nothing to merge, no merge commit created. This file is\n+named with a `-noop-2026-09-08` suffix to preserve the real merge report\n+`2f326a13c.md` (2026-09-06), which covers the merge that brought this exact\n+upstream head in.\n+\n+## Merge identity\n+\n+- Range: `origin/denkhaus..upstream/main` = **0 commits**; upstream head\n+  `2f326a13c4c04e5f655d8d7c35a065653a411999` (`Bump version to\n+  0.348.0-nightly.0`, 2026-09-06T09:29:10Z) — newest upstream ref of any\n+  kind (branches checked).\n+- Proof of containment: `git merge-base --is-ancestor upstream/main\n+  origin/denkhaus` → exit 0; merge-base equals `2f326a13c` itself.\n+- `git merge upstream/main --no-commit` → `Already up to date.` — zero\n+  conflicts, zero tree delta (`git status` clean except this run's journal).\n+\n+### Environment pitfall (process note, not a merge issue)\n+\n+The run sandbox clone arrived **shallow** (boundary `661fa2a1e`, \"seeds:\n+sync 2026-09-06\"), so the first `git rev-list --count\n+origin/denkhaus..upstream/main` reported a misleading **4919** — the\n+denkhaus side of the shared ancestry was cut off, not actually diverged.\n+`git fetch origin --deepen=300` restored enough history for merge-base\n+resolution; the true count is 0. Any merger seeing a huge sudden range in\n+this environment should check `git rev-parse --is-shallow-repository`\n+before concluding upstream moved.\n+\n+## Conflicts resolved (by class)\n+\n+None — no merge content. No conflict classes seen this pass. No fork call\n+sites required adaptation (adapted call sites: **none**; empty merge diff\n+means the tree is byte-identical to pre-merge `origin/denkhaus`).\n+\n+## Verification commands + results\n+\n+| Command | Result |\n+|---|---|\n+| `git fetch upstream --prune` + `git fetch origin` (+ `git fetch origin --deepen=300`) | green |\n+| `git merge-base --is-ancestor upstream/main origin/denkhaus` | exit 0 (contained) |\n+| `git merge upstream/main --no-commit` | `Already up to date.` |\n+| `just qualitygate` | **GATE GREEN** (exit 0): merge diff empty → touched-crates = ∅ → gate degraded to `cargo +nightly-2026-04-14 fmt --check --all` per `scripts/qualitygate.nu` design (\"no crates touched\", \"format clean\"). Duration ≈ 6 s. |\n+\n+Gate-scope note: with a zero-file merge delta there is no code change that\n+clippy/nextest could newly break; the current tree's crate-level gates were\n+carried by the runs that landed each fork commit since 2026-09-06, and the\n+2026-09-06 merge itself ran the full gate (see `2f326a13c.md`).\n+\n+## Feature-regression analysis (touchpoint walk)\n+\n+Tree is byte-identical to `origin/denkhaus`, so regression through this pass\n+is impossible by construction; every touchpoint was re-probed anyway.\n+\n+| Feature (seed) | Status | Evidence in merged tree |\n+|---|---|---|\n+| Publish-blocked taxonomy (fabro-67e5, closed) | ✅ present | `SuccessReason` ×9 in `lib/foundation/fabro-types/src/status.rs`; `build_terminal_event` ×9 in `lib/components/fabro-workflow/src/pipeline/finalize.rs`; `publish_blocked` ×4 in `lib/apps/fabro-server/src/server.rs` |\n+| Boundary exit kind (fabro-08b4, closed) | ✅ present | `apply_boundary_upgrade` at `lib/components/fabro-workflow/src/pipeline/finalize.rs:68`; tests `boundary_upgrade_parks_engine_error_green`, `boundary_upgrade_ignores_other_exit_kinds`, `boundary_exit_kind_reports_boundary_reason`; key `INTERNAL_EXIT_KIND` defined `lib/foundation/fabro-types/src/context_keys.rs:55`, used `finalize.rs:584/1134`, `lifecycle/mod.rs:435` |\n+| PR create retry (fabro-67e5, closed) | ✅ present | `create_pull_request_with_attempts` `lib/components/fabro-workflow/src/pipeline/pull_request.rs:667` (prod call :650; tests :2397/:2420); `CreatePullRequestError` in `lib/components/fabro-github/src/lib.rs` |\n+| PR model plumbing (fabro-890b, closed) | ✅ present | `resolve_pr_model` ×2 in `lib/components/fabro-workflow/src/operations/start.rs` |\n+| spa_refresh mirror race (fabro-332e, OPEN) | ✅ present | `lib/foundation/fabro-dev/src/commands/spa_refresh.rs` (+ `spa_check.rs`); smoke = deploy-side (`just smoke`) |\n+| ask duplication (fabro-bd6c, OPEN) | ✅ present | `render_event` ×2 in `lib/apps/fabro-cli/src/commands/run/ask.rs` |\n+| attach replay indistinguishable (fabro-204e, OPEN) | ✅ present | attach command at `lib/apps/fabro-cli/src/commands/run/attach.rs` (replay via `replay_run_with_client`, :227) — note: module moved from `cli attach.rs` in earlier history; UX seed still open, code intact |\n+| Preamble aggregate budget (fabro-a85b, OPEN) | ✅ present | `demote_large_values_for_prompt` ×11 in `lib/components/fabro-workflow/src/artifact.rs` (incl. tests) |\n+| just-up lock + smoke (landed) | ✅ present | `scripts/smoke.nu`, `scripts/wait-healthy.nu`, justfile recipes |\n+| run_workflow.nu pipeline (landed) | ✅ present | `scripts/run_workflow.nu` |\n+| Auto-merge wiring (fabro-ab2c, closed) | ✅ present | `.github/workflows/dogfood-gate.yml` + branch protection (engine-owned) |\n+\n+**Adapted fork call sites this pass: none** (empty merge diff).\n+\n+## Obsolescence notes\n+\n+- Upstream has not moved since 2026-09-06 (`2f326a13c`, v0.348.0-nightly.0)\n+  — no seeds or fork features superseded this pass.\n+- Standing watchlist (from `references/touchpoints.md`) unchanged:\n+  SQLite read-model line (`AppState::load_run_projection`), RunIntent\n+  admission matrix (branch/tag/SHA), node-on-failure exclusion for\n+  `develop`, fabro-b7c4 legacy-catalog fix still un-offered-upstream.\n+\n+## What it means for us\n+\n+- No new upstream themes this pass — fork stays 417 commits ahead of\n+  `upstream/main` with full shared ancestry restored (since the 2026-09-06\n+  merge repaired the PR #30 squash divergence).\n+- Next merge pass should re-run this procedure when `upstream/main` moves\n+  past `2f326a13c`; expect the shallow-clone deepen step to be needed again\n+  in fresh run sandboxes.\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 93,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-08T06:45:38.362354592Z",
+        "current_node": "reviewer",
+        "completed_nodes": [
+          "start",
+          "merge",
+          "reviewer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "preferred_label": "Approved",
+          "graph.preamble_budget_kb": "12",
+          "thread.merge.current_node": "reviewer",
+          "graph.rankdir": "LR",
+          "journal": {
+            "painpoints": [
+              "Reviewer clone was ALSO shallow (git rev-parse --is-shallow-repository -> true, 3 boundary commits in .git/shallow); containment still resolved, but reviewer passes in fresh sandboxes should mirror the merger's deepen preflight before trusting rev-list counts.",
+              "Counting nit: report/commit prose says 'all 12 touchpoints' but references/touchpoints.md and the report's own table list 11 rows — all verified present; suggest the procedure template pin the count or say 'every listed row'.",
+              "fa3855baa2 is a single-parent doc commit, not a git merge commit (git creates none on 'Already up to date'); a reviewer mechanically reading fa3855baa2^2 hits 'unknown revision' — the commit message disambiguates, future no-op reports should state 'no merge commit created' up front (this one does)."
+            ],
+            "observations": [
+              "Containment independently reproduced: merge-base --is-ancestor upstream/main origin/denkhaus exit 0; rev-list count origin/denkhaus..upstream/main = 0 from HEAD too; merge-base = 2f326a13c itself; live git ls-remote upstream HEAD = 2f326a13c; newest other upstream branch ref is 2026-09-05.",
+              "Delta verified: fa3855baa2^1..fa3855baa2 and origin/denkhaus..HEAD touch ONLY .fabro/reports/merge-upstream/2f326a13c-noop-2026-09-08.md (+91) and the run journal; zero code files; git status clean.",
+              "TOUCHPOINTS all 11 verified by symbol: (1) publish-blocked taxonomy — SuccessReason enum lib/foundation/fabro-types/src/status.rs:284, build_terminal_event lib/components/fabro-workflow/src/pipeline/finalize.rs:444 (+re-export pipeline/mod.rs:15), publish_blocked server.rs:1039/1054, cli wait.rs:118, web apps/fabro-web/app/routes/run-detail/header.tsx:258; (2) boundary exit kind — apply_boundary_upgrade finalize.rs:68 with prod call :650, tests boundary_upgrade_parks_engine_error_green :1036 / boundary_upgrade_ignores_other_exit_kinds :1056 / boundary_exit_kind_reports_boundary_reason :1196, INTERNAL_EXIT_KIND context_keys.rs:55 used finalize.rs:584/1134 + lifecycle/mod.rs:435; (3) PR create retry — create_pull_request_with_attempts lib/components/fabro-workflow/src/pipeline/pull_request.rs:667, prod call :650, tests :2397/:2420/:2442/:2463, CreatePullRequestError lib/components/fabro-github/src/lib.rs:103 with is_retryable tests :2108+; (4) PR model plumbing — resolve_pr_model operations/start.rs:849, call :632; (5) spa_refresh — lib/foundation/fabro-dev/src/commands/spa_refresh.rs + justfile wait-healthy :106 / smoke :111; (6) ask duplication — render_event cli run/ask.rs:71, call :26; (7) attach replay — replay_run_with_client cli run/attach.rs:227, call :192; (8) preamble aggregate budget — demote_large_values_for_prompt artifact.rs:211 + 10 more sites incl. call at lifecycle/fidelity.rs:235; (9) just-up smoke — scripts/smoke.nu + scripts/wait-healthy.nu present; (10) run_workflow.nu present; (11) auto-merge wiring — .github/workflows/dogfood-gate.yml present (lab-check.yml retired per touchpoints 2026-09-06 note).",
+              "ADR-0019 capability scan: upstream delta is EMPTY (0 upstream commits; merge delta = report+journal only) — no credential minting/injection, sandbox transport/clone/push, agent tool catalog, permission/integration config, or Dockerfile surface touched. Zero hits, therefore zero needs-user seeds required; the empty-delta evidence itself is the scan result.",
+              "Gate evidence verified WITHOUT re-running: scripts/qualitygate.nu lines 161-164 implement exactly the claimed degradation (no lib/ paths in diff -> 'no crates touched' -> fmt --check --all only -> exit 0); ~6s duration plausible. Full-gate coverage of this byte-identical tree is carried by the real 2026-09-06 merge report 2f326a13c.md (clippy --workspace clean, nextest 4465/4465, qualitygate green 123s).",
+              "Obsolescence: none this pass — upstream/main static at 2f326a13c (v0.348.0-nightly.0) since 2026-09-06; standing watchlist unchanged (AppState::load_run_projection read line, RunIntent branch/tag/SHA admission matrix, node-on-failure non-adoption for develop, fabro-b7c4 5-segment catalog fix PR offer still pending upstream).",
+              "Report hygiene good: -noop-2026-09-08 suffix preserved the real 2f326a13c.md history instead of clobbering; process note on the shallow-clone 4919 false range is actionable (check is-shallow-repository before trusting ranges). Time spent ~10 min; verdict Approved — deploy proceeds host-side after this label."
+            ]
+          },
+          "internal.retry_count.reviewer": 0,
+          "thread.start.current_node": "merge",
+          "last_stage": "reviewer",
+          "graph.cycle_counter_reset_key": "merge_target_sha",
+          "internal.node_visit_count": 1,
+          "internal.fidelity": "compact",
+          "internal.retry_count.merge": 0,
+          "failure_signature": "",
+          "seed_cycles": {
+            "start": 1,
+            "merge": 1,
+            "reviewer": 1
+          },
+          "failure_class": "",
+          "internal.exit_kind": "natural",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 4697,
+            "preview": "{\n  \"preferred_next_label\": \"Approved\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": {\n      \"painpoints\": [\n        \"Reviewer cl"
+          },
+          "internal.thread_id": "merge",
+          "graph.goal": "Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; deploy is host-side",
+          "response.merge": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.merge",
+            "chars": 1887,
+            "preview": "{\"preferred_next_label\": \"review\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [\"Run sandbox clone was shallow (boundary 661fa"
+          },
+          "internal.retry_count.start": 0,
+          "internal.run_id": "01M1ZVH0B5V5RHRCY393T24GXG",
+          "internal.work_dir": "/workspace/fabro",
+          "last_response": "{\n  \"preferred_next_label\": \"Approved\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": {\n      \"painpoints\": [\n        \"Reviewer cl",
+          "graph.max_node_visits": "6",
+          "current_node": "reviewer",
+          "internal.seed_cycle_anchor": "",
+          "outcome": "succeeded"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "merge": {
+            "status": "succeeded",
+            "preferred_label": "review",
+            "context_updates": {
+              "last_response": "{\"preferred_next_label\": \"review\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [\"Run sandbox clone was shallow (boundary 661fa",
+              "journal": {
+                "painpoints": [
+                  "Run sandbox clone was shallow (boundary 661fa2a1e): first range count showed a misleading 4919 upstream commits because denkhaus-side shared ancestry was cut off; `git fetch origin --deepen=300` was required before merge-base resolution showed true containment (0 commits). Future merger passes in fresh sandboxes should check `git rev-parse --is-shallow-repository` first.",
+                  "Procedure prescribes report filename `<upstream-short-sha>.md`, but `2f326a13c.md` already exists from the real 2026-09-06 merge; used `-noop-2026-09-08` suffix to avoid clobbering history — consider codifying a no-op naming rule."
+                ],
+                "observations": [
+                  "Upstream commit count: 0 — upstream/main static at 2f326a13c (v0.348.0-nightly.0) since 2026-09-06; no upstream ref of any kind is newer. Fork remains 417 commits ahead with restored true ancestry.",
+                  "Conflict classes seen: none (no merge content; no fork call-site adaptations).",
+                  "Gate: `just qualitygate` green in ~6s — empty merge diff -> touched-crates = none -> fmt-only per `/workspace/fabro/scripts/qualitygate.nu` scope rules; format clean.",
+                  "Feature-regression walk: all 12 touchpoints present (publish-blocked taxonomy, boundary exit kind incl. tests at finalize.rs, PR create retry, resolve_pr_model, spa_refresh, ask render_event, attach replay at `lib/apps/fabro-cli/src/commands/run/attach.rs`, demote_large_values_for_prompt, just-up smoke scripts, run_workflow.nu, dogfood-gate.yml).",
+                  "Commit fa3855baa2 on `fabro/run/01M1ZVH0B5V5RHRCY393T24GXG`; not pushed — engine owns push/PR; deploy is host-side.",
+                  "No obsolescence this pass; standing watchlist unchanged (load_run_projection read line, RunIntent admission matrix, fabro-b7c4 catalog fix still un-offered upstream)."
+                ]
+              },
+              "response.merge": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.merge",
+                "chars": 1887,
+                "preview": "{\"preferred_next_label\": \"review\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [\"Run sandbox clone was shallow (boundary 661fa"
+              },
+              "last_stage": "merge"
+            },
+            "notes": "Stage completed: merge",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 41613,
+                    "output_tokens": 6122,
+                    "reasoning_tokens": 9573,
+                    "cache_read_tokens": 784512,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 331256
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reports/merge-upstream/2f326a13c-noop-2026-09-08.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 302719,
+              "tool_time_ms": 190723,
+              "active_time_ms": 493442
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  "Reviewer clone was ALSO shallow (git rev-parse --is-shallow-repository -> true, 3 boundary commits in .git/shallow); containment still resolved, but reviewer passes in fresh sandboxes should mirror the merger's deepen preflight before trusting rev-list counts.",
+                  "Counting nit: report/commit prose says 'all 12 touchpoints' but references/touchpoints.md and the report's own table list 11 rows — all verified present; suggest the procedure template pin the count or say 'every listed row'.",
+                  "fa3855baa2 is a single-parent doc commit, not a git merge commit (git creates none on 'Already up to date'); a reviewer mechanically reading fa3855baa2^2 hits 'unknown revision' — the commit message disambiguates, future no-op reports should state 'no merge commit created' up front (this one does)."
+                ],
+                "observations": [
+                  "Containment independently reproduced: merge-base --is-ancestor upstream/main origin/denkhaus exit 0; rev-list count origin/denkhaus..upstream/main = 0 from HEAD too; merge-base = 2f326a13c itself; live git ls-remote upstream HEAD = 2f326a13c; newest other upstream branch ref is 2026-09-05.",
+                  "Delta verified: fa3855baa2^1..fa3855baa2 and origin/denkhaus..HEAD touch ONLY .fabro/reports/merge-upstream/2f326a13c-noop-2026-09-08.md (+91) and the run journal; zero code files; git status clean.",
+                  "TOUCHPOINTS all 11 verified by symbol: (1) publish-blocked taxonomy — SuccessReason enum lib/foundation/fabro-types/src/status.rs:284, build_terminal_event lib/components/fabro-workflow/src/pipeline/finalize.rs:444 (+re-export pipeline/mod.rs:15), publish_blocked server.rs:1039/1054, cli wait.rs:118, web apps/fabro-web/app/routes/run-detail/header.tsx:258; (2) boundary exit kind — apply_boundary_upgrade finalize.rs:68 with prod call :650, tests boundary_upgrade_parks_engine_error_green :1036 / boundary_upgrade_ignores_other_exit_kinds :1056 / boundary_exit_kind_reports_boundary_reason :1196, INTERNAL_EXIT_KIND context_keys.rs:55 used finalize.rs:584/1134 + lifecycle/mod.rs:435; (3) PR create retry — create_pull_request_with_attempts lib/components/fabro-workflow/src/pipeline/pull_request.rs:667, prod call :650, tests :2397/:2420/:2442/:2463, CreatePullRequestError lib/components/fabro-github/src/lib.rs:103 with is_retryable tests :2108+; (4) PR model plumbing — resolve_pr_model operations/start.rs:849, call :632; (5) spa_refresh — lib/foundation/fabro-dev/src/commands/spa_refresh.rs + justfile wait-healthy :106 / smoke :111; (6) ask duplication — render_event cli run/ask.rs:71, call :26; (7) attach replay — replay_run_with_client cli run/attach.rs:227, call :192; (8) preamble aggregate budget — demote_large_values_for_prompt artifact.rs:211 + 10 more sites incl. call at lifecycle/fidelity.rs:235; (9) just-up smoke — scripts/smoke.nu + scripts/wait-healthy.nu present; (10) run_workflow.nu present; (11) auto-merge wiring — .github/workflows/dogfood-gate.yml present (lab-check.yml retired per touchpoints 2026-09-06 note).",
+                  "ADR-0019 capability scan: upstream delta is EMPTY (0 upstream commits; merge delta = report+journal only) — no credential minting/injection, sandbox transport/clone/push, agent tool catalog, permission/integration config, or Dockerfile surface touched. Zero hits, therefore zero needs-user seeds required; the empty-delta evidence itself is the scan result.",
+                  "Gate evidence verified WITHOUT re-running: scripts/qualitygate.nu lines 161-164 implement exactly the claimed degradation (no lib/ paths in diff -> 'no crates touched' -> fmt --check --all only -> exit 0); ~6s duration plausible. Full-gate coverage of this byte-identical tree is carried by the real 2026-09-06 merge report 2f326a13c.md (clippy --workspace clean, nextest 4465/4465, qualitygate green 123s).",
+                  "Obsolescence: none this pass — upstream/main static at 2f326a13c (v0.348.0-nightly.0) since 2026-09-06; standing watchlist unchanged (AppState::load_run_projection read line, RunIntent branch/tag/SHA admission matrix, node-on-failure non-adoption for develop, fabro-b7c4 5-segment catalog fix PR offer still pending upstream).",
+                  "Report hygiene good: -noop-2026-09-08 suffix preserved the real 2f326a13c.md history instead of clobbering; process note on the shallow-clone 4919 false range is actionable (check is-shallow-repository before trusting ranges). Time spent ~10 min; verdict Approved — deploy proceeds host-side after this label."
+                ]
+              },
+              "last_stage": "reviewer",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 4697,
+                "preview": "{\n  \"preferred_next_label\": \"Approved\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": {\n      \"painpoints\": [\n        \"Reviewer cl"
+              },
+              "last_response": "{\n  \"preferred_next_label\": \"Approved\",\n  \"outcome\": \"succeeded\",\n  \"failure_reason\": \"\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": {\n      \"painpoints\": [\n        \"Reviewer cl"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 44698,
+                    "output_tokens": 4590,
+                    "reasoning_tokens": 7638,
+                    "cache_read_tokens": 220800,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 173778
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 181464,
+              "tool_time_ms": 2928,
+              "active_time_ms": 184392
+            }
+          }
+        },
+        "next_node_id": "exit",
+        "node_visits": {
+          "merge": 1,
+          "start": 1,
+          "reviewer": 1
         }
       },
       "diff": {}
@@ -614,6 +824,243 @@
         "reasoning_tokens": 0,
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "reviewer@1": {
+      "first_event_seq": 220,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: reviewer",
+        "failure_reason": null,
+        "timestamp": "2026-09-08T06:45:38.104872729Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "high"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T06:42:28.094145965Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 185009,
+        "inference_time_ms": 181464,
+        "tool_time_ms": 2928,
+        "active_time_ms": 184392
+      },
+      "usage": {
+        "input_tokens": 44698,
+        "output_tokens": 4590,
+        "total_tokens": 277726,
+        "reasoning_tokens": 7638,
+        "cache_read_tokens": 220800,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 173778
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 44490,
+        "usage_percent": 4.242897033691406,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-08T06:45:38.085653219Z",
+        "event_seq": 316,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1198,
+            "usage_percent": 0.11425018310546875
+          },
+          {
+            "category": "tools",
+            "tokens": 1708,
+            "usage_percent": 0.1628875732421875
+          },
+          {
+            "category": "skills",
+            "tokens": 231,
+            "usage_percent": 0.022029876708984375
+          },
+          {
+            "category": "memory",
+            "tokens": 6000,
+            "usage_percent": 0.57220458984375
+          },
+          {
+            "category": "conversation",
+            "tokens": 35345,
+            "usage_percent": 3.3707618713378906
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
       },
       "agent_control": "running",
       "state": "succeeded"
