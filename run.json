@@ -692,7 +692,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-08T14:32:07.013785526Z",
-  "last_event_at": "2026-09-08T14:36:43.752845228Z",
+  "last_event_at": "2026-09-08T14:36:50.313858485Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1834,9 +1834,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 223,
       "checkpoint": {
-        "timestamp": "2026-09-08T14:36:44.009224523Z",
+        "timestamp": "2026-09-08T14:36:49.261562328Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -1849,20 +1849,43 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.run_id": "01M20PXPFESQM8HAWF4MSXAKX5",
-          "review_verdict": "approved",
-          "seed_cycles": {
-            "planner": 1,
-            "implementer": 1,
-            "tester": 1,
-            "evidence": 1,
-            "reviewer": 1,
-            "closeout": 1
+          "last_response": "Verification complete. Summary of what I checked against the seed spec (fabro-0b41):\n\n1. **Ownership boundary in supersession rule** — verified in the live file (line 27): `sd close` under supersess",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.planner": 0,
+          "current_node": "closeout",
+          "preferred_label": "Approved",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5699,
+            "preview": "All contracts intact, worktree clean (single intended file modified), no Rust crates touched so no fmt/clippy obligations. The work is complete — the journal excerpt below doubles as the staged evid"
           },
-          "internal.retry_count.tester": 0,
-          "failure_signature": "",
+          "thread.evidence.current_node": "reviewer",
+          "thread.implementer.current_node": "tester",
+          "current_seed_title": "revisor: scope seed WRITES to its own set — supersession closes and label changes never touch user-owned seeds (ADR-0018)",
+          "thread.start.current_node": "planner",
+          "internal.exit_kind": "natural",
           "graph.preamble_budget_kb": "24",
-          "internal.thread_id": "reviewer",
+          "lesson_capture": "nothing durable — skipped",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3201,
+            "preview": "Seed claimed: fabro-0b41. The revisor prompt's supersession rule and `sd close`/`set-labels` table rows are unscoped in the current tree, matching the seed's basis. One annotation: `gh` is unavailable"
+          },
+          "internal.fidelity": "compact",
+          "thread.tester.current_node": "evidence",
+          "failure_class": "",
+          "thread.planner.current_node": "implementer",
+          "internal.retry_count.closeout": 0,
+          "internal.retry_count.implementer": 0,
+          "current_seed_brief": "Edit `.fabro/workflows/revisor/prompts/file.md` (the revisor Bookkeeper prompt; NOTE: read_file is fs_hide-blocked on `.fabro/**` for stages — read/write it via shell). Acceptance criteria:\n- Supersession rule (step 1 paragraph) states an ownership boundary: `sd close` under supersession applies ONLY to seeds labeled `revision` or assigned `@fabro`; user-owned or unassigned seeds are NEVER closed by the revisor (ADR-0018 D2 — the revisor owns nothing; reviewing is not owning).\n- When a finding supersedes a user-owned/unassigned seed: the prompt requires cross-referencing the old id in the new seed's description AND journaling `supersession candidate (user-owned, not closed): <id>` for the human gate.\n- Label backfill (`sd update <id> --set-labels revision`) is restricted to seeds already labeled `revision` or provably revisor-originated (Basis cites a revisor run).\n- The sd command reference table gains one sentence: 'ownership rule: close/relabel only your own or @fabro seeds — ADR-0018 D2'.\n- READS stay global: do NOT scope `sd search`/`sd list` — scoping reads would create duplicates against user-owned work; only writes are scoped.\n- Keep all existing prompt contracts intact (Basis-line mandate, capability gate ADR-0019, journal keys, outcome contract, exact commit paths).\n- Verification: staged evidence (test or journal excerpt) shows a user-owned supersession candidate being cross-referenced and NOT closed.\n- Sequencing caveat: seed says 'sequence AFTER PR #59 (same file)' — `gh` is unavailable here so PR #59's state is unverified; check `git log` for recent merges touching this file before editing to avoid conflicting with landed changes.",
+          "current_seed_id": "fabro-0b41",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.start": 0,
+          "review_verdict": "approved",
+          "internal.retry_count.tester": 0,
+          "thread.reviewer.current_node": "closeout",
           "journal": {
             "painpoints": [
               {
@@ -1876,106 +1899,74 @@
               "Capability delta axis: this seed narrows revisor write authority (least-privilege, cites ADR-0018 D2) — no capability expansion, no user-decision record needed."
             ]
           },
-          "internal.fidelity": "compact",
-          "current_node": "closeout",
-          "internal.work_dir": "/workspace/fabro",
-          "response.implementer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 5699,
-            "preview": "All contracts intact, worktree clean (single intended file modified), no Rust crates touched so no fmt/clippy obligations. The work is complete — the journal excerpt below doubles as the staged evid"
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1,
+            "closeout": 1
           },
-          "thread.start.current_node": "planner",
-          "current_seed_id": "fabro-0b41",
-          "implementation_summary": "Edited `.fabro/workflows/revisor/prompts/file.md` (shell-only, fs_hide carve-out): supersession paragraph now carries the ADR-0018 D2 ownership boundary (close only `revision`-labeled or `@fabro` seeds; user-owned/unassigned never closed; supersession of those requires cross-referencing the old id in the new seed description plus journaling `supersession candidate (user-owned, not closed): <id>`), the backfill table row restricts `--set-labels revision` to already-labeled or provably revisor-originated seeds, and the table gained the one-sentence ownership rule plus the reads-stay-global clause. All existing contracts (Basis line, ADR-0019 capability gate, journal keys, outcome contract, commit paths) untouched — diff shows exactly two hunks. PR #59 (`de83a22`) already landed, so sequencing was safe. Lesson capture: nothing durable — skipped. Per-criterion: PASS ownership boundary in supersession rule (step 1, `rg 'ADR-0018 D2'`=2); PASS cross-reference + journal key for user-owned candidates (exact key present, excerpt: `sd show fabro-b11a` = open/unassigned/user-owned, not closed); PASS backfill restriction (`rg 'never relabel user-owned or unassigned seeds'`=1); PASS one-sentence ownership rule under table; PASS reads stay global clause; PASS existing contracts intact; PASS staged journal-excerpt evidence in this response's journal.observations.",
-          "outcome": "succeeded",
-          "thread.implementer.current_node": "tester",
-          "command.output": "blob://sha256/03e06b3ad8c1b06cc0e53412410a3891c30131aaa24aa365064412dbaaac6151",
-          "thread.tester.current_node": "evidence",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "current_seed_brief": "Edit `.fabro/workflows/revisor/prompts/file.md` (the revisor Bookkeeper prompt; NOTE: read_file is fs_hide-blocked on `.fabro/**` for stages — read/write it via shell). Acceptance criteria:\n- Supersession rule (step 1 paragraph) states an ownership boundary: `sd close` under supersession applies ONLY to seeds labeled `revision` or assigned `@fabro`; user-owned or unassigned seeds are NEVER closed by the revisor (ADR-0018 D2 — the revisor owns nothing; reviewing is not owning).\n- When a finding supersedes a user-owned/unassigned seed: the prompt requires cross-referencing the old id in the new seed's description AND journaling `supersession candidate (user-owned, not closed): <id>` for the human gate.\n- Label backfill (`sd update <id> --set-labels revision`) is restricted to seeds already labeled `revision` or provably revisor-originated (Basis cites a revisor run).\n- The sd command reference table gains one sentence: 'ownership rule: close/relabel only your own or @fabro seeds — ADR-0018 D2'.\n- READS stay global: do NOT scope `sd search`/`sd list` — scoping reads would create duplicates against user-owned work; only writes are scoped.\n- Keep all existing prompt contracts intact (Basis-line mandate, capability gate ADR-0019, journal keys, outcome contract, exact commit paths).\n- Verification: staged evidence (test or journal excerpt) shows a user-owned supersession candidate being cross-referenced and NOT closed.\n- Sequencing caveat: seed says 'sequence AFTER PR #59 (same file)' — `gh` is unavailable here so PR #59's state is unverified; check `git log` for recent merges touching this file before editing to avoid conflicting with landed changes.",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 3201,
-            "preview": "Seed claimed: fabro-0b41. The revisor prompt's supersession rule and `sd close`/`set-labels` table rows are unscoped in the current tree, matching the seed's basis. One annotation: `gh` is unavailable"
-          },
-          "thread.planner.current_node": "implementer",
-          "internal.retry_count.evidence": 0,
-          "thread.evidence.current_node": "reviewer",
-          "thread.reviewer.current_node": "closeout",
-          "internal.retry_count.start": 0,
-          "graph.max_node_visits": "40",
           "internal.seed_cycle_anchor": "fabro-0b41",
-          "internal.exit_kind": "natural",
-          "internal.retry_count.planner": 0,
+          "graph.max_node_visits": "40",
+          "internal.retry_count.reviewer": 0,
+          "outcome": "succeeded",
+          "command.output": "blob://sha256/03e06b3ad8c1b06cc0e53412410a3891c30131aaa24aa365064412dbaaac6151",
+          "internal.retry_count.evidence": 0,
+          "internal.run_id": "01M20PXPFESQM8HAWF4MSXAKX5",
+          "last_stage": "reviewer",
           "response.reviewer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.reviewer",
             "chars": 3069,
             "preview": "Verification complete. Summary of what I checked against the seed spec (fabro-0b41):\n\n1. **Ownership boundary in supersession rule** — verified in the live file (line 27): `sd close` under supersess"
           },
-          "internal.node_visit_count": 1,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.thread_id": "reviewer",
           "graph.rankdir": "LR",
-          "failure_class": "",
-          "current_seed_title": "revisor: scope seed WRITES to its own set — supersession closes and label changes never touch user-owned seeds (ADR-0018)",
-          "preferred_label": "Approved",
-          "last_stage": "reviewer",
-          "lesson_capture": "nothing durable — skipped",
-          "last_response": "Verification complete. Summary of what I checked against the seed spec (fabro-0b41):\n\n1. **Ownership boundary in supersession rule** — verified in the live file (line 27): `sd close` under supersess",
-          "internal.retry_count.implementer": 0,
-          "internal.retry_count.closeout": 0,
-          "internal.retry_count.reviewer": 0,
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit"
+          "implementation_summary": "Edited `.fabro/workflows/revisor/prompts/file.md` (shell-only, fs_hide carve-out): supersession paragraph now carries the ADR-0018 D2 ownership boundary (close only `revision`-labeled or `@fabro` seeds; user-owned/unassigned never closed; supersession of those requires cross-referencing the old id in the new seed description plus journaling `supersession candidate (user-owned, not closed): <id>`), the backfill table row restricts `--set-labels revision` to already-labeled or provably revisor-originated seeds, and the table gained the one-sentence ownership rule plus the reads-stay-global clause. All existing contracts (Basis line, ADR-0019 capability gate, journal keys, outcome contract, commit paths) untouched — diff shows exactly two hunks. PR #59 (`de83a22`) already landed, so sequencing was safe. Lesson capture: nothing durable — skipped. Per-criterion: PASS ownership boundary in supersession rule (step 1, `rg 'ADR-0018 D2'`=2); PASS cross-reference + journal key for user-owned candidates (exact key present, excerpt: `sd show fabro-b11a` = open/unassigned/user-owned, not closed); PASS backfill restriction (`rg 'never relabel user-owned or unassigned seeds'`=1); PASS one-sentence ownership rule under table; PASS reads stay global clause; PASS existing contracts intact; PASS staged journal-excerpt evidence in this response's journal.observations.",
+          "failure_signature": ""
         },
         "node_outcomes": {
-          "tester": {
+          "closeout": {
             "status": "succeeded",
             "context_updates": {
-              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+              "command.output": "blob://sha256/03e06b3ad8c1b06cc0e53412410a3891c30131aaa24aa365064412dbaaac6151"
             },
-            "notes": "Script completed: just qualitygate",
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
             "usage": null,
             "timing": {
               "wall_time_ms": 0,
               "inference_time_ms": 0,
-              "tool_time_ms": 4382,
-              "active_time_ms": 4382
+              "tool_time_ms": 293,
+              "active_time_ms": 293
             }
           },
-          "start": {
+          "implementer": {
             "status": "succeeded",
-            "usage": null
-          },
-          "planner": {
-            "status": "succeeded",
-            "preferred_label": "Seed claimed",
+            "preferred_label": "Implemented",
             "context_updates": {
-              "last_stage": "planner",
-              "current_seed_id": "fabro-0b41",
-              "current_seed_brief": "Edit `.fabro/workflows/revisor/prompts/file.md` (the revisor Bookkeeper prompt; NOTE: read_file is fs_hide-blocked on `.fabro/**` for stages — read/write it via shell). Acceptance criteria:\n- Supersession rule (step 1 paragraph) states an ownership boundary: `sd close` under supersession applies ONLY to seeds labeled `revision` or assigned `@fabro`; user-owned or unassigned seeds are NEVER closed by the revisor (ADR-0018 D2 — the revisor owns nothing; reviewing is not owning).\n- When a finding supersedes a user-owned/unassigned seed: the prompt requires cross-referencing the old id in the new seed's description AND journaling `supersession candidate (user-owned, not closed): <id>` for the human gate.\n- Label backfill (`sd update <id> --set-labels revision`) is restricted to seeds already labeled `revision` or provably revisor-originated (Basis cites a revisor run).\n- The sd command reference table gains one sentence: 'ownership rule: close/relabel only your own or @fabro seeds — ADR-0018 D2'.\n- READS stay global: do NOT scope `sd search`/`sd list` — scoping reads would create duplicates against user-owned work; only writes are scoped.\n- Keep all existing prompt contracts intact (Basis-line mandate, capability gate ADR-0019, journal keys, outcome contract, exact commit paths).\n- Verification: staged evidence (test or journal excerpt) shows a user-owned supersession candidate being cross-referenced and NOT closed.\n- Sequencing caveat: seed says 'sequence AFTER PR #59 (same file)' — `gh` is unavailable here so PR #59's state is unverified; check `git log` for recent merges touching this file before editing to avoid conflicting with landed changes.",
-              "last_response": "Seed claimed: fabro-0b41. The revisor prompt's supersession rule and `sd close`/`set-labels` table rows are unscoped in the current tree, matching the seed's basis. One annotation: `gh` is unavailable",
-              "response.planner": {
+              "last_stage": "implementer",
+              "last_response": "All contracts intact, worktree clean (single intended file modified), no Rust crates touched so no fmt/clippy obligations. The work is complete — the journal excerpt below doubles as the staged evid",
+              "response.implementer": {
                 "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.planner",
-                "chars": 3201,
-                "preview": "Seed claimed: fabro-0b41. The revisor prompt's supersession rule and `sd close`/`set-labels` table rows are unscoped in the current tree, matching the seed's basis. One annotation: `gh` is unavailable"
+                "output_key": "output.implementer",
+                "chars": 5699,
+                "preview": "All contracts intact, worktree clean (single intended file modified), no Rust crates touched so no fmt/clippy obligations. The work is complete — the journal excerpt below doubles as the staged evid"
               },
-              "current_seed_title": "revisor: scope seed WRITES to its own set — supersession closes and label changes never touch user-owned seeds (ADR-0018)",
+              "lesson_capture": "nothing durable — skipped",
+              "implementation_summary": "Edited `.fabro/workflows/revisor/prompts/file.md` (shell-only, fs_hide carve-out): supersession paragraph now carries the ADR-0018 D2 ownership boundary (close only `revision`-labeled or `@fabro` seeds; user-owned/unassigned never closed; supersession of those requires cross-referencing the old id in the new seed description plus journaling `supersession candidate (user-owned, not closed): <id>`), the backfill table row restricts `--set-labels revision` to already-labeled or provably revisor-originated seeds, and the table gained the one-sentence ownership rule plus the reads-stay-global clause. All existing contracts (Basis line, ADR-0019 capability gate, journal keys, outcome contract, commit paths) untouched — diff shows exactly two hunks. PR #59 (`de83a22`) already landed, so sequencing was safe. Lesson capture: nothing durable — skipped. Per-criterion: PASS ownership boundary in supersession rule (step 1, `rg 'ADR-0018 D2'`=2); PASS cross-reference + journal key for user-owned candidates (exact key present, excerpt: `sd show fabro-b11a` = open/unassigned/user-owned, not closed); PASS backfill restriction (`rg 'never relabel user-owned or unassigned seeds'`=1); PASS one-sentence ownership rule under table; PASS reads stay global clause; PASS existing contracts intact; PASS staged journal-excerpt evidence in this response's journal.observations.",
               "journal": {
-                "painpoints": [
-                  {
-                    "text": "gh CLI is not installed in the planner sandbox, making the mandatory in-flight PR check (step 4) impossible to satisfy honestly; fabro-06e0 already tracks removing gh from the toolchain — planner prompts should mandate the documented credential-less fallback (fabro_runs_list) when gh is absent, where (develop planner prompt, step 4)"
-                  }
-                ],
+                "painpoints": [],
                 "observations": [
-                  "gh unavailable — in-flight PR check degraded to 'no in-flight PRs' per protocol; PR #59 merge state unverified, implementer should check git log for that file",
-                  "read_file on `.fabro/workflows/revisor/prompts/file.md` is fs_hide-blocked; shell (sed/rg) works — implementer must use shell for that path",
-                  "fabro-16ff (security-affine revisor, ADR-0019) targets the same file but a different mechanism; implementer should not scope-creep into it"
+                  "Staged evidence (journal excerpt) for the acceptance criterion: `sd show fabro-b11a` — open, unassigned, labels grill/needs-user/decision — is a user-owned supersession candidate; under the new rule a revisor finding that supersedes it must cross-reference fabro-b11a in the new seed's description and journal `supersession candidate (user-owned, not closed): fabro-b11a` WITHOUT closing it — fabro-b11a remains open right now, consistent with the protected class.",
+                  "Nuance for the human gate: fabro-3b1b (cited in the seed as a user-owned design fork) carries BOTH `revision` and `needs-user` labels, so the literal close rule (`revision`-labeled OR `@fabro`) would admit closing it; only its `needs-user` status (ADR-0018 D3 user-assignment rule) protects it. If the intent is that needs-user seeds are never revisor-closable either, that needs one more clause — not added here because the seed's FIX text is the literal spec.",
+                  "Sequencing caveat resolved: PR #59 (de83a22, ADR-0019 capability gate) already landed as the latest commit touching this file; the edit layered cleanly on top with no conflicts."
                 ]
               }
             },
-            "notes": "Stage completed: planner",
+            "notes": "Stage completed: implementer",
             "usage": {
               "input": {
                 "usage": {
@@ -1984,10 +1975,10 @@
                     "model_id": "glm-5.3"
                   },
                   "tokens": {
-                    "input_tokens": 21335,
-                    "output_tokens": 1156,
-                    "reasoning_tokens": 602,
-                    "cache_read_tokens": 107712,
+                    "input_tokens": 20487,
+                    "output_tokens": 2801,
+                    "reasoning_tokens": 3423,
+                    "cache_read_tokens": 127744,
                     "cache_write_tokens": 0
                   }
                 },
@@ -1995,13 +1986,13 @@
                   "algorithm": "openai"
                 }
               },
-              "total_usd_micros": 65600
+              "total_usd_micros": 89270
             },
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 60656,
-              "tool_time_ms": 1757,
-              "active_time_ms": 62413
+              "inference_time_ms": 129372,
+              "tool_time_ms": 1749,
+              "active_time_ms": 131121
             }
           },
           "reviewer": {
@@ -2060,30 +2051,35 @@
               "active_time_ms": 45925
             }
           },
-          "implementer": {
+          "planner": {
             "status": "succeeded",
-            "preferred_label": "Implemented",
+            "preferred_label": "Seed claimed",
             "context_updates": {
-              "last_stage": "implementer",
-              "last_response": "All contracts intact, worktree clean (single intended file modified), no Rust crates touched so no fmt/clippy obligations. The work is complete — the journal excerpt below doubles as the staged evid",
-              "response.implementer": {
+              "last_stage": "planner",
+              "current_seed_id": "fabro-0b41",
+              "current_seed_brief": "Edit `.fabro/workflows/revisor/prompts/file.md` (the revisor Bookkeeper prompt; NOTE: read_file is fs_hide-blocked on `.fabro/**` for stages — read/write it via shell). Acceptance criteria:\n- Supersession rule (step 1 paragraph) states an ownership boundary: `sd close` under supersession applies ONLY to seeds labeled `revision` or assigned `@fabro`; user-owned or unassigned seeds are NEVER closed by the revisor (ADR-0018 D2 — the revisor owns nothing; reviewing is not owning).\n- When a finding supersedes a user-owned/unassigned seed: the prompt requires cross-referencing the old id in the new seed's description AND journaling `supersession candidate (user-owned, not closed): <id>` for the human gate.\n- Label backfill (`sd update <id> --set-labels revision`) is restricted to seeds already labeled `revision` or provably revisor-originated (Basis cites a revisor run).\n- The sd command reference table gains one sentence: 'ownership rule: close/relabel only your own or @fabro seeds — ADR-0018 D2'.\n- READS stay global: do NOT scope `sd search`/`sd list` — scoping reads would create duplicates against user-owned work; only writes are scoped.\n- Keep all existing prompt contracts intact (Basis-line mandate, capability gate ADR-0019, journal keys, outcome contract, exact commit paths).\n- Verification: staged evidence (test or journal excerpt) shows a user-owned supersession candidate being cross-referenced and NOT closed.\n- Sequencing caveat: seed says 'sequence AFTER PR #59 (same file)' — `gh` is unavailable here so PR #59's state is unverified; check `git log` for recent merges touching this file before editing to avoid conflicting with landed changes.",
+              "last_response": "Seed claimed: fabro-0b41. The revisor prompt's supersession rule and `sd close`/`set-labels` table rows are unscoped in the current tree, matching the seed's basis. One annotation: `gh` is unavailable",
+              "response.planner": {
                 "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.implementer",
-                "chars": 5699,
-                "preview": "All contracts intact, worktree clean (single intended file modified), no Rust crates touched so no fmt/clippy obligations. The work is complete — the journal excerpt below doubles as the staged evid"
+                "output_key": "output.planner",
+                "chars": 3201,
+                "preview": "Seed claimed: fabro-0b41. The revisor prompt's supersession rule and `sd close`/`set-labels` table rows are unscoped in the current tree, matching the seed's basis. One annotation: `gh` is unavailable"
               },
-              "lesson_capture": "nothing durable — skipped",
-              "implementation_summary": "Edited `.fabro/workflows/revisor/prompts/file.md` (shell-only, fs_hide carve-out): supersession paragraph now carries the ADR-0018 D2 ownership boundary (close only `revision`-labeled or `@fabro` seeds; user-owned/unassigned never closed; supersession of those requires cross-referencing the old id in the new seed description plus journaling `supersession candidate (user-owned, not closed): <id>`), the backfill table row restricts `--set-labels revision` to already-labeled or provably revisor-originated seeds, and the table gained the one-sentence ownership rule plus the reads-stay-global clause. All existing contracts (Basis line, ADR-0019 capability gate, journal keys, outcome contract, commit paths) untouched — diff shows exactly two hunks. PR #59 (`de83a22`) already landed, so sequencing was safe. Lesson capture: nothing durable — skipped. Per-criterion: PASS ownership boundary in supersession rule (step 1, `rg 'ADR-0018 D2'`=2); PASS cross-reference + journal key for user-owned candidates (exact key present, excerpt: `sd show fabro-b11a` = open/unassigned/user-owned, not closed); PASS backfill restriction (`rg 'never relabel user-owned or unassigned seeds'`=1); PASS one-sentence ownership rule under table; PASS reads stay global clause; PASS existing contracts intact; PASS staged journal-excerpt evidence in this response's journal.observations.",
+              "current_seed_title": "revisor: scope seed WRITES to its own set — supersession closes and label changes never touch user-owned seeds (ADR-0018)",
               "journal": {
-                "painpoints": [],
+                "painpoints": [
+                  {
+                    "text": "gh CLI is not installed in the planner sandbox, making the mandatory in-flight PR check (step 4) impossible to satisfy honestly; fabro-06e0 already tracks removing gh from the toolchain — planner prompts should mandate the documented credential-less fallback (fabro_runs_list) when gh is absent, where (develop planner prompt, step 4)"
+                  }
+                ],
                 "observations": [
-                  "Staged evidence (journal excerpt) for the acceptance criterion: `sd show fabro-b11a` — open, unassigned, labels grill/needs-user/decision — is a user-owned supersession candidate; under the new rule a revisor finding that supersedes it must cross-reference fabro-b11a in the new seed's description and journal `supersession candidate (user-owned, not closed): fabro-b11a` WITHOUT closing it — fabro-b11a remains open right now, consistent with the protected class.",
-                  "Nuance for the human gate: fabro-3b1b (cited in the seed as a user-owned design fork) carries BOTH `revision` and `needs-user` labels, so the literal close rule (`revision`-labeled OR `@fabro`) would admit closing it; only its `needs-user` status (ADR-0018 D3 user-assignment rule) protects it. If the intent is that needs-user seeds are never revisor-closable either, that needs one more clause — not added here because the seed's FIX text is the literal spec.",
-                  "Sequencing caveat resolved: PR #59 (de83a22, ADR-0019 capability gate) already landed as the latest commit touching this file; the edit layered cleanly on top with no conflicts."
+                  "gh unavailable — in-flight PR check degraded to 'no in-flight PRs' per protocol; PR #59 merge state unverified, implementer should check git log for that file",
+                  "read_file on `.fabro/workflows/revisor/prompts/file.md` is fs_hide-blocked; shell (sed/rg) works — implementer must use shell for that path",
+                  "fabro-16ff (security-affine revisor, ADR-0019) targets the same file but a different mechanism; implementer should not scope-creep into it"
                 ]
               }
             },
-            "notes": "Stage completed: implementer",
+            "notes": "Stage completed: planner",
             "usage": {
               "input": {
                 "usage": {
@@ -2092,10 +2088,10 @@
                     "model_id": "glm-5.3"
                   },
                   "tokens": {
-                    "input_tokens": 20487,
-                    "output_tokens": 2801,
-                    "reasoning_tokens": 3423,
-                    "cache_read_tokens": 127744,
+                    "input_tokens": 21335,
+                    "output_tokens": 1156,
+                    "reasoning_tokens": 602,
+                    "cache_read_tokens": 107712,
                     "cache_write_tokens": 0
                   }
                 },
@@ -2103,13 +2099,31 @@
                   "algorithm": "openai"
                 }
               },
-              "total_usd_micros": 89270
+              "total_usd_micros": 65600
             },
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 129372,
-              "tool_time_ms": 1749,
-              "active_time_ms": 131121
+              "inference_time_ms": 60656,
+              "tool_time_ms": 1757,
+              "active_time_ms": 62413
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 4382,
+              "active_time_ms": 4382
             }
           },
           "evidence": {
@@ -2125,37 +2139,142 @@
               "tool_time_ms": 390,
               "active_time_ms": 390
             }
-          },
-          "closeout": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/03e06b3ad8c1b06cc0e53412410a3891c30131aaa24aa365064412dbaaac6151"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 293,
-              "active_time_ms": 293
-            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "c1ac03d97d5513b13bbea53748319cae614522b2",
         "node_visits": {
-          "reviewer": 1,
+          "planner": 1,
+          "start": 1,
+          "tester": 1,
           "implementer": 1,
           "closeout": 1,
-          "start": 1,
-          "planner": 1,
-          "tester": 1,
+          "reviewer": 1,
           "evidence": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M20PXPFESQM8HAWF4MSXAKX5.jsonl b/.fabro/journal/01M20PXPFESQM8HAWF4MSXAKX5.jsonl\nindex b496cb6..c23e9ff 100644\n--- a/.fabro/journal/01M20PXPFESQM8HAWF4MSXAKX5.jsonl\n+++ b/.fabro/journal/01M20PXPFESQM8HAWF4MSXAKX5.jsonl\n@@ -4,3 +4,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PXPFESQM8HAWF4MSXAKX5\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:35:40Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PXPFESQM8HAWF4MSXAKX5\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:35:45Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PXPFESQM8HAWF4MSXAKX5\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:36:38Z\",\"data\":{\"painpoints\":[{\"text\":\"The evidence capture preview omitted the first 6 lines of command output (run 01M20PXPFESQM8HAWF4MSXAKX5, tester/evidence stage), which is where the implementer's staged journal-excerpt verification appeared to live; I had to re-verify the 'user-owned seed not closed' criterion directly via `sd show fabro-b11a` (confirmed open). Suggestion: have evidence.nu emit the journal/staged-verification excerpt after the integrity header rather than at the top, so preview truncation doesn't cut the acceptance-critical portion.\"}],\"observations\":[\"Verified all five prompt-edit acceptance criteria against the live file via rg (ownership boundary, journal key + cross-reference requirement, backfill restriction, one-sentence table rule, reads-stay-global clause) — not just the diff preview.\",\"Confirmed existing contracts intact post-edit: ADR-0019 capability gate references (6 matches), Basis-line mandate, journal keys, and outcome contract all present in .fabro/workflows/revisor/prompts/file.md.\",\"Sequencing caveat from the seed brief resolved: PR #59 (de83a22) landed before the implementer commit, so the same-file edit was conflict-free.\",\"Capability delta axis: this seed narrows revisor write authority (least-privilege, cites ADR-0018 D2) — no capability expansion, no user-decision record needed.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PXPFESQM8HAWF4MSXAKX5\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:36:43Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex b97b022..e92d9be 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -272,7 +272,7 @@\n {\"id\":\"fabro-e505\",\"title\":\"engine: honor run.integrations.github token grants ONLY for User-principal runs — agent-authored config must never mint credentials (ADR-0019.6)\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":0,\"createdAt\":\"2026-09-07T22:44:13.872Z\",\"updatedAt\":\"2026-09-08T06:52:33.419Z\",\"assignee\":\"agent\",\"description\":\"ESCALATION CHAIN (user analysis 2026-09-08): the line's agents WRITE their own workflow configs (.fabro/workflows/** via PRs) - so an agent could add [run.integrations.github] permissions and the engine would mint a write-capable GITHUB_TOKEN into its own sandbox env (self-escalation + exfiltration). Per ADR-0019.6 the config possibility itself must go.\\n\\nCLOSED 2026-09-08 with full acceptance evidence:\\n1. Implementation 52fbb843c: capability_gate::gate_github_integration at the run-start seam (server.rs), neutralizing resolved integrations for every non-User principal with a warn naming ADR-0019.6. Unit tests: user keeps, worker denied, system empty.\\n2. Wire test 919b0d18c: run_start_grants_github_token_bridge_only_to_user_principals - in-process full-seam proof via HTTP run create + execute_run; capturing wait-node handler asserts User run keeps token bridge + GITHUB_TOKEN in stage env, Worker run (run-tools worker token creator) gets neither. 926/926 suite green, clippy+fmt clean.\\n3. Deployed: image 2026-09-08T06:05Z contains the gate (binary string verified in container fabro-fabro-1), container healthy, conductor schedule enabled, on_overlap=skip intact.\\nFollow-up filed: fabro-c274 (github_app resolution precedes the gate; no-creds worker runs hard-fail instead of silent no-token - latent availability, fail-closed).\",\"labels\":[\"engine\"],\"closedAt\":\"2026-09-08T06:52:33.419Z\"}\n {\"id\":\"fabro-0f22\",\"title\":\"engine: scrub clone token from sandbox remote URL — engine git ops switch to transient per-exec credentials (user decision 2026-09-08)\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T22:44:13.979Z\",\"updatedAt\":\"2026-09-07T22:50:21.231Z\",\"description\":\"USER DECISION 2026-09-08: 'das clone token darf auch nicht zur verfuegung stehen, die remote url wird nach dem clonen nicht gebraucht und ist eine tickende zeitbombe' - option (a) chosen: credential-free sandbox, repo-contents access only (ADR-0019.6).\\n\\nCURRENT STATE: docker.rs/daytona clone embeds the minted token in the remote origin URL (embed_token_in_url); push_credentials.rs drives engine pushes through EXACTLY that embedded token (compare -> set-url -> record, with re-embed drift recovery at sandbox.rs:1994-1998; daytona rewrites set-url on refresh). Any agent can read it via 'git remote get-url origin' and exfiltrate via curl/web_fetch.\\n\\nDESIGN (decided): (1) after clone+checkout completes, scrub the remote to the CLEAN https URL ('git remote set-url origin https://github.com/<owner>/<repo>') - the token never persists in repo config; (2) ALL engine-side git network ops (branch push, fetch/refresh, drift recovery) switch to TRANSIENT per-exec credentials: docker_exec_shell already accepts env_vars - pass a GIT_CONFIG overlay (GIT_CONFIG_COUNT/GIT_CONFIG_KEY_x=http.<origin>.extraheader with the basic-auth header) exactly like git_bridge.rs merge_git_bridge_env already builds for shells; the credential exists only in that exec's env, never in repo config, never in agent tool env; (3) the re-embed drift path becomes re-MINT + transient exec instead of set-url; (4) agent-side fetch/pull to origin degrade (they should not need network git - engine does all forge ops); document that in the iterate/agent guidance if a prompt references git pull.\\n\\nAcceptance: 'git remote get-url origin' in a fresh run container shows the CLEAN url (no token anywhere in config: grep -r x-access-token .git -> empty); engine push/refresh still work (run PRs merge as before, live-verified on the next line pass); no credential reachable from any agent shell or journal; wire tests for push+scrub+transient-exec.\",\"labels\":[\"engine\",\"workflows\"],\"assignee\":\"agent\"}\n {\"id\":\"fabro-9e49\",\"title\":\"Make current_seed_brief criteria newline-bulleted in the planner prompt\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T23:11:26.439Z\",\"updatedAt\":\"2026-09-07T23:20:30.046Z\",\"description\":\"Basis: run 01M1Z1PK3D7R9MEWDP7QDZMA1D (seed fabro-cf76). The planner's current_seed_brief (context values, seq 62) crammed all six acceptance criteria into one mashed single line despite .fabro/workflows/develop/prompts/planner.md step 6 demanding BULLETED criteria; the implementer (seq 107) had to re-split the criteria itself for the PASS/FAIL report — exactly the misparse surface the bullets were meant to remove. Change: in planner.md step 6, require newline-separated bullets (\\\\n- ) inside the current_seed_brief JSON string instead of one mashed line. Expected effect: clean criterion→PASS/FAIL mapping for implementer and reviewer; fewer ambiguity-driven Changes-requested cycles (~2.5 min + ~$0.15 each per the seed's own estimate). Not a duplicate: existing brief-quality seeds (fabro-ad1b, fabro-b8ed, fabro-fb19) target implementer-side citation or brief content, not planner-side bullet formatting. Cross-refs: fabro-ad1b, fabro-b8ed, fabro-fb19.\\nBasis: run 01M1Z1PK3D7R9MEWDP7QDZMA1D, workflow version be58840fab1c246bee538760df54ab8f8bfe6bb0bcf0356df6aaf38d5f14ef20, commit ce495789f5be8fbe233670d0e0c3a72ddd9d4bca\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-0b41\",\"title\":\"revisor: scope seed WRITES to its own set — supersession closes and label changes never touch user-owned seeds (ADR-0018)\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T23:16:53.343Z\",\"updatedAt\":\"2026-09-08T14:32:53.051Z\",\"assignee\":\"fabro\",\"description\":\"USER FINDING 2026-09-08 (revisor prompt review): the revisor's seed WRITE operations are unscoped - the supersession rule (prompts/file.md) says 'a finding SUPERSEDES an existing open seed... file the new seed, then immediately sd close <old-id>' with NO ownership boundary, so the revisor could close USER-owned seeds (design forks like fabro-3b1b, grill topics like fabro-b11a, upstream-posture seeds) and thereby remove items from the user's decision space - an ADR-0018 violation (the revisor owns nothing; reviewing is not owning). READS stay GLOBAL (sd search against the full inventory is correct - duplication is assignment-orthogonal; scoping the search would CREATE duplicates against user-owned work).\\n\\nFIX (prompts/file.md, sequence AFTER PR #59 which touches the same file): (1) supersession closes ONLY seeds labeled revision (revisor-originated set) or assigned @fabro; user-owned/unassigned seeds are NEVER closed by the revisor - when a finding supersedes one, cross-reference it in the new seed's description and journal 'supersession candidate (user-owned, not closed): <id>' for the human gate; (2) label backfill (--set-labels revision) only on seeds already labeled revision or provably revisor-originated (Basis cites a revisor run); (3) add one sentence to the tracker command reference table: 'ownership rule: close/relabel only your own or @fabro seeds - ADR-0018 D2'. Acceptance: prompt states the ownership boundary; a staged test or journal evidence shows a user-owned supersession candidate is cross-referenced, not closed.\",\"labels\":[\"workflows\",\"revision\"]}\n+{\"id\":\"fabro-0b41\",\"title\":\"revisor: scope seed WRITES to its own set — supersession closes and label changes never touch user-owned seeds (ADR-0018)\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T23:16:53.343Z\",\"updatedAt\":\"2026-09-08T14:36:43.634Z\",\"assignee\":\"fabro\",\"description\":\"USER FINDING 2026-09-08 (revisor prompt review): the revisor's seed WRITE operations are unscoped - the supersession rule (prompts/file.md) says 'a finding SUPERSEDES an existing open seed... file the new seed, then immediately sd close <old-id>' with NO ownership boundary, so the revisor could close USER-owned seeds (design forks like fabro-3b1b, grill topics like fabro-b11a, upstream-posture seeds) and thereby remove items from the user's decision space - an ADR-0018 violation (the revisor owns nothing; reviewing is not owning). READS stay GLOBAL (sd search against the full inventory is correct - duplication is assignment-orthogonal; scoping the search would CREATE duplicates against user-owned work).\\n\\nFIX (prompts/file.md, sequence AFTER PR #59 which touches the same file): (1) supersession closes ONLY seeds labeled revision (revisor-originated set) or assigned @fabro; user-owned/unassigned seeds are NEVER closed by the revisor - when a finding supersedes one, cross-reference it in the new seed's description and journal 'supersession candidate (user-owned, not closed): <id>' for the human gate; (2) label backfill (--set-labels revision) only on seeds already labeled revision or provably revisor-originated (Basis cites a revisor run); (3) add one sentence to the tracker command reference table: 'ownership rule: close/relabel only your own or @fabro seeds - ADR-0018 D2'. Acceptance: prompt states the ownership boundary; a staged test or journal evidence shows a user-owned supersession candidate is cross-referenced, not closed.\",\"labels\":[\"workflows\",\"revision\"],\"closedAt\":\"2026-09-08T14:36:43.634Z\"}\n {\"id\":\"fabro-8be7\",\"title\":\"parse_auth_logout_all fails when FABRO_SERVER is set (env-dependent unit test)\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-08T06:19:31.269Z\",\"updatedAt\":\"2026-09-08T06:19:31.269Z\",\"description\":\"fabro-cli bin test tests::parse_auth_logout_all (lib/apps/fabro-cli/src/main.rs) asserts args.server.server.is_none(), but the --server default resolves from the FABRO_SERVER env var. Fails in shells where FABRO_SERVER is exported (reproduced 2026-09-08, agent session had FABRO_SERVER=http://127.0.0.1:32276); passes with 'env -u FABRO_SERVER cargo nextest run -p fabro-cli --bin fabro parse_auth_logout_all'. Fix: scrub/lock FABRO_SERVER in the test instead of assuming a clean shell. Mulch: testing/parse-auth-logout-all-env-dependent.\"}\n {\"id\":\"fabro-c274\",\"title\":\"engine: github_app credential resolution runs BEFORE the ADR-0019.6 gate - non-user runs with permissions-declaring config hard-fail when no GITHUB_TOKEN is configured\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":2,\"createdAt\":\"2026-09-08T06:52:05.704Z\",\"updatedAt\":\"2026-09-08T07:09:28.283Z\",\"labels\":[\"engine\"],\"description\":\"Found during the fabro-e505 wire test (2026-09-08): github_app resolution ran BEFORE the ADR-0019.6 gate; the is_token_requested() branch hard-failed for EVERY principal when the vault had no GITHUB_TOKEN, making Worker runs with permissions-declaring config unrunnable without credentials.\\n\\nCLOSED 2026-09-08 (9d1ae6162, direct agent work on explicit user assignment, line stopped): resolve_integration + gate now run BEFORE the credential lookup; the hard-fail branch keys on the GATED integration (empty for non-User principals, so only User principals reach it); agent-side runs fall through to the best-effort clone/pull-request branches and execute credential-free per the e505 spec. Verification: new test worker_principal_run_without_vault_token_takes_no_token_path (empty vault, worker run succeeds, no bridge, no GITHUB_TOKEN in stage env); 927/927 suite green; clippy+fmt clean. Deploy note: lib/ change -> needs the next just up (line stopped; fold into the next deploy window).\",\"assignee\":\"fabro\",\"closedAt\":\"2026-09-08T07:09:28.283Z\"}\n {\"id\":\"fabro-d43a\",\"title\":\"workflows: unify the self-reflection journal schema - conductor + merge-upstream stages must emit the standard painpoints/observations shape (prompt fix)\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T06:56:10.174Z\",\"updatedAt\":\"2026-09-08T07:03:10.714Z\",\"labels\":[\"workflows\",\"revision\"],\"description\":\"USER FINDING (2026-09-08): the journal the conductor-driven passes produce does not match the standard self-reflection format. ALL workflows must use the SAME self-reflection schema.\\n\\nCLOSED 2026-09-08, implemented directly by the agent on explicit user assignment (line stopped, ~15 min):\\n- 6 prompts now carry the standard schema block VERBATIM (painpoints as [{\\\"text\\\": ...}] objects + observations as strings + 'on EVERY pass / silence is a missing report / always emit BOTH keys / \\\"none\\\" valid / engine records durably'): merge-upstream merge.md + review.md, conductor survey.md + develop-leg.md + merge-leg.md + revise-leg.md. Role specifics live only in the observation placeholders (merge: upstream count/conflict classes/gate duration; review: touchpoints/time/obsolescence themes; survey: count/subject/revisor backlog; legs: child id/status/gate-wait outcome). The informal 'journal it' call-sites in the procedure bodies now bind to the declared shape.\\n- Mechanism: copy-paste (12 blocks total across the 4 workflows), not the TemplateIncludeResolver variant - schema equality was the mandate; the include refactor stays available as follow-up if drift ever appears.\\n- stage-journal.nu untouched (schema-agnostic by design). Legacy plain-string painpoint lines stay as-is (not migrated).\\n- Verification: validate-workflows.nu green (18/22 zero-diagnostic; the 4 graphs with diagnostics - merge-upstream/develop/revisor/conductor - are pre-existing advisories untouched by this prompt-only diff); each of the 6 files carries exactly one schema block; diff is prompt-only, no binary need.\\n- Live proof pending by design: next merge-upstream pass must journal painpoints as [{\\\"text\\\": ...}] objects and next conductor pass must carry non-empty survey/leg journal data - verify when the line is re-enabled (conductor was stopped by the user for session end).\",\"assignee\":\"agent\",\"closedAt\":\"2026-09-08T07:03:10.714Z\"}\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 12,
+          "deletions": 3
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-08T14:36:49.313722168Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 281126,
+      "inference_time_ms": 235557,
+      "tool_time_ms": 8967,
+      "active_time_ms": 244524
+    },
+    "final_git_commit_sha": "c1ac03d97d5513b13bbea53748319cae614522b2",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 63087,
+          "inference_time_ms": 60656,
+          "tool_time_ms": 1757,
+          "active_time_ms": 62413
+        },
+        "billing_usd_micros": 65600,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 131694,
+          "inference_time_ms": 129372,
+          "tool_time_ms": 1749,
+          "active_time_ms": 131121
+        },
+        "billing_usd_micros": 89270,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 4386,
+          "inference_time_ms": 0,
+          "tool_time_ms": 4382,
+          "active_time_ms": 4382
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 394,
+          "inference_time_ms": 0,
+          "tool_time_ms": 390,
+          "active_time_ms": 390
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 46523,
+          "inference_time_ms": 45529,
+          "tool_time_ms": 396,
+          "active_time_ms": 45925
+        },
+        "billing_usd_micros": 38687,
+        "retries": 0
+      },
+      {
+        "stage_id": "closeout",
+        "stage_label": "closeout",
+        "timing": {
+          "wall_time_ms": 298,
+          "inference_time_ms": 0,
+          "tool_time_ms": 293,
+          "active_time_ms": 293
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 57752,
+      "output_tokens": 4961,
+      "total_tokens": 331170,
+      "reasoning_tokens": 5097,
+      "cache_read_tokens": 263360,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 193557
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M20PXPFESQM8HAWF4MSXAKX5.jsonl b/.fabro/journal/01M20PXPFESQM8HAWF4MSXAKX5.jsonl\nnew file mode 100644\nindex 0000000..c23e9ff\n--- /dev/null\n+++ b/.fabro/journal/01M20PXPFESQM8HAWF4MSXAKX5.jsonl\n@@ -0,0 +1,7 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PXPFESQM8HAWF4MSXAKX5\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:32:09Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PXPFESQM8HAWF4MSXAKX5\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:33:13Z\",\"data\":{\"painpoints\":[{\"text\":\"gh CLI is not installed in the planner sandbox, making the mandatory in-flight PR check (step 4) impossible to satisfy honestly; fabro-06e0 already tracks removing gh from the toolchain — planner prompts should mandate the documented credential-less fallback (fabro_runs_list) when gh is absent, where (develop planner prompt, step 4)\"}],\"observations\":[\"gh unavailable — in-flight PR check degraded to 'no in-flight PRs' per protocol; PR #59 merge state unverified, implementer should check git log for that file\",\"read_file on `.fabro/workflows/revisor/prompts/file.md` is fs_hide-blocked; shell (sed/rg) works — implementer must use shell for that path\",\"fabro-16ff (security-affine revisor, ADR-0019) targets the same file but a different mechanism; implementer should not scope-creep into it\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PXPFESQM8HAWF4MSXAKX5\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:35:30Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Staged evidence (journal excerpt) for the acceptance criterion: `sd show fabro-b11a` — open, unassigned, labels grill/needs-user/decision — is a user-owned supersession candidate; under the new rule a revisor finding that supersedes it must cross-reference fabro-b11a in the new seed's description and journal `supersession candidate (user-owned, not closed): fabro-b11a` WITHOUT closing it — fabro-b11a remains open right now, consistent with the protected class.\",\"Nuance for the human gate: fabro-3b1b (cited in the seed as a user-owned design fork) carries BOTH `revision` and `needs-user` labels, so the literal close rule (`revision`-labeled OR `@fabro`) would admit closing it; only its `needs-user` status (ADR-0018 D3 user-assignment rule) protects it. If the intent is that needs-user seeds are never revisor-closable either, that needs one more clause — not added here because the seed's FIX text is the literal spec.\",\"Sequencing caveat resolved: PR #59 (de83a22, ADR-0019 capability gate) already landed as the latest commit touching this file; the edit layered cleanly on top with no conflicts.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PXPFESQM8HAWF4MSXAKX5\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:35:40Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PXPFESQM8HAWF4MSXAKX5\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:35:45Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PXPFESQM8HAWF4MSXAKX5\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:36:38Z\",\"data\":{\"painpoints\":[{\"text\":\"The evidence capture preview omitted the first 6 lines of command output (run 01M20PXPFESQM8HAWF4MSXAKX5, tester/evidence stage), which is where the implementer's staged journal-excerpt verification appeared to live; I had to re-verify the 'user-owned seed not closed' criterion directly via `sd show fabro-b11a` (confirmed open). Suggestion: have evidence.nu emit the journal/staged-verification excerpt after the integrity header rather than at the top, so preview truncation doesn't cut the acceptance-critical portion.\"}],\"observations\":[\"Verified all five prompt-edit acceptance criteria against the live file via rg (ownership boundary, journal key + cross-reference requirement, backfill restriction, one-sentence table rule, reads-stay-global clause) — not just the diff preview.\",\"Confirmed existing contracts intact post-edit: ADR-0019 capability gate references (6 matches), Basis-line mandate, journal keys, and outcome contract all present in .fabro/workflows/revisor/prompts/file.md.\",\"Sequencing caveat from the seed brief resolved: PR #59 (de83a22) landed before the implementer commit, so the same-file edit was conflict-free.\",\"Capability delta axis: this seed narrows revisor write authority (least-privilege, cites ADR-0018 D2) — no capability expansion, no user-decision record needed.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20PXPFESQM8HAWF4MSXAKX5\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T14:36:43Z\",\"data\":{}}\ndiff --git a/.fabro/workflows/revisor/prompts/file.md b/.fabro/workflows/revisor/prompts/file.md\nindex 39f6b95..d4c27e3 100644\n--- a/.fabro/workflows/revisor/prompts/file.md\n+++ b/.fabro/workflows/revisor/prompts/file.md\n@@ -14,7 +14,9 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n\n | `sd list --format compact` | Existing seeds; the title-level overview before creating. |\n | `sd search \"<theme keyword>\" --format compact` | Run ONE search per finding's central theme BEFORE creating — content duplicates hide behind different titles. Only create when no existing seed (open OR closed) names the same concrete change; the analyzer pre-deduplicates, you are the guard for races and title-blind misses. |\n | `sd close <id> --reason \"<text>\"` | Close a superseded seed. Use ONLY under the supersession rule below. |\n-| `sd update <id> --set-labels revision` | Label an older revisor seed that predates the label convention (backfill, rare). |\n+| `sd update <id> --set-labels revision` | Label an older revisor seed that predates the label convention (backfill, rare). ONLY seeds already labeled `revision` or provably revisor-originated (Basis line cites a revisor run) — never relabel user-owned or unassigned seeds. |\n+\n+Ownership rule: close/relabel only your own or @fabro seeds — ADR-0018 D2. Reads stay global: `sd list` and `sd search` always run against the full inventory — scoping reads would create duplicates against user-owned work; only writes are scoped.\n \n ## Procedure\n \n@@ -22,7 +24,7 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n\n \n    Basis line (ADR-0015, MANDATORY in every seed description, last line): `Basis: run <run-id>, workflow version <workflow_version_id or \"absent\">, commit <git rev-parse HEAD of this worktree>`. The develop planner's stale-basis check consumes exactly this line — a seed without a basis is judged against the current tree before claiming anyway, so omitting it only degrades triage.\n \n-   Supersession rule (distinct from duplication): a finding DUPLICATES an existing seed when it names the same change — drop it and note `duplicate_of: <id>` in the journal. A finding SUPERSEDES an existing open seed only when it replaces the SAME target (same file/mechanism) with a strictly better solution — file the new seed, then immediately `sd close <old-id> --reason \"superseded by <new-id>: <one-line why the new one replaces it>\"`. Mere thematic overlap (different files or complementary cases) is NOT supersession: cross-reference the old id in the new description instead and close nothing. When unsure, close nothing — the journal records the suspicion for the human gate.\n+   Supersession rule (distinct from duplication): a finding DUPLICATES an existing seed when it names the same change — drop it and note `duplicate_of: <id>` in the journal. A finding SUPERSEDES an existing open seed only when it replaces the SAME target (same file/mechanism) with a strictly better solution — file the new seed, then immediately `sd close <old-id> --reason \"superseded by <new-id>: <one-line why the new one replaces it>\"`. Ownership boundary (ADR-0018 D2 — the revisor owns nothing; reviewing is not owning): `sd close` under supersession applies ONLY to seeds labeled `revision` or assigned `@fabro`; user-owned or unassigned seeds are NEVER closed by the revisor. When a finding supersedes a user-owned or unassigned seed: file the new seed with the old id cross-referenced in its description, close NOTHING, and journal `supersession candidate (user-owned, not closed): <id>` for the human gate. Mere thematic overlap (different files or complementary cases) is NOT supersession: cross-reference the old id in the new description instead and close nothing. When unsure, close nothing — the journal records the suspicion for the human gate.\n 2. Write the revision report to `.fabro/revisions/<run-id>.md`. This file IS the bookkeeping marker — its absence from the base branch is what marks the run unrevised. Shape:\n \n ```\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 3fdc7ea..e92d9be 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -272,7 +272,7 @@\n {\"id\":\"fabro-e505\",\"title\":\"engine: honor run.integrations.github token grants ONLY for User-principal runs — agent-authored config must never mint credentials (ADR-0019.6)\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":0,\"createdAt\":\"2026-09-07T22:44:13.872Z\",\"updatedAt\":\"2026-09-08T06:52:33.419Z\",\"assignee\":\"agent\",\"description\":\"ESCALATION CHAIN (user analysis 2026-09-08): the line's agents WRITE their own workflow configs (.fabro/workflows/** via PRs) - so an agent could add [run.integrations.github] permissions and the engine would mint a write-capable GITHUB_TOKEN into its own sandbox env (self-escalation + exfiltration). Per ADR-0019.6 the config possibility itself must go.\\n\\nCLOSED 2026-09-08 with full acceptance evidence:\\n1. Implementation 52fbb843c: capability_gate::gate_github_integration at the run-start seam (server.rs), neutralizing resolved integrations for every non-User principal with a warn naming ADR-0019.6. Unit tests: user keeps, worker denied, system empty.\\n2. Wire test 919b0d18c: run_start_grants_github_token_bridge_only_to_user_principals - in-process full-seam proof via HTTP run create + execute_run; capturing wait-node handler asserts User run keeps token bridge + GITHUB_TOKEN in stage env, Worker run (run-tools worker token creator) gets neither. 926/926 suite green, clippy+fmt clean.\\n3. Deployed: image 2026-09-08T06:05Z contains the gate (binary string verified in container fabro-fabro-1), container healthy, conductor schedule enabled, on_overlap=skip intact.\\nFollow-up filed: fabro-c274 (github_app resolution precedes the gate; no-creds worker runs hard-fail instead of silent no-token - latent availability, fail-closed).\",\"labels\":[\"engine\"],\"closedAt\":\"2026-09-08T06:52:33.419Z\"}\n {\"id\":\"fabro-0f22\",\"title\":\"engine: scrub clone token from sandbox remote URL — engine git ops switch to transient per-exec credentials (user decision 2026-09-08)\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T22:44:13.979Z\",\"updatedAt\":\"2026-09-07T22:50:21.231Z\",\"description\":\"USER DECISION 2026-09-08: 'das clone token darf auch nicht zur verfuegung stehen, die remote url wird nach dem clonen nicht gebraucht und ist eine tickende zeitbombe' - option (a) chosen: credential-free sandbox, repo-contents access only (ADR-0019.6).\\n\\nCURRENT STATE: docker.rs/daytona clone embeds the minted token in the remote origin URL (embed_token_in_url); push_credentials.rs drives engine pushes through EXACTLY that embedded token (compare -> set-url -> record, with re-embed drift recovery at sandbox.rs:1994-1998; daytona rewrites set-url on refresh). Any agent can read it via 'git remote get-url origin' and exfiltrate via curl/web_fetch.\\n\\nDESIGN (decided): (1) after clone+checkout completes, scrub the remote to the CLEAN https URL ('git remote set-url origin https://github.com/<owner>/<repo>') - the token never persists in repo config; (2) ALL engine-side git network ops (branch push, fetch/refresh, drift recovery) switch to TRANSIENT per-exec credentials: docker_exec_shell already accepts env_vars - pass a GIT_CONFIG overlay (GIT_CONFIG_COUNT/GIT_CONFIG_KEY_x=http.<origin>.extraheader with the basic-auth header) exactly like git_bridge.rs merge_git_bridge_env already builds for shells; the credential exists only in that exec's env, never in repo config, never in agent tool env; (3) the re-embed drift path becomes re-MINT + transient exec instead of set-url; (4) agent-side fetch/pull to origin degrade (they should not need network git - engine does all forge ops); document that in the iterate/agent guidance if a prompt references git pull.\\n\\nAcceptance: 'git remote get-url origin' in a fresh run container shows the CLEAN url (no token anywhere in config: grep -r x-access-token .git -> empty); engine push/refresh still work (run PRs merge as before, live-verified on the next line pass); no credential reachable from any agent shell or journal; wire tests for push+scrub+transient-exec.\",\"labels\":[\"engine\",\"workflows\"],\"assignee\":\"agent\"}\n {\"id\":\"fabro-9e49\",\"title\":\"Make current_seed_brief criteria newline-bulleted in the planner prompt\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T23:11:26.439Z\",\"updatedAt\":\"2026-09-07T23:20:30.046Z\",\"description\":\"Basis: run 01M1Z1PK3D7R9MEWDP7QDZMA1D (seed fabro-cf76). The planner's current_seed_brief (context values, seq 62) crammed all six acceptance criteria into one mashed single line despite .fabro/workflows/develop/prompts/planner.md step 6 demanding BULLETED criteria; the implementer (seq 107) had to re-split the criteria itself for the PASS/FAIL report — exactly the misparse surface the bullets were meant to remove. Change: in planner.md step 6, require newline-separated bullets (\\\\n- ) inside the current_seed_brief JSON string instead of one mashed line. Expected effect: clean criterion→PASS/FAIL mapping for implementer and reviewer; fewer ambiguity-driven Changes-requested cycles (~2.5 min + ~$0.15 each per the seed's own estimate). Not a duplicate: existing brief-quality seeds (fabro-ad1b, fabro-b8ed, fabro-fb19) target implementer-side citation or brief content, not planner-side bullet formatting. Cross-refs: fabro-ad1b, fabro-b8ed, fabro-fb19.\\nBasis: run 01M1Z1PK3D7R9MEWDP7QDZMA1D, workflow version be58840fab1c246bee538760df54ab8f8bfe6bb0bcf0356df6aaf38d5f14ef20, commit ce495789f5be8fbe233670d0e0c3a72ddd9d4bca\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-0b41\",\"title\":\"revisor: scope seed WRITES to its own set — supersession closes and label changes never touch user-owned seeds (ADR-0018)\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T23:16:53.343Z\",\"updatedAt\":\"2026-09-07T23:16:53.343Z\",\"assignee\":\"fabro\",\"description\":\"USER FINDING 2026-09-08 (revisor prompt review): the revisor's seed WRITE operations are unscoped - the supersession rule (prompts/file.md) says 'a finding SUPERSEDES an existing open seed... file the new seed, then immediately sd close <old-id>' with NO ownership boundary, so the revisor could close USER-owned seeds (design forks like fabro-3b1b, grill topics like fabro-b11a, upstream-posture seeds) and thereby remove items from the user's decision space - an ADR-0018 violation (the revisor owns nothing; reviewing is not owning). READS stay GLOBAL (sd search against the full inventory is correct - duplication is assignment-orthogonal; scoping the search would CREATE duplicates against user-owned work).\\n\\nFIX (prompts/file.md, sequence AFTER PR #59 which touches the same file): (1) supersession closes ONLY seeds labeled revision (revisor-originated set) or assigned @fabro; user-owned/unassigned seeds are NEVER closed by the revisor - when a finding supersedes one, cross-reference it in the new seed's description and journal 'supersession candidate (user-owned, not closed): <id>' for the human gate; (2) label backfill (--set-labels revision) only on seeds already labeled revision or provably revisor-originated (Basis cites a revisor run); (3) add one sentence to the tracker command reference table: 'ownership rule: close/relabel only your own or @fabro seeds - ADR-0018 D2'. Acceptance: prompt states the ownership boundary; a staged test or journal evidence shows a user-owned supersession candidate is cross-referenced, not closed.\",\"labels\":[\"workflows\",\"revision\"]}\n+{\"id\":\"fabro-0b41\",\"title\":\"revisor: scope seed WRITES to its own set — supersession closes and label changes never touch user-owned seeds (ADR-0018)\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T23:16:53.343Z\",\"updatedAt\":\"2026-09-08T14:36:43.634Z\",\"assignee\":\"fabro\",\"description\":\"USER FINDING 2026-09-08 (revisor prompt review): the revisor's seed WRITE operations are unscoped - the supersession rule (prompts/file.md) says 'a finding SUPERSEDES an existing open seed... file the new seed, then immediately sd close <old-id>' with NO ownership boundary, so the revisor could close USER-owned seeds (design forks like fabro-3b1b, grill topics like fabro-b11a, upstream-posture seeds) and thereby remove items from the user's decision space - an ADR-0018 violation (the revisor owns nothing; reviewing is not owning). READS stay GLOBAL (sd search against the full inventory is correct - duplication is assignment-orthogonal; scoping the search would CREATE duplicates against user-owned work).\\n\\nFIX (prompts/file.md, sequence AFTER PR #59 which touches the same file): (1) supersession closes ONLY seeds labeled revision (revisor-originated set) or assigned @fabro; user-owned/unassigned seeds are NEVER closed by the revisor - when a finding supersedes one, cross-reference it in the new seed's description and journal 'supersession candidate (user-owned, not closed): <id>' for the human gate; (2) label backfill (--set-labels revision) only on seeds already labeled revision or provably revisor-originated (Basis cites a revisor run); (3) add one sentence to the tracker command reference table: 'ownership rule: close/relabel only your own or @fabro seeds - ADR-0018 D2'. Acceptance: prompt states the ownership boundary; a staged test or journal evidence shows a user-owned supersession candidate is cross-referenced, not closed.\",\"labels\":[\"workflows\",\"revision\"],\"closedAt\":\"2026-09-08T14:36:43.634Z\"}\n {\"id\":\"fabro-8be7\",\"title\":\"parse_auth_logout_all fails when FABRO_SERVER is set (env-dependent unit test)\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-08T06:19:31.269Z\",\"updatedAt\":\"2026-09-08T06:19:31.269Z\",\"description\":\"fabro-cli bin test tests::parse_auth_logout_all (lib/apps/fabro-cli/src/main.rs) asserts args.server.server.is_none(), but the --server default resolves from the FABRO_SERVER env var. Fails in shells where FABRO_SERVER is exported (reproduced 2026-09-08, agent session had FABRO_SERVER=http://127.0.0.1:32276); passes with 'env -u FABRO_SERVER cargo nextest run -p fabro-cli --bin fabro parse_auth_logout_all'. Fix: scrub/lock FABRO_SERVER in the test instead of assuming a clean shell. Mulch: testing/parse-auth-logout-all-env-dependent.\"}\n {\"id\":\"fabro-c274\",\"title\":\"engine: github_app credential resolution runs BEFORE the ADR-0019.6 gate - non-user runs with permissions-declaring config hard-fail when no GITHUB_TOKEN is configured\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":2,\"createdAt\":\"2026-09-08T06:52:05.704Z\",\"updatedAt\":\"2026-09-08T07:09:28.283Z\",\"labels\":[\"engine\"],\"description\":\"Found during the fabro-e505 wire test (2026-09-08): github_app resolution ran BEFORE the ADR-0019.6 gate; the is_token_requested() branch hard-failed for EVERY principal when the vault had no GITHUB_TOKEN, making Worker runs with permissions-declaring config unrunnable without credentials.\\n\\nCLOSED 2026-09-08 (9d1ae6162, direct agent work on explicit user assignment, line stopped): resolve_integration + gate now run BEFORE the credential lookup; the hard-fail branch keys on the GATED integration (empty for non-User principals, so only User principals reach it); agent-side runs fall through to the best-effort clone/pull-request branches and execute credential-free per the e505 spec. Verification: new test worker_principal_run_without_vault_token_takes_no_token_path (empty vault, worker run succeeds, no bridge, no GITHUB_TOKEN in stage env); 927/927 suite green; clippy+fmt clean. Deploy note: lib/ change -> needs the next just up (line stopped; fold into the next deploy window).\",\"assignee\":\"fabro\",\"closedAt\":\"2026-09-08T07:09:28.283Z\"}\n {\"id\":\"fabro-d43a\",\"title\":\"workflows: unify the self-reflection journal schema - conductor + merge-upstream stages must emit the standard painpoints/observations shape (prompt fix)\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T06:56:10.174Z\",\"updatedAt\":\"2026-09-08T07:03:10.714Z\",\"labels\":[\"workflows\",\"revision\"],\"description\":\"USER FINDING (2026-09-08): the journal the conductor-driven passes produce does not match the standard self-reflection format. ALL workflows must use the SAME self-reflection schema.\\n\\nCLOSED 2026-09-08, implemented directly by the agent on explicit user assignment (line stopped, ~15 min):\\n- 6 prompts now carry the standard schema block VERBATIM (painpoints as [{\\\"text\\\": ...}] objects + observations as strings + 'on EVERY pass / silence is a missing report / always emit BOTH keys / \\\"none\\\" valid / engine records durably'): merge-upstream merge.md + review.md, conductor survey.md + develop-leg.md + merge-leg.md + revise-leg.md. Role specifics live only in the observation placeholders (merge: upstream count/conflict classes/gate duration; review: touchpoints/time/obsolescence themes; survey: count/subject/revisor backlog; legs: child id/status/gate-wait outcome). The informal 'journal it' call-sites in the procedure bodies now bind to the declared shape.\\n- Mechanism: copy-paste (12 blocks total across the 4 workflows), not the TemplateIncludeResolver variant - schema equality was the mandate; the include refactor stays available as follow-up if drift ever appears.\\n- stage-journal.nu untouched (schema-agnostic by design). Legacy plain-string painpoint lines stay as-is (not migrated).\\n- Verification: validate-workflows.nu green (18/22 zero-diagnostic; the 4 graphs with diagnostics - merge-upstream/develop/revisor/conductor - are pre-existing advisories untouched by this prompt-only diff); each of the 6 files carries exactly one schema block; diff is prompt-only, no binary need.\\n- Live proof pending by design: next merge-upstream pass must journal painpoints as [{\\\"text\\\": ...}] objects and next conductor pass must carry non-empty survey/leg journal data - verify when the line is re-enabled (conductor was stopped by the user for session end).\",\"assignee\":\"agent\",\"closedAt\":\"2026-09-08T07:03:10.714Z\"}\n",
+      "summary": {
+        "files_changed": 3,
+        "additions": 12,
+        "deletions": 3
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2497,6 +2616,93 @@
       "agent_control": "running",
       "state": "succeeded"
     },
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-08T14:32:09.218380206Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T14:32:09.207741170Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "closeout@1": {
+      "first_event_seq": 216,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-08T14:36:43.752845228Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/03e06b3ad8c1b06cc0e53412410a3891c30131aaa24aa365064412dbaaac6151",
+        "exit_code": 0,
+        "duration_ms": 293,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-08T14:36:43.445171636Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 298,
+        "inference_time_ms": 0,
+        "tool_time_ms": 293,
+        "active_time_ms": 293
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "reviewer@1": {
       "first_event_seq": 177,
       "prompt": null,
@@ -2734,93 +2940,6 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "start@1": {
-      "first_event_seq": 16,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": null,
-        "failure_reason": null,
-        "timestamp": "2026-09-08T14:32:09.218380206Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-08T14:32:09.207741170Z",
-      "handler": "start",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 0,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "closeout@1": {
-      "first_event_seq": 216,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
-        "failure_reason": null,
-        "timestamp": "2026-09-08T14:36:43.752845228Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
-        "language": "shell",
-        "timeout_ms": 60000
-      },
-      "script_timing": {
-        "output": "blob://sha256/03e06b3ad8c1b06cc0e53412410a3891c30131aaa24aa365064412dbaaac6151",
-        "exit_code": 0,
-        "duration_ms": 293,
-        "termination": "exited",
-        "output_bytes": 58,
-        "live_streaming": true
-      },
-      "parallel_results": null,
-      "output": null,
-      "output_bytes": 58,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-08T14:36:43.445171636Z",
-      "handler": "command",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 298,
-        "inference_time_ms": 0,
-        "tool_time_ms": 293,
-        "active_time_ms": 293
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "planner@1": {
       "first_event_seq": 20,
       "prompt": null,
@@ -3031,6 +3150,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 226,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-08T14:36:49.261943842Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T14:36:49.261798852Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
