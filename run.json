@@ -697,7 +697,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-08T20:01:56.990981901Z",
-  "last_event_at": "2026-09-08T20:04:27.896441951Z",
+  "last_event_at": "2026-09-08T20:04:33.458447778Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1507,9 +1507,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 176,
       "checkpoint": {
-        "timestamp": "2026-09-08T20:04:28.113493071Z",
+        "timestamp": "2026-09-08T20:04:32.822119056Z",
         "current_node": "reviewer",
         "completed_nodes": [
           "start",
@@ -1521,60 +1521,7 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.retry_count.evidence": 0,
-          "internal.retry_count.reviewer": 0,
-          "thread.start.current_node": "planner",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "implementation_summary": "Extended `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md` with a new numbered Decision item 7 (engine-provided credentials and bridges are agent-reachable capability) and a Consequences bullet stating the ADR, not prompts, is the authoritative record. No other files touched. Lesson capture: nothing durable — skipped. Per-criteria verification: - PASS — new numbered Decision item 7 added after item 6 (lines 65-75 of `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md`), stating GITHUB_TOKEN injection via resolve_workflow_env (`lib/components/fabro-workflow/src/services.rs`) and the git credential bridge (`lib/components/fabro-workflow/src/git_bridge.rs`) are agent-reachable capability. - PASS — the item states the rule that a diff merely USING an engine-provided credential on a new code path is a capability delta requiring recorded user approval (lines 71-75). - PASS — the item cites PR #68, run 01M20RK7XFNPJRZ2T437XGDEP8, and the fabro-16ff user directive (2026-09-08) (lines 66-67). - PASS — Consequences note added: prompts are agent-reachable surface and get rewritten, so the ADR is the authoritative record (lines 89-91). - PASS — git diff shows only the ADR file modified; no workflow prompts or code touched. - PASS — style matches existing items: bold lead sentence, numbered list, same wrapping/indentation.",
-          "failure_signature": "",
-          "internal.node_visit_count": 1,
-          "current_seed_brief": "Docs-only change, no code. Extend `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md` so the durable decision record matches the doctrine PR #68 landed only in workflow prompts. Acceptance criteria:\n- Add a new numbered Decision item 7 (the list currently ends at item 6, 'The sandbox stays credential-free', line ~52) stating: engine-provided credentials and bridges — GITHUB_TOKEN injection via resolve_workflow_env (`lib/components/fabro-workflow/src/services.rs`) and the git credential bridge (`lib/components/fabro-workflow/src/git_bridge.rs`) — ARE agent-reachable capability\n- The new item must state the rule: a diff merely USING an engine-provided credential on a new code path is a capability delta requiring recorded user approval\n- Cite in the item (or adjacent text): PR #68, run 01M20RK7XFNPJRZ2T437XGDEP8, and the fabro-16ff user directive (2026-09-08)\n- Optionally add a short Consequences note that prompts are agent-reachable surface and get rewritten, so the ADR is the authoritative record\n- Do NOT modify workflow prompts or any code; the ADR file is the only touched path\n- Match the existing ADR's markdown style (bold lead sentence, numbered item)",
-          "internal.thread_id": "evidence",
-          "internal.work_dir": "/workspace/fabro",
-          "thread.evidence.current_node": "reviewer",
-          "failure_class": "",
-          "thread.planner.current_node": "implementer",
-          "internal.retry_count.start": 0,
-          "current_seed_title": "ADR-0019: record the engine-provided-credentials doctrine in the ADR file itself (PR #68 landed prompts-only)",
-          "internal.run_id": "01M219SFJ6A75DS2BP77TBENQZ",
-          "internal.seed_cycle_anchor": "fabro-8d1c",
-          "graph.preamble_budget_kb": "24",
-          "current_seed_id": "fabro-8d1c",
-          "last_response": "Verification complete. Checked every brief requirement against both the evidence diff and the live file:\n\n1. **New Decision item 7 after item 6** — confirmed at lines 65–75 of `docs/lab/adr/0019-c",
-          "review_verdict": "approved",
-          "internal.fidelity": "summary:high",
-          "graph.rankdir": "LR",
-          "graph.max_node_visits": "40",
-          "current_node": "reviewer",
-          "response.implementer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 2150,
-            "preview": "Docs-only change complete. The ADR now carries the doctrine as Decision item 7, plus the Consequences note anchoring the ADR as the authoritative record over prompts. Only `docs/lab/adr/0019-capabilit"
-          },
           "last_stage": "reviewer",
-          "thread.implementer.current_node": "tester",
-          "command.output": "blob://sha256/24a057691d951ff2be9b8a105bc185eaf97ff6cf688ccf2cbdb04384bb9c0f9a",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.retry_count.implementer": 0,
-          "internal.retry_count.tester": 0,
-          "outcome": "succeeded",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 2259,
-            "preview": "Top candidate `fabro-8d1c` (High) is unblocked, assigned to fabro, and its basis resolves cleanly against the current tree: `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md` exists with a numb"
-          },
-          "response.reviewer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.reviewer",
-            "chars": 2056,
-            "preview": "Verification complete. Checked every brief requirement against both the evidence diff and the live file:\n\n1. **New Decision item 7 after item 6** — confirmed at lines 65–75 of `docs/lab/adr/0019-c"
-          },
-          "preferred_label": "Approved",
-          "lesson_capture": "nothing durable — skipped",
-          "internal.retry_count.planner": 0,
-          "thread.tester.current_node": "evidence",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -1582,27 +1529,123 @@
             "evidence": 1,
             "reviewer": 1
           },
-          "graph.inspects": "develop",
+          "internal.retry_count.evidence": 0,
+          "internal.retry_count.reviewer": 0,
           "journal": {
             "painpoints": [],
             "observations": [
               "Verified all six brief criteria against both the evidence diff and the live file (read_file) plus a git diff --stat against the claim base 3c0a449 — only the ADR file changed (+15/-0), matching the capture's loop-churn framing for this churn-only docs seed. No capability-delta exposure: the diff adds no code, credentials, or agent-surface changes; the ADR text itself strengthens the capability gate."
             ]
-          }
+          },
+          "lesson_capture": "nothing durable — skipped",
+          "preferred_label": "Approved",
+          "internal.thread_id": "evidence",
+          "internal.retry_count.tester": 0,
+          "last_response": "Verification complete. Checked every brief requirement against both the evidence diff and the live file:\n\n1. **New Decision item 7 after item 6** — confirmed at lines 65–75 of `docs/lab/adr/0019-c",
+          "graph.inspects": "develop",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2150,
+            "preview": "Docs-only change complete. The ADR now carries the doctrine as Decision item 7, plus the Consequences note anchoring the ADR as the authoritative record over prompts. Only `docs/lab/adr/0019-capabilit"
+          },
+          "current_seed_brief": "Docs-only change, no code. Extend `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md` so the durable decision record matches the doctrine PR #68 landed only in workflow prompts. Acceptance criteria:\n- Add a new numbered Decision item 7 (the list currently ends at item 6, 'The sandbox stays credential-free', line ~52) stating: engine-provided credentials and bridges — GITHUB_TOKEN injection via resolve_workflow_env (`lib/components/fabro-workflow/src/services.rs`) and the git credential bridge (`lib/components/fabro-workflow/src/git_bridge.rs`) — ARE agent-reachable capability\n- The new item must state the rule: a diff merely USING an engine-provided credential on a new code path is a capability delta requiring recorded user approval\n- Cite in the item (or adjacent text): PR #68, run 01M20RK7XFNPJRZ2T437XGDEP8, and the fabro-16ff user directive (2026-09-08)\n- Optionally add a short Consequences note that prompts are agent-reachable surface and get rewritten, so the ADR is the authoritative record\n- Do NOT modify workflow prompts or any code; the ADR file is the only touched path\n- Match the existing ADR's markdown style (bold lead sentence, numbered item)",
+          "command.output": "blob://sha256/24a057691d951ff2be9b8a105bc185eaf97ff6cf688ccf2cbdb04384bb9c0f9a",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2056,
+            "preview": "Verification complete. Checked every brief requirement against both the evidence diff and the live file:\n\n1. **New Decision item 7 after item 6** — confirmed at lines 65–75 of `docs/lab/adr/0019-c"
+          },
+          "internal.retry_count.implementer": 0,
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2259,
+            "preview": "Top candidate `fabro-8d1c` (High) is unblocked, assigned to fabro, and its basis resolves cleanly against the current tree: `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md` exists with a numb"
+          },
+          "graph.preamble_budget_kb": "24",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "thread.implementer.current_node": "tester",
+          "internal.node_visit_count": 1,
+          "internal.run_id": "01M219SFJ6A75DS2BP77TBENQZ",
+          "current_node": "reviewer",
+          "outcome": "succeeded",
+          "current_seed_title": "ADR-0019: record the engine-provided-credentials doctrine in the ADR file itself (PR #68 landed prompts-only)",
+          "internal.seed_cycle_anchor": "fabro-8d1c",
+          "thread.evidence.current_node": "reviewer",
+          "thread.planner.current_node": "implementer",
+          "thread.start.current_node": "planner",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.max_node_visits": "40",
+          "internal.fidelity": "summary:high",
+          "implementation_summary": "Extended `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md` with a new numbered Decision item 7 (engine-provided credentials and bridges are agent-reachable capability) and a Consequences bullet stating the ADR, not prompts, is the authoritative record. No other files touched. Lesson capture: nothing durable — skipped. Per-criteria verification: - PASS — new numbered Decision item 7 added after item 6 (lines 65-75 of `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md`), stating GITHUB_TOKEN injection via resolve_workflow_env (`lib/components/fabro-workflow/src/services.rs`) and the git credential bridge (`lib/components/fabro-workflow/src/git_bridge.rs`) are agent-reachable capability. - PASS — the item states the rule that a diff merely USING an engine-provided credential on a new code path is a capability delta requiring recorded user approval (lines 71-75). - PASS — the item cites PR #68, run 01M20RK7XFNPJRZ2T437XGDEP8, and the fabro-16ff user directive (2026-09-08) (lines 66-67). - PASS — Consequences note added: prompts are agent-reachable surface and get rewritten, so the ADR is the authoritative record (lines 89-91). - PASS — git diff shows only the ADR file modified; no workflow prompts or code touched. - PASS — style matches existing items: bold lead sentence, numbered list, same wrapping/indentation.",
+          "graph.rankdir": "LR",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.tester.current_node": "evidence",
+          "internal.retry_count.start": 0,
+          "current_seed_id": "fabro-8d1c",
+          "internal.retry_count.planner": 0,
+          "failure_signature": "",
+          "review_verdict": "approved",
+          "failure_class": ""
         },
         "node_outcomes": {
-          "evidence": {
+          "start": {
             "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
             "context_updates": {
-              "command.output": "blob://sha256/24a057691d951ff2be9b8a105bc185eaf97ff6cf688ccf2cbdb04384bb9c0f9a"
+              "lesson_capture": "nothing durable — skipped",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "edit_file rejected an old_string that byte-inspection (cat -A) showed identical to the file; the retry with slightly shorter context succeeded. Transient matcher hiccup, no repo impact — noting in case it recurs (run 01M219SFJ6A75DS2BP77TBENQZ)."
+                ]
+              },
+              "last_stage": "implementer",
+              "last_response": "Docs-only change complete. The ADR now carries the doctrine as Decision item 7, plus the Consequences note anchoring the ADR as the authoritative record over prompts. Only `docs/lab/adr/0019-capabilit",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2150,
+                "preview": "Docs-only change complete. The ADR now carries the doctrine as Decision item 7, plus the Consequences note anchoring the ADR as the authoritative record over prompts. Only `docs/lab/adr/0019-capabilit"
+              },
+              "implementation_summary": "Extended `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md` with a new numbered Decision item 7 (engine-provided credentials and bridges are agent-reachable capability) and a Consequences bullet stating the ADR, not prompts, is the authoritative record. No other files touched. Lesson capture: nothing durable — skipped. Per-criteria verification: - PASS — new numbered Decision item 7 added after item 6 (lines 65-75 of `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md`), stating GITHUB_TOKEN injection via resolve_workflow_env (`lib/components/fabro-workflow/src/services.rs`) and the git credential bridge (`lib/components/fabro-workflow/src/git_bridge.rs`) are agent-reachable capability. - PASS — the item states the rule that a diff merely USING an engine-provided credential on a new code path is a capability delta requiring recorded user approval (lines 71-75). - PASS — the item cites PR #68, run 01M20RK7XFNPJRZ2T437XGDEP8, and the fabro-16ff user directive (2026-09-08) (lines 66-67). - PASS — Consequences note added: prompts are agent-reachable surface and get rewritten, so the ADR is the authoritative record (lines 89-91). - PASS — git diff shows only the ADR file modified; no workflow prompts or code touched. - PASS — style matches existing items: bold lead sentence, numbered list, same wrapping/indentation."
             },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-            "usage": null,
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 15542,
+                    "output_tokens": 1419,
+                    "reasoning_tokens": 179,
+                    "cache_read_tokens": 82304,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 50179
+            },
+            "files_touched": [
+              "/workspace/fabro/docs/lab/adr/0019-capability-gate-for-agent-surfaces.md"
+            ],
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 383,
-              "active_time_ms": 383
+              "inference_time_ms": 44422,
+              "tool_time_ms": 845,
+              "active_time_ms": 45267
             }
           },
           "reviewer": {
@@ -1652,6 +1695,211 @@
               "inference_time_ms": 22946,
               "tool_time_ms": 184,
               "active_time_ms": 23130
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/24a057691d951ff2be9b8a105bc185eaf97ff6cf688ccf2cbdb04384bb9c0f9a"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 383,
+              "active_time_ms": 383
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_title": "ADR-0019: record the engine-provided-credentials doctrine in the ADR file itself (PR #68 landed prompts-only)",
+              "last_response": "Top candidate `fabro-8d1c` (High) is unblocked, assigned to fabro, and its basis resolves cleanly against the current tree: `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md` exists with a numb",
+              "current_seed_brief": "Docs-only change, no code. Extend `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md` so the durable decision record matches the doctrine PR #68 landed only in workflow prompts. Acceptance criteria:\n- Add a new numbered Decision item 7 (the list currently ends at item 6, 'The sandbox stays credential-free', line ~52) stating: engine-provided credentials and bridges — GITHUB_TOKEN injection via resolve_workflow_env (`lib/components/fabro-workflow/src/services.rs`) and the git credential bridge (`lib/components/fabro-workflow/src/git_bridge.rs`) — ARE agent-reachable capability\n- The new item must state the rule: a diff merely USING an engine-provided credential on a new code path is a capability delta requiring recorded user approval\n- Cite in the item (or adjacent text): PR #68, run 01M20RK7XFNPJRZ2T437XGDEP8, and the fabro-16ff user directive (2026-09-08)\n- Optionally add a short Consequences note that prompts are agent-reachable surface and get rewritten, so the ADR is the authoritative record\n- Do NOT modify workflow prompts or any code; the ADR file is the only touched path\n- Match the existing ADR's markdown style (bold lead sentence, numbered item)",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro_runs_list tool was not available in this planner session, so the in-flight PR check (fabro-06e0) ran with zero exclusions — degraded fail-open as instructed",
+                  "fabro-8d1c basis verified: ADR-0019 Decision list is items 1-6, no engine-provided-credential mention, so the seed is valid and its suggested '.7' extension slot is free"
+                ]
+              },
+              "current_seed_id": "fabro-8d1c",
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2259,
+                "preview": "Top candidate `fabro-8d1c` (High) is unblocked, assigned to fabro, and its basis resolves cleanly against the current tree: `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md` exists with a numb"
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 20112,
+                    "output_tokens": 909,
+                    "reasoning_tokens": 272,
+                    "cache_read_tokens": 88640,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 56393
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 41495,
+              "tool_time_ms": 1383,
+              "active_time_ms": 42878
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5571,
+              "active_time_ms": 5571
+            }
+          }
+        },
+        "next_node_id": "closeout",
+        "git_commit_sha": "cb0530272bd6b100e53490ed0d00147ed406ceda",
+        "node_visits": {
+          "implementer": 1,
+          "tester": 1,
+          "start": 1,
+          "planner": 1,
+          "evidence": 1,
+          "reviewer": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M219SFJ6A75DS2BP77TBENQZ.jsonl b/.fabro/journal/01M219SFJ6A75DS2BP77TBENQZ.jsonl\nindex 5d55dce..f16fcae 100644\n--- a/.fabro/journal/01M219SFJ6A75DS2BP77TBENQZ.jsonl\n+++ b/.fabro/journal/01M219SFJ6A75DS2BP77TBENQZ.jsonl\n@@ -3,3 +3,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M219SFJ6A75DS2BP77TBENQZ\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T20:03:41Z\",\"data\":{\"painpoints\":[],\"observations\":[\"edit_file rejected an old_string that byte-inspection (cat -A) showed identical to the file; the retry with slightly shorter context succeeded. Transient matcher hiccup, no repo impact — noting in case it recurs (run 01M219SFJ6A75DS2BP77TBENQZ).\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M219SFJ6A75DS2BP77TBENQZ\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T20:03:51Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M219SFJ6A75DS2BP77TBENQZ\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T20:03:57Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M219SFJ6A75DS2BP77TBENQZ\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T20:04:28Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified all six brief criteria against both the evidence diff and the live file (read_file) plus a git diff --stat against the claim base 3c0a449 — only the ADR file changed (+15/-0), matching the capture's loop-churn framing for this churn-only docs seed. No capability-delta exposure: the diff adds no code, credentials, or agent-surface changes; the ADR text itself strengthens the capability gate.\"]}}\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 22,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-08T20:04:33.732867687Z",
+        "current_node": "closeout",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.retry_count.evidence": 0,
+          "internal.retry_count.reviewer": 0,
+          "thread.start.current_node": "planner",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "implementation_summary": "Extended `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md` with a new numbered Decision item 7 (engine-provided credentials and bridges are agent-reachable capability) and a Consequences bullet stating the ADR, not prompts, is the authoritative record. No other files touched. Lesson capture: nothing durable — skipped. Per-criteria verification: - PASS — new numbered Decision item 7 added after item 6 (lines 65-75 of `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md`), stating GITHUB_TOKEN injection via resolve_workflow_env (`lib/components/fabro-workflow/src/services.rs`) and the git credential bridge (`lib/components/fabro-workflow/src/git_bridge.rs`) are agent-reachable capability. - PASS — the item states the rule that a diff merely USING an engine-provided credential on a new code path is a capability delta requiring recorded user approval (lines 71-75). - PASS — the item cites PR #68, run 01M20RK7XFNPJRZ2T437XGDEP8, and the fabro-16ff user directive (2026-09-08) (lines 66-67). - PASS — Consequences note added: prompts are agent-reachable surface and get rewritten, so the ADR is the authoritative record (lines 89-91). - PASS — git diff shows only the ADR file modified; no workflow prompts or code touched. - PASS — style matches existing items: bold lead sentence, numbered list, same wrapping/indentation.",
+          "failure_signature": "",
+          "internal.node_visit_count": 1,
+          "current_seed_brief": "Docs-only change, no code. Extend `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md` so the durable decision record matches the doctrine PR #68 landed only in workflow prompts. Acceptance criteria:\n- Add a new numbered Decision item 7 (the list currently ends at item 6, 'The sandbox stays credential-free', line ~52) stating: engine-provided credentials and bridges — GITHUB_TOKEN injection via resolve_workflow_env (`lib/components/fabro-workflow/src/services.rs`) and the git credential bridge (`lib/components/fabro-workflow/src/git_bridge.rs`) — ARE agent-reachable capability\n- The new item must state the rule: a diff merely USING an engine-provided credential on a new code path is a capability delta requiring recorded user approval\n- Cite in the item (or adjacent text): PR #68, run 01M20RK7XFNPJRZ2T437XGDEP8, and the fabro-16ff user directive (2026-09-08)\n- Optionally add a short Consequences note that prompts are agent-reachable surface and get rewritten, so the ADR is the authoritative record\n- Do NOT modify workflow prompts or any code; the ADR file is the only touched path\n- Match the existing ADR's markdown style (bold lead sentence, numbered item)",
+          "internal.thread_id": "reviewer",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.evidence.current_node": "reviewer",
+          "failure_class": "",
+          "thread.planner.current_node": "implementer",
+          "internal.retry_count.start": 0,
+          "current_seed_title": "ADR-0019: record the engine-provided-credentials doctrine in the ADR file itself (PR #68 landed prompts-only)",
+          "internal.run_id": "01M219SFJ6A75DS2BP77TBENQZ",
+          "internal.seed_cycle_anchor": "fabro-8d1c",
+          "graph.preamble_budget_kb": "24",
+          "current_seed_id": "fabro-8d1c",
+          "internal.exit_kind": "natural",
+          "last_response": "Verification complete. Checked every brief requirement against both the evidence diff and the live file:\n\n1. **New Decision item 7 after item 6** — confirmed at lines 65–75 of `docs/lab/adr/0019-c",
+          "internal.retry_count.closeout": 0,
+          "review_verdict": "approved",
+          "internal.fidelity": "compact",
+          "graph.rankdir": "LR",
+          "graph.max_node_visits": "40",
+          "current_node": "closeout",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2150,
+            "preview": "Docs-only change complete. The ADR now carries the doctrine as Decision item 7, plus the Consequences note anchoring the ADR as the authoritative record over prompts. Only `docs/lab/adr/0019-capabilit"
+          },
+          "last_stage": "reviewer",
+          "thread.implementer.current_node": "tester",
+          "command.output": "blob://sha256/5b3731fb5ecc4fbf9c52dfd26ff813f199c75efa0ad4e2e6973b3027d062f5ce",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.implementer": 0,
+          "internal.retry_count.tester": 0,
+          "thread.reviewer.current_node": "closeout",
+          "outcome": "succeeded",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2259,
+            "preview": "Top candidate `fabro-8d1c` (High) is unblocked, assigned to fabro, and its basis resolves cleanly against the current tree: `docs/lab/adr/0019-capability-gate-for-agent-surfaces.md` exists with a numb"
+          },
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2056,
+            "preview": "Verification complete. Checked every brief requirement against both the evidence diff and the live file:\n\n1. **New Decision item 7 after item 6** — confirmed at lines 65–75 of `docs/lab/adr/0019-c"
+          },
+          "preferred_label": "Approved",
+          "lesson_capture": "nothing durable — skipped",
+          "internal.retry_count.planner": 0,
+          "thread.tester.current_node": "evidence",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1,
+            "closeout": 1
+          },
+          "graph.inspects": "develop",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Verified all six brief criteria against both the evidence diff and the live file (read_file) plus a git diff --stat against the claim base 3c0a449 — only the ADR file changed (+15/-0), matching the capture's loop-churn framing for this churn-only docs seed. No capability-delta exposure: the diff adds no code, credentials, or agent-surface changes; the ADR text itself strengthens the capability gate."
+            ]
+          }
+        },
+        "node_outcomes": {
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/24a057691d951ff2be9b8a105bc185eaf97ff6cf688ccf2cbdb04384bb9c0f9a"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 383,
+              "active_time_ms": 383
             }
           },
           "implementer": {
@@ -1705,6 +1953,20 @@
               "inference_time_ms": 44422,
               "tool_time_ms": 845,
               "active_time_ms": 45267
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/5b3731fb5ecc4fbf9c52dfd26ff813f199c75efa0ad4e2e6973b3027d062f5ce"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 287,
+              "active_time_ms": 287
             }
           },
           "planner": {
@@ -1763,6 +2025,55 @@
             "status": "succeeded",
             "usage": null
           },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "last_stage": "reviewer",
+              "review_verdict": "approved",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 2056,
+                "preview": "Verification complete. Checked every brief requirement against both the evidence diff and the live file:\n\n1. **New Decision item 7 after item 6** — confirmed at lines 65–75 of `docs/lab/adr/0019-c"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Verified all six brief criteria against both the evidence diff and the live file (read_file) plus a git diff --stat against the claim base 3c0a449 — only the ADR file changed (+15/-0), matching the capture's loop-churn framing for this churn-only docs seed. No capability-delta exposure: the diff adds no code, credentials, or agent-surface changes; the ADR text itself strengthens the capability gate."
+                ]
+              },
+              "last_response": "Verification complete. Checked every brief requirement against both the evidence diff and the live file:\n\n1. **New Decision item 7 after item 6** — confirmed at lines 65–75 of `docs/lab/adr/0019-c"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 13918,
+                    "output_tokens": 614,
+                    "reasoning_tokens": 313,
+                    "cache_read_tokens": 12608,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 26840
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 22946,
+              "tool_time_ms": 184,
+              "active_time_ms": 23130
+            }
+          },
           "tester": {
             "status": "succeeded",
             "context_updates": {
@@ -1778,14 +2089,15 @@
             }
           }
         },
-        "next_node_id": "closeout",
+        "next_node_id": "exit",
         "node_visits": {
           "start": 1,
           "tester": 1,
           "implementer": 1,
           "evidence": 1,
           "planner": 1,
-          "reviewer": 1
+          "reviewer": 1,
+          "closeout": 1
         }
       },
       "diff": {}
@@ -2617,6 +2929,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "closeout@1": {
+      "first_event_seq": 179,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-08T20:04:33.458447778Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/5b3731fb5ecc4fbf9c52dfd26ff813f199c75efa0ad4e2e6973b3027d062f5ce",
+        "exit_code": 0,
+        "duration_ms": 287,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-08T20:04:33.146789457Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 295,
+        "inference_time_ms": 0,
+        "tool_time_ms": 287,
+        "active_time_ms": 287
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
