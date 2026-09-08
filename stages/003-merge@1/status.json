@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Merge child run `01M1ZVH0B5V5RHRCY393T24GXG` (merge-upstream) succeeded internally, but the Dogfood Gate PR auto-merge wait returned reached=blocked (fabro-bde4: merge gate stuck — failed required checks or dirty/blocked base; never re-wait). PR: https://github.com/denkhaus/fabro/pull/63",
+  "timestamp": "2026-09-08T06:46:18.874860949Z"
+}
