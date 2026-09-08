@@ -792,6 +792,9 @@ async fn build_agent_session(
         base_cwd:           PathBuf::new(),
         user_settings_path: PathBuf::new(),
         inspects:           Vec::new(),
+        // Named-only registration: the ask-fabro session never uses the
+        // run-wide full-set path (fabro-c419).
+        run_wide:           false,
     };
     register_named_fabro_run_tools(
         profile.tool_registry_mut(),

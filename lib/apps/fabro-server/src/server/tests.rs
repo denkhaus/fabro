@@ -2375,6 +2375,52 @@ fn worker_command_opt_in_token_includes_agent_run_tools_scope() {
     ]);
 }
 
+#[test]
+fn agent_fabro_tools_enabled_combines_run_flag_and_node_level_opt_in() {
+    fn spec_with(flag: bool, node_fabro_tools: Option<&str>) -> RunSpec {
+        let mut graph = Graph::new("develop");
+        if let Some(fabro_tools) = node_fabro_tools {
+            let mut planner = Node::new("planner");
+            planner.attrs.insert(
+                "fabro_tools".to_string(),
+                AttrValue::String(fabro_tools.to_string()),
+            );
+            graph.nodes.insert("planner".to_string(), planner);
+        }
+        let mut settings = WorkflowSettings::default();
+        settings.run.agent.fabro_tools = flag;
+        RunSpec {
+            run_id: RunId::new(),
+            settings,
+            graph,
+            graph_source: None,
+            workflow_slug: Some("develop".to_string()),
+            workflow_version_id: None,
+            target: None,
+            automation: None,
+            source_directory: None,
+            git: None,
+            labels: HashMap::new(),
+            provenance: test_support::test_run_provenance(),
+            manifest_blob: None,
+            definition_blob: None,
+            spec_blob: None,
+            fork_source_ref: None,
+        }
+    }
+
+    // (a) fabro-c419: node-level fabro_tools with the run flag off still
+    // provisions the fabro run tool services for the run.
+    assert!(super::agent_fabro_tools_enabled(&spec_with(
+        false,
+        Some("fabro_runs_list")
+    )));
+    // (b) Neither the run flag nor a node-level opt-in: no services.
+    assert!(!super::agent_fabro_tools_enabled(&spec_with(false, None)));
+    // (c) Run-wide flag alone: unchanged, enabled.
+    assert!(super::agent_fabro_tools_enabled(&spec_with(true, None)));
+}
+
 #[cfg(unix)]
 #[test]
 fn worker_command_forwards_github_app_private_key_from_vault() {

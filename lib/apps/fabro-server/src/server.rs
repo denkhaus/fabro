@@ -3832,6 +3832,15 @@ async fn append_worker_exit_failure(
     }
 }
 
+/// Whether the run should provision the fabro run tool services for its
+/// worker: the run-wide `run.agent.fabro_tools` flag OR any node-level
+/// `fabro_tools` opt-in in the graph (fabro-c419). Node-level opt-in
+/// grants the named-only registration path per stage; the worker's
+/// `FabroRunToolServices::run_wide` keeps the two provisions distinct.
+fn agent_fabro_tools_enabled(spec: &fabro_types::RunSpec) -> bool {
+    spec.settings.run.agent.fabro_tools || spec.graph.any_node_fabro_tools()
+}
+
 #[expect(
     clippy::disallowed_methods,
     reason = "Worker subprocess startup resolves Cargo's test binary env override when present."
@@ -4511,10 +4520,16 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
             return;
         }
     };
-    let agent_fabro_tools_enabled = run_state.spec.settings.run.agent.fabro_tools;
+    // fabro-c419: node-level `fabro_tools` opt-ins (e.g. the develop
+    // planner's `fabro_runs_list` binding) provision the fabro run tool
+    // services even when the run-wide flag is off. The worker keeps the
+    // run-wide distinction in `FabroRunToolServices::run_wide`, so
+    // attribute-less stages still register nothing without the flag —
+    // least privilege per stage (ADR-0019).
+    let fabro_tools_enabled = agent_fabro_tools_enabled(&run_state.spec);
     // ADR-0011 revisor scope: the graph's `inspects` attribute widens the
     // worker token to inspect and ask about runs of the declared workflows.
-    let worker_inspects = if agent_fabro_tools_enabled {
+    let worker_inspects = if fabro_tools_enabled {
         run_state.spec.graph.inspects()
     } else {
         Vec::new()
@@ -4552,7 +4567,7 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
             run_id,
             execution_mode,
             &run_dir_for_build,
-            agent_fabro_tools_enabled,
+            fabro_tools_enabled,
             &worker_inspects,
             github_app_private_key,
         )

@@ -104,12 +104,17 @@ pub(crate) async fn execute(
         worker_token.to_owned(),
     )));
     let fabro_run_tools = if fabro_run_tools_enabled_from_worker_token(worker_token) {
+        // fabro-c419: the token scope now also grants services when any
+        // node declares a node-level `fabro_tools` opt-in, so the
+        // run-wide flag — not the scope — decides whether attribute-less
+        // stages get the full tool set.
         build_fabro_run_tool_services(
             worker_token,
             client.clone_for_reuse(),
             run_id,
             run_spec.source_directory.as_deref(),
             &run_dir,
+            run_spec.settings.run.agent.fabro_tools,
         )
     } else {
         None
@@ -241,6 +246,7 @@ fn build_fabro_run_tool_services(
     current_run_id: RunId,
     source_directory: Option<&str>,
     run_dir: &Path,
+    run_wide: bool,
 ) -> Option<FabroRunToolServices> {
     if worker_token.trim().is_empty() {
         return None;
@@ -258,6 +264,7 @@ fn build_fabro_run_tool_services(
         base_cwd: source_directory.map_or_else(|| run_dir.to_path_buf(), PathBuf::from),
         user_settings_path: active_settings_path(None),
         inspects,
+        run_wide,
     })
 }
 
