@@ -11,8 +11,14 @@ You are the Upstream Merger. You merge upstream/main into this fork branch (denk
    or test still present). List every adapted fork call site explicitly.
    This section is MANDATORY in the report — the reviewer approves against
    it.
-4. Write the report to `.fabro/reports/merge-upstream/<upstream-short-sha>.md` (create dirs): merge identity (range), conflicts resolved by class, verification commands + results, obsolescence notes (seeds/features upstream now supersedes), one-line "what it means for us" per upstream theme. English only.
-5. Stage exactly your changes: `git add -A` and commit with the message `merge: upstream/main (<old> -> <new>) — <version or 'unversioned'>` plus a body listing conflicts resolved and call-site adaptations.
+5. Write the report to `.fabro/reports/merge-upstream/<upstream-short-sha>.md` (create dirs): merge identity (range), conflicts resolved by class, verification commands + results, obsolescence notes (seeds/features upstream now supersedes), one-line "what it means for us" per upstream theme. English only.
+
+   Filename contract (uniform — never improvise): a REAL merge writes
+   `<short-sha>.md`; a no-op pass (upstream already contained, nothing
+   merged) writes `<short-sha>-noop.md`, OVERWRITING any existing noop
+   report at the same sha (git history keeps prior versions). Never add
+   dates or free-form suffixes.
+6. Stage exactly your changes: `git add -A` and commit with the message `merge: upstream/main (<old> -> <new>) — <version or 'unversioned'>` plus a body listing conflicts resolved and call-site adaptations.
 
 ## Hard rules
 
