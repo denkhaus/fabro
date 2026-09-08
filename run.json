@@ -692,7 +692,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-08T15:31:09.140329562Z",
-  "last_event_at": "2026-09-08T16:25:33.296825160Z",
+  "last_event_at": "2026-09-08T16:25:39.381588021Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -2308,9 +2308,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 1330,
       "checkpoint": {
-        "timestamp": "2026-09-08T16:25:33.534025257Z",
+        "timestamp": "2026-09-08T16:25:38.253545459Z",
         "current_node": "reviewer",
         "completed_nodes": [
           "start",
@@ -2325,6 +2325,340 @@
         ],
         "node_retries": {},
         "context_values": {
+          "current_node": "reviewer",
+          "failure_class": "",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 2,
+            "tester": 2,
+            "gatebounce": 1,
+            "evidence": 1,
+            "reviewer": 1
+          },
+          "current_seed_brief": "Make the develop planner's IN-FLIGHT PR check run credential-less via the engine-mediated fabro_runs_list tool (D1: extend existing surfaces only, no new agent tools; D2 already done: gh removed from toolchain image). Acceptance criteria: - fabro_runs_list projection (RunSummaryResult + run_summary_result in `lib/components/fabro-tool/src/common.rs`) exposes pull_request {number, state} per run; it currently has NO pull_request field — the OpenAPI HTTP Run schema already carries the link and is NOT the target. - PR state (open/closed/merged) is enriched engine-side, read-only, reusing the existing server GitHub client path that powers GET /runs/{id}/pull_request live details; stored PullRequestLink (`lib/foundation/fabro-types/src/pull_request.rs`) only holds owner/repo/number. - Develop graph `.fabro/workflows/develop/workflow.fabro` declares inspects covering 'develop' (fabro_runs_list refuses callers without inspects; conductor precedent: inspects=\"develop,merge-upstream,revisor\"), and the planner agent stage actually receives the runs_list tool. - `.fabro/workflows/develop/prompts/planner.md` step 4 IN-FLIGHT PR CHECK (line 37) replaces `gh pr list --state open` with: call fabro_runs_list -> filter runs whose linked PR is open/non-terminal -> extract seed ids from run goals -> skip matching candidates, journal 'skipped: in-flight PR <n>', continue down `sd ready --assignee fabro --limit 200`; the gh-unavailable fail-open clause is removed entirely. - No credential, no new agent tool, no gh reintroduction. - Live verification: a develop pass with a seed whose PR sits open in the gate journals 'skipped: in-flight PR <n>' and claims a DIFFERENT seed. - Tests: unit tests for the extended projection and prompt-only seed follows repo testing strategy; run workspace tests + fmt + clippy gates.",
+          "thread.evidence.current_node": "reviewer",
+          "internal.retry_count.gatebounce": 0,
+          "preferred_label": "Approved",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 4656,
+            "preview": "Gate blocker resolved. Summary of this pass:\n\n**Root cause**: The tester's two failures (`run_start_grants_github_token_bridge_only_to_user_principals`, `worker_principal_run_without_vault_token_takes"
+          },
+          "command.output": "blob://sha256/85ee02d258bc2da92c50df2f507427f57ad8f2830a04fa1b22a61a772ede9147",
+          "last_response": "All checks complete. Verification summary:\n\n**Seed requirements vs. tree:**\n\n1. **Projection exposes `pull_request {number, state}`** — ✅ `RunPullRequestSummary` added to `RunSummaryResult` in `co",
+          "current_seed_id": "fabro-06e0",
+          "failure_signature": "",
+          "implementation_summary": "Gate-bounce pass: fixed the two tester failures in `lib/apps/fabro-server/src/server/tests.rs` by pinning the fabro-e505/fabro-c274 credential-bridge tests to `[run.environment] id = \"local\"` (verified pre-existing break — reproduced on untouched parent commit 22e03c3; runs failed building the default Docker sandbox with 'Socket not found: /var/run/docker.sock' in the Docker-less gate sandbox). Adjacent repair: 6 added lines in `lib/apps/fabro-server/src/server/tests.rs` only; full crate suite 929/929 green, crate-scoped fmt + default-features clippy clean. Lesson captured as mx-9df484. Seed criteria verification against the tree (implementation from commit 68c5311, this pass restored gate greenness): - PASS fabro_runs_list projection exposes pull_request {number, state}: `lib/components/fabro-tool/src/common.rs` RunPullRequestSummary + tests `runs_list_annotates_live_pull_request_states`, `runs_list_leaves_pr_state_unknown_without_a_live_view` in `lib/components/fabro-workflow/src/handler/llm/api.rs` - PASS PR state enriched engine-side read-only via existing server GitHub client path: `run_pull_request_state` backend method wired through `lib/components/fabro-tool/src/fabro_client.rs` and `lib/apps/fabro-server/src/server/handler/pull_requests.rs` (read route widened to RequireRunManagementTarget) - PASS develop graph declares inspects and planner gets runs_list: `.fabro/workflows/develop/workflow.fabro` inspects covering develop; server test `inspects_worker_reads_live_pull_request_details_for_declared_workflow_runs` proves the authz path - PASS planner.md step 4 uses fabro_runs_list guard, gh clause removed, journals 'skipped: in-flight PR <n>': `.fabro/workflows/develop/prompts/planner.md` (commit 68c5311) - PASS no credential added, no new agent tool, no gh reintroduction: diff extends existing surfaces only - FAIL (deferred, not achievable in this environment) live verification of a develop pass journaling 'skipped: in-flight PR <n>': requires a live run with an open PR; all offline acceptance criteria and unit/integration tests pass — left for the Closeout/live verification per seed wording 'verified live'",
+          "internal.retry_count.start": 0,
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.tester": 0,
+          "internal.seed_cycle_anchor": "fabro-06e0",
+          "internal.thread_id": "evidence",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "Seed fabro-06e0 (run 01M20T9S8JRXETASN64768TRRP): two acceptance-critical files (.fabro/workflows/develop/workflow.fabro inspects declaration, prompts/planner.md step 4 rewrite) were classified as loop-churn in the evidence capture, showing counts only (+8/-1, +1/-1) with no diff — yet they are seed spec requirements. I had to reconstruct them with `git diff 9eeab20 -- <paths>`. Fix idea: the evidence classifier should treat files named in the in-progress seed spec as seed-work (full diff) even when they live under .fabro/, so reviewers without shell access are not forced into Changes-requested on unread evidence."
+              }
+            ],
+            "observations": [
+              "Verified with tools beyond the capture: workflow.fabro declares inspects=\"develop\" and fabro_tools=\"fabro_runs_list\"; planner.md step 4 now uses fabro_runs_list with only state==\"open\" counting as in-flight, journals 'skipped: in-flight PR <n>', continues down sd ready, and explicitly prohibits gh/direct GitHub API. fabro_tools is graph-level so all stages receive the read-only runs_list tool — no write capability added, judged acceptable.",
+              "ADR-0019 check: the GET /runs/{id}/pull_request route widening (RequireRunScoped → RequireRunManagementTarget) is an agent-reachable authz change but is exactly the seed's recorded user decision D1, read-only, least-privilege direction; mutating PR routes keep the strict extractor. No new credentials, tools, or gh.",
+              "Live verification (a develop pass journaling 'skipped: in-flight PR <n>' against an open gate PR) is deferred by construction — it can only be produced by the next develop run; all offline acceptance criteria and unit/integration tests pass. Watch for that journal line on the next develop pass as the closing proof.",
+              "The id=\"local\" test pinning in server/tests.rs is a documented 6-line adjacent repair for a pre-existing Docker-socket break reproduced on parent commit 22e03c3 — legitimate, minimal, and covered by a full crate suite run."
+            ]
+          },
+          "internal.retry_count.planner": 0,
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 4624,
+            "preview": "All checks complete. Verification summary:\n\n**Seed requirements vs. tree:**\n\n1. **Projection exposes `pull_request {number, state}`** — ✅ `RunPullRequestSummary` added to `RunSummaryResult` in `co"
+          },
+          "thread.planner.current_node": "implementer",
+          "thread.gatebounce.current_node": "implementer",
+          "thread.tester.current_node": "evidence",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3251,
+            "preview": "Claimed fabro-06e0 with a corrected body (tool-projection target, inspects gap, state-enrichment path) so the Implementer doesn't re-discover those facts.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_nex"
+          },
+          "review_verdict": "approved",
+          "graph.max_node_visits": "40",
+          "thread.start.current_node": "planner",
+          "current_seed_title": "develop planner: in-flight PR guard is credential-less and must STAY that way — use fabro_runs_list, remove gh from the toolchain image",
+          "internal.node_visit_count": 1,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.fidelity": "summary:high",
+          "internal.run_id": "01M20T9S8JRXETASN64768TRRP",
+          "graph.rankdir": "LR",
+          "internal.retry_count.implementer": 0,
+          "internal.retry_count.reviewer": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "last_stage": "reviewer",
+          "outcome": "succeeded",
+          "thread.implementer.current_node": "tester",
+          "internal.retry_count.evidence": 0,
+          "lesson_capture": "mx-9df484"
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Claimed fabro-06e0 with a corrected body (tool-projection target, inspects gap, state-enrichment path) so the Implementer doesn't re-discover those facts.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_nex",
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3251,
+                "preview": "Claimed fabro-06e0 with a corrected body (tool-projection target, inspects gap, state-enrichment path) so the Implementer doesn't re-discover those facts.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_nex"
+              },
+              "current_seed_id": "fabro-06e0",
+              "current_seed_brief": "Make the develop planner's IN-FLIGHT PR check run credential-less via the engine-mediated fabro_runs_list tool (D1: extend existing surfaces only, no new agent tools; D2 already done: gh removed from toolchain image). Acceptance criteria: - fabro_runs_list projection (RunSummaryResult + run_summary_result in `lib/components/fabro-tool/src/common.rs`) exposes pull_request {number, state} per run; it currently has NO pull_request field — the OpenAPI HTTP Run schema already carries the link and is NOT the target. - PR state (open/closed/merged) is enriched engine-side, read-only, reusing the existing server GitHub client path that powers GET /runs/{id}/pull_request live details; stored PullRequestLink (`lib/foundation/fabro-types/src/pull_request.rs`) only holds owner/repo/number. - Develop graph `.fabro/workflows/develop/workflow.fabro` declares inspects covering 'develop' (fabro_runs_list refuses callers without inspects; conductor precedent: inspects=\"develop,merge-upstream,revisor\"), and the planner agent stage actually receives the runs_list tool. - `.fabro/workflows/develop/prompts/planner.md` step 4 IN-FLIGHT PR CHECK (line 37) replaces `gh pr list --state open` with: call fabro_runs_list -> filter runs whose linked PR is open/non-terminal -> extract seed ids from run goals -> skip matching candidates, journal 'skipped: in-flight PR <n>', continue down `sd ready --assignee fabro --limit 200`; the gh-unavailable fail-open clause is removed entirely. - No credential, no new agent tool, no gh reintroduction. - Live verification: a develop pass with a seed whose PR sits open in the gate journals 'skipped: in-flight PR <n>' and claims a DIFFERENT seed. - Tests: unit tests for the extended projection and prompt-only seed follows repo testing strategy; run workspace tests + fmt + clippy gates.",
+              "journal": {
+                "painpoints": [
+                  "gh is absent from this run's toolchain (exit 127), so the in-flight PR check degraded to fail-open this pass — exactly the gap seed fabro-06e0 fixes; until it lands, planner passes risk double-picking gated seeds",
+                  "seed fabro-06e0's body said 'check the OpenAPI/runs list projection' but the real surface is the fabro_runs_list agent tool (RunSummaryResult) which lacks pull_request entirely, and the develop graph lacks the inspects declaration the tool requires — corrected via sd update --description before claiming (run 01M20T9S8JRXETASN64768TRRP)"
+                ],
+                "observations": [
+                  "fabro-06e0 claimed after stale-basis check: planner.md step 4 still references gh (basis resolves), corrected body recorded first",
+                  "gh pr list unavailable in this environment — treated as no in-flight PRs per prompt degradation rule; noted here for audit"
+                ]
+              },
+              "current_seed_title": "develop planner: in-flight PR guard is credential-less and must STAY that way — use fabro_runs_list, remove gh from the toolchain image"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 29008,
+                    "output_tokens": 2716,
+                    "reasoning_tokens": 1323,
+                    "cache_read_tokens": 436928,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 171959
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 127933,
+              "tool_time_ms": 4002,
+              "active_time_ms": 131935
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 4624,
+                "preview": "All checks complete. Verification summary:\n\n**Seed requirements vs. tree:**\n\n1. **Projection exposes `pull_request {number, state}`** — ✅ `RunPullRequestSummary` added to `RunSummaryResult` in `co"
+              },
+              "last_response": "All checks complete. Verification summary:\n\n**Seed requirements vs. tree:**\n\n1. **Projection exposes `pull_request {number, state}`** — ✅ `RunPullRequestSummary` added to `RunSummaryResult` in `co",
+              "last_stage": "reviewer",
+              "review_verdict": "approved",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Seed fabro-06e0 (run 01M20T9S8JRXETASN64768TRRP): two acceptance-critical files (.fabro/workflows/develop/workflow.fabro inspects declaration, prompts/planner.md step 4 rewrite) were classified as loop-churn in the evidence capture, showing counts only (+8/-1, +1/-1) with no diff — yet they are seed spec requirements. I had to reconstruct them with `git diff 9eeab20 -- <paths>`. Fix idea: the evidence classifier should treat files named in the in-progress seed spec as seed-work (full diff) even when they live under .fabro/, so reviewers without shell access are not forced into Changes-requested on unread evidence."
+                  }
+                ],
+                "observations": [
+                  "Verified with tools beyond the capture: workflow.fabro declares inspects=\"develop\" and fabro_tools=\"fabro_runs_list\"; planner.md step 4 now uses fabro_runs_list with only state==\"open\" counting as in-flight, journals 'skipped: in-flight PR <n>', continues down sd ready, and explicitly prohibits gh/direct GitHub API. fabro_tools is graph-level so all stages receive the read-only runs_list tool — no write capability added, judged acceptable.",
+                  "ADR-0019 check: the GET /runs/{id}/pull_request route widening (RequireRunScoped → RequireRunManagementTarget) is an agent-reachable authz change but is exactly the seed's recorded user decision D1, read-only, least-privilege direction; mutating PR routes keep the strict extractor. No new credentials, tools, or gh.",
+                  "Live verification (a develop pass journaling 'skipped: in-flight PR <n>' against an open gate PR) is deferred by construction — it can only be produced by the next develop run; all offline acceptance criteria and unit/integration tests pass. Watch for that journal line on the next develop pass as the closing proof.",
+                  "The id=\"local\" test pinning in server/tests.rs is a documented 6-line adjacent repair for a pre-existing Docker-socket break reproduced on parent commit 22e03c3 — legitimate, minimal, and covered by a full crate suite run."
+                ]
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 26089,
+                    "output_tokens": 1376,
+                    "reasoning_tokens": 1654,
+                    "cache_read_tokens": 36288,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 59289
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 48289,
+              "tool_time_ms": 223,
+              "active_time_ms": 48512
+            }
+          },
+          "gatebounce": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/4901f7c2cc7d18381abd99f1679f1d1031d9747d053dbd46df417a1334803734"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/gate-bounce.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 599,
+              "active_time_ms": 599
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/3be82a392c5f29b1b20703d09e4bf1c5e7437f0c1846b0fa5b1f63b13a38836c"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 90513,
+              "active_time_ms": 90513
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/85ee02d258bc2da92c50df2f507427f57ad8f2830a04fa1b22a61a772ede9147"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 505,
+              "active_time_ms": 505
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 4656,
+                "preview": "Gate blocker resolved. Summary of this pass:\n\n**Root cause**: The tester's two failures (`run_start_grants_github_token_bridge_only_to_user_principals`, `worker_principal_run_without_vault_token_takes"
+              },
+              "implementation_summary": "Gate-bounce pass: fixed the two tester failures in `lib/apps/fabro-server/src/server/tests.rs` by pinning the fabro-e505/fabro-c274 credential-bridge tests to `[run.environment] id = \"local\"` (verified pre-existing break — reproduced on untouched parent commit 22e03c3; runs failed building the default Docker sandbox with 'Socket not found: /var/run/docker.sock' in the Docker-less gate sandbox). Adjacent repair: 6 added lines in `lib/apps/fabro-server/src/server/tests.rs` only; full crate suite 929/929 green, crate-scoped fmt + default-features clippy clean. Lesson captured as mx-9df484. Seed criteria verification against the tree (implementation from commit 68c5311, this pass restored gate greenness): - PASS fabro_runs_list projection exposes pull_request {number, state}: `lib/components/fabro-tool/src/common.rs` RunPullRequestSummary + tests `runs_list_annotates_live_pull_request_states`, `runs_list_leaves_pr_state_unknown_without_a_live_view` in `lib/components/fabro-workflow/src/handler/llm/api.rs` - PASS PR state enriched engine-side read-only via existing server GitHub client path: `run_pull_request_state` backend method wired through `lib/components/fabro-tool/src/fabro_client.rs` and `lib/apps/fabro-server/src/server/handler/pull_requests.rs` (read route widened to RequireRunManagementTarget) - PASS develop graph declares inspects and planner gets runs_list: `.fabro/workflows/develop/workflow.fabro` inspects covering develop; server test `inspects_worker_reads_live_pull_request_details_for_declared_workflow_runs` proves the authz path - PASS planner.md step 4 uses fabro_runs_list guard, gh clause removed, journals 'skipped: in-flight PR <n>': `.fabro/workflows/develop/prompts/planner.md` (commit 68c5311) - PASS no credential added, no new agent tool, no gh reintroduction: diff extends existing surfaces only - FAIL (deferred, not achievable in this environment) live verification of a develop pass journaling 'skipped: in-flight PR <n>': requires a live run with an open PR; all offline acceptance criteria and unit/integration tests pass — left for the Closeout/live verification per seed wording 'verified live'",
+              "lesson_capture": "mx-9df484",
+              "last_stage": "implementer",
+              "last_response": "Gate blocker resolved. Summary of this pass:\n\n**Root cause**: The tester's two failures (`run_start_grants_github_token_bridge_only_to_user_principals`, `worker_principal_run_without_vault_token_takes",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "fabro-server tests that execute runs in-process with default settings depend on a Docker daemon and hard-fail in Docker-less gate sandboxes (run 01M20T9S8JRXETASN64768TRRP, tests at lib/apps/fabro-server/src/server/tests.rs:8963/9086 failed with WorkflowError/'Socket not found: /var/run/docker.sock'). Fix idea: such tests should pin '[run.environment] id = \"local\"' like cancel_during_startup_persists_cancelled_reason does; consider a lint or convention note so new execute_run tests don't silently reintroduce the Docker dependency."
+                  }
+                ],
+                "observations": [
+                  "mode = \"dry_run\" is a trap for execute-path assertions: it coerces the provider to Local but also routes Handler::dispatch to simulate(), so handlers' execute() never runs and observation vectors come back empty with runs still Succeeded — the failure mode looks like a logic bug, not a sandbox bypass."
+                ]
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 54129,
+                    "output_tokens": 7449,
+                    "reasoning_tokens": 6628,
+                    "cache_read_tokens": 2428992,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 769168
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/apps/fabro-server/src/server/tests.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 398948,
+              "tool_time_ms": 515685,
+              "active_time_ms": 914633
+            }
+          }
+        },
+        "next_node_id": "closeout",
+        "git_commit_sha": "75b276a9ccf63ff903ebcdacdf9694be16a876e8",
+        "node_visits": {
+          "start": 1,
+          "tester": 2,
+          "gatebounce": 1,
+          "implementer": 2,
+          "evidence": 1,
+          "planner": 1,
+          "reviewer": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl b/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl\nindex b5d10bf..d778b04 100644\n--- a/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl\n+++ b/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl\n@@ -5,3 +5,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20T9S8JRXETASN64768TRRP\",\"node\":\"implementer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-08T16:22:56Z\",\"data\":{\"painpoints\":[{\"text\":\"fabro-server tests that execute runs in-process with default settings depend on a Docker daemon and hard-fail in Docker-less gate sandboxes (run 01M20T9S8JRXETASN64768TRRP, tests at lib/apps/fabro-server/src/server/tests.rs:8963/9086 failed with WorkflowError/'Socket not found: /var/run/docker.sock'). Fix idea: such tests should pin '[run.environment] id = \\\"local\\\"' like cancel_during_startup_persists_cancelled_reason does; consider a lint or convention note so new execute_run tests don't silently reintroduce the Docker dependency.\"}],\"observations\":[\"mode = \\\"dry_run\\\" is a trap for execute-path assertions: it coerces the provider to Local but also routes Handler::dispatch to simulate(), so handlers' execute() never runs and observation vectors come back empty with runs still Succeeded — the failure mode looks like a logic bug, not a sandbox bypass.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20T9S8JRXETASN64768TRRP\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T16:24:33Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20T9S8JRXETASN64768TRRP\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T16:24:38Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M20T9S8JRXETASN64768TRRP\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T16:25:33Z\",\"data\":{\"painpoints\":[{\"text\":\"Seed fabro-06e0 (run 01M20T9S8JRXETASN64768TRRP): two acceptance-critical files (.fabro/workflows/develop/workflow.fabro inspects declaration, prompts/planner.md step 4 rewrite) were classified as loop-churn in the evidence capture, showing counts only (+8/-1, +1/-1) with no diff — yet they are seed spec requirements. I had to reconstruct them with `git diff 9eeab20 -- <paths>`. Fix idea: the evidence classifier should treat files named in the in-progress seed spec as seed-work (full diff) even when they live under .fabro/, so reviewers without shell access are not forced into Changes-requested on unread evidence.\"}],\"observations\":[\"Verified with tools beyond the capture: workflow.fabro declares inspects=\\\"develop\\\" and fabro_tools=\\\"fabro_runs_list\\\"; planner.md step 4 now uses fabro_runs_list with only state==\\\"open\\\" counting as in-flight, journals 'skipped: in-flight PR <n>', continues down sd ready, and explicitly prohibits gh/direct GitHub API. fabro_tools is graph-level so all stages receive the read-only runs_list tool — no write capability added, judged acceptable.\",\"ADR-0019 check: the GET /runs/{id}/pull_request route widening (RequireRunScoped → RequireRunManagementTarget) is an agent-reachable authz change but is exactly the seed's recorded user decision D1, read-only, least-privilege direction; mutating PR routes keep the strict extractor. No new credentials, tools, or gh.\",\"Live verification (a develop pass journaling 'skipped: in-flight PR <n>' against an open gate PR) is deferred by construction — it can only be produced by the next develop run; all offline acceptance criteria and unit/integration tests pass. Watch for that journal line on the next develop pass as the closing proof.\",\"The id=\\\"local\\\" test pinning in server/tests.rs is a documented 6-line adjacent repair for a pre-existing Docker-socket break reproduced on parent commit 22e03c3 — legitimate, minimal, and covered by a full crate suite run.\"]}}\n",
+        "summary": {
+          "files_changed": 16,
+          "additions": 445,
+          "deletions": 52
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-08T16:25:39.615162141Z",
+        "current_node": "closeout",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "gatebounce",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout"
+        ],
+        "node_retries": {},
+        "context_values": {
           "internal.run_id": "01M20T9S8JRXETASN64768TRRP",
           "internal.seed_cycle_anchor": "fabro-06e0",
           "internal.retry_count.start": 0,
@@ -2332,10 +2666,11 @@
           "internal.retry_count.evidence": 0,
           "internal.retry_count.reviewer": 0,
           "graph.preamble_budget_kb": "24",
+          "internal.exit_kind": "natural",
           "failure_class": "",
           "current_seed_title": "develop planner: in-flight PR guard is credential-less and must STAY that way — use fabro_runs_list, remove gh from the toolchain image",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "internal.thread_id": "evidence",
+          "internal.thread_id": "reviewer",
           "last_response": "All checks complete. Verification summary:\n\n**Seed requirements vs. tree:**\n\n1. **Projection exposes `pull_request {number, state}`** — ✅ `RunPullRequestSummary` added to `RunSummaryResult` in `co",
           "last_stage": "reviewer",
           "preferred_label": "Approved",
@@ -2360,8 +2695,8 @@
             ]
           },
           "thread.start.current_node": "planner",
-          "internal.fidelity": "summary:high",
-          "current_node": "reviewer",
+          "internal.fidelity": "compact",
+          "current_node": "closeout",
           "internal.retry_count.planner": 0,
           "thread.planner.current_node": "implementer",
           "seed_cycles": {
@@ -2370,7 +2705,8 @@
             "tester": 2,
             "gatebounce": 1,
             "evidence": 1,
-            "reviewer": 1
+            "reviewer": 1,
+            "closeout": 1
           },
           "current_seed_id": "fabro-06e0",
           "internal.work_dir": "/workspace/fabro",
@@ -2378,10 +2714,12 @@
           "lesson_capture": "mx-9df484",
           "internal.retry_count.implementer": 0,
           "thread.implementer.current_node": "tester",
-          "command.output": "blob://sha256/85ee02d258bc2da92c50df2f507427f57ad8f2830a04fa1b22a61a772ede9147",
+          "command.output": "blob://sha256/a297aecdc960555487d77bc3e437db40335f1f9933016490b6352553f03fc960",
           "internal.retry_count.tester": 0,
           "thread.gatebounce.current_node": "implementer",
           "outcome": "succeeded",
+          "thread.reviewer.current_node": "closeout",
+          "internal.retry_count.closeout": 0,
           "graph.rankdir": "LR",
           "graph.cycle_counter_reset_key": "current_seed_id",
           "response.planner": {
@@ -2487,6 +2825,20 @@
               "inference_time_ms": 0,
               "tool_time_ms": 505,
               "active_time_ms": 505
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/a297aecdc960555487d77bc3e437db40335f1f9933016490b6352553f03fc960"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 300,
+              "active_time_ms": 300
             }
           },
           "planner": {
@@ -2619,12 +2971,13 @@
             "usage": null
           }
         },
-        "next_node_id": "closeout",
+        "next_node_id": "exit",
         "node_visits": {
-          "gatebounce": 1,
-          "evidence": 1,
+          "closeout": 1,
           "reviewer": 1,
+          "evidence": 1,
           "start": 1,
+          "gatebounce": 1,
           "tester": 2,
           "planner": 1,
           "implementer": 2
@@ -3715,6 +4068,57 @@
         "inference_time_ms": 0,
         "tool_time_ms": 90513,
         "active_time_ms": 90513
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "closeout@1": {
+      "first_event_seq": 1333,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-08T16:25:39.381588021Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/a297aecdc960555487d77bc3e437db40335f1f9933016490b6352553f03fc960",
+        "exit_code": 0,
+        "duration_ms": 300,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-08T16:25:39.066966256Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 305,
+        "inference_time_ms": 0,
+        "tool_time_ms": 300,
+        "active_time_ms": 300
       },
       "usage": {
         "input_tokens": 0,
