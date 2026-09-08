@@ -109,7 +109,7 @@ def main [port: string = "32276", cli: string = "~/.fabro/bin/fabro"]: nothing -
             detail: $"/api/v1/automations -> ($status)"
         })
     } else {
-        print $"smoke: - automations API probe skipped (no stored token for ($server_key))"
+        print $"smoke: - automations API probe skipped, no stored token for ($server_key)"
     }
 
     # verdict
