@@ -40,6 +40,12 @@ decision, not an accident - it needs the user plus an ADR.
   you what was mid-flight; continue that work instead of picking a new seed.
 - `sd ready` and the open-seed list for candidates. `ml prime <domain>`
   only when the cycle touches that domain.
+- Seeds are git-native: `git fetch` + `git pull --ff-only` BEFORE reading
+  `sd` state when another machine may have run the line - the tracker
+  view is branch-local and goes stale (2026-09-08: fabro-16ff read as
+  open from a pre-pull queue dump although the other machine's run had
+  closed it hours earlier; cleanup decisions must come from post-pull
+  state).
 
 ## Phase 1 - Select
 
