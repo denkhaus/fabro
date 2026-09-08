@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M20DMYEK5B3GDQAYFR83DNGN.jsonl b/.fabro/journal/01M20DMYEK5B3GDQAYFR83DNGN.jsonl
+new file mode 100644
+index 000000000..57d5e7ac6
+--- /dev/null
++++ b/.fabro/journal/01M20DMYEK5B3GDQAYFR83DNGN.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M20DMYEK5B3GDQAYFR83DNGN","node":"start","visit":1,"status":"succeeded","ts":"2026-09-08T11:57:02Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M20DMYEK5B3GDQAYFR83DNGN","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-08T11:57:59Z","data":{"painpoints":[{"text":"First fetch from upstream in this clone brought hundreds of new remote-tracking branches, flooding tool output (~350KB stderr, truncated). Suggest the surveyor run git fetch with a refspec limited to upstream/main (e.g. `git fetch upstream main --prune`) or redirect stderr, so the count and newest subject stay readable in agent context."}],"observations":["upstream count 4919 (origin/denkhaus..upstream/main), newest upstream subject: `Bump version to 0.348.0-nightly.0` — far above MIN threshold 5, merge slot consumed this pass.","revisor backlog: none — `fabro_runs_list` returned 0 develop runs (and 0 merge-upstream runs), so no unreviewed develop runs exist.","The large count likely reflects accumulated drift since the fork point; next surveyor should recheck after the merge-upstream pass lands and expect the count to drop sharply."]}}
