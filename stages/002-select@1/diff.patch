@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M20RX5E6P91DRT64CRCMAHGQ.jsonl b/.fabro/journal/01M20RX5E6P91DRT64CRCMAHGQ.jsonl
+new file mode 100644
+index 0000000..1803ee8
+--- /dev/null
++++ b/.fabro/journal/01M20RX5E6P91DRT64CRCMAHGQ.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M20RX5E6P91DRT64CRCMAHGQ","node":"start","visit":1,"status":"succeeded","ts":"2026-09-08T15:06:49Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M20RX5E6P91DRT64CRCMAHGQ","node":"select","visit":1,"status":"succeeded","ts":"2026-09-08T15:07:09Z","data":{"painpoints":[],"observations":["4 runs listed (2 develop, 2 merge-upstream), all terminal, all fresh-version, all sandbox-available; 1 already revised (`.fabro/revisions/01M20PXPFESQM8HAWF4MSXAKX5.md`); newest unrevised selected; no active develop run at selection time"]}}
