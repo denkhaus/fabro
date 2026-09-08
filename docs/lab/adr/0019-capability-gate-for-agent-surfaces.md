@@ -62,6 +62,18 @@ line could arm its own sandboxes.
    only; any credential inside it (including clone-URL embedded tokens)
    is a defect to be engineered away.
 
+7. **Engine-provided credentials and bridges are agent-reachable
+   capability** (PR #68, run 01M20RK7XFNPJRZ2T437XGDEP8; fabro-16ff
+   user directive, 2026-09-08): the `GITHUB_TOKEN` injected into run
+   environments via `resolve_workflow_env`
+   (`lib/components/fabro-workflow/src/services.rs`) and the git
+   credential bridge (`lib/components/fabro-workflow/src/git_bridge.rs`)
+   ARE capability surfaces within the meaning of this ADR. A diff that
+   merely USES an engine-provided credential or bridge on a new code
+   path is a capability delta requiring recorded user approval — it does
+   not matter that the credential already existed or that the engine,
+   not the agent, minted it.
+
 ## Consequences
 
 - `gh` is removed from the toolchain image (fabro-06e0); the in-flight PR
@@ -74,3 +86,6 @@ line could arm its own sandboxes.
   be line work.
 - Violations are process defects: a merged capability change without a
   recorded user decision gets reverted, not ratified.
+- Prompts are agent-reachable surface and get rewritten by revision
+  passes; this ADR — not the workflow prompts that restate item 7 — is
+  the authoritative record of the engine-provided-credentials doctrine.
