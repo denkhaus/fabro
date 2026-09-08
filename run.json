@@ -697,7 +697,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-08T20:31:44.489910417Z",
-  "last_event_at": "2026-09-08T21:08:03.546778074Z",
+  "last_event_at": "2026-09-08T21:15:59.425515059Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -858,9 +858,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 543,
       "checkpoint": {
-        "timestamp": "2026-09-08T21:08:03.842023609Z",
+        "timestamp": "2026-09-08T21:08:11.318721620Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -869,12 +869,205 @@
         ],
         "node_retries": {},
         "context_values": {
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.run_id": "01M21BG1TG9SNM4QAS2A33W6GF",
+          "lesson_capture": "mx-dd2618",
+          "current_seed_id": "fabro-c419",
+          "current_node": "implementer",
+          "thread.planner.current_node": "implementer",
+          "thread.start.current_node": "planner",
+          "last_response": "Implementation complete. Summary of the change set:\n\n- **Root cause fixed in provisioning**: `lib/apps/fabro-server/src/server.rs` now computes the worker's fabro-run-tools provisioning via a new `age",
+          "last_stage": "implementer",
+          "internal.retry_count.planner": 0,
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Near-miss in lib/components/fabro-workflow/src/handler/llm/api.rs: the old else-branch registered the FULL fabro tool set on any node without a fabro_tools attribute whenever services existed, so a server-side-only fix would have silently granted all run tools to every develop stage (implementer, tester, reviewer) once the planner's opt-in provisioned services — the run_wide provenance field plus register_stage_fabro_run_tools gating is what keeps the approval's per-stage least privilege; reviewers should check the attribute-less-node case specifically."
+            ]
+          },
           "internal.fidelity": "summary:high",
+          "internal.retry_count.start": 0,
+          "failure_signature": "",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.implementer": 0,
+          "internal.seed_cycle_anchor": "fabro-c419",
+          "internal.thread_id": "planner",
+          "internal.node_visit_count": 1,
+          "current_seed_brief": "Make the develop planner node's `fabro_tools=\"fabro_runs_list\"` attribute actually surface the read-only, engine-mediated `fabro_runs_list` tool in that stage's agent session (user-approved Option A: engine honors node-level fabro_tools; read-only, no credentials, no raw clients — ADR-0019). Acceptance criteria: - Root cause is in provisioning, not registration: `lib/components/fabro-workflow/src/handler/llm/api.rs:1345-1357` already registers named node-level fabro tools, but `FabroRunToolServices` are only wired when run-wide `run.agent.fabro_tools` is true — see `lib/apps/fabro-server/src/server.rs:4514` (`agent_fabro_tools_enabled`) and `server.rs:4555`/`worker_launch_spec` (server.rs:3844) which passes it through; develop defaults the flag to false so services are None and the tool never registers. - Fix: when the run's graph declares a non-empty `fabro_tools` on any LLM handler node (use `Node::fabro_tools()` from `lib/foundation/fabro-types/src/graph.rs:430`), provision the fabro run tool services for the run (same path the run-wide flag enables), keeping the per-node named-only registration as the least-privilege mechanism; run-wide flag semantics unchanged. - Worker token scopes: verify the `inspects` widening at `server.rs:4517-4521` and scopes at `server.rs:3859` still apply so the runs-list read tool can inspect develop runs when node-level opt-in is present; mirror existing behavior, do not widen beyond what the existing run-wide path grants. - Planner prompt reword (actual path: `.fabro/workflows/develop/prompts/planner.md`, step 4 — the seed's bare 'planner.md' path is wrong): ensure step 4 explicitly instructs journaling the degraded mode and proceeding when `fabro_runs_list` is absent from the available toolset, instead of implying the call is always possible; current text only covers call failure/null PR states. - Tests: cover (a) graph with node-level fabro_tools but run flag false → tool available in that stage's session, (b) no node-level and flag false → absent, (c) run flag true → unchanged; follow existing test patterns around `server/tests.rs:2642` (`agent_fabro_tools_enabled`). - EXCLUDED scope: the run-level-warning sub-item duplicates open seed fabro-5b0a — do not implement it. - Validate: `cargo nextest run -p fabro-server` and `cargo nextest run -p fabro-workflow` at minimum; `sd show fabro-c419` has a detailed USER DECISION note (Option A approved) that bounds scope.",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5054,
+            "preview": "Implementation complete. Summary of the change set:\n\n- **Root cause fixed in provisioning**: `lib/apps/fabro-server/src/server.rs` now computes the worker's fabro-run-tools provisioning via a new `age"
+          },
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.rankdir": "LR",
+          "implementation_summary": "Wired node-level `fabro_tools` opt-ins through to actual tool availability: server grants the `agent:run_tools` worker scope when any node declares `fabro_tools` (`Graph::any_node_fabro_tools`, `agent_fabro_tools_enabled` helper in `lib/apps/fabro-server/src/server.rs`), the worker records provisioning provenance in a new `FabroRunToolServices::run_wide` field (`lib/apps/fabro-cli/src/commands/run/runner.rs`), and per-stage registration is centralized in `register_stage_fabro_run_tools` (`lib/components/fabro-workflow/src/handler/llm/api.rs`) so node opt-ins register named-only while attribute-less stages get nothing without the run-wide flag — avoiding a widening beyond the approved scope. Reworded planner.md step 4 to journal the degraded mode. Lesson captured as mx-dd2618. Per-criterion: PASS provisioning fix (server test agent_fabro_tools_enabled_combines_run_flag_and_node_level_opt_in); PASS least-privilege registration + run-wide unchanged (4 register_stage_fabro_run_tools tests); PASS scopes/inspects mirror existing path (worker_command tests); PASS planner.md step 4 reword; PASS tests a/b/c; PASS excluded fabro-5b0a sub-item untouched. Focused tests green; fmt + default-features clippy -D warnings green on fabro-types, fabro-workflow, fabro-cli, fabro-server.",
+          "internal.work_dir": "/workspace/fabro",
+          "current_seed_title": "Wire the planner's fabro_runs_list binding — the in-flight-PR guard silently fails open",
+          "outcome": "succeeded",
+          "graph.inspects": "develop",
+          "graph.max_node_visits": "40",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "failure_class": "",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3112,
+            "preview": "Claimed fabro-c419. The seed's named planner.md path is actually `.fabro/workflows/develop/prompts/planner.md`; noted in the brief. Verified gap: engine-side node-level registration exists (`api.rs:13"
+          },
+          "preferred_label": "Implemented"
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3112,
+                "preview": "Claimed fabro-c419. The seed's named planner.md path is actually `.fabro/workflows/develop/prompts/planner.md`; noted in the brief. Verified gap: engine-side node-level registration exists (`api.rs:13"
+              },
+              "current_seed_id": "fabro-c419",
+              "current_seed_brief": "Make the develop planner node's `fabro_tools=\"fabro_runs_list\"` attribute actually surface the read-only, engine-mediated `fabro_runs_list` tool in that stage's agent session (user-approved Option A: engine honors node-level fabro_tools; read-only, no credentials, no raw clients — ADR-0019). Acceptance criteria: - Root cause is in provisioning, not registration: `lib/components/fabro-workflow/src/handler/llm/api.rs:1345-1357` already registers named node-level fabro tools, but `FabroRunToolServices` are only wired when run-wide `run.agent.fabro_tools` is true — see `lib/apps/fabro-server/src/server.rs:4514` (`agent_fabro_tools_enabled`) and `server.rs:4555`/`worker_launch_spec` (server.rs:3844) which passes it through; develop defaults the flag to false so services are None and the tool never registers. - Fix: when the run's graph declares a non-empty `fabro_tools` on any LLM handler node (use `Node::fabro_tools()` from `lib/foundation/fabro-types/src/graph.rs:430`), provision the fabro run tool services for the run (same path the run-wide flag enables), keeping the per-node named-only registration as the least-privilege mechanism; run-wide flag semantics unchanged. - Worker token scopes: verify the `inspects` widening at `server.rs:4517-4521` and scopes at `server.rs:3859` still apply so the runs-list read tool can inspect develop runs when node-level opt-in is present; mirror existing behavior, do not widen beyond what the existing run-wide path grants. - Planner prompt reword (actual path: `.fabro/workflows/develop/prompts/planner.md`, step 4 — the seed's bare 'planner.md' path is wrong): ensure step 4 explicitly instructs journaling the degraded mode and proceeding when `fabro_runs_list` is absent from the available toolset, instead of implying the call is always possible; current text only covers call failure/null PR states. - Tests: cover (a) graph with node-level fabro_tools but run flag false → tool available in that stage's session, (b) no node-level and flag false → absent, (c) run flag true → unchanged; follow existing test patterns around `server/tests.rs:2642` (`agent_fabro_tools_enabled`). - EXCLUDED scope: the run-level-warning sub-item duplicates open seed fabro-5b0a — do not implement it. - Validate: `cargo nextest run -p fabro-server` and `cargo nextest run -p fabro-workflow` at minimum; `sd show fabro-c419` has a detailed USER DECISION note (Option A approved) that bounds scope.",
+              "last_stage": "planner",
+              "last_response": "Claimed fabro-c419. The seed's named planner.md path is actually `.fabro/workflows/develop/prompts/planner.md`; noted in the brief. Verified gap: engine-side node-level registration exists (`api.rs:13",
+              "current_seed_title": "Wire the planner's fabro_runs_list binding — the in-flight-PR guard silently fails open"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 24405,
+                    "output_tokens": 1809,
+                    "reasoning_tokens": 1272,
+                    "cache_read_tokens": 289472,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 122964
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 98268,
+              "tool_time_ms": 2226,
+              "active_time_ms": 100494
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "lesson_capture": "mx-dd2618",
+              "last_response": "Implementation complete. Summary of the change set:\n\n- **Root cause fixed in provisioning**: `lib/apps/fabro-server/src/server.rs` now computes the worker's fabro-run-tools provisioning via a new `age",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Near-miss in lib/components/fabro-workflow/src/handler/llm/api.rs: the old else-branch registered the FULL fabro tool set on any node without a fabro_tools attribute whenever services existed, so a server-side-only fix would have silently granted all run tools to every develop stage (implementer, tester, reviewer) once the planner's opt-in provisioned services — the run_wide provenance field plus register_stage_fabro_run_tools gating is what keeps the approval's per-stage least privilege; reviewers should check the attribute-less-node case specifically."
+                ]
+              },
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5054,
+                "preview": "Implementation complete. Summary of the change set:\n\n- **Root cause fixed in provisioning**: `lib/apps/fabro-server/src/server.rs` now computes the worker's fabro-run-tools provisioning via a new `age"
+              },
+              "implementation_summary": "Wired node-level `fabro_tools` opt-ins through to actual tool availability: server grants the `agent:run_tools` worker scope when any node declares `fabro_tools` (`Graph::any_node_fabro_tools`, `agent_fabro_tools_enabled` helper in `lib/apps/fabro-server/src/server.rs`), the worker records provisioning provenance in a new `FabroRunToolServices::run_wide` field (`lib/apps/fabro-cli/src/commands/run/runner.rs`), and per-stage registration is centralized in `register_stage_fabro_run_tools` (`lib/components/fabro-workflow/src/handler/llm/api.rs`) so node opt-ins register named-only while attribute-less stages get nothing without the run-wide flag — avoiding a widening beyond the approved scope. Reworded planner.md step 4 to journal the degraded mode. Lesson captured as mx-dd2618. Per-criterion: PASS provisioning fix (server test agent_fabro_tools_enabled_combines_run_flag_and_node_level_opt_in); PASS least-privilege registration + run-wide unchanged (4 register_stage_fabro_run_tools tests); PASS scopes/inspects mirror existing path (worker_command tests); PASS planner.md step 4 reword; PASS tests a/b/c; PASS excluded fabro-5b0a sub-item untouched. Focused tests green; fmt + default-features clippy -D warnings green on fabro-types, fabro-workflow, fabro-cli, fabro-server."
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 55340,
+                    "output_tokens": 9836,
+                    "reasoning_tokens": 8326,
+                    "cache_read_tokens": 2376256,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 775136
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/apps/fabro-cli/src/commands/run/runner.rs",
+              "/workspace/fabro/lib/apps/fabro-server/src/server.rs",
+              "/workspace/fabro/lib/apps/fabro-server/src/server/handler/sessions.rs",
+              "/workspace/fabro/lib/apps/fabro-server/src/server/tests.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/handler/llm/api.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/services.rs",
+              "/workspace/fabro/lib/foundation/fabro-types/src/graph.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 413733,
+              "tool_time_ms": 1518865,
+              "active_time_ms": 1932598
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "d0675dee3b2e00b18e923418d8ecd5dc3396ffc2",
+        "node_visits": {
+          "start": 1,
+          "planner": 1,
+          "implementer": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M21BG1TG9SNM4QAS2A33W6GF.jsonl b/.fabro/journal/01M21BG1TG9SNM4QAS2A33W6GF.jsonl\nindex fd2ece7..f438215 100644\n--- a/.fabro/journal/01M21BG1TG9SNM4QAS2A33W6GF.jsonl\n+++ b/.fabro/journal/01M21BG1TG9SNM4QAS2A33W6GF.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21BG1TG9SNM4QAS2A33W6GF\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T20:31:46Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21BG1TG9SNM4QAS2A33W6GF\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T20:33:36Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21BG1TG9SNM4QAS2A33W6GF\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T21:08:03Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Near-miss in lib/components/fabro-workflow/src/handler/llm/api.rs: the old else-branch registered the FULL fabro tool set on any node without a fabro_tools attribute whenever services existed, so a server-side-only fix would have silently granted all run tools to every develop stage (implementer, tester, reviewer) once the planner's opt-in provisioned services — the run_wide provenance field plus register_stage_fabro_run_tools gating is what keeps the approval's per-stage least privilege; reviewers should check the attribute-less-node case specifically.\"]}}\ndiff --git a/.fabro/workflows/develop/prompts/planner.md b/.fabro/workflows/develop/prompts/planner.md\nindex c3f64ee..4a30469 100644\n--- a/.fabro/workflows/develop/prompts/planner.md\n+++ b/.fabro/workflows/develop/prompts/planner.md\n@@ -34,7 +34,7 @@ The engine maintains `seed_cycles` deterministically: `{ node -> completed visit\n 1. FAST-PATH: first check the `<goal>` text for a seed id (e.g. fabro-37a6). When one is named, the FIRST tracker call is `sd show <id> --format json`, not `sd ready`; judge resolution from the JSON `success` field / issue body, NOT the process exit code (seeds-cli exits 0 on errors, fabro-d936). A named seed is honored ONLY when its JSON `assignee` is exactly `fabro` AND it is open and unblocked — continue at step 2 with it. A named-but-unassigned seed, one assigned to someone else, one that does not resolve, or one that cannot be claimed (closed or blocked) must NOT be claimed: fall through and run `sd ready --assignee fabro --limit 200` to list unblocked fabro-assigned seeds; `sd list --format json --assignee fabro --limit 200` for the full picture if needed (do NOT also run `sd list` when `sd ready` suffices). The user naming a seed in the goal is a request, not an override of their ownership decision — if they wanted the line to take it, they would have assigned it to fabro. A named seed that matches an OPEN run-linked PR is equally untouchable (see the IN-FLIGHT PR CHECK at step 4): skip it, journal `skipped: in-flight PR <n>`, and fall through to `sd ready --assignee fabro --limit 200`.\n 2. Pick the highest-priority unblocked seed that serves the goal. If two compete, prefer the one with fewest blockers.\n 3. STALE-BASIS CHECK (ADR-0015): before claiming, read the seed body for its `Basis:` line (source run id, workflow version, repo commit). Open the referenced files/prompts in the CURRENT worktree: if the behavior the seed describes no longer exists, already changed, or the finding is moot against the current tree, the seed is superseded — close it with `sd close <id> --reason \"superseded: basis stale (<what changed>)\"` and pick the next candidate. Never implement a seed whose basis does not resolve. That close is for a FULLY moot basis. An intermediate case is distinct: the basis RESOLVES but the seed's named path/target/details are wrong against the current tree (e.g. it names `.fabro/Dockerfile` when the real target lives elsewhere). The seed is otherwise valid — do NOT close it as superseded and do NOT claim it as-is: first record the correction into the seed body via `sd update <id> --description \"<full corrected body>\"` so the implementer never re-hits the contradiction, THEN claim normally. `--description` replaces the body WHOLESALE — the planner must re-emit the FULL corrected body including the existing `Basis:` line, appending/amending only the corrected facts and never dropping the original basis (evidence: run 01M1YTVK7, seed fabro-05d0 — ~6 wasted tool calls / 39% of run cost re-proving a wrong path, and the contradiction recurred for every later reader because nobody applied the update). When a seed's `Basis:` references platform paths (`.fabro/**` etc.), open them through the shell — fs_hide binds tool calls only, so read_file fails while sed/grep/cat succeed; never burn tool calls discovering the denial. Seeds without a Basis line are legacy (pre-2026-09-05): judge them the same way against the current tree before claiming.\n-4. IN-FLIGHT PR CHECK (credential-less, fabro-06e0): after selecting the candidate and BEFORE the claim, call the `fabro_runs_list` tool with workflow \"develop\". From the returned runs, collect those whose `pull_request.state` is exactly \"open\" (only \"open\" counts — \"closed\"/\"merged\"/null/absent are not in flight), and extract the seed id from each such run's `goal` text (the `current_seed_id` the run was created for). Skip any top candidate whose seed id or title matches one of those in-flight seeds — a seed whose PR is sitting in the gate is already taken (fabro-22e4 double-pick: the identical fix was re-implemented while PR #47 waited in gate). For each skipped candidate, add a journal line (painpoints or observations) containing the exact phrase `skipped: in-flight PR <n>` (the linked PR number) so the skip is auditable. A skip is not a park: continue down the `sd ready --assignee fabro --limit 200` candidate list to the next unblocked seed and claim that one — the run still routes Seed claimed (or Tracker empty if nothing remains). If the tool call fails or every run's PR state is null/absent, note that in observations and proceed with no in-flight exclusions — never dead-end the planner on this check. There is no `gh` binary and no GitHub credential in this environment: never attempt `gh` or any direct GitHub API call.\n+4. IN-FLIGHT PR CHECK (credential-less, fabro-06e0): after selecting the candidate and BEFORE the claim, call the `fabro_runs_list` tool with workflow \"develop\". From the returned runs, collect those whose `pull_request.state` is exactly \"open\" (only \"open\" counts — \"closed\"/\"merged\"/null/absent are not in flight), and extract the seed id from each such run's `goal` text (the `current_seed_id` the run was created for). Skip any top candidate whose seed id or title matches one of those in-flight seeds — a seed whose PR is sitting in the gate is already taken (fabro-22e4 double-pick: the identical fix was re-implemented while PR #47 waited in gate). For each skipped candidate, add a journal line (painpoints or observations) containing the exact phrase `skipped: in-flight PR <n>` (the linked PR number) so the skip is auditable. A skip is not a park: continue down the `sd ready --assignee fabro --limit 200` candidate list to the next unblocked seed and claim that one — the run still routes Seed claimed (or Tracker empty if nothing remains). If the `fabro_runs_list` tool is ABSENT from the available toolset (check `agent.tools.available`; the engine only registers it on this stage via the node-level `fabro_tools` opt-in), journal the degraded mode explicitly in observations (state that the in-flight PR guard ran as a no-op and why) and proceed with no in-flight exclusions. Likewise, if the tool call fails or every run's PR state is null/absent, note that in observations and proceed with no in-flight exclusions — never dead-end the planner on this check. The check is opportunistic: absence or failure of the tool is a journaled degraded mode, never a blocked run. There is no `gh` binary and no GitHub credential in this environment: never attempt `gh` or any direct GitHub API call.\n 5. Claim it: `sd update <id> --status in_progress --assignee fabro`.\n 6. Write the implementation brief into the context as BULLETED acceptance criteria, not prose: seed id, title, then one bullet per requirement, plus review feedback if this is a re-plan. Bullets are cheaper to re-read, harder to misparse, and the reviewer and the implementer's PASS/FAIL report check them item-by-item. Shape each bullet as a checkable statement, e.g.:\n \ndiff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl\nindex b8165d5..4015885 100644\n--- a/.mulch/expertise/engine.jsonl\n+++ b/.mulch/expertise/engine.jsonl\n@@ -46,3 +46,4 @@\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-08T16:22:28.999Z\",\"evidence\":{\"commit\":\"97c095b0a8724d92b039883354b14dd54ce7812e\"},\"description\":\"fabro-server tests that execute runs in-process with default settings resolve the seeded 'default' environment (Docker provider) and hard-fail with WorkflowError 'Socket not found: /var/run/docker.sock' in Docker-less gate sandboxes (run 01M20T9S8JRXETASN64768TRRP: fabro-e505/fabro-c274 bridge tests). Pin such tests to the reserved local environment via '[run.environment] id = \\\"local\\\"' in the test TOML — Normal mode keeps real handler dispatch, unlike mode = \\\"dry_run\\\" which routes handlers to simulate() and silently skips execute-path assertions (empty observation vectors).\",\"resolution\":\"Both bridge tests pinned to id = \\\"local\\\"; full fabro-server suite 929/929 green without Docker; gate now environment-independent\",\"id\":\"mx-9df484\"}\n {\"type\":\"convention\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-08T18:20:29.952Z\",\"evidence\":{\"commit\":\"a4850e681\"},\"content\":\"Set [run.clone] depth = 0 in workflow.toml for any workflow whose stages run git rev-list --count or git merge-base across origin and upstream remotes; verify with git rev-parse --is-shallow-repository in the sandbox when counts look inflated.\",\"id\":\"mx-588afd\"}\n {\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-08T19:44:10.382Z\",\"evidence\":{\"seeds\":\"fabro-85a1\",\"commit\":\"3e23ee57c98bd03e1556f32c4dc13e867c6e3893\"},\"name\":\"run-clone-depth-zero-for-range-math\",\"description\":\"Workflows doing git range math against upstream (rev-list --count, merge-base) need [run.clone] depth = 0 in their .fabro/workflows/<name>/workflow.toml; default depth-100 shallow clone breaks the math. Conductor (a4850e681) and merge-upstream (fabro-85a1) both set it; audit any new clone-based workflow that compares upstream refs. Volume is ~neutral (~150 MB either way).\",\"files\":[\".fabro/workflows/merge-upstream/workflow.toml\"],\"id\":\"mx-10bfb8\"}\n+{\"type\":\"decision\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-08T21:07:45.325Z\",\"evidence\":{\"commit\":\"a2933be71de5b9a6d79dd055d500270dbab4d334\"},\"title\":\"FabroRunToolServices presence vs run_wide provenance\",\"rationale\":\"The worker-token agent:run_tools scope is granted for both the run-wide flag and node-level fabro_tools opt-ins, so services presence alone can no longer decide whether attribute-less stages get the full tool set; provenance must travel with the services to keep per-stage least privilege (ADR-0019, user-approved Option A on fabro-c419).\",\"id\":\"mx-dd2618\"}\ndiff --git a/lib/apps/fabro-cli/src/commands/run/runner.rs b/lib/apps/fabro-cli/src/commands/run/runner.rs\nindex 8ce89ca..88700ee 100644\n--- a/lib/apps/fabro-cli/src/commands/run/runner.rs\n+++ b/lib/apps/fabro-cli/src/commands/run/runner.rs\n@@ -104,12 +104,17 @@ pub(crate) async fn execute(\n         worker_token.to_owned(),\n     )));\n     let fabro_run_tools = if fabro_run_tools_enabled_from_worker_token(worker_token) {\n+        // fabro-c419: the token scope now also grants services when any\n+        // node declares a node-level `fabro_tools` opt-in, so the\n+        // run-wide flag — not the scope — decides whether attribute-less\n+        // stages get the full tool set.\n         build_fabro_run_tool_services(\n             worker_token,\n             client.clone_for_reuse(),\n             run_id,\n             run_spec.source_directory.as_deref(),\n             &run_dir,\n+            run_spec.settings.run.agent.fabro_tools,\n         )\n     } else {\n         None\n@@ -241,6 +246,7 @@ fn build_fabro_run_tool_services(\n     current_run_id: RunId,\n     source_directory: Option<&str>,\n     run_dir: &Path,\n+    run_wide: bool,\n ) -> Option<FabroRunToolServices> {\n     if worker_token.trim().is_empty() {\n         return None;\n@@ -258,6 +264,7 @@ fn build_fabro_run_tool_services(\n         base_cwd: source_directory.map_or_else(|| run_dir.to_path_buf(), PathBuf::from),\n         user_settings_path: active_settings_path(None),\n         inspects,\n+        run_wide,\n     })\n }\n \ndiff --git a/lib/apps/fabro-server/src/server.rs b/lib/apps/fabro-server/src/server.rs\nindex 4d23c34..83193b8 100644\n--- a/lib/apps/fabro-server/src/server.rs\n+++ b/lib/apps/fabro-server/src/server.rs\n@@ -3832,6 +3832,15 @@ async fn append_worker_exit_failure(\n     }\n }\n \n+/// Whether the run should provision the fabro run tool services for its\n+/// worker: the run-wide `run.agent.fabro_tools` flag OR any node-level\n+/// `fabro_tools` opt-in in the graph (fabro-c419). Node-level opt-in\n+/// grants the named-only registration path per stage; the worker's\n+/// `FabroRunToolServices::run_wide` keeps the two provisions distinct.\n+fn agent_fabro_tools_enabled(spec: &fabro_types::RunSpec) -> bool {\n+    spec.settings.run.agent.fabro_tools || spec.graph.any_node_fabro_tools()\n+}\n+\n #[expect(\n     clippy::disallowed_methods,\n     reason = \"Worker subprocess startup resolves Cargo's test binary env override when present.\"\n@@ -4511,10 +4520,16 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {\n             return;\n         }\n     };\n-    let agent_fabro_tools_enabled = run_state.spec.settings.run.agent.fabro_tools;\n+    // fabro-c419: node-level `fabro_tools` opt-ins (e.g. the develop\n+    // planner's `fabro_runs_list` binding) provision the fabro run tool\n+    // services even when the run-wide flag is off. The worker keeps the\n+    // run-wide distinction in `FabroRunToolServices::run_wide`, so\n+    // attribute-less stages still register nothing without the flag —\n+    // least privilege per stage (ADR-0019).\n+    let fabro_tools_enabled = agent_fabro_tools_enabled(&run_state.spec);\n     // ADR-0011 revisor scope: the graph's `inspects` attribute widens the\n     // worker token to inspect and ask about runs of the declared workflows.\n-    let worker_inspects = if agent_fabro_tools_enabled {\n+    let worker_inspects = if fabro_tools_enabled {\n         run_state.spec.graph.inspects()\n     } else {\n         Vec::new()\n@@ -4552,7 +4567,7 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {\n             run_id,\n             execution_mode,\n             &run_dir_for_build,\n-            agent_fabro_tools_enabled,\n+            fabro_tools_enabled,\n             &worker_inspects,\n             github_app_private_key,\n         )\ndiff --git a/lib/apps/fabro-server/src/server/handler/sessions.rs b/lib/apps/fabro-server/src/server/handler/sessions.rs\nindex 1da9c93..dc3098a 100644\n--- a/lib/apps/fabro-server/src/server/handler/sessions.rs\n+++ b/lib/apps/fabro-server/src/server/handler/sessions.rs\n@@ -792,6 +792,9 @@ async fn build_agent_session(\n         base_cwd:           PathBuf::new(),\n         user_settings_path: PathBuf::new(),\n         inspects:           Vec::new(),\n+        // Named-only registration: the ask-fabro session never uses the\n+        // run-wide full-set path (fabro-c419).\n+        run_wide:           false,\n     };\n     register_named_fabro_run_tools(\n         profile.tool_registry_mut(),\ndiff --git a/lib/apps/fabro-server/src/server/tests.rs b/lib/apps/fabro-server/src/server/tests.rs\nindex b840b0f..e2e9171 100644\n--- a/lib/apps/fabro-server/src/server/tests.rs\n+++ b/lib/apps/fabro-server/src/server/tests.rs\n@@ -2375,6 +2375,52 @@ fn worker_command_opt_in_token_includes_agent_run_tools_scope() {\n     ]);\n }\n \n+#[test]\n+fn agent_fabro_tools_enabled_combines_run_flag_and_node_level_opt_in() {\n+    fn spec_with(flag: bool, node_fabro_tools: Option<&str>) -> RunSpec {\n+        let mut graph = Graph::new(\"develop\");\n+        if let Some(fabro_tools) = node_fabro_tools {\n+            let mut planner = Node::new(\"planner\");\n+            planner.attrs.insert(\n+                \"fabro_tools\".to_string(),\n+                AttrValue::String(fabro_tools.to_string()),\n+            );\n+            graph.nodes.insert(\"planner\".to_string(), planner);\n+        }\n+        let mut settings = WorkflowSettings::default();\n+        settings.run.agent.fabro_tools = flag;\n+        RunSpec {\n+            run_id: RunId::new(),\n+            settings,\n+            graph,\n+            graph_source: None,\n+            workflow_slug: Some(\"develop\".to_string()),\n+            workflow_version_id: None,\n+            target: None,\n+            automation: None,\n+            source_directory: None,\n+            git: None,\n+            labels: HashMap::new(),\n+            provenance: test_support::test_run_provenance(),\n+            manifest_blob: None,\n+            definition_blob: None,\n+            spec_blob: None,\n+            fork_source_ref: None,\n+        }\n+    }\n+\n+    // (a) fabro-c419: node-level fabro_tools with the run flag off still\n+    // provisions the fabro run tool services for the run.\n+    assert!(super::agent_fabro_tools_enabled(&spec_with(\n+        false,\n+        Some(\"fabro_runs_list\")\n+    )));\n+    // (b) Neither the run flag nor a node-level opt-in: no services.\n+    assert!(!super::agent_fabro_tools_enabled(&spec_with(false, None)));\n+    // (c) Run-wide flag alone: unchanged, enabled.\n+    assert!(super::agent_fabro_tools_enabled(&spec_with(true, None)));\n+}\n+\n #[cfg(unix)]\n #[test]\n fn worker_command_forwards_github_app_private_key_from_vault() {\ndiff --git a/lib/components/fabro-workflow/src/handler/llm/api.rs b/lib/components/fabro-workflow/src/handler/llm/api.rs\nindex 9a945e0..331f0a5 100644\n--- a/lib/components/fabro-workflow/src/handler/llm/api.rs\n+++ b/lib/components/fabro-workflow/src/handler/llm/api.rs\n@@ -228,6 +228,28 @@ pub fn register_named_fabro_run_tools(\n     }\n }\n \n+/// Register a stage's fabro run tools from the node-level opt-in list\n+/// (fabro-47b5, fabro-c419). A node with a non-empty `fabro_tools`\n+/// attribute registers exactly those named tools. A node without the\n+/// attribute registers the full set ONLY when the run-wide\n+/// `run.agent.fabro_tools` flag provisioned the services (`run_wide`);\n+/// node-level opt-in never widens attribute-less stages.\n+pub fn register_stage_fabro_run_tools(\n+    registry: &mut ToolRegistry,\n+    services: Option<&FabroRunToolServices>,\n+    node_fabro_tools: &[&str],\n+) {\n+    match services {\n+        Some(services) if !node_fabro_tools.is_empty() => {\n+            register_named_fabro_run_tools(registry, services, node_fabro_tools);\n+        }\n+        Some(services) if services.run_wide => {\n+            register_fabro_run_tools(registry, services);\n+        }\n+        _ => {}\n+    }\n+}\n+\n fn fabro_run_tool(\n     definition: &fabro_tool::ToolDefinition,\n     services: FabroRunToolServices,\n@@ -1303,15 +1325,13 @@ impl AgentApiBackend {\n                     .iter()\n                     .map(String::as_str)\n                     .collect();\n-                if names.is_empty() {\n-                    register_fabro_run_tools(child_profile.tool_registry_mut(), &services);\n-                } else {\n-                    register_named_fabro_run_tools(\n-                        child_profile.tool_registry_mut(),\n-                        &services,\n-                        &names,\n-                    );\n-                }\n+                // Same per-stage semantics as the parent registration:\n+                // named-only for node opt-ins, full set only run-wide.\n+                register_stage_fabro_run_tools(\n+                    child_profile.tool_registry_mut(),\n+                    Some(&services),\n+                    &names,\n+                );\n             }\n             child_profile\n                 .tool_registry_mut()\n@@ -1344,17 +1364,11 @@ impl AgentApiBackend {\n         register_question_tools(provider.profile_kind, profile.tool_registry_mut());\n         // Node-level `fabro_tools` (fabro-47b5) overrides the run-wide\n         // `run.agent.fabro_tools` flag with an explicit opt-in list.\n-        if !node_fabro_tools.is_empty() {\n-            if let Some(services) = &fabro_run_tools {\n-                register_named_fabro_run_tools(\n-                    profile.tool_registry_mut(),\n-                    services,\n-                    &node_fabro_tools,\n-                );\n-            }\n-        } else if let Some(services) = fabro_run_tools {\n-            register_fabro_run_tools(profile.tool_registry_mut(), &services);\n-        }\n+        register_stage_fabro_run_tools(\n+            profile.tool_registry_mut(),\n+            fabro_run_tools.as_ref(),\n+            &node_fabro_tools,\n+        );\n \n         // Stage context pull (fabro-e804): default-registered for every\n         // agent stage; a node `tools` allowlist excludes it like any other\n@@ -2672,6 +2686,81 @@ reasoning = false\n         assert_eq!(registered, vec![fabro_tool::FABRO_RUN_EVENTS_TOOL_NAME]);\n     }\n \n+    #[test]\n+    fn register_stage_fabro_run_tools_node_opt_in_without_run_wide_flag() {\n+        // (a) fabro-c419: node-level `fabro_tools` with the run-wide\n+        // flag off registers exactly the named tools — the planner's\n+        // `fabro_runs_list` binding.\n+        let mut registry = ToolRegistry::new();\n+        let (mut services, _backend) = fabro_run_tool_services();\n+        services.run_wide = false;\n+        services.inspects = vec![\"develop\".to_string()];\n+        register_stage_fabro_run_tools(&mut registry, Some(&services), &[\n+            fabro_tool::FABRO_RUNS_LIST_TOOL_NAME,\n+        ]);\n+\n+        assert!(\n+            registry\n+                .get(fabro_tool::FABRO_RUNS_LIST_TOOL_NAME)\n+                .is_some(),\n+            \"named node-level opt-in must register the tool without the run-wide flag\"\n+        );\n+        assert!(\n+            registry\n+                .get(fabro_tool::FABRO_RUN_CREATE_TOOL_NAME)\n+                .is_none(),\n+            \"node-level opt-in must not widen to unlisted tools\"\n+        );\n+    }\n+\n+    #[test]\n+    fn register_stage_fabro_run_tools_node_opt_in_absent_and_flag_off_registers_nothing() {\n+        // (b) A node without the attribute gets NO tools when the\n+        // services were provisioned only by another node's opt-in.\n+        let mut registry = ToolRegistry::new();\n+        let (mut services, _backend) = fabro_run_tool_services();\n+        services.run_wide = false;\n+        services.inspects = vec![\"develop\".to_string()];\n+        register_stage_fabro_run_tools(&mut registry, Some(&services), &[]);\n+\n+        assert!(\n+            !registry\n+                .names()\n+                .into_iter()\n+                .any(|name| name.starts_with(\"fabro_run_\"))\n+        );\n+    }\n+\n+    #[test]\n+    fn register_stage_fabro_run_tools_run_wide_flag_registers_full_set() {\n+        // (c) Run-wide flag semantics unchanged: an attribute-less node\n+        // registers the full tool set.\n+        let mut registry = ToolRegistry::new();\n+        let (services, _backend) = fabro_run_tool_services();\n+        register_stage_fabro_run_tools(&mut registry, Some(&services), &[]);\n+\n+        assert!(\n+            registry\n+                .get(fabro_tool::FABRO_RUN_CREATE_TOOL_NAME)\n+                .is_some(),\n+            \"run-wide flag keeps registering the full set on attribute-less nodes\"\n+        );\n+    }\n+\n+    #[test]\n+    fn register_stage_fabro_run_tools_no_services_registers_nothing() {\n+        let mut registry = ToolRegistry::new();\n+        register_stage_fabro_run_tools(&mut registry, None, &[\n+            fabro_tool::FABRO_RUNS_LIST_TOOL_NAME,\n+        ]);\n+        assert!(\n+            !registry\n+                .names()\n+                .into_iter()\n+                .any(|name| name.starts_with(\"fabro_run_\"))\n+        );\n+    }\n+\n     #[tokio::test]\n     async fn agent_run_create_injects_current_run_as_parent() {\n         let (services, backend) = fabro_run_tool_services();\n@@ -2877,6 +2966,7 @@ reasoning = false\n             base_cwd:           PathBuf::from(\"/tmp/fabro-test\"),\n             user_settings_path: PathBuf::from(\"/tmp/fabro-test/settings.toml\"),\n             inspects:           vec![\"develop\".to_string()],\n+            run_wide:           true,\n         };\n         let mut registry = ToolRegistry::new();\n         register_fabro_run_tools(&mut registry, &services);\n@@ -2913,6 +3003,7 @@ reasoning = false\n             base_cwd:           PathBuf::from(\"/tmp/fabro-test\"),\n             user_settings_path: PathBuf::from(\"/tmp/fabro-test/settings.toml\"),\n             inspects:           vec![\"develop\".to_string()],\n+            run_wide:           true,\n         };\n \n         let err = fabro_tool::ask_run(\n@@ -2943,6 +3034,7 @@ reasoning = false\n             base_cwd:           PathBuf::from(\"/tmp/fabro-test\"),\n             user_settings_path: PathBuf::from(\"/tmp/fabro-test/settings.toml\"),\n             inspects:           vec![\"develop\".to_string()],\n+            run_wide:           true,\n         };\n         let make_params = |workflow: Option<&str>| {\n             fabro_tool::ValidatedRunsList::try_from(fabro_tool::FabroRunsListParams {\n@@ -3226,6 +3318,7 @@ reasoning = false\n             base_cwd:           PathBuf::from(\"/tmp/fabro-test\"),\n             user_settings_path: PathBuf::from(\"/tmp/fabro-test/settings.toml\"),\n             inspects:           Vec::new(),\n+            run_wide:           true,\n         };\n         (services, backend)\n     }\ndiff --git a/lib/components/fabro-workflow/src/services.rs b/lib/components/fabro-workflow/src/services.rs\nindex 3e74735..b412362 100644\n--- a/lib/components/fabro-workflow/src/services.rs\n+++ b/lib/components/fabro-workflow/src/services.rs\n@@ -85,6 +85,12 @@ pub struct FabroRunToolServices {\n     /// Empty means no revisor authority: `fabro_ask` and\n     /// `fabro_runs_list` are not registered.\n     pub inspects:           Vec<String>,\n+    /// Whether the run-wide `run.agent.fabro_tools` flag provisioned\n+    /// these services (fabro-c419). When false, services exist only\n+    /// because some node declares a node-level `fabro_tools` opt-in:\n+    /// only those nodes get tools (named-only), and stages without the\n+    /// attribute register none — least privilege per stage.\n+    pub run_wide:           bool,\n }\n \n /// Services shared across workflow phases.\ndiff --git a/lib/foundation/fabro-types/src/graph.rs b/lib/foundation/fabro-types/src/graph.rs\nindex 893dae0..4c3c5ac 100644\n--- a/lib/foundation/fabro-types/src/graph.rs\n+++ b/lib/foundation/fabro-types/src/graph.rs\n@@ -718,6 +718,18 @@ impl Graph {\n         }\n     }\n \n+    /// Whether any node in the graph declares a non-empty node-level\n+    /// `fabro_tools` opt-in list (fabro-c419). The server uses this to\n+    /// provision the fabro run tool services for the run even when the\n+    /// run-wide `run.agent.fabro_tools` flag is off: per-node named-only\n+    /// registration remains the least-privilege mechanism.\n+    #[must_use]\n+    pub fn any_node_fabro_tools(&self) -> bool {\n+        self.nodes\n+            .values()\n+            .any(|node| !node.fabro_tools().is_empty())\n+    }\n+\n     /// Returns all outgoing edges from the given node.\n     #[must_use]\n     pub fn outgoing_edges(&self, node_id: &str) -> Vec<&Edge> {\n@@ -1090,6 +1102,29 @@ mod tests {\n         assert!(node.tools().is_empty());\n     }\n \n+    #[test]\n+    fn any_node_fabro_tools_detects_node_level_opt_in() {\n+        let mut graph = Graph::new(\"develop\");\n+        assert!(!graph.any_node_fabro_tools());\n+\n+        let mut planner = Node::new(\"planner\");\n+        planner.attrs.insert(\n+            \"fabro_tools\".to_string(),\n+            AttrValue::String(\"fabro_runs_list\".to_string()),\n+        );\n+        graph.nodes.insert(\"planner\".to_string(), planner);\n+        assert!(graph.any_node_fabro_tools());\n+\n+        // An explicitly empty attribute is not an opt-in.\n+        let mut other = Node::new(\"other\");\n+        other\n+            .attrs\n+            .insert(\"fabro_tools\".to_string(), AttrValue::String(String::new()));\n+        let mut bare = Graph::new(\"bare\");\n+        bare.nodes.insert(\"other\".to_string(), other);\n+        assert!(!bare.any_node_fabro_tools());\n+    }\n+\n     #[test]\n     fn inspects_parses_trims_and_dedupes() {\n         let mut graph = Graph::new(\"revisor\");\n",
+        "summary": {
+          "files_changed": 11,
+          "additions": 234,
+          "deletions": 25
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-08T21:15:59.652277288Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.fidelity": "compact",
           "failure_class": "",
           "graph.rankdir": "LR",
           "graph.max_node_visits": "40",
           "internal.retry_count.implementer": 0,
+          "internal.retry_count.tester": 0,
           "current_seed_brief": "Make the develop planner node's `fabro_tools=\"fabro_runs_list\"` attribute actually surface the read-only, engine-mediated `fabro_runs_list` tool in that stage's agent session (user-approved Option A: engine honors node-level fabro_tools; read-only, no credentials, no raw clients — ADR-0019). Acceptance criteria: - Root cause is in provisioning, not registration: `lib/components/fabro-workflow/src/handler/llm/api.rs:1345-1357` already registers named node-level fabro tools, but `FabroRunToolServices` are only wired when run-wide `run.agent.fabro_tools` is true — see `lib/apps/fabro-server/src/server.rs:4514` (`agent_fabro_tools_enabled`) and `server.rs:4555`/`worker_launch_spec` (server.rs:3844) which passes it through; develop defaults the flag to false so services are None and the tool never registers. - Fix: when the run's graph declares a non-empty `fabro_tools` on any LLM handler node (use `Node::fabro_tools()` from `lib/foundation/fabro-types/src/graph.rs:430`), provision the fabro run tool services for the run (same path the run-wide flag enables), keeping the per-node named-only registration as the least-privilege mechanism; run-wide flag semantics unchanged. - Worker token scopes: verify the `inspects` widening at `server.rs:4517-4521` and scopes at `server.rs:3859` still apply so the runs-list read tool can inspect develop runs when node-level opt-in is present; mirror existing behavior, do not widen beyond what the existing run-wide path grants. - Planner prompt reword (actual path: `.fabro/workflows/develop/prompts/planner.md`, step 4 — the seed's bare 'planner.md' path is wrong): ensure step 4 explicitly instructs journaling the degraded mode and proceeding when `fabro_runs_list` is absent from the available toolset, instead of implying the call is always possible; current text only covers call failure/null PR states. - Tests: cover (a) graph with node-level fabro_tools but run flag false → tool available in that stage's session, (b) no node-level and flag false → absent, (c) run flag true → unchanged; follow existing test patterns around `server/tests.rs:2642` (`agent_fabro_tools_enabled`). - EXCLUDED scope: the run-level-warning sub-item duplicates open seed fabro-5b0a — do not implement it. - Validate: `cargo nextest run -p fabro-server` and `cargo nextest run -p fabro-workflow` at minimum; `sd show fabro-c419` has a detailed USER DECISION note (Option A approved) that bounds scope.",
           "graph.inspects": "develop",
           "thread.planner.current_node": "implementer",
@@ -890,6 +1083,7 @@
               "Near-miss in lib/components/fabro-workflow/src/handler/llm/api.rs: the old else-branch registered the FULL fabro tool set on any node without a fabro_tools attribute whenever services existed, so a server-side-only fix would have silently granted all run tools to every develop stage (implementer, tester, reviewer) once the planner's opt-in provisioned services — the run_wide provenance field plus register_stage_fabro_run_tools gating is what keeps the approval's per-stage least privilege; reviewers should check the attribute-less-node case specifically."
             ]
           },
+          "thread.implementer.current_node": "tester",
           "current_seed_id": "fabro-c419",
           "preferred_label": "Implemented",
           "internal.run_id": "01M21BG1TG9SNM4QAS2A33W6GF",
@@ -903,14 +1097,16 @@
           },
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
+          "command.output": "blob://sha256/f76ad122ba723f00d95edf9d076a0b43553d06566aee29fc8fcaab58d8b7870c",
           "last_response": "Implementation complete. Summary of the change set:\n\n- **Root cause fixed in provisioning**: `lib/apps/fabro-server/src/server.rs` now computes the worker's fabro-run-tools provisioning via a new `age",
           "internal.seed_cycle_anchor": "fabro-c419",
           "graph.preamble_budget_kb": "24",
-          "internal.thread_id": "planner",
+          "internal.thread_id": "implementer",
           "lesson_capture": "mx-dd2618",
-          "current_node": "implementer",
+          "current_node": "tester",
           "outcome": "succeeded",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -985,6 +1181,20 @@
               "active_time_ms": 1932598
             }
           },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/f76ad122ba723f00d95edf9d076a0b43553d06566aee29fc8fcaab58d8b7870c"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 438829,
+              "active_time_ms": 438829
+            }
+          },
           "planner": {
             "status": "succeeded",
             "preferred_label": "Seed claimed",
@@ -1031,11 +1241,12 @@
             }
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
           "planner": 1,
           "implementer": 1,
-          "start": 1
+          "start": 1,
+          "tester": 1
         }
       },
       "diff": {}
@@ -1278,6 +1489,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@1": {
+      "first_event_seq": 546,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-09-08T21:15:59.425515059Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/f76ad122ba723f00d95edf9d076a0b43553d06566aee29fc8fcaab58d8b7870c",
+        "exit_code": 0,
+        "duration_ms": 438829,
+        "termination": "exited",
+        "output_bytes": 452,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 452,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-08T21:08:11.361999656Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 438842,
+        "inference_time_ms": 0,
+        "tool_time_ms": 438829,
+        "active_time_ms": 438829
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
