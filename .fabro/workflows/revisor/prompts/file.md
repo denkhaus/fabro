@@ -52,6 +52,7 @@ When a finding or its proposed fix direction would ADD, CHANGE, or REMOVE a tool
 - carry the label `needs-user` IN ADDITION to `revision` — it stays for user assignment per ADR-0018 D3, never line work;
 - cite ADR-0019 in its description and state `implementation awaits explicit user approval`;
 - propose ONLY engine-mediated, read-only, extend-existing-tools fix directions (ADR-0019.2/.3). You NEVER propose raw authenticated clients or token provisioning — no `gh` with token, no token-bearing curl, no API keys in agent shells — however attractive the finding makes them sound.
+- count ENGINE-PROVIDED credentials and env as agent-reachable capability too: the engine injects `GITHUB_TOKEN` into every agent shell call (`resolve_workflow_env` in `lib/components/fabro-workflow/src/services.rs`) and runs a git credential bridge (`lib/components/fabro-workflow/src/git_bridge.rs`). Fix directions that RELY on them — token-bearing API calls, pushes that assume the credential bridge, shell commands reading `GITHUB_TOKEN` — are out of vocabulary EVEN WHEN you add no credential yourself: a diff that merely uses an engine-provided credential on a new code path is still a capability delta requiring recorded user approval, so such findings file as capability-affecting seeds per the rules above.
 
 ## Hard rules
 
