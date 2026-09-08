@@ -697,7 +697,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-08T19:32:14.982982702Z",
-  "last_event_at": "2026-09-08T19:45:16.776037168Z",
+  "last_event_at": "2026-09-08T19:45:22.580676277Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1805,9 +1805,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 210,
       "checkpoint": {
-        "timestamp": "2026-09-08T19:45:16.980479029Z",
+        "timestamp": "2026-09-08T19:45:21.350075636Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -1820,15 +1820,47 @@
         ],
         "node_retries": {},
         "context_values": {
+          "last_response": "Reviewing seed fabro-85a1 against the evidence capture.\n\n**Requirements check (spec vs. diff):**\n1. ✅ `[run.clone]` section with `depth = 0` exists in `.fabro/workflows/merge-upstream/workflow.toml`",
+          "thread.planner.current_node": "implementer",
           "internal.exit_kind": "natural",
-          "internal.thread_id": "reviewer",
-          "thread.start.current_node": "planner",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.fidelity": "compact",
+          "implementation_summary": "Added a commented [run.clone] depth = 0 section to `.fabro/workflows/merge-upstream/workflow.toml` (inserted before [run.run_branch], mirroring conductor commit a4850e681), so merge-child runs get a full-history clone; the comment explains the shallow-boundary range-math failures (01M20E43YS, 01M20N60ZY) and the ~neutral ~150 MB volume. Config-only, no Rust changes; lesson captured as mx-10bfb8. Per-criterion verification: - PASS [run.clone] depth=0 exists mirroring conductor fix: `.fabro/workflows/merge-upstream/workflow.toml` [run.clone] section (tomllib parse shows run.clone.depth = 0) - PASS comment near section explains WHY (3 consecutive merge runs 01M20E43YS/01M20N60ZY broke rev-list --count / merge-base; notes ~neutral ~150 MB volume): comment block directly above [run.clone] - PASS no other behavior changes: git diff shows 12 added lines only, single file; hooks/model/run_branch/PR config untouched - PASS TOML validity verified: `fabro validate merge-upstream` → 'Validation: OK' (plus tomllib parse) - PASS config-only, validate run as smoke check: no Rust code changes, no fmt/clippy applicable",
+          "internal.retry_count.tester": 0,
+          "current_seed_id": "fabro-85a1",
+          "internal.run_id": "01M2183254XQ3HJ45SR4P1Y2X6",
+          "last_stage": "reviewer",
+          "outcome": "succeeded",
+          "preferred_label": "Approved",
+          "current_node": "closeout",
+          "internal.seed_cycle_anchor": "fabro-85a1",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2198,
+            "preview": "Implementation complete. The change is a 12-line addition to `.fabro/workflows/merge-upstream/workflow.toml`: a `[run.clone]` section with `depth = 0` plus a comment explaining the shallow-boundary fa"
+          },
           "current_seed_brief": "Add `[run.clone]` with `depth = 0` to `.fabro/workflows/merge-upstream/workflow.toml` so merge-child runs get a full-history clone instead of the default depth-100 shallow clone. Acceptance criteria: - `[run.clone]` section with `depth = 0` exists in `.fabro/workflows/merge-upstream/workflow.toml`, mirroring the conductor fix (commit a4850e681, `.fabro/workflows/conductor/workflow.toml` lines 43-44) - a short comment near the new section explains WHY (shallow boundary broke `git rev-list --count` / `git merge-base` range math in 3 consecutive merge runs: 01M20E43YS, 01M20N60ZY) and notes volume is ~neutral (~150 MB either way) - no other behavior of the workflow.toml changes (hooks, model, run_branch, PR config untouched) - TOML validity verified (workflow still parses, e.g. `fabro validate merge-upstream` or equivalent parse check) - verification is config-only: no Rust code changes expected; if a parse/validate command exists for workflows, run it as the smoke check. Basis verified against current tree: merge-upstream/workflow.toml has NO `[run.clone]` section today; conductor/workflow.toml has `depth = 0`.",
-          "thread.tester.current_node": "evidence",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2336,
+            "preview": "Claimed `fabro-85a1`. The `fabro_runs_list` tool is not available in this stage's toolset, so the in-flight PR check ran degraded (no exclusions possible) — noted in observations.\n\n{\n  \"outcome\": \"s"
+          },
+          "thread.reviewer.current_node": "closeout",
+          "current_seed_title": "merge-upstream: full-history clone (run.clone depth=0) - shallow clone broke range math in 3 consecutive merge runs",
+          "internal.node_visit_count": 1,
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Verified the committed workflow.toml directly (git show HEAD) rather than trusting the capture alone; diff, file, and seed spec all agree. Noted the comment says '3 consecutive merge runs' while citing 2 run IDs — this matches the seed body (merge+reviewer nodes across those two runs), so not a deviation. Capability-delta check: clone depth is data volume, not agent privilege; ADR-0019 no_token stance in the file is untouched."
+            ]
+          },
+          "failure_class": "",
+          "internal.retry_count.reviewer": 0,
+          "command.output": "blob://sha256/a479bacaadebafe650b43131005c6bfbfbc04627b5271245313b34844f251528",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.evidence": 0,
+          "internal.thread_id": "reviewer",
           "internal.retry_count.closeout": 0,
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -1837,66 +1869,112 @@
             "reviewer": 1,
             "closeout": 1
           },
-          "failure_signature": "",
-          "thread.implementer.current_node": "tester",
-          "thread.planner.current_node": "implementer",
-          "thread.evidence.current_node": "reviewer",
-          "internal.retry_count.evidence": 0,
-          "internal.seed_cycle_anchor": "fabro-85a1",
-          "response.implementer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 2198,
-            "preview": "Implementation complete. The change is a 12-line addition to `.fabro/workflows/merge-upstream/workflow.toml`: a `[run.clone]` section with `depth = 0` plus a comment explaining the shallow-boundary fa"
-          },
-          "last_stage": "reviewer",
-          "internal.run_id": "01M2183254XQ3HJ45SR4P1Y2X6",
-          "internal.work_dir": "/workspace/fabro",
-          "graph.max_node_visits": "40",
-          "current_node": "closeout",
-          "internal.retry_count.tester": 0,
-          "current_seed_title": "merge-upstream: full-history clone (run.clone depth=0) - shallow clone broke range math in 3 consecutive merge runs",
-          "command.output": "blob://sha256/a479bacaadebafe650b43131005c6bfbfbc04627b5271245313b34844f251528",
-          "thread.reviewer.current_node": "closeout",
-          "outcome": "succeeded",
-          "internal.retry_count.start": 0,
-          "current_seed_id": "fabro-85a1",
-          "last_response": "Reviewing seed fabro-85a1 against the evidence capture.\n\n**Requirements check (spec vs. diff):**\n1. ✅ `[run.clone]` section with `depth = 0` exists in `.fabro/workflows/merge-upstream/workflow.toml`",
-          "graph.rankdir": "LR",
-          "internal.retry_count.planner": 0,
           "graph.preamble_budget_kb": "24",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "thread.start.current_node": "planner",
           "review_verdict": "approved",
-          "internal.retry_count.reviewer": 0,
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 2336,
-            "preview": "Claimed `fabro-85a1`. The `fabro_runs_list` tool is not available in this stage's toolset, so the in-flight PR check ran degraded (no exclusions possible) — noted in observations.\n\n{\n  \"outcome\": \"s"
-          },
-          "preferred_label": "Approved",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.implementer": 0,
+          "graph.inspects": "develop",
+          "internal.retry_count.planner": 0,
           "response.reviewer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.reviewer",
             "chars": 2516,
             "preview": "Reviewing seed fabro-85a1 against the evidence capture.\n\n**Requirements check (spec vs. diff):**\n1. ✅ `[run.clone]` section with `depth = 0` exists in `.fabro/workflows/merge-upstream/workflow.toml`"
           },
-          "internal.node_visit_count": 1,
-          "implementation_summary": "Added a commented [run.clone] depth = 0 section to `.fabro/workflows/merge-upstream/workflow.toml` (inserted before [run.run_branch], mirroring conductor commit a4850e681), so merge-child runs get a full-history clone; the comment explains the shallow-boundary range-math failures (01M20E43YS, 01M20N60ZY) and the ~neutral ~150 MB volume. Config-only, no Rust changes; lesson captured as mx-10bfb8. Per-criterion verification: - PASS [run.clone] depth=0 exists mirroring conductor fix: `.fabro/workflows/merge-upstream/workflow.toml` [run.clone] section (tomllib parse shows run.clone.depth = 0) - PASS comment near section explains WHY (3 consecutive merge runs 01M20E43YS/01M20N60ZY broke rev-list --count / merge-base; notes ~neutral ~150 MB volume): comment block directly above [run.clone] - PASS no other behavior changes: git diff shows 12 added lines only, single file; hooks/model/run_branch/PR config untouched - PASS TOML validity verified: `fabro validate merge-upstream` → 'Validation: OK' (plus tomllib parse) - PASS config-only, validate run as smoke check: no Rust code changes, no fmt/clippy applicable",
-          "graph.inspects": "develop",
           "lesson_capture": "mx-10bfb8",
-          "failure_class": "",
-          "internal.retry_count.implementer": 0,
-          "journal": {
-            "painpoints": [],
-            "observations": [
-              "Verified the committed workflow.toml directly (git show HEAD) rather than trusting the capture alone; diff, file, and seed spec all agree. Noted the comment says '3 consecutive merge runs' while citing 2 run IDs — this matches the seed body (merge+reviewer nodes across those two runs), so not a deviation. Capability-delta check: clone depth is data volume, not agent privilege; ADR-0019 no_token stance in the file is untouched."
-            ]
-          }
+          "thread.implementer.current_node": "tester",
+          "thread.tester.current_node": "evidence",
+          "thread.evidence.current_node": "reviewer",
+          "internal.work_dir": "/workspace/fabro",
+          "failure_signature": "",
+          "graph.rankdir": "LR",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.fidelity": "compact"
         },
         "node_outcomes": {
           "start": {
             "status": "succeeded",
             "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Cold `cargo run -p fabro-cli -- validate` from a clean target dir took ~7 min build; building once with `cargo build -q -p fabro-cli` then reusing `target/debug/fabro` is the cheaper path for config-only smoke checks (target/ is gitignored, no artifact-hygiene impact)."
+                ]
+              },
+              "last_response": "Implementation complete. The change is a 12-line addition to `.fabro/workflows/merge-upstream/workflow.toml`: a `[run.clone]` section with `depth = 0` plus a comment explaining the shallow-boundary fa",
+              "implementation_summary": "Added a commented [run.clone] depth = 0 section to `.fabro/workflows/merge-upstream/workflow.toml` (inserted before [run.run_branch], mirroring conductor commit a4850e681), so merge-child runs get a full-history clone; the comment explains the shallow-boundary range-math failures (01M20E43YS, 01M20N60ZY) and the ~neutral ~150 MB volume. Config-only, no Rust changes; lesson captured as mx-10bfb8. Per-criterion verification: - PASS [run.clone] depth=0 exists mirroring conductor fix: `.fabro/workflows/merge-upstream/workflow.toml` [run.clone] section (tomllib parse shows run.clone.depth = 0) - PASS comment near section explains WHY (3 consecutive merge runs 01M20E43YS/01M20N60ZY broke rev-list --count / merge-base; notes ~neutral ~150 MB volume): comment block directly above [run.clone] - PASS no other behavior changes: git diff shows 12 added lines only, single file; hooks/model/run_branch/PR config untouched - PASS TOML validity verified: `fabro validate merge-upstream` → 'Validation: OK' (plus tomllib parse) - PASS config-only, validate run as smoke check: no Rust code changes, no fmt/clippy applicable",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2198,
+                "preview": "Implementation complete. The change is a 12-line addition to `.fabro/workflows/merge-upstream/workflow.toml`: a `[run.clone]` section with `depth = 0` plus a comment explaining the shallow-boundary fa"
+              },
+              "lesson_capture": "mx-10bfb8"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 15245,
+                    "output_tokens": 1722,
+                    "reasoning_tokens": 330,
+                    "cache_read_tokens": 136768,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 65918
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 53500,
+              "tool_time_ms": 600523,
+              "active_time_ms": 654023
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/a479bacaadebafe650b43131005c6bfbfbc04627b5271245313b34844f251528"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 270,
+              "active_time_ms": 270
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/6d12facac6f4452a9b98e5489f9e46baa708e4a1db5348bca556636c868d9d31"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 367,
+              "active_time_ms": 367
+            }
           },
           "planner": {
             "status": "succeeded",
@@ -2015,101 +2093,142 @@
               "tool_time_ms": 5413,
               "active_time_ms": 5413
             }
-          },
-          "evidence": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/6d12facac6f4452a9b98e5489f9e46baa708e4a1db5348bca556636c868d9d31"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 367,
-              "active_time_ms": 367
-            }
-          },
-          "implementer": {
-            "status": "succeeded",
-            "preferred_label": "Implemented",
-            "context_updates": {
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "Cold `cargo run -p fabro-cli -- validate` from a clean target dir took ~7 min build; building once with `cargo build -q -p fabro-cli` then reusing `target/debug/fabro` is the cheaper path for config-only smoke checks (target/ is gitignored, no artifact-hygiene impact)."
-                ]
-              },
-              "last_response": "Implementation complete. The change is a 12-line addition to `.fabro/workflows/merge-upstream/workflow.toml`: a `[run.clone]` section with `depth = 0` plus a comment explaining the shallow-boundary fa",
-              "implementation_summary": "Added a commented [run.clone] depth = 0 section to `.fabro/workflows/merge-upstream/workflow.toml` (inserted before [run.run_branch], mirroring conductor commit a4850e681), so merge-child runs get a full-history clone; the comment explains the shallow-boundary range-math failures (01M20E43YS, 01M20N60ZY) and the ~neutral ~150 MB volume. Config-only, no Rust changes; lesson captured as mx-10bfb8. Per-criterion verification: - PASS [run.clone] depth=0 exists mirroring conductor fix: `.fabro/workflows/merge-upstream/workflow.toml` [run.clone] section (tomllib parse shows run.clone.depth = 0) - PASS comment near section explains WHY (3 consecutive merge runs 01M20E43YS/01M20N60ZY broke rev-list --count / merge-base; notes ~neutral ~150 MB volume): comment block directly above [run.clone] - PASS no other behavior changes: git diff shows 12 added lines only, single file; hooks/model/run_branch/PR config untouched - PASS TOML validity verified: `fabro validate merge-upstream` → 'Validation: OK' (plus tomllib parse) - PASS config-only, validate run as smoke check: no Rust code changes, no fmt/clippy applicable",
-              "last_stage": "implementer",
-              "response.implementer": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.implementer",
-                "chars": 2198,
-                "preview": "Implementation complete. The change is a 12-line addition to `.fabro/workflows/merge-upstream/workflow.toml`: a `[run.clone]` section with `depth = 0` plus a comment explaining the shallow-boundary fa"
-              },
-              "lesson_capture": "mx-10bfb8"
-            },
-            "notes": "Stage completed: implementer",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 15245,
-                    "output_tokens": 1722,
-                    "reasoning_tokens": 330,
-                    "cache_read_tokens": 136768,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 65918
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 53500,
-              "tool_time_ms": 600523,
-              "active_time_ms": 654023
-            }
-          },
-          "closeout": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/a479bacaadebafe650b43131005c6bfbfbc04627b5271245313b34844f251528"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 270,
-              "active_time_ms": 270
-            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "9b9a3f700c003e7c1902d6b6f40f078cbfbfc5ba",
         "node_visits": {
+          "evidence": 1,
           "implementer": 1,
-          "start": 1,
+          "tester": 1,
           "closeout": 1,
           "planner": 1,
-          "evidence": 1,
-          "reviewer": 1,
-          "tester": 1
+          "start": 1,
+          "reviewer": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl b/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl\nindex 1fdddc5..56a04f8 100644\n--- a/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl\n+++ b/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl\n@@ -4,3 +4,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2183254XQ3HJ45SR4P1Y2X6\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:44:38Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2183254XQ3HJ45SR4P1Y2X6\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:44:44Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2183254XQ3HJ45SR4P1Y2X6\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:45:11Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified the committed workflow.toml directly (git show HEAD) rather than trusting the capture alone; diff, file, and seed spec all agree. Noted the comment says '3 consecutive merge runs' while citing 2 run IDs — this matches the seed body (merge+reviewer nodes across those two runs), so not a deviation. Capability-delta check: clone depth is data volume, not agent privilege; ADR-0019 no_token stance in the file is untouched.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2183254XQ3HJ45SR4P1Y2X6\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:45:16Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex f85e937..1771ea5 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -284,7 +284,7 @@\n {\"id\":\"fabro-a08a\",\"title\":\"Develop planner prompt: visit-1 fresh-cycle line to skip dead context reads\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T15:14:55.468Z\",\"updatedAt\":\"2026-09-08T15:24:21.706Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 1, add one line: 'visit 1 with no current_seed_id in ## Context = fresh cycle; go straight to sd ready'. In run 01M20RK7XFNPJRZ2T437XGDEP8 the planner opened with two context_read calls at pass start, one erroring with unknown context key 'current_seed_id' because it was visit 1 and nothing existed to read (events seq 31-34). Expected effect: two fewer tool rounds per fresh planner pass (~$0.02, ~8 s of the 59.7 s stage); orthogonal to fabro-c3b4 (top-N view, output volume) and fabro-e4fa (call economy). Basis: run 01M20RK7XFNPJRZ2T437XGDEP8, workflow version af036506627c2c235dc58d52e1ceda475fc4053f219b513e9582f644224dc129, commit 6f23b48525bf1ff7b11d3a4c49ad43681a9ff1fb\",\"labels\":[\"revision\",\"workflows\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-fc1b\",\"title\":\"Implementer prompt: require the full touched-crate test suite when the seed touches tests\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T16:34:54.153Z\",\"updatedAt\":\"2026-09-08T18:11:08.818Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, replace the 'ONE focused test' verification rule with: when the seed adds or edits tests in a crate, the pre-gate check is cargo nextest -p <touched-crate> (full crate suite), still never the workspace suite. Evidence from run 01M20T9S8JRXETASN64768TRRP: implementer@1 ran targeted fabro-server tests only and missed the two pre-existing Docker-socket failures (run_start_grants_github_token_bridge_only_to_user_principals, worker_principal_run_without_vault_token_takes_no_token_path) that live in the full fabro-server suite; the resulting gate-red bounce (tester@1 340s + implementer@2 915s/$0.769 + tester@2 91s) cost ~22 min, ~40% of the 55-min run wall, to apply a 6-line [run.environment] id = \\\"local\\\" pin. Expected effect: pre-existing or adjacent breaks in the touched crate surface in the same implementer pass, eliminating ~20 min / ~$0.8 per bounce of this class. Distinct from closed seeds fabro-0d56/fabro-2254 (fmt/clippy scope) which cover lint checks, not the test-suite scope. Basis: run 01M20T9S8JRXETASN64768TRRP, workflow version 8aedc5a9bbdd71b2f882af0b6c7d28a947212553646a31a390f5d173a91c8a69, commit 9966d125e665593fcd4f21137a19659625d58ed0\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-8d1c\",\"title\":\"ADR-0019: record the engine-provided-credentials doctrine in the ADR file itself (PR #68 landed prompts-only)\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T18:11:58.469Z\",\"updatedAt\":\"2026-09-08T18:19:37.132Z\",\"assignee\":\"fabro\",\"description\":\"ADR-0019 doctrine extension (PR #68: 'treat engine-provided credentials as agent-reachable capabilities') landed ONLY in workflow prompts (.fabro/workflows/develop/prompts/reviewer.md step 5, .fabro/workflows/revisor/prompts/file.md capability paragraph) - the ADR file itself (docs/lab/adr/0019-capability-gate-for-agent-surfaces.md) does not mention engine-provided credentials at all: no reference to the GITHUB_TOKEN injection via resolve_workflow_env (lib/components/fabro-workflow/src/services.rs), the git credential bridge (lib/components/fabro-workflow/src/git_bridge.rs), or the rule that a diff merely USING an engine-provided credential on a new code path is a capability delta requiring recorded user approval.\\n\\nWHY IT MATTERS: the ADR is the durable decision record; prompts get rewritten by every revision pass and are agent-reachable surface themselves. Reviewers, revisors, and future grill sessions cite ADR-0019 - if the record omits the engine-provided-credential class, the gate doctrine silently narrows back to container-env-visible capability on the next prompt rewrite (exactly the PR #53 blind spot the extension closed).\\n\\nFIX: add one paragraph to ADR-0019 Decision section (or a numbered extension like .7) stating: engine-provided credentials and bridges (GITHUB_TOKEN injection, git credential bridge) ARE agent-reachable capability; diffs that use them on new code paths are capability deltas requiring recorded user approval; cite PR #68, run 01M20RK7XFNPJRZ2T437XGDEP8, and the fabro-16ff user directive (2026-09-08). Docs-only change, no code.\\n\\nBasis: agent sweep of other-machine runs 2026-09-08 evening, commit e078c27b2 (PR #68) vs docs/lab/adr/0019-capability-gate-for-agent-surfaces.md, commit 47b491b8e (repo state).\",\"labels\":[\"revision\"]}\n-{\"id\":\"fabro-85a1\",\"title\":\"merge-upstream: full-history clone (run.clone depth=0) - shallow clone broke range math in 3 consecutive merge runs\",\"status\":\"in_progress\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-08T18:19:37.228Z\",\"updatedAt\":\"2026-09-08T19:32:38.736Z\",\"assignee\":\"fabro\",\"description\":\"The shallow-clone trap hit THREE consecutive merge-upstream runs (01M20E43YS, 01M20N60ZY, both merge+reviewer nodes journaled it with 'Do not keep rediscovering this'): the run sandbox clone arrives at depth 100 (.git/shallow boundary e.g. 43036bb477), so git rev-list --count origin/denkhaus..upstream/main reports a misleading ~4919 and git merge-base returns nothing until the merger unshallows mid-pass (~8s). Commit a4850e681 fixed this for the CONDUCTOR survey only ([run.clone] depth = 0 in .fabro/workflows/conductor/workflow.toml) - the merge children are their own workflow and .fabro/workflows/merge-upstream/workflow.toml has NO [run.clone] section, so every merge child still rediscovers the trap. Each child run clones origin/denkhaus fresh at creation (conductor workflow.toml comment).\\n\\nFIX: add [run.clone] depth = 0 to .fabro/workflows/merge-upstream/workflow.toml, mirroring the conductor commit a4850e681 (volume is ~neutral - the survey's unbounded git fetch upstream already pulls the full shared history into the shallow clone each pass, ~150 MB either way, measured). Alternative considered and rejected: a merger-procedure is-shallow guard + git fetch --unshallow is per-pass remediation, not a fix.\\n\\nBasis: journals .fabro/journal/01M20E43YS004DCEYPJ0GJQH4B.jsonl and 01M20N60ZY6DZDTX60WW0161KP.jsonl (merge v1 + reviewer v1 painpoints), agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"engine\"]}\n+{\"id\":\"fabro-85a1\",\"title\":\"merge-upstream: full-history clone (run.clone depth=0) - shallow clone broke range math in 3 consecutive merge runs\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-08T18:19:37.228Z\",\"updatedAt\":\"2026-09-08T19:45:16.677Z\",\"assignee\":\"fabro\",\"description\":\"The shallow-clone trap hit THREE consecutive merge-upstream runs (01M20E43YS, 01M20N60ZY, both merge+reviewer nodes journaled it with 'Do not keep rediscovering this'): the run sandbox clone arrives at depth 100 (.git/shallow boundary e.g. 43036bb477), so git rev-list --count origin/denkhaus..upstream/main reports a misleading ~4919 and git merge-base returns nothing until the merger unshallows mid-pass (~8s). Commit a4850e681 fixed this for the CONDUCTOR survey only ([run.clone] depth = 0 in .fabro/workflows/conductor/workflow.toml) - the merge children are their own workflow and .fabro/workflows/merge-upstream/workflow.toml has NO [run.clone] section, so every merge child still rediscovers the trap. Each child run clones origin/denkhaus fresh at creation (conductor workflow.toml comment).\\n\\nFIX: add [run.clone] depth = 0 to .fabro/workflows/merge-upstream/workflow.toml, mirroring the conductor commit a4850e681 (volume is ~neutral - the survey's unbounded git fetch upstream already pulls the full shared history into the shallow clone each pass, ~150 MB either way, measured). Alternative considered and rejected: a merger-procedure is-shallow guard + git fetch --unshallow is per-pass remediation, not a fix.\\n\\nBasis: journals .fabro/journal/01M20E43YS004DCEYPJ0GJQH4B.jsonl and 01M20N60ZY6DZDTX60WW0161KP.jsonl (merge v1 + reviewer v1 painpoints), agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"engine\"],\"closedAt\":\"2026-09-08T19:45:16.677Z\"}\n {\"id\":\"fabro-ad74\",\"title\":\"merge-upstream touchpoints.md: refresh two stale paths (web header.tsx moved, improve.md retired)\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-08T18:19:50.477Z\",\"updatedAt\":\"2026-09-08T18:19:50.477Z\",\"assignee\":\"fabro\",\"description\":\"The merge-upstream reviewer burned a grep pass producing false MISSING on two stale paths in .agents/skills/merge-upstream/references/touchpoints.md (run 01M20N60ZY6DZDTX60WW0161KP, reviewer v1 painpoint): (1) 'web header.tsx' actually lives at apps/fabro-web/app/routes/run-detail/header.tsx (src->app layout move), (2) scripts/prompts/improve.md no longer exists (retired per ADR-0015, prompt embedded in the revisor workflow - documented in scripts/run_workflow.nu header). The reviewer noted: 'Platform asset - next maintainer should refresh the touchpoints table paths; I did not modify it.'\\n\\nFIX: refresh the two rows in touchpoints.md to the current paths; while there, add a one-line maintenance note that the table is verified against the tree by the reviewer probe each pass, so path drift is caught at the next pass instead of causing false MISSING.\\n\\nBasis: journal .fabro/journal/01M20N60ZY6DZDTX60WW0161KP.jsonl reviewer v1 painpoint, agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"workflows\"]}\n {\"id\":\"fabro-5ff7\",\"title\":\"Revisor: harden the duplicate check - sd show every analyst-cited seed id, sd list is capped at 50\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T18:19:50.572Z\",\"updatedAt\":\"2026-09-08T18:19:50.572Z\",\"assignee\":\"fabro\",\"description\":\"TWO revisor passes nearly mis-dropped or mis-kept findings because the tracker picture was capped: (a) run 01M20RX5E6P91DRT64CRCMAHGQ analyze v1: sd list --format compact returned exactly 50 rows and hid open seeds (fabro-a0e3, fabro-c3b4, fabro-9ef9, fabro-4811, fabro-270c) that per-theme sd search then surfaced - 'a list-only duplicate check would have mis-dropped or mis-kept findings'. (b) run 01M20XGWE2ZYM9ADRM2PVE322F analyze v1: sd list capped at 50 AND sd search returned empty for themes matching analyst-cited seeds by title+description (e.g. 'qualitygate transient deterministic' vs fabro-4815) - 'the revisor step should mandate sd show on every seed id cited in the analyst answer, or sd list with an explicit raised limit'. fabro-c16d covers the PLANNER-side default --limit 50; this seed covers the REVISOR-side duplicate check.\\n\\nFIX: in .fabro/workflows/revisor/prompts/file.md (tracker command reference + analyze step): mandate sd show <id> for EVERY seed id cited in the analyst answer before judging duplicate/drop (statuses and titles verified individually), and treat sd list as a summary view only; where the analyst cites themes without ids, require sd search per theme AND a raised-limit sd list --limit 200 fallback. Evidence: in pass (b) sd show verification was done ad hoc and caught everything - make it mandatory.\\n\\nBasis: journals .fabro/journal/01M20RX5E6P91DRT64CRCMAHGQ.jsonl and 01M20XGWE2ZYM9ADRM2PVE322F.jsonl analyze v1 painpoints, agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-8c1e\",\"title\":\"Revisor + closeout prompts: document sd priority number->band mapping (1=High, 2=Medium, default 2)\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-08T18:20:09.207Z\",\"updatedAt\":\"2026-09-08T18:20:09.207Z\",\"assignee\":\"fabro\",\"description\":\"sd's --priority is a 0-4 number (P0-P4) where 1=High, 2=Medium, 3=Low, default 2 - NOT intuitive at filing time. Run 01M20RX5E6P91DRT64CRCMAHGQ file v1 painpoint: 'sd create output reports Medium priority though both findings requested priority 2 - verify sd's priority number->band mapping in the CLI help before filing if exact High/Medium matters' (fabro-e4c4 and fabro-a08a landed Medium though the revisor's intent read as High-band work). IN-SESSION REPRODUCTION (agent sweep, 2026-09-08 evening): the agent filed fabro-8d1c with --priority 2 intending High and had to correct it to 1 afterwards - same trap, second consumer.\\n\\nFIX: one documentation line in .fabro/workflows/revisor/prompts/file.md tracker command reference (sd create row): 'priority bands: 0=P0 1=High 2=Medium 3=Low 4=Lowest; default 2 - pass 1 explicitly for High findings'. Optionally the same line in the develop closeout prompt where seeds get filed. Docs-only.\\n\\nBasis: journal .fabro/journal/01M20RX5E6P91DRT64CRCMAHGQ.jsonl file v1 painpoint + agent reproduction (fabro-8d1c priority correction), agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 21,
+          "deletions": 1
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-08T19:45:21.413679918Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 741177,
+      "inference_time_ms": 98452,
+      "tool_time_ms": 608139,
+      "active_time_ms": 706591
+    },
+    "final_git_commit_sha": "9b9a3f700c003e7c1902d6b6f40f078cbfbfc5ba",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 27647,
+          "inference_time_ms": 25793,
+          "tool_time_ms": 1291,
+          "active_time_ms": 27084
+        },
+        "billing_usd_micros": 51070,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 654569,
+          "inference_time_ms": 53500,
+          "tool_time_ms": 600523,
+          "active_time_ms": 654023
+        },
+        "billing_usd_micros": 65918,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 5419,
+          "inference_time_ms": 0,
+          "tool_time_ms": 5413,
+          "active_time_ms": 5413
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 372,
+          "inference_time_ms": 0,
+          "tool_time_ms": 367,
+          "active_time_ms": 367
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 19973,
+          "inference_time_ms": 19159,
+          "tool_time_ms": 275,
+          "active_time_ms": 19434
+        },
+        "billing_usd_micros": 28902,
+        "retries": 0
+      },
+      {
+        "stage_id": "closeout",
+        "stage_label": "closeout",
+        "timing": {
+          "wall_time_ms": 276,
+          "inference_time_ms": 0,
+          "tool_time_ms": 270,
+          "active_time_ms": 270
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 49944,
+      "output_tokens": 3255,
+      "total_tokens": 273762,
+      "reasoning_tokens": 1043,
+      "cache_read_tokens": 219520,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 145890
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl b/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl\nnew file mode 100644\nindex 0000000..56a04f8\n--- /dev/null\n+++ b/.fabro/journal/01M2183254XQ3HJ45SR4P1Y2X6.jsonl\n@@ -0,0 +1,7 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2183254XQ3HJ45SR4P1Y2X6\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:32:19Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2183254XQ3HJ45SR4P1Y2X6\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:32:47Z\",\"data\":{\"painpoints\":[{\"text\":\"Planner prompt mandates a fabro_runs_list in-flight PR check (fabro-06e0), but this stage's toolset exposes no such tool — the check degraded to a no-op. Fix: either expose fabro_runs_list to the planner stage or make the prompt state the degraded fallback explicitly when the tool is absent (run 01M2183254XQ3HJ45SR4P1Y2X6).\"}],\"observations\":[\"Claimed fabro-85a1 (top High bug, no blockers). Basis resolved: merge-upstream workflow.toml lacks [run.clone] while conductor has depth=0 (commit a4850e681 pattern to mirror). In-flight PR check could not run (tool unavailable); no exclusions applied.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2183254XQ3HJ45SR4P1Y2X6\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:44:27Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Cold `cargo run -p fabro-cli -- validate` from a clean target dir took ~7 min build; building once with `cargo build -q -p fabro-cli` then reusing `target/debug/fabro` is the cheaper path for config-only smoke checks (target/ is gitignored, no artifact-hygiene impact).\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2183254XQ3HJ45SR4P1Y2X6\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:44:38Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2183254XQ3HJ45SR4P1Y2X6\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:44:44Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2183254XQ3HJ45SR4P1Y2X6\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:45:11Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified the committed workflow.toml directly (git show HEAD) rather than trusting the capture alone; diff, file, and seed spec all agree. Noted the comment says '3 consecutive merge runs' while citing 2 run IDs — this matches the seed body (merge+reviewer nodes across those two runs), so not a deviation. Capability-delta check: clone depth is data volume, not agent privilege; ADR-0019 no_token stance in the file is untouched.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2183254XQ3HJ45SR4P1Y2X6\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:45:16Z\",\"data\":{}}\ndiff --git a/.fabro/workflows/merge-upstream/workflow.toml b/.fabro/workflows/merge-upstream/workflow.toml\nindex 5080de1..a641ef0 100644\n--- a/.fabro/workflows/merge-upstream/workflow.toml\n+++ b/.fabro/workflows/merge-upstream/workflow.toml\n@@ -26,6 +26,18 @@ sandbox = true\n provider = \"zai\"\n name = \"glm-5.3\"\n \n+# Full-history clone: merge-child runs clone origin/denkhaus fresh at\n+# depth 100 by default, and the shallow boundary broke range math in 3\n+# consecutive merge runs (01M20E43YS, 01M20N60ZY): git rev-list --count\n+# origin/denkhaus..upstream/main over-reported and git merge-base\n+# returned nothing until the merger unshallowed mid-pass. depth = 0\n+# (full clone) makes the math deterministic. Volume is ~neutral: the\n+# unbounded `git fetch upstream` pulled the full shared history into\n+# the shallow clone anyway (~150 MB either way). Mirrors conductor fix\n+# a4850e681.\n+[run.clone]\n+depth = 0\n+\n [run.run_branch]\n push = true\n \ndiff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl\nindex 83205f6..b8165d5 100644\n--- a/.mulch/expertise/engine.jsonl\n+++ b/.mulch/expertise/engine.jsonl\n@@ -45,3 +45,4 @@\n {\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-08T06:52:49.142Z\",\"evidence\":{\"commit\":\"919b0d18c\"},\"name\":\"server-seam-wire-test-without-docker\",\"description\":\"create_run_with_bearer_for_graph + issue_test_run_tools_worker_token produce Worker-principal runs through the real HTTP API; dev-user bearer (auto-injected by build_test_router) provides the User-principal differential.\",\"files\":[\".mulch/expertise/engine.jsonl\"],\"id\":\"mx-1a6203\"}\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-08T16:22:28.999Z\",\"evidence\":{\"commit\":\"97c095b0a8724d92b039883354b14dd54ce7812e\"},\"description\":\"fabro-server tests that execute runs in-process with default settings resolve the seeded 'default' environment (Docker provider) and hard-fail with WorkflowError 'Socket not found: /var/run/docker.sock' in Docker-less gate sandboxes (run 01M20T9S8JRXETASN64768TRRP: fabro-e505/fabro-c274 bridge tests). Pin such tests to the reserved local environment via '[run.environment] id = \\\"local\\\"' in the test TOML — Normal mode keeps real handler dispatch, unlike mode = \\\"dry_run\\\" which routes handlers to simulate() and silently skips execute-path assertions (empty observation vectors).\",\"resolution\":\"Both bridge tests pinned to id = \\\"local\\\"; full fabro-server suite 929/929 green without Docker; gate now environment-independent\",\"id\":\"mx-9df484\"}\n {\"type\":\"convention\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-08T18:20:29.952Z\",\"evidence\":{\"commit\":\"a4850e681\"},\"content\":\"Set [run.clone] depth = 0 in workflow.toml for any workflow whose stages run git rev-list --count or git merge-base across origin and upstream remotes; verify with git rev-parse --is-shallow-repository in the sandbox when counts look inflated.\",\"id\":\"mx-588afd\"}\n+{\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-08T19:44:10.382Z\",\"evidence\":{\"seeds\":\"fabro-85a1\",\"commit\":\"3e23ee57c98bd03e1556f32c4dc13e867c6e3893\"},\"name\":\"run-clone-depth-zero-for-range-math\",\"description\":\"Workflows doing git range math against upstream (rev-list --count, merge-base) need [run.clone] depth = 0 in their .fabro/workflows/<name>/workflow.toml; default depth-100 shallow clone breaks the math. Conductor (a4850e681) and merge-upstream (fabro-85a1) both set it; audit any new clone-based workflow that compares upstream refs. Volume is ~neutral (~150 MB either way).\",\"files\":[\".fabro/workflows/merge-upstream/workflow.toml\"],\"id\":\"mx-10bfb8\"}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex d02eae7..1771ea5 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -284,7 +284,7 @@\n {\"id\":\"fabro-a08a\",\"title\":\"Develop planner prompt: visit-1 fresh-cycle line to skip dead context reads\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T15:14:55.468Z\",\"updatedAt\":\"2026-09-08T15:24:21.706Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 1, add one line: 'visit 1 with no current_seed_id in ## Context = fresh cycle; go straight to sd ready'. In run 01M20RK7XFNPJRZ2T437XGDEP8 the planner opened with two context_read calls at pass start, one erroring with unknown context key 'current_seed_id' because it was visit 1 and nothing existed to read (events seq 31-34). Expected effect: two fewer tool rounds per fresh planner pass (~$0.02, ~8 s of the 59.7 s stage); orthogonal to fabro-c3b4 (top-N view, output volume) and fabro-e4fa (call economy). Basis: run 01M20RK7XFNPJRZ2T437XGDEP8, workflow version af036506627c2c235dc58d52e1ceda475fc4053f219b513e9582f644224dc129, commit 6f23b48525bf1ff7b11d3a4c49ad43681a9ff1fb\",\"labels\":[\"revision\",\"workflows\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-fc1b\",\"title\":\"Implementer prompt: require the full touched-crate test suite when the seed touches tests\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T16:34:54.153Z\",\"updatedAt\":\"2026-09-08T18:11:08.818Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, replace the 'ONE focused test' verification rule with: when the seed adds or edits tests in a crate, the pre-gate check is cargo nextest -p <touched-crate> (full crate suite), still never the workspace suite. Evidence from run 01M20T9S8JRXETASN64768TRRP: implementer@1 ran targeted fabro-server tests only and missed the two pre-existing Docker-socket failures (run_start_grants_github_token_bridge_only_to_user_principals, worker_principal_run_without_vault_token_takes_no_token_path) that live in the full fabro-server suite; the resulting gate-red bounce (tester@1 340s + implementer@2 915s/$0.769 + tester@2 91s) cost ~22 min, ~40% of the 55-min run wall, to apply a 6-line [run.environment] id = \\\"local\\\" pin. Expected effect: pre-existing or adjacent breaks in the touched crate surface in the same implementer pass, eliminating ~20 min / ~$0.8 per bounce of this class. Distinct from closed seeds fabro-0d56/fabro-2254 (fmt/clippy scope) which cover lint checks, not the test-suite scope. Basis: run 01M20T9S8JRXETASN64768TRRP, workflow version 8aedc5a9bbdd71b2f882af0b6c7d28a947212553646a31a390f5d173a91c8a69, commit 9966d125e665593fcd4f21137a19659625d58ed0\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-8d1c\",\"title\":\"ADR-0019: record the engine-provided-credentials doctrine in the ADR file itself (PR #68 landed prompts-only)\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T18:11:58.469Z\",\"updatedAt\":\"2026-09-08T18:19:37.132Z\",\"assignee\":\"fabro\",\"description\":\"ADR-0019 doctrine extension (PR #68: 'treat engine-provided credentials as agent-reachable capabilities') landed ONLY in workflow prompts (.fabro/workflows/develop/prompts/reviewer.md step 5, .fabro/workflows/revisor/prompts/file.md capability paragraph) - the ADR file itself (docs/lab/adr/0019-capability-gate-for-agent-surfaces.md) does not mention engine-provided credentials at all: no reference to the GITHUB_TOKEN injection via resolve_workflow_env (lib/components/fabro-workflow/src/services.rs), the git credential bridge (lib/components/fabro-workflow/src/git_bridge.rs), or the rule that a diff merely USING an engine-provided credential on a new code path is a capability delta requiring recorded user approval.\\n\\nWHY IT MATTERS: the ADR is the durable decision record; prompts get rewritten by every revision pass and are agent-reachable surface themselves. Reviewers, revisors, and future grill sessions cite ADR-0019 - if the record omits the engine-provided-credential class, the gate doctrine silently narrows back to container-env-visible capability on the next prompt rewrite (exactly the PR #53 blind spot the extension closed).\\n\\nFIX: add one paragraph to ADR-0019 Decision section (or a numbered extension like .7) stating: engine-provided credentials and bridges (GITHUB_TOKEN injection, git credential bridge) ARE agent-reachable capability; diffs that use them on new code paths are capability deltas requiring recorded user approval; cite PR #68, run 01M20RK7XFNPJRZ2T437XGDEP8, and the fabro-16ff user directive (2026-09-08). Docs-only change, no code.\\n\\nBasis: agent sweep of other-machine runs 2026-09-08 evening, commit e078c27b2 (PR #68) vs docs/lab/adr/0019-capability-gate-for-agent-surfaces.md, commit 47b491b8e (repo state).\",\"labels\":[\"revision\"]}\n-{\"id\":\"fabro-85a1\",\"title\":\"merge-upstream: full-history clone (run.clone depth=0) - shallow clone broke range math in 3 consecutive merge runs\",\"status\":\"open\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-08T18:19:37.228Z\",\"updatedAt\":\"2026-09-08T18:19:37.228Z\",\"assignee\":\"fabro\",\"description\":\"The shallow-clone trap hit THREE consecutive merge-upstream runs (01M20E43YS, 01M20N60ZY, both merge+reviewer nodes journaled it with 'Do not keep rediscovering this'): the run sandbox clone arrives at depth 100 (.git/shallow boundary e.g. 43036bb477), so git rev-list --count origin/denkhaus..upstream/main reports a misleading ~4919 and git merge-base returns nothing until the merger unshallows mid-pass (~8s). Commit a4850e681 fixed this for the CONDUCTOR survey only ([run.clone] depth = 0 in .fabro/workflows/conductor/workflow.toml) - the merge children are their own workflow and .fabro/workflows/merge-upstream/workflow.toml has NO [run.clone] section, so every merge child still rediscovers the trap. Each child run clones origin/denkhaus fresh at creation (conductor workflow.toml comment).\\n\\nFIX: add [run.clone] depth = 0 to .fabro/workflows/merge-upstream/workflow.toml, mirroring the conductor commit a4850e681 (volume is ~neutral - the survey's unbounded git fetch upstream already pulls the full shared history into the shallow clone each pass, ~150 MB either way, measured). Alternative considered and rejected: a merger-procedure is-shallow guard + git fetch --unshallow is per-pass remediation, not a fix.\\n\\nBasis: journals .fabro/journal/01M20E43YS004DCEYPJ0GJQH4B.jsonl and 01M20N60ZY6DZDTX60WW0161KP.jsonl (merge v1 + reviewer v1 painpoints), agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"engine\"]}\n+{\"id\":\"fabro-85a1\",\"title\":\"merge-upstream: full-history clone (run.clone depth=0) - shallow clone broke range math in 3 consecutive merge runs\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-08T18:19:37.228Z\",\"updatedAt\":\"2026-09-08T19:45:16.677Z\",\"assignee\":\"fabro\",\"description\":\"The shallow-clone trap hit THREE consecutive merge-upstream runs (01M20E43YS, 01M20N60ZY, both merge+reviewer nodes journaled it with 'Do not keep rediscovering this'): the run sandbox clone arrives at depth 100 (.git/shallow boundary e.g. 43036bb477), so git rev-list --count origin/denkhaus..upstream/main reports a misleading ~4919 and git merge-base returns nothing until the merger unshallows mid-pass (~8s). Commit a4850e681 fixed this for the CONDUCTOR survey only ([run.clone] depth = 0 in .fabro/workflows/conductor/workflow.toml) - the merge children are their own workflow and .fabro/workflows/merge-upstream/workflow.toml has NO [run.clone] section, so every merge child still rediscovers the trap. Each child run clones origin/denkhaus fresh at creation (conductor workflow.toml comment).\\n\\nFIX: add [run.clone] depth = 0 to .fabro/workflows/merge-upstream/workflow.toml, mirroring the conductor commit a4850e681 (volume is ~neutral - the survey's unbounded git fetch upstream already pulls the full shared history into the shallow clone each pass, ~150 MB either way, measured). Alternative considered and rejected: a merger-procedure is-shallow guard + git fetch --unshallow is per-pass remediation, not a fix.\\n\\nBasis: journals .fabro/journal/01M20E43YS004DCEYPJ0GJQH4B.jsonl and 01M20N60ZY6DZDTX60WW0161KP.jsonl (merge v1 + reviewer v1 painpoints), agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"engine\"],\"closedAt\":\"2026-09-08T19:45:16.677Z\"}\n {\"id\":\"fabro-ad74\",\"title\":\"merge-upstream touchpoints.md: refresh two stale paths (web header.tsx moved, improve.md retired)\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-08T18:19:50.477Z\",\"updatedAt\":\"2026-09-08T18:19:50.477Z\",\"assignee\":\"fabro\",\"description\":\"The merge-upstream reviewer burned a grep pass producing false MISSING on two stale paths in .agents/skills/merge-upstream/references/touchpoints.md (run 01M20N60ZY6DZDTX60WW0161KP, reviewer v1 painpoint): (1) 'web header.tsx' actually lives at apps/fabro-web/app/routes/run-detail/header.tsx (src->app layout move), (2) scripts/prompts/improve.md no longer exists (retired per ADR-0015, prompt embedded in the revisor workflow - documented in scripts/run_workflow.nu header). The reviewer noted: 'Platform asset - next maintainer should refresh the touchpoints table paths; I did not modify it.'\\n\\nFIX: refresh the two rows in touchpoints.md to the current paths; while there, add a one-line maintenance note that the table is verified against the tree by the reviewer probe each pass, so path drift is caught at the next pass instead of causing false MISSING.\\n\\nBasis: journal .fabro/journal/01M20N60ZY6DZDTX60WW0161KP.jsonl reviewer v1 painpoint, agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"workflows\"]}\n {\"id\":\"fabro-5ff7\",\"title\":\"Revisor: harden the duplicate check - sd show every analyst-cited seed id, sd list is capped at 50\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T18:19:50.572Z\",\"updatedAt\":\"2026-09-08T18:19:50.572Z\",\"assignee\":\"fabro\",\"description\":\"TWO revisor passes nearly mis-dropped or mis-kept findings because the tracker picture was capped: (a) run 01M20RX5E6P91DRT64CRCMAHGQ analyze v1: sd list --format compact returned exactly 50 rows and hid open seeds (fabro-a0e3, fabro-c3b4, fabro-9ef9, fabro-4811, fabro-270c) that per-theme sd search then surfaced - 'a list-only duplicate check would have mis-dropped or mis-kept findings'. (b) run 01M20XGWE2ZYM9ADRM2PVE322F analyze v1: sd list capped at 50 AND sd search returned empty for themes matching analyst-cited seeds by title+description (e.g. 'qualitygate transient deterministic' vs fabro-4815) - 'the revisor step should mandate sd show on every seed id cited in the analyst answer, or sd list with an explicit raised limit'. fabro-c16d covers the PLANNER-side default --limit 50; this seed covers the REVISOR-side duplicate check.\\n\\nFIX: in .fabro/workflows/revisor/prompts/file.md (tracker command reference + analyze step): mandate sd show <id> for EVERY seed id cited in the analyst answer before judging duplicate/drop (statuses and titles verified individually), and treat sd list as a summary view only; where the analyst cites themes without ids, require sd search per theme AND a raised-limit sd list --limit 200 fallback. Evidence: in pass (b) sd show verification was done ad hoc and caught everything - make it mandatory.\\n\\nBasis: journals .fabro/journal/01M20RX5E6P91DRT64CRCMAHGQ.jsonl and 01M20XGWE2ZYM9ADRM2PVE322F.jsonl analyze v1 painpoints, agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-8c1e\",\"title\":\"Revisor + closeout prompts: document sd priority number->band mapping (1=High, 2=Medium, default 2)\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-08T18:20:09.207Z\",\"updatedAt\":\"2026-09-08T18:20:09.207Z\",\"assignee\":\"fabro\",\"description\":\"sd's --priority is a 0-4 number (P0-P4) where 1=High, 2=Medium, 3=Low, default 2 - NOT intuitive at filing time. Run 01M20RX5E6P91DRT64CRCMAHGQ file v1 painpoint: 'sd create output reports Medium priority though both findings requested priority 2 - verify sd's priority number->band mapping in the CLI help before filing if exact High/Medium matters' (fabro-e4c4 and fabro-a08a landed Medium though the revisor's intent read as High-band work). IN-SESSION REPRODUCTION (agent sweep, 2026-09-08 evening): the agent filed fabro-8d1c with --priority 2 intending High and had to correct it to 1 afterwards - same trap, second consumer.\\n\\nFIX: one documentation line in .fabro/workflows/revisor/prompts/file.md tracker command reference (sd create row): 'priority bands: 0=P0 1=High 2=Medium 3=Low 4=Lowest; default 2 - pass 1 explicitly for High findings'. Optionally the same line in the develop closeout prompt where seeds get filed. Docs-only.\\n\\nBasis: journal .fabro/journal/01M20RX5E6P91DRT64CRCMAHGQ.jsonl file v1 painpoint + agent reproduction (fabro-8d1c priority correction), agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 21,
+        "deletions": 1
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2187,243 +2306,6 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "reviewer@1": {
-      "first_event_seq": 173,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Stage completed: reviewer",
-        "failure_reason": null,
-        "timestamp": "2026-09-08T19:45:11.355866642Z"
-      },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "low"
-      },
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-08T19:44:49.589962308Z",
-      "handler": "agent",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 19973,
-        "inference_time_ms": 19159,
-        "tool_time_ms": 275,
-        "active_time_ms": 19434
-      },
-      "usage": {
-        "input_tokens": 14486,
-        "output_tokens": 724,
-        "total_tokens": 28911,
-        "reasoning_tokens": 453,
-        "cache_read_tokens": 13248,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 28902
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "skills": {
-        "available": [
-          {
-            "name": "rust-style-guide",
-            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
-          }
-        ],
-        "activated": []
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": true
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "use_skill",
-          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
-          "source": {
-            "kind": "skill"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 14551,
-        "usage_percent": 1.3876914978027344,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-08T19:45:11.340239509Z",
-        "event_seq": 193,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1123,
-            "usage_percent": 0.10709762573242188
-          },
-          {
-            "category": "tools",
-            "tokens": 1673,
-            "usage_percent": 0.15954971313476562
-          },
-          {
-            "category": "skills",
-            "tokens": 227,
-            "usage_percent": 0.021648406982421875
-          },
-          {
-            "category": "memory",
-            "tokens": 5877,
-            "usage_percent": 0.5604743957519531
-          },
-          {
-            "category": "conversation",
-            "tokens": 5643,
-            "usage_percent": 0.5381584167480469
-          },
-          {
-            "category": "other",
-            "tokens": 8,
-            "usage_percent": 0.000762939453125
-          }
-        ],
-        "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "evidence@1": {
       "first_event_seq": 163,
       "prompt": null,
@@ -2463,57 +2345,6 @@
         "inference_time_ms": 0,
         "tool_time_ms": 367,
         "active_time_ms": 367
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "closeout@1": {
-      "first_event_seq": 203,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
-        "failure_reason": null,
-        "timestamp": "2026-09-08T19:45:16.776037168Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
-        "language": "shell",
-        "timeout_ms": 60000
-      },
-      "script_timing": {
-        "output": "blob://sha256/a479bacaadebafe650b43131005c6bfbfbc04627b5271245313b34844f251528",
-        "exit_code": 0,
-        "duration_ms": 270,
-        "termination": "exited",
-        "output_bytes": 58,
-        "live_streaming": true
-      },
-      "parallel_results": null,
-      "output": null,
-      "output_bytes": 58,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-08T19:45:16.489135003Z",
-      "handler": "command",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 276,
-        "inference_time_ms": 0,
-        "tool_time_ms": 270,
-        "active_time_ms": 270
       },
       "usage": {
         "input_tokens": 0,
@@ -2986,6 +2817,330 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "reviewer@1": {
+      "first_event_seq": 173,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: reviewer",
+        "failure_reason": null,
+        "timestamp": "2026-09-08T19:45:11.355866642Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T19:44:49.589962308Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 19973,
+        "inference_time_ms": 19159,
+        "tool_time_ms": 275,
+        "active_time_ms": 19434
+      },
+      "usage": {
+        "input_tokens": 14486,
+        "output_tokens": 724,
+        "total_tokens": 28911,
+        "reasoning_tokens": 453,
+        "cache_read_tokens": 13248,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 28902
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 14551,
+        "usage_percent": 1.3876914978027344,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-08T19:45:11.340239509Z",
+        "event_seq": 193,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1123,
+            "usage_percent": 0.10709762573242188
+          },
+          {
+            "category": "tools",
+            "tokens": 1673,
+            "usage_percent": 0.15954971313476562
+          },
+          {
+            "category": "skills",
+            "tokens": 227,
+            "usage_percent": 0.021648406982421875
+          },
+          {
+            "category": "memory",
+            "tokens": 5877,
+            "usage_percent": 0.5604743957519531
+          },
+          {
+            "category": "conversation",
+            "tokens": 5643,
+            "usage_percent": 0.5381584167480469
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 213,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-08T19:45:21.350312660Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T19:45:21.350289078Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "closeout@1": {
+      "first_event_seq": 203,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-08T19:45:16.776037168Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/a479bacaadebafe650b43131005c6bfbfbc04627b5271245313b34844f251528",
+        "exit_code": 0,
+        "duration_ms": 270,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-08T19:45:16.489135003Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 276,
+        "inference_time_ms": 0,
+        "tool_time_ms": 270,
+        "active_time_ms": 270
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
