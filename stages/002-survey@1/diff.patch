@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M21BD6HGAJCQ4FHN0BZSGHTY.jsonl b/.fabro/journal/01M21BD6HGAJCQ4FHN0BZSGHTY.jsonl
+new file mode 100644
+index 000000000..8984bb3cb
+--- /dev/null
++++ b/.fabro/journal/01M21BD6HGAJCQ4FHN0BZSGHTY.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M21BD6HGAJCQ4FHN0BZSGHTY","node":"start","visit":1,"status":"succeeded","ts":"2026-09-08T20:30:34Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M21BD6HGAJCQ4FHN0BZSGHTY","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-08T20:31:20Z","data":{"painpoints":[{"text":"Remote `upstream` was missing from the workspace clone (first pass in this container), so step 1 had to create it (`git remote add upstream https://github.com/fabro-sh/fabro`). Fix idea: the surveyor procedure already handles this, but persisting remotes across sandbox rebuilds (or a bootstrap check earlier in the Conductor) would remove the trap for future surveyor passes."}],"observations":["upstream count 0 (origin/denkhaus..upstream/main), newest upstream subject: 'Bump version to 0.348.0-nightly.0' — no drift accumulating, well below the 5-commit merge threshold; route Work.","revisor backlog: none — newest completed develop run 01M219SFJ6A75DS2BP77TBENQZ was already revised by revisor run 01M21A1BWEYCQ03E4A8SRXCKTJ (PR #75, merged); no develop run newer than the newest revisor run.","Next surveyor: fetch of origin also brought new nightly tags (v0.347/v0.348) and new branches (`rule-files-sync-733cf9ca`, `virtual-weaving-firefly`); count was 0 immediately after, so expect it to start re-accumulating from this pass onward."]}}
