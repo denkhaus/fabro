@@ -570,7 +570,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-08T20:30:31.667933151Z",
-  "last_event_at": "2026-09-08T21:26:00.233611439Z",
+  "last_event_at": "2026-09-08T21:26:05.133723076Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -947,9 +947,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 138,
       "checkpoint": {
-        "timestamp": "2026-09-08T21:26:00.468154545Z",
+        "timestamp": "2026-09-08T21:26:05.133071463Z",
         "current_node": "revise",
         "completed_nodes": [
           "start",
@@ -959,39 +959,46 @@
         ],
         "node_retries": {},
         "context_values": {
-          "response.develop": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.develop",
-            "chars": 1476,
-            "preview": "Child 01M21BG1TG9SNM4QAS2A33W6GF succeeded (seed fabro-c419, gate green, review approved, seed closed, PR #76 opened), but the PR gate remained blocked across all 3 bounded merge waits (~60 min) — r"
-          },
-          "graph.max_node_visits": "12",
-          "internal.thread_id": "develop",
-          "internal.seed_cycle_anchor": "",
-          "last_response": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"Revisor run 01M21",
-          "graph.cycle_counter_reset_key": "pass_id",
-          "failure_class": "",
-          "thread.survey.current_node": "develop",
-          "response.revise": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.revise",
-            "chars": 672,
-            "preview": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"Revisor run 01M21"
-          },
+          "internal.run_id": "01M21BD6HGAJCQ4FHN0BZSGHTY",
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 1506,
             "preview": "Upstream count is 0 (threshold 5 not met) and the revisor backlog is empty: the newest develop run `01M219SFJ6A75DS2BP77TBENQZ` was already distilled by revisor run `01M21A1BWEYCQ03E4A8SRXCKTJ` (PR #7"
           },
+          "internal.retry_count.survey": 0,
+          "internal.seed_cycle_anchor": "",
           "graph.preamble_budget_kb": "12",
+          "internal.exit_kind": "natural",
           "seed_cycles": {
             "start": 1,
             "survey": 1,
             "develop": 1,
             "revise": 1
           },
+          "current_node": "revise",
           "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "thread.develop.current_node": "revise",
+          "child_run_id": "01M21BG1TG9SNM4QAS2A33W6GF",
+          "preferred_label": "Cycle complete",
+          "internal.retry_count.revise": 0,
+          "response.revise": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.revise",
+            "chars": 672,
+            "preview": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"Revisor run 01M21"
+          },
+          "graph.max_node_visits": "12",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.rankdir": "LR",
+          "response.develop": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.develop",
+            "chars": 1476,
+            "preview": "Child 01M21BG1TG9SNM4QAS2A33W6GF succeeded (seed fabro-c419, gate green, review approved, seed closed, PR #76 opened), but the PR gate remained blocked across all 3 bounded merge waits (~60 min) — r"
+          },
+          "failure_signature": "",
+          "graph.inspects": "develop,merge-upstream,revisor",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -999,27 +1006,78 @@
               "Revised pass child 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419) this cycle; its PR #76 was still pending auto-merge after 3 blocked merge waits last pass — next surveyor fire should re-check PR #76 merge state before spawning new develop children."
             ]
           },
-          "internal.fidelity": "compact",
-          "internal.node_visit_count": 1,
-          "internal.retry_count.start": 0,
-          "internal.retry_count.survey": 0,
-          "current_node": "revise",
-          "internal.run_id": "01M21BD6HGAJCQ4FHN0BZSGHTY",
-          "outcome": "succeeded",
-          "preferred_label": "Cycle complete",
-          "internal.retry_count.revise": 0,
-          "internal.exit_kind": "natural",
-          "failure_signature": "",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "last_stage": "revise",
-          "graph.rankdir": "LR",
-          "thread.develop.current_node": "revise",
-          "internal.work_dir": "/workspace/fabro",
           "thread.start.current_node": "survey",
-          "child_run_id": "01M21BG1TG9SNM4QAS2A33W6GF",
-          "internal.retry_count.develop": 0
+          "internal.retry_count.develop": 0,
+          "failure_class": "",
+          "internal.retry_count.start": 0,
+          "last_response": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"Revisor run 01M21",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "internal.thread_id": "develop",
+          "internal.fidelity": "compact",
+          "outcome": "succeeded",
+          "internal.node_visit_count": 1,
+          "last_stage": "revise",
+          "thread.survey.current_node": "develop"
         },
         "node_outcomes": {
+          "develop": {
+            "status": "succeeded",
+            "preferred_label": "Gate stuck — revise anyway",
+            "context_updates": {
+              "child_run_id": "01M21BG1TG9SNM4QAS2A33W6GF",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Merge-wait returned reached=blocked on all 3 bounded waits (~60 min total) for a succeeded child with PR #76 (run 01M21BG1TG9SNM4QAS2A33W6GF), with no reason field in the wait response distinguishing young-blocked (checks running) from persistently stuck (failed required checks / dirty base). Fix idea: include PR state, mergeable/merge_state, and failing check names in the fabro_run_wait blocked payload so the conductor leg can distinguish slow-gate from stuck-gate without an extra fabro_run_get and does not have to burn the full 3-wait ceiling when checks have already failed."
+                  }
+                ],
+                "observations": [
+                  "Child 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419 'Wire the planner's fabro_runs_list binding') succeeded: planner→implementer→gate green→evidence→review approved→closeout closed the seed; PR #76 auto-merge pending, gate stuck after 3 blocked merge waits.",
+                  "child_run_id 01M21BG1TG9SNM4QAS2A33W6GF stays in context for the revisor leg; the next surveyor fire re-enters via survey and can re-check PR #76 merge state."
+                ]
+              },
+              "response.develop": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.develop",
+                "chars": 1476,
+                "preview": "Child 01M21BG1TG9SNM4QAS2A33W6GF succeeded (seed fabro-c419, gate green, review approved, seed closed, PR #76 opened), but the PR gate remained blocked across all 3 bounded merge waits (~60 min) — r"
+              },
+              "last_response": "Child 01M21BG1TG9SNM4QAS2A33W6GF succeeded (seed fabro-c419, gate green, review approved, seed closed, PR #76 opened), but the PR gate remained blocked across all 3 bounded merge waits (~60 min) — r",
+              "last_stage": "develop"
+            },
+            "notes": "Stage completed: develop",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 141123,
+                    "output_tokens": 763,
+                    "reasoning_tokens": 104,
+                    "cache_read_tokens": 409088,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 307743
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 43325,
+              "tool_time_ms": 2576807,
+              "active_time_ms": 2620132
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "revise": {
             "status": "succeeded",
             "preferred_label": "Cycle complete",
@@ -1122,67 +1180,10 @@
               "tool_time_ms": 18493,
               "active_time_ms": 42541
             }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
-          "develop": {
-            "status": "succeeded",
-            "preferred_label": "Gate stuck — revise anyway",
-            "context_updates": {
-              "child_run_id": "01M21BG1TG9SNM4QAS2A33W6GF",
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "Merge-wait returned reached=blocked on all 3 bounded waits (~60 min total) for a succeeded child with PR #76 (run 01M21BG1TG9SNM4QAS2A33W6GF), with no reason field in the wait response distinguishing young-blocked (checks running) from persistently stuck (failed required checks / dirty base). Fix idea: include PR state, mergeable/merge_state, and failing check names in the fabro_run_wait blocked payload so the conductor leg can distinguish slow-gate from stuck-gate without an extra fabro_run_get and does not have to burn the full 3-wait ceiling when checks have already failed."
-                  }
-                ],
-                "observations": [
-                  "Child 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419 'Wire the planner's fabro_runs_list binding') succeeded: planner→implementer→gate green→evidence→review approved→closeout closed the seed; PR #76 auto-merge pending, gate stuck after 3 blocked merge waits.",
-                  "child_run_id 01M21BG1TG9SNM4QAS2A33W6GF stays in context for the revisor leg; the next surveyor fire re-enters via survey and can re-check PR #76 merge state."
-                ]
-              },
-              "response.develop": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.develop",
-                "chars": 1476,
-                "preview": "Child 01M21BG1TG9SNM4QAS2A33W6GF succeeded (seed fabro-c419, gate green, review approved, seed closed, PR #76 opened), but the PR gate remained blocked across all 3 bounded merge waits (~60 min) — r"
-              },
-              "last_response": "Child 01M21BG1TG9SNM4QAS2A33W6GF succeeded (seed fabro-c419, gate green, review approved, seed closed, PR #76 opened), but the PR gate remained blocked across all 3 bounded merge waits (~60 min) — r",
-              "last_stage": "develop"
-            },
-            "notes": "Stage completed: develop",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 141123,
-                    "output_tokens": 763,
-                    "reasoning_tokens": 104,
-                    "cache_read_tokens": 409088,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 307743
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 43325,
-              "tool_time_ms": 2576807,
-              "active_time_ms": 2620132
-            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "405b37b6a21705bca39e8c3835b6fcbda478e206",
         "node_visits": {
           "survey": 1,
           "develop": 1,
@@ -1190,10 +1191,95 @@
           "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M21BD6HGAJCQ4FHN0BZSGHTY.jsonl b/.fabro/journal/01M21BD6HGAJCQ4FHN0BZSGHTY.jsonl\nindex fc5e715fc..a240c9105 100644\n--- a/.fabro/journal/01M21BD6HGAJCQ4FHN0BZSGHTY.jsonl\n+++ b/.fabro/journal/01M21BD6HGAJCQ4FHN0BZSGHTY.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21BD6HGAJCQ4FHN0BZSGHTY\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T20:30:34Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21BD6HGAJCQ4FHN0BZSGHTY\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T20:31:20Z\",\"data\":{\"painpoints\":[{\"text\":\"Remote `upstream` was missing from the workspace clone (first pass in this container), so step 1 had to create it (`git remote add upstream https://github.com/fabro-sh/fabro`). Fix idea: the surveyor procedure already handles this, but persisting remotes across sandbox rebuilds (or a bootstrap check earlier in the Conductor) would remove the trap for future surveyor passes.\"}],\"observations\":[\"upstream count 0 (origin/denkhaus..upstream/main), newest upstream subject: 'Bump version to 0.348.0-nightly.0' — no drift accumulating, well below the 5-commit merge threshold; route Work.\",\"revisor backlog: none — newest completed develop run 01M219SFJ6A75DS2BP77TBENQZ was already revised by revisor run 01M21A1BWEYCQ03E4A8SRXCKTJ (PR #75, merged); no develop run newer than the newest revisor run.\",\"Next surveyor: fetch of origin also brought new nightly tags (v0.347/v0.348) and new branches (`rule-files-sync-733cf9ca`, `virtual-weaving-firefly`); count was 0 immediately after, so expect it to start re-accumulating from this pass onward.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21BD6HGAJCQ4FHN0BZSGHTY\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T21:18:03Z\",\"data\":{\"painpoints\":[{\"text\":\"Merge-wait returned reached=blocked on all 3 bounded waits (~60 min total) for a succeeded child with PR #76 (run 01M21BG1TG9SNM4QAS2A33W6GF), with no reason field in the wait response distinguishing young-blocked (checks running) from persistently stuck (failed required checks / dirty base). Fix idea: include PR state, mergeable/merge_state, and failing check names in the fabro_run_wait blocked payload so the conductor leg can distinguish slow-gate from stuck-gate without an extra fabro_run_get and does not have to burn the full 3-wait ceiling when checks have already failed.\"}],\"observations\":[\"Child 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419 'Wire the planner's fabro_runs_list binding') succeeded: planner→implementer→gate green→evidence→review approved→closeout closed the seed; PR #76 auto-merge pending, gate stuck after 3 blocked merge waits.\",\"child_run_id 01M21BG1TG9SNM4QAS2A33W6GF stays in context for the revisor leg; the next surveyor fire re-enters via survey and can re-check PR #76 merge state.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21BD6HGAJCQ4FHN0BZSGHTY\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T21:26:00Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Revisor run 01M21E5PRBNZGDTSEC6RBTMT0X (child of 01M21BD6HGAJCQ4FHN0BZSGHTY, workflow 'revisor') reached terminal status succeeded (reason: completed); created via git workflow source denkhaus/fabro@denkhaus, environment toolchain.\",\"Revised pass child 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419) this cycle; its PR #76 was still pending auto-merge after 3 blocked merge waits last pass — next surveyor fire should re-check PR #76 merge state before spawning new develop children.\"]}}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 4,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-08T21:26:05.192393611Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 3121910,
+      "inference_time_ms": 88191,
+      "tool_time_ms": 3014138,
+      "active_time_ms": 3102329
+    },
+    "final_git_commit_sha": "405b37b6a21705bca39e8c3835b6fcbda478e206",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 43128,
+          "inference_time_ms": 24048,
+          "tool_time_ms": 18493,
+          "active_time_ms": 42541
+        },
+        "billing_usd_micros": 70534,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 2620811,
+          "inference_time_ms": 43325,
+          "tool_time_ms": 2576807,
+          "active_time_ms": 2620132
+        },
+        "billing_usd_micros": 307743,
+        "retries": 0
+      },
+      {
+        "stage_id": "revise",
+        "stage_label": "revise",
+        "timing": {
+          "wall_time_ms": 440251,
+          "inference_time_ms": 20818,
+          "tool_time_ms": 418838,
+          "active_time_ms": 439656
+        },
+        "billing_usd_micros": 28682,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 193157,
+      "output_tokens": 1859,
+      "total_tokens": 680224,
+      "reasoning_tokens": 536,
+      "cache_read_tokens": 484672,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 406959
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M21BD6HGAJCQ4FHN0BZSGHTY.jsonl b/.fabro/journal/01M21BD6HGAJCQ4FHN0BZSGHTY.jsonl\nnew file mode 100644\nindex 000000000..a240c9105\n--- /dev/null\n+++ b/.fabro/journal/01M21BD6HGAJCQ4FHN0BZSGHTY.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21BD6HGAJCQ4FHN0BZSGHTY\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T20:30:34Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21BD6HGAJCQ4FHN0BZSGHTY\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T20:31:20Z\",\"data\":{\"painpoints\":[{\"text\":\"Remote `upstream` was missing from the workspace clone (first pass in this container), so step 1 had to create it (`git remote add upstream https://github.com/fabro-sh/fabro`). Fix idea: the surveyor procedure already handles this, but persisting remotes across sandbox rebuilds (or a bootstrap check earlier in the Conductor) would remove the trap for future surveyor passes.\"}],\"observations\":[\"upstream count 0 (origin/denkhaus..upstream/main), newest upstream subject: 'Bump version to 0.348.0-nightly.0' — no drift accumulating, well below the 5-commit merge threshold; route Work.\",\"revisor backlog: none — newest completed develop run 01M219SFJ6A75DS2BP77TBENQZ was already revised by revisor run 01M21A1BWEYCQ03E4A8SRXCKTJ (PR #75, merged); no develop run newer than the newest revisor run.\",\"Next surveyor: fetch of origin also brought new nightly tags (v0.347/v0.348) and new branches (`rule-files-sync-733cf9ca`, `virtual-weaving-firefly`); count was 0 immediately after, so expect it to start re-accumulating from this pass onward.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21BD6HGAJCQ4FHN0BZSGHTY\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T21:18:03Z\",\"data\":{\"painpoints\":[{\"text\":\"Merge-wait returned reached=blocked on all 3 bounded waits (~60 min total) for a succeeded child with PR #76 (run 01M21BG1TG9SNM4QAS2A33W6GF), with no reason field in the wait response distinguishing young-blocked (checks running) from persistently stuck (failed required checks / dirty base). Fix idea: include PR state, mergeable/merge_state, and failing check names in the fabro_run_wait blocked payload so the conductor leg can distinguish slow-gate from stuck-gate without an extra fabro_run_get and does not have to burn the full 3-wait ceiling when checks have already failed.\"}],\"observations\":[\"Child 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419 'Wire the planner's fabro_runs_list binding') succeeded: planner→implementer→gate green→evidence→review approved→closeout closed the seed; PR #76 auto-merge pending, gate stuck after 3 blocked merge waits.\",\"child_run_id 01M21BG1TG9SNM4QAS2A33W6GF stays in context for the revisor leg; the next surveyor fire re-enters via survey and can re-check PR #76 merge state.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21BD6HGAJCQ4FHN0BZSGHTY\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T21:26:00Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Revisor run 01M21E5PRBNZGDTSEC6RBTMT0X (child of 01M21BD6HGAJCQ4FHN0BZSGHTY, workflow 'revisor') reached terminal status succeeded (reason: completed); created via git workflow source denkhaus/fabro@denkhaus, environment toolchain.\",\"Revised pass child 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419) this cycle; its PR #76 was still pending auto-merge after 3 blocked merge waits last pass — next surveyor fire should re-check PR #76 merge state before spawning new develop children.\"]}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 4,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2008,6 +2094,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 141,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-08T21:26:05.133723076Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T21:26:05.133355287Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
