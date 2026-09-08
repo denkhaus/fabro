@@ -14,7 +14,9 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 | `sd list --format compact` | Existing seeds; the title-level overview before creating. |
 | `sd search "<theme keyword>" --format compact` | Run ONE search per finding's central theme BEFORE creating — content duplicates hide behind different titles. Only create when no existing seed (open OR closed) names the same concrete change; the analyzer pre-deduplicates, you are the guard for races and title-blind misses. |
 | `sd close <id> --reason "<text>"` | Close a superseded seed. Use ONLY under the supersession rule below. |
-| `sd update <id> --set-labels revision` | Label an older revisor seed that predates the label convention (backfill, rare). |
+| `sd update <id> --set-labels revision` | Label an older revisor seed that predates the label convention (backfill, rare). ONLY seeds already labeled `revision` or provably revisor-originated (Basis line cites a revisor run) — never relabel user-owned or unassigned seeds. |
+
+Ownership rule: close/relabel only your own or @fabro seeds — ADR-0018 D2. Reads stay global: `sd list` and `sd search` always run against the full inventory — scoping reads would create duplicates against user-owned work; only writes are scoped.
 
 ## Procedure
 
@@ -22,7 +24,7 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 
    Basis line (ADR-0015, MANDATORY in every seed description, last line): `Basis: run <run-id>, workflow version <workflow_version_id or "absent">, commit <git rev-parse HEAD of this worktree>`. The develop planner's stale-basis check consumes exactly this line — a seed without a basis is judged against the current tree before claiming anyway, so omitting it only degrades triage.
 
-   Supersession rule (distinct from duplication): a finding DUPLICATES an existing seed when it names the same change — drop it and note `duplicate_of: <id>` in the journal. A finding SUPERSEDES an existing open seed only when it replaces the SAME target (same file/mechanism) with a strictly better solution — file the new seed, then immediately `sd close <old-id> --reason "superseded by <new-id>: <one-line why the new one replaces it>"`. Mere thematic overlap (different files or complementary cases) is NOT supersession: cross-reference the old id in the new description instead and close nothing. When unsure, close nothing — the journal records the suspicion for the human gate.
+   Supersession rule (distinct from duplication): a finding DUPLICATES an existing seed when it names the same change — drop it and note `duplicate_of: <id>` in the journal. A finding SUPERSEDES an existing open seed only when it replaces the SAME target (same file/mechanism) with a strictly better solution — file the new seed, then immediately `sd close <old-id> --reason "superseded by <new-id>: <one-line why the new one replaces it>"`. Ownership boundary (ADR-0018 D2 — the revisor owns nothing; reviewing is not owning): `sd close` under supersession applies ONLY to seeds labeled `revision` or assigned `@fabro`; user-owned or unassigned seeds are NEVER closed by the revisor. When a finding supersedes a user-owned or unassigned seed: file the new seed with the old id cross-referenced in its description, close NOTHING, and journal `supersession candidate (user-owned, not closed): <id>` for the human gate. Mere thematic overlap (different files or complementary cases) is NOT supersession: cross-reference the old id in the new description instead and close nothing. When unsure, close nothing — the journal records the suspicion for the human gate.
 2. Write the revision report to `.fabro/revisions/<run-id>.md`. This file IS the bookkeeping marker — its absence from the base branch is what marks the run unrevised. Shape:
 
 ```
