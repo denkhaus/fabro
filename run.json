@@ -482,7 +482,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-08T19:47:03.768936866Z",
-  "last_event_at": "2026-09-08T19:53:18.406146305Z",
+  "last_event_at": "2026-09-08T19:53:24.579481428Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -904,9 +904,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 201,
       "checkpoint": {
-        "timestamp": "2026-09-08T19:53:18.616147934Z",
+        "timestamp": "2026-09-08T19:53:23.370975935Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -916,42 +916,19 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.thread_id": "analyze",
-          "internal.fidelity": "compact",
-          "response.select": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.select",
-            "chars": 1836,
-            "preview": "Selection complete: the newest terminal, unrevised, live-sandbox, fresh-version run across both workflows is develop run `01M2183254XQ3HJ45SR4P1Y2X6` (created 2026-09-08T19:32:02Z, succeeded, PR #72 m"
-          },
-          "internal.node_visit_count": 1,
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
           "internal.seed_cycle_anchor": "01M2183254XQ3HJ45SR4P1Y2X6",
-          "revisor_target_status": "succeeded",
-          "revisor_target_run_id": "01M2183254XQ3HJ45SR4P1Y2X6",
-          "internal.exit_kind": "natural",
-          "revisor_target_wall": "13.3 min",
-          "internal.retry_count.analyze": 0,
-          "graph.rankdir": "LR",
-          "failure_class": "",
-          "graph.max_node_visits": "30",
-          "internal.run_id": "01M218Y6XTZVV8Z98TCHSNFXAB",
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "internal.retry_count.start": 0,
-          "filed_seed_ids": [
-            "fabro-3c6c",
-            "fabro-c419",
-            "fabro-fe15"
-          ],
-          "thread.analyze.current_node": "file",
-          "graph.inspects": "develop,merge-upstream",
-          "revisor_target_workflow_version": "84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6",
-          "internal.retry_count.select": 0,
-          "outcome": "succeeded",
-          "thread.start.current_node": "select",
-          "thread.select.current_node": "analyze",
-          "current_node": "file",
-          "internal.work_dir": "/workspace/fabro",
           "preferred_label": "Staged",
+          "internal.thread_id": "analyze",
+          "thread.select.current_node": "analyze",
+          "failure_class": "",
+          "revisor_target_run_id": "01M2183254XQ3HJ45SR4P1Y2X6",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "revisor_target_status": "succeeded",
           "revision_findings": [
             {
               "title": "Cost-tier implementer smoke checks: parse-level proof for config-only seeds, sized timeouts for built checks",
@@ -969,22 +946,40 @@
               "priority": 2
             }
           ],
+          "revisor_target_workflow_version": "84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6",
+          "thread.start.current_node": "select",
+          "internal.retry_count.select": 0,
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "internal.run_id": "01M218Y6XTZVV8Z98TCHSNFXAB",
+          "thread.analyze.current_node": "file",
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 1836,
+            "preview": "Selection complete: the newest terminal, unrevised, live-sandbox, fresh-version run across both workflows is develop run `01M2183254XQ3HJ45SR4P1Y2X6` (created 2026-09-08T19:32:02Z, succeeded, PR #72 m"
+          },
+          "revisor_target_title": "Develop one seed per run: claim, implement, gate, review, exit (PR #72 merged)",
+          "last_response": "All three seeds filed (`fabro-3c6c`, `fabro-c419`, `fabro-fe15` — the latter two marked `needs-user,revision` per ADR-0019 since they touch agent-reachable tool surfaces), the revision marker writte",
+          "current_node": "file",
+          "internal.retry_count.analyze": 0,
+          "internal.retry_count.file": 0,
           "response.file": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.file",
             "chars": 1404,
             "preview": "All three seeds filed (`fabro-3c6c`, `fabro-c419`, `fabro-fe15` — the latter two marked `needs-user,revision` per ADR-0019 since they touch agent-reachable tool surfaces), the revision marker writte"
           },
-          "internal.retry_count.file": 0,
-          "revisor_target_title": "Develop one seed per run: claim, implement, gate, review, exit (PR #72 merged)",
           "failure_signature": "",
+          "internal.work_dir": "/workspace/fabro",
+          "outcome": "succeeded",
+          "graph.preamble_budget_kb": "24",
+          "internal.fidelity": "compact",
+          "internal.exit_kind": "natural",
+          "internal.node_visit_count": 1,
+          "revisor_target_wall": "13.3 min",
+          "graph.rankdir": "LR",
           "last_stage": "file",
-          "response.analyze": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "chars": 6145,
-            "preview": "Step 4 distillation complete. The ask surfaced 7 recommendations; tracker checks dropped 3 as exact duplicates (top-N `sd ready` → fabro-c3b4, `ml record` flags → fabro-96bd, preamble warn → fab"
-          },
+          "internal.retry_count.start": 0,
           "journal": {
             "painpoints": [
               {
@@ -996,16 +991,25 @@
               "Seed 1's scope deliberately excludes the run-level-warning sub-finding: it duplicates open fabro-5b0a."
             ]
           },
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "last_response": "All three seeds filed (`fabro-3c6c`, `fabro-c419`, `fabro-fe15` — the latter two marked `needs-user,revision` per ADR-0019 since they touch agent-reachable tool surfaces), the revision marker writte",
-          "graph.preamble_budget_kb": "24",
-          "seed_cycles": {
-            "select": 1,
-            "analyze": 1,
-            "file": 1
-          }
+          "graph.inspects": "develop,merge-upstream",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 6145,
+            "preview": "Step 4 distillation complete. The ask surfaced 7 recommendations; tracker checks dropped 3 as exact duplicates (top-N `sd ready` → fabro-c3b4, `ml record` flags → fabro-96bd, preamble warn → fab"
+          },
+          "graph.max_node_visits": "30",
+          "filed_seed_ids": [
+            "fabro-3c6c",
+            "fabro-c419",
+            "fabro-fe15"
+          ]
         },
         "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "file": {
             "status": "succeeded",
             "preferred_label": "Staged",
@@ -1142,10 +1146,6 @@
               "active_time_ms": 242630
             }
           },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "select": {
             "status": "succeeded",
             "preferred_label": "Run selected",
@@ -1203,17 +1203,103 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "3ee75c9f072a2a755e4577904306a68306ce1383",
         "node_visits": {
-          "analyze": 1,
-          "file": 1,
           "select": 1,
-          "start": 1
+          "file": 1,
+          "start": 1,
+          "analyze": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M218Y6XTZVV8Z98TCHSNFXAB.jsonl b/.fabro/journal/01M218Y6XTZVV8Z98TCHSNFXAB.jsonl\nindex de6b4f9..9dd03a5 100644\n--- a/.fabro/journal/01M218Y6XTZVV8Z98TCHSNFXAB.jsonl\n+++ b/.fabro/journal/01M218Y6XTZVV8Z98TCHSNFXAB.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M218Y6XTZVV8Z98TCHSNFXAB\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:47:06Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M218Y6XTZVV8Z98TCHSNFXAB\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:47:42Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected newest qualifying run; merge-upstream run 01M1ZVH0B5V5RHRCY393T24GXG (version 4210c0e5, sandbox true, unrevised) remains the next-best candidate\",\"develop backlog: ~24 terminal runs unrevised but stale-evidence (version drift from baseline 84429d0a) plus pre-intent runs with absent workflow_version_id; 5 old runs sandbox_available=false — all blocked until engine provisions fresh analyst sandboxes or evidence refreshes\",\"No active develop run at selection time; several pre-2026-09-05 runs (01M1Q4P92K5RX8XX990BEB130Y, 01M1PVMS7B6N39MG0041C5F7P6, 01M1NHZVTXRC1AVW28D3FG0XYP, 01M1NGGDVKNJHWP2W0HPJJ84CZ, 01M1EGK6J8CNP9APJ7PWE6WE74, 01M1MMK5C6B313SY70Y2EPKE82, 01M1MHGS7PH26EP20B2RTAPN4G) lack workflow_version_id entirely\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M218Y6XTZVV8Z98TCHSNFXAB\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:52:06Z\",\"data\":{\"painpoints\":[{\"text\":\"Duplicate check is blinded by search result caps: `sd search` returns at most ~20 rows, so analyst-cited seed fabro-e4ac (partial stdout on timeout) never appeared across 'timeout', 'partial stdout', 'timed_out', and 'stdout' probes, and the initial `sd list` cap of 50 hid fabro-c3b4. Extends open fabro-5ff7 from list to search — fix idea: paginate search, raise the cap, or authorize `sd show <id>` for analyst-cited ids in the revisor prompt.\"}],\"observations\":[\"Duplicates withheld with reasons: top-N sd ready -> duplicate_of fabro-c3b4 (open, exact match); ml record flag contract -> duplicate_of fabro-96bd (open, exact match, this run reproduces it at seq 119-126); preamble allow-key warn to info -> duplicate_of fabro-8275 (open, exact match); run-level warnings for degraded planner checks -> sub-item duplicate_of fabro-5b0a; partial stdout on timeout -> engine sub-item duplicate_of fabro-e4ac per analyst citation (not independently verifiable through capped search).\",\"Rec 1 and rec 4 were merged into one finding: both target `.fabro/workflows/develop/prompts/implementer.md` step 4 from the same cold-cargo incident (seq 98-115).\",\"The fabro_runs_list fail-open is new evidence against the wiring, not a reopen of closed fabro-06e0 or fabro-0c32 (the tools exist engine-side; the node-level attribute never surfaces them to the planner agent).\",\"No graph-topology findings: the linear planner->implementer->tester->evidence->reviewer->closeout path, deterministic closeout, and cycle guards all behaved as designed with zero retries.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M218Y6XTZVV8Z98TCHSNFXAB\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:53:18Z\",\"data\":{\"painpoints\":[{\"text\":\"sd search with --format compact prints nothing at all on zero matches — not even a 'no results' line — making 'searched and found nothing' indistinguishable from a failed command unless exit code is checked. Fix idea: emit an explicit empty-result marker. Evidence: three theme searches in run 01M218Y6XTZVV8Z98TCHSNFXAB, exit 0, empty stdout.\"}],\"observations\":[\"fabro-c419 and fabro-fe15 are capability-affecting per ADR-0019 (tool allowlist / .fabro/Dockerfile* surfaces) — they carry needs-user and must not be claimed as line work without explicit user approval.\",\"Seed 1's scope deliberately excludes the run-level-warning sub-finding: it duplicates open fabro-5b0a.\"]}}\ndiff --git a/.fabro/revisions/01M2183254XQ3HJ45SR4P1Y2X6.md b/.fabro/revisions/01M2183254XQ3HJ45SR4P1Y2X6.md\nnew file mode 100644\nindex 0000000..73302f8\n--- /dev/null\n+++ b/.fabro/revisions/01M2183254XQ3HJ45SR4P1Y2X6.md\n@@ -0,0 +1,27 @@\n+# Revision — run 01M2183254XQ3HJ45SR4P1Y2X6\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M2183254XQ3HJ45SR4P1Y2X6.md\n+- seeds filed:\n+  - fabro-3c6c — Cost-tier implementer smoke checks: parse-level proof for config-only seeds, sized timeouts for built checks\n+  - fabro-c419 — Wire the planner's fabro_runs_list binding — the in-flight-PR guard silently fails open\n+  - fabro-fe15 — Bake a debug fabro-cli (or shared cargo cache) into the run toolchain image\n+- basis: run 01M2183254XQ3HJ45SR4P1Y2X6, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit 0dc16012c16ee2f6b2e61ecc73afcf0bd5f26b3d\n+- revised_at_commit: 0dc16012c16ee2f6b2e61ecc73afcf0bd5f26b3d (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Cost-tier implementer smoke checks: parse-level proof for config-only seeds, sized timeouts for built checks\n+- filed: fabro-3c6c\n+- Concrete change: in `.fabro/workflows/develop/prompts/implementer.md` step 4, config-only seeds verify via tomllib/toml parse (never build); built checks use one `cargo build` with `timeout_ms >= 600000` then `target/debug/<bin>`, timed-out build retried once with doubled timeout, only non-zero exit is failure. One cheapest-first line mirrored in `.fabro/workflows/develop/prompts/planner.md` step 6.\n+- Expected effect: config-only runs finish ~4 min instead of ~12 (this run: 600s tool time, $0.146), one wasted diagnosis LLM turn saved per config-only seed.\n+\n+### Wire the planner's fabro_runs_list binding — the in-flight-PR guard silently fails open\n+- filed: fabro-c419 (capability-affecting: `needs-user,revision`, ADR-0019, awaits explicit user approval)\n+- Concrete change: make the engine honor node-level `fabro_tools` (or set run-level `agent.fabro_tools` for develop); reword planner.md step 4 to journal degraded mode when the tool is absent. Node declares it (events seq 27 show it absent from the agent toolset, `agent.fabro_tools=false`).\n+- Expected effect: the double-pick guard (fabro-06e0/fabro-d0c7 lineage) actually functions, preventing a duplicated ~$0.15/~12-min run when a seed PR waits in gate. Run-level-warning sub-item excluded as duplicate of open fabro-5b0a.\n+\n+### Bake a debug fabro-cli (or shared cargo cache) into the run toolchain image\n+- filed: fabro-fe15 (capability-affecting: `needs-user,revision`, ADR-0019, awaits explicit user approval — touches `.fabro/Dockerfile*` agent-reachable surface)\n+- Concrete change: pre-build debug `fabro-cli` in the `fabro-toolchain:noble` image or share a cargo cache across run containers so `target/debug/fabro` exists at start (run probed empty `target/`, seq 107).\n+- Expected effect: first cargo invocation drops from minutes to seconds; complements the smoke cost-tiering. Distinct from fabro-cfd6 (CI gate image) and closed fabro-513e.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 1771ea5..9569905 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -290,3 +290,6 @@\n {\"id\":\"fabro-8c1e\",\"title\":\"Revisor + closeout prompts: document sd priority number->band mapping (1=High, 2=Medium, default 2)\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-08T18:20:09.207Z\",\"updatedAt\":\"2026-09-08T18:20:09.207Z\",\"assignee\":\"fabro\",\"description\":\"sd's --priority is a 0-4 number (P0-P4) where 1=High, 2=Medium, 3=Low, default 2 - NOT intuitive at filing time. Run 01M20RX5E6P91DRT64CRCMAHGQ file v1 painpoint: 'sd create output reports Medium priority though both findings requested priority 2 - verify sd's priority number->band mapping in the CLI help before filing if exact High/Medium matters' (fabro-e4c4 and fabro-a08a landed Medium though the revisor's intent read as High-band work). IN-SESSION REPRODUCTION (agent sweep, 2026-09-08 evening): the agent filed fabro-8d1c with --priority 2 intending High and had to correct it to 1 afterwards - same trap, second consumer.\\n\\nFIX: one documentation line in .fabro/workflows/revisor/prompts/file.md tracker command reference (sd create row): 'priority bands: 0=P0 1=High 2=Medium 3=Low 4=Lowest; default 2 - pass 1 explicitly for High findings'. Optionally the same line in the develop closeout prompt where seeds get filed. Docs-only.\\n\\nBasis: journal .fabro/journal/01M20RX5E6P91DRT64CRCMAHGQ.jsonl file v1 painpoint + agent reproduction (fabro-8d1c priority correction), agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-88a4\",\"title\":\"Revisor: give the Ask-Fabro analyst an open-backlog digest so it stops re-deriving known findings\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T18:20:09.351Z\",\"updatedAt\":\"2026-09-08T18:20:09.351Z\",\"assignee\":\"fabro\",\"description\":\"Run 01M20QA6PBYAGR1TG8MGR8KGTF analyze v1 painpoint: 6 of 7 actionable Ask-Fabro analyst recommendations duplicated already-open seeds (fabro-06e0, fabro-meta-c9f2, fabro-c3b4, fabro-4811, fabro-8275, fabro-cf03); the tracker check caught them all, but the analyst re-derived known findings because Ask-Fabro has NO backlog awareness - every pass pays the analyst tokens to rediscover the backlog, and the duplicate-guard load shifts to the file node. Run 01M20XGWE2ZYM9ADRM2PVE322F saw the same shape (7 of 8 recs dropped as duplicates).\\n\\nFIX: feed the target run's Ask-Fabro analyst a compact digest of open revision-labelled seeds (id + title, one line each - the same view sd list --format compact gives, but scoped to the revision label with an explicit raised limit) so it reviews the run AGAINST the backlog instead of re-discovering it. Surface lives where the revisor analyze node composes the fabro_ask prompt (.fabro/workflows/revisor/prompts - check analyze.md); keep the digest in the prompt body, not a new tool.\\n\\nBasis: journals .fabro/journal/01M20QA6PBYAGR1TG8MGR8KGTF.jsonl and 01M20XGWE2ZYM9ADRM2PVE322F.jsonl analyze v1, agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-dd29\",\"title\":\"fabro-server tests: convention/lint that execute_run tests pin run.environment id=local (no Docker-socket deps in gate sandboxes)\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T18:20:09.452Z\",\"updatedAt\":\"2026-09-08T18:54:09.951Z\",\"assignee\":\"fabro\",\"description\":\"Run 01M20T9S8JRXETASN64768TRRP implementer v2 painpoint: fabro-server tests that execute runs in-process with default settings depend on a Docker daemon and hard-fail in Docker-less gate sandboxes (lib/apps/fabro-server/src/server/tests.rs:8963/9086 failed with WorkflowError 'Socket not found: /var/run/docker.sock'); the run applied a 6-line [run.environment] id = \\\"local\\\" pin as adjacent repair (documented, legitimate), but nothing stops NEW execute_run tests from silently reintroducing the Docker dependency - the same class will keep bouncing gates. Distinct from fabro-fc1b (prompt rule: WHICH test suite runs) - this seed is about test AUTHORING convention so the dependency never enters.\\n\\nFIX: (a) convention note in the testing strategy or crate-level test docs: tests that reach execute_run/Handler::dispatch with a real provider must pin [run.environment] id = \\\"local\\\" (precedent: cancel_during_startup_persists_cancelled_reason); (b) optional cheap lint: a tests.rs grep gate in qualitygate.nu flagging execute_run test fns lacking the local-environment pin. Also record the adjacent trap already journaled: mode = \\\"dry_run\\\" coerces the provider to Local BUT routes Handler::dispatch to simulate(), so handlers' execute() never runs - assertions on observation vectors silently pass (mulch engine.jsonl already carries this).\\n\\nBasis: journal .fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl implementer v2 painpoint, agent sweep 2026-09-08 evening, commit ccf927888.\\n\\nPROVENANCE (user question 2026-09-08 evening): both failing tests are OURS, fork-only (not in upstream/main), introduced BY the ADR-0019.6 security hardening line on 2026-09-08 morning: run_start_grants_github_token_bridge_only_to_user_principals landed in 919b0d18c (fabro-e505 wire test, 08:52) and worker_principal_run_without_vault_token_takes_no_token_path in 9d1ae6162 (fabro-c274, 09:09, direct agent work). The failure picture is therefore NEW since the hardening - but it is a test-infrastructure dependency, not a regression of the gate logic: these are the first in-process execute_run wire tests of this shape, they execute REAL runs, and without an explicit environment pin those runs default to the Docker provider. Local dev machines have Docker (tests green via Docker, which is why the error was never seen locally); the failure only manifests in Docker-less contexts. First exposure: run 01M20T9S8JRXETASN64768TRRP tester@1 (15:31), the first lib/-touching develop run after the tests landed - earlier passes that morning were prompts-only (fmt-only degraded gate).\",\"labels\":[\"engine\"]}\n+{\"id\":\"fabro-3c6c\",\"title\":\"Cost-tier implementer smoke checks: parse-level proof for config-only seeds, sized timeouts for built checks\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T19:52:35.888Z\",\"updatedAt\":\"2026-09-08T19:52:35.888Z\",\"description\":\"In `.fabro/workflows/develop/prompts/implementer.md` step 4, add: config-only seeds (no Rust touched) satisfy the smoke check with a parse-level verification (tomllib or toml parse) — never build binaries to validate config; if a built check is genuinely required, never `cargo run` cold — `cargo build` once with `timeout_ms >= 600000` then invoke `target/debug/<bin>`, and a timed-out build is not a failure (retry once with a doubled timeout; only a non-zero exit is). Mirror one cheapest-first line in `.fabro/workflows/develop/prompts/planner.md` step 6 so briefs stop listing the expensive option first. Evidence: implementer verified a 12-line TOML edit with a 173ms tomllib parse (seq 98), then still ran `cargo run ... validate` which timed out at 180.3s with zero output and re-ran as a 416.9s build (seq 99-115); tool time 600s of the 741s run (81%), total 12m21s and $0.146. Expected effect: this class of run finishes in ~4 min instead of ~12, saving 8-10 min wall and one wasted diagnosis LLM turn per config-only seed. Distinct from open fabro-a67f (whitelist + conditional spec re-fetch) and closed fabro-513e (repo-side just recipe). Basis: run 01M2183254XQ3HJ45SR4P1Y2X6, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit 0dc16012c16ee2f6b2e61ecc73afcf0bd5f26b3d\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-c419\",\"title\":\"Wire the planner's fabro_runs_list binding — the in-flight-PR guard silently fails open\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T19:52:43.290Z\",\"updatedAt\":\"2026-09-08T19:52:43.290Z\",\"description\":\"Node `planner` in `.fabro/workflows/develop/workflow.fabro` declares `fabro_tools=\\\"fabro_runs_list\\\"` but the tool never reaches the agent: make the engine honor the node-level `fabro_tools` attribute (or set run-level `agent.fabro_tools` for develop), and until then reword planner.md step 4 to instruct journaling the degraded mode and proceeding when the tool is absent from the toolset, instead of implying the call is always possible. Evidence: this run's events seq 27 show `agent.tools.available` for planner@1 lists no fabro_runs_list and run settings show `agent.fabro_tools=false`; the planner's only journaled painpoint was that the in-flight-PR check degraded to a no-op — the exact failure closed fabro-06e0 and fabro-d0c7 were meant to prevent (fabro-22e4 double-pick while a PR waits in gate). Expected effect: the loop's only double-work guard actually functions, preventing a duplicated run (~$0.15 plus ~12 min each) next time a seed's PR sits in gate. ADR-0019: this finding changes a tool allowlist in an agent-reachable surface, so it is capability-affecting — implementation awaits explicit user approval. Fix direction is engine-mediated and read-only (the engine exposes its existing `fabro_runs_list` read tool via the node-level attribute); no raw clients or tokens proposed. Note: the run-level-warning sub-item duplicates open fabro-5b0a and is deliberately excluded. Basis: run 01M2183254XQ3HJ45SR4P1Y2X6, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit 0dc16012c16ee2f6b2e61ecc73afcf0bd5f26b3d\",\"labels\":[\"needs-user\",\"revision\"]}\n+{\"id\":\"fabro-fe15\",\"title\":\"Bake a debug fabro-cli (or shared cargo cache) into the run toolchain image\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T19:52:50.145Z\",\"updatedAt\":\"2026-09-08T19:52:50.145Z\",\"description\":\"In the `fabro-toolchain:noble` Dockerfile used for develop run containers (`.fabro/Dockerfile*`), pre-build `fabro-cli` in debug profile or mount a shared cargo cache across run containers so `target/debug/fabro` exists at container start. Evidence: this run's implementer probed `ls target/debug/fabro` and found nothing (seq 107) — the container starts with an empty `target/`, so any run legitimately needing the CLI pays ~7 min of cold build; the workflow graph comment already measures a cold gate at ~15 min worst case. Expected effect: the first cargo invocation in every run drops from minutes to seconds, independent of prompt compliance; complements the config-only smoke cost-tiering for seeds that still need built checks. Distinct from open fabro-cfd6 (prebuilt cargo-chef image for the CI gate, not run containers) and closed fabro-513e (human-facing just recipe). ADR-0019: this finding adds a binary to the agent-reachable toolchain image surface, so it is capability-affecting — implementation awaits explicit user approval. Fix direction stays engine-mediated (image build content / engine-managed cache mount; the prebuilt binary is the repo's own read-write CLI, no new credentials or external clients). Basis: run 01M2183254XQ3HJ45SR4P1Y2X6, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit 0dc16012c16ee2f6b2e61ecc73afcf0bd5f26b3d\",\"labels\":[\"needs-user\",\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 89,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-08T19:53:23.455430583Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 357646,
+      "inference_time_ms": 210737,
+      "tool_time_ms": 126231,
+      "active_time_ms": 336968
+    },
+    "final_git_commit_sha": "3ee75c9f072a2a755e4577904306a68306ce1383",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 32084,
+          "inference_time_ms": 19410,
+          "tool_time_ms": 12065,
+          "active_time_ms": 31475
+        },
+        "billing_usd_micros": 62841,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 243177,
+          "inference_time_ms": 130586,
+          "tool_time_ms": 112044,
+          "active_time_ms": 242630
+        },
+        "billing_usd_micros": 115406,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 63464,
+          "inference_time_ms": 60741,
+          "tool_time_ms": 2122,
+          "active_time_ms": 62863
+        },
+        "billing_usd_micros": 81150,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 80390,
+      "output_tokens": 8141,
+      "total_tokens": 386921,
+      "reasoning_tokens": 8086,
+      "cache_read_tokens": 290304,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 259397
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M218Y6XTZVV8Z98TCHSNFXAB.jsonl b/.fabro/journal/01M218Y6XTZVV8Z98TCHSNFXAB.jsonl\nnew file mode 100644\nindex 0000000..9dd03a5\n--- /dev/null\n+++ b/.fabro/journal/01M218Y6XTZVV8Z98TCHSNFXAB.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M218Y6XTZVV8Z98TCHSNFXAB\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:47:06Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M218Y6XTZVV8Z98TCHSNFXAB\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:47:42Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected newest qualifying run; merge-upstream run 01M1ZVH0B5V5RHRCY393T24GXG (version 4210c0e5, sandbox true, unrevised) remains the next-best candidate\",\"develop backlog: ~24 terminal runs unrevised but stale-evidence (version drift from baseline 84429d0a) plus pre-intent runs with absent workflow_version_id; 5 old runs sandbox_available=false — all blocked until engine provisions fresh analyst sandboxes or evidence refreshes\",\"No active develop run at selection time; several pre-2026-09-05 runs (01M1Q4P92K5RX8XX990BEB130Y, 01M1PVMS7B6N39MG0041C5F7P6, 01M1NHZVTXRC1AVW28D3FG0XYP, 01M1NGGDVKNJHWP2W0HPJJ84CZ, 01M1EGK6J8CNP9APJ7PWE6WE74, 01M1MMK5C6B313SY70Y2EPKE82, 01M1MHGS7PH26EP20B2RTAPN4G) lack workflow_version_id entirely\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M218Y6XTZVV8Z98TCHSNFXAB\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:52:06Z\",\"data\":{\"painpoints\":[{\"text\":\"Duplicate check is blinded by search result caps: `sd search` returns at most ~20 rows, so analyst-cited seed fabro-e4ac (partial stdout on timeout) never appeared across 'timeout', 'partial stdout', 'timed_out', and 'stdout' probes, and the initial `sd list` cap of 50 hid fabro-c3b4. Extends open fabro-5ff7 from list to search — fix idea: paginate search, raise the cap, or authorize `sd show <id>` for analyst-cited ids in the revisor prompt.\"}],\"observations\":[\"Duplicates withheld with reasons: top-N sd ready -> duplicate_of fabro-c3b4 (open, exact match); ml record flag contract -> duplicate_of fabro-96bd (open, exact match, this run reproduces it at seq 119-126); preamble allow-key warn to info -> duplicate_of fabro-8275 (open, exact match); run-level warnings for degraded planner checks -> sub-item duplicate_of fabro-5b0a; partial stdout on timeout -> engine sub-item duplicate_of fabro-e4ac per analyst citation (not independently verifiable through capped search).\",\"Rec 1 and rec 4 were merged into one finding: both target `.fabro/workflows/develop/prompts/implementer.md` step 4 from the same cold-cargo incident (seq 98-115).\",\"The fabro_runs_list fail-open is new evidence against the wiring, not a reopen of closed fabro-06e0 or fabro-0c32 (the tools exist engine-side; the node-level attribute never surfaces them to the planner agent).\",\"No graph-topology findings: the linear planner->implementer->tester->evidence->reviewer->closeout path, deterministic closeout, and cycle guards all behaved as designed with zero retries.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M218Y6XTZVV8Z98TCHSNFXAB\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T19:53:18Z\",\"data\":{\"painpoints\":[{\"text\":\"sd search with --format compact prints nothing at all on zero matches — not even a 'no results' line — making 'searched and found nothing' indistinguishable from a failed command unless exit code is checked. Fix idea: emit an explicit empty-result marker. Evidence: three theme searches in run 01M218Y6XTZVV8Z98TCHSNFXAB, exit 0, empty stdout.\"}],\"observations\":[\"fabro-c419 and fabro-fe15 are capability-affecting per ADR-0019 (tool allowlist / .fabro/Dockerfile* surfaces) — they carry needs-user and must not be claimed as line work without explicit user approval.\",\"Seed 1's scope deliberately excludes the run-level-warning sub-finding: it duplicates open fabro-5b0a.\"]}}\ndiff --git a/.fabro/reviews/develop/01M2183254XQ3HJ45SR4P1Y2X6.md b/.fabro/reviews/develop/01M2183254XQ3HJ45SR4P1Y2X6.md\nnew file mode 100644\nindex 0000000..6e3681e\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M2183254XQ3HJ45SR4P1Y2X6.md\n@@ -0,0 +1,55 @@\n+# Improve review — run 01M2183254XQ3HJ45SR4P1Y2X6\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (13.3 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-08 19:49+0000 by revisor `fabro_ask`\n+\n+---\n+\n+## What this run actually was (the basis for everything below)\n+\n+From run events and the run summary: seed `fabro-85a1` — a 12-line, config-only TOML addition to `.fabro/workflows/merge-upstream/workflow.toml` — went planner → implementer → gate → evidence → review → closeout, all first-pass green, PR #72, total 12m21s wall, $0.146. The interesting part is where the time and friction actually went: the implementer's tool time was **600s of the 741s run (81%)**, almost all of it `cargo` work to \"validate\" a file that had already passed a 173ms parse check.\n+\n+---\n+\n+## Recommendations, by expected impact\n+\n+**1. Cost-tier the smoke check for config-only seeds — stop cold-building binaries to validate TOML.**\n+- What happened (run events seq 98–115): implementer already verified the edit with `python3 -c \"import tomllib; ...\"` in 173ms, then ran `cargo run -q -p fabro-cli -- validate merge-upstream` (timeout 180s) → **timed out at 180.3s, zero output captured**, then re-ran as `cargo build -q -p fabro-cli && ./target/debug/fabro validate` → **416.9s**. ~10 minutes of cargo to confirm what the parse had proven. The planner's brief made this worse by suggesting \"`fabro validate merge-upstream` or equivalent parse check\" with no cost qualifier — the expensive option listed first is the one that got run.\n+- Change: in `.fabro/workflows/develop/prompts/implementer.md` step 4, add: \"Config-only seeds (no Rust touched): a successful parse-level check (tomllib/toml parse) satisfies the smoke check — do NOT build binaries to validate config. If a built check is genuinely required, never `cargo run` cold; `cargo build` once with `timeout_ms ≥ 600000`, then invoke `target/debug/<bin>`.\" Mirror one line in `.fabro/workflows/develop/prompts/planner.md` step 6 so briefs phrase smoke checks cheapest-first.\n+- Expected effect: this run would have finished in ~4 min instead of 12.3; every config-only seed (a large fraction of the `revision`-labelled backlog visible in `sd ready`) saves 8–10 min of wall and one wasted LLM diagnosis turn.\n+\n+**2. Fix the planner's `fabro_runs_list` binding — the in-flight-PR guard silently failed open.**\n+- What happened (run events seq 27 + planner journal): the graph declares `fabro_tools=\"fabro_runs_list\"` on the planner node specifically for the fabro-06e0 in-flight-PR check, but `agent.tools.available` for planner@1 lists no such tool (and run settings show `agent.fabro_tools=false`). The planner journaled this as its **only painpoint**: \"the check degraded to a no-op.\" The exact failure the guard prevents (fabro-22e4: identical fix re-implemented while PR #47 waited in gate) is currently unprotected on every run.\n+- Change: node `planner` in `.fabro/workflows/develop/workflow.fabro` — either make the node-level `fabro_tools` attribute actually surface the tool (or set run-level `agent.fabro_tools`), and until the engine honors it, reword planner.md step 4 to say \"if the tool is absent from your toolset, journal the degraded mode and proceed\" instead of implying the call is always possible. Also surface degraded checks as run-level warnings (matches open seed fabro-5b0a).\n+- Expected effect: closes a silent fail-open in the loop's only double-work guard; prevents a duplicated run (~$0.15 + 12 min each) next time a seed's PR sits in the gate.\n+\n+**3. Top-N the `sd ready` firehose.**\n+- What happened (seq 32–34): `sd ready --assignee fabro --limit 200` returned **178 rows / 24,011 bytes**; the planner's conversation tokens jumped 3,371 → 9,733 → 11,130. The planner needed the top 1–3 candidates yet paid for the whole backlog in input tokens every turn — making it the **second-costliest stage ($0.051, 35% of run cost)** for a claim decision, more than the reviewer that judged the actual diff.\n+- Change: `.fabro/workflows/develop/prompts/planner.md`, sd command reference — first call becomes `sd ready --assignee fabro --limit 200 | head -15` (priority-sorted top-N view); fall back to the full listing only when top candidates fail the stale-basis/in-flight checks. (Matches open seed fabro-c3b4; this run is fresh evidence for it.)\n+- Expected effect: roughly halves planner input tokens (~$0.02/pass) and shortens the stage; paid on the first turn of every develop run.\n+\n+**4. Timeout sizing and timed-out-build semantics for shell tools.**\n+- What happened (seq 99–103): the 180s `cargo run` timeout returned `termination: timed_out, is_error: true` with **0 bytes of output** — the agent burned an LLM turn diagnosing a non-failure and re-issuing at 600s (which succeeded; cargo resumed warm from `target/`). The prompt mandates `timeout_ms` but gives no sizing guidance, and a timeout is indistinguishable from a crash in the tool result.\n+- Change: `.fabro/workflows/develop/prompts/implementer.md` step 4 — add: \"cold `cargo build/clippy` need `timeout_ms ≥ 600000`; a *timed-out* build is not a failure — retry once with a doubled timeout (artifacts persist in `target/`); only a non-zero *exit* is a failure.\" Engine-side (matches open seed fabro-e4ac's direction): include partial stdout on timeout.\n+- Expected effect: recovers the 3 min + 1 model turn this run wasted, and every cold compile in future runs.\n+\n+**5. Bake or persist a debug `fabro-cli` so config-validation never cold-builds.**\n+- What happened: the run container starts with an empty `target/` (implementer probed `ls target/debug/fabro` → nothing, seq 107), so any run that legitimately needs the CLI pays ~7 min. Complementary to #1: some seeds will still need built checks.\n+- Change: runner image (`fabro-toolchain:noble` Dockerfile) — pre-build `fabro-cli` in debug profile, or mount a shared cargo cache across run containers; graph comment already measures cold gate at ~15m worst case, and open seed fabro-cfd6 does this for CI.\n+- Expected effect: turns every first cargo invocation in a run from minutes to seconds, independent of prompt compliance.\n+\n+**6. Document the `ml record` flag contract (one wasted call per recorded pattern).**\n+- What happened (seq 119–126): first `ml record ... --type pattern` failed with `Error: pattern records are missing required flag(s): --name`, retried successfully. Same trap as open seed fabro-96bd, now reproduced inside a develop run.\n+- Change: one line in `.fabro/workflows/develop/prompts/implementer.md` step 6: \"pattern records additionally require `--name <kebab-id>`.\"\n+- Expected effect: one fewer failed tool call + model turn each time a pattern is recorded.\n+\n+**7. Log hygiene: stop warning on the expected-absent gate-bounce key.**\n+- What happened (worker log, the run's only WARN): `preamble_allow_keys entry absent from context node=implementer key=output.gate_known_bug_hits` — this key is *by design* absent on green first passes, so the warning fires on every healthy run and buries real signals.\n+- Change: engine preamble lint (fabro-8275, already seeded) — downgrade to info unless the tester stage failed.\n+- Expected effect: worker logs become actionable; zero behavioral change.\n+\n+---\n+\n+**On graph design specifically:** this run gives no evidence for topology changes — the linear happy path (planner → implementer → tester → evidence → reviewer → closeout), deterministic closeout via `stdin_source=\"current_seed_id\"`, and cycle guards all behaved exactly as designed, with zero retries and one-visit-per-node. The only graph-level defect visible is item 2, which is a node-attribute wiring failure, not a topology problem.\ndiff --git a/.fabro/revisions/01M2183254XQ3HJ45SR4P1Y2X6.md b/.fabro/revisions/01M2183254XQ3HJ45SR4P1Y2X6.md\nnew file mode 100644\nindex 0000000..73302f8\n--- /dev/null\n+++ b/.fabro/revisions/01M2183254XQ3HJ45SR4P1Y2X6.md\n@@ -0,0 +1,27 @@\n+# Revision — run 01M2183254XQ3HJ45SR4P1Y2X6\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M2183254XQ3HJ45SR4P1Y2X6.md\n+- seeds filed:\n+  - fabro-3c6c — Cost-tier implementer smoke checks: parse-level proof for config-only seeds, sized timeouts for built checks\n+  - fabro-c419 — Wire the planner's fabro_runs_list binding — the in-flight-PR guard silently fails open\n+  - fabro-fe15 — Bake a debug fabro-cli (or shared cargo cache) into the run toolchain image\n+- basis: run 01M2183254XQ3HJ45SR4P1Y2X6, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit 0dc16012c16ee2f6b2e61ecc73afcf0bd5f26b3d\n+- revised_at_commit: 0dc16012c16ee2f6b2e61ecc73afcf0bd5f26b3d (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Cost-tier implementer smoke checks: parse-level proof for config-only seeds, sized timeouts for built checks\n+- filed: fabro-3c6c\n+- Concrete change: in `.fabro/workflows/develop/prompts/implementer.md` step 4, config-only seeds verify via tomllib/toml parse (never build); built checks use one `cargo build` with `timeout_ms >= 600000` then `target/debug/<bin>`, timed-out build retried once with doubled timeout, only non-zero exit is failure. One cheapest-first line mirrored in `.fabro/workflows/develop/prompts/planner.md` step 6.\n+- Expected effect: config-only runs finish ~4 min instead of ~12 (this run: 600s tool time, $0.146), one wasted diagnosis LLM turn saved per config-only seed.\n+\n+### Wire the planner's fabro_runs_list binding — the in-flight-PR guard silently fails open\n+- filed: fabro-c419 (capability-affecting: `needs-user,revision`, ADR-0019, awaits explicit user approval)\n+- Concrete change: make the engine honor node-level `fabro_tools` (or set run-level `agent.fabro_tools` for develop); reword planner.md step 4 to journal degraded mode when the tool is absent. Node declares it (events seq 27 show it absent from the agent toolset, `agent.fabro_tools=false`).\n+- Expected effect: the double-pick guard (fabro-06e0/fabro-d0c7 lineage) actually functions, preventing a duplicated ~$0.15/~12-min run when a seed PR waits in gate. Run-level-warning sub-item excluded as duplicate of open fabro-5b0a.\n+\n+### Bake a debug fabro-cli (or shared cargo cache) into the run toolchain image\n+- filed: fabro-fe15 (capability-affecting: `needs-user,revision`, ADR-0019, awaits explicit user approval — touches `.fabro/Dockerfile*` agent-reachable surface)\n+- Concrete change: pre-build debug `fabro-cli` in the `fabro-toolchain:noble` image or share a cargo cache across run containers so `target/debug/fabro` exists at start (run probed empty `target/`, seq 107).\n+- Expected effect: first cargo invocation drops from minutes to seconds; complements the smoke cost-tiering. Distinct from fabro-cfd6 (CI gate image) and closed fabro-513e.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 1771ea5..9569905 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -290,3 +290,6 @@\n {\"id\":\"fabro-8c1e\",\"title\":\"Revisor + closeout prompts: document sd priority number->band mapping (1=High, 2=Medium, default 2)\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-08T18:20:09.207Z\",\"updatedAt\":\"2026-09-08T18:20:09.207Z\",\"assignee\":\"fabro\",\"description\":\"sd's --priority is a 0-4 number (P0-P4) where 1=High, 2=Medium, 3=Low, default 2 - NOT intuitive at filing time. Run 01M20RX5E6P91DRT64CRCMAHGQ file v1 painpoint: 'sd create output reports Medium priority though both findings requested priority 2 - verify sd's priority number->band mapping in the CLI help before filing if exact High/Medium matters' (fabro-e4c4 and fabro-a08a landed Medium though the revisor's intent read as High-band work). IN-SESSION REPRODUCTION (agent sweep, 2026-09-08 evening): the agent filed fabro-8d1c with --priority 2 intending High and had to correct it to 1 afterwards - same trap, second consumer.\\n\\nFIX: one documentation line in .fabro/workflows/revisor/prompts/file.md tracker command reference (sd create row): 'priority bands: 0=P0 1=High 2=Medium 3=Low 4=Lowest; default 2 - pass 1 explicitly for High findings'. Optionally the same line in the develop closeout prompt where seeds get filed. Docs-only.\\n\\nBasis: journal .fabro/journal/01M20RX5E6P91DRT64CRCMAHGQ.jsonl file v1 painpoint + agent reproduction (fabro-8d1c priority correction), agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-88a4\",\"title\":\"Revisor: give the Ask-Fabro analyst an open-backlog digest so it stops re-deriving known findings\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T18:20:09.351Z\",\"updatedAt\":\"2026-09-08T18:20:09.351Z\",\"assignee\":\"fabro\",\"description\":\"Run 01M20QA6PBYAGR1TG8MGR8KGTF analyze v1 painpoint: 6 of 7 actionable Ask-Fabro analyst recommendations duplicated already-open seeds (fabro-06e0, fabro-meta-c9f2, fabro-c3b4, fabro-4811, fabro-8275, fabro-cf03); the tracker check caught them all, but the analyst re-derived known findings because Ask-Fabro has NO backlog awareness - every pass pays the analyst tokens to rediscover the backlog, and the duplicate-guard load shifts to the file node. Run 01M20XGWE2ZYM9ADRM2PVE322F saw the same shape (7 of 8 recs dropped as duplicates).\\n\\nFIX: feed the target run's Ask-Fabro analyst a compact digest of open revision-labelled seeds (id + title, one line each - the same view sd list --format compact gives, but scoped to the revision label with an explicit raised limit) so it reviews the run AGAINST the backlog instead of re-discovering it. Surface lives where the revisor analyze node composes the fabro_ask prompt (.fabro/workflows/revisor/prompts - check analyze.md); keep the digest in the prompt body, not a new tool.\\n\\nBasis: journals .fabro/journal/01M20QA6PBYAGR1TG8MGR8KGTF.jsonl and 01M20XGWE2ZYM9ADRM2PVE322F.jsonl analyze v1, agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-dd29\",\"title\":\"fabro-server tests: convention/lint that execute_run tests pin run.environment id=local (no Docker-socket deps in gate sandboxes)\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T18:20:09.452Z\",\"updatedAt\":\"2026-09-08T18:54:09.951Z\",\"assignee\":\"fabro\",\"description\":\"Run 01M20T9S8JRXETASN64768TRRP implementer v2 painpoint: fabro-server tests that execute runs in-process with default settings depend on a Docker daemon and hard-fail in Docker-less gate sandboxes (lib/apps/fabro-server/src/server/tests.rs:8963/9086 failed with WorkflowError 'Socket not found: /var/run/docker.sock'); the run applied a 6-line [run.environment] id = \\\"local\\\" pin as adjacent repair (documented, legitimate), but nothing stops NEW execute_run tests from silently reintroducing the Docker dependency - the same class will keep bouncing gates. Distinct from fabro-fc1b (prompt rule: WHICH test suite runs) - this seed is about test AUTHORING convention so the dependency never enters.\\n\\nFIX: (a) convention note in the testing strategy or crate-level test docs: tests that reach execute_run/Handler::dispatch with a real provider must pin [run.environment] id = \\\"local\\\" (precedent: cancel_during_startup_persists_cancelled_reason); (b) optional cheap lint: a tests.rs grep gate in qualitygate.nu flagging execute_run test fns lacking the local-environment pin. Also record the adjacent trap already journaled: mode = \\\"dry_run\\\" coerces the provider to Local BUT routes Handler::dispatch to simulate(), so handlers' execute() never runs - assertions on observation vectors silently pass (mulch engine.jsonl already carries this).\\n\\nBasis: journal .fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl implementer v2 painpoint, agent sweep 2026-09-08 evening, commit ccf927888.\\n\\nPROVENANCE (user question 2026-09-08 evening): both failing tests are OURS, fork-only (not in upstream/main), introduced BY the ADR-0019.6 security hardening line on 2026-09-08 morning: run_start_grants_github_token_bridge_only_to_user_principals landed in 919b0d18c (fabro-e505 wire test, 08:52) and worker_principal_run_without_vault_token_takes_no_token_path in 9d1ae6162 (fabro-c274, 09:09, direct agent work). The failure picture is therefore NEW since the hardening - but it is a test-infrastructure dependency, not a regression of the gate logic: these are the first in-process execute_run wire tests of this shape, they execute REAL runs, and without an explicit environment pin those runs default to the Docker provider. Local dev machines have Docker (tests green via Docker, which is why the error was never seen locally); the failure only manifests in Docker-less contexts. First exposure: run 01M20T9S8JRXETASN64768TRRP tester@1 (15:31), the first lib/-touching develop run after the tests landed - earlier passes that morning were prompts-only (fmt-only degraded gate).\",\"labels\":[\"engine\"]}\n+{\"id\":\"fabro-3c6c\",\"title\":\"Cost-tier implementer smoke checks: parse-level proof for config-only seeds, sized timeouts for built checks\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T19:52:35.888Z\",\"updatedAt\":\"2026-09-08T19:52:35.888Z\",\"description\":\"In `.fabro/workflows/develop/prompts/implementer.md` step 4, add: config-only seeds (no Rust touched) satisfy the smoke check with a parse-level verification (tomllib or toml parse) — never build binaries to validate config; if a built check is genuinely required, never `cargo run` cold — `cargo build` once with `timeout_ms >= 600000` then invoke `target/debug/<bin>`, and a timed-out build is not a failure (retry once with a doubled timeout; only a non-zero exit is). Mirror one cheapest-first line in `.fabro/workflows/develop/prompts/planner.md` step 6 so briefs stop listing the expensive option first. Evidence: implementer verified a 12-line TOML edit with a 173ms tomllib parse (seq 98), then still ran `cargo run ... validate` which timed out at 180.3s with zero output and re-ran as a 416.9s build (seq 99-115); tool time 600s of the 741s run (81%), total 12m21s and $0.146. Expected effect: this class of run finishes in ~4 min instead of ~12, saving 8-10 min wall and one wasted diagnosis LLM turn per config-only seed. Distinct from open fabro-a67f (whitelist + conditional spec re-fetch) and closed fabro-513e (repo-side just recipe). Basis: run 01M2183254XQ3HJ45SR4P1Y2X6, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit 0dc16012c16ee2f6b2e61ecc73afcf0bd5f26b3d\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-c419\",\"title\":\"Wire the planner's fabro_runs_list binding — the in-flight-PR guard silently fails open\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T19:52:43.290Z\",\"updatedAt\":\"2026-09-08T19:52:43.290Z\",\"description\":\"Node `planner` in `.fabro/workflows/develop/workflow.fabro` declares `fabro_tools=\\\"fabro_runs_list\\\"` but the tool never reaches the agent: make the engine honor the node-level `fabro_tools` attribute (or set run-level `agent.fabro_tools` for develop), and until then reword planner.md step 4 to instruct journaling the degraded mode and proceeding when the tool is absent from the toolset, instead of implying the call is always possible. Evidence: this run's events seq 27 show `agent.tools.available` for planner@1 lists no fabro_runs_list and run settings show `agent.fabro_tools=false`; the planner's only journaled painpoint was that the in-flight-PR check degraded to a no-op — the exact failure closed fabro-06e0 and fabro-d0c7 were meant to prevent (fabro-22e4 double-pick while a PR waits in gate). Expected effect: the loop's only double-work guard actually functions, preventing a duplicated run (~$0.15 plus ~12 min each) next time a seed's PR sits in gate. ADR-0019: this finding changes a tool allowlist in an agent-reachable surface, so it is capability-affecting — implementation awaits explicit user approval. Fix direction is engine-mediated and read-only (the engine exposes its existing `fabro_runs_list` read tool via the node-level attribute); no raw clients or tokens proposed. Note: the run-level-warning sub-item duplicates open fabro-5b0a and is deliberately excluded. Basis: run 01M2183254XQ3HJ45SR4P1Y2X6, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit 0dc16012c16ee2f6b2e61ecc73afcf0bd5f26b3d\",\"labels\":[\"needs-user\",\"revision\"]}\n+{\"id\":\"fabro-fe15\",\"title\":\"Bake a debug fabro-cli (or shared cargo cache) into the run toolchain image\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T19:52:50.145Z\",\"updatedAt\":\"2026-09-08T19:52:50.145Z\",\"description\":\"In the `fabro-toolchain:noble` Dockerfile used for develop run containers (`.fabro/Dockerfile*`), pre-build `fabro-cli` in debug profile or mount a shared cargo cache across run containers so `target/debug/fabro` exists at container start. Evidence: this run's implementer probed `ls target/debug/fabro` and found nothing (seq 107) — the container starts with an empty `target/`, so any run legitimately needing the CLI pays ~7 min of cold build; the workflow graph comment already measures a cold gate at ~15 min worst case. Expected effect: the first cargo invocation in every run drops from minutes to seconds, independent of prompt compliance; complements the config-only smoke cost-tiering for seeds that still need built checks. Distinct from open fabro-cfd6 (prebuilt cargo-chef image for the CI gate, not run containers) and closed fabro-513e (human-facing just recipe). ADR-0019: this finding adds a binary to the agent-reachable toolchain image surface, so it is capability-affecting — implementation awaits explicit user approval. Fix direction stays engine-mediated (image build content / engine-managed cache mount; the prebuilt binary is the repo's own read-write CLI, no new credentials or external clients). Basis: run 01M2183254XQ3HJ45SR4P1Y2X6, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit 0dc16012c16ee2f6b2e61ecc73afcf0bd5f26b3d\",\"labels\":[\"needs-user\",\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 89,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1240,6 +1326,42 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 204,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-08T19:53:23.371439849Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T19:53:23.371365208Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 17,
       "prompt": null,
