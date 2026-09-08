@@ -8967,6 +8967,9 @@ _version = 1
 [server.auth]
 methods = ["dev-token"]
 
+[run.environment]
+id = "local"
+
 [run.integrations.github.permissions]
 contents = "read"
 "#;
@@ -9089,6 +9092,9 @@ _version = 1
 
 [server.auth]
 methods = ["dev-token"]
+
+[run.environment]
+id = "local"
 
 [run.integrations.github.permissions]
 contents = "read"
