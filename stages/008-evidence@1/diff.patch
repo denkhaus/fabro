@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl b/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl
+index 6d6c9fe..b5d10bf 100644
+--- a/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl
++++ b/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl
+@@ -4,3 +4,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M20T9S8JRXETASN64768TRRP","node":"gatebounce","visit":1,"status":"succeeded","ts":"2026-09-08T16:07:32Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M20T9S8JRXETASN64768TRRP","node":"implementer","visit":2,"status":"succeeded","ts":"2026-09-08T16:22:56Z","data":{"painpoints":[{"text":"fabro-server tests that execute runs in-process with default settings depend on a Docker daemon and hard-fail in Docker-less gate sandboxes (run 01M20T9S8JRXETASN64768TRRP, tests at lib/apps/fabro-server/src/server/tests.rs:8963/9086 failed with WorkflowError/'Socket not found: /var/run/docker.sock'). Fix idea: such tests should pin '[run.environment] id = \"local\"' like cancel_during_startup_persists_cancelled_reason does; consider a lint or convention note so new execute_run tests don't silently reintroduce the Docker dependency."}],"observations":["mode = \"dry_run\" is a trap for execute-path assertions: it coerces the provider to Local but also routes Handler::dispatch to simulate(), so handlers' execute() never runs and observation vectors come back empty with runs still Succeeded — the failure mode looks like a logic bug, not a sandbox bypass."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M20T9S8JRXETASN64768TRRP","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-08T16:24:33Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M20T9S8JRXETASN64768TRRP","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-08T16:24:38Z","data":{}}
