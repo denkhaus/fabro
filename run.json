@@ -482,7 +482,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-08T21:18:36.820836399Z",
-  "last_event_at": "2026-09-08T21:25:25.819784490Z",
+  "last_event_at": "2026-09-08T21:25:31.484642009Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -910,9 +910,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 171,
       "checkpoint": {
-        "timestamp": "2026-09-08T21:25:26.027975574Z",
+        "timestamp": "2026-09-08T21:25:30.453832917Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -922,11 +922,66 @@
         ],
         "node_retries": {},
         "context_values": {
-          "graph.max_node_visits": "30",
-          "internal.work_dir": "/workspace/fabro",
+          "internal.fidelity": "compact",
+          "last_response": "Bookkeeping complete: dedup searches found no exact matches (fabro-017f, fabro-645d, fabro-6a5a, fabro-5b0a are complementary and cross-referenced), three seeds filed (fabro-8bf4, fabro-9fa2, fabro-14",
+          "thread.start.current_node": "select",
+          "graph.preamble_budget_kb": "24",
+          "revisor_target_title": "Develop one seed per run: claim next open seed, implement, gate, review, exit (PR #76 merged)",
+          "internal.run_id": "01M21E5PRBNZGDTSEC6RBTMT0X",
+          "thread.select.current_node": "analyze",
+          "revisor_target_workflow_version": "84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6",
+          "graph.inspects": "develop,merge-upstream",
+          "graph.rankdir": "LR",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "failure_class": "",
+          "filed_seed_ids": [
+            "fabro-8bf4",
+            "fabro-9fa2",
+            "fabro-1409"
+          ],
+          "internal.retry_count.file": 0,
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 1420,
+            "preview": "Selection complete. Develop baseline is version `84429d0a…3ec7a6` (newest develop run), and the newest run overall — develop run `01M21BG1TG9SNM4QAS2A33W6GF` (succeeded 2026-09-08T21:17, PR #76 me"
+          },
+          "internal.retry_count.analyze": 0,
           "revisor_target_run_id": "01M21BG1TG9SNM4QAS2A33W6GF",
+          "revisor_target_status": "succeeded",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "internal.retry_count.start": 0,
+          "graph.max_node_visits": "30",
+          "internal.node_visit_count": 1,
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
           "internal.seed_cycle_anchor": "01M21BG1TG9SNM4QAS2A33W6GF",
-          "last_stage": "file",
+          "internal.thread_id": "analyze",
+          "internal.work_dir": "/workspace/fabro",
+          "outcome": "succeeded",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 5257,
+            "preview": "The ask succeeded, the review is persisted at `.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md`, and the tracker check dropped 4 of 6 recommendations as duplicates (`fabro-fe15` warm builds, `fab"
+          },
+          "revisor_target_wall": "45.5 min",
+          "thread.analyze.current_node": "file",
+          "internal.exit_kind": "natural",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "The revision commit included only the marker file — sd seed writes did not surface as a .seeds diff in `git add .fabro/reviews .fabro/revisions .seeds` (commit e570240, 2 files). If sd stores state elsewhere or self-commits, fine; if not, seeds for this revision may be uncommitted. Fix idea: bookkeeper verifies `git status --porcelain .seeds` after sd create and routes a failure if dirty-after-commit."
+              }
+            ],
+            "observations": [
+              "Duplicate guard worked via theme keywords (allow-keys lint, stale basis, PR body cost): fabro-017f/fabro-645d/fabro-6a5a/fabro-5b0a are complementary and cross-referenced in the new seed descriptions; nothing closed.",
+              "Next bookkeeper: this run is now revised — pick the next freshest unrevised run per ADR-0015."
+            ]
+          },
           "revision_findings": [
             {
               "title": "Engine: lint stage completion when a key declared in context_allow_keys was never emitted",
@@ -944,152 +999,19 @@
               "priority": 2
             }
           ],
-          "graph.inspects": "develop,merge-upstream",
-          "preferred_label": "Staged",
+          "failure_signature": "",
+          "internal.retry_count.select": 0,
           "response.file": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.file",
             "chars": 1609,
             "preview": "Bookkeeping complete: dedup searches found no exact matches (fabro-017f, fabro-645d, fabro-6a5a, fabro-5b0a are complementary and cross-referenced), three seeds filed (fabro-8bf4, fabro-9fa2, fabro-14"
           },
-          "thread.select.current_node": "analyze",
-          "last_response": "Bookkeeping complete: dedup searches found no exact matches (fabro-017f, fabro-645d, fabro-6a5a, fabro-5b0a are complementary and cross-referenced), three seeds filed (fabro-8bf4, fabro-9fa2, fabro-14",
-          "internal.retry_count.analyze": 0,
-          "outcome": "succeeded",
-          "internal.retry_count.select": 0,
-          "thread.analyze.current_node": "file",
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "internal.retry_count.file": 0,
-          "internal.node_visit_count": 1,
-          "internal.retry_count.start": 0,
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "failure_signature": "",
-          "journal": {
-            "painpoints": [
-              {
-                "text": "The revision commit included only the marker file — sd seed writes did not surface as a .seeds diff in `git add .fabro/reviews .fabro/revisions .seeds` (commit e570240, 2 files). If sd stores state elsewhere or self-commits, fine; if not, seeds for this revision may be uncommitted. Fix idea: bookkeeper verifies `git status --porcelain .seeds` after sd create and routes a failure if dirty-after-commit."
-              }
-            ],
-            "observations": [
-              "Duplicate guard worked via theme keywords (allow-keys lint, stale basis, PR body cost): fabro-017f/fabro-645d/fabro-6a5a/fabro-5b0a are complementary and cross-referenced in the new seed descriptions; nothing closed.",
-              "Next bookkeeper: this run is now revised — pick the next freshest unrevised run per ADR-0015."
-            ]
-          },
+          "last_stage": "file",
           "current_node": "file",
-          "revisor_target_wall": "45.5 min",
-          "seed_cycles": {
-            "select": 1,
-            "analyze": 1,
-            "file": 1
-          },
-          "filed_seed_ids": [
-            "fabro-8bf4",
-            "fabro-9fa2",
-            "fabro-1409"
-          ],
-          "internal.exit_kind": "natural",
-          "internal.run_id": "01M21E5PRBNZGDTSEC6RBTMT0X",
-          "graph.rankdir": "LR",
-          "revisor_target_title": "Develop one seed per run: claim next open seed, implement, gate, review, exit (PR #76 merged)",
-          "revisor_target_workflow_version": "84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6",
-          "internal.fidelity": "compact",
-          "response.analyze": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "chars": 5257,
-            "preview": "The ask succeeded, the review is persisted at `.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md`, and the tracker check dropped 4 of 6 recommendations as duplicates (`fabro-fe15` warm builds, `fab"
-          },
-          "response.select": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.select",
-            "chars": 1420,
-            "preview": "Selection complete. Develop baseline is version `84429d0a…3ec7a6` (newest develop run), and the newest run overall — develop run `01M21BG1TG9SNM4QAS2A33W6GF` (succeeded 2026-09-08T21:17, PR #76 me"
-          },
-          "failure_class": "",
-          "thread.start.current_node": "select",
-          "internal.thread_id": "analyze",
-          "graph.preamble_budget_kb": "24",
-          "revisor_target_status": "succeeded"
+          "preferred_label": "Staged"
         },
         "node_outcomes": {
-          "analyze": {
-            "status": "succeeded",
-            "preferred_label": "Findings ready",
-            "context_updates": {
-              "revision_findings": [
-                {
-                  "title": "Engine: lint stage completion when a key declared in context_allow_keys was never emitted",
-                  "description": "Run 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419, PR #76): develop planner@1 emitted context_updates with no `journal` key at all despite the node declaring `context_allow_keys=\"...,journal\"` and the prompt calling silence a violation; that same pass ran the in-flight-PR guard degraded to a no-op and nothing recorded either miss. Add a completion lint to the stage-envelope validation in `lib/components/fabro-workflow` (alongside the fabro-900e/e47c producer lints): a stage completing without emitting any key declared in its `context_allow_keys` emits a visible warning or consumes one `output_retries` nudge. Scoped as the general allow-keys visibility lint; journal-specific output-schema enforcement is already tracked by fabro-017f. Expected effect: missing journal reports and fail-open guards become auditable instead of silently lost.",
-                  "priority": 1
-                },
-                {
-                  "title": "Develop planner prompt: stale-basis fast path when the seed pins line anchors in its USER DECISION",
-                  "description": "planner@1 in run 01M21BG1TG9SNM4QAS2A33W6GF spent ~13 sequential read probes and 98.3s inference / $0.123 re-deriving exact line numbers (`api.rs:1345-1357`, `server.rs:4514`) the seed's USER DECISION note already pinned, and its reasoning trace nearly misjudged the seed as already-implemented ('Stale basis?'). In `.fabro/workflows/develop/prompts/planner.md` step 3, add: when the seed body carries a line-pinned USER DECISION or verified basis, one spot-check grep suffices instead of full re-derivation. Expected effect: planner drops from ~13 calls/98s toward ~5 calls/40s (~$0.05 + ~1 min per run) and lowers the risk of wrongly closing a valid seed as superseded.",
-                  "priority": 2
-                },
-                {
-                  "title": "PR postlude: append per-stage cost/time table and journal painpoint digest to the PR body",
-                  "description": "In run 01M21BG1TG9SNM4QAS2A33W6GF, 82% of spend ($0.775) and 60% of wall sat in the implementer stage, visible only in the run conclusion, not on PR #76 that the user merges. Where the engine composes the PR postlude (same area open seed fabro-6a5a targets for auto-merge/PR-body model-call fixes), append the per-stage timing/cost table plus a digest of journal `painpoints`. Degraded-guard notices in the PR body are intentionally excluded — already tracked by fabro-5b0a. Expected effect: at merge time the user sees that builds dominate (the case for toolchain warming, fabro-fe15) without opening the run dashboard.",
-                  "priority": 2
-                }
-              ],
-              "last_stage": "analyze",
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "4 of 6 analyst recommendations duplicated existing seeds (fabro-fe15, fabro-93a7, closed fabro-c0a8, fabro-cf3e) because the Ask-Fabro analyst has no open-backlog digest and re-derives known findings — corroborates open seed fabro-88a4; no new action needed here"
-                  },
-                  {
-                    "text": "Two survivors overlapped existing seeds only partially (rec 3 vs fabro-017f output-schema enforcement; rec 6 vs fabro-5b0a degraded-notice surfacing) and required manual scope narrowing — the revisor dedupe rule only handles full duplicates; a partial-overlap narrowing rule would make filed scopes crisper"
-                  }
-                ],
-                "observations": [
-                  "Review answer persisted verbatim to `.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md` (generated 2026-09-08 21:22+0000).",
-                  "Dropped duplicates: warm-build rec → duplicate_of fabro-fe15 (open); evidence.nu prompt-file seed-work classification → duplicate_of fabro-93a7 (open; closed fabro-2992 was the earlier partial classifier fix and this run shows it is incomplete — 93a7 already tracks the gap); planner `sd update --description` correction sub-step → duplicate_of fabro-c0a8 (closed — the run's skip is prompt compliance, not a missing rule); reviewer inline ceiling 16→24 → duplicate_of fabro-cf3e (open 16→32 supersedes it).",
-                  "Survivors narrowed: engine lint scoped to general `context_allow_keys` visibility (journal enforcement stays with fabro-017f); PR-body change scoped to cost/time table + painpoint digest (degraded notices stay with fabro-5b0a).",
-                  "Run was otherwise healthy (all stages green first-pass, $0.944, 45.5 min); dominant cost is cold compile/test tool time already owned by fabro-fe15."
-                ]
-              },
-              "response.analyze": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.analyze",
-                "chars": 5257,
-                "preview": "The ask succeeded, the review is persisted at `.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md`, and the tracker check dropped 4 of 6 recommendations as duplicates (`fabro-fe15` warm builds, `fab"
-              },
-              "last_response": "The ask succeeded, the review is persisted at `.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md`, and the tracker check dropped 4 of 6 recommendations as duplicates (`fabro-fe15` warm builds, `fab"
-            },
-            "notes": "Stage completed: analyze",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 28655,
-                    "output_tokens": 3577,
-                    "reasoning_tokens": 8269,
-                    "cache_read_tokens": 62272,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 108426
-            },
-            "files_touched": [
-              "/workspace/fabro/.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md"
-            ],
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 137399,
-              "tool_time_ms": 138706,
-              "active_time_ms": 276105
-            }
-          },
           "select": {
             "status": "succeeded",
             "preferred_label": "Run selected",
@@ -1209,20 +1131,184 @@
               "tool_time_ms": 2132,
               "active_time_ms": 57117
             }
+          },
+          "analyze": {
+            "status": "succeeded",
+            "preferred_label": "Findings ready",
+            "context_updates": {
+              "revision_findings": [
+                {
+                  "title": "Engine: lint stage completion when a key declared in context_allow_keys was never emitted",
+                  "description": "Run 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419, PR #76): develop planner@1 emitted context_updates with no `journal` key at all despite the node declaring `context_allow_keys=\"...,journal\"` and the prompt calling silence a violation; that same pass ran the in-flight-PR guard degraded to a no-op and nothing recorded either miss. Add a completion lint to the stage-envelope validation in `lib/components/fabro-workflow` (alongside the fabro-900e/e47c producer lints): a stage completing without emitting any key declared in its `context_allow_keys` emits a visible warning or consumes one `output_retries` nudge. Scoped as the general allow-keys visibility lint; journal-specific output-schema enforcement is already tracked by fabro-017f. Expected effect: missing journal reports and fail-open guards become auditable instead of silently lost.",
+                  "priority": 1
+                },
+                {
+                  "title": "Develop planner prompt: stale-basis fast path when the seed pins line anchors in its USER DECISION",
+                  "description": "planner@1 in run 01M21BG1TG9SNM4QAS2A33W6GF spent ~13 sequential read probes and 98.3s inference / $0.123 re-deriving exact line numbers (`api.rs:1345-1357`, `server.rs:4514`) the seed's USER DECISION note already pinned, and its reasoning trace nearly misjudged the seed as already-implemented ('Stale basis?'). In `.fabro/workflows/develop/prompts/planner.md` step 3, add: when the seed body carries a line-pinned USER DECISION or verified basis, one spot-check grep suffices instead of full re-derivation. Expected effect: planner drops from ~13 calls/98s toward ~5 calls/40s (~$0.05 + ~1 min per run) and lowers the risk of wrongly closing a valid seed as superseded.",
+                  "priority": 2
+                },
+                {
+                  "title": "PR postlude: append per-stage cost/time table and journal painpoint digest to the PR body",
+                  "description": "In run 01M21BG1TG9SNM4QAS2A33W6GF, 82% of spend ($0.775) and 60% of wall sat in the implementer stage, visible only in the run conclusion, not on PR #76 that the user merges. Where the engine composes the PR postlude (same area open seed fabro-6a5a targets for auto-merge/PR-body model-call fixes), append the per-stage timing/cost table plus a digest of journal `painpoints`. Degraded-guard notices in the PR body are intentionally excluded — already tracked by fabro-5b0a. Expected effect: at merge time the user sees that builds dominate (the case for toolchain warming, fabro-fe15) without opening the run dashboard.",
+                  "priority": 2
+                }
+              ],
+              "last_stage": "analyze",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "4 of 6 analyst recommendations duplicated existing seeds (fabro-fe15, fabro-93a7, closed fabro-c0a8, fabro-cf3e) because the Ask-Fabro analyst has no open-backlog digest and re-derives known findings — corroborates open seed fabro-88a4; no new action needed here"
+                  },
+                  {
+                    "text": "Two survivors overlapped existing seeds only partially (rec 3 vs fabro-017f output-schema enforcement; rec 6 vs fabro-5b0a degraded-notice surfacing) and required manual scope narrowing — the revisor dedupe rule only handles full duplicates; a partial-overlap narrowing rule would make filed scopes crisper"
+                  }
+                ],
+                "observations": [
+                  "Review answer persisted verbatim to `.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md` (generated 2026-09-08 21:22+0000).",
+                  "Dropped duplicates: warm-build rec → duplicate_of fabro-fe15 (open); evidence.nu prompt-file seed-work classification → duplicate_of fabro-93a7 (open; closed fabro-2992 was the earlier partial classifier fix and this run shows it is incomplete — 93a7 already tracks the gap); planner `sd update --description` correction sub-step → duplicate_of fabro-c0a8 (closed — the run's skip is prompt compliance, not a missing rule); reviewer inline ceiling 16→24 → duplicate_of fabro-cf3e (open 16→32 supersedes it).",
+                  "Survivors narrowed: engine lint scoped to general `context_allow_keys` visibility (journal enforcement stays with fabro-017f); PR-body change scoped to cost/time table + painpoint digest (degraded notices stay with fabro-5b0a).",
+                  "Run was otherwise healthy (all stages green first-pass, $0.944, 45.5 min); dominant cost is cold compile/test tool time already owned by fabro-fe15."
+                ]
+              },
+              "response.analyze": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.analyze",
+                "chars": 5257,
+                "preview": "The ask succeeded, the review is persisted at `.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md`, and the tracker check dropped 4 of 6 recommendations as duplicates (`fabro-fe15` warm builds, `fab"
+              },
+              "last_response": "The ask succeeded, the review is persisted at `.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md`, and the tracker check dropped 4 of 6 recommendations as duplicates (`fabro-fe15` warm builds, `fab"
+            },
+            "notes": "Stage completed: analyze",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 28655,
+                    "output_tokens": 3577,
+                    "reasoning_tokens": 8269,
+                    "cache_read_tokens": 62272,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 108426
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 137399,
+              "tool_time_ms": 138706,
+              "active_time_ms": 276105
+            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "b357cb7c6681d64d916480f8c8e315d25c5534cf",
         "node_visits": {
-          "select": 1,
           "analyze": 1,
+          "file": 1,
           "start": 1,
-          "file": 1
+          "select": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M21E5PRBNZGDTSEC6RBTMT0X.jsonl b/.fabro/journal/01M21E5PRBNZGDTSEC6RBTMT0X.jsonl\nindex c7dc91f..d13910e 100644\n--- a/.fabro/journal/01M21E5PRBNZGDTSEC6RBTMT0X.jsonl\n+++ b/.fabro/journal/01M21E5PRBNZGDTSEC6RBTMT0X.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21E5PRBNZGDTSEC6RBTMT0X\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T21:18:39Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21E5PRBNZGDTSEC6RBTMT0X\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T21:19:16Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected develop run `01M21BG1TG9SNM4QAS2A33W6GF` (newest overall, baseline version match, sandbox live, no marker in `.fabro/revisions/`).\",\"Backlog: 30+ runs blocked — the large majority stale-evidence (version drift or absent pre-intent version, incl. 3 merge-upstream runs on older merge versions), and ~14 old runs have no live sandbox.\",\"No develop run is currently active.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21E5PRBNZGDTSEC6RBTMT0X\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T21:24:19Z\",\"data\":{\"painpoints\":[{\"text\":\"4 of 6 analyst recommendations duplicated existing seeds (fabro-fe15, fabro-93a7, closed fabro-c0a8, fabro-cf3e) because the Ask-Fabro analyst has no open-backlog digest and re-derives known findings — corroborates open seed fabro-88a4; no new action needed here\"},{\"text\":\"Two survivors overlapped existing seeds only partially (rec 3 vs fabro-017f output-schema enforcement; rec 6 vs fabro-5b0a degraded-notice surfacing) and required manual scope narrowing — the revisor dedupe rule only handles full duplicates; a partial-overlap narrowing rule would make filed scopes crisper\"}],\"observations\":[\"Review answer persisted verbatim to `.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md` (generated 2026-09-08 21:22+0000).\",\"Dropped duplicates: warm-build rec → duplicate_of fabro-fe15 (open); evidence.nu prompt-file seed-work classification → duplicate_of fabro-93a7 (open; closed fabro-2992 was the earlier partial classifier fix and this run shows it is incomplete — 93a7 already tracks the gap); planner `sd update --description` correction sub-step → duplicate_of fabro-c0a8 (closed — the run's skip is prompt compliance, not a missing rule); reviewer inline ceiling 16→24 → duplicate_of fabro-cf3e (open 16→32 supersedes it).\",\"Survivors narrowed: engine lint scoped to general `context_allow_keys` visibility (journal enforcement stays with fabro-017f); PR-body change scoped to cost/time table + painpoint digest (degraded notices stay with fabro-5b0a).\",\"Run was otherwise healthy (all stages green first-pass, $0.944, 45.5 min); dominant cost is cold compile/test tool time already owned by fabro-fe15.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21E5PRBNZGDTSEC6RBTMT0X\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T21:25:26Z\",\"data\":{\"painpoints\":[{\"text\":\"The revision commit included only the marker file — sd seed writes did not surface as a .seeds diff in `git add .fabro/reviews .fabro/revisions .seeds` (commit e570240, 2 files). If sd stores state elsewhere or self-commits, fine; if not, seeds for this revision may be uncommitted. Fix idea: bookkeeper verifies `git status --porcelain .seeds` after sd create and routes a failure if dirty-after-commit.\"}],\"observations\":[\"Duplicate guard worked via theme keywords (allow-keys lint, stale basis, PR body cost): fabro-017f/fabro-645d/fabro-6a5a/fabro-5b0a are complementary and cross-referenced in the new seed descriptions; nothing closed.\",\"Next bookkeeper: this run is now revised — pick the next freshest unrevised run per ADR-0015.\"]}}\ndiff --git a/.fabro/revisions/01M21BG1TG9SNM4QAS2A33W6GF.md b/.fabro/revisions/01M21BG1TG9SNM4QAS2A33W6GF.md\nnew file mode 100644\nindex 0000000..da8dd53\n--- /dev/null\n+++ b/.fabro/revisions/01M21BG1TG9SNM4QAS2A33W6GF.md\n@@ -0,0 +1,21 @@\n+# Revision — run 01M21BG1TG9SNM4QAS2A33W6GF\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md\n+- seeds filed: fabro-8bf4 (allow-keys completion lint), fabro-9fa2 (planner stale-basis fast path), fabro-1409 (PR postlude cost table)\n+- basis: run 01M21BG1TG9SNM4QAS2A33W6GF, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit eed7be36252face1b5316bcd9264627fb3da7fde\n+- revised_at_commit: eed7be36252face1b5316bcd9264627fb3da7fde (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Engine: lint stage completion when a key declared in context_allow_keys was never emitted\n+- filed: fabro-8bf4\n+- Add a completion lint to the stage-envelope validation in `lib/components/fabro-workflow` (alongside the fabro-900e/e47c producer lints): a stage completing without emitting any key declared in its `context_allow_keys` emits a visible warning or consumes one `output_retries` nudge. Scoped as the general allow-keys visibility lint; journal-specific output-schema enforcement already tracked by fabro-017f (cross-referenced, not superseded). Expected effect: missing journal reports and fail-open guards become auditable instead of silently lost.\n+\n+### Develop planner prompt: stale-basis fast path when the seed pins line anchors in its USER DECISION\n+- filed: fabro-9fa2\n+- In `.fabro/workflows/develop/prompts/planner.md` step 3, when the seed body carries a line-pinned USER DECISION or verified basis, one spot-check grep suffices instead of full re-derivation. Complementary to fabro-645d (implementer-side scoped reads). Expected effect: planner drops from ~13 calls/98s toward ~5 calls/40s (~$0.05 + ~1 min per run) and lowers the risk of wrongly closing a valid seed as superseded.\n+\n+### PR postlude: append per-stage cost/time table and journal painpoint digest to the PR body\n+- filed: fabro-1409\n+- Where the engine composes the PR postlude (same area fabro-6a5a targets), append the per-stage timing/cost table plus a digest of journal `painpoints`. Degraded-guard notices excluded — already tracked by fabro-5b0a. Expected effect: at merge time the user sees that builds dominate (the case for toolchain warming, fabro-fe15) without opening the run dashboard.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 5d95fd8..f09ecb3 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -294,3 +294,6 @@\n {\"id\":\"fabro-c419\",\"title\":\"Wire the planner's fabro_runs_list binding — the in-flight-PR guard silently fails open\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T19:52:43.290Z\",\"updatedAt\":\"2026-09-08T20:23:13.573Z\",\"description\":\"Node `planner` in `.fabro/workflows/develop/workflow.fabro` declares `fabro_tools=\\\"fabro_runs_list\\\"` but the tool never reaches the agent: make the engine honor the node-level `fabro_tools` attribute (or set run-level `agent.fabro_tools` for develop), and until then reword planner.md step 4 to instruct journaling the degraded mode and proceeding when the tool is absent from the toolset, instead of implying the call is always possible. Evidence: this run's events seq 27 show `agent.tools.available` for planner@1 lists no fabro_runs_list and run settings show `agent.fabro_tools=false`; the planner's only journaled painpoint was that the in-flight-PR check degraded to a no-op — the exact failure closed fabro-06e0 and fabro-d0c7 were meant to prevent (fabro-22e4 double-pick while a PR waits in gate). Expected effect: the loop's only double-work guard actually functions, preventing a duplicated run (~$0.15 plus ~12 min each) next time a seed's PR sits in gate. ADR-0019: this finding changes a tool allowlist in an agent-reachable surface, so it is capability-affecting — implementation awaits explicit user approval. Fix direction is engine-mediated and read-only (the engine exposes its existing `fabro_runs_list` read tool via the node-level attribute); no raw clients or tokens proposed. Note: the run-level-warning sub-item duplicates open fabro-5b0a and is deliberately excluded. Basis: run 01M2183254XQ3HJ45SR4P1Y2X6, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit 0dc16012c16ee2f6b2e61ecc73afcf0bd5f26b3d\\n\\nUSER DECISION (2026-09-08 evening, chat session on this machine): OPTION A APPROVED - the engine honors the node-level fabro_tools attribute (per-stage tool declaration in the workflow graph), mirroring how inspects already works per node. Scope of the approval: the graph attribute fabro_tools=\\\"fabro_runs_list\\\" on the develop planner node surfaces the READ-ONLY, engine-mediated fabro_runs_list tool in that stage's agent session; least privilege per stage (ADR-0019.2/.3 - extend existing tools, no credentials, no raw clients). No other tool, stage, or workflow is covered by this approval. The interim prompt line (planner.md step 4: journal the degraded mode when the tool is absent) stays part of this seed's implementation. fe15 (toolchain image bake) is NOT covered - separate needs-user decision, still open.\",\"labels\":[\"revision\",\"engine\",\"workflows\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-fe15\",\"title\":\"Bake a debug fabro-cli (or shared cargo cache) into the run toolchain image\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T19:52:50.145Z\",\"updatedAt\":\"2026-09-08T19:52:50.145Z\",\"description\":\"In the `fabro-toolchain:noble` Dockerfile used for develop run containers (`.fabro/Dockerfile*`), pre-build `fabro-cli` in debug profile or mount a shared cargo cache across run containers so `target/debug/fabro` exists at container start. Evidence: this run's implementer probed `ls target/debug/fabro` and found nothing (seq 107) — the container starts with an empty `target/`, so any run legitimately needing the CLI pays ~7 min of cold build; the workflow graph comment already measures a cold gate at ~15 min worst case. Expected effect: the first cargo invocation in every run drops from minutes to seconds, independent of prompt compliance; complements the config-only smoke cost-tiering for seeds that still need built checks. Distinct from open fabro-cfd6 (prebuilt cargo-chef image for the CI gate, not run containers) and closed fabro-513e (human-facing just recipe). ADR-0019: this finding adds a binary to the agent-reachable toolchain image surface, so it is capability-affecting — implementation awaits explicit user approval. Fix direction stays engine-mediated (image build content / engine-managed cache mount; the prebuilt binary is the repo's own read-write CLI, no new credentials or external clients). Basis: run 01M2183254XQ3HJ45SR4P1Y2X6, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit 0dc16012c16ee2f6b2e61ecc73afcf0bd5f26b3d\",\"labels\":[\"needs-user\",\"revision\"]}\n {\"id\":\"fabro-e33d\",\"title\":\"Add closest-match hint to edit_file errors and pin old_string sourcing in implementer prompt\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T20:11:15.657Z\",\"updatedAt\":\"2026-09-08T20:11:15.657Z\",\"description\":\"In run 01M219SFJ6A75DS2BP77TBENQZ (seq 92-97) the implementer's first edit_file failed with a bare 'old_string not found in file' because it rebuilt old_string from read_file's line-numbered rendering (reconstructed 4-space indent vs the file's 3-space), burned a cat -A diagnostic round, and journaled a wrong 'transient matcher hiccup' lesson durably. Change: (a) at lib/components/fabro-agent/src/tools.rs:234 include the line number of the closest fuzzy match / first diverging whitespace in the error; (b) add one line to .fabro/workflows/develop/prompts/implementer.md: build old_string from raw sed -n output, never from the line-numbered read_file rendering. Complementary to fabro-645d (scoped reads via sed -n), not superseding it. Effect: removes one diagnostic plus one LLM round per mismatch and prevents false 'transient' conclusions from being recorded as lore. Basis: run 01M219SFJ6A75DS2BP77TBENQZ, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit aed06d18be94f10f758651dcaf0eadb97f5d0c17\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-8bf4\",\"title\":\"Engine: lint stage completion when a key declared in context_allow_keys was never emitted\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T21:24:48.800Z\",\"updatedAt\":\"2026-09-08T21:24:48.800Z\",\"description\":\"Run 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419, PR #76): develop planner@1 emitted context_updates with no journal key at all despite the node declaring context_allow_keys=...,journal and the prompt calling silence a violation; that same pass ran the in-flight-PR guard degraded to a no-op and nothing recorded either miss. Add a completion lint to the stage-envelope validation in lib/components/fabro-workflow (alongside the fabro-900e/e47c producer lints): a stage completing without emitting any key declared in its context_allow_keys emits a visible warning or consumes one output_retries nudge. Scoped as the general allow-keys visibility lint; journal-specific output-schema enforcement is already tracked by fabro-017f (cross-ref, not superseded). Expected effect: missing journal reports and fail-open guards become auditable instead of silently lost. Basis: run 01M21BG1TG9SNM4QAS2A33W6GF, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit eed7be36252face1b5316bcd9264627fb3da7fde\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-9fa2\",\"title\":\"Develop planner prompt: stale-basis fast path when the seed pins line anchors in its USER DECISION\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T21:24:53.260Z\",\"updatedAt\":\"2026-09-08T21:24:53.260Z\",\"description\":\"planner@1 in run 01M21BG1TG9SNM4QAS2A33W6GF spent ~13 sequential read probes and 98.3s inference / $0.123 re-deriving exact line numbers (api.rs:1345-1357, server.rs:4514) the seed's USER DECISION note already pinned, and its reasoning trace nearly misjudged the seed as already-implemented ('Stale basis?'). In .fabro/workflows/develop/prompts/planner.md step 3, add: when the seed body carries a line-pinned USER DECISION or verified basis, one spot-check grep suffices instead of full re-derivation. Complementary to fabro-645d (implementer-side scoped reads; cross-ref, not superseded). Expected effect: planner drops from ~13 calls/98s toward ~5 calls/40s (~$0.05 + ~1 min per run) and lowers the risk of wrongly closing a valid seed as superseded. Basis: run 01M21BG1TG9SNM4QAS2A33W6GF, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit eed7be36252face1b5316bcd9264627fb3da7fde\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-1409\",\"title\":\"PR postlude: append per-stage cost/time table and journal painpoint digest to the PR body\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T21:25:00.145Z\",\"updatedAt\":\"2026-09-08T21:25:00.145Z\",\"description\":\"In run 01M21BG1TG9SNM4QAS2A33W6GF, 82% of spend ($0.775) and 60% of wall sat in the implementer stage, visible only in the run conclusion, not on PR #76 that the user merges. Where the engine composes the PR postlude (same area open seed fabro-6a5a targets for auto-merge/PR-body model-call fixes; cross-ref, not superseded), append the per-stage timing/cost table plus a digest of journal painpoints. Degraded-guard notices in the PR body are intentionally excluded — already tracked by fabro-5b0a. Expected effect: at merge time the user sees that builds dominate (the case for toolchain warming, fabro-fe15) without opening the run dashboard. Basis: run 01M21BG1TG9SNM4QAS2A33W6GF, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit eed7be36252face1b5316bcd9264627fb3da7fde\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 74,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-08T21:25:30.504950635Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 385979,
+      "inference_time_ms": 211302,
+      "tool_time_ms": 155671,
+      "active_time_ms": 366973
+    },
+    "final_git_commit_sha": "b357cb7c6681d64d916480f8c8e315d25c5534cf",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 34366,
+          "inference_time_ms": 18918,
+          "tool_time_ms": 14833,
+          "active_time_ms": 33751
+        },
+        "billing_usd_micros": 55514,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 276701,
+          "inference_time_ms": 137399,
+          "tool_time_ms": 138706,
+          "active_time_ms": 276105
+        },
+        "billing_usd_micros": 108426,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 57639,
+          "inference_time_ms": 54985,
+          "tool_time_ms": 2132,
+          "active_time_ms": 57117
+        },
+        "billing_usd_micros": 73605,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 83770,
+      "output_tokens": 6461,
+      "total_tokens": 297302,
+      "reasoning_tokens": 9183,
+      "cache_read_tokens": 197888,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 237545
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M21E5PRBNZGDTSEC6RBTMT0X.jsonl b/.fabro/journal/01M21E5PRBNZGDTSEC6RBTMT0X.jsonl\nnew file mode 100644\nindex 0000000..d13910e\n--- /dev/null\n+++ b/.fabro/journal/01M21E5PRBNZGDTSEC6RBTMT0X.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21E5PRBNZGDTSEC6RBTMT0X\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T21:18:39Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21E5PRBNZGDTSEC6RBTMT0X\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T21:19:16Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected develop run `01M21BG1TG9SNM4QAS2A33W6GF` (newest overall, baseline version match, sandbox live, no marker in `.fabro/revisions/`).\",\"Backlog: 30+ runs blocked — the large majority stale-evidence (version drift or absent pre-intent version, incl. 3 merge-upstream runs on older merge versions), and ~14 old runs have no live sandbox.\",\"No develop run is currently active.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21E5PRBNZGDTSEC6RBTMT0X\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T21:24:19Z\",\"data\":{\"painpoints\":[{\"text\":\"4 of 6 analyst recommendations duplicated existing seeds (fabro-fe15, fabro-93a7, closed fabro-c0a8, fabro-cf3e) because the Ask-Fabro analyst has no open-backlog digest and re-derives known findings — corroborates open seed fabro-88a4; no new action needed here\"},{\"text\":\"Two survivors overlapped existing seeds only partially (rec 3 vs fabro-017f output-schema enforcement; rec 6 vs fabro-5b0a degraded-notice surfacing) and required manual scope narrowing — the revisor dedupe rule only handles full duplicates; a partial-overlap narrowing rule would make filed scopes crisper\"}],\"observations\":[\"Review answer persisted verbatim to `.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md` (generated 2026-09-08 21:22+0000).\",\"Dropped duplicates: warm-build rec → duplicate_of fabro-fe15 (open); evidence.nu prompt-file seed-work classification → duplicate_of fabro-93a7 (open; closed fabro-2992 was the earlier partial classifier fix and this run shows it is incomplete — 93a7 already tracks the gap); planner `sd update --description` correction sub-step → duplicate_of fabro-c0a8 (closed — the run's skip is prompt compliance, not a missing rule); reviewer inline ceiling 16→24 → duplicate_of fabro-cf3e (open 16→32 supersedes it).\",\"Survivors narrowed: engine lint scoped to general `context_allow_keys` visibility (journal enforcement stays with fabro-017f); PR-body change scoped to cost/time table + painpoint digest (degraded notices stay with fabro-5b0a).\",\"Run was otherwise healthy (all stages green first-pass, $0.944, 45.5 min); dominant cost is cold compile/test tool time already owned by fabro-fe15.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M21E5PRBNZGDTSEC6RBTMT0X\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-08T21:25:26Z\",\"data\":{\"painpoints\":[{\"text\":\"The revision commit included only the marker file — sd seed writes did not surface as a .seeds diff in `git add .fabro/reviews .fabro/revisions .seeds` (commit e570240, 2 files). If sd stores state elsewhere or self-commits, fine; if not, seeds for this revision may be uncommitted. Fix idea: bookkeeper verifies `git status --porcelain .seeds` after sd create and routes a failure if dirty-after-commit.\"}],\"observations\":[\"Duplicate guard worked via theme keywords (allow-keys lint, stale basis, PR body cost): fabro-017f/fabro-645d/fabro-6a5a/fabro-5b0a are complementary and cross-referenced in the new seed descriptions; nothing closed.\",\"Next bookkeeper: this run is now revised — pick the next freshest unrevised run per ADR-0015.\"]}}\ndiff --git a/.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md b/.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md\nnew file mode 100644\nindex 0000000..42a42cb\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md\n@@ -0,0 +1,46 @@\n+# Improve review — run 01M21BG1TG9SNM4QAS2A33W6GF\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (45.5 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-08 21:22+0000 by revisor `fabro_ask`\n+\n+---\n+\n+Recommendations for the Develop workflow, grounded in run `01M21BG1TG9SNM4QAS2A33W6GF` (seed fabro-c419, PR #76, 42.4 min wall, $0.944 total, all stages green first-pass). Ordered by expected impact.\n+\n+---\n+\n+**1. Warm the build environment — 77% of run wall was cold compile/test tool time.**\n+- **Evidence (run conclusion + stage timings):** implementer tool_time 1,518.9s (25.3 min — cold crate-scoped fmt/clippy/nextest on 4 touched crates) + tester 438.8s (7.3 min gate, whose own log includes `== building fabro CLI renderer binary (fabro-server graph-render tests invoke it) ==`). Total tool_time 1,961s of 2,542s wall. The container starts with an empty `target/` (open seed fabro-fe15 documents this).\n+- **Change:** bake a debug `fabro-cli` + warm cargo cache into `fabro-toolchain:noble` (`.fabro/Dockerfile*`), or mount an engine-managed shared cargo cache via the develop `workflow.toml` environment block. (Capability-affecting → needs the ADR-0019 user decision fabro-fe15 already requests.)\n+- **Expected effect:** lib-touching runs drop from ~42 min to roughly 12–18 min; independent of any prompt compliance.\n+\n+**2. Fix the evidence churn classifier that hid a seed-required diff from review.**\n+- **Evidence (reviewer@1 journal, run events):** the capture header reads `seed-work=7 files +228/-23 | loop-churn=3 files +3/-2` — the seed-mandated `planner.md` reword (+1/−1) was classified as loop churn (counts only). The reviewer journaled: *\"a seed acceptance criterion was reviewable only because I re-read the file with tools.\"*\n+- **Change:** in `.fabro/workflows/develop/scripts/evidence.nu`, when the in-progress seed spec names a file under `.fabro/workflows/<slug>/prompts/**`, classify that file as seed work so its full diff renders in the seed-work section.\n+- **Expected effect:** prompt-targeting seeds review from the capture alone; removes a latent Changes-requested / Verification-blocked bounce (~$0.85 + ~35 min per avoided cycle) whenever the reviewer doesn't happen to re-read the file.\n+\n+**3. Enforce the journal contract mechanically — the planner shipped zero journal keys while running the in-flight-PR guard degraded.**\n+- **Evidence (checkpoint + events):** planner@1's `context_updates` contain no `journal` key at all (journal file line for planner is `\"data\":{}`), although the node declares `context_allow_keys=\"...,journal\"` and the prompt says silence is a violation. That same pass had no `fabro_runs_list` in its toolset (seq 27 `agent.tools.available`) and never ran the in-flight PR check — the guard silently degraded to a no-op, the exact failure fabro-c419 fixes, and nothing recorded it.\n+- **Change:** engine-side completion lint (in the stage-envelope validation in `lib/components/fabro-workflow`, alongside the existing fabro-900e/e47c producer lints): a stage completing without emitting a key declared in its `context_allow_keys` emits a visible warning (or consumes one `output_retries` nudge).\n+- **Expected effect:** fail-open guards become auditable; the improve workflow actually receives the painpoint instead of the loop silently losing it (a missed double-pick costs ~$0.15 + 12 min per the seed's own estimate).\n+\n+**4. Add a stale-basis fast path and harden the correction step in the planner prompt.**\n+- **Evidence (planner transcript, seq 32–99):** ~13 sequential read probes and 98.3s inference / $0.123 re-deriving the exact line numbers the seed's USER DECISION note already pinned (`api.rs:1345-1357`, `server.rs:4514`); its reasoning trace (seq 55/67) nearly misjudged the seed as already-implemented (\"Stale basis?\"). It also skipped the mandated `sd update --description` correction for the seed's wrong `planner.md` path (seq 45: grep of nonexistent `.fabro/workflows/develop/planner.md`), annotating only the brief — so the wrong path persists in the seed body.\n+- **Change:** `.fabro/workflows/develop/prompts/planner.md` step 3: (a) when the seed body carries a line-pinned USER DECISION/verified basis, one spot-check grep suffices instead of full re-derivation; (b) make the `sd update --description` correction an explicit checklist sub-step, not prose.\n+- **Expected effect:** planner passes drop from ~13 calls/98s toward ~5 calls/40s (~$0.05 + ~1 min per run), lower risk of wrongly closing a valid seed as superseded, and path corrections actually land in the tracker for later readers.\n+\n+**5. Raise the reviewer's inline ceiling so real captures stop demoting to blob refs.**\n+- **Evidence (reviewer@1 prompt):** the evidence capture arrived as `Output (21.3 KB; full value: /tmp/fabro/runtime/blobs/c655…json)` because 21.3 KB exceeds the reviewer node's `preamble_inline_max_kb=16` — while the graph budget is already 24 KB. The reviewer's only two tool calls (159ms) went to paging the blob.\n+- **Change:** `.fabro/workflows/develop/workflow.fabro`, reviewer node: `preamble_inline_max_kb` 16 → 24 (or adopt open seed fabro-e4c4's output_schema delivery).\n+- **Expected effect:** typical 14–21 KB captures render inline; one fewer tool round-trip per review and less temptation to route Verification blocked on an unread blob. Small this run, but it fires on every review.\n+\n+**6. Surface per-stage cost/time and degraded-guard state in the PR body.**\n+- **Evidence (run events seq 607–615):** publish path was clean (branch pushed, PR #76 created, run completed) — but 82% of spend ($0.775) and 60% of wall sat in the implementer stage, and that breakdown is only visible inside the run conclusion, not on the PR the user actually merges.\n+- **Change:** where the PR postlude is composed (engine publish path; note open seed fabro-6a5a already targets it), append the per-stage timing/cost table plus a digest of journal `painpoints` and any degraded-mode notices.\n+- **Expected effect:** at merge time the user sees that builds dominate (the case for rec 1) and any fail-open guard state, without opening the run dashboard.\n+\n+---\n+\n+**Not inspectable from here:** the PR #76 body content and its merge state (`pull_request.state` was still `null` in the run summary after completion), so rec 6's \"if not already present\" caveat stands. The gate-bounce/deadlock error paths were never exercised this run (gate green, review approved first pass), so no evidence-based recommendations for them.\ndiff --git a/.fabro/revisions/01M21BG1TG9SNM4QAS2A33W6GF.md b/.fabro/revisions/01M21BG1TG9SNM4QAS2A33W6GF.md\nnew file mode 100644\nindex 0000000..da8dd53\n--- /dev/null\n+++ b/.fabro/revisions/01M21BG1TG9SNM4QAS2A33W6GF.md\n@@ -0,0 +1,21 @@\n+# Revision — run 01M21BG1TG9SNM4QAS2A33W6GF\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M21BG1TG9SNM4QAS2A33W6GF.md\n+- seeds filed: fabro-8bf4 (allow-keys completion lint), fabro-9fa2 (planner stale-basis fast path), fabro-1409 (PR postlude cost table)\n+- basis: run 01M21BG1TG9SNM4QAS2A33W6GF, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit eed7be36252face1b5316bcd9264627fb3da7fde\n+- revised_at_commit: eed7be36252face1b5316bcd9264627fb3da7fde (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Engine: lint stage completion when a key declared in context_allow_keys was never emitted\n+- filed: fabro-8bf4\n+- Add a completion lint to the stage-envelope validation in `lib/components/fabro-workflow` (alongside the fabro-900e/e47c producer lints): a stage completing without emitting any key declared in its `context_allow_keys` emits a visible warning or consumes one `output_retries` nudge. Scoped as the general allow-keys visibility lint; journal-specific output-schema enforcement already tracked by fabro-017f (cross-referenced, not superseded). Expected effect: missing journal reports and fail-open guards become auditable instead of silently lost.\n+\n+### Develop planner prompt: stale-basis fast path when the seed pins line anchors in its USER DECISION\n+- filed: fabro-9fa2\n+- In `.fabro/workflows/develop/prompts/planner.md` step 3, when the seed body carries a line-pinned USER DECISION or verified basis, one spot-check grep suffices instead of full re-derivation. Complementary to fabro-645d (implementer-side scoped reads). Expected effect: planner drops from ~13 calls/98s toward ~5 calls/40s (~$0.05 + ~1 min per run) and lowers the risk of wrongly closing a valid seed as superseded.\n+\n+### PR postlude: append per-stage cost/time table and journal painpoint digest to the PR body\n+- filed: fabro-1409\n+- Where the engine composes the PR postlude (same area fabro-6a5a targets), append the per-stage timing/cost table plus a digest of journal `painpoints`. Degraded-guard notices excluded — already tracked by fabro-5b0a. Expected effect: at merge time the user sees that builds dominate (the case for toolchain warming, fabro-fe15) without opening the run dashboard.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 5d95fd8..f09ecb3 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -294,3 +294,6 @@\n {\"id\":\"fabro-c419\",\"title\":\"Wire the planner's fabro_runs_list binding — the in-flight-PR guard silently fails open\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T19:52:43.290Z\",\"updatedAt\":\"2026-09-08T20:23:13.573Z\",\"description\":\"Node `planner` in `.fabro/workflows/develop/workflow.fabro` declares `fabro_tools=\\\"fabro_runs_list\\\"` but the tool never reaches the agent: make the engine honor the node-level `fabro_tools` attribute (or set run-level `agent.fabro_tools` for develop), and until then reword planner.md step 4 to instruct journaling the degraded mode and proceeding when the tool is absent from the toolset, instead of implying the call is always possible. Evidence: this run's events seq 27 show `agent.tools.available` for planner@1 lists no fabro_runs_list and run settings show `agent.fabro_tools=false`; the planner's only journaled painpoint was that the in-flight-PR check degraded to a no-op — the exact failure closed fabro-06e0 and fabro-d0c7 were meant to prevent (fabro-22e4 double-pick while a PR waits in gate). Expected effect: the loop's only double-work guard actually functions, preventing a duplicated run (~$0.15 plus ~12 min each) next time a seed's PR sits in gate. ADR-0019: this finding changes a tool allowlist in an agent-reachable surface, so it is capability-affecting — implementation awaits explicit user approval. Fix direction is engine-mediated and read-only (the engine exposes its existing `fabro_runs_list` read tool via the node-level attribute); no raw clients or tokens proposed. Note: the run-level-warning sub-item duplicates open fabro-5b0a and is deliberately excluded. Basis: run 01M2183254XQ3HJ45SR4P1Y2X6, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit 0dc16012c16ee2f6b2e61ecc73afcf0bd5f26b3d\\n\\nUSER DECISION (2026-09-08 evening, chat session on this machine): OPTION A APPROVED - the engine honors the node-level fabro_tools attribute (per-stage tool declaration in the workflow graph), mirroring how inspects already works per node. Scope of the approval: the graph attribute fabro_tools=\\\"fabro_runs_list\\\" on the develop planner node surfaces the READ-ONLY, engine-mediated fabro_runs_list tool in that stage's agent session; least privilege per stage (ADR-0019.2/.3 - extend existing tools, no credentials, no raw clients). No other tool, stage, or workflow is covered by this approval. The interim prompt line (planner.md step 4: journal the degraded mode when the tool is absent) stays part of this seed's implementation. fe15 (toolchain image bake) is NOT covered - separate needs-user decision, still open.\",\"labels\":[\"revision\",\"engine\",\"workflows\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-fe15\",\"title\":\"Bake a debug fabro-cli (or shared cargo cache) into the run toolchain image\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T19:52:50.145Z\",\"updatedAt\":\"2026-09-08T19:52:50.145Z\",\"description\":\"In the `fabro-toolchain:noble` Dockerfile used for develop run containers (`.fabro/Dockerfile*`), pre-build `fabro-cli` in debug profile or mount a shared cargo cache across run containers so `target/debug/fabro` exists at container start. Evidence: this run's implementer probed `ls target/debug/fabro` and found nothing (seq 107) — the container starts with an empty `target/`, so any run legitimately needing the CLI pays ~7 min of cold build; the workflow graph comment already measures a cold gate at ~15 min worst case. Expected effect: the first cargo invocation in every run drops from minutes to seconds, independent of prompt compliance; complements the config-only smoke cost-tiering for seeds that still need built checks. Distinct from open fabro-cfd6 (prebuilt cargo-chef image for the CI gate, not run containers) and closed fabro-513e (human-facing just recipe). ADR-0019: this finding adds a binary to the agent-reachable toolchain image surface, so it is capability-affecting — implementation awaits explicit user approval. Fix direction stays engine-mediated (image build content / engine-managed cache mount; the prebuilt binary is the repo's own read-write CLI, no new credentials or external clients). Basis: run 01M2183254XQ3HJ45SR4P1Y2X6, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit 0dc16012c16ee2f6b2e61ecc73afcf0bd5f26b3d\",\"labels\":[\"needs-user\",\"revision\"]}\n {\"id\":\"fabro-e33d\",\"title\":\"Add closest-match hint to edit_file errors and pin old_string sourcing in implementer prompt\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T20:11:15.657Z\",\"updatedAt\":\"2026-09-08T20:11:15.657Z\",\"description\":\"In run 01M219SFJ6A75DS2BP77TBENQZ (seq 92-97) the implementer's first edit_file failed with a bare 'old_string not found in file' because it rebuilt old_string from read_file's line-numbered rendering (reconstructed 4-space indent vs the file's 3-space), burned a cat -A diagnostic round, and journaled a wrong 'transient matcher hiccup' lesson durably. Change: (a) at lib/components/fabro-agent/src/tools.rs:234 include the line number of the closest fuzzy match / first diverging whitespace in the error; (b) add one line to .fabro/workflows/develop/prompts/implementer.md: build old_string from raw sed -n output, never from the line-numbered read_file rendering. Complementary to fabro-645d (scoped reads via sed -n), not superseding it. Effect: removes one diagnostic plus one LLM round per mismatch and prevents false 'transient' conclusions from being recorded as lore. Basis: run 01M219SFJ6A75DS2BP77TBENQZ, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit aed06d18be94f10f758651dcaf0eadb97f5d0c17\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-8bf4\",\"title\":\"Engine: lint stage completion when a key declared in context_allow_keys was never emitted\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T21:24:48.800Z\",\"updatedAt\":\"2026-09-08T21:24:48.800Z\",\"description\":\"Run 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419, PR #76): develop planner@1 emitted context_updates with no journal key at all despite the node declaring context_allow_keys=...,journal and the prompt calling silence a violation; that same pass ran the in-flight-PR guard degraded to a no-op and nothing recorded either miss. Add a completion lint to the stage-envelope validation in lib/components/fabro-workflow (alongside the fabro-900e/e47c producer lints): a stage completing without emitting any key declared in its context_allow_keys emits a visible warning or consumes one output_retries nudge. Scoped as the general allow-keys visibility lint; journal-specific output-schema enforcement is already tracked by fabro-017f (cross-ref, not superseded). Expected effect: missing journal reports and fail-open guards become auditable instead of silently lost. Basis: run 01M21BG1TG9SNM4QAS2A33W6GF, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit eed7be36252face1b5316bcd9264627fb3da7fde\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-9fa2\",\"title\":\"Develop planner prompt: stale-basis fast path when the seed pins line anchors in its USER DECISION\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T21:24:53.260Z\",\"updatedAt\":\"2026-09-08T21:24:53.260Z\",\"description\":\"planner@1 in run 01M21BG1TG9SNM4QAS2A33W6GF spent ~13 sequential read probes and 98.3s inference / $0.123 re-deriving exact line numbers (api.rs:1345-1357, server.rs:4514) the seed's USER DECISION note already pinned, and its reasoning trace nearly misjudged the seed as already-implemented ('Stale basis?'). In .fabro/workflows/develop/prompts/planner.md step 3, add: when the seed body carries a line-pinned USER DECISION or verified basis, one spot-check grep suffices instead of full re-derivation. Complementary to fabro-645d (implementer-side scoped reads; cross-ref, not superseded). Expected effect: planner drops from ~13 calls/98s toward ~5 calls/40s (~$0.05 + ~1 min per run) and lowers the risk of wrongly closing a valid seed as superseded. Basis: run 01M21BG1TG9SNM4QAS2A33W6GF, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit eed7be36252face1b5316bcd9264627fb3da7fde\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-1409\",\"title\":\"PR postlude: append per-stage cost/time table and journal painpoint digest to the PR body\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T21:25:00.145Z\",\"updatedAt\":\"2026-09-08T21:25:00.145Z\",\"description\":\"In run 01M21BG1TG9SNM4QAS2A33W6GF, 82% of spend ($0.775) and 60% of wall sat in the implementer stage, visible only in the run conclusion, not on PR #76 that the user merges. Where the engine composes the PR postlude (same area open seed fabro-6a5a targets for auto-merge/PR-body model-call fixes; cross-ref, not superseded), append the per-stage timing/cost table plus a digest of journal painpoints. Degraded-guard notices in the PR body are intentionally excluded — already tracked by fabro-5b0a. Expected effect: at merge time the user sees that builds dominate (the case for toolchain warming, fabro-fe15) without opening the run dashboard. Basis: run 01M21BG1TG9SNM4QAS2A33W6GF, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit eed7be36252face1b5316bcd9264627fb3da7fde\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 74,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2109,6 +2195,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 174,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-08T21:25:30.455094527Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T21:25:30.454819900Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
