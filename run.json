@@ -683,14 +683,188 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M20RK7XFNPJRZ2T437XGDEP8",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-09-08T15:01:21.764387078Z",
+    "run_branch": "fabro/run/01M20RK7XFNPJRZ2T437XGDEP8",
+    "base_sha": "f6dec68a1f2f19500238158c82c80d9e0d9e5442"
   },
-  "status_updated_at": "2026-09-08T15:01:15.418756627Z",
-  "last_event_at": "2026-09-08T15:01:21.003368568Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-09-08T15:01:21.764445032Z",
+  "last_event_at": "2026-09-08T15:02:24.190905880Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 19,
+      "checkpoint": {
+        "timestamp": "2026-09-08T15:01:24.268450913Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "outcome": "succeeded",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.start": 0,
+          "seed_cycles": {
+            "start": 1
+          },
+          "graph.preamble_budget_kb": "24",
+          "failure_class": "",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "current_node": "start",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.fidelity": "compact",
+          "failure_signature": "",
+          "internal.thread_id": null,
+          "internal.work_dir": "/workspace/fabro",
+          "internal.run_id": "01M20RK7XFNPJRZ2T437XGDEP8",
+          "graph.rankdir": "LR",
+          "graph.max_node_visits": "40",
+          "internal.seed_cycle_anchor": ""
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "planner",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-08T15:02:24.437956284Z",
+        "current_node": "planner",
+        "completed_nodes": [
+          "start",
+          "planner"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.seed_cycle_anchor": "fabro-16ff",
+          "failure_class": "",
+          "internal.run_id": "01M20RK7XFNPJRZ2T437XGDEP8",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "gh CLI is not installed in the planner sandbox (run 01M20RK7XFNPJRZ2T437XGDEP8): the mandated in-flight PR check cannot run; degraded safely to no in-flight PRs. Seed fabro-06e0 (replace gh with fabro_runs_list) would fix this denial too."
+              }
+            ],
+            "observations": [
+              "Seed fabro-16ff is partially satisfied by PR #59 (de83a22): both prompt edits landed, but the 2026-09-08 engine-capability addendum (GITHUB_TOKEN env injection, git_bridge) is absent from both prompts — claimed with a delta-only brief instead of verification-only.",
+              "gh unavailable, so the in-flight PR check degraded to none; no open-PR view exists for this run."
+            ]
+          },
+          "internal.retry_count.planner": 0,
+          "current_seed_id": "fabro-16ff",
+          "outcome": "succeeded",
+          "current_seed_title": "revisor + reviewer must become security-affine (ADR-0019): capability-affecting ideas get shot down at filing and review time",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 5265,
+            "preview": "Seed fabro-16ff claimed. The ADR-0019 capability gate landed in PR #59, but the seed's 2026-09-08 addendum — engine-side capability teaching (GITHUB_TOKEN env injection, git_bridge) — is missing f"
+          },
+          "internal.node_visit_count": 1,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.work_dir": "/workspace/fabro",
+          "current_node": "planner",
+          "failure_signature": "",
+          "last_response": "Seed fabro-16ff claimed. The ADR-0019 capability gate landed in PR #59, but the seed's 2026-09-08 addendum — engine-side capability teaching (GITHUB_TOKEN env injection, git_bridge) — is missing f",
+          "internal.fidelity": "compact",
+          "thread.start.current_node": "planner",
+          "graph.preamble_budget_kb": "24",
+          "internal.thread_id": "start",
+          "graph.max_node_visits": "40",
+          "seed_cycles": {
+            "planner": 1
+          },
+          "preferred_label": "Seed claimed",
+          "last_stage": "planner",
+          "internal.retry_count.start": 0,
+          "graph.rankdir": "LR",
+          "current_seed_brief": "Partial re-implementation. FIX 1 (revisor capability gate) and FIX 2 (reviewer CAPABILITY DELTA axis) already landed in PR #59 (commit de83a22) — do NOT redo them. Remaining delta from the seed's 2026-09-08 ADDITIONAL EVIDENCE: the gh incident showed the engine itself hands capability to agent shells (GITHUB_TOKEN injected into every agent shell call via resolve_workflow_env, plus a git credential bridge in `git_bridge.rs`), invisible to reviewers judging container env alone. Acceptance criteria: (1) `​.fabro/workflows/develop/prompts/reviewer.md` CAPABILITY DELTA axis (item 5) extended to check what the ENGINE provides to agent surfaces — engine env injection (GITHUB_TOKEN via resolve_workflow_env) and credential bridges (git_bridge) — not only what the diff adds; a diff that merely USES an engine-provided credential on a new code path is still a capability delta requiring recorded user approval. (2) `​.fabro/workflows/revisor/prompts/file.md` capability gate section gains the same framing: engine-provided credentials/env are agent-reachable capability, so fix directions relying on them (token-bearing calls, bridge-assumed pushes) are out of vocabulary even when the revisor adds no credential itself. (3) Staged verification (test or documented dry-run of the review logic against a synthetic capability-delta diff with no recorded approval) demonstrating the blocking Changes-requested path naming ADR-0019 — cite how it was demonstrated in the implementation summary. Prompt-only, minimal edits; no engine code changes.",
+          "graph.cycle_counter_reset_key": "current_seed_id"
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Seed fabro-16ff claimed. The ADR-0019 capability gate landed in PR #59, but the seed's 2026-09-08 addendum — engine-side capability teaching (GITHUB_TOKEN env injection, git_bridge) — is missing f",
+              "current_seed_brief": "Partial re-implementation. FIX 1 (revisor capability gate) and FIX 2 (reviewer CAPABILITY DELTA axis) already landed in PR #59 (commit de83a22) — do NOT redo them. Remaining delta from the seed's 2026-09-08 ADDITIONAL EVIDENCE: the gh incident showed the engine itself hands capability to agent shells (GITHUB_TOKEN injected into every agent shell call via resolve_workflow_env, plus a git credential bridge in `git_bridge.rs`), invisible to reviewers judging container env alone. Acceptance criteria: (1) `​.fabro/workflows/develop/prompts/reviewer.md` CAPABILITY DELTA axis (item 5) extended to check what the ENGINE provides to agent surfaces — engine env injection (GITHUB_TOKEN via resolve_workflow_env) and credential bridges (git_bridge) — not only what the diff adds; a diff that merely USES an engine-provided credential on a new code path is still a capability delta requiring recorded user approval. (2) `​.fabro/workflows/revisor/prompts/file.md` capability gate section gains the same framing: engine-provided credentials/env are agent-reachable capability, so fix directions relying on them (token-bearing calls, bridge-assumed pushes) are out of vocabulary even when the revisor adds no credential itself. (3) Staged verification (test or documented dry-run of the review logic against a synthetic capability-delta diff with no recorded approval) demonstrating the blocking Changes-requested path naming ADR-0019 — cite how it was demonstrated in the implementation summary. Prompt-only, minimal edits; no engine code changes.",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "gh CLI is not installed in the planner sandbox (run 01M20RK7XFNPJRZ2T437XGDEP8): the mandated in-flight PR check cannot run; degraded safely to no in-flight PRs. Seed fabro-06e0 (replace gh with fabro_runs_list) would fix this denial too."
+                  }
+                ],
+                "observations": [
+                  "Seed fabro-16ff is partially satisfied by PR #59 (de83a22): both prompt edits landed, but the 2026-09-08 engine-capability addendum (GITHUB_TOKEN env injection, git_bridge) is absent from both prompts — claimed with a delta-only brief instead of verification-only.",
+                  "gh unavailable, so the in-flight PR check degraded to none; no open-PR view exists for this run."
+                ]
+              },
+              "current_seed_id": "fabro-16ff",
+              "current_seed_title": "revisor + reviewer must become security-affine (ADR-0019): capability-affecting ideas get shot down at filing and review time",
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 5265,
+                "preview": "Seed fabro-16ff claimed. The ADR-0019 capability gate landed in PR #59, but the seed's 2026-09-08 addendum — engine-side capability teaching (GITHUB_TOKEN env injection, git_bridge) — is missing f"
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 22351,
+                    "output_tokens": 1878,
+                    "reasoning_tokens": 473,
+                    "cache_read_tokens": 122368,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 73441
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 57723,
+              "tool_time_ms": 1352,
+              "active_time_ms": 59075
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "implementer",
+        "node_visits": {
+          "planner": 1,
+          "start": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -716,5 +890,256 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "planner@1": {
+      "first_event_seq": 20,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-08T15:02:24.190905880Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T15:01:24.280707980Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 59654,
+        "inference_time_ms": 57723,
+        "tool_time_ms": 1352,
+        "active_time_ms": 59075
+      },
+      "usage": {
+        "input_tokens": 22351,
+        "output_tokens": 1878,
+        "total_tokens": 147070,
+        "reasoning_tokens": 473,
+        "cache_read_tokens": 122368,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 73441
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 22180,
+        "usage_percent": 2.1152496337890625,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-08T15:02:24.178495460Z",
+        "event_seq": 77,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1154,
+            "usage_percent": 0.11005401611328125
+          },
+          {
+            "category": "tools",
+            "tokens": 1624,
+            "usage_percent": 0.154876708984375
+          },
+          {
+            "category": "memory",
+            "tokens": 5706,
+            "usage_percent": 0.5441665649414062
+          },
+          {
+            "category": "conversation",
+            "tokens": 13689,
+            "usage_percent": 1.3054847717285156
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-08T15:01:23.993312487Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-08T15:01:23.983912099Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
