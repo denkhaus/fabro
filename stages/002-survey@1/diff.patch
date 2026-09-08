@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M219PANXDDAJ6RY274ZPCYAQ.jsonl b/.fabro/journal/01M219PANXDDAJ6RY274ZPCYAQ.jsonl
+new file mode 100644
+index 000000000..b25977d9f
+--- /dev/null
++++ b/.fabro/journal/01M219PANXDDAJ6RY274ZPCYAQ.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M219PANXDDAJ6RY274ZPCYAQ","node":"start","visit":1,"status":"succeeded","ts":"2026-09-08T20:00:33Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M219PANXDDAJ6RY274ZPCYAQ","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-08T20:01:31Z","data":{"painpoints":[],"observations":["upstream drift count = 0 (origin/denkhaus..upstream/main), no newest upstream subject to report (no drift); threshold is 5, so drift stays at 0 and this pass routes to Work","no revisor backlog: newest develop run 01M2183254XQ3HJ45SR4P1Y2X6 (completed 2026-09-08T19:45:35Z) is covered by revisor run 01M218Y6XTZVV8Z98TCHSNFXAB created 2026-09-08T19:46:51Z (PR #73, merged); no develop runs newer than the newest revisor pass","next surveyor: both remotes freshly fetched; origin/denkhaus has zero upstream drift, so the develop+revisor cycle is the correct line this pass"]}}
