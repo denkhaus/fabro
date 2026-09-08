@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M20T7X5KYZTWSSZF6XCY7D6X.jsonl b/.fabro/journal/01M20T7X5KYZTWSSZF6XCY7D6X.jsonl
+new file mode 100644
+index 000000000..b5d65500e
+--- /dev/null
++++ b/.fabro/journal/01M20T7X5KYZTWSSZF6XCY7D6X.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M20T7X5KYZTWSSZF6XCY7D6X","node":"start","visit":1,"status":"succeeded","ts":"2026-09-08T15:30:17Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M20T7X5KYZTWSSZF6XCY7D6X","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-08T15:30:49Z","data":{"painpoints":[],"observations":["upstream count 0 (< 5); newest upstream/main 2f326a13c 'Bump version to 0.348.0-nightly.0' — denkhaus already contains upstream tip, no merge slot consumed","no revisor backlog: develop runs 01M20RK7XFNPJRZ2T437XGDEP8 and 01M20PXPFESQM8HAWF4MSXAKX5 both have revisor passes (f54626685, a98837425)","next surveyor: this pass runs one develop cycle; git fetch brought many new origin run branches, normal noise"]}}
