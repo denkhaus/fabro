@@ -1,0 +1,713 @@
+diff --git a/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl b/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl
+index bec5150..3e37404 100644
+--- a/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl
++++ b/.fabro/journal/01M20T9S8JRXETASN64768TRRP.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M20T9S8JRXETASN64768TRRP","node":"start","visit":1,"status":"succeeded","ts":"2026-09-08T15:31:11Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M20T9S8JRXETASN64768TRRP","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-08T15:33:24Z","data":{"painpoints":["gh is absent from this run's toolchain (exit 127), so the in-flight PR check degraded to fail-open this pass — exactly the gap seed fabro-06e0 fixes; until it lands, planner passes risk double-picking gated seeds","seed fabro-06e0's body said 'check the OpenAPI/runs list projection' but the real surface is the fabro_runs_list agent tool (RunSummaryResult) which lacks pull_request entirely, and the develop graph lacks the inspects declaration the tool requires — corrected via sd update --description before claiming (run 01M20T9S8JRXETASN64768TRRP)"],"observations":["fabro-06e0 claimed after stale-basis check: planner.md step 4 still references gh (basis resolves), corrected body recorded first","gh pr list unavailable in this environment — treated as no in-flight PRs per prompt degradation rule; noted here for audit"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M20T9S8JRXETASN64768TRRP","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-08T16:01:38Z","data":{"painpoints":[],"observations":["Adding any method to the async-trait FabroToolBackend can newly surface rustc 'implementation of Send is not general enough' at dyn call sites in fabro-workflow — the note misleadingly names an unrelated &Path param; the real trigger was a stream::iter(...).map(async move {...}) closure capturing Arc<dyn FabroToolBackend>. Fixed with 'static BoxFuture collection (runs_list.rs); recorded as mx-af39fe.","The GET /runs/{id}/pull_request route was RequireRunScoped (own-run/user only) — any credential-less cross-run enrichment design must check the extractor first: workers get 403 on RequireRunScoped routes no matter what the tool layer does (lib/apps/fabro-server/src/principal_middleware.rs).","OpenAPI/HTTP Run schema already carried the PR link, so no spec change was needed — the wire-visible change is only tool-layer JSON plus route authz, keeping the conformance test green."]}}
+diff --git a/.fabro/workflows/develop/prompts/planner.md b/.fabro/workflows/develop/prompts/planner.md
+index cfaa93f..c3f64ee 100644
+--- a/.fabro/workflows/develop/prompts/planner.md
++++ b/.fabro/workflows/develop/prompts/planner.md
+@@ -34,7 +34,7 @@ The engine maintains `seed_cycles` deterministically: `{ node -> completed visit
+ 1. FAST-PATH: first check the `<goal>` text for a seed id (e.g. fabro-37a6). When one is named, the FIRST tracker call is `sd show <id> --format json`, not `sd ready`; judge resolution from the JSON `success` field / issue body, NOT the process exit code (seeds-cli exits 0 on errors, fabro-d936). A named seed is honored ONLY when its JSON `assignee` is exactly `fabro` AND it is open and unblocked — continue at step 2 with it. A named-but-unassigned seed, one assigned to someone else, one that does not resolve, or one that cannot be claimed (closed or blocked) must NOT be claimed: fall through and run `sd ready --assignee fabro --limit 200` to list unblocked fabro-assigned seeds; `sd list --format json --assignee fabro --limit 200` for the full picture if needed (do NOT also run `sd list` when `sd ready` suffices). The user naming a seed in the goal is a request, not an override of their ownership decision — if they wanted the line to take it, they would have assigned it to fabro. A named seed that matches an OPEN run-linked PR is equally untouchable (see the IN-FLIGHT PR CHECK at step 4): skip it, journal `skipped: in-flight PR <n>`, and fall through to `sd ready --assignee fabro --limit 200`.
+ 2. Pick the highest-priority unblocked seed that serves the goal. If two compete, prefer the one with fewest blockers.
+ 3. STALE-BASIS CHECK (ADR-0015): before claiming, read the seed body for its `Basis:` line (source run id, workflow version, repo commit). Open the referenced files/prompts in the CURRENT worktree: if the behavior the seed describes no longer exists, already changed, or the finding is moot against the current tree, the seed is superseded — close it with `sd close <id> --reason "superseded: basis stale (<what changed>)"` and pick the next candidate. Never implement a seed whose basis does not resolve. That close is for a FULLY moot basis. An intermediate case is distinct: the basis RESOLVES but the seed's named path/target/details are wrong against the current tree (e.g. it names `.fabro/Dockerfile` when the real target lives elsewhere). The seed is otherwise valid — do NOT close it as superseded and do NOT claim it as-is: first record the correction into the seed body via `sd update <id> --description "<full corrected body>"` so the implementer never re-hits the contradiction, THEN claim normally. `--description` replaces the body WHOLESALE — the planner must re-emit the FULL corrected body including the existing `Basis:` line, appending/amending only the corrected facts and never dropping the original basis (evidence: run 01M1YTVK7, seed fabro-05d0 — ~6 wasted tool calls / 39% of run cost re-proving a wrong path, and the contradiction recurred for every later reader because nobody applied the update). When a seed's `Basis:` references platform paths (`.fabro/**` etc.), open them through the shell — fs_hide binds tool calls only, so read_file fails while sed/grep/cat succeed; never burn tool calls discovering the denial. Seeds without a Basis line are legacy (pre-2026-09-05): judge them the same way against the current tree before claiming.
+-4. IN-FLIGHT PR CHECK: after selecting the candidate and BEFORE the claim, run `gh pr list --state open` (or an equivalent open-PR view). Skip any top candidate whose seed id or title matches an OPEN run-linked PR — a seed whose PR is sitting in the gate is already taken (fabro-22e4 double-pick: the identical fix was re-implemented while PR #47 waited in gate). For each skipped candidate, add a journal line (painpoints or observations) containing the exact phrase `skipped: in-flight PR <n>` so the skip is auditable. A skip is not a park: continue down the `sd ready --assignee fabro --limit 200` candidate list to the next unblocked seed and claim that one — the run still routes Seed claimed (or Tracker empty if nothing remains). If `gh` is unavailable, errors, or the repo has no PRs, degrade safely: treat the result as no in-flight PRs, note that in observations, and proceed — never dead-end the planner on this check.
++4. IN-FLIGHT PR CHECK (credential-less, fabro-06e0): after selecting the candidate and BEFORE the claim, call the `fabro_runs_list` tool with workflow "develop". From the returned runs, collect those whose `pull_request.state` is exactly "open" (only "open" counts — "closed"/"merged"/null/absent are not in flight), and extract the seed id from each such run's `goal` text (the `current_seed_id` the run was created for). Skip any top candidate whose seed id or title matches one of those in-flight seeds — a seed whose PR is sitting in the gate is already taken (fabro-22e4 double-pick: the identical fix was re-implemented while PR #47 waited in gate). For each skipped candidate, add a journal line (painpoints or observations) containing the exact phrase `skipped: in-flight PR <n>` (the linked PR number) so the skip is auditable. A skip is not a park: continue down the `sd ready --assignee fabro --limit 200` candidate list to the next unblocked seed and claim that one — the run still routes Seed claimed (or Tracker empty if nothing remains). If the tool call fails or every run's PR state is null/absent, note that in observations and proceed with no in-flight exclusions — never dead-end the planner on this check. There is no `gh` binary and no GitHub credential in this environment: never attempt `gh` or any direct GitHub API call.
+ 5. Claim it: `sd update <id> --status in_progress --assignee fabro`.
+ 6. Write the implementation brief into the context as BULLETED acceptance criteria, not prose: seed id, title, then one bullet per requirement, plus review feedback if this is a re-plan. Bullets are cheaper to re-read, harder to misparse, and the reviewer and the implementer's PASS/FAIL report check them item-by-item. Shape each bullet as a checkable statement, e.g.:
+ 
+diff --git a/.fabro/workflows/develop/workflow.fabro b/.fabro/workflows/develop/workflow.fabro
+index c454895..2de269c 100644
+--- a/.fabro/workflows/develop/workflow.fabro
++++ b/.fabro/workflows/develop/workflow.fabro
+@@ -1,6 +1,10 @@
+ digraph Develop {
+     graph [
+         goal="Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
++        // fabro-06e0: credential-less in-flight PR guard — the planner
++        // reads run-linked PR state through the inspects-scoped
++        // fabro_runs_list tool (server-side GitHub client), never gh.
++        inspects="develop",
+         rankdir=LR,
+         max_node_visits=40,
+         // 24 KB (was 12): the reviewer's context usage peaked at 1.9% of
+@@ -70,7 +74,10 @@ digraph Develop {
+         // contract is stable — declare it so the preamble_allow_keys lint
+         // (fabro-e47c) can prove producers, and drift (an undocumented new
+         // key) drops visibly with a notice instead of leaking silently.
+-        context_allow_keys="current_seed_id,current_seed_title,current_seed_brief,review_verdict,journal"
++        context_allow_keys="current_seed_id,current_seed_title,current_seed_brief,review_verdict,journal",
++        // fabro-06e0: in-flight PR check surface — read-only enumeration
++        // of develop runs incl. linked PR live state (open/closed/merged).
++        fabro_tools="fabro_runs_list"
+     ]
+ 
+     // Implementer: builds exactly what the claimed seed specifies.
+diff --git a/.mulch/expertise/workflows.jsonl b/.mulch/expertise/workflows.jsonl
+index 28b216e..44980d6 100644
+--- a/.mulch/expertise/workflows.jsonl
++++ b/.mulch/expertise/workflows.jsonl
+@@ -32,3 +32,5 @@
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-07T12:29:37.993Z","evidence":{"seeds":"fabro-56f4","commit":"31f7b88292c34d05ae38fa083d6e041b2d248212"},"name":"inline-command-output-via-output-schema","description":"Inline command-node output delivery (fabro-56f4): command.output is ALWAYS a blob ref (preview-only in preambles — a tool round-trip for prompt nodes); to deliver a command script's stdout INLINE under a dedicated context key, give the node output_schema='@schemas/<file>.schema.json' (resolved relative to the workflow dir) — the engine validates the script's JSON and stores it as output.<node_id>, a plain value that preamble_allow_keys renders whole. The key must be declared in the producing node's context_allow_keys or the preamble_allow_keys_exist lint warns. Warnings printed by such scripts must stay brace-free (engine merges stderr via 'exec 2>&1' and the validator scans for balanced JSON objects). Nu 0.115 pitfalls hit while writing gate-bounce.nu: 'str downcase' is deprecated (use 'str lowercase'); 'complete' only wraps external commands (do { cat | str join } | complete fails — capture bare 'cat' and str join its stdout); custom command signatures 'string -> string' demand piped input (use 'nothing -> string' when passing args); sd list rows may lack the labels column (use $it.labels? | default []).","files":[".fabro/workflows/develop/prompts/implementer.md",".fabro/workflows/develop/workflow.fabro"],"id":"mx-2eb2e0"}
+ {"type":"decision","classification":"tactical","recorded_at":"2026-09-07T13:40:27.734Z","evidence":{"seeds":"fabro-bbbb","commit":"809eb80bcd545715ac004f350de98cdaf5626638"},"title":"reasoning_effort is static per node — no visit-conditional effort","rationale":"Engine resolves reasoning_effort once as a node attribute in the fabro-config run layer; seeds wanting per-visit conditional effort must be re-read as static-for-all-visits. Planner dropped high->low for all passes in fabro-bbbb; re-plan quality rides on the prompt folding review_feedback into current_seed_brief, not on effort. sd ready --assignee fabro is deterministic since fabro-5e09, removing the tie-break load that justified high.","id":"mx-4b1a29"}
+ {"type":"decision","classification":"tactical","recorded_at":"2026-09-08T15:03:48.999Z","evidence":{"seeds":"fabro-16ff","commit":"17938dd81bdadff1b599e4da4e982de53bbbd7e1"},"title":"Capability delta includes engine-provided credentials (ADR-0019)","rationale":"The engine injects GITHUB_TOKEN into every agent shell call via resolve_workflow_env and runs a git credential bridge, so container-env-only review misjudges write-capable tooling as harmless (PR #53). Reviewer and revisor prompts must treat credential USE on a new code path as a capability delta requiring recorded user approval.","id":"mx-0b3256"}
++{"type":"failure","classification":"tactical","recorded_at":"2026-09-08T16:00:40.806Z","evidence":{"commit":"9eeab202a19fbda085b1e46ad5ca453318cf615f"},"dir_anchors":["lib/components/fabro-tool/src"],"description":"Adding ANY method to the async-trait FabroToolBackend (lib/components/fabro-tool/src/common.rs) can newly expose rustc 'implementation of Send is not general enough' (note names an unrelated &Path param) at dyn-object call sites in fabro-workflow (handler/llm/api.rs fabro_run_tool executor). Default method bodies do NOT cause it; the trigger was calling the new method inside a stream::iter(...).map(async move {...}) closure capturing Arc<dyn FabroToolBackend>.","resolution":"Build a Vec<futures::future::BoxFuture<'static, _>> with owned captures (cloned run_id String + Arc backend) via .boxed(), then stream::iter(lookups).buffer_unordered(8).collect() — 'static boxed futures skip the higher-ranked Send proof inside the closure (fabro-06e0).","id":"mx-af39fe"}
++{"type":"pattern","classification":"tactical","recorded_at":"2026-09-08T16:00:54.823Z","evidence":{"commit":"9eeab202a19fbda085b1e46ad5ca453318cf615f"},"dir_anchors":["lib/components/fabro-tool/src"],"name":"credential-less-agent-enrichment-via-management-target","description":"Cross-run read-only enrichment for agent tools (fabro-06e0): the worker holds NO credentials — enrichment flows worker -> fabro_client HTTP -> server route -> server GitHub client. Prerequisite: the target route must use the ADR-0011 RequireRunManagementTarget extractor (inspects/creator/ancestor scope), NOT RequireRunScoped (own-run only) — workers get 403 cross-run on the latter. GET /runs/{id}/pull_request was moved to RequireRunManagementTarget for exactly this; mutating sibling routes stay strict.","files":[".fabro/workflows/develop/prompts/planner.md",".fabro/workflows/develop/workflow.fabro",".mulch/expertise/workflows.jsonl","lib/apps/fabro-server/src/server/handler/pull_requests.rs","lib/apps/fabro-server/src/server/tests.rs","lib/components/fabro-tool/src/common.rs","lib/components/fabro-tool/src/create.rs","lib/components/fabro-tool/src/fabro_client.rs","lib/components/fabro-tool/src/interact.rs","lib/components/fabro-tool/src/lib.rs","lib/components/fabro-tool/src/runs_list.rs","lib/components/fabro-tool/src/search.rs","lib/components/fabro-workflow/src/handler/llm/api.rs"],"id":"mx-ed7cb2"}
+diff --git a/lib/apps/fabro-server/src/server/handler/pull_requests.rs b/lib/apps/fabro-server/src/server/handler/pull_requests.rs
+index 1351d58..62c576c 100644
+--- a/lib/apps/fabro-server/src/server/handler/pull_requests.rs
++++ b/lib/apps/fabro-server/src/server/handler/pull_requests.rs
+@@ -6,8 +6,8 @@ use axum::http::{HeaderValue, header};
+ use super::super::{
+     ApiError, AppState, CloseRunPullRequestResponse, CreateRunPullRequestRequest, IntoResponse,
+     Json, LinkRunPullRequestRequest, MergeRunPullRequestRequest, MergeRunPullRequestResponse,
+-    PullRequestLink, RequireRunScoped, Response, Router, RunId, State, StatusCode, get, post, warn,
+-    workflow_event,
++    PullRequestLink, RequireRunManagementTarget, RequireRunScoped, Response, Router, RunId, State,
++    StatusCode, get, post, warn, workflow_event,
+ };
+ 
+ pub(super) fn routes() -> Router<Arc<AppState>> {
+@@ -495,8 +495,13 @@ async fn unlink_run_pull_request(
+     Json(pull_request).into_response()
+ }
+ 
++// fabro-06e0: the read route uses the ADR-0011 run-management scope so an
++// inspects-declared worker (develop planner, revisor) can fetch live PR
++// state for runs of workflows it inspects — same live-details path, now
++// reachable by the credential-less agent tool chain. Mutating sibling
++// routes below keep the strict own-run/user extractor.
+ async fn get_run_pull_request(
+-    RequireRunScoped(id): RequireRunScoped,
++    RequireRunManagementTarget(id, _actor): RequireRunManagementTarget,
+     State(state): State<Arc<AppState>>,
+ ) -> Response {
+     let record = match load_pull_request_record(&state, &id).await {
+diff --git a/lib/apps/fabro-server/src/server/tests.rs b/lib/apps/fabro-server/src/server/tests.rs
+index 5ca5e0a..81a488b 100644
+--- a/lib/apps/fabro-server/src/server/tests.rs
++++ b/lib/apps/fabro-server/src/server/tests.rs
+@@ -14736,6 +14736,86 @@ async fn inspects_worker_lists_runs_only_through_declared_workflow_filter() {
+     assert_status!(response, StatusCode::OK).await;
+ }
+ 
++/// fabro-06e0: the live pull request details route is a run-management
++/// read, so an inspects-declared worker (develop planner, revisor) can
++/// enrich linked PR state for runs of workflows it inspects — without
++/// the worker ever holding GitHub credentials.
++#[tokio::test]
++async fn inspects_worker_reads_live_pull_request_details_for_declared_workflow_runs() {
++    let (state, app) = jwt_auth_app();
++    let parent_run_id = unique_run_id();
++    let develop_run_id = unique_run_id();
++    let nightly_run_id = unique_run_id();
++    let develop_run_store = create_slack_notification_run(
++        &state,
++        develop_run_id,
++        fabro_types::WorkflowSettings::default(),
++        "develop",
++        Some("develop"),
++    )
++    .await;
++    create_run_with_workflow_slug(&state, nightly_run_id, "nightly").await;
++    workflow_event::append_event(
++        &develop_run_store,
++        &develop_run_id,
++        &workflow_event::Event::PullRequestLinked {
++            pull_request: PullRequestLink {
++                owner:  "fabro-sh".to_string(),
++                repo:   "fabro".to_string(),
++                number: 47,
++            },
++        },
++    )
++    .await
++    .unwrap();
++    let inspects_token = issue_test_inspects_worker_token(&parent_run_id, &["develop".to_string()]);
++    let plain_run_tools_token = issue_test_run_tools_worker_token(&parent_run_id);
++
++    // Declared workflow: the read reaches the handler and returns the
++    // stored link (details degrade to unavailable — no GitHub creds on
++    // this test app — proving the authz, not the integration, is the
++    // subject here).
++    let response = app
++        .clone()
++        .oneshot(bearer_request(
++            Method::GET,
++            &format!("/runs/{develop_run_id}/pull_request"),
++            &inspects_token,
++            Body::empty(),
++        ))
++        .await
++        .unwrap();
++    let body = response_json!(response, StatusCode::OK).await;
++    assert_eq!(body["data"]["link"]["number"], 47);
++    assert_eq!(body["meta"]["details_status"], "unavailable");
++
++    // Foreign workflow: rejected even though the token is otherwise valid.
++    let response = app
++        .clone()
++        .oneshot(bearer_request(
++            Method::GET,
++            &format!("/runs/{nightly_run_id}/pull_request"),
++            &inspects_token,
++            Body::empty(),
++        ))
++        .await
++        .unwrap();
++    assert_status!(response, StatusCode::FORBIDDEN).await;
++
++    // Run-tools workers without inspects authority keep being rejected.
++    let response = app
++        .clone()
++        .oneshot(bearer_request(
++            Method::GET,
++            &format!("/runs/{develop_run_id}/pull_request"),
++            &plain_run_tools_token,
++            Body::empty(),
++        ))
++        .await
++        .unwrap();
++    assert_status!(response, StatusCode::FORBIDDEN).await;
++}
++
+ #[tokio::test]
+ async fn run_tool_worker_cross_run_routes_require_inspects_scope() {
+     // fabro-4556: an `agent:run_tools` worker no longer manages arbitrary
+diff --git a/lib/components/fabro-tool/src/common.rs b/lib/components/fabro-tool/src/common.rs
+index 9770239..fc3c30a 100644
+--- a/lib/components/fabro-tool/src/common.rs
++++ b/lib/components/fabro-tool/src/common.rs
+@@ -83,6 +83,18 @@ pub trait FabroToolBackend: Send + Sync {
+         after: Option<u32>,
+         limit: usize,
+     ) -> anyhow::Result<Vec<fabro_types::EventEnvelope>>;
++    /// Live open/closed/merged state of a run's linked pull request,
++    /// read-only, resolved through the server's GitHub client (the same
++    /// path as `GET /runs/{id}/pull_request` live details — fabro-06e0).
++    /// `Ok(None)` means no live view: the run has no stored link, the
++    /// details are unavailable, or the backend is unwired. Callers treat
++    /// `None` as unknown, never as terminal.
++    ///
++    /// Required (no default body): async-trait default methods break
++    /// `dyn FabroToolBackend` usage with "implementation of Send is not
++    /// general enough" (async-trait#152 class).
++    async fn run_pull_request_state(&self, run_id: &RunId) -> anyhow::Result<Option<String>>;
++
+     /// Open an Ask-Fabro session on `run_id` and return its session id.
+     async fn create_ask_session(&self, run_id: &RunId, title: &str) -> anyhow::Result<String>;
+ 
+@@ -193,6 +205,16 @@ pub trait RunManifestBuilder: Send + Sync {
+     ) -> ToolResult<types::RunManifest>;
+ }
+ 
++/// A run's linked pull request as exposed to agents: the stored number
++/// plus the live open/closed/merged state when the calling surface
++/// enriched it (fabro-06e0). `state` is `None` when no live view was
++/// fetched — callers must treat that as "unknown", never "closed".
++#[derive(Debug, PartialEq, Serialize, JsonSchema)]
++pub struct RunPullRequestSummary {
++    pub number: u64,
++    pub state:  Option<String>,
++}
++
+ #[derive(Debug, Serialize, JsonSchema)]
+ pub struct RunSummaryResult {
+     pub run_id:              String,
+@@ -212,6 +234,11 @@ pub struct RunSummaryResult {
+     /// exists. Only `fabro_runs_list` populates it (fabro-8d30a).
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub sandbox_available:   Option<bool>,
++    /// Linked pull request (stored number). Only `fabro_runs_list`
++    /// enriches `state` live (fabro-06e0); other surfaces leave it
++    /// absent or state-unknown.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub pull_request:        Option<RunPullRequestSummary>,
+     pub archived:            bool,
+     pub created_at:          String,
+     pub started_at:          Option<String>,
+@@ -346,6 +373,10 @@ pub(crate) fn run_summary_result(run: &Run) -> RunSummaryResult {
+             .map(ToString::to_string),
+         status:              run.lifecycle.status.kind().to_string(),
+         sandbox_available:   None,
++        pull_request:        run.pull_request.as_ref().map(|link| RunPullRequestSummary {
++            number: link.number,
++            state:  None,
++        }),
+         archived:            run.lifecycle.archived,
+         created_at:          run.timestamps.created_at.to_rfc3339(),
+         started_at:          run
+@@ -551,6 +582,75 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn run_summary_result_includes_pull_request_number_without_live_state() {
++        let mut run = Run {
++            id:               run_id("01KRBZW5C00000000000000001"),
++            parent_id:        None,
++            children_count:   0,
++            title:            "test".to_string(),
++            goal:             "test".to_string(),
++            workflow:         WorkflowRef {
++                slug:                None,
++                name:                None,
++                graph_name:          None,
++                workflow_version_id: None,
++                node_count:          0,
++                edge_count:          0,
++            },
++            automation:       None,
++            repository:       None,
++            created_by:       test_support::test_principal(),
++            origin:           RunOrigin::default(),
++            labels:           HashMap::new(),
++            lifecycle:        RunLifecycle {
++                status:          RunStatus::Submitted,
++                approval:        None,
++                pending_control: None,
++                queue_position:  None,
++                error:           None,
++                archived:        false,
++                archived_at:     None,
++            },
++            sandbox:          None,
++            models:           Vec::new(),
++            source_directory: None,
++            timestamps:       RunTimestamps {
++                created_at:    Utc.with_ymd_and_hms(2026, 5, 11, 12, 0, 0).unwrap(),
++                started_at:    None,
++                last_event_at: None,
++                completed_at:  None,
++            },
++            timing:           None,
++            billing:          None,
++            size:             fabro_types::RunSize::default(),
++            ask_fabro:        fabro_types::AskFabro::default(),
++            diff:             None,
++            pull_request:     Some(fabro_types::PullRequestLink {
++                owner:  "fabro-sh".to_string(),
++                repo:   "fabro".to_string(),
++                number: 47,
++            }),
++            current_question: None,
++            superseded_by:    None,
++            retried_from:     None,
++            links:            RunLinks { web: None },
++        };
++
++        let with_link = run_summary_result(&run);
++        assert_eq!(
++            with_link.pull_request,
++            Some(RunPullRequestSummary {
++                number: 47,
++                state:  None,
++            })
++        );
++
++        run.pull_request = None;
++        let without_link = run_summary_result(&run);
++        assert_eq!(without_link.pull_request, None);
++    }
++
+     fn run_id(raw: &str) -> RunId {
+         raw.parse().expect("test run id should parse")
+     }
+diff --git a/lib/components/fabro-tool/src/create.rs b/lib/components/fabro-tool/src/create.rs
+index 7d35ccf..edca9e9 100644
+--- a/lib/components/fabro-tool/src/create.rs
++++ b/lib/components/fabro-tool/src/create.rs
+@@ -1163,6 +1163,10 @@ mod tests {
+             anyhow::bail!("run waits are not supported by this mock")
+         }
+ 
++        async fn run_pull_request_state(&self, _run_id: &RunId) -> anyhow::Result<Option<String>> {
++            anyhow::bail!("pull request state lookups are not supported by this mock")
++        }
++
+         async fn create_ask_session(
+             &self,
+             _run_id: &RunId,
+diff --git a/lib/components/fabro-tool/src/fabro_client.rs b/lib/components/fabro-tool/src/fabro_client.rs
+index 9846613..8c98740 100644
+--- a/lib/components/fabro-tool/src/fabro_client.rs
++++ b/lib/components/fabro-tool/src/fabro_client.rs
+@@ -212,6 +212,19 @@ impl FabroToolBackend for ClientBackend {
+             .await
+     }
+ 
++    async fn run_pull_request_state(&self, run_id: &RunId) -> anyhow::Result<Option<String>> {
++        // fabro-06e0: reuse the server's live pull request details route —
++        // the server holds the GitHub credentials, the worker never does.
++        let response = self.client.get_run_pull_request(run_id).await?;
++        Ok(response.data.details.map(|details| {
++            if details.merged {
++                "merged".to_string()
++            } else {
++                details.state
++            }
++        }))
++    }
++
+     async fn existing_sandbox_run_ids(
+         &self,
+     ) -> anyhow::Result<Option<std::collections::HashSet<String>>> {
+diff --git a/lib/components/fabro-tool/src/interact.rs b/lib/components/fabro-tool/src/interact.rs
+index cc2d0cf..fed1cce 100644
+--- a/lib/components/fabro-tool/src/interact.rs
++++ b/lib/components/fabro-tool/src/interact.rs
+@@ -753,6 +753,10 @@ mod tests {
+             anyhow::bail!("run waits are not supported by this mock")
+         }
+ 
++        async fn run_pull_request_state(&self, _run_id: &RunId) -> anyhow::Result<Option<String>> {
++            anyhow::bail!("pull request state lookups are not supported by this mock")
++        }
++
+         async fn create_ask_session(
+             &self,
+             _run_id: &RunId,
+diff --git a/lib/components/fabro-tool/src/lib.rs b/lib/components/fabro-tool/src/lib.rs
+index 89e8a46..31db951 100644
+--- a/lib/components/fabro-tool/src/lib.rs
++++ b/lib/components/fabro-tool/src/lib.rs
+@@ -29,7 +29,8 @@ pub use common::{
+     FABRO_RUN_GATHER_TOOL_NAME, FABRO_RUN_GET_TOOL_NAME, FABRO_RUN_INTERACT_TOOL_NAME,
+     FABRO_RUN_LOG_TOOL_NAME, FABRO_RUN_PAIR_TOOL_NAME, FABRO_RUN_SEARCH_TOOL_NAME,
+     FABRO_RUN_WAIT_TOOL_NAME, FABRO_RUNS_LIST_TOOL_NAME, FabroToolBackend, RunManifestBuilder,
+-    RunSummaryResult, ToolDefinition, ToolError, ToolResult, tool_definitions,
++    RunPullRequestSummary, RunSummaryResult, ToolDefinition, ToolError, ToolResult,
++    tool_definitions,
+ };
+ pub use create::{
+     CreateRunOptions, CreateRunSpec, CreateRunSpecInput, CreateRunsResult, CreatedRunResult,
+diff --git a/lib/components/fabro-tool/src/runs_list.rs b/lib/components/fabro-tool/src/runs_list.rs
+index d8136bc..58eb44a 100644
+--- a/lib/components/fabro-tool/src/runs_list.rs
++++ b/lib/components/fabro-tool/src/runs_list.rs
+@@ -1,6 +1,7 @@
+ use std::sync::Arc;
+ 
+ use chrono::{DateTime, Utc};
++use fabro_types::RunId;
+ use schemars::JsonSchema;
+ use serde::{Deserialize, Serialize};
+ 
+@@ -86,6 +87,7 @@ pub async fn runs_list(
+     let mut results: Vec<RunSummaryResult> =
+         runs.iter().map(super::common::run_summary_result).collect();
+     annotate_sandbox_availability(&mut results, &backend).await;
++    annotate_pull_request_states(&mut results, &backend).await;
+     Ok(RunsListResult {
+         workflow: workflow.to_string(),
+         runs:     results,
+@@ -106,6 +108,49 @@ async fn annotate_sandbox_availability(
+     }
+ }
+ 
++/// Fill each linked pull request's live `state` (fabro-06e0) through the
++/// backend's server-side GitHub client path. A run without a stored link,
++/// a failed lookup, or an unwired backend leaves `state` as `None` —
++/// callers treat that as unknown, never as terminal. Concurrency is
++/// bounded so a long run history cannot stampede the server.
++async fn annotate_pull_request_states(
++    results: &mut [RunSummaryResult],
++    backend: &Arc<dyn FabroToolBackend>,
++) {
++    use futures::future::BoxFuture;
++    use futures::{FutureExt, StreamExt, stream};
++
++    const MAX_CONCURRENT_PR_LOOKUPS: usize = 8;
++
++    let lookups: Vec<BoxFuture<'static, Option<String>>> = results
++        .iter()
++        .map(|result| {
++            let backend = Arc::clone(backend);
++            let raw_run_id = result.run_id.clone();
++            // Only runs with a stored link cost a live lookup; the
++            // placeholder keeps states zip-aligned with results.
++            let has_link = result.pull_request.is_some();
++            async move {
++                if !has_link {
++                    return None;
++                }
++                let run_id: RunId = raw_run_id.parse().ok()?;
++                backend.run_pull_request_state(&run_id).await.ok().flatten()
++            }
++            .boxed()
++        })
++        .collect();
++    let states: Vec<Option<String>> = stream::iter(lookups)
++        .buffer_unordered(MAX_CONCURRENT_PR_LOOKUPS)
++        .collect()
++        .await;
++    for (result, state) in results.iter_mut().zip(states) {
++        if let Some(pull_request) = result.pull_request.as_mut() {
++            pull_request.state = state;
++        }
++    }
++}
++
+ pub fn runs_list_text(result: &RunsListResult) -> String {
+     format!(
+         "listed {} run(s) of workflow {}",
+diff --git a/lib/components/fabro-tool/src/search.rs b/lib/components/fabro-tool/src/search.rs
+index 8664665..224f8cf 100644
+--- a/lib/components/fabro-tool/src/search.rs
++++ b/lib/components/fabro-tool/src/search.rs
+@@ -147,6 +147,8 @@ fn search_run_summary_result(run: &Run) -> SearchRunSummaryResult {
+         workflow_name,
+         // fabro-8d30a: search results do not carry a live sandbox view.
+         sandbox_available: _,
++        // fabro-06e0: search results do not carry live pull request state.
++        pull_request: _,
+         workflow_graph_name,
+         workflow_slug,
+         status,
+diff --git a/lib/components/fabro-workflow/src/handler/llm/api.rs b/lib/components/fabro-workflow/src/handler/llm/api.rs
+index b32bc0a..9a945e0 100644
+--- a/lib/components/fabro-workflow/src/handler/llm/api.rs
++++ b/lib/components/fabro-workflow/src/handler/llm/api.rs
+@@ -3043,6 +3043,105 @@ reasoning = false
+         assert!(serialized.get("sandbox_available").is_none());
+     }
+ 
++    #[tokio::test]
++    async fn runs_list_annotates_live_pull_request_states() {
++        // fabro-06e0: every run with a stored PR link gets its live
++        // open/closed/merged state through the backend's server-side
++        // GitHub client path; runs without a link are never queried.
++        let open_run_id = run_id("01KRBZW5C0000000000000000D");
++        let merged_run_id = run_id("01KRBZW5C0000000000000000E");
++        let bare_run_id = run_id("01KRBZW5C0000000000000000F");
++        let mut open_run = run(open_run_id, None, 0);
++        open_run.pull_request = Some(fabro_types::PullRequestLink {
++            owner:  "fabro-sh".to_string(),
++            repo:   "fabro".to_string(),
++            number: 47,
++        });
++        let mut merged_run = run(merged_run_id, None, 0);
++        merged_run.pull_request = Some(fabro_types::PullRequestLink {
++            owner:  "fabro-sh".to_string(),
++            repo:   "fabro".to_string(),
++            number: 31,
++        });
++        let backend = Arc::new(MockRunToolBackend {
++            runs_to_list: vec![open_run, merged_run, run(bare_run_id, None, 0)],
++            pull_request_states: Mutex::new(std::collections::HashMap::from([
++                (open_run_id.to_string(), "open".to_string()),
++                (merged_run_id.to_string(), "merged".to_string()),
++            ])),
++            ..mock_backend()
++        });
++        let result = fabro_tool::runs_list(
++            Arc::clone(&backend) as Arc<dyn fabro_tool::FabroToolBackend>,
++            fabro_tool::ValidatedRunsList::try_from(fabro_tool::FabroRunsListParams {
++                workflow:      Some("develop".to_string()),
++                created_since: None,
++            })
++            .unwrap(),
++            &["develop".to_string()],
++        )
++        .await
++        .expect("in-scope enumeration succeeds");
++        assert_eq!(result.runs.len(), 3);
++        assert_eq!(
++            result.runs[0].pull_request,
++            Some(fabro_tool::RunPullRequestSummary {
++                number: 47,
++                state:  Some("open".to_string()),
++            })
++        );
++        assert_eq!(
++            result.runs[1].pull_request,
++            Some(fabro_tool::RunPullRequestSummary {
++                number: 31,
++                state:  Some("merged".to_string()),
++            })
++        );
++        assert_eq!(result.runs[2].pull_request, None);
++        assert_eq!(
++            serde_json::to_value(&result.runs[0]).unwrap()["pull_request"],
++            serde_json::json!({ "number": 47, "state": "open" })
++        );
++        // Only runs with a stored link are looked up.
++        let queried = backend.pr_state_queried_run_ids.lock().unwrap().clone();
++        assert_eq!(queried, [open_run_id, merged_run_id]);
++    }
++
++    #[tokio::test]
++    async fn runs_list_leaves_pr_state_unknown_without_a_live_view() {
++        let linked_run_id = run_id("01KRBZW5C0000000000000000G");
++        let mut linked_run = run(linked_run_id, None, 0);
++        linked_run.pull_request = Some(fabro_types::PullRequestLink {
++            owner:  "fabro-sh".to_string(),
++            repo:   "fabro".to_string(),
++            number: 9,
++        });
++        let backend = Arc::new(MockRunToolBackend {
++            runs_to_list: vec![linked_run],
++            ..mock_backend()
++        });
++        let result = fabro_tool::runs_list(
++            Arc::clone(&backend) as Arc<dyn fabro_tool::FabroToolBackend>,
++            fabro_tool::ValidatedRunsList::try_from(fabro_tool::FabroRunsListParams {
++                workflow:      Some("develop".to_string()),
++                created_since: None,
++            })
++            .unwrap(),
++            &["develop".to_string()],
++        )
++        .await
++        .expect("in-scope enumeration succeeds");
++        // Unknown, not terminal: an unavailable live view must never read
++        // as "closed"/"merged" to the planner's in-flight guard.
++        assert_eq!(
++            result.runs[0].pull_request,
++            Some(fabro_tool::RunPullRequestSummary {
++                number: 9,
++                state:  None,
++            })
++        );
++    }
++
+     #[tokio::test]
+     async fn agent_run_interact_rejects_approval_actions_before_backend_dispatch() {
+         for action in ["approve", "deny"] {
+@@ -3103,21 +3202,23 @@ reasoning = false
+ 
+     fn fabro_run_tool_services() -> (FabroRunToolServices, Arc<MockRunToolBackend>) {
+         let backend = Arc::new(MockRunToolBackend {
+-            waited_runs:           Mutex::new(Vec::new()),
+-            wait_reached:          RunWaitResultReached::Terminal,
+-            child_id:              child_run_id(),
+-            created_parent_ids:    Mutex::new(Vec::new()),
+-            started_run_ids:       Mutex::new(Vec::new()),
+-            approved_run_ids:      Mutex::new(Vec::new()),
+-            denied_run_ids:        Mutex::new(Vec::new()),
+-            pair_status_run_ids:   Mutex::new(Vec::new()),
+-            resolve_workflow_slug: "simple".to_string(),
+-            ask_answer:            "the reviewer failed because the gate timed out".to_string(),
+-            ask_session_run_ids:   Mutex::new(Vec::new()),
+-            ask_turns:             Mutex::new(Vec::new()),
+-            listed_workflows:      Mutex::new(Vec::new()),
+-            runs_to_list:          Vec::new(),
+-            existing_sandboxes:    None,
++            waited_runs:              Mutex::new(Vec::new()),
++            wait_reached:             RunWaitResultReached::Terminal,
++            pull_request_states:      Mutex::new(std::collections::HashMap::new()),
++            pr_state_queried_run_ids: Mutex::new(Vec::new()),
++            child_id:                 child_run_id(),
++            created_parent_ids:       Mutex::new(Vec::new()),
++            started_run_ids:          Mutex::new(Vec::new()),
++            approved_run_ids:         Mutex::new(Vec::new()),
++            denied_run_ids:           Mutex::new(Vec::new()),
++            pair_status_run_ids:      Mutex::new(Vec::new()),
++            resolve_workflow_slug:    "simple".to_string(),
++            ask_answer:               "the reviewer failed because the gate timed out".to_string(),
++            ask_session_run_ids:      Mutex::new(Vec::new()),
++            ask_turns:                Mutex::new(Vec::new()),
++            listed_workflows:         Mutex::new(Vec::new()),
++            runs_to_list:             Vec::new(),
++            existing_sandboxes:       None,
+         });
+         let services = FabroRunToolServices {
+             backend:            backend.clone(),
+@@ -3131,21 +3232,23 @@ reasoning = false
+ 
+     fn mock_backend() -> MockRunToolBackend {
+         MockRunToolBackend {
+-            child_id:              child_run_id(),
+-            created_parent_ids:    Mutex::new(Vec::new()),
+-            started_run_ids:       Mutex::new(Vec::new()),
+-            approved_run_ids:      Mutex::new(Vec::new()),
+-            denied_run_ids:        Mutex::new(Vec::new()),
+-            pair_status_run_ids:   Mutex::new(Vec::new()),
+-            resolve_workflow_slug: "simple".to_string(),
+-            ask_answer:            "mock answer".to_string(),
+-            ask_session_run_ids:   Mutex::new(Vec::new()),
+-            ask_turns:             Mutex::new(Vec::new()),
+-            listed_workflows:      Mutex::new(Vec::new()),
+-            runs_to_list:          Vec::new(),
+-            existing_sandboxes:    None,
+-            waited_runs:           Mutex::new(Vec::new()),
+-            wait_reached:          RunWaitResultReached::Terminal,
++            child_id:                 child_run_id(),
++            created_parent_ids:       Mutex::new(Vec::new()),
++            started_run_ids:          Mutex::new(Vec::new()),
++            approved_run_ids:         Mutex::new(Vec::new()),
++            denied_run_ids:           Mutex::new(Vec::new()),
++            pair_status_run_ids:      Mutex::new(Vec::new()),
++            resolve_workflow_slug:    "simple".to_string(),
++            ask_answer:               "mock answer".to_string(),
++            ask_session_run_ids:      Mutex::new(Vec::new()),
++            ask_turns:                Mutex::new(Vec::new()),
++            listed_workflows:         Mutex::new(Vec::new()),
++            runs_to_list:             Vec::new(),
++            existing_sandboxes:       None,
++            waited_runs:              Mutex::new(Vec::new()),
++            wait_reached:             RunWaitResultReached::Terminal,
++            pull_request_states:      Mutex::new(std::collections::HashMap::new()),
++            pr_state_queried_run_ids: Mutex::new(Vec::new()),
+         }
+     }
+ 
+@@ -3238,21 +3341,23 @@ reasoning = false
+     }
+ 
+     struct MockRunToolBackend {
+-        child_id:              RunId,
+-        created_parent_ids:    Mutex<Vec<Option<RunId>>>,
+-        started_run_ids:       Mutex<Vec<RunId>>,
+-        approved_run_ids:      Mutex<Vec<RunId>>,
+-        denied_run_ids:        Mutex<Vec<RunId>>,
+-        pair_status_run_ids:   Mutex<Vec<RunId>>,
+-        resolve_workflow_slug: String,
+-        ask_answer:            String,
+-        ask_session_run_ids:   Mutex<Vec<RunId>>,
+-        ask_turns:             Mutex<Vec<(String, String)>>,
+-        listed_workflows:      Mutex<Vec<(String, Option<chrono::DateTime<chrono::Utc>>)>>,
+-        runs_to_list:          Vec<Run>,
+-        existing_sandboxes:    Option<std::collections::HashSet<String>>,
+-        waited_runs:           Mutex<Vec<(RunId, fabro_tool::RunWaitUntil, u64)>>,
+-        wait_reached:          RunWaitResultReached,
++        child_id:                 RunId,
++        created_parent_ids:       Mutex<Vec<Option<RunId>>>,
++        started_run_ids:          Mutex<Vec<RunId>>,
++        approved_run_ids:         Mutex<Vec<RunId>>,
++        denied_run_ids:           Mutex<Vec<RunId>>,
++        pair_status_run_ids:      Mutex<Vec<RunId>>,
++        resolve_workflow_slug:    String,
++        ask_answer:               String,
++        ask_session_run_ids:      Mutex<Vec<RunId>>,
++        ask_turns:                Mutex<Vec<(String, String)>>,
++        listed_workflows:         Mutex<Vec<(String, Option<chrono::DateTime<chrono::Utc>>)>>,
++        runs_to_list:             Vec<Run>,
++        existing_sandboxes:       Option<std::collections::HashSet<String>>,
++        waited_runs:              Mutex<Vec<(RunId, fabro_tool::RunWaitUntil, u64)>>,
++        wait_reached:             RunWaitResultReached,
++        pull_request_states:      Mutex<std::collections::HashMap<String, String>>,
++        pr_state_queried_run_ids: Mutex<Vec<RunId>>,
+     }
+ 
+     #[async_trait]
+@@ -3340,6 +3445,16 @@ reasoning = false
+             Ok(self.existing_sandboxes.clone())
+         }
+ 
++        async fn run_pull_request_state(&self, run_id: &RunId) -> anyhow::Result<Option<String>> {
++            self.pr_state_queried_run_ids.lock().unwrap().push(*run_id);
++            Ok(self
++                .pull_request_states
++                .lock()
++                .unwrap()
++                .get(&run_id.to_string())
++                .cloned())
++        }
++
+         async fn start_run(&self, run_id: &RunId, resume: bool) -> anyhow::Result<Run> {
+             assert_eq!(*run_id, self.child_id);
+             assert!(!resume);
