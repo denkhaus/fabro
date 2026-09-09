@@ -39,7 +39,11 @@ line can merge a new PR between your pull, dedupe, and push - re-count
 duplicates immediately before pushing and restart the sequence when a
 new commit appeared mid-flight; (c) verify zero duplicate ids, commit
 the dedupe explicitly, and never push a state you have not just
-re-counted.
+re-counted; (d) COMMITTED before pushed - a dedupe fix that is still
+uncommitted does not ride along, and an aborted commit followed by a
+successful push ships the duplicates (observed 2026-09-09, PR #113
+repair round 2): assert `git status` is clean and the pushed SHA
+carries the dedupe commit before walking away.
 
 ## Phase 1 - Commit triage
 
