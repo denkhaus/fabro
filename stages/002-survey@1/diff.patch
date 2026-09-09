@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M23EBHNH272RCFZ41YZ222QS.jsonl b/.fabro/journal/01M23EBHNH272RCFZ41YZ222QS.jsonl
+new file mode 100644
+index 000000000..fdd11f9ce
+--- /dev/null
++++ b/.fabro/journal/01M23EBHNH272RCFZ41YZ222QS.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M23EBHNH272RCFZ41YZ222QS","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T16:00:18Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M23EBHNH272RCFZ41YZ222QS","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-09T16:01:02Z","data":{"painpoints":[{"text":"Revisor backlog detection is inference, not data: fabro_runs_list gives no explicit link from a revisor run to the develop run it revised, so I had to reconstruct targeting from creation-time adjacency and a git commit message (revisor 01M2395P created 14:29 right after develop 01M237JN completed 14:28, then failed; next revisor 01M23C7C5's commit names 01M23B02H, not 01M237JN). Fix idea: persist the revised run id as a label on the revisor run so backlog checks are a simple join."}],"observations":["upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0' — well below MIN threshold of 5, no merge slot consumed","revisor backlog: 01M237JN (best-effort: its only revisor attempt 01M2395P failed, and the next successful revisor pass named a newer run; ambiguous whether 01M237JN was ever revised)","next surveyor note: both remotes freshly fetched; many new upstream/origin branches appeared (first fetch after remote add of upstream), that noise is expected once and won't repeat"]}}
