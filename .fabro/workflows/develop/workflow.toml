@@ -42,19 +42,29 @@ push = true
 [run.meta_branch]
 push = true
 
-# Autonomous merge-back (run -> PR -> base branch): every successful run
-# with a non-empty diff opens a PR against the base branch; auto-merge
-# lands it once required checks pass. Without this, scheduled runs would
-# re-implement the same seed every run (observed: three parallel
-# -pretty implementations on orphaned run branches).
+# Merge-back (run -> PR -> base branch): every successful run with a
+# non-empty diff opens a PR against the base branch. Without this,
+# scheduled runs would re-implement the same seed every run (observed:
+# three parallel -pretty implementations on orphaned run branches).
+# auto_merge = false (fabro-6a5a): the enable-auto-merge GraphQL call
+# deterministically fails ("Auto merge is not allowed for this
+# repository") on this repo and emitted a warn every run; a human or the
+# deterministic closeout merges instead.
 [run.pull_request]
 enabled = true
 draft = false
-auto_merge = true
+auto_merge = false
 merge_strategy = "squash"
 # glm-4.7: non-reasoning (catalog features.reasoning = false) — cheap,
 # clean JSON for PR titling; no reasoning_effort needed (and "off" is not
 # a valid value: the enum is low|medium|high|xhigh|max).
+# Model-mismatch note (fabro-6a5a, run 01M0WWKAQCWZC0Q0JK019H0ZC7): the
+# failure log named model=glm-5.3 because glm-4.7 was not yet in the
+# catalog on 2026-09-02, so resolve_pr_model warned and fell back to the
+# run model (a reasoning model whose output broke structured JSON). The
+# catalog gained glm-4.7 on 2026-09-03 (fabro-cd27); the configured
+# model now routes. If this ever regresses, the fallback is the run
+# model plus the deterministic skeleton body.
 model = "zai:glm-4.7"
 
 # NO [run.integrations.github.permissions] (ADR-0019, user directive 2026-09-08):

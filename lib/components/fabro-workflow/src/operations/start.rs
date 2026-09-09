@@ -1630,6 +1630,44 @@ reasoning = false
         assert_eq!(resolved.provider_id, ProviderId::new("acme"));
     }
 
+    /// The develop workflow's dedicated PR model `zai:glm-4.7` must resolve
+    /// through the builtin catalog to the cheap non-reasoning model, not the
+    /// run model. Regression guard for the fabro-6a5a model mismatch: before
+    /// glm-4.7 landed in the catalog (2026-09-03, fabro-cd27), the dedicated
+    /// model was unresolvable and every PR-body call silently fell back to
+    /// the reasoning run model (glm-5.3), whose output broke structured JSON
+    /// ("No object generated") and burned ~53s falling back to the skeleton.
+    #[test]
+    fn resolve_pr_model_routes_dedicated_zai_glm47() {
+        let catalog = test_catalog();
+        let configured = [ProviderId::new("zai")];
+        let pr = PullRequestSettings {
+            model: Some("zai:glm-4.7".parse().unwrap()),
+            ..PullRequestSettings::default()
+        };
+
+        let resolved = resolve_pr_model(&catalog, &configured, Some(&pr), "glm-5.3");
+
+        assert_eq!(resolved, "glm-4.7");
+    }
+
+    /// A dedicated model that is not a concrete model selection (a bare
+    /// provider token) falls back to the run model — the documented default
+    /// when the dedicated model cannot resolve.
+    #[test]
+    fn resolve_pr_model_falls_back_to_run_model_for_bare_provider() {
+        let catalog = test_catalog();
+        let configured = [ProviderId::new("zai")];
+        let pr = PullRequestSettings {
+            model: Some("zai".parse().unwrap()),
+            ..PullRequestSettings::default()
+        };
+
+        let resolved = resolve_pr_model(&catalog, &configured, Some(&pr), "glm-5.3");
+
+        assert_eq!(resolved, "glm-5.3");
+    }
+
     #[test]
     fn runtime_clone_config_uses_run_level_clone_policy() {
         let settings = settings_from_run_layer(RunLayer {
