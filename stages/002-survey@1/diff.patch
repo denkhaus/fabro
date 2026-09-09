@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M23W3067KQCPCSZ173XA3Z9E.jsonl b/.fabro/journal/01M23W3067KQCPCSZ173XA3Z9E.jsonl
+new file mode 100644
+index 000000000..4e868698d
+--- /dev/null
++++ b/.fabro/journal/01M23W3067KQCPCSZ173XA3Z9E.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M23W3067KQCPCSZ173XA3Z9E","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T20:00:17Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M23W3067KQCPCSZ173XA3Z9E","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-09T20:00:47Z","data":{"painpoints":[],"observations":["upstream count 0 (< 5 threshold); newest upstream/main subject: 'Bump version to 0.348.0-nightly.0' — no drift, merge slot not consumed","revisor backlog: none — newest develop runs 01M23TE61D4Y33415BK5M7C70X (PR #111) and 01M23RQRCB748R4VRXA2WE6BZ0 (PR #109) both have review artifacts under `.fabro/reviews/develop/`","next surveyor: origin/denkhaus is fully caught up with upstream/main; develop+revisor cycle is the right pass until upstream drift reaches 5"]}}
