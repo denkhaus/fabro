@@ -18,9 +18,6 @@
 import type { SandboxNetwork } from './sandbox-network';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { SandboxProviderKind } from './sandbox-provider-kind';
-// May contain unused imports in some cases
-// @ts-ignore
 import type { SandboxResources } from './sandbox-resources';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -33,7 +30,10 @@ import type { SandboxTimestamps } from './sandbox-timestamps';
  * Provider-backed inventory record for a Fabro-managed sandbox.
  */
 export interface SandboxInfo {
-    'provider': SandboxProviderKind;
+    /**
+     * Sandbox provider kind. `local`, `docker`, and `daytona` are bundled with the server; any other value names a sandbox-driver plugin configured under `server.sandbox.providers.<kind>`.
+     */
+    'provider': string;
     /**
      * Provider-native sandbox id.
      */

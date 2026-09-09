@@ -189,14 +189,15 @@ mod tests {
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
 
+    use fabro_types::SandboxProviderKind;
     use fabro_types::settings::run::{
         EnvironmentImageSettings, EnvironmentLifecycleSettings, EnvironmentNetworkSettings,
-        EnvironmentProvider, EnvironmentResourcesSettings,
+        EnvironmentResourcesSettings,
     };
 
     use super::*;
 
-    fn run_environment(provider: EnvironmentProvider) -> RunEnvironmentSettings {
+    fn run_environment(provider: SandboxProviderKind) -> RunEnvironmentSettings {
         RunEnvironmentSettings {
             id: "host".to_string(),
             provider,
@@ -212,7 +213,7 @@ mod tests {
 
     #[test]
     fn local_working_directory_prefers_environment_cwd() {
-        let mut settings = run_environment(EnvironmentProvider::Local);
+        let mut settings = run_environment(SandboxProviderKind::LOCAL);
         settings.cwd = Some("/srv/fabro/workspaces/team-a".to_string());
         let missing_source = Path::new("/path/that/should/not/exist");
 
@@ -225,7 +226,7 @@ mod tests {
 
     #[test]
     fn local_working_directory_uses_existing_source_directory_without_cwd() {
-        let settings = run_environment(EnvironmentProvider::Local);
+        let settings = run_environment(SandboxProviderKind::LOCAL);
         let dir = tempfile::tempdir().unwrap();
 
         let resolved = local_working_directory_from_environment(&settings, Some(dir.path()))
@@ -236,7 +237,7 @@ mod tests {
 
     #[test]
     fn local_working_directory_rejects_missing_source_directory_without_cwd() {
-        let settings = run_environment(EnvironmentProvider::Local);
+        let settings = run_environment(SandboxProviderKind::LOCAL);
         let dir = tempfile::tempdir().unwrap();
         let missing = dir.path().join("client-only");
 
@@ -254,7 +255,7 @@ mod tests {
     #[cfg(feature = "daytona")]
     #[test]
     fn daytona_config_maps_docker_image_to_snapshot() {
-        let mut settings = run_environment(EnvironmentProvider::Daytona);
+        let mut settings = run_environment(SandboxProviderKind::DAYTONA);
         settings.image.docker = Some("ubuntu:24.04".to_string());
         settings.resources.cpu = Some(2);
 

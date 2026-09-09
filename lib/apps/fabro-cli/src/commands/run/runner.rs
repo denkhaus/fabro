@@ -1140,7 +1140,7 @@ fn requires_github_credentials(run: &RunNamespace) -> bool {
     if run.integrations.github.is_token_requested() {
         return true;
     }
-    run.execution.mode != RunMode::DryRun && run.environment.provider.is_clone_based()
+    run.execution.mode != RunMode::DryRun && run.environment.provider.clones_workspace()
 }
 
 fn install_signal_handlers(
@@ -1230,10 +1230,10 @@ mod tests {
 
     #[test]
     fn clone_sandbox_credentials_are_required_for_clone_based_providers() {
-        use fabro_types::settings::run::EnvironmentProvider;
-        assert!(EnvironmentProvider::Docker.is_clone_based());
-        assert!(EnvironmentProvider::Daytona.is_clone_based());
-        assert!(!EnvironmentProvider::Local.is_clone_based());
+        use fabro_types::SandboxProviderKind;
+        assert!(SandboxProviderKind::DOCKER.clones_workspace());
+        assert!(SandboxProviderKind::DAYTONA.clones_workspace());
+        assert!(!SandboxProviderKind::LOCAL.clones_workspace());
     }
 
     #[test]
@@ -1743,10 +1743,10 @@ mod tests {
 
         use std::collections::HashMap;
 
+        use fabro_types::SandboxProviderKind;
         use fabro_types::settings::InterpString;
         use fabro_types::settings::run::{
-            EnvironmentProvider, RunIntegrationsGithubSettings, RunIntegrationsSettings, RunMode,
-            RunNamespace,
+            RunIntegrationsGithubSettings, RunIntegrationsSettings, RunMode, RunNamespace,
         };
 
         use super::super::requires_github_credentials;
@@ -1759,7 +1759,7 @@ mod tests {
             let mut run = RunNamespace::default();
             run.execution.mode = mode;
             run.environment.provider = provider
-                .parse::<EnvironmentProvider>()
+                .parse::<SandboxProviderKind>()
                 .expect("test provider should parse");
             run.integrations = RunIntegrationsSettings {
                 github: RunIntegrationsGithubSettings {

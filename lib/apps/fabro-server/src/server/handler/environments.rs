@@ -3,11 +3,11 @@ use std::sync::Arc;
 
 use axum::http::HeaderMap;
 use fabro_environment::{Environment, EnvironmentDraft, EnvironmentId, EnvironmentStoreError};
+use fabro_types::SandboxProviderKind;
 use fabro_types::settings::InterpString;
 use fabro_types::settings::run::{
     DockerfileSource, EnvironmentImageSettings, EnvironmentLifecycleSettings,
-    EnvironmentNetworkSettings, EnvironmentProvider, EnvironmentResourcesSettings,
-    EnvironmentSettings,
+    EnvironmentNetworkSettings, EnvironmentResourcesSettings, EnvironmentSettings,
 };
 use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
@@ -33,7 +33,7 @@ struct EnvironmentListMeta {
 #[serde(deny_unknown_fields)]
 struct CreateEnvironmentRequest {
     id:        EnvironmentId,
-    provider:  EnvironmentProvider,
+    provider:  SandboxProviderKind,
     cwd:       Option<String>,
     image:     ApiEnvironmentImageSettings,
     resources: EnvironmentResourcesSettings,
@@ -46,7 +46,7 @@ struct CreateEnvironmentRequest {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ReplaceEnvironmentRequest {
-    provider:  EnvironmentProvider,
+    provider:  SandboxProviderKind,
     cwd:       Option<String>,
     image:     ApiEnvironmentImageSettings,
     resources: EnvironmentResourcesSettings,

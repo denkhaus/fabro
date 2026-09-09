@@ -18,6 +18,7 @@ use fabro_server::install::{
     InstallAppState, InstallFinishHook, InstallFinishInfo, build_install_router,
 };
 use fabro_server::test_support::test_environment_from_storage_dir;
+use fabro_types::SandboxProviderKind;
 use fabro_util::Home;
 use fabro_vault::Vault;
 use httpmock::Method::GET;
@@ -58,9 +59,18 @@ fn assert_sandbox_provider_policy(
         .server
         .sandbox
         .providers;
-    assert_eq!(resolved.local.enabled, local_enabled);
-    assert_eq!(resolved.docker.enabled, docker_enabled);
-    assert_eq!(resolved.daytona.enabled, daytona_enabled);
+    assert_eq!(
+        resolved.is_enabled(&SandboxProviderKind::LOCAL),
+        local_enabled
+    );
+    assert_eq!(
+        resolved.is_enabled(&SandboxProviderKind::DOCKER),
+        docker_enabled
+    );
+    assert_eq!(
+        resolved.is_enabled(&SandboxProviderKind::DAYTONA),
+        daytona_enabled
+    );
 }
 
 async fn seeded_default_environment(

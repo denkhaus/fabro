@@ -283,6 +283,11 @@ fn main() {
             &[],
         ),
         (
+            "SandboxPluginSettings",
+            "fabro_types::settings::server::SandboxPluginSettings",
+            &[],
+        ),
+        (
             "ServerStorageSettings",
             "fabro_types::settings::server::ServerStorageSettings",
             &[],

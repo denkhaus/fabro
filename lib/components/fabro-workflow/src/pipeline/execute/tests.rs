@@ -412,7 +412,7 @@ async fn resumed_in_flight_node_starts_a_new_stage_execution() {
     // Resume reconnects to the previously recorded sandbox.
     append_event(&run_store, &run_id, &Event::SandboxInitialized {
         working_directory: std::env::current_dir().unwrap().display().to_string(),
-        provider:          fabro_types::SandboxProviderKind::Local,
+        provider:          fabro_types::SandboxProviderKind::LOCAL,
         id:                "local".to_string(),
         image:             None,
         snapshot:          None,

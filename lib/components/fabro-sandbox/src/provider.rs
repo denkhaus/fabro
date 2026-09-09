@@ -157,7 +157,7 @@ pub struct LocalSandboxProvider;
 #[async_trait]
 impl SandboxProvider for LocalSandboxProvider {
     fn kind(&self) -> SandboxProviderKind {
-        SandboxProviderKind::Local
+        SandboxProviderKind::LOCAL
     }
 
     async fn list(&self) -> crate::Result<Vec<SandboxInfo>> {
@@ -198,16 +198,16 @@ mod tests {
 
     #[tokio::test]
     async fn list_returns_aggregate_data_from_successful_providers() {
-        let docker = fake_sandbox_info(SandboxProviderKind::Docker, "docker-1");
-        let daytona = fake_sandbox_info(SandboxProviderKind::Daytona, "daytona-1");
+        let docker = fake_sandbox_info(SandboxProviderKind::DOCKER, "docker-1");
+        let daytona = fake_sandbox_info(SandboxProviderKind::DAYTONA, "daytona-1");
         let registry = fake_registry(vec![
             FakeSandboxProvider::new(
-                SandboxProviderKind::Docker,
+                SandboxProviderKind::DOCKER,
                 FakeList::Ok(vec![docker.clone()]),
                 FakeGet::Missing,
             ),
             FakeSandboxProvider::new(
-                SandboxProviderKind::Daytona,
+                SandboxProviderKind::DAYTONA,
                 FakeList::Ok(vec![daytona.clone()]),
                 FakeGet::Missing,
             ),
@@ -221,15 +221,15 @@ mod tests {
 
     #[tokio::test]
     async fn list_includes_provider_error_metadata_when_one_provider_fails() {
-        let docker = fake_sandbox_info(SandboxProviderKind::Docker, "docker-1");
+        let docker = fake_sandbox_info(SandboxProviderKind::DOCKER, "docker-1");
         let registry = fake_registry(vec![
             FakeSandboxProvider::new(
-                SandboxProviderKind::Docker,
+                SandboxProviderKind::DOCKER,
                 FakeList::Ok(vec![docker.clone()]),
                 FakeGet::Missing,
             ),
             FakeSandboxProvider::new(
-                SandboxProviderKind::Daytona,
+                SandboxProviderKind::DAYTONA,
                 FakeList::Err("daytona unavailable"),
                 FakeGet::Missing,
             ),
@@ -240,7 +240,7 @@ mod tests {
         assert_eq!(response.data, vec![docker]);
         assert_eq!(response.meta.provider_errors, vec![
             SandboxProviderLookupError {
-                provider: SandboxProviderKind::Daytona,
+                provider: SandboxProviderKind::DAYTONA,
                 message:  "daytona unavailable".to_string(),
             }
         ]);
@@ -248,15 +248,15 @@ mod tests {
 
     #[tokio::test]
     async fn get_returns_one_matching_sandbox() {
-        let docker = fake_sandbox_info(SandboxProviderKind::Docker, "same-id");
+        let docker = fake_sandbox_info(SandboxProviderKind::DOCKER, "same-id");
         let registry = fake_registry(vec![
             FakeSandboxProvider::new(
-                SandboxProviderKind::Docker,
+                SandboxProviderKind::DOCKER,
                 FakeList::Ok(Vec::new()),
                 FakeGet::Found(Box::new(docker.clone())),
             ),
             FakeSandboxProvider::new(
-                SandboxProviderKind::Daytona,
+                SandboxProviderKind::DAYTONA,
                 FakeList::Ok(Vec::new()),
                 FakeGet::Missing,
             ),
@@ -272,12 +272,12 @@ mod tests {
     async fn get_returns_not_found_when_all_providers_miss() {
         let registry = fake_registry(vec![
             FakeSandboxProvider::new(
-                SandboxProviderKind::Docker,
+                SandboxProviderKind::DOCKER,
                 FakeList::Ok(Vec::new()),
                 FakeGet::Missing,
             ),
             FakeSandboxProvider::new(
-                SandboxProviderKind::Daytona,
+                SandboxProviderKind::DAYTONA,
                 FakeList::Ok(Vec::new()),
                 FakeGet::Missing,
             ),
@@ -295,18 +295,18 @@ mod tests {
     async fn get_returns_conflict_when_two_providers_match() {
         let registry = fake_registry(vec![
             FakeSandboxProvider::new(
-                SandboxProviderKind::Docker,
+                SandboxProviderKind::DOCKER,
                 FakeList::Ok(Vec::new()),
                 FakeGet::Found(Box::new(fake_sandbox_info(
-                    SandboxProviderKind::Docker,
+                    SandboxProviderKind::DOCKER,
                     "same-id",
                 ))),
             ),
             FakeSandboxProvider::new(
-                SandboxProviderKind::Daytona,
+                SandboxProviderKind::DAYTONA,
                 FakeList::Ok(Vec::new()),
                 FakeGet::Found(Box::new(fake_sandbox_info(
-                    SandboxProviderKind::Daytona,
+                    SandboxProviderKind::DAYTONA,
                     "same-id",
                 ))),
             ),
@@ -321,7 +321,7 @@ mod tests {
             err,
             SandboxLookupError::Conflict { id, providers }
                 if id == "same-id"
-                    && providers == vec![SandboxProviderKind::Docker, SandboxProviderKind::Daytona]
+                    && providers == vec![SandboxProviderKind::DOCKER, SandboxProviderKind::DAYTONA]
         ));
     }
 
@@ -329,12 +329,12 @@ mod tests {
     async fn get_returns_provider_unavailable_when_no_match_and_one_provider_fails() {
         let registry = fake_registry(vec![
             FakeSandboxProvider::new(
-                SandboxProviderKind::Docker,
+                SandboxProviderKind::DOCKER,
                 FakeList::Ok(Vec::new()),
                 FakeGet::Missing,
             ),
             FakeSandboxProvider::new(
-                SandboxProviderKind::Daytona,
+                SandboxProviderKind::DAYTONA,
                 FakeList::Ok(Vec::new()),
                 FakeGet::Err("daytona unavailable"),
             ),
@@ -352,7 +352,7 @@ mod tests {
                 provider_errors
             } if id == "maybe-missing"
                 && provider_errors == vec![SandboxProviderLookupError {
-                    provider: SandboxProviderKind::Daytona,
+                    provider: SandboxProviderKind::DAYTONA,
                     message: "daytona unavailable".to_string(),
                 }]
         ));

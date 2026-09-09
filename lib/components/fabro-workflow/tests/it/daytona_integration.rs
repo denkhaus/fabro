@@ -1529,7 +1529,7 @@ async fn daytona_cp_upload_download_round_trip() {
 
     // 2. Build initialized sandbox metadata (same as `fabro run` would persist)
     let record = RunSandboxInstance {
-        provider: SandboxProviderKind::Daytona,
+        provider: SandboxProviderKind::DAYTONA,
         image:    None,
         snapshot: None,
         runtime:  fabro_types::RunSandboxRuntime {

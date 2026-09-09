@@ -113,9 +113,9 @@ mod tests {
 
     #[tokio::test]
     async fn list_returns_provider_backed_data_without_run_projection_state() {
-        let docker = fake_sandbox_info(SandboxProviderKind::Docker, "docker-native-id");
+        let docker = fake_sandbox_info(SandboxProviderKind::DOCKER, "docker-native-id");
         let app = app_with_registry(fake_registry(vec![FakeSandboxProvider::new(
-            SandboxProviderKind::Docker,
+            SandboxProviderKind::DOCKER,
             FakeList::Ok(vec![docker]),
             FakeGet::Missing,
         )]));
@@ -131,15 +131,15 @@ mod tests {
 
     #[tokio::test]
     async fn retrieve_searches_all_configured_providers() {
-        let daytona = fake_sandbox_info(SandboxProviderKind::Daytona, "native-id");
+        let daytona = fake_sandbox_info(SandboxProviderKind::DAYTONA, "native-id");
         let app = app_with_registry(fake_registry(vec![
             FakeSandboxProvider::new(
-                SandboxProviderKind::Docker,
+                SandboxProviderKind::DOCKER,
                 FakeList::Ok(Vec::new()),
                 FakeGet::Missing,
             ),
             FakeSandboxProvider::new(
-                SandboxProviderKind::Daytona,
+                SandboxProviderKind::DAYTONA,
                 FakeList::Ok(Vec::new()),
                 FakeGet::Found(Box::new(daytona)),
             ),
@@ -160,12 +160,12 @@ mod tests {
     async fn no_matching_sandbox_returns_404() {
         let app = app_with_registry(fake_registry(vec![
             FakeSandboxProvider::new(
-                SandboxProviderKind::Docker,
+                SandboxProviderKind::DOCKER,
                 FakeList::Ok(Vec::new()),
                 FakeGet::Missing,
             ),
             FakeSandboxProvider::new(
-                SandboxProviderKind::Daytona,
+                SandboxProviderKind::DAYTONA,
                 FakeList::Ok(Vec::new()),
                 FakeGet::Missing,
             ),
@@ -183,18 +183,18 @@ mod tests {
     async fn duplicate_native_ids_return_409() {
         let app = app_with_registry(fake_registry(vec![
             FakeSandboxProvider::new(
-                SandboxProviderKind::Docker,
+                SandboxProviderKind::DOCKER,
                 FakeList::Ok(Vec::new()),
                 FakeGet::Found(Box::new(fake_sandbox_info(
-                    SandboxProviderKind::Docker,
+                    SandboxProviderKind::DOCKER,
                     "same-id",
                 ))),
             ),
             FakeSandboxProvider::new(
-                SandboxProviderKind::Daytona,
+                SandboxProviderKind::DAYTONA,
                 FakeList::Ok(Vec::new()),
                 FakeGet::Found(Box::new(fake_sandbox_info(
-                    SandboxProviderKind::Daytona,
+                    SandboxProviderKind::DAYTONA,
                     "same-id",
                 ))),
             ),
@@ -219,12 +219,12 @@ mod tests {
     async fn provider_lookup_uncertainty_returns_502() {
         let app = app_with_registry(fake_registry(vec![
             FakeSandboxProvider::new(
-                SandboxProviderKind::Docker,
+                SandboxProviderKind::DOCKER,
                 FakeList::Ok(Vec::new()),
                 FakeGet::Missing,
             ),
             FakeSandboxProvider::new(
-                SandboxProviderKind::Daytona,
+                SandboxProviderKind::DAYTONA,
                 FakeList::Ok(Vec::new()),
                 FakeGet::Err("daytona unavailable"),
             ),

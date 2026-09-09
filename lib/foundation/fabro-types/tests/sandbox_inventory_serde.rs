@@ -13,7 +13,7 @@ fn sandbox_inventory_serializes_provider_backed_shape() {
     let created_at = Utc.with_ymd_and_hms(2026, 5, 25, 12, 0, 0).unwrap();
     let response = SandboxListResponse {
         data: vec![SandboxInfo {
-            provider:          SandboxProviderKind::Docker,
+            provider:          SandboxProviderKind::DOCKER,
             id:                "container-abc123".to_string(),
             display_name:      Some("fabro-run-abc".to_string()),
             state:             SandboxState::Running,
@@ -43,7 +43,7 @@ fn sandbox_inventory_serializes_provider_backed_shape() {
         }],
         meta: SandboxListMeta {
             provider_errors: vec![SandboxProviderLookupError {
-                provider: SandboxProviderKind::Daytona,
+                provider: SandboxProviderKind::DAYTONA,
                 message:  "Daytona API key is not configured".to_string(),
             }],
         },
@@ -102,7 +102,7 @@ fn sandbox_inventory_deserializes_when_optional_fields_are_absent() {
     }))
     .unwrap();
 
-    assert_eq!(info.provider, SandboxProviderKind::Local);
+    assert_eq!(info.provider, SandboxProviderKind::LOCAL);
     assert_eq!(info.id, "local:01KSGHGMCFM8W2FHXNMJ7MVY65");
     assert_eq!(info.state, SandboxState::Unknown);
     assert!(info.display_name.is_none());

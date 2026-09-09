@@ -603,7 +603,7 @@ mod tests {
         let attempts = Attempts::default();
 
         let result = retry_git_operation(
-            SandboxProviderKind::Docker,
+            SandboxProviderKind::DOCKER,
             "clone",
             &RetryPlan::clone_default(None),
             |attempt| {
@@ -623,7 +623,7 @@ mod tests {
         let attempts = Attempts::default();
 
         let result = retry_git_operation(
-            SandboxProviderKind::Docker,
+            SandboxProviderKind::DOCKER,
             "clone",
             &RetryPlan::clone_default(None),
             |attempt| {
@@ -649,7 +649,7 @@ mod tests {
         let attempts = Attempts::default();
 
         let result = retry_git_operation(
-            SandboxProviderKind::Docker,
+            SandboxProviderKind::DOCKER,
             "clone",
             &RetryPlan::clone_default(None),
             |attempt| {
@@ -673,7 +673,7 @@ mod tests {
         let attempts = Attempts::default();
 
         let result = retry_git_operation(
-            SandboxProviderKind::Docker,
+            SandboxProviderKind::DOCKER,
             "clone",
             &RetryPlan::clone_default(None),
             |attempt| {
@@ -700,7 +700,7 @@ mod tests {
         let deadline = time::Instant::now() + Duration::from_secs(2);
 
         let result = retry_git_operation(
-            SandboxProviderKind::Docker,
+            SandboxProviderKind::DOCKER,
             "clone",
             &RetryPlan::clone_default(Some(deadline)),
             |attempt| {
@@ -723,7 +723,7 @@ mod tests {
         let attempts = Attempts::default();
 
         let result = retry_git_operation(
-            SandboxProviderKind::Daytona,
+            SandboxProviderKind::DAYTONA,
             "clone",
             &RetryPlan::clone_default(None),
             |attempt| {
@@ -750,7 +750,7 @@ mod tests {
         };
 
         let result = retry_git_operation(
-            SandboxProviderKind::Docker,
+            SandboxProviderKind::DOCKER,
             "push",
             &plan,
             |attempt| {

@@ -33,7 +33,7 @@ fn sandbox_details_json_matches_openapi_shape() {
     let created_at = Utc.with_ymd_and_hms(2026, 5, 9, 12, 0, 0).unwrap();
     let details = SandboxDetails {
         sandbox:      RunSandboxInstance {
-            provider: SandboxProviderKind::Docker,
+            provider: SandboxProviderKind::DOCKER,
             image:    Some("ghcr.io/fabro/sandbox:latest".to_string()),
             snapshot: None,
             runtime:  RunSandboxRuntime {
@@ -130,7 +130,7 @@ fn sandbox_details_deserializes_when_optional_fields_are_absent() {
     }))
     .unwrap();
 
-    assert_eq!(details.sandbox.provider, SandboxProviderKind::Local);
+    assert_eq!(details.sandbox.provider, SandboxProviderKind::LOCAL);
     assert_eq!(
         details.sandbox.runtime.id.as_str(),
         "local:01JNQVR7M0EJ5GKAT2SC4ERS1Z"

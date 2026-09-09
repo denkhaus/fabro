@@ -7243,7 +7243,7 @@ components:
           description: Stable revision used with `If-Match` for optimistic concurrency.
           example: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
         provider:
-          $ref: "#/components/schemas/EnvironmentProvider"
+          $ref: "#/components/schemas/SandboxProviderKind"
         cwd:
           type: ["string", "null"]
           description: Local-provider command working directory for this environment. Docker and Daytona ignore this value.
@@ -7282,7 +7282,7 @@ components:
           pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
           example: docker
         provider:
-          $ref: "#/components/schemas/EnvironmentProvider"
+          $ref: "#/components/schemas/SandboxProviderKind"
         cwd:
           type: ["string", "null"]
           description: Local-provider command working directory for this environment. Docker and Daytona ignore this value.
@@ -7316,7 +7316,7 @@ components:
         - env
       properties:
         provider:
-          $ref: "#/components/schemas/EnvironmentProvider"
+          $ref: "#/components/schemas/SandboxProviderKind"
         cwd:
           type: ["string", "null"]
           description: Local-provider command working directory for this environment. Docker and Daytona ignore this value.
@@ -12875,12 +12875,13 @@ components:
           example: 180000
 
     SandboxProviderKind:
-      description: Sandbox provider discriminator.
+      description: |
+        Sandbox provider kind. `local`, `docker`, and `daytona` are bundled
+        with the server; any other value names a sandbox-driver plugin
+        configured under `server.sandbox.providers.<kind>`.
       type: string
-      enum:
-        - local
-        - docker
-        - daytona
+      pattern: "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$"
+      example: docker
 
     RunSandboxKind:
       description: Lifecycle state for a run sandbox request.
@@ -14381,15 +14382,13 @@ components:
           $ref: "#/components/schemas/ServerSandboxProvidersSettings"
 
     ServerSandboxProvidersSettings:
+      description: |
+        Sandbox provider policy keyed by provider kind. The bundled kinds
+        (`local`, `docker`, `daytona`) are always present; any other key names
+        a sandbox-driver plugin and carries its launch settings.
       type: object
-      required: [local, docker, daytona]
-      properties:
-        local:
-          $ref: "#/components/schemas/ServerSandboxProviderSettings"
-        docker:
-          $ref: "#/components/schemas/ServerSandboxProviderSettings"
-        daytona:
-          $ref: "#/components/schemas/ServerSandboxProviderSettings"
+      additionalProperties:
+        $ref: "#/components/schemas/ServerSandboxProviderSettings"
 
     ServerSandboxProviderSettings:
       type: object
@@ -14397,6 +14396,32 @@ components:
       properties:
         enabled:
           type: boolean
+        plugin:
+          $ref: "#/components/schemas/SandboxPluginSettings"
+
+    SandboxPluginSettings:
+      description: How the server launches a sandbox-driver plugin executable.
+      type: object
+      properties:
+        path:
+          type: string
+          description: Executable path. Absent means `fabro-sandbox-<kind>` on `PATH`.
+        sha256:
+          type: string
+          description: Pinned SHA-256 of the executable, hex.
+        dev:
+          type: boolean
+          description: Allow launching without a checksum.
+        args:
+          type: array
+          items:
+            type: string
+        env:
+          $ref: "#/components/schemas/StringMap"
+        inherit_env:
+          type: array
+          items:
+            type: string
 
     ServerStorageSettings:
       type: object
@@ -14920,7 +14945,7 @@ components:
         id:
           type: string
         provider:
-          $ref: "#/components/schemas/EnvironmentProvider"
+          $ref: "#/components/schemas/SandboxProviderKind"
         cwd:
           type: ["string", "null"]
           description: Local-provider command working directory for this environment. Docker and Daytona ignore this value.
@@ -14945,7 +14970,7 @@ components:
       required: [provider, image, resources, network, lifecycle, labels, env]
       properties:
         provider:
-          $ref: "#/components/schemas/EnvironmentProvider"
+          $ref: "#/components/schemas/SandboxProviderKind"
         cwd:
           type: ["string", "null"]
           description: Local-provider command working directory for this environment. Docker and Daytona ignore this value.
@@ -14964,11 +14989,6 @@ components:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/InterpString"
-
-    EnvironmentProvider:
-      description: Desired environment provider.
-      type: string
-      enum: [local, docker, daytona]
 
     EnvironmentImageSettings:
       type: object

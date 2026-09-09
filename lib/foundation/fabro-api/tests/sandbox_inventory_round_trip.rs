@@ -28,7 +28,7 @@ fn sandbox_inventory_round_trip_json_matches_openapi_shape() {
     let created_at = Utc.with_ymd_and_hms(2026, 5, 25, 12, 0, 0).unwrap();
     let response = SandboxListResponse {
         data: vec![SandboxInfo {
-            provider:          SandboxProviderKind::Daytona,
+            provider:          SandboxProviderKind::DAYTONA,
             id:                "sandbox-abc123".to_string(),
             display_name:      Some("fabro-01KSGHGMCFM8W2FHXNMJ7MVY65".to_string()),
             state:             SandboxState::Running,
@@ -60,7 +60,7 @@ fn sandbox_inventory_round_trip_json_matches_openapi_shape() {
         }],
         meta: SandboxListMeta {
             provider_errors: vec![SandboxProviderLookupError {
-                provider: SandboxProviderKind::Docker,
+                provider: SandboxProviderKind::DOCKER,
                 message:  "Failed to connect to Docker daemon".to_string(),
             }],
         },

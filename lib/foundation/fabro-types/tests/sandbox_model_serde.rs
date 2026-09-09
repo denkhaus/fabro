@@ -11,12 +11,12 @@ use serde_json::json;
 fn run_sandbox_serializes_canonical_identity_without_identifier() {
     let sandbox = RunSandbox::ready(
         RunSandboxPlan {
-            provider: SandboxProviderKind::Docker,
+            provider: SandboxProviderKind::DOCKER,
             image:    None,
             snapshot: None,
         },
         RunSandboxInstance {
-            provider: SandboxProviderKind::Docker,
+            provider: SandboxProviderKind::DOCKER,
             image:    None,
             snapshot: None,
             runtime:  RunSandboxRuntime {
@@ -75,7 +75,7 @@ fn run_sandbox_ready_requires_instance() {
 fn sandbox_details_requires_canonical_id_and_working_directory() {
     let details = SandboxDetails {
         sandbox:      RunSandboxInstance {
-            provider: SandboxProviderKind::Daytona,
+            provider: SandboxProviderKind::DAYTONA,
             image:    Some("ubuntu:24.04".to_string()),
             snapshot: None,
             runtime:  RunSandboxRuntime {
@@ -137,18 +137,22 @@ fn sandbox_details_requires_canonical_id_and_working_directory() {
 }
 
 #[test]
-fn sandbox_provider_rejects_unknown_values() {
+fn sandbox_provider_accepts_plugin_kinds_and_rejects_malformed_names() {
     assert_eq!(
         serde_json::from_value::<SandboxProviderKind>(json!("local")).unwrap(),
-        SandboxProviderKind::Local
+        SandboxProviderKind::LOCAL
     );
     assert_eq!(
         serde_json::from_value::<SandboxProviderKind>(json!("docker")).unwrap(),
-        SandboxProviderKind::Docker
+        SandboxProviderKind::DOCKER
     );
     assert_eq!(
         serde_json::from_value::<SandboxProviderKind>(json!("daytona")).unwrap(),
-        SandboxProviderKind::Daytona
+        SandboxProviderKind::DAYTONA
     );
-    assert!(serde_json::from_value::<SandboxProviderKind>(json!("other")).is_err());
+    let plugin = serde_json::from_value::<SandboxProviderKind>(json!("other")).unwrap();
+    assert_eq!(plugin.as_str(), "other");
+    assert_eq!(plugin.bundled(), None);
+    assert!(serde_json::from_value::<SandboxProviderKind>(json!("Not Valid")).is_err());
+    assert!(serde_json::from_value::<SandboxProviderKind>(json!("")).is_err());
 }

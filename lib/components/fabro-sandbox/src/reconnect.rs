@@ -5,7 +5,7 @@ use std::path::PathBuf;
     reason = "Feature-gated branches consume these imports when optional backends are enabled."
 )]
 use anyhow::{Context, Result, bail};
-use fabro_types::{RunId, RunSandboxInstance, SandboxProviderKind};
+use fabro_types::{BundledProvider, RunId, RunSandboxInstance};
 
 use crate::SandboxEventCallback;
 #[cfg(feature = "daytona")]
@@ -53,8 +53,8 @@ pub async fn reconnect_for_run_with_callback(
     event_callback: Option<SandboxEventCallback>,
 ) -> Result<Box<dyn crate::Sandbox>> {
     let runtime = &record.runtime;
-    match record.provider {
-        SandboxProviderKind::Local => {
+    match record.provider.bundled() {
+        Some(BundledProvider::Local) => {
             let mut sandbox = LocalSandbox::new(PathBuf::from(&runtime.working_directory));
             if let Some(callback) = event_callback {
                 sandbox.set_event_callback(callback);
@@ -62,7 +62,7 @@ pub async fn reconnect_for_run_with_callback(
             Ok(Box::new(sandbox))
         }
         #[cfg(feature = "docker")]
-        SandboxProviderKind::Docker => {
+        Some(BundledProvider::Docker) => {
             let repo_cloned = runtime
                 .repo_cloned
                 .context("Docker run sandbox missing repo_cloned metadata")?;
@@ -82,9 +82,9 @@ pub async fn reconnect_for_run_with_callback(
             Ok(Box::new(sandbox))
         }
         #[cfg(not(feature = "docker"))]
-        SandboxProviderKind::Docker => bail!("Docker sandbox support is not enabled"),
+        Some(BundledProvider::Docker) => bail!("Docker sandbox support is not enabled"),
         #[cfg(feature = "daytona")]
-        SandboxProviderKind::Daytona => {
+        Some(BundledProvider::Daytona) => {
             let repo_cloned = runtime
                 .repo_cloned
                 .context("Daytona run sandbox missing repo_cloned metadata")?;
@@ -105,6 +105,10 @@ pub async fn reconnect_for_run_with_callback(
             Ok(Box::new(sandbox))
         }
         #[cfg(not(feature = "daytona"))]
-        SandboxProviderKind::Daytona => bail!("Daytona sandbox support is not enabled"),
+        Some(BundledProvider::Daytona) => bail!("Daytona sandbox support is not enabled"),
+        None => bail!(
+            "sandbox provider `{}` is not bundled; plugin reconnect is not wired yet",
+            record.provider
+        ),
     }
 }

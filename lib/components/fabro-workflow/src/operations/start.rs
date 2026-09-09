@@ -24,8 +24,8 @@ use fabro_types::settings::run::{
     RunPrepareSettings as ResolvedRunPrepareSettings,
 };
 use fabro_types::{
-    ManifestPath, RunId, RunRunnableSource, RunSpec, RunTarget, SandboxProviderKind,
-    TargetValidationError,
+    BundledProvider, ManifestPath, RunId, RunRunnableSource, RunSpec, RunTarget,
+    SandboxProviderKind, TargetValidationError,
 };
 use fabro_util::error::collect_chain;
 use fabro_vault::Vault;
@@ -485,14 +485,14 @@ impl RunSession {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        if configured_sandbox_provider != SandboxProviderKind::Local
+        if configured_sandbox_provider != SandboxProviderKind::LOCAL
             && matches!(record.target, Some(RunTarget::Folder { .. }))
         {
             return Err(Error::engine(
                 "persisted folder run targets require the Local sandbox provider",
             ));
         }
-        if configured_sandbox_provider == SandboxProviderKind::Local {
+        if configured_sandbox_provider == SandboxProviderKind::LOCAL {
             if let Some(target @ (RunTarget::Git(_) | RunTarget::None {})) = record.target.as_ref()
             {
                 return Err(Error::engine(format!(
@@ -501,11 +501,11 @@ impl RunSession {
                 )));
             }
         }
-        let sandbox = match sandbox_provider {
-            SandboxProviderKind::Local if dry_run_clone_target => SandboxSpec::Local {
+        let sandbox = match sandbox_provider.bundled() {
+            Some(BundledProvider::Local) if dry_run_clone_target => SandboxSpec::Local {
                 working_directory: dry_run_workspace_for_target(persisted).await?,
             },
-            SandboxProviderKind::Local => match record.target.as_ref() {
+            Some(BundledProvider::Local) => match record.target.as_ref() {
                 Some(target @ (RunTarget::Git(_) | RunTarget::None {})) => {
                     return Err(Error::engine(format!(
                         "persisted {} run targets require a clone-based sandbox provider",
@@ -529,7 +529,7 @@ impl RunSession {
                     SandboxSpec::Local { working_directory }
                 }
             },
-            SandboxProviderKind::Docker => {
+            Some(BundledProvider::Docker) => {
                 let mut config = resolve_docker_config(resolved, secret_lookup)?;
                 config.skip_clone |= clone_source.skip_clone;
                 SandboxSpec::Docker {
@@ -542,7 +542,7 @@ impl RunSession {
                     clone_commit_sha: clone_source.commit_sha,
                 }
             }
-            SandboxProviderKind::Daytona => {
+            Some(BundledProvider::Daytona) => {
                 let api_key = vault_guard
                     .get(EnvVars::DAYTONA_API_KEY)
                     .map(str::to_string);
@@ -558,6 +558,11 @@ impl RunSession {
                     clone_commit_sha: clone_source.commit_sha,
                     api_key,
                 }
+            }
+            None => {
+                return Err(Error::engine(format!(
+                    "sandbox provider `{sandbox_provider}` is not bundled; plugin providers are not wired into run start yet"
+                )));
             }
         };
 
@@ -812,7 +817,7 @@ async fn load_accepted_run_definition(
 }
 
 fn resolve_sandbox_provider(settings: &ResolvedRunSettings) -> SandboxProviderKind {
-    SandboxProviderKind::from(settings.environment.provider)
+    settings.environment.provider.clone()
 }
 
 fn resolve_daytona_config(settings: &ResolvedRunSettings) -> DaytonaConfig {
@@ -1316,8 +1321,8 @@ mod tests {
     use fabro_store::Database;
     use fabro_types::settings::InterpString;
     use fabro_types::settings::run::{
-        EnvironmentProvider, McpTransport as ResolvedMcpTransport, PreparedStep, PreparedStepRun,
-        RunMode, RunPrepareSettings,
+        McpTransport as ResolvedMcpTransport, PreparedStep, PreparedStepRun, RunMode,
+        RunPrepareSettings,
     };
     use fabro_types::{
         BilledModelUsage, GitContext, ManifestPath, RunTarget, StageTiming, WorkflowSettings,
@@ -1914,7 +1919,7 @@ reasoning = false
             }),
             ..RunLayer::default()
         });
-        settings.run.environment.provider = EnvironmentProvider::Docker;
+        settings.run.environment.provider = SandboxProviderKind::DOCKER;
         settings.run.environment.image.docker = Some("buildpack-deps:noble".to_string());
         let (persisted, store) = persisted_workflow_with_settings_and_target(
             MINIMAL_DOT,
@@ -1976,7 +1981,7 @@ reasoning = false
             }),
             ..RunLayer::default()
         });
-        settings.run.environment.provider = EnvironmentProvider::Daytona;
+        settings.run.environment.provider = SandboxProviderKind::DAYTONA;
         settings.run.environment.image.docker = None;
         let (persisted, store) = persisted_workflow_with_settings_and_target(
             MINIMAL_DOT,
@@ -2037,7 +2042,7 @@ reasoning = false
         let temp = tempfile::tempdir().unwrap();
         let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
         let mut settings = settings_from_run_layer(RunLayer::default());
-        settings.run.environment.provider = EnvironmentProvider::Local;
+        settings.run.environment.provider = SandboxProviderKind::LOCAL;
         let (persisted, store) = persisted_workflow_with_settings_and_target(
             MINIMAL_DOT,
             &storage_root,
@@ -2080,7 +2085,7 @@ reasoning = false
                 }),
                 ..RunLayer::default()
             });
-            settings.run.environment.provider = EnvironmentProvider::Docker;
+            settings.run.environment.provider = SandboxProviderKind::DOCKER;
             settings.run.environment.image.docker = Some("buildpack-deps:noble".to_string());
             let (persisted, store) = persisted_workflow_with_settings_and_target(
                 MINIMAL_DOT,
@@ -2125,7 +2130,7 @@ reasoning = false
             }),
             ..RunLayer::default()
         });
-        local_settings.run.environment.provider = EnvironmentProvider::Local;
+        local_settings.run.environment.provider = SandboxProviderKind::LOCAL;
         let (persisted, store) = persisted_workflow_with_settings_and_target(
             MINIMAL_DOT,
             &storage_root,
@@ -2155,7 +2160,7 @@ reasoning = false
             }),
             ..RunLayer::default()
         });
-        docker_settings.run.environment.provider = EnvironmentProvider::Docker;
+        docker_settings.run.environment.provider = SandboxProviderKind::DOCKER;
         let (persisted, store) =
             persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, docker_settings).await;
         let persisted = persisted_with_target_projection(
@@ -2186,7 +2191,7 @@ reasoning = false
         let environment_cwd = temp.path().join("environment-cwd");
         std::fs::create_dir_all(&environment_cwd).unwrap();
         let mut settings = settings_from_run_layer(RunLayer::default());
-        settings.run.environment.provider = EnvironmentProvider::Local;
+        settings.run.environment.provider = SandboxProviderKind::LOCAL;
         settings.run.environment.cwd = Some(environment_cwd.to_string_lossy().into_owned());
         let (persisted, store) =
             persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
@@ -2225,16 +2230,14 @@ reasoning = false
 
     #[tokio::test]
     async fn run_session_new_folder_target_rejects_clone_based_providers() {
-        for provider in [EnvironmentProvider::Docker, EnvironmentProvider::Daytona] {
+        for provider in [SandboxProviderKind::DOCKER, SandboxProviderKind::DAYTONA] {
             let temp = tempfile::tempdir().unwrap();
             let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
             let (_, canonical_text) = canonical_folder(&temp);
             let mut settings = settings_from_run_layer(RunLayer::default());
+            settings.run.environment.image.docker = (provider == SandboxProviderKind::DOCKER)
+                .then(|| "buildpack-deps:noble".to_string());
             settings.run.environment.provider = provider;
-            settings.run.environment.image.docker = match provider {
-                EnvironmentProvider::Docker => Some("buildpack-deps:noble".to_string()),
-                EnvironmentProvider::Daytona | EnvironmentProvider::Local => None,
-            };
             let (persisted, store) =
                 persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
             let persisted = persisted_with_target_projection(
@@ -2271,7 +2274,7 @@ reasoning = false
         let environment_cwd = temp.path().join("environment-cwd");
         std::fs::create_dir_all(&environment_cwd).unwrap();
         let mut settings = settings_from_run_layer(RunLayer::default());
-        settings.run.environment.provider = EnvironmentProvider::Local;
+        settings.run.environment.provider = SandboxProviderKind::LOCAL;
         settings.run.environment.cwd = Some(environment_cwd.to_string_lossy().into_owned());
         let (persisted, store) =
             persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;

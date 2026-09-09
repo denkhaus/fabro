@@ -51,19 +51,21 @@ pub enum SandboxSpec {
 impl SandboxSpec {
     pub fn provider(&self) -> SandboxProviderKind {
         match self {
-            Self::Local { .. } => SandboxProviderKind::Local,
+            Self::Local { .. } => SandboxProviderKind::LOCAL,
             #[cfg(feature = "docker")]
-            Self::Docker { .. } => SandboxProviderKind::Docker,
+            Self::Docker { .. } => SandboxProviderKind::DOCKER,
             #[cfg(feature = "daytona")]
-            Self::Daytona { .. } => SandboxProviderKind::Daytona,
+            Self::Daytona { .. } => SandboxProviderKind::DAYTONA,
         }
     }
 
     pub fn provider_name(&self) -> &'static str {
-        match self.provider() {
-            SandboxProviderKind::Local => "local",
-            SandboxProviderKind::Docker => "docker",
-            SandboxProviderKind::Daytona => "daytona",
+        match self {
+            Self::Local { .. } => "local",
+            #[cfg(feature = "docker")]
+            Self::Docker { .. } => "docker",
+            #[cfg(feature = "daytona")]
+            Self::Daytona { .. } => "daytona",
         }
     }
 

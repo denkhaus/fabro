@@ -12,6 +12,7 @@ use fabro_model::{Catalog, ProviderId};
 use fabro_redact::redact_string;
 use fabro_sandbox::{DockerSandboxProvider, daytona};
 use fabro_static::EnvVars;
+use fabro_types::SandboxProviderKind;
 use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::server::GithubIntegrationStrategy;
 use fabro_util::check_report::{CheckDetail, CheckResult, CheckSection, CheckStatus};
@@ -581,8 +582,7 @@ async fn check_docker_sandbox(state: &AppState) -> CheckResult {
             .server
             .sandbox
             .providers
-            .docker
-            .enabled,
+            .is_enabled(&SandboxProviderKind::DOCKER),
         || async {
             DockerSandboxProvider::check_daemon()
                 .await

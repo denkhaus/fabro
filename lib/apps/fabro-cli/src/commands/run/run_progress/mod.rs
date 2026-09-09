@@ -920,7 +920,7 @@ mod tests {
             stage_started("code", "Code"),
             Event::SandboxInitialized {
                 working_directory: "/home/daytona/workspace".into(),
-                provider:          SandboxProviderKind::Daytona,
+                provider:          SandboxProviderKind::DAYTONA,
                 id:                "daytona:sandbox-id".into(),
                 repo_cloned:       None,
                 clone_origin_url:  None,
@@ -1276,7 +1276,7 @@ mod tests {
         emit(&mut ui, stage_started("code", "Code"));
         emit(&mut ui, Event::SandboxInitialized {
             working_directory: "/home/daytona/workspace".into(),
-            provider:          SandboxProviderKind::Daytona,
+            provider:          SandboxProviderKind::DAYTONA,
             id:                "daytona:sandbox-id".into(),
             repo_cloned:       None,
             clone_origin_url:  None,

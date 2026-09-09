@@ -38,7 +38,7 @@ impl DockerSandboxProvider {
 #[async_trait]
 impl SandboxProvider for DockerSandboxProvider {
     fn kind(&self) -> SandboxProviderKind {
-        SandboxProviderKind::Docker
+        SandboxProviderKind::DOCKER
     }
 
     async fn list(&self) -> crate::Result<Vec<SandboxInfo>> {

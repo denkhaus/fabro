@@ -1682,7 +1682,7 @@ impl Sandbox for DaytonaSandbox {
                 let clone_selector = git_clone_selector(branch.as_deref(), pin.as_ref());
                 let clone_plan = git_retry::RetryPlan::clone_default(None);
                 let clone_result = git_retry::retry_git_operation(
-                    SandboxProviderKind::Daytona,
+                    SandboxProviderKind::DAYTONA,
                     "clone",
                     &clone_plan,
                     |_attempt| {

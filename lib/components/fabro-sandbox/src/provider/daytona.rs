@@ -52,7 +52,7 @@ impl DaytonaSandboxProvider {
 #[async_trait]
 impl SandboxProvider for DaytonaSandboxProvider {
     fn kind(&self) -> SandboxProviderKind {
-        SandboxProviderKind::Daytona
+        SandboxProviderKind::DAYTONA
     }
 
     async fn list(&self) -> crate::Result<Vec<SandboxInfo>> {

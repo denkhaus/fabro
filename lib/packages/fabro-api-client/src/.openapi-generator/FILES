@@ -134,7 +134,6 @@ models/environment-list-meta.ts
 models/environment-list-response.ts
 models/environment-network-mode.ts
 models/environment-network-settings.ts
-models/environment-provider.ts
 models/environment-resources-settings.ts
 models/environment-settings.ts
 models/environment.ts
@@ -434,7 +433,7 @@ models/sandbox-list-response.ts
 models/sandbox-network-policy-mode.ts
 models/sandbox-network-policy.ts
 models/sandbox-network.ts
-models/sandbox-provider-kind.ts
+models/sandbox-plugin-settings.ts
 models/sandbox-provider-lookup-error.ts
 models/sandbox-resources.ts
 models/sandbox-service-discovery-source.ts
@@ -460,7 +459,6 @@ models/server-listen-unix-settings.ts
 models/server-logging-settings.ts
 models/server-namespace.ts
 models/server-sandbox-provider-settings.ts
-models/server-sandbox-providers-settings.ts
 models/server-sandbox-settings.ts
 models/server-scheduler-settings.ts
 models/server-settings.ts

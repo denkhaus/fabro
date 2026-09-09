@@ -4,8 +4,8 @@ use anyhow::Result;
 #[cfg(any(feature = "docker", feature = "daytona"))]
 use chrono::{DateTime, Utc};
 use fabro_types::{
-    RunId, RunSandboxInstance, SandboxDetails, SandboxNetwork, SandboxProviderKind,
-    SandboxResources, SandboxState, SandboxTimestamps,
+    BundledProvider, RunId, RunSandboxInstance, SandboxDetails, SandboxNetwork, SandboxResources,
+    SandboxState, SandboxTimestamps,
 };
 
 /// Inspect the sandbox identified by `record` and return provider-neutral
@@ -25,19 +25,13 @@ pub async fn sandbox_details(
     daytona_organization_id: Option<String>,
     run_id: Option<RunId>,
 ) -> Result<SandboxDetails> {
-    match record.provider {
-        SandboxProviderKind::Local => Ok(local_details(record)),
+    match record.provider.bundled() {
+        Some(BundledProvider::Local) => Ok(local_details(record)),
         #[cfg(feature = "docker")]
-        SandboxProviderKind::Docker => docker::docker_details(record, run_id).await,
-        #[cfg(not(feature = "docker"))]
-        SandboxProviderKind::Docker => Err(anyhow::anyhow!(
-            "Sandbox provider '{}' has no details implementation",
-            record.provider
-        )),
+        Some(BundledProvider::Docker) => docker::docker_details(record, run_id).await,
         #[cfg(feature = "daytona")]
-        SandboxProviderKind::Daytona => daytona::daytona_details(record, daytona_api_key).await,
-        #[cfg(not(feature = "daytona"))]
-        SandboxProviderKind::Daytona => Err(anyhow::anyhow!(
+        Some(BundledProvider::Daytona) => daytona::daytona_details(record, daytona_api_key).await,
+        _ => Err(anyhow::anyhow!(
             "Sandbox provider '{}' has no details implementation",
             record.provider
         )),
@@ -99,7 +93,7 @@ pub(crate) mod docker {
     pub(crate) fn docker_info_from_inspect(inspect: &ContainerInspectResponse) -> SandboxInfo {
         let fields = docker_fields_from_inspect(inspect);
         SandboxInfo {
-            provider:          SandboxProviderKind::Docker,
+            provider:          SandboxProviderKind::DOCKER,
             id:                fields.id,
             display_name:      fields.display_name,
             state:             fields.state,
@@ -280,7 +274,7 @@ pub(crate) mod docker {
 
         fn record() -> RunSandboxInstance {
             RunSandboxInstance {
-                provider: SandboxProviderKind::Docker,
+                provider: SandboxProviderKind::DOCKER,
                 image:    None,
                 snapshot: None,
                 runtime:  RunSandboxRuntime {
@@ -531,7 +525,7 @@ pub(crate) mod daytona {
     pub(crate) fn daytona_info_from_sdk_sandbox(sandbox: &daytona_sdk::Sandbox) -> SandboxInfo {
         let fields = daytona_fields_from_sdk_sandbox(sandbox);
         SandboxInfo {
-            provider:          SandboxProviderKind::Daytona,
+            provider:          SandboxProviderKind::DAYTONA,
             id:                sandbox.id.clone(),
             display_name:      Some(sandbox.name.clone()).filter(|name| !name.is_empty()),
             state:             fields.state,
@@ -828,12 +822,14 @@ pub(crate) mod daytona {
 
 #[cfg(test)]
 mod tests {
+    use fabro_types::SandboxProviderKind;
+
     use super::*;
 
     #[test]
     fn local_details_returns_running_with_no_metadata() {
         let record = RunSandboxInstance {
-            provider: SandboxProviderKind::Local,
+            provider: SandboxProviderKind::LOCAL,
             image:    None,
             snapshot: None,
             runtime:  fabro_types::RunSandboxRuntime {
@@ -849,7 +845,7 @@ mod tests {
             },
         };
         let details = local_details(&record);
-        assert_eq!(details.sandbox.provider, SandboxProviderKind::Local);
+        assert_eq!(details.sandbox.provider, SandboxProviderKind::LOCAL);
         assert_eq!(details.state, SandboxState::Running);
         let runtime = &details.sandbox.runtime;
         assert_eq!(runtime.id, "local:01JNQVR7M0EJ5GKAT2SC4ERS1Z");

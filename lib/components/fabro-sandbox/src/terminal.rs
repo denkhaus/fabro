@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 #[cfg(feature = "daytona")]
 use fabro_static::EnvVars;
-use fabro_types::{RunId, RunSandboxInstance, SandboxProviderKind};
+use fabro_types::{BundledProvider, RunId, RunSandboxInstance};
 
 #[cfg(any(feature = "daytona", feature = "docker"))]
 use crate::Sandbox;
@@ -49,9 +49,9 @@ pub async fn open_terminal_for_run(
     #[cfg(not(any(feature = "daytona", feature = "docker")))]
     let _ = size;
 
-    match record.provider {
+    match record.provider.bundled() {
         #[cfg(feature = "daytona")]
-        SandboxProviderKind::Daytona => {
+        Some(BundledProvider::Daytona) => {
             let repo_cloned = runtime.repo_cloned.ok_or_else(|| {
                 crate::Error::message("Daytona run sandbox is missing clone metadata")
             })?;
@@ -78,11 +78,11 @@ pub async fn open_terminal_for_run(
             Ok(Box::new(session))
         }
         #[cfg(not(feature = "daytona"))]
-        SandboxProviderKind::Daytona => Err(crate::Error::message(
+        Some(BundledProvider::Daytona) => Err(crate::Error::message(
             "Daytona sandbox support is not enabled",
         )),
         #[cfg(feature = "docker")]
-        SandboxProviderKind::Docker => {
+        Some(BundledProvider::Docker) => {
             let repo_cloned = runtime.repo_cloned.ok_or_else(|| {
                 crate::Error::message("Docker run sandbox is missing clone metadata")
             })?;
@@ -100,12 +100,16 @@ pub async fn open_terminal_for_run(
             Ok(Box::new(session))
         }
         #[cfg(not(feature = "docker"))]
-        SandboxProviderKind::Docker => Err(crate::Error::message(
+        Some(BundledProvider::Docker) => Err(crate::Error::message(
             "Docker sandbox support is not enabled",
         )),
-        SandboxProviderKind::Local => Err(crate::Error::message(
+        Some(BundledProvider::Local) => Err(crate::Error::message(
             "Local sandboxes do not support embedded terminals",
         )),
+        None => Err(crate::Error::message(format!(
+            "Sandbox provider '{}' does not support embedded terminals yet",
+            record.provider
+        ))),
     }
 }
 

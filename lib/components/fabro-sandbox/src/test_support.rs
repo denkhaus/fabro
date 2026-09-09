@@ -771,7 +771,7 @@ mod fake_provider {
     #[async_trait]
     impl SandboxProvider for FakeSandboxProvider {
         fn kind(&self) -> SandboxProviderKind {
-            self.kind
+            self.kind.clone()
         }
 
         async fn list(&self) -> crate::Result<Vec<SandboxInfo>> {

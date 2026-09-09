@@ -26,7 +26,7 @@ const DOCKER_CP_IMAGE: &str = "buildpack-deps:noble";
 
 fn local_record(working_directory: &std::path::Path) -> RunSandboxInstance {
     RunSandboxInstance {
-        provider: SandboxProviderKind::Local,
+        provider: SandboxProviderKind::LOCAL,
         image:    None,
         snapshot: None,
         runtime:  RunSandboxRuntime {
@@ -137,7 +137,7 @@ async fn local_cp_creates_parent_dirs() {
 
 fn docker_record(container_id: &str) -> RunSandboxInstance {
     RunSandboxInstance {
-        provider: SandboxProviderKind::Docker,
+        provider: SandboxProviderKind::DOCKER,
         image:    None,
         snapshot: None,
         runtime:  RunSandboxRuntime {

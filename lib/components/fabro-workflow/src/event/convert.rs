@@ -1145,7 +1145,7 @@ fn event_body_from_event(event: &Event) -> EventBody {
             primary_repo_link,
         } => EventBody::SandboxInitialized(fabro_types::SandboxInitializedProps {
             working_directory: working_directory.clone(),
-            provider:          *provider,
+            provider:          provider.clone(),
             id:                id.clone(),
             image:             image.clone(),
             snapshot:          snapshot.clone(),

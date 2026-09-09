@@ -1087,9 +1087,9 @@ mod runs {
 
     use fabro_api::types::*;
     use fabro_types::settings::run::{
-        EnvironmentImageSettings, EnvironmentLifecycleSettings, EnvironmentProvider,
-        EnvironmentResourcesSettings, EnvironmentSettings, PreparedStep, PreparedStepRun,
-        RunEnvironmentSettings, RunGoal, RunModelSettings, RunNamespace, RunPrepareSettings,
+        EnvironmentImageSettings, EnvironmentLifecycleSettings, EnvironmentResourcesSettings,
+        EnvironmentSettings, PreparedStep, PreparedStepRun, RunEnvironmentSettings, RunGoal,
+        RunModelSettings, RunNamespace, RunPrepareSettings,
     };
     use fabro_types::settings::{InterpString, ProjectNamespace, WorkflowNamespace};
     use fabro_types::{
@@ -1793,7 +1793,7 @@ mod runs {
 
     pub(super) fn settings() -> serde_json::Value {
         let environment = EnvironmentSettings {
-            provider: EnvironmentProvider::Daytona,
+            provider: SandboxProviderKind::DAYTONA,
             image: EnvironmentImageSettings {
                 docker:     Some("api-server-dev".into()),
                 dockerfile: None,

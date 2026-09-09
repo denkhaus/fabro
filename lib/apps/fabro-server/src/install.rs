@@ -31,10 +31,9 @@ use fabro_model::{Catalog, ProviderId};
 use fabro_sandbox::daytona;
 use fabro_static::EnvVars;
 use fabro_store::ArtifactStore;
-use fabro_types::ServerSettings;
-use fabro_types::settings::run::EnvironmentProvider;
 use fabro_types::settings::server::ObjectStoreSettings;
 use fabro_types::settings::{is_wildcard_host, validate_public_url_with_label};
+use fabro_types::{SandboxProviderKind, ServerSettings};
 use fabro_util::version::FABRO_VERSION;
 use fabro_util::{Home, session_secret};
 use fabro_vault::SecretType as VaultSecretType;
@@ -466,10 +465,10 @@ impl InstallSandboxState {
         }
     }
 
-    fn to_environment_provider(&self) -> EnvironmentProvider {
+    fn to_environment_provider(&self) -> SandboxProviderKind {
         match &self.provider {
-            InstallSandboxProviderState::Docker => EnvironmentProvider::Docker,
-            InstallSandboxProviderState::Daytona { .. } => EnvironmentProvider::Daytona,
+            InstallSandboxProviderState::Docker => SandboxProviderKind::DOCKER,
+            InstallSandboxProviderState::Daytona { .. } => SandboxProviderKind::DAYTONA,
         }
     }
 }

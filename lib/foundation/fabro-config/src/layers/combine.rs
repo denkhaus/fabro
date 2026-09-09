@@ -3,9 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use fabro_model::{AgentProfileKind, BillingPolicy, CodecKind, ProviderAuthConfig};
 use fabro_types::PermissionLevel;
 use fabro_types::settings::cli::{CliAuthStrategy, OutputFormat, OutputVerbosity};
-use fabro_types::settings::run::{
-    ApprovalMode, EnvironmentNetworkMode, EnvironmentProvider, MergeStrategy, RunMode,
-};
+use fabro_types::settings::run::{ApprovalMode, EnvironmentNetworkMode, MergeStrategy, RunMode};
 use fabro_types::settings::server::{
     GithubIntegrationStrategy, LogDestination, ObjectStoreProvider, ServerAuthMethod,
     WebhookStrategy,
@@ -116,6 +114,12 @@ impl Combine for Option<BTreeMap<String, CostRates>> {
     }
 }
 
+impl Combine for Option<BTreeMap<String, String>> {
+    fn combine(self, other: Self) -> Self {
+        self.or(other)
+    }
+}
+
 impl Combine for Option<HashMap<String, toml::Value>> {
     fn combine(self, other: Self) -> Self {
         self.or(other)
@@ -145,7 +149,6 @@ impl_combine_self!(
     CliLoggingLayer,
     CliTargetLayer,
     EnvironmentNetworkMode,
-    EnvironmentProvider,
     EnvironmentDockerfileLayer,
     InterviewProviderLayer,
     NotificationProviderLayer,

@@ -2336,15 +2336,15 @@ fn build_sandbox_provider_registry(
     let provider_settings = &server_settings.server.sandbox.providers;
     let mut providers: Vec<Arc<dyn SandboxProvider>> = Vec::new();
 
-    if provider_settings.local.enabled {
+    if provider_settings.is_enabled(&SandboxProviderKind::LOCAL) {
         providers.push(Arc::new(LocalSandboxProvider));
     }
 
-    if provider_settings.docker.enabled {
+    if provider_settings.is_enabled(&SandboxProviderKind::DOCKER) {
         providers.push(Arc::new(DockerSandboxProvider::new()));
     }
 
-    if provider_settings.daytona.enabled && daytona_api_key.is_some() {
+    if provider_settings.is_enabled(&SandboxProviderKind::DAYTONA) && daytona_api_key.is_some() {
         let api_url = env_lookup(EnvVars::DAYTONA_API_URL)
             .or_else(|| env_lookup(EnvVars::DAYTONA_SERVER_URL));
         let organization_id = env_lookup(EnvVars::DAYTONA_ORGANIZATION_ID);
@@ -2432,8 +2432,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         .server
         .sandbox
         .providers
-        .local
-        .enabled;
+        .is_enabled(&SandboxProviderKind::LOCAL);
     let environment_pool = db_pool.clone();
     let environment_store = Arc::new(
         load_store_blocking("environment store", move || async move {
@@ -3291,7 +3290,8 @@ async fn reject_run_if_sandbox_provider_disabled(
     settings: &RunNamespace,
 ) -> bool {
     let provider = run_manifest::effective_sandbox_provider(settings);
-    let Some(error) = run_manifest::sandbox_provider_policy_error(server_settings, provider) else {
+    let Some(error) = run_manifest::sandbox_provider_policy_error(server_settings, &provider)
+    else {
         return false;
     };
     tracing::warn!(run_id = %run_id, error = %error, "Sandbox provider disabled by server policy");
@@ -4081,7 +4081,7 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
         let run_spec = persisted.run_spec();
         let settings = &run_spec.settings.run;
         let clone_can_use_github_credentials = settings.execution.mode != RunMode::DryRun
-            && settings.environment.provider.is_clone_based()
+            && settings.environment.provider.clones_workspace()
             && run_spec
                 .repo_origin_url()
                 .is_some_and(|origin| !origin.trim().is_empty());
