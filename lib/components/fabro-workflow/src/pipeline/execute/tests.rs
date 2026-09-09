@@ -40,10 +40,12 @@ use crate::records::RunSpec;
 use crate::run_options::{GitCheckpointOptions, LifecycleOptions, RunOptions, SetupCommand};
 use crate::test_support::run_graph;
 
-fn local_env() -> Arc<dyn Sandbox> {
-    Arc::new(fabro_agent::LocalSandbox::new(
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-    ))
+async fn local_env() -> Arc<dyn Sandbox> {
+    Arc::new(
+        fabro_agent::local_sandbox(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+            .await
+            .unwrap(),
+    )
 }
 
 fn simple_graph() -> Graph {
@@ -874,7 +876,7 @@ async fn execute_runs_simple_workflow() {
     let outcome = run_graph(
         make_registry(),
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &simple_graph(),
         &test_run_options(dir.path(), "test-run"),
     )
@@ -972,7 +974,7 @@ async fn execute_emits_events() {
     run_graph(
         make_registry(),
         Arc::new(emitter),
-        local_env(),
+        local_env().await,
         &simple_graph(),
         &test_run_options(dir.path(), "test-run"),
     )
@@ -988,7 +990,7 @@ async fn execute_error_when_no_start_node() {
     let result = run_graph(
         make_registry(),
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &Graph::new("empty"),
         &test_run_options(dir.path(), "test-run"),
     )
@@ -1264,7 +1266,7 @@ async fn execute_cancelled_mid_run() {
     let result = run_graph(
         registry,
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &g,
         &run_options,
     )
@@ -1313,7 +1315,7 @@ async fn max_node_visits_errors_on_cycle() {
     let result = run_graph(
         make_registry(),
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &g,
         &test_run_options(dir.path(), "test-run"),
     )
@@ -1348,7 +1350,7 @@ async fn panic_handler_returns_panic_message() {
     let result = run_graph(
         registry,
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &g,
         &test_run_options(dir.path(), "test-run"),
     )
@@ -1369,7 +1371,7 @@ async fn loop_circuit_breaker_aborts_on_repeated_failure() {
     let result = run_graph(
         registry,
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &looping_fail_graph(),
         &test_run_options(dir.path(), "test-run"),
     )
@@ -1418,7 +1420,7 @@ async fn stall_watchdog_triggers_on_hung_handler() {
     let result = run_graph(
         registry,
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &g,
         &test_run_options(dir.path(), "test-run"),
     )
@@ -1477,7 +1479,7 @@ async fn stall_watchdog_suspends_while_run_waits_for_human_input() {
     let outcome = run_graph(
         registry,
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &graph,
         &test_run_options(dir.path(), "test-run"),
     )
@@ -1505,7 +1507,7 @@ async fn node_timeout_excludes_human_input_wait() {
     let outcome = run_graph(
         registry,
         test_emitter_arc("test-run"),
-        local_env(),
+        local_env().await,
         &graph,
         &test_run_options(dir.path(), "test-run"),
     )
@@ -1570,7 +1572,7 @@ async fn retry_emits_stage_started_per_attempt() {
     let outcome = run_graph(
         registry,
         Arc::new(emitter),
-        local_env(),
+        local_env().await,
         &g,
         &test_run_options(dir.path(), "retry-events-test"),
     )
@@ -1610,7 +1612,7 @@ async fn run_with_lifecycle_emits_initialize_and_setup_events() {
     let outcome = run_with_lifecycle(
         make_registry(),
         Arc::new(emitter),
-        local_env(),
+        local_env().await,
         &simple_graph(),
         test_run_options(dir.path(), "order-test"),
         test_lifecycle(vec!["echo ok"]),

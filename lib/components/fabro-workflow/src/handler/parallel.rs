@@ -1828,9 +1828,11 @@ mod tests {
         services.run = services
             .run
             .with_run_store(run_store.into())
-            .with_sandbox(Arc::new(fabro_agent::LocalSandbox::new(
-                run_dir.path().to_path_buf(),
-            )));
+            .with_sandbox(Arc::new(
+                fabro_agent::local_sandbox(run_dir.path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ));
         let (node, graph) = for_each_graph("context.items", 2);
         let context = test_context();
         let oversized_payload = "x".repeat(65 * 1024);
@@ -2161,9 +2163,11 @@ mod tests {
         services.run = services
             .run
             .with_run_store(run_store.into())
-            .with_sandbox(Arc::new(fabro_agent::LocalSandbox::new(
-                sandbox_dir.path().to_path_buf(),
-            )));
+            .with_sandbox(Arc::new(
+                fabro_agent::local_sandbox(sandbox_dir.path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ));
         let (node, graph) = for_each_graph("items", 1);
         let context = test_context();
         context.set("items", serde_json::json!(format_blob_ref(&blob_hash)));

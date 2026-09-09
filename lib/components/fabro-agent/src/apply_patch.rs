@@ -509,7 +509,7 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use super::*;
-    use crate::LocalSandbox;
+    use crate::local_sandbox;
     use crate::test_support::MutableMockSandbox;
     use crate::tool_registry::ToolContext;
 
@@ -906,7 +906,7 @@ mod tests {
         fs::write(&path, "fn hello() {\n    println!(\"old\");\n}\n")
             .await
             .unwrap();
-        let env = LocalSandbox::new(dir.path().to_path_buf());
+        let env = local_sandbox(dir.path().to_path_buf()).await.unwrap();
         let patch = "\
 *** Begin Patch
 *** Update File: src/lib.rs
@@ -1044,7 +1044,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("insert_only.txt");
         fs::write(&path, "alpha\nomega\n").await.unwrap();
-        let env = LocalSandbox::new(dir.path().to_path_buf());
+        let env = local_sandbox(dir.path().to_path_buf()).await.unwrap();
         let patch = "\
 *** Begin Patch
 *** Update File: insert_only.txt

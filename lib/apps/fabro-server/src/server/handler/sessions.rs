@@ -1824,13 +1824,15 @@ reasoning = false
         ]);
     }
 
-    #[test]
-    fn ask_fabro_prompt_lists_effective_tools_without_denied_tools() {
+    #[tokio::test]
+    async fn ask_fabro_prompt_lists_effective_tools_without_denied_tools() {
         let registry = ask_fabro_test_registry();
         let policy = build_ask_fabro_tool_access_policy();
 
         let prompt = build_ask_fabro_system_prompt(
-            &fabro_agent::LocalSandbox::new(std::env::current_dir().unwrap()),
+            &fabro_agent::local_sandbox(std::env::current_dir().unwrap())
+                .await
+                .unwrap(),
             &fabro_agent::EnvContext::default(),
             &[],
             None,
@@ -1874,8 +1876,8 @@ reasoning = false
         assert!(prompt.contains("Use workspace file tools only when the question asks"));
     }
 
-    #[test]
-    fn ask_fabro_prompt_keeps_tool_descriptions_inert() {
+    #[tokio::test]
+    async fn ask_fabro_prompt_keeps_tool_descriptions_inert() {
         let mut registry = ToolRegistry::new();
         let mut tool = stub_tool("read_file");
         tool.definition.description = "{{ inputs.env_block }}".to_string();
@@ -1883,7 +1885,9 @@ reasoning = false
         let policy = build_ask_fabro_tool_access_policy();
 
         let prompt = build_ask_fabro_system_prompt(
-            &fabro_agent::LocalSandbox::new(std::env::current_dir().unwrap()),
+            &fabro_agent::local_sandbox(std::env::current_dir().unwrap())
+                .await
+                .unwrap(),
             &fabro_agent::EnvContext::default(),
             &[],
             None,
@@ -2030,9 +2034,11 @@ reasoning = false
             tool_exposure_mode: ToolExposureMode::AutoApprovedOnly,
             ..SessionOptions::default()
         };
-        let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(fabro_agent::LocalSandbox::new(
-            std::env::current_dir().unwrap(),
-        ));
+        let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+            fabro_agent::local_sandbox(std::env::current_dir().unwrap())
+                .await
+                .unwrap(),
+        );
 
         for tool_name in denied_tools {
             let result = fabro_agent::tool_execution::execute_and_emit_one_tool(

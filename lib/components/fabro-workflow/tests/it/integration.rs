@@ -83,10 +83,14 @@ fn catalog_with_provider_base_url(provider: &str, base_url: &str) -> Arc<Catalog
     )
 }
 
-fn local_env() -> Arc<dyn fabro_agent::Sandbox> {
-    Arc::new(fabro_agent::LocalSandbox::new(
-        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
-    ))
+async fn local_env() -> Arc<dyn fabro_agent::Sandbox> {
+    Arc::new(
+        fabro_agent::local_sandbox(
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        )
+        .await
+        .expect("local sandbox should be created"),
+    )
 }
 
 fn test_run_id(label: &str) -> RunId {
@@ -443,7 +447,7 @@ async fn end_to_end_linear_pipeline() {
     let engine = WorkflowRunner::new(
         make_linear_registry(),
         Arc::new(Emitter::default()),
-        local_env(),
+        local_env().await,
     );
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
@@ -577,7 +581,7 @@ async fn end_to_end_branching_pipeline() {
     registry.register("agent", Box::new(AgentHandler::new(None)));
     registry.register("conditional", Box::new(ConditionalHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -700,7 +704,7 @@ async fn end_to_end_human_gate_pipeline() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("human", Box::new(HumanHandler::new(interviewer)));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -799,7 +803,7 @@ async fn human_gate_interrupted_input_fails_closed_without_fail_route() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("human", Box::new(HumanHandler::new(interviewer)));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -943,7 +947,7 @@ async fn human_gate_timeout_routes_to_default_choice_when_unanswered() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("human", Box::new(HumanHandler::new(interviewer)));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(emitter), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(emitter), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -1058,7 +1062,7 @@ async fn human_gate_interrupted_input_routes_via_outcome_fail_condition() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("human", Box::new(HumanHandler::new(interviewer)));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -1182,7 +1186,7 @@ async fn run_on_failure(graph: &Graph, emitter: Emitter) -> OnFailureRun {
     let engine = WorkflowRunner::new(
         on_failure_registry(Arc::clone(&visits)),
         Arc::new(emitter),
-        local_env(),
+        local_env().await,
     );
     let run_dir = tempfile::tempdir().expect("temporary run dir should be created");
     let (outcome, state) = engine
@@ -1492,7 +1496,7 @@ async fn goal_gate_routes_to_retry_target_on_failure() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("always_fail", Box::new(AlwaysFailHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -1615,7 +1619,7 @@ async fn goal_gate_routes_to_retry_target_when_present() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -2030,7 +2034,7 @@ async fn retry_on_failure_then_succeed() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -2104,7 +2108,7 @@ async fn pipeline_with_many_nodes() {
     let engine = WorkflowRunner::new(
         make_linear_registry(),
         Arc::new(Emitter::default()),
-        local_env(),
+        local_env().await,
     );
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
@@ -2371,7 +2375,7 @@ async fn command_schema_validation_failure_does_not_consume_retries() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
     registry.register("command", Box::new(CommandHandler));
-    let engine = WorkflowRunner::new(registry, Arc::new(emitter), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(emitter), local_env().await);
     let mut run_options = make_run_options(dir.path());
     run_options.run_id = test_run_id("command-schema-no-retry");
 
@@ -2514,7 +2518,7 @@ async fn smoke_test_with_mock_codergen_backend() {
     );
     registry.register("conditional", Box::new(ConditionalHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -2755,7 +2759,7 @@ reasoning = false
     registry.register("exit", Box::new(ExitHandler));
 
     let dir = tempfile::tempdir().unwrap();
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -2891,7 +2895,7 @@ base_url = "{}"
     });
 
     let dir = tempfile::tempdir().unwrap();
-    let engine = WorkflowRunner::new(registry, emitter, local_env());
+    let engine = WorkflowRunner::new(registry, emitter, local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -2987,7 +2991,7 @@ async fn end_to_end_parallel_fan_out_fan_in() {
         Box::new(FanInHandler::new(Some(Box::new(MockCodergenBackend)))),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -3103,7 +3107,7 @@ async fn resume_from_checkpoint_completes_pipeline() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -3205,7 +3209,7 @@ async fn resume_from_checkpoint_preserves_goal_gate_outcomes() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -3247,7 +3251,7 @@ async fn graph_goal_in_context() {
     let engine = WorkflowRunner::new(
         make_linear_registry(),
         Arc::new(Emitter::default()),
-        local_env(),
+        local_env().await,
     );
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
@@ -3290,7 +3294,7 @@ async fn event_streaming_lifecycle() {
     let dir = tempfile::tempdir().unwrap();
     let emitter = Emitter::default();
     let events = collect_events(&emitter);
-    let engine = WorkflowRunner::new(make_linear_registry(), Arc::new(emitter), local_env());
+    let engine = WorkflowRunner::new(make_linear_registry(), Arc::new(emitter), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -3369,7 +3373,7 @@ async fn context_flow_between_stages() {
     let engine = WorkflowRunner::new(
         make_linear_registry(),
         Arc::new(Emitter::default()),
-        local_env(),
+        local_env().await,
     );
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
@@ -3428,7 +3432,7 @@ async fn tool_handler_e2e() {
     let engine = WorkflowRunner::new(
         make_full_registry(interviewer),
         Arc::new(Emitter::default()),
-        local_env(),
+        local_env().await,
     );
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
@@ -3499,7 +3503,7 @@ async fn auto_approve_interviewer_e2e() {
     let engine = WorkflowRunner::new(
         make_full_registry(interviewer),
         Arc::new(Emitter::default()),
-        local_env(),
+        local_env().await,
     );
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
@@ -3539,7 +3543,7 @@ async fn codergen_without_backend_simulated() {
     let engine = WorkflowRunner::new(
         make_linear_registry(),
         Arc::new(Emitter::default()),
-        local_env(),
+        local_env().await,
     );
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
@@ -3648,7 +3652,7 @@ async fn branching_loop_back_on_failure() {
             call_count: std::sync::atomic::AtomicU32::new(0),
         }),
     );
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -3734,7 +3738,7 @@ async fn human_gate_loops_back() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
     registry.register("human", Box::new(HumanHandler::new(interviewer)));
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -3796,7 +3800,7 @@ async fn scenario_ship_a_feature() {
     let engine = WorkflowRunner::new(
         make_full_registry(interviewer),
         Arc::new(emitter),
-        local_env(),
+        local_env().await,
     );
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
@@ -3885,7 +3889,7 @@ async fn scenario_parallel_expert_review() {
     );
     registry.register("human", Box::new(HumanHandler::new(interviewer)));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -3975,7 +3979,7 @@ async fn scenario_node_retries_on_retry_status() {
             call_count: std::sync::atomic::AtomicU32::new(0),
         }),
     );
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -4043,7 +4047,7 @@ async fn scenario_loop_restart_resets_context() {
             call_count: Arc::clone(&call_count),
         }),
     );
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -4111,7 +4115,7 @@ async fn scenario_bug_triage_router() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
     registry.register("conditional", Box::new(ConditionalHandler));
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -4176,7 +4180,7 @@ async fn scenario_crash_recovery() {
     let mut registry = HandlerRegistry::new(Box::new(StartHandler));
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -4289,7 +4293,7 @@ async fn manager_loop_stop_condition_satisfied_e2e() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("done_setter", Box::new(DoneSetterHandler));
     registry.register("stack.manager_loop", Box::new(SubWorkflowHandler));
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -4374,7 +4378,7 @@ async fn manager_loop_max_cycles_exceeded_e2e() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
     registry.register("stack.manager_loop", Box::new(SubWorkflowHandler));
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -4520,7 +4524,7 @@ async fn conditional_branching_success_fail_paths() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
     registry.register("always_fail", Box::new(AlwaysFailHandler));
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -4579,7 +4583,7 @@ async fn edge_selection_condition_match_wins_over_weight() {
     let mut registry = HandlerRegistry::new(Box::new(StartHandler));
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -4632,7 +4636,7 @@ async fn edge_selection_weight_breaks_ties() {
     let mut registry = HandlerRegistry::new(Box::new(StartHandler));
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -4677,7 +4681,7 @@ async fn edge_selection_lexical_tiebreak() {
     let mut registry = HandlerRegistry::new(Box::new(StartHandler));
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -4741,7 +4745,7 @@ async fn context_updates_visible_across_nodes() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("conditional", Box::new(ConditionalHandler));
     registry.register("context_setter", Box::new(ContextSetterHandler));
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -4790,7 +4794,7 @@ async fn stylesheet_applies_model_override() {
     let engine = WorkflowRunner::new(
         make_linear_registry(),
         Arc::new(Emitter::default()),
-        local_env(),
+        local_env().await,
     );
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
@@ -4847,7 +4851,7 @@ async fn custom_handler_registration_and_execution() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
     registry.register("my_custom", Box::new(CustomHandler));
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -4925,7 +4929,7 @@ async fn integration_smoke_plan_implement_review_done() {
     let engine = WorkflowRunner::new(
         make_full_registry(interviewer),
         Arc::new(emitter),
-        local_env(),
+        local_env().await,
     );
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
@@ -5018,7 +5022,7 @@ async fn manager_loop_runs_child_engine_e2e() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("stack.manager_loop", Box::new(SubWorkflowHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -5155,7 +5159,7 @@ async fn manager_loop_context_flows_e2e() {
     registry.register("setter", Box::new(SetterHandler));
     registry.register("stack.manager_loop", Box::new(SubWorkflowHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -5234,7 +5238,7 @@ async fn manager_loop_child_workflow_e2e() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("stack.manager_loop", Box::new(SubWorkflowHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -5349,7 +5353,7 @@ async fn import_e2e_through_engine() {
     let engine = WorkflowRunner::new(
         make_linear_registry(),
         Arc::new(Emitter::default()),
-        local_env(),
+        local_env().await,
     );
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
@@ -5529,7 +5533,7 @@ async fn fidelity_default_is_compact() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -5586,7 +5590,7 @@ async fn fidelity_graph_default_applied() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -5639,7 +5643,7 @@ async fn fidelity_node_overrides_graph_default() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -5698,7 +5702,7 @@ async fn fidelity_edge_overrides_node_and_graph() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -5747,7 +5751,7 @@ async fn fidelity_full_produces_empty_preamble() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -5806,7 +5810,7 @@ async fn fidelity_truncate_preamble_minimal() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -5878,7 +5882,7 @@ async fn fidelity_summary_low_mode() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -5945,7 +5949,7 @@ async fn fidelity_summary_medium_mode() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -6012,7 +6016,7 @@ async fn fidelity_summary_high_mode() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -6072,7 +6076,7 @@ async fn fidelity_full_sets_thread_id_in_context() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -6143,7 +6147,7 @@ async fn fidelity_full_nodes_share_thread_id() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -6224,7 +6228,7 @@ async fn fidelity_resume_degrades_full_to_summary_high() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -6321,7 +6325,7 @@ async fn fidelity_resume_degrade_only_affects_first_hop() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -6405,7 +6409,7 @@ async fn fidelity_resume_no_degrade_when_not_full() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -6447,7 +6451,7 @@ async fn fidelity_stored_in_checkpoint_context() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -6543,7 +6547,7 @@ async fn fidelity_precedence_multi_node_pipeline() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -6611,7 +6615,7 @@ async fn fidelity_compact_preamble_includes_completed_stages_and_context() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -6686,7 +6690,11 @@ async fn fidelity_summary_low_excludes_context_values_in_pipeline() {
             captures: captures_low.clone(),
         }),
     );
-    let engine_low = WorkflowRunner::new(registry_low, Arc::new(Emitter::default()), local_env());
+    let engine_low = WorkflowRunner::new(
+        registry_low,
+        Arc::new(Emitter::default()),
+        local_env().await,
+    );
     let run_options_low = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir_low.path().to_path_buf(),
@@ -6753,7 +6761,11 @@ async fn fidelity_summary_low_excludes_context_values_in_pipeline() {
             captures: captures_med.clone(),
         }),
     );
-    let engine_med = WorkflowRunner::new(registry_med, Arc::new(Emitter::default()), local_env());
+    let engine_med = WorkflowRunner::new(
+        registry_med,
+        Arc::new(Emitter::default()),
+        local_env().await,
+    );
     let run_options_med = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir_med.path().to_path_buf(),
@@ -6825,7 +6837,7 @@ async fn fidelity_thread_id_fallback_to_previous_node_in_pipeline() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -6879,7 +6891,7 @@ async fn fidelity_thread_id_from_node_class_in_pipeline() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -6936,7 +6948,7 @@ async fn fidelity_edge_thread_id_override_in_pipeline() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -6994,7 +7006,7 @@ async fn fidelity_full_without_explicit_thread_id_uses_previous_node() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -7062,7 +7074,7 @@ async fn fidelity_from_parsed_dot_pipeline() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -7111,7 +7123,7 @@ async fn fidelity_checkpoint_roundtrip_preserves_fidelity() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -7187,7 +7199,7 @@ async fn fidelity_node_thread_id_overrides_edge_thread_id_in_pipeline() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -7274,7 +7286,7 @@ async fn fidelity_resume_preserves_context_values_across_checkpoint() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -7505,7 +7517,7 @@ mod real_llm {
             )))),
         );
 
-        let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+        let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
         let run_options = RunOptions {
             settings:         WorkflowSettings::default(),
             run_dir:          dir.path().to_path_buf(),
@@ -7681,7 +7693,7 @@ mod real_llm {
         );
 
         let dir = tempfile::tempdir().unwrap();
-        let engine = WorkflowRunner::new(registry, Arc::new(emitter), local_env());
+        let engine = WorkflowRunner::new(registry, Arc::new(emitter), local_env().await);
         let run_options = RunOptions {
             settings:         WorkflowSettings::default(),
             run_dir:          dir.path().to_path_buf(),
@@ -7804,7 +7816,7 @@ mod real_llm {
             Box::new(AgentHandler::new(Some(make_llm_backend(client)))),
         );
 
-        let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+        let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
         let run_options = RunOptions {
             settings:         WorkflowSettings::default(),
             run_dir:          dir.path().to_path_buf(),
@@ -7937,7 +7949,7 @@ mod real_llm {
         );
         registry.register("human", Box::new(HumanHandler::new(interviewer)));
 
-        let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+        let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
         let run_options = RunOptions {
             settings:         WorkflowSettings::default(),
             run_dir:          dir.path().to_path_buf(),
@@ -8038,7 +8050,7 @@ mod real_llm {
             ))),
         );
 
-        let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+        let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
         let run_options = RunOptions {
             settings:         WorkflowSettings::default(),
             run_dir:          dir.path().to_path_buf(),
@@ -8170,7 +8182,7 @@ async fn workflow_run_with_vault_only_openai_codex_builds_pr_body() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -8287,7 +8299,7 @@ async fn human_gate_freeform_only_routes_text() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("human", Box::new(HumanHandler::new(interviewer)));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -8421,7 +8433,7 @@ async fn human_gate_freeform_with_fixed_choice_match() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("human", Box::new(HumanHandler::new(interviewer)));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -8541,7 +8553,7 @@ async fn human_gate_freeform_fallback_on_unmatched_text() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("human", Box::new(HumanHandler::new(interviewer)));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -8672,7 +8684,7 @@ async fn human_gate_freeform_sets_allow_freeform_on_question() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("human", Box::new(HumanHandler::new(interviewer)));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -8781,7 +8793,7 @@ async fn human_gate_without_freeform_sets_allow_freeform_false() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("human", Box::new(HumanHandler::new(interviewer)));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -9031,7 +9043,7 @@ impl HookTestRunner {
         run_graph_with_hooks(
             make_linear_registry(),
             Arc::clone(&self.emitter),
-            local_env(),
+            local_env().await,
             graph,
             run_options,
             Arc::clone(&self.hook_runner),
@@ -9049,7 +9061,7 @@ impl HookTestRunner {
             fabro_workflow::test_support::run_graph_with_hooks_and_state(
                 make_linear_registry(),
                 Arc::clone(&self.emitter),
-                local_env(),
+                local_env().await,
                 graph,
                 run_options,
                 Arc::clone(&self.hook_runner),
@@ -10031,7 +10043,7 @@ async fn run_fidelity_prompt_pipeline(fidelity: &str) -> String {
         Box::new(AgentHandler::new(Some(Box::new(MockCodergenBackend)))),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -10150,7 +10162,7 @@ async fn run_parallel_fidelity_capture(
     );
 
     let dir = tempfile::tempdir().expect("parallel fidelity run directory should be created");
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -10403,7 +10415,7 @@ async fn large_context_values_are_offloaded_to_artifact_store() {
 
     let emitter = Emitter::default();
     let events = collect_events(&emitter);
-    let engine = WorkflowRunner::new(registry, Arc::new(emitter), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(emitter), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -10699,7 +10711,7 @@ async fn downstream_local_execution_resolves_response_blob_refs_as_text() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -10911,7 +10923,7 @@ async fn node_dir_uses_visit_count_on_revisit() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -11071,8 +11083,11 @@ async fn git_checkpoint_host_emits_events_and_diff_patch() {
     let emitter = Emitter::default();
     let events = collect_events(&emitter);
 
-    let env: Arc<dyn fabro_agent::Sandbox> =
-        Arc::new(fabro_agent::LocalSandbox::new(worktree_path.clone()));
+    let env: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+        fabro_agent::local_sandbox(worktree_path.clone())
+            .await
+            .expect("local sandbox should be created"),
+    );
     let mut registry = HandlerRegistry::new(Box::new(ContextSetterHandler));
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
@@ -11236,8 +11251,11 @@ async fn git_checkpoint_host_skips_metadata_branch_without_writer_prereqs() {
     std::fs::write(run_dir.path().join("graph.fabro"), "digraph {}").unwrap();
     let emitter = Emitter::default();
 
-    let env: Arc<dyn fabro_agent::Sandbox> =
-        Arc::new(fabro_agent::LocalSandbox::new(worktree_path.clone()));
+    let env: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+        fabro_agent::local_sandbox(worktree_path.clone())
+            .await
+            .expect("local sandbox should be created"),
+    );
     let mut registry = HandlerRegistry::new(Box::new(ContextSetterHandler));
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
@@ -11416,8 +11434,11 @@ async fn parallel_shared_checkout_host_e2e() {
     let emitter = Emitter::default();
     let events = collect_events(&emitter);
 
-    let env: Arc<dyn fabro_agent::Sandbox> =
-        Arc::new(fabro_agent::LocalSandbox::new(worktree_path.clone()));
+    let env: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+        fabro_agent::local_sandbox(worktree_path.clone())
+            .await
+            .expect("local sandbox should be created"),
+    );
 
     let mut registry = HandlerRegistry::new(Box::new(FileWriterHandler));
     registry.register("start", Box::new(StartHandler));
@@ -11671,8 +11692,11 @@ async fn git_checkpoint_host_skips_empty_diff_patch() {
     let emitter = Emitter::default();
     let _events = collect_events(&emitter);
 
-    let env: Arc<dyn fabro_agent::Sandbox> =
-        Arc::new(fabro_agent::LocalSandbox::new(worktree_path.clone()));
+    let env: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+        fabro_agent::local_sandbox(worktree_path.clone())
+            .await
+            .expect("local sandbox should be created"),
+    );
     let mut registry = HandlerRegistry::new(Box::new(ContextSetterHandler));
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
@@ -12048,7 +12072,7 @@ async fn e2e_circuit_breaker_deterministic_self_loop() {
         )),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -12095,7 +12119,7 @@ async fn e2e_circuit_breaker_custom_limit() {
         Box::new(DeterministicFailHandler::new("same error every time")),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -12135,7 +12159,7 @@ async fn e2e_circuit_breaker_ignores_transient_failures() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("test_handler", Box::new(TransientInfraFailHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -12182,7 +12206,7 @@ async fn e2e_circuit_breaker_different_reasons_separate_counters() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -12222,7 +12246,7 @@ async fn e2e_circuit_breaker_loop_restart() {
         Box::new(DeterministicFailHandler::new("verify step failed")),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -12285,7 +12309,7 @@ async fn e2e_failure_signature_persisted_in_context() {
         Box::new(DeterministicFailHandler::new("test assertion failed")),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -12352,7 +12376,7 @@ async fn e2e_failure_signature_hint_overrides_reason_in_context() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("hint_handler", Box::new(SignatureHintHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -12413,7 +12437,7 @@ async fn e2e_signature_maps_persist_in_checkpoint() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -12544,7 +12568,7 @@ async fn e2e_circuit_breaker_emits_events_before_abort() {
         Box::new(DeterministicFailHandler::new("assertion failed")),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(emitter), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(emitter), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -12611,7 +12635,7 @@ async fn e2e_circuit_breaker_does_not_fire_below_limit() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -12710,7 +12734,7 @@ async fn e2e_circuit_breaker_multi_stage_impl_verify_cycle() {
         )),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -12808,7 +12832,7 @@ async fn e2e_loop_restart_blocked_for_deterministic_failure() {
         Box::new(ClassifiedFailHandler::always("deterministic")),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -12848,7 +12872,7 @@ async fn e2e_loop_restart_blocked_for_structural_failure() {
         Box::new(ClassifiedFailHandler::always("structural")),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -12888,7 +12912,7 @@ async fn e2e_loop_restart_blocked_for_budget_exhausted_failure() {
         Box::new(ClassifiedFailHandler::always("budget_exhausted")),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -12928,7 +12952,7 @@ async fn e2e_loop_restart_blocked_for_canceled_failure() {
         Box::new(ClassifiedFailHandler::always("canceled")),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -12965,7 +12989,7 @@ async fn e2e_loop_restart_blocked_for_compilation_loop_failure() {
         Box::new(ClassifiedFailHandler::always("compilation_loop")),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -13006,7 +13030,7 @@ async fn e2e_loop_restart_allowed_for_transient_infra() {
         Box::new(ClassifiedFailHandler::succeed_on("transient_infra", 1)),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -13116,7 +13140,7 @@ async fn e2e_stall_watchdog_triggers_from_dot_parsed_pipeline() {
         events_clone.lock().unwrap().push(format!("{event:?}"));
     });
 
-    let engine = WorkflowRunner::new(registry, Arc::new(emitter), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(emitter), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -13172,7 +13196,7 @@ async fn e2e_stall_watchdog_kept_alive_by_handler_events() {
         }),
     );
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -13218,7 +13242,7 @@ async fn e2e_stall_watchdog_disabled_with_zero_timeout() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("slow", Box::new(SlowTestHandler { sleep_ms: 50 }));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -13284,7 +13308,7 @@ async fn e2e_stall_watchdog_with_explicit_timeout_override() {
     registry.register("exit", Box::new(ExitHandler));
     registry.register("hanging", Box::new(HangingHandler));
 
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env());
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), local_env().await);
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -13373,9 +13397,11 @@ async fn asset_collection_local_sandbox_success() {
     let work_dir = tempfile::tempdir().unwrap();
     let run_dir = tempfile::tempdir().unwrap();
 
-    let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(fabro_agent::LocalSandbox::new(
-        work_dir.path().to_path_buf(),
-    ));
+    let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+        fabro_agent::local_sandbox(work_dir.path().to_path_buf())
+            .await
+            .expect("local sandbox should be created"),
+    );
     sandbox.initialize().await.unwrap();
 
     let mut registry = HandlerRegistry::new(Box::new(AssetCreatorHandler::success()));
@@ -13519,8 +13545,11 @@ async fn asset_collection_local_sandbox_symlink_working_directory() {
         .expect("workspace symlink should create");
     let run_dir = tempfile::tempdir().unwrap();
 
-    let sandbox: Arc<dyn fabro_agent::Sandbox> =
-        Arc::new(fabro_agent::LocalSandbox::new(symlink_work_dir));
+    let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+        fabro_agent::local_sandbox(symlink_work_dir)
+            .await
+            .expect("local sandbox should be created"),
+    );
     sandbox.initialize().await.unwrap();
 
     let mut registry = HandlerRegistry::new(Box::new(AssetCreatorHandler::success()));
@@ -13619,9 +13648,11 @@ async fn asset_collection_local_sandbox_on_failure() {
     let work_dir = tempfile::tempdir().unwrap();
     let run_dir = tempfile::tempdir().unwrap();
 
-    let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(fabro_agent::LocalSandbox::new(
-        work_dir.path().to_path_buf(),
-    ));
+    let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+        fabro_agent::local_sandbox(work_dir.path().to_path_buf())
+            .await
+            .expect("local sandbox should be created"),
+    );
     sandbox.initialize().await.unwrap();
 
     let mut registry = HandlerRegistry::new(Box::new(AssetCreatorHandler::failing()));
@@ -13850,7 +13881,7 @@ async fn wait_timer_e2e() {
     let engine = WorkflowRunner::new(
         make_full_registry(interviewer),
         Arc::new(Emitter::default()),
-        local_env(),
+        local_env().await,
     );
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),

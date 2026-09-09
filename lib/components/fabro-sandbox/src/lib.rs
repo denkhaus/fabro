@@ -29,8 +29,6 @@ pub mod reconnect;
 
 pub mod terminal;
 
-pub mod local;
-
 #[cfg(feature = "docker")]
 pub mod docker;
 
@@ -43,7 +41,7 @@ pub mod test_support;
 pub use details::sandbox_details;
 #[cfg(feature = "docker")]
 pub use docker::{DockerSandbox, DockerSandboxOptions};
-pub use driver_sandbox::DriverSandbox;
+pub use driver_sandbox::{DriverSandbox, local_sandbox};
 pub use error::{Error, Result, default_redacted_output_tail, display_for_log};
 pub use exec::{ExplicitEnvPolicy, SandboxExec, is_sensitive_env_var};
 pub use fabro_github::token_source::{
@@ -53,7 +51,6 @@ pub use fabro_types::{RunSandboxInstance, SandboxProviderKind};
 pub use git_retry::{
     CredentialContext, GitRetryReason, RetryPlan, classify_failure, retry_git_operation,
 };
-pub use local::LocalSandbox;
 #[cfg(feature = "daytona")]
 pub use provider::daytona::DaytonaSandboxProvider;
 #[cfg(feature = "docker")]

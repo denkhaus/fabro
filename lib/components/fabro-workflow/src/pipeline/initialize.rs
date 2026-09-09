@@ -1184,9 +1184,14 @@ mod tests {
             .await
             .expect("a forked run should materialize a fresh sandbox before resuming");
 
+        // The Host provider reports the designated directory canonically
+        // (macOS resolves `/var` to `/private/var`).
+        let expected = workspace
+            .canonicalize()
+            .expect("materialized workspace should exist");
         assert_eq!(
             initialized.engine.run.sandbox.working_directory(),
-            workspace.to_string_lossy().as_ref()
+            expected.to_string_lossy().as_ref()
         );
     }
 

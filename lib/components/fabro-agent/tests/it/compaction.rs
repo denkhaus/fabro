@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use fabro_agent::{AgentProfile, LocalSandbox, OpenAiProfile, Session, SessionOptions};
+use fabro_agent::{AgentProfile, OpenAiProfile, Session, SessionOptions, local_sandbox};
 use fabro_llm::client::Client;
 use fabro_llm::provider::ProviderAdapter;
 use fabro_llm::providers::OpenAiAdapter;
@@ -23,7 +23,7 @@ async fn openai_twin_compaction_preserves_tool_call_pairs() {
 
     load_compaction_scenarios(&api_key).await;
 
-    let mut session = make_openai_session(tmp.path(), base_url, api_key);
+    let mut session = make_openai_session(tmp.path(), base_url, api_key).await;
     session.initialize().await.unwrap();
 
     let result = session
@@ -44,14 +44,18 @@ async fn openai_twin_compaction_preserves_tool_call_pairs() {
     );
 }
 
-fn make_openai_session(cwd: &Path, base_url: String, api_key: String) -> Session {
+async fn make_openai_session(cwd: &Path, base_url: String, api_key: String) -> Session {
     let adapter: Arc<dyn ProviderAdapter> =
         Arc::new(OpenAiAdapter::new(api_key).with_base_url(base_url));
     let mut providers = HashMap::new();
     providers.insert(ProviderId::OPENAI.to_string(), adapter);
     let client = Client::new(providers, Some(ProviderId::OPENAI.to_string()), Vec::new());
     let profile: Arc<dyn AgentProfile> = Arc::new(OpenAiProfile::new(MODEL));
-    let sandbox = Arc::new(LocalSandbox::new(cwd.to_path_buf()));
+    let sandbox = Arc::new(
+        local_sandbox(cwd.to_path_buf())
+            .await
+            .expect("local sandbox should be created"),
+    );
     let options = SessionOptions {
         enable_context_compaction: true,
         compaction_threshold_percent: 80,

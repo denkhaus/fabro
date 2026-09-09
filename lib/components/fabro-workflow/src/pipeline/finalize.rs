@@ -1018,9 +1018,11 @@ mod tests {
         let emitter = Arc::new(Emitter::new(test_run_id()));
         let store_logger = StoreProgressLogger::new(run_store.clone());
         store_logger.register(&emitter);
-        let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(fabro_agent::LocalSandbox::new(
-            std::env::current_dir().unwrap(),
-        ));
+        let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+            fabro_agent::local_sandbox(std::env::current_dir().unwrap())
+                .await
+                .unwrap(),
+        );
         let locations =
             crate::services::RunLocations::for_sandbox(None, sandbox.as_ref(), run_dir.clone());
         let services = RunServices::new(
@@ -1085,9 +1087,11 @@ mod tests {
         let services = test_services(
             handle,
             emitter,
-            Arc::new(fabro_agent::LocalSandbox::new(
-                repo_dir.path().to_path_buf(),
-            )),
+            Arc::new(
+                fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ),
             Arc::new(RunMetadataRuntime::new()),
             Some(RunMetadataWriterHandle::new_for_test_repo(
                 repo_dir.path(),
@@ -1122,9 +1126,11 @@ mod tests {
         let services = test_services(
             RunStoreHandle::new(Arc::new(FailingStateStore)),
             emitter,
-            Arc::new(fabro_agent::LocalSandbox::new(
-                repo_dir.path().to_path_buf(),
-            )),
+            Arc::new(
+                fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ),
             Arc::new(RunMetadataRuntime::new()),
             Some(RunMetadataWriterHandle::new_for_test_repo(
                 repo_dir.path(),
@@ -1174,9 +1180,11 @@ mod tests {
         let services = test_services(
             RunStoreHandle::local(run_store),
             emitter,
-            Arc::new(fabro_agent::LocalSandbox::new(
-                repo_dir.path().to_path_buf(),
-            )),
+            Arc::new(
+                fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ),
             runtime,
             Some(RunMetadataWriterHandle::new_for_test_repo(
                 repo_dir.path(),
@@ -1211,9 +1219,11 @@ mod tests {
         let services = test_services(
             RunStoreHandle::local(run_store),
             Arc::clone(&emitter),
-            Arc::new(fabro_agent::LocalSandbox::new(
-                repo_dir.path().to_path_buf(),
-            )),
+            Arc::new(
+                fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ),
             Arc::new(RunMetadataRuntime::new()),
             Some(RunMetadataWriterHandle::new_for_test_repo(
                 repo_dir.path(),
@@ -1405,9 +1415,11 @@ mod tests {
         let services = test_services(
             RunStoreHandle::local(seeded_run_store().await),
             emitter,
-            Arc::new(fabro_agent::LocalSandbox::new(
-                repo_dir.path().to_path_buf(),
-            )),
+            Arc::new(
+                fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ),
             Arc::new(RunMetadataRuntime::new()),
             None,
         );
@@ -1470,9 +1482,11 @@ mod tests {
         let services = test_services(
             RunStoreHandle::local(seeded_run_store().await),
             emitter,
-            Arc::new(fabro_agent::LocalSandbox::new(
-                repo_dir.path().to_path_buf(),
-            )),
+            Arc::new(
+                fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ),
             Arc::new(RunMetadataRuntime::new()),
             None,
         );
@@ -1528,9 +1542,11 @@ mod tests {
         let services = test_services(
             RunStoreHandle::local(seeded_run_store().await),
             emitter,
-            Arc::new(fabro_agent::LocalSandbox::new(
-                repo_dir.path().to_path_buf(),
-            )),
+            Arc::new(
+                fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ),
             Arc::new(RunMetadataRuntime::new()),
             None,
         );
@@ -1682,7 +1698,11 @@ mod tests {
         let services = test_services(
             RunStoreHandle::local(run_store),
             Arc::clone(&emitter),
-            Arc::new(fabro_agent::LocalSandbox::new(repo.to_path_buf())),
+            Arc::new(
+                fabro_agent::local_sandbox(repo.to_path_buf())
+                    .await
+                    .unwrap(),
+            ),
             Arc::new(RunMetadataRuntime::new()),
             None,
         );

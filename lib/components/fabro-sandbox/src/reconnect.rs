@@ -12,7 +12,7 @@ use crate::SandboxEventCallback;
 use crate::daytona::DaytonaSandbox;
 #[cfg(feature = "docker")]
 use crate::docker::DockerSandbox;
-use crate::local::LocalSandbox;
+use crate::driver_sandbox::local_sandbox;
 
 /// Reconnect to a sandbox from a saved record.
 ///
@@ -54,8 +54,13 @@ pub async fn reconnect_for_run_with_callback(
 ) -> Result<Box<dyn crate::Sandbox>> {
     let runtime = &record.runtime;
     match record.provider.bundled() {
+        // A local sandbox is its working directory: rebuilding the handle
+        // over that directory is the reconnect. The per-process Host
+        // registry holds no state worth attaching to.
         Some(BundledProvider::Local) => {
-            let mut sandbox = LocalSandbox::new(PathBuf::from(&runtime.working_directory));
+            let mut sandbox = local_sandbox(PathBuf::from(&runtime.working_directory))
+                .await
+                .context("Failed to reconnect local sandbox")?;
             if let Some(callback) = event_callback {
                 sandbox.set_event_callback(callback);
             }

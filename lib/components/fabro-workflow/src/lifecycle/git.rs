@@ -808,7 +808,7 @@ mod tests {
         events
     }
 
-    fn git_lifecycle(
+    async fn git_lifecycle(
         repo: &Path,
         emitter: Arc<Emitter>,
         run_store: RunStoreHandle,
@@ -828,9 +828,10 @@ mod tests {
             metadata_runtime,
             metadata_writer,
         )
+        .await
     }
 
-    fn git_lifecycle_with_writer(
+    async fn git_lifecycle_with_writer(
         repo: &Path,
         emitter: Arc<Emitter>,
         run_store: RunStoreHandle,
@@ -840,7 +841,11 @@ mod tests {
     ) -> GitLifecycle {
         GitLifecycle {
             stage_executions: StageExecutionTracker::default(),
-            sandbox: Arc::new(fabro_agent::LocalSandbox::new(repo.to_path_buf())),
+            sandbox: Arc::new(
+                fabro_agent::local_sandbox(repo.to_path_buf())
+                    .await
+                    .unwrap(),
+            ),
             emitter,
             run_id: fixtures::RUN_1,
             run_store,
@@ -879,7 +884,8 @@ mod tests {
             handle,
             run_options(repo_dir.path(), branch),
             Arc::new(RunMetadataRuntime::new()),
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let state = ExecutionState::new(&graph).unwrap();
 
@@ -916,7 +922,8 @@ mod tests {
             RunStoreHandle::new(Arc::new(FailingStateStore)),
             run_options(repo_dir.path(), branch),
             Arc::new(RunMetadataRuntime::new()),
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let state = ExecutionState::new(&graph).unwrap();
 
@@ -975,7 +982,8 @@ mod tests {
             run_options(repo_dir.path(), branch),
             Arc::clone(&runtime),
             Some(metadata_writer),
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let state = ExecutionState::new(&graph).unwrap();
 
@@ -1014,7 +1022,8 @@ mod tests {
             RunStoreHandle::new(Arc::new(FailingStateStore)),
             run_options(repo_dir.path(), branch),
             Arc::new(RunMetadataRuntime::new()),
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let node = graph.get_node("build").unwrap();
         let mut state = ExecutionState::new(&graph).unwrap();
@@ -1064,7 +1073,8 @@ mod tests {
             RunStoreHandle::local(run_store),
             run_options(repo_dir.path(), branch),
             Arc::new(RunMetadataRuntime::new()),
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let node = graph.get_node("build").unwrap();
         let mut state = ExecutionState::new(&graph).unwrap();
@@ -1132,7 +1142,8 @@ mod tests {
             Arc::new(options),
             Arc::new(RunMetadataRuntime::new()),
             None,
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let node = graph.get_node("build").unwrap();
         let mut state = ExecutionState::new(&graph).unwrap();
@@ -1206,7 +1217,8 @@ mod tests {
             Arc::new(options),
             Arc::new(RunMetadataRuntime::new()),
             None,
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let node = graph.get_node("build").unwrap();
         let mut state = ExecutionState::new(&graph).unwrap();
@@ -1249,7 +1261,8 @@ mod tests {
             RunStoreHandle::local(run_store(fixtures::RUN_1).await),
             run_options(repo_dir.path(), "fabro/metadata/run"),
             runtime,
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let state = ExecutionState::new(&graph).unwrap();
 
@@ -1271,7 +1284,8 @@ mod tests {
             RunStoreHandle::new(Arc::new(FailingStateStore)),
             run_options(repo_dir.path(), "fabro/metadata/run"),
             runtime,
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let state = ExecutionState::new(&graph).unwrap();
 
@@ -1293,7 +1307,9 @@ mod tests {
             .await
             .unwrap();
         let finalize_sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(
-            fabro_agent::LocalSandbox::new(repo_dir.path().to_path_buf()),
+            fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+                .await
+                .unwrap(),
         );
         let finalize_locations = crate::services::RunLocations::for_sandbox(
             None,

@@ -129,10 +129,12 @@ mod tests {
         }
     }
 
-    fn make_sandbox() -> Arc<dyn Sandbox> {
-        Arc::new(fabro_agent::LocalSandbox::new(
-            std::env::current_dir().unwrap(),
-        ))
+    async fn make_sandbox() -> Arc<dyn Sandbox> {
+        Arc::new(
+            fabro_agent::local_sandbox(std::env::current_dir().unwrap())
+                .await
+                .unwrap(),
+        )
     }
 
     fn make_bridge(
@@ -162,7 +164,7 @@ mod tests {
             hooks: vec![make_hook(HookEvent::PreToolUse)],
         };
         let runner = Arc::new(HookRunner::with_executor(config, executor));
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let bridge = make_bridge(runner, sandbox, HookExecutionContext::default());
 
         bridge
@@ -194,7 +196,7 @@ mod tests {
             hooks: vec![make_hook(HookEvent::PreToolUse)],
         };
         let runner = Arc::new(HookRunner::with_executor(config, executor));
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let bridge = make_bridge(runner, sandbox, HookExecutionContext::default());
 
         let decision = bridge.pre_tool_use("shell", &serde_json::json!({})).await;
@@ -214,7 +216,7 @@ mod tests {
             hooks: vec![make_hook(HookEvent::PreToolUse)],
         };
         let runner = Arc::new(HookRunner::with_executor(config, executor));
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let bridge = make_bridge(runner, sandbox, HookExecutionContext::default());
 
         let decision = bridge.pre_tool_use("shell", &serde_json::json!({})).await;
@@ -233,7 +235,7 @@ mod tests {
             hooks: vec![make_hook(HookEvent::PostToolUse)],
         };
         let runner = Arc::new(HookRunner::with_executor(config, executor));
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let bridge = make_bridge(runner, sandbox, HookExecutionContext::default());
 
         bridge
@@ -263,7 +265,7 @@ mod tests {
             hooks: vec![make_hook(HookEvent::PostToolUseFailure)],
         };
         let runner = Arc::new(HookRunner::with_executor(config, executor));
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let bridge = make_bridge(runner, sandbox, HookExecutionContext::default());
 
         bridge
@@ -294,7 +296,7 @@ mod tests {
             hooks: vec![make_hook(HookEvent::PreToolUse)],
         };
         let runner = Arc::new(HookRunner::with_executor(config, executor));
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let hook_execution_context = HookExecutionContext {
             host_source_dir:  Some(PathBuf::from("/host/source")),
             sandbox_work_dir: Some(PathBuf::from("/supplied/sandbox")),

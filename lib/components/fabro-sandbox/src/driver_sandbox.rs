@@ -12,18 +12,46 @@
 //! results relative to a caller-declared base).
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use fabro_types::SandboxProviderKind;
 use sandbox_driver::{
-    FileKind, LifecycleTimers, Sandbox as DriverHandle, SandboxState, Search as _, WaitOptions,
+    FileKind, LifecycleTimers, Sandbox as DriverHandle, SandboxProvider as _, SandboxSource,
+    SandboxSpec as DriverSpec, SandboxState, Search as _, WaitOptions,
 };
+use sandbox_driver_host::HostProvider;
+use tokio::fs;
 use tokio_util::sync::CancellationToken;
 
 use crate::RetryPlan;
+
+/// A sandbox on the worker host at `working_directory`, the fabro `local`
+/// kind, served by the driver's in-process Host provider.
+///
+/// The directory is designated: the sandbox uses it in place and never
+/// removes it. It is created when missing so a run can point at a fresh
+/// scratch path. The registry lives in a per-process temporary root, so a
+/// later process rebuilds the handle by calling this again with the
+/// persisted working directory rather than by id.
+pub async fn local_sandbox(working_directory: impl Into<PathBuf>) -> crate::Result<DriverSandbox> {
+    let working_directory: PathBuf = working_directory.into();
+    fs::create_dir_all(&working_directory)
+        .await
+        .map_err(|error| crate::Error::context("Failed to create working directory", error))?;
+    let provider = HostProvider::new();
+    let spec = DriverSpec::new(SandboxSource::HostDirectory)
+        .working_directory(working_directory.display().to_string());
+    let handle = provider
+        .create(&spec, None)
+        .await
+        .map_err(|error| crate::Error::context("Failed to create local sandbox", error))?;
+    let sandbox = DriverSandbox::new(SandboxProviderKind::LOCAL, handle);
+    sandbox.learn_platform().await?;
+    Ok(sandbox)
+}
 use crate::exec::{ExplicitEnvPolicy, SandboxExec};
 use crate::sandbox::{
     self, DirEntry, ExecResult, ExecStreamingRequest, ExecStreamingResult, GrepOptions, PushError,
@@ -107,6 +135,12 @@ impl DriverSandbox {
     /// platform. Shared by initialize and start.
     async fn make_ready(&self) -> crate::Result<()> {
         sandbox_driver::activate(self.handle.as_ref(), &WaitOptions::default()).await?;
+        self.learn_platform().await
+    }
+
+    /// Ask the sandbox for its platform once; `platform` and `os_version`
+    /// report `unknown` until this has run.
+    async fn learn_platform(&self) -> crate::Result<()> {
         if self.platform.get().is_none() {
             let info = self.handle.platform_info().await?;
             let platform = fabro_platform_name(&info.os).to_string();
@@ -355,7 +389,7 @@ impl Sandbox for DriverSandbox {
             Ok(()) => self.emit(SandboxEvent::Ready {
                 provider: self.provider_name(),
                 duration_ms,
-                name: Some(self.handle.id().to_string()),
+                name: Some(self.sandbox_info()).filter(|name| !name.is_empty()),
                 cpu: None,
                 memory: None,
                 url: None,
@@ -484,8 +518,15 @@ impl Sandbox for DriverSandbox {
         )
     }
 
+    /// The provider's id for this sandbox, or empty for `local`: a local
+    /// sandbox is its working directory, which the run record already
+    /// carries, and its Host registry id does not outlive the process.
     fn sandbox_info(&self) -> String {
-        self.handle.id().to_string()
+        if self.kind.is_local() {
+            String::new()
+        } else {
+            self.handle.id().to_string()
+        }
     }
 
     async fn set_autostop_interval(&self, minutes: i32) -> crate::Result<()> {
@@ -788,8 +829,12 @@ mod tests {
         assert!(f.sandbox.os_version().starts_with(expected));
         assert_eq!(
             f.sandbox.sandbox_info(),
-            f.sandbox.handle().id().to_string()
+            "",
+            "local sandboxes are identified by directory"
         );
+        let isolated =
+            DriverSandbox::new(SandboxProviderKind::DOCKER, Arc::clone(f.sandbox.handle()));
+        assert_eq!(isolated.sandbox_info(), f.sandbox.handle().id().to_string());
 
         f.sandbox.stop().await.unwrap();
         f.sandbox.activate().await.unwrap();
@@ -829,6 +874,22 @@ mod tests {
             | SandboxEvent::CleanupCompleted { provider, .. } => provider == "local",
             _ => true,
         }));
+    }
+
+    #[tokio::test]
+    async fn local_sandbox_designates_the_directory_and_knows_its_platform() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = dir.path().join("fresh");
+        let sandbox = local_sandbox(&workspace).await.unwrap();
+        assert!(workspace.is_dir(), "a missing working directory is created");
+        assert_eq!(sandbox.kind(), &SandboxProviderKind::LOCAL);
+        assert_ne!(sandbox.platform(), "unknown");
+        assert_eq!(
+            Path::new(sandbox.working_directory()),
+            workspace.canonicalize().unwrap()
+        );
+        sandbox.cleanup().await.unwrap();
+        assert!(workspace.is_dir());
     }
 
     #[tokio::test]

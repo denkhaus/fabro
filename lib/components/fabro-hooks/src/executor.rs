@@ -740,10 +740,12 @@ mod tests {
         HookContext::new(HookEvent::StageStart, fixtures::RUN_1, "test-wf".into())
     }
 
-    fn make_sandbox() -> Arc<dyn Sandbox> {
-        Arc::new(fabro_agent::LocalSandbox::new(
-            std::env::current_dir().unwrap(),
-        ))
+    async fn make_sandbox() -> Arc<dyn Sandbox> {
+        Arc::new(
+            fabro_agent::local_sandbox(std::env::current_dir().unwrap())
+                .await
+                .unwrap(),
+        )
     }
 
     fn test_llm_source() -> Arc<dyn CredentialSource> {
@@ -833,7 +835,7 @@ mod tests {
         let executor = HookExecutorImpl;
         let def = make_definition("exit 0");
         let ctx = make_context();
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let source = test_llm_source();
         let result = executor
             .execute(
@@ -854,7 +856,7 @@ mod tests {
         let executor = HookExecutorImpl;
         let def = make_definition("exit 1");
         let ctx = make_context();
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let source = test_llm_source();
         let result = executor
             .execute(
@@ -874,7 +876,7 @@ mod tests {
         let executor = HookExecutorImpl;
         let def = make_definition("exit 2");
         let ctx = make_context();
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let source = test_llm_source();
         let result = executor
             .execute(
@@ -894,7 +896,7 @@ mod tests {
         let executor = HookExecutorImpl;
         let def = make_definition(r#"echo '{"decision": "skip", "reason": "test skip"}'"#);
         let ctx = make_context();
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let source = test_llm_source();
         let result = executor
             .execute(
@@ -918,7 +920,7 @@ mod tests {
         let def = make_definition("echo $ARC_EVENT:$ARC_RUN_ID:$ARC_WORKFLOW");
         let mut ctx = make_context();
         ctx.node_id = Some("plan".into());
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let source = test_llm_source();
         let result = executor
             .execute(
@@ -947,7 +949,7 @@ mod tests {
             sandbox:    Some(false),
         };
         let ctx = make_context();
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let source = test_llm_source();
         let result = executor
             .execute(
@@ -1433,7 +1435,7 @@ mod tests {
             sandbox:    Some(false),
         };
         let ctx = make_context();
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let source = test_llm_source();
         let result = executor
             .execute(
@@ -1453,7 +1455,7 @@ mod tests {
 
     #[tokio::test]
     async fn command_hook_missing_env_blocks() {
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let decision = HookExecutorImpl::execute_command(
             &make_definition("echo {{ env.MISSING_HOOK_VALUE }}"),
             &interp("echo {{ env.MISSING_HOOK_VALUE }}"),
@@ -1502,7 +1504,7 @@ mod tests {
             None,
             Some(1),
             &make_context(),
-            make_sandbox(),
+            make_sandbox().await,
             test_llm_source().as_ref(),
             test_catalog(),
         )

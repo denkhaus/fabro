@@ -541,17 +541,19 @@ mod tests {
         }
     }
 
-    fn sandbox_with_file(path: &str, contents: &str) -> (TempDir, Arc<dyn Sandbox>) {
+    async fn sandbox_with_file(path: &str, contents: &str) -> (TempDir, Arc<dyn Sandbox>) {
         let sandbox_dir = TempDir::new().unwrap();
         std::fs::write(sandbox_dir.path().join(path), contents).unwrap();
-        let sandbox: Arc<dyn Sandbox> = Arc::new(fabro_agent::LocalSandbox::new(
-            sandbox_dir.path().to_path_buf(),
-        ));
+        let sandbox: Arc<dyn Sandbox> = Arc::new(
+            fabro_agent::local_sandbox(sandbox_dir.path().to_path_buf())
+                .await
+                .unwrap(),
+        );
         (sandbox_dir, sandbox)
     }
 
     async fn execute_with_last_file(path: &str, contents: &str) -> Outcome {
-        let (_sandbox_dir, sandbox) = sandbox_with_file(path, contents);
+        let (_sandbox_dir, sandbox) = sandbox_with_file(path, contents).await;
 
         let handler = AgentHandler::new(Some(Box::new(LastFileBackend {
             path: path.to_string(),
@@ -574,7 +576,7 @@ mod tests {
         path: &str,
         contents: &str,
     ) -> Result<ValidatedStructuredOutput, StructuredOutputError> {
-        let (_sandbox_dir, sandbox) = sandbox_with_file(path, contents);
+        let (_sandbox_dir, sandbox) = sandbox_with_file(path, contents).await;
 
         validate_agent_output_sources(
             &OutputSchemaKind::Routing,
@@ -707,12 +709,11 @@ mod tests {
         let tmp = TempDir::new().unwrap();
 
         let mut services = EngineServices::test_default();
-        services.run =
-            services
-                .run
-                .with_sandbox(std::sync::Arc::new(fabro_agent::LocalSandbox::new(
-                    sandbox_dir.path().to_path_buf(),
-                )));
+        services.run = services.run.with_sandbox(std::sync::Arc::new(
+            fabro_agent::local_sandbox(sandbox_dir.path().to_path_buf())
+                .await
+                .unwrap(),
+        ));
 
         let outcome = handler
             .execute(&node, &context, &graph, tmp.path(), &services)
@@ -760,12 +761,11 @@ mod tests {
         let tmp = TempDir::new().unwrap();
 
         let mut services = EngineServices::test_default();
-        services.run =
-            services
-                .run
-                .with_sandbox(std::sync::Arc::new(fabro_agent::LocalSandbox::new(
-                    sandbox_dir.path().to_path_buf(),
-                )));
+        services.run = services.run.with_sandbox(std::sync::Arc::new(
+            fabro_agent::local_sandbox(sandbox_dir.path().to_path_buf())
+                .await
+                .unwrap(),
+        ));
 
         let outcome = handler
             .execute(&node, &context, &graph, tmp.path(), &services)
@@ -873,12 +873,11 @@ All checks passed.
         let tmp = TempDir::new().unwrap();
 
         let mut services = EngineServices::test_default();
-        services.run =
-            services
-                .run
-                .with_sandbox(std::sync::Arc::new(fabro_agent::LocalSandbox::new(
-                    sandbox_dir.path().to_path_buf(),
-                )));
+        services.run = services.run.with_sandbox(std::sync::Arc::new(
+            fabro_agent::local_sandbox(sandbox_dir.path().to_path_buf())
+                .await
+                .unwrap(),
+        ));
 
         let outcome = handler
             .execute(&node, &context, &graph, tmp.path(), &services)
@@ -972,12 +971,11 @@ All checks passed.
         let tmp = TempDir::new().unwrap();
 
         let mut services = EngineServices::test_default();
-        services.run =
-            services
-                .run
-                .with_sandbox(std::sync::Arc::new(fabro_agent::LocalSandbox::new(
-                    sandbox_dir.path().to_path_buf(),
-                )));
+        services.run = services.run.with_sandbox(std::sync::Arc::new(
+            fabro_agent::local_sandbox(sandbox_dir.path().to_path_buf())
+                .await
+                .unwrap(),
+        ));
 
         let outcome = handler
             .execute(&node, &context, &graph, tmp.path(), &services)

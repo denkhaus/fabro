@@ -468,8 +468,11 @@ mod tests {
             None,
         ));
         let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
-        let sandbox: Arc<dyn Sandbox> =
-            Arc::new(fabro_agent::LocalSandbox::new(run_dir.to_path_buf()));
+        let sandbox: Arc<dyn Sandbox> = Arc::new(
+            fabro_agent::local_sandbox(run_dir.to_path_buf())
+                .await
+                .unwrap(),
+        );
         FidelityLifecycle::new(
             graph.0.clone(),
             sandbox,

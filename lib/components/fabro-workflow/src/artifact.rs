@@ -1550,7 +1550,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let run_dir = tmp.path().join("run");
         std::fs::create_dir_all(&run_dir).unwrap();
-        let sandbox = fabro_agent::LocalSandbox::new(tmp.path().to_path_buf());
+        let sandbox = fabro_agent::local_sandbox(tmp.path().to_path_buf())
+            .await
+            .unwrap();
 
         let dataset = serde_json::json!({
             "rows": vec![serde_json::json!({"payload": "x".repeat(64)}); 256]
@@ -1703,7 +1705,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let run_dir = tmp.path().join("run");
         std::fs::create_dir_all(&run_dir).unwrap();
-        let sandbox = fabro_agent::LocalSandbox::new(tmp.path().to_path_buf());
+        let sandbox = fabro_agent::local_sandbox(tmp.path().to_path_buf())
+            .await
+            .unwrap();
 
         let inherited_preamble = "p".repeat(PROMPT_INLINE_VALUE_MAX + 1);
         let mut values = HashMap::from([(

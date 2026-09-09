@@ -647,8 +647,8 @@ mod tests {
     use fabro_acp::test_support::fake_acp_agent_script;
     use fabro_acp::{AcpError, AcpProcessExit};
     use fabro_agent::{
-        LocalSandbox, RefreshOutcome, RemoteCredentialAction, Sandbox, TokenProvenance,
-        TokenSnapshot, shell_quote,
+        RefreshOutcome, RemoteCredentialAction, Sandbox, TokenProvenance, TokenSnapshot,
+        local_sandbox, shell_quote,
     };
     use fabro_graphviz::graph::{AttrValue, Node};
     use fabro_sandbox::test_support::MockSandbox;
@@ -1040,7 +1040,8 @@ mod tests {
             "ACP_MODE".to_string(),
             "write_file".to_string(),
         )]));
-        let sandbox: Arc<dyn Sandbox> = Arc::new(LocalSandbox::new(tempdir.path().to_path_buf()));
+        let sandbox: Arc<dyn Sandbox> =
+            Arc::new(local_sandbox(tempdir.path().to_path_buf()).await.unwrap());
         let emitter = Arc::new(Emitter::default());
         let context = Context::new();
         let result = backend
@@ -1088,7 +1089,8 @@ mod tests {
         );
 
         let backend = AgentAcpBackend::new();
-        let sandbox: Arc<dyn Sandbox> = Arc::new(LocalSandbox::new(tempdir.path().to_path_buf()));
+        let sandbox: Arc<dyn Sandbox> =
+            Arc::new(local_sandbox(tempdir.path().to_path_buf()).await.unwrap());
         let emitter = Arc::new(Emitter::default());
         let context = Context::new();
         let result = backend
@@ -1159,7 +1161,8 @@ mod tests {
                 "steer".to_string(),
             )]))
             .with_steering_hub(steering_hub);
-        let sandbox: Arc<dyn Sandbox> = Arc::new(LocalSandbox::new(tempdir.path().to_path_buf()));
+        let sandbox: Arc<dyn Sandbox> =
+            Arc::new(local_sandbox(tempdir.path().to_path_buf()).await.unwrap());
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
@@ -1206,7 +1209,8 @@ mod tests {
             "ACP_MODE".to_string(),
             "write_file".to_string(),
         )]));
-        let sandbox: Arc<dyn Sandbox> = Arc::new(LocalSandbox::new(tempdir.path().to_path_buf()));
+        let sandbox: Arc<dyn Sandbox> =
+            Arc::new(local_sandbox(tempdir.path().to_path_buf()).await.unwrap());
         let emitter = Arc::new(Emitter::default());
         let context = Context::new();
         let result = backend
@@ -1295,7 +1299,8 @@ mod tests {
             "ACP_STOP_REASON".to_string(),
             "cancelled".to_string(),
         )]));
-        let sandbox: Arc<dyn Sandbox> = Arc::new(LocalSandbox::new(tempdir.path().to_path_buf()));
+        let sandbox: Arc<dyn Sandbox> =
+            Arc::new(local_sandbox(tempdir.path().to_path_buf()).await.unwrap());
         let emitter = Arc::new(Emitter::default());
         let context = Context::new();
         let result = backend
@@ -1343,7 +1348,8 @@ mod tests {
             .insert("acp.config".to_string(), AttrValue::String(raw_command));
 
         let backend = AgentAcpBackend::new();
-        let sandbox: Arc<dyn Sandbox> = Arc::new(LocalSandbox::new(tempdir.path().to_path_buf()));
+        let sandbox: Arc<dyn Sandbox> =
+            Arc::new(local_sandbox(tempdir.path().to_path_buf()).await.unwrap());
         let emitter = Arc::new(Emitter::default());
         let events = Arc::new(Mutex::new(Vec::new()));
         emitter.on_event({

@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-#[cfg(feature = "docker")]
 use anyhow::Context as _;
 #[cfg(any(feature = "docker", feature = "daytona"))]
 use fabro_github::GitHubCredentials;
@@ -17,7 +16,7 @@ use crate::clone_source;
 use crate::daytona::{self, DaytonaConfig, DaytonaSandbox};
 #[cfg(feature = "docker")]
 use crate::docker::{self, DockerSandbox, DockerSandboxOptions};
-use crate::local::LocalSandbox;
+use crate::driver_sandbox::local_sandbox;
 use crate::{Sandbox, SandboxEventCallback};
 
 /// Options for sandbox initialization and construction.
@@ -185,17 +184,15 @@ impl SandboxSpec {
         }
     }
 
-    #[allow(
-        clippy::unused_async,
-        reason = "Only Daytona construction awaits; local and Docker builds share the async API."
-    )]
     pub async fn build(
         &self,
         event_callback: Option<SandboxEventCallback>,
     ) -> Result<Arc<dyn Sandbox>, anyhow::Error> {
         match self {
             Self::Local { working_directory } => {
-                let mut sandbox = LocalSandbox::new(working_directory.clone());
+                let mut sandbox = local_sandbox(working_directory.clone())
+                    .await
+                    .context("Failed to create local sandbox")?;
                 if let Some(callback) = event_callback {
                     sandbox.set_event_callback(callback);
                 }

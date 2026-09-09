@@ -267,10 +267,12 @@ mod tests {
         }
     }
 
-    fn make_sandbox() -> Arc<dyn Sandbox> {
-        Arc::new(fabro_agent::LocalSandbox::new(
-            std::env::current_dir().unwrap(),
-        ))
+    async fn make_sandbox() -> Arc<dyn Sandbox> {
+        Arc::new(
+            fabro_agent::local_sandbox(std::env::current_dir().unwrap())
+                .await
+                .unwrap(),
+        )
     }
 
     fn make_context(event: HookEvent) -> HookContext {
@@ -302,7 +304,7 @@ mod tests {
     async fn no_hooks_returns_proceed() {
         let runner = HookRunner::new(HookSettings::default(), test_llm_source(), test_catalog());
         let ctx = make_context(HookEvent::RunStart);
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let decision = runner
             .run(&ctx, sandbox.clone(), HookExecutionContext::default())
             .await;
@@ -414,7 +416,7 @@ mod tests {
             }),
         );
         let ctx = make_context(HookEvent::RunStart);
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let decision = runner
             .run(&ctx, sandbox.clone(), HookExecutionContext::default())
             .await;
@@ -435,7 +437,7 @@ mod tests {
             }),
         );
         let ctx = make_context(HookEvent::StageStart);
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let decision = runner
             .run(&ctx, sandbox.clone(), HookExecutionContext::default())
             .await;
@@ -456,7 +458,7 @@ mod tests {
             }),
         );
         let ctx = make_context(HookEvent::StageComplete);
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let decision = runner
             .run(&ctx, sandbox.clone(), HookExecutionContext::default())
             .await;
@@ -475,7 +477,7 @@ mod tests {
         };
         let runner = HookRunner::new(config, test_llm_source(), test_catalog());
         let ctx = make_context(HookEvent::RunStart);
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let decision = runner
             .run(&ctx, sandbox.clone(), HookExecutionContext::default())
             .await;
@@ -493,7 +495,7 @@ mod tests {
         };
         let runner = HookRunner::new(config, test_llm_source(), test_catalog());
         let ctx = make_context(HookEvent::RunStart);
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let decision = runner
             .run(&ctx, sandbox.clone(), HookExecutionContext::default())
             .await;

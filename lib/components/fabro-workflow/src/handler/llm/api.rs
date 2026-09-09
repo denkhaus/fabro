@@ -1880,7 +1880,7 @@ mod tests {
 
     use chrono::TimeZone;
     use fabro_agent::subagent::SessionFactory;
-    use fabro_agent::{AgentProfile, LocalSandbox, ToolRegistry};
+    use fabro_agent::{AgentProfile, ToolRegistry, local_sandbox};
     use fabro_api::types;
     use fabro_auth::{VaultCredentialSource, test_support as auth_test_support};
     use fabro_llm::provider::{ProviderAdapter, StreamEventStream};
@@ -2369,7 +2369,7 @@ reasoning = false
                     "start": false
                 }]
             }),
-            tool_context(),
+            tool_context().await,
         )
         .await
         .expect("create tool should succeed");
@@ -2395,7 +2395,7 @@ reasoning = false
                     "workflow": "child.fabro"
                 }]
             }),
-            tool_context(),
+            tool_context().await,
         )
         .await
         .expect("create tool should succeed");
@@ -2423,7 +2423,7 @@ reasoning = false
                     "start": false
                 }]
             }),
-            tool_context(),
+            tool_context().await,
         )
         .await
         .expect_err("conflicting parent should be rejected");
@@ -2448,7 +2448,7 @@ reasoning = false
                     "start": false
                 }]
             }),
-            tool_context(),
+            tool_context().await,
         )
         .await
         .expect("create should succeed");
@@ -2461,7 +2461,7 @@ reasoning = false
                 "run_ids": [child_run_id().to_string()],
                 "timeout_seconds": 0
             }),
-            tool_context(),
+            tool_context().await,
         )
         .await
         .expect("gather should succeed");
@@ -2475,7 +2475,7 @@ reasoning = false
                 "run_id": child_run_id().to_string(),
                 "first": 5
             }),
-            tool_context(),
+            tool_context().await,
         )
         .await
         .expect("events should succeed");
@@ -2502,7 +2502,7 @@ reasoning = false
                     "run_id": child_run_id().to_string(),
                     "action": action
                 }),
-                tool_context(),
+                tool_context().await,
             )
             .await
             .expect_err("workflow agents must not approve or deny runs");
@@ -2533,7 +2533,7 @@ reasoning = false
                 "action": "status",
                 "run_id": child_run_id().to_string()
             }),
-            tool_context(),
+            tool_context().await,
         )
         .await
         .expect("pair status should succeed");
@@ -2563,9 +2563,9 @@ reasoning = false
         (services, backend)
     }
 
-    fn tool_context() -> ToolContext {
+    async fn tool_context() -> ToolContext {
         ToolContext {
-            env:                 Arc::new(LocalSandbox::new(PathBuf::from("."))),
+            env:                 Arc::new(local_sandbox(PathBuf::from(".")).await.unwrap()),
             cancel:              CancellationToken::new(),
             tool_env_provider:   None,
             session_id:          None,
@@ -3069,7 +3069,7 @@ reasoning = false
             .await
             .unwrap();
         let sandbox: Arc<dyn fabro_agent::Sandbox> =
-            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
+            Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let mut session = backend
             .create_session_with_plan(&node, &sandbox, Some(hooks))
@@ -3609,7 +3609,7 @@ enabled = true
         let emitter = Arc::new(Emitter::new(fabro_types::RunId::new()));
         let workspace = tempfile::tempdir().unwrap();
         let sandbox: Arc<dyn fabro_agent::Sandbox> =
-            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
+            Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
             .one_shot(OneShotRequest {
@@ -3675,7 +3675,7 @@ enabled = true
         let emitter = Arc::new(Emitter::new(fabro_types::RunId::new()));
         let workspace = tempfile::tempdir().unwrap();
         let sandbox: Arc<dyn fabro_agent::Sandbox> =
-            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
+            Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
             .one_shot(OneShotRequest {
@@ -3736,7 +3736,7 @@ enabled = true
         let emitter = Arc::new(Emitter::new(fabro_types::RunId::new()));
         let workspace = tempfile::tempdir().unwrap();
         let sandbox: Arc<dyn fabro_agent::Sandbox> =
-            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
+            Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
             .run(CodergenRunRequest {
@@ -3808,7 +3808,7 @@ enabled = true
         let emitter = Arc::new(Emitter::new(fabro_types::RunId::new()));
         let workspace = tempfile::tempdir().unwrap();
         let sandbox: Arc<dyn fabro_agent::Sandbox> =
-            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
+            Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
             .run(CodergenRunRequest {
@@ -3879,7 +3879,7 @@ enabled = true
         let emitter = Arc::new(Emitter::new(fabro_types::RunId::new()));
         let workspace = tempfile::tempdir().unwrap();
         let sandbox: Arc<dyn fabro_agent::Sandbox> =
-            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
+            Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
             .run(CodergenRunRequest {
@@ -3953,7 +3953,7 @@ enabled = true
         });
         let workspace = tempfile::tempdir().unwrap();
         let sandbox: Arc<dyn fabro_agent::Sandbox> =
-            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
+            Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
             .run(CodergenRunRequest {
@@ -4017,9 +4017,11 @@ enabled = true
         let session = Session::new(
             client,
             Arc::new(ShutdownTestProfile::new()),
-            Arc::new(fabro_agent::LocalSandbox::new(
-                tempfile::tempdir().unwrap().path().to_path_buf(),
-            )),
+            Arc::new(
+                fabro_agent::local_sandbox(tempfile::tempdir().unwrap().path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ),
             SessionOptions::default(),
             None,
         );
@@ -4060,9 +4062,11 @@ enabled = true
         let mut session = Session::new(
             client,
             Arc::new(ShutdownTestProfile::new()),
-            Arc::new(LocalSandbox::new(
-                tempfile::tempdir().unwrap().path().to_path_buf(),
-            )),
+            Arc::new(
+                local_sandbox(tempfile::tempdir().unwrap().path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ),
             SessionOptions::default(),
             None,
         );

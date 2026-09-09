@@ -114,8 +114,12 @@ fn list_branch(repo_dir: &Path, branch: &str) -> String {
     String::from_utf8(output.stdout).expect("git branch --list output should be UTF-8")
 }
 
-fn local_env(repo: &Path) -> Arc<dyn Sandbox> {
-    Arc::new(fabro_agent::LocalSandbox::new(repo.to_path_buf()))
+async fn local_env(repo: &Path) -> Arc<dyn Sandbox> {
+    Arc::new(
+        fabro_agent::local_sandbox(repo.to_path_buf())
+            .await
+            .expect("local sandbox should be created"),
+    )
 }
 
 fn simple_graph() -> Graph {
@@ -304,7 +308,7 @@ async fn git_checkpoint_skips_start_node() {
     Box::pin(run_graph(
         make_registry(),
         Arc::new(emitter),
-        local_env(repo),
+        local_env(repo).await,
         &g,
         &run_options,
     ))
@@ -334,7 +338,7 @@ async fn git_checkpoint_skips_start_node() {
 /// inaccessible (as it is for Docker/Daytona) and the sandbox exposes a
 /// runtime directory outside the checkout.
 struct RemoteRuntimeSandbox {
-    inner:             fabro_agent::LocalSandbox,
+    inner:             fabro_agent::DriverSandbox,
     hidden_path:       String,
     runtime_directory: String,
 }
@@ -479,7 +483,9 @@ async fn remote_prompt_demotion_stays_outside_checkout_and_survives_checkpoint()
     std::fs::create_dir_all(&run_dir).unwrap();
 
     let sandbox = RemoteRuntimeSandbox {
-        inner:             fabro_agent::LocalSandbox::new(repo_dir.clone()),
+        inner:             fabro_agent::local_sandbox(repo_dir.clone())
+            .await
+            .expect("local sandbox should be created"),
         hidden_path:       run_dir.to_string_lossy().to_string(),
         runtime_directory: runtime_dir.to_string_lossy().to_string(),
     };

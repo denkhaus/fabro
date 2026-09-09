@@ -45,7 +45,7 @@ pub use event::Emitter;
 pub use fabro_mcp::config::McpServerSettings;
 pub use fabro_types::SteeringMessage;
 pub use history::History;
-pub use local_sandbox::LocalSandbox;
+pub use local_sandbox::{DriverSandbox, local_sandbox};
 pub use loop_detection::detect_loop;
 pub use memory::{MemoryDocument, discover_memory};
 pub use native_tool::{NativeTool, ToolVocabulary};

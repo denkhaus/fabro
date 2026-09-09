@@ -33,8 +33,8 @@ use crate::subagent::{SessionFactory, SubAgentSupervisor};
 use crate::tool_permissions::{is_auto_approved, tool_category};
 use crate::tools::WebFetchSummarizer;
 use crate::{
-    AgentEvent, AgentProfile, AgentProfileBuilder, LocalSandbox, Message, Sandbox, Session,
-    SessionOptions, SessionShutdownReason,
+    AgentEvent, AgentProfile, AgentProfileBuilder, Message, Sandbox, Session, SessionOptions,
+    SessionShutdownReason, local_sandbox,
 };
 
 #[expect(
@@ -557,7 +557,11 @@ pub async fn run_with_args_and_client_and_catalog(
     // Build sandbox
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let cwd_str = cwd.to_string_lossy().to_string();
-    let env: Arc<dyn Sandbox> = Arc::new(LocalSandbox::new(cwd));
+    let env: Arc<dyn Sandbox> = Arc::new(
+        local_sandbox(cwd)
+            .await
+            .context("failed to create the local sandbox")?,
+    );
 
     // Build tool approval callback
     let permissions = args.permissions.unwrap_or(PermissionLevel::ReadWrite);

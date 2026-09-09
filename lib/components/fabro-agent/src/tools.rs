@@ -748,13 +748,12 @@ mod tests {
     use super::*;
     use crate::config::{NativeToolOptions, SessionOptions, ToolSecrets};
     use crate::event::{Emitter, SessionBoundEmitter};
-    use crate::local_sandbox::LocalSandbox;
     use crate::sandbox::*;
     use crate::test_support::MockSandbox;
     use crate::tool_registry::ToolContext;
-    use crate::truncation;
     use crate::types::SessionEvent;
     use crate::web_search::make_web_search_tool_with_api_key;
+    use crate::{local_sandbox, truncation};
 
     #[test]
     fn core_tool_descriptions_include_actionable_guidance() {
@@ -1432,9 +1431,11 @@ mod tests {
     #[tokio::test]
     async fn shell_reports_real_local_process_outcome() {
         let tool = make_shell_tool();
-        let env: Arc<dyn Sandbox> = Arc::new(LocalSandbox::new(
-            std::env::current_dir().expect("current dir"),
-        ));
+        let env: Arc<dyn Sandbox> = Arc::new(
+            local_sandbox(std::env::current_dir().expect("current dir"))
+                .await
+                .unwrap(),
+        );
         let emitter = Emitter::new();
         let mut receiver = emitter.subscribe();
 

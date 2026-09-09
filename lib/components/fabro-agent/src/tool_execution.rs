@@ -644,7 +644,7 @@ mod tests {
         ToolAccess, ToolAccessPolicy, ToolExposureMode, ToolHookCallback, ToolHookDecision,
     };
     use crate::event::Emitter;
-    use crate::local_sandbox::LocalSandbox;
+    use crate::local_sandbox;
     use crate::question_tools::{
         AgentQuestion, AgentQuestionAnswer, AgentQuestionAnswerStatus, AgentQuestionRuntime,
         AgentToolRuntime, register_question_tools,
@@ -775,7 +775,11 @@ mod tests {
             &tool_calls,
             true,
             &registry,
-            Arc::new(LocalSandbox::new(std::env::current_dir().unwrap())),
+            Arc::new(
+                local_sandbox(std::env::current_dir().unwrap())
+                    .await
+                    .unwrap(),
+            ),
             None,
             &CancellationToken::new(),
             &SessionOptions::default(),
@@ -823,7 +827,11 @@ mod tests {
             &tool_calls,
             true,
             &registry,
-            Arc::new(LocalSandbox::new(std::env::current_dir().unwrap())),
+            Arc::new(
+                local_sandbox(std::env::current_dir().unwrap())
+                    .await
+                    .unwrap(),
+            ),
             None,
             &CancellationToken::new(),
             &SessionOptions::default(),
@@ -889,8 +897,12 @@ mod tests {
         }
     }
 
-    fn make_sandbox() -> Arc<dyn Sandbox> {
-        Arc::new(LocalSandbox::new(std::env::current_dir().unwrap()))
+    async fn make_sandbox() -> Arc<dyn Sandbox> {
+        Arc::new(
+            local_sandbox(std::env::current_dir().unwrap())
+                .await
+                .unwrap(),
+        )
     }
 
     #[tokio::test]
@@ -910,7 +922,7 @@ mod tests {
         let result = execute_and_emit_one_tool(
             &tc,
             &registry,
-            make_sandbox(),
+            make_sandbox().await,
             Some(&hooks),
             CancellationToken::new(),
             &config,
@@ -941,7 +953,7 @@ mod tests {
         let result = execute_and_emit_one_tool(
             &tc,
             &registry,
-            make_sandbox(),
+            make_sandbox().await,
             Some(&hooks),
             CancellationToken::new(),
             &config,
@@ -969,7 +981,7 @@ mod tests {
         let result = execute_and_emit_one_tool(
             &tc,
             &registry,
-            make_sandbox(),
+            make_sandbox().await,
             None,
             CancellationToken::new(),
             &SessionOptions::default(),
@@ -1034,7 +1046,7 @@ mod tests {
         let result = execute_and_emit_one_tool(
             &tc,
             &registry,
-            make_sandbox(),
+            make_sandbox().await,
             None,
             CancellationToken::new(),
             &SessionOptions::default(),
@@ -1129,7 +1141,7 @@ mod tests {
         execute_and_emit_one_tool(
             &tc,
             &registry,
-            make_sandbox(),
+            make_sandbox().await,
             Some(&hooks),
             CancellationToken::new(),
             &config,
@@ -1165,7 +1177,7 @@ mod tests {
         execute_and_emit_one_tool(
             &tc,
             &registry,
-            make_sandbox(),
+            make_sandbox().await,
             Some(&hooks),
             CancellationToken::new(),
             &config,
@@ -1198,7 +1210,7 @@ mod tests {
         let result = execute_and_emit_one_tool(
             &tc,
             &registry,
-            make_sandbox(),
+            make_sandbox().await,
             None,
             CancellationToken::new(),
             &config,
@@ -1247,7 +1259,7 @@ mod tests {
         let result = execute_and_emit_one_tool(
             &tc,
             &registry,
-            make_sandbox(),
+            make_sandbox().await,
             None,
             CancellationToken::new(),
             &config,
@@ -1302,7 +1314,7 @@ mod tests {
         let result = execute_and_emit_one_tool(
             &tc,
             &registry,
-            make_sandbox(),
+            make_sandbox().await,
             None,
             CancellationToken::new(),
             &config,

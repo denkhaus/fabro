@@ -10,7 +10,7 @@ use fabro_acp::{
     run_acp_turn,
 };
 use fabro_sandbox::test_support::{MockSandbox, MockStdioProcess};
-use fabro_sandbox::{LocalSandbox, Sandbox, shell_quote};
+use fabro_sandbox::{Sandbox, local_sandbox, shell_quote};
 use fabro_types::SteeringMessage;
 use fabro_util::error::collect_chain;
 use tokio::fs::{read_to_string, write};
@@ -104,7 +104,11 @@ async fn session_lifecycle_initializes_sends_prompt_and_aggregates_text() {
 
     let raw_command = format!("python3 {}", shell_quote(&script_path.to_string_lossy()));
     let command = AcpProcessSpec::from_command_attr(&raw_command).expect("parse ACP command");
-    let sandbox: Arc<dyn Sandbox> = Arc::new(LocalSandbox::new(tempdir.path().to_path_buf()));
+    let sandbox: Arc<dyn Sandbox> = Arc::new(
+        local_sandbox(tempdir.path().to_path_buf())
+            .await
+            .expect("local sandbox should be created"),
+    );
 
     let result = run_acp_turn(AcpRunRequest {
         command,
@@ -145,7 +149,11 @@ async fn steering_sends_followup_session_prompt_over_acp() {
 
     let raw_command = format!("python3 {}", shell_quote(&script_path.to_string_lossy()));
     let command = AcpProcessSpec::from_command_attr(&raw_command).expect("parse ACP command");
-    let sandbox: Arc<dyn Sandbox> = Arc::new(LocalSandbox::new(tempdir.path().to_path_buf()));
+    let sandbox: Arc<dyn Sandbox> = Arc::new(
+        local_sandbox(tempdir.path().to_path_buf())
+            .await
+            .expect("local sandbox should be created"),
+    );
     let control_handle = AcpControlHandle::new();
     let handle_for_activity = control_handle.clone();
     let queued = Arc::new(AtomicBool::new(false));
@@ -208,7 +216,11 @@ async fn interrupt_then_steer_sends_cancel_then_followup_session_prompt_over_acp
 
     let raw_command = format!("python3 {}", shell_quote(&script_path.to_string_lossy()));
     let command = AcpProcessSpec::from_command_attr(&raw_command).expect("parse ACP command");
-    let sandbox: Arc<dyn Sandbox> = Arc::new(LocalSandbox::new(tempdir.path().to_path_buf()));
+    let sandbox: Arc<dyn Sandbox> = Arc::new(
+        local_sandbox(tempdir.path().to_path_buf())
+            .await
+            .expect("local sandbox should be created"),
+    );
     let control_handle = AcpControlHandle::new();
     let handle_for_activity = control_handle.clone();
     let queued = Arc::new(AtomicBool::new(false));
@@ -283,7 +295,11 @@ async fn inline_interrupt_terminates_agent_that_ignores_cancel() {
 
     let raw_command = format!("python3 {}", shell_quote(&script_path.to_string_lossy()));
     let command = AcpProcessSpec::from_command_attr(&raw_command).expect("parse ACP command");
-    let sandbox: Arc<dyn Sandbox> = Arc::new(LocalSandbox::new(tempdir.path().to_path_buf()));
+    let sandbox: Arc<dyn Sandbox> = Arc::new(
+        local_sandbox(tempdir.path().to_path_buf())
+            .await
+            .expect("local sandbox should be created"),
+    );
     let control_handle = AcpControlHandle::new();
     let handle_for_activity = control_handle.clone();
     let interrupted = Arc::new(AtomicBool::new(false));
@@ -670,7 +686,11 @@ async fn run_fake_agent_with_activity(
         .expect("write fake ACP agent");
     let raw_command = format!("python3 {}", shell_quote(&script_path.to_string_lossy()));
     let command = AcpProcessSpec::from_command_attr(&raw_command).expect("parse ACP command");
-    let sandbox: Arc<dyn Sandbox> = Arc::new(LocalSandbox::new(tempdir.to_path_buf()));
+    let sandbox: Arc<dyn Sandbox> = Arc::new(
+        local_sandbox(tempdir.to_path_buf())
+            .await
+            .expect("local sandbox should be created"),
+    );
     env.entry("LC_ALL".to_string())
         .or_insert_with(|| "C".to_string());
 

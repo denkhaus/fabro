@@ -7,7 +7,7 @@
 //! - Docker file reads and content search: fabro's `DockerSandbox` (archive API
 //!   reads, `docker exec` grep) against the driver `DockerProvider` (archive
 //!   API reads, exec-derived search) in-process.
-//! - Host tool calls: fabro's `LocalSandbox` against the driver `HostProvider`
+//! - Host tool calls: fabro's local sandbox against the driver `HostProvider`
 //!   in-process, to confirm no regression on the path every local run takes.
 //! - The wire: the driver Host and Docker providers served over the JSON-RPC
 //!   protocol on an in-process duplex pipe, to size the budget for running a
@@ -37,7 +37,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bollard::Docker;
-use fabro_sandbox::{DockerSandbox, DockerSandboxOptions, LocalSandbox, Sandbox as FabroSandbox};
+use fabro_sandbox::{DockerSandbox, DockerSandboxOptions, Sandbox as FabroSandbox, local_sandbox};
 use sandbox_driver::{
     ExecSpec, GrepOptions, Sandbox as DriverSandbox, SandboxProvider, SandboxSource, SandboxSpec,
     Search,
@@ -335,12 +335,14 @@ async fn agent_tool_call_latency_through_the_driver() {
     let repo = Repository::pack();
     let mut rows = Vec::new();
 
-    // -- Host, in-process: fabro LocalSandbox vs driver HostProvider.
+    // -- Host, in-process: fabro local sandbox vs driver HostProvider.
     let host_dir = tempfile::tempdir().expect("tempdir");
-    let local = LocalSandbox::new(host_dir.path().to_path_buf());
+    let local = local_sandbox(host_dir.path().to_path_buf())
+        .await
+        .expect("local sandbox should be created");
     local.initialize().await.expect("local init");
     unpack_fabro(&local, &repo).await;
-    rows.extend(bench_fabro("fabro LocalSandbox", &local, &repo).await);
+    rows.extend(bench_fabro("fabro local sandbox", &local, &repo).await);
 
     let host_provider = Arc::new(HostProvider::new());
     let host = host_provider

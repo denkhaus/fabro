@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use fabro_agent::subagent::SessionFactory;
 use fabro_agent::{
-    AgentEvent, AgentProfile, AgentProfileBuilder, LocalSandbox, OpenAiProfile, Session,
-    SessionOptions, SubAgentSupervisor, ToolSecrets, WebFetchSummarizer,
+    AgentEvent, AgentProfile, AgentProfileBuilder, OpenAiProfile, Session, SessionOptions,
+    SubAgentSupervisor, ToolSecrets, WebFetchSummarizer, local_sandbox,
 };
 use fabro_auth::EnvCredentialSource;
 use fabro_llm::client::Client;
@@ -82,21 +82,25 @@ async fn make_session(
     let client = make_client(&provider, twin.as_ref()).await;
     let profile_builder = profile_builder(&provider, model, &client, tool_secrets);
     let mut profile = profile_builder.build();
-    let env = Arc::new(LocalSandbox::new(cwd.to_path_buf()));
+    let env: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+        local_sandbox(cwd.to_path_buf())
+            .await
+            .expect("local sandbox should be created"),
+    );
 
     // Register subagent tools so spawn_agent / wait / send_input / close_agent are
-    // available
+    // available. Subagents share the parent's sandbox: same directory, same
+    // host, and a session factory is synchronous.
     let supervisor = SubAgentSupervisor::new(3);
     let factory_client = client.clone();
-    let factory_cwd = cwd.to_path_buf();
+    let factory_env = Arc::clone(&env);
     let factory_profile_builder = profile_builder;
     let factory: SessionFactory = Arc::new(move || {
         let sub_profile: Arc<dyn AgentProfile> = Arc::from(factory_profile_builder.build());
-        let sub_env = Arc::new(LocalSandbox::new(factory_cwd.clone()));
         Session::new(
             factory_client.clone(),
             sub_profile,
-            sub_env,
+            Arc::clone(&factory_env),
             SessionOptions::default(),
             None,
         )
@@ -123,7 +127,11 @@ async fn make_session_with_config(
     let client = make_client(&provider, twin.as_ref()).await;
     let profile: Arc<dyn AgentProfile> =
         Arc::from(profile_builder(&provider, model, &client, ToolSecrets::default()).build());
-    let env = Arc::new(LocalSandbox::new(cwd.to_path_buf()));
+    let env = Arc::new(
+        local_sandbox(cwd.to_path_buf())
+            .await
+            .expect("local sandbox should be created"),
+    );
     Session::new(client, profile, env, config, None)
 }
 
@@ -158,7 +166,7 @@ fn make_openai_compatible_twin_client(provider: &Provider, twin: &OpenAiTwinOpti
     Client::new(providers, Some(provider_name), Vec::new())
 }
 
-fn make_openai_compatible_twin_session(
+async fn make_openai_compatible_twin_session(
     provider: Provider,
     model: &str,
     cwd: &Path,
@@ -182,7 +190,11 @@ fn make_openai_compatible_twin_session(
     );
     let profile: Arc<dyn AgentProfile> =
         Arc::new(OpenAiProfile::new(model).with_route(provider, catalog));
-    let env = Arc::new(LocalSandbox::new(cwd.to_path_buf()));
+    let env = Arc::new(
+        local_sandbox(cwd.to_path_buf())
+            .await
+            .expect("local sandbox should be created"),
+    );
     Session::new(client, profile, env, config, None)
 }
 
@@ -342,7 +354,8 @@ async fn openai_compatible_twin_uses_json_edit_file_tool() {
         tmp.path(),
         SessionOptions::default(),
         &twin,
-    );
+    )
+    .await;
     session.initialize().await.unwrap();
     let mut rx = session.subscribe();
 

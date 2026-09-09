@@ -720,9 +720,11 @@ reasoning = false
         let mut services = make_services();
         services.run = services
             .run
-            .with_sandbox(Arc::new(fabro_agent::LocalSandbox::new(
-                workspace.path().to_path_buf(),
-            )))
+            .with_sandbox(Arc::new(
+                fabro_agent::local_sandbox(workspace.path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ))
             .with_catalog_context(
                 Arc::clone(&catalog),
                 fabro_model::ProviderId::new("acme"),
@@ -795,9 +797,11 @@ reasoning = false
         let mut services = make_services();
         services.run = services
             .run
-            .with_sandbox(Arc::new(fabro_agent::LocalSandbox::new(
-                workspace.path().to_path_buf(),
-            )))
+            .with_sandbox(Arc::new(
+                fabro_agent::local_sandbox(workspace.path().to_path_buf())
+                    .await
+                    .unwrap(),
+            ))
             .with_catalog_context(
                 Arc::clone(&catalog),
                 fabro_model::ProviderId::new("acme"),

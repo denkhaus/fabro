@@ -291,23 +291,28 @@ impl EngineServices {
             Duration::from_millis(1),
             None,
         ));
-        let run_store = std::thread::spawn(move || {
+        let (run_store, sandbox) = std::thread::spawn(move || {
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .expect("test runtime should initialize")
                 .block_on(async {
-                    store
+                    let run_store = store
                         .create_run(&fabro_types::RunId::new())
                         .await
-                        .expect("slate-backed test run store should initialize")
+                        .expect("slate-backed test run store should initialize");
+                    let sandbox: Arc<dyn Sandbox> = Arc::new(
+                        fabro_agent::local_sandbox(
+                            std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+                        )
+                        .await
+                        .expect("local sandbox should be created"),
+                    );
+                    (run_store, sandbox)
                 })
         })
         .join()
         .expect("test run store thread should join");
-        let sandbox: Arc<dyn Sandbox> = Arc::new(fabro_agent::LocalSandbox::new(
-            std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-        ));
         let locations = RunLocations::for_sandbox(None, sandbox.as_ref(), PathBuf::from("."));
 
         Self {
