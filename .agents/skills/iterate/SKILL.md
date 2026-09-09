@@ -321,6 +321,15 @@ decision, not an accident - it needs the user plus an ADR.
    surfaced in the heartbeat report. Categorize EVERY revisor seed -
    none stays silently unassigned (user directive 2026-09-07). Then
    end the turn; the user starts the next cycle with /iterate.
+6. **Line-watch heartbeat** (user directive 2026-09-09): an RLM
+   heartbeat with label `line-watch`, interval 10m, delivery_mode
+   follow_up, carries this ceremony between cycles - pull, evaluate
+   new reviews/journals (gaps + misconceptions, premise-check
+   against the tree), dispatch unassigned seeds per ADR-0018, push
+   with run-PR deferral + JSONL dedupe discipline, report compactly
+   in German. RLM heartbeats are SESSION-scoped: if `rlm_heartbeat
+   .list()` shows no active `line-watch` at session start, recreate
+   it from this spec before doing anything else.
 
 ## Standing rules
 
