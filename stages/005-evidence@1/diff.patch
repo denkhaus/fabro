@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M23KJM3SM70S2S6QSSEWSJPY.jsonl b/.fabro/journal/01M23KJM3SM70S2S6QSSEWSJPY.jsonl
+index 3173b51..858f380 100644
+--- a/.fabro/journal/01M23KJM3SM70S2S6QSSEWSJPY.jsonl
++++ b/.fabro/journal/01M23KJM3SM70S2S6QSSEWSJPY.jsonl
+@@ -2,3 +2,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M23KJM3SM70S2S6QSSEWSJPY","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-09T17:32:18Z","data":{"painpoints":[],"observations":["Seed fabro-c4ce basis verified: implementer.md step 4 (line 27) still carries the ambiguous '-p <touched-crate> — FULL crate suite, for every crate whose tests the seed touched' phrasing that the basis run over-applied; the edit is a disambiguation, not a behavior reversal of PR #78's rule.","In-flight check clean: no open PRs among 17 develop runs; the only non-terminal run (01M23KJM3SM70S2S6QSSEWSJPY) is this run itself, and its goal names no seed id, so no journal fallback or exclusions were needed."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M23KJM3SM70S2S6QSSEWSJPY","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-09T17:33:34Z","data":{"painpoints":[],"observations":["The seed's verification criterion required the implementer to run `just qualitygate` even though step 4 of the very prompt being edited forbids the implementer from running the gate — a deliberate, seed-scoped exception this time, but worth noting the tension in case future seeds assume the prompt's rule rather than the seed's acceptance criteria."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M23KJM3SM70S2S6QSSEWSJPY","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-09T17:33:44Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M23KJM3SM70S2S6QSSEWSJPY","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-09T17:33:49Z","data":{}}
