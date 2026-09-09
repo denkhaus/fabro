@@ -571,7 +571,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T13:00:15.462065016Z",
-  "last_event_at": "2026-09-09T13:15:06.063417978Z",
+  "last_event_at": "2026-09-09T13:15:11.294384038Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -926,9 +926,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 123,
       "checkpoint": {
-        "timestamp": "2026-09-09T13:15:06.293920462Z",
+        "timestamp": "2026-09-09T13:15:11.293983892Z",
         "current_node": "revise",
         "completed_nodes": [
           "start",
@@ -938,49 +938,40 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.node_visit_count": 1,
-          "thread.survey.current_node": "develop",
-          "thread.develop.current_node": "revise",
-          "child_run_id": "01M23443Z65RK83WTF4Z7D7PGD",
-          "internal.fidelity": "compact",
-          "internal.retry_count.develop": 0,
-          "internal.exit_kind": "natural",
           "graph.preamble_budget_kb": "12",
+          "internal.retry_count.revise": 0,
+          "internal.retry_count.start": 0,
+          "graph.max_node_visits": "12",
           "graph.inspects": "develop,merge-upstream,revisor",
-          "outcome": "succeeded",
+          "failure_signature": "",
           "graph.rankdir": "LR",
-          "last_stage": "revise",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "internal.retry_count.survey": 0,
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "thread.develop.current_node": "revise",
+          "internal.retry_count.develop": 0,
+          "internal.node_visit_count": 1,
+          "internal.thread_id": "develop",
+          "internal.exit_kind": "natural",
+          "internal.fidelity": "compact",
+          "thread.start.current_node": "survey",
+          "child_run_id": "01M23443Z65RK83WTF4Z7D7PGD",
+          "internal.work_dir": "/workspace/fabro",
+          "last_response": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"revisor run 01M234DGZ14D6TZ486WZKJ407Z ",
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 746,
             "preview": "```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Work\",\n  \"suggested_next_ids\": [],\n  \"context_updates\": {\n    \"journal\": {\n      \"painpoints\": [],\n      \"observations\": [\n        \"upstr"
           },
-          "thread.start.current_node": "survey",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.seed_cycle_anchor": "",
-          "failure_signature": "",
           "failure_class": "",
-          "journal": {
-            "painpoints": [],
-            "observations": [
-              "revisor run 01M234DGZ14D6TZ486WZKJ407Z (child of 01M2341YTK6JWSHYPVXK9DE6YF, revising develop run 01M23443Z65RK83WTF4Z7D7PGD / PR #92): status succeeded, completed; develop backlog remains (fabro-f5d7, fabro-6997, fabro-154c, fabro-652d, fabro-7613 open)"
-            ]
+          "response.revise": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.revise",
+            "chars": 420,
+            "preview": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"revisor run 01M234DGZ14D6TZ486WZKJ407Z "
           },
-          "seed_cycles": {
-            "start": 1,
-            "survey": 1,
-            "develop": 1,
-            "revise": 1
-          },
-          "graph.max_node_visits": "12",
-          "internal.thread_id": "develop",
-          "internal.retry_count.start": 0,
-          "internal.retry_count.revise": 0,
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "internal.run_id": "01M2341YTK6JWSHYPVXK9DE6YF",
-          "last_response": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"revisor run 01M234DGZ14D6TZ486WZKJ407Z ",
-          "graph.cycle_counter_reset_key": "pass_id",
+          "thread.survey.current_node": "develop",
           "current_node": "revise",
           "response.develop": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -988,16 +979,74 @@
             "chars": 663,
             "preview": "PR #92 merged on the first merged-wait. Develop leg complete.\n\n```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Develop integrated\",\n  \"context_updates\": {\n    \"child_run_id\": \"01M23443Z"
           },
-          "internal.retry_count.survey": 0,
           "preferred_label": "Cycle complete",
-          "response.revise": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.revise",
-            "chars": 420,
-            "preview": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"revisor run 01M234DGZ14D6TZ486WZKJ407Z "
+          "outcome": "succeeded",
+          "internal.run_id": "01M2341YTK6JWSHYPVXK9DE6YF",
+          "internal.seed_cycle_anchor": "",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "revisor run 01M234DGZ14D6TZ486WZKJ407Z (child of 01M2341YTK6JWSHYPVXK9DE6YF, revising develop run 01M23443Z65RK83WTF4Z7D7PGD / PR #92): status succeeded, completed; develop backlog remains (fabro-f5d7, fabro-6997, fabro-154c, fabro-652d, fabro-7613 open)"
+            ]
+          },
+          "last_stage": "revise",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "develop": 1,
+            "revise": 1
           }
         },
         "node_outcomes": {
+          "develop": {
+            "status": "succeeded",
+            "preferred_label": "Develop integrated",
+            "context_updates": {
+              "last_stage": "develop",
+              "last_response": "PR #92 merged on the first merged-wait. Develop leg complete.\n\n```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Develop integrated\",\n  \"context_updates\": {\n    \"child_run_id\": \"01M23443Z",
+              "child_run_id": "01M23443Z65RK83WTF4Z7D7PGD",
+              "response.develop": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.develop",
+                "chars": 663,
+                "preview": "PR #92 merged on the first merged-wait. Develop leg complete.\n\n```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Develop integrated\",\n  \"context_updates\": {\n    \"child_run_id\": \"01M23443Z"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "child run 01M23443Z65RK83WTF4Z7D7PGD (seed fabro-eb3f, 'Develop planner step 4: fall back to the run journal when goal text carries no seed id'): status succeeded, PR #92, gate wait outcome merged on the first wait — revisor leg should review this run; develop backlog remains (fabro-f5d7, fabro-6997, fabro-154c, fabro-652d, fabro-7613 open)"
+                ]
+              }
+            },
+            "notes": "Stage completed: develop",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 111229,
+                    "output_tokens": 454,
+                    "reasoning_tokens": 57,
+                    "cache_read_tokens": 146560,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 196071
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 42091,
+              "tool_time_ms": 259272,
+              "active_time_ms": 301363
+            }
+          },
           "revise": {
             "status": "succeeded",
             "preferred_label": "Cycle complete",
@@ -1045,6 +1094,10 @@
               "tool_time_ms": 518702,
               "active_time_ms": 539469
             }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
           },
           "survey": {
             "status": "succeeded",
@@ -1095,73 +1148,106 @@
               "tool_time_ms": 9075,
               "active_time_ms": 35418
             }
-          },
-          "develop": {
-            "status": "succeeded",
-            "preferred_label": "Develop integrated",
-            "context_updates": {
-              "last_stage": "develop",
-              "last_response": "PR #92 merged on the first merged-wait. Develop leg complete.\n\n```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Develop integrated\",\n  \"context_updates\": {\n    \"child_run_id\": \"01M23443Z",
-              "child_run_id": "01M23443Z65RK83WTF4Z7D7PGD",
-              "response.develop": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.develop",
-                "chars": 663,
-                "preview": "PR #92 merged on the first merged-wait. Develop leg complete.\n\n```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Develop integrated\",\n  \"context_updates\": {\n    \"child_run_id\": \"01M23443Z"
-              },
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "child run 01M23443Z65RK83WTF4Z7D7PGD (seed fabro-eb3f, 'Develop planner step 4: fall back to the run journal when goal text carries no seed id'): status succeeded, PR #92, gate wait outcome merged on the first wait — revisor leg should review this run; develop backlog remains (fabro-f5d7, fabro-6997, fabro-154c, fabro-652d, fabro-7613 open)"
-                ]
-              }
-            },
-            "notes": "Stage completed: develop",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 111229,
-                    "output_tokens": 454,
-                    "reasoning_tokens": 57,
-                    "cache_read_tokens": 146560,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 196071
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 42091,
-              "tool_time_ms": 259272,
-              "active_time_ms": 301363
-            }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "69c8af8dc973308490e00bdd89bd5d222b4981ad",
         "node_visits": {
-          "survey": 1,
           "revise": 1,
-          "start": 1,
-          "develop": 1
+          "survey": 1,
+          "develop": 1,
+          "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M2341YTK6JWSHYPVXK9DE6YF.jsonl b/.fabro/journal/01M2341YTK6JWSHYPVXK9DE6YF.jsonl\nindex e618af65b..2ce12d2a3 100644\n--- a/.fabro/journal/01M2341YTK6JWSHYPVXK9DE6YF.jsonl\n+++ b/.fabro/journal/01M2341YTK6JWSHYPVXK9DE6YF.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2341YTK6JWSHYPVXK9DE6YF\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:00:18Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2341YTK6JWSHYPVXK9DE6YF\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:00:54Z\",\"data\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0'; threshold >=5 not met, drift accumulates\",\"revisor backlog: none — no develop runs completed after the newest revisor pass (revisor 01M2323WFBXXKVTCQMRSZP3NKY, created 2026-09-09T12:26Z, revised develop 01M230M352TRDS15S0DS7NZ43B); no unreviewed completed develop runs found\",\"next surveyor: this pass routed to Work (develop+revisor cycle); check backlog again after the develop run completes\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2341YTK6JWSHYPVXK9DE6YF\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:06:01Z\",\"data\":{\"painpoints\":[],\"observations\":[\"child run 01M23443Z65RK83WTF4Z7D7PGD (seed fabro-eb3f, 'Develop planner step 4: fall back to the run journal when goal text carries no seed id'): status succeeded, PR #92, gate wait outcome merged on the first wait — revisor leg should review this run; develop backlog remains (fabro-f5d7, fabro-6997, fabro-154c, fabro-652d, fabro-7613 open)\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2341YTK6JWSHYPVXK9DE6YF\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:15:06Z\",\"data\":{\"painpoints\":[],\"observations\":[\"revisor run 01M234DGZ14D6TZ486WZKJ407Z (child of 01M2341YTK6JWSHYPVXK9DE6YF, revising develop run 01M23443Z65RK83WTF4Z7D7PGD / PR #92): status succeeded, completed; develop backlog remains (fabro-f5d7, fabro-6997, fabro-154c, fabro-652d, fabro-7613 open)\"]}}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 4,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-09T13:15:11.346389216Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 897141,
+      "inference_time_ms": 89201,
+      "tool_time_ms": 787049,
+      "active_time_ms": 876250
+    },
+    "final_git_commit_sha": "69c8af8dc973308490e00bdd89bd5d222b4981ad",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 36074,
+          "inference_time_ms": 26343,
+          "tool_time_ms": 9075,
+          "active_time_ms": 35418
+        },
+        "billing_usd_micros": 28796,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 301985,
+          "inference_time_ms": 42091,
+          "tool_time_ms": 259272,
+          "active_time_ms": 301363
+        },
+        "billing_usd_micros": 196071,
+        "retries": 0
+      },
+      {
+        "stage_id": "revise",
+        "stage_label": "revise",
+        "timing": {
+          "wall_time_ms": 540068,
+          "inference_time_ms": 20767,
+          "tool_time_ms": 518702,
+          "active_time_ms": 539469
+        },
+        "billing_usd_micros": 23125,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 136692,
+      "output_tokens": 1153,
+      "total_tokens": 331061,
+      "reasoning_tokens": 320,
+      "cache_read_tokens": 192896,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 247992
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M2341YTK6JWSHYPVXK9DE6YF.jsonl b/.fabro/journal/01M2341YTK6JWSHYPVXK9DE6YF.jsonl\nnew file mode 100644\nindex 000000000..2ce12d2a3\n--- /dev/null\n+++ b/.fabro/journal/01M2341YTK6JWSHYPVXK9DE6YF.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2341YTK6JWSHYPVXK9DE6YF\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:00:18Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2341YTK6JWSHYPVXK9DE6YF\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:00:54Z\",\"data\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0'; threshold >=5 not met, drift accumulates\",\"revisor backlog: none — no develop runs completed after the newest revisor pass (revisor 01M2323WFBXXKVTCQMRSZP3NKY, created 2026-09-09T12:26Z, revised develop 01M230M352TRDS15S0DS7NZ43B); no unreviewed completed develop runs found\",\"next surveyor: this pass routed to Work (develop+revisor cycle); check backlog again after the develop run completes\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2341YTK6JWSHYPVXK9DE6YF\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:06:01Z\",\"data\":{\"painpoints\":[],\"observations\":[\"child run 01M23443Z65RK83WTF4Z7D7PGD (seed fabro-eb3f, 'Develop planner step 4: fall back to the run journal when goal text carries no seed id'): status succeeded, PR #92, gate wait outcome merged on the first wait — revisor leg should review this run; develop backlog remains (fabro-f5d7, fabro-6997, fabro-154c, fabro-652d, fabro-7613 open)\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2341YTK6JWSHYPVXK9DE6YF\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:15:06Z\",\"data\":{\"painpoints\":[],\"observations\":[\"revisor run 01M234DGZ14D6TZ486WZKJ407Z (child of 01M2341YTK6JWSHYPVXK9DE6YF, revising develop run 01M23443Z65RK83WTF4Z7D7PGD / PR #92): status succeeded, completed; develop backlog remains (fabro-f5d7, fabro-6997, fabro-154c, fabro-652d, fabro-7613 open)\"]}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 4,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2011,6 +2097,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 126,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T13:15:11.294384038Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T13:15:11.294275347Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
