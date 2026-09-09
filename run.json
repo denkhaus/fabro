@@ -689,14 +689,182 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M237JNJW4FNRRZ70EX7WZF6D",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-09-09T14:01:40.044823678Z",
+    "run_branch": "fabro/run/01M237JNJW4FNRRZ70EX7WZF6D",
+    "base_sha": "a1db2db1be629832a1ebda4f2ef16c242ee23084"
   },
-  "status_updated_at": "2026-09-09T14:01:34.165826877Z",
-  "last_event_at": "2026-09-09T14:01:39.490721381Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-09-09T14:01:40.044891657Z",
+  "last_event_at": "2026-09-09T14:02:34.881945691Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 19,
+      "checkpoint": {
+        "timestamp": "2026-09-09T14:01:42.724241215Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_signature": "",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.preamble_budget_kb": "24",
+          "current_node": "start",
+          "graph.rankdir": "LR",
+          "internal.node_visit_count": 1,
+          "internal.run_id": "01M237JNJW4FNRRZ70EX7WZF6D",
+          "internal.seed_cycle_anchor": "",
+          "seed_cycles": {
+            "start": 1
+          },
+          "graph.max_node_visits": "40",
+          "internal.fidelity": "compact",
+          "graph.inspects": "develop",
+          "failure_class": "",
+          "internal.retry_count.start": 0,
+          "internal.thread_id": null,
+          "outcome": "succeeded"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "planner",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T14:02:35.110237847Z",
+        "current_node": "planner",
+        "completed_nodes": [
+          "start",
+          "planner"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.run_id": "01M237JNJW4FNRRZ70EX7WZF6D",
+          "current_node": "planner",
+          "graph.max_node_visits": "40",
+          "seed_cycles": {
+            "planner": 1
+          },
+          "preferred_label": "Seed claimed",
+          "graph.inspects": "develop",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.seed_cycle_anchor": "fabro-de4d",
+          "last_stage": "planner",
+          "internal.node_visit_count": 1,
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.start": 0,
+          "failure_signature": "",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3172,
+            "preview": "Claimed fabro-de4d (High, bug, engine). Basis verified against the current tree: the routing output schema at `lib/components/fabro-workflow/src/handler/structured_output.rs:645` still types `preferre"
+          },
+          "outcome": "succeeded",
+          "current_seed_title": "engine: routing output_schema must constrain preferred_label to the node's outgoing edge labels",
+          "internal.thread_id": "start",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.rankdir": "LR",
+          "thread.start.current_node": "planner",
+          "failure_class": "",
+          "current_seed_id": "fabro-de4d",
+          "last_response": "Claimed fabro-de4d (High, bug, engine). Basis verified against the current tree: the routing output schema at `lib/components/fabro-workflow/src/handler/structured_output.rs:645` still types `preferre",
+          "internal.retry_count.planner": 0,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "current_seed_brief": "Incident 2026-09-06 (merge-upstream run 01M1V7XSV75BE92JZ0135SHQXK): reviewer emitted preferred_label='deploy', no edge matched, run soft-parked with ~50 min of work stranded. Implement the durable engine fix — validation, not prompt material. Acceptance criteria:\n- routing schema constrains labels: for nodes using output_schema='routing', the emitted JSON schema and/or output validation restricts preferred_label (and any label-carrying field, e.g. preferred_next_label) to the current node's outgoing edge labels — the free-form string today lives in `lib/components/fabro-workflow/src/handler/structured_output.rs:645` (schema) and `:672` (parse)\n- unknown label fails the OUTPUT, not the run: an out-of-vocabulary label triggers output_retries with an error naming the offending value AND the full allowed-label list (verbose validation, fabro-e4ac class)\n- the agent handler can access the node's outgoing edge labels when building/validating the schema — precedent exists in `lib/components/fabro-workflow/src/handler/human.rs:19` (choices derived from outgoing edges); thread the labels into the structured-output path without breaking handler/agent.rs existing tests (e.g. 'should_not_use' at agent.rs:980 currently asserts the label is dropped — align that test with the new fail-the-output behavior or keep drop semantics where no edge info is available, and state which reading you chose)\n- graph validation: emitting a warning when a node's only unrouted-label catcher is an unconditional edge without kind (silent soft park is the costliest routing failure) — warning only, no hard error\n- tests: unit tests in structured_output.rs/agent.rs covering (a) valid label passes, (b) unknown label retries with verbose error naming value + allowed list, (c) existing routing tests in `lib/components/fabro-workflow/src/graph/routing.rs` still pass unchanged\n- verification order (cheapest first): `cargo nextest run -p fabro-workflow` then `cargo build --workspace`\n- do NOT touch the review.md prompt stopgap (it stays as defense-in-depth)",
+          "internal.fidelity": "compact",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "fabro-de4d basis verified live: routing schema still free-form at structured_output.rs:645, no edge-label validation exists in the tree — seed is current, not stale",
+              "in-flight check clean: 13 develop runs listed, no open PRs, only this run (01M237JN) non-terminal"
+            ]
+          }
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_title": "engine: routing output_schema must constrain preferred_label to the node's outgoing edge labels",
+              "current_seed_brief": "Incident 2026-09-06 (merge-upstream run 01M1V7XSV75BE92JZ0135SHQXK): reviewer emitted preferred_label='deploy', no edge matched, run soft-parked with ~50 min of work stranded. Implement the durable engine fix — validation, not prompt material. Acceptance criteria:\n- routing schema constrains labels: for nodes using output_schema='routing', the emitted JSON schema and/or output validation restricts preferred_label (and any label-carrying field, e.g. preferred_next_label) to the current node's outgoing edge labels — the free-form string today lives in `lib/components/fabro-workflow/src/handler/structured_output.rs:645` (schema) and `:672` (parse)\n- unknown label fails the OUTPUT, not the run: an out-of-vocabulary label triggers output_retries with an error naming the offending value AND the full allowed-label list (verbose validation, fabro-e4ac class)\n- the agent handler can access the node's outgoing edge labels when building/validating the schema — precedent exists in `lib/components/fabro-workflow/src/handler/human.rs:19` (choices derived from outgoing edges); thread the labels into the structured-output path without breaking handler/agent.rs existing tests (e.g. 'should_not_use' at agent.rs:980 currently asserts the label is dropped — align that test with the new fail-the-output behavior or keep drop semantics where no edge info is available, and state which reading you chose)\n- graph validation: emitting a warning when a node's only unrouted-label catcher is an unconditional edge without kind (silent soft park is the costliest routing failure) — warning only, no hard error\n- tests: unit tests in structured_output.rs/agent.rs covering (a) valid label passes, (b) unknown label retries with verbose error naming value + allowed list, (c) existing routing tests in `lib/components/fabro-workflow/src/graph/routing.rs` still pass unchanged\n- verification order (cheapest first): `cargo nextest run -p fabro-workflow` then `cargo build --workspace`\n- do NOT touch the review.md prompt stopgap (it stays as defense-in-depth)",
+              "current_seed_id": "fabro-de4d",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3172,
+                "preview": "Claimed fabro-de4d (High, bug, engine). Basis verified against the current tree: the routing output schema at `lib/components/fabro-workflow/src/handler/structured_output.rs:645` still types `preferre"
+              },
+              "last_stage": "planner",
+              "last_response": "Claimed fabro-de4d (High, bug, engine). Basis verified against the current tree: the routing output schema at `lib/components/fabro-workflow/src/handler/structured_output.rs:645` still types `preferre",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-de4d basis verified live: routing schema still free-form at structured_output.rs:645, no edge-label validation exists in the tree — seed is current, not stale",
+                  "in-flight check clean: 13 develop runs listed, no open PRs, only this run (01M237JN) non-terminal"
+                ]
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 28675,
+                    "output_tokens": 962,
+                    "reasoning_tokens": 392,
+                    "cache_read_tokens": 113216,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 75534
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 48146,
+              "tool_time_ms": 3353,
+              "active_time_ms": 51499
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "implementer",
+        "node_visits": {
+          "planner": 1,
+          "start": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -722,5 +890,265 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "planner@1": {
+      "first_event_seq": 20,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T14:02:34.881945691Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T14:01:42.733466706Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 52215,
+        "inference_time_ms": 48146,
+        "tool_time_ms": 3353,
+        "active_time_ms": 51499
+      },
+      "usage": {
+        "input_tokens": 28675,
+        "output_tokens": 962,
+        "total_tokens": 143245,
+        "reasoning_tokens": 392,
+        "cache_read_tokens": 113216,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 75534
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 28547,
+        "usage_percent": 2.722454071044922,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-09T14:02:34.871799411Z",
+        "event_seq": 61,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1203,
+            "usage_percent": 0.11472702026367188
+          },
+          {
+            "category": "tools",
+            "tokens": 1872,
+            "usage_percent": 0.17852783203125
+          },
+          {
+            "category": "memory",
+            "tokens": 6065,
+            "usage_percent": 0.5784034729003906
+          },
+          {
+            "category": "conversation",
+            "tokens": 19399,
+            "usage_percent": 1.8500328063964844
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T14:01:42.486352550Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T14:01:42.478728681Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
