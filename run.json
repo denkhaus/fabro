@@ -483,7 +483,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T16:39:41.373851583Z",
-  "last_event_at": "2026-09-09T16:50:23.713893587Z",
+  "last_event_at": "2026-09-09T16:50:30.184520762Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -897,9 +897,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 204,
       "checkpoint": {
-        "timestamp": "2026-09-09T16:50:23.937146844Z",
+        "timestamp": "2026-09-09T16:50:29.233006601Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -909,13 +909,18 @@
         ],
         "node_retries": {},
         "context_values": {
-          "outcome": "succeeded",
-          "failure_signature": "",
-          "graph.rankdir": "LR",
-          "graph.inspects": "develop,merge-upstream",
-          "failure_class": "",
           "internal.retry_count.start": 0,
+          "internal.seed_cycle_anchor": "01M23EDVNHPGD8QNBWZN8WNTDD",
           "revisor_target_run_id": "01M23EDVNHPGD8QNBWZN8WNTDD",
+          "internal.retry_count.file": 0,
+          "outcome": "succeeded",
+          "internal.exit_kind": "natural",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "thread.analyze.current_node": "file",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -923,44 +928,52 @@
               "sd create output printed only the first seed id per shell call; both creations succeeded (fabro-c4ce, fabro-0586)"
             ]
           },
-          "revisor_target_title": "Develop one seed per run: claim, implement, gate, review (PR #99 merged)",
-          "internal.seed_cycle_anchor": "01M23EDVNHPGD8QNBWZN8WNTDD",
-          "revisor_target_wall": "36.7 min",
-          "internal.work_dir": "/workspace/fabro",
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "internal.fidelity": "compact",
-          "internal.thread_id": "analyze",
-          "filed_seed_ids": [
-            "fabro-c4ce",
-            "fabro-0586"
-          ],
-          "preferred_label": "Staged",
+          "internal.retry_count.select": 0,
+          "graph.inspects": "develop,merge-upstream",
           "response.select": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.select",
             "chars": 703,
             "preview": "{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Run selected\",\n  \"context_updates\": {\n    \"revisor_target_run_id\": \"01M23EDVNHPGD8QNBWZN8WNTDD\",\n    \"revisor_target_title\": \"Develop one seed pe"
           },
+          "revisor_target_status": "succeeded",
+          "revisor_target_workflow_version": "70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1",
+          "graph.max_node_visits": "30",
+          "thread.start.current_node": "select",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "last_response": "Bookkeeping pass complete: duplicate searches found no matches, filed seeds `fabro-c4ce` and `fabro-0586` with basis lines, wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M23EDVNHPG",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "internal.run_id": "01M23GM0FBEWXQYWTJ92ZVTRM4",
+          "graph.rankdir": "LR",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 733,
+            "preview": "Bookkeeping pass complete: duplicate searches found no matches, filed seeds `fabro-c4ce` and `fabro-0586` with basis lines, wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M23EDVNHPG"
+          },
+          "failure_signature": "",
+          "revisor_target_wall": "36.7 min",
+          "internal.fidelity": "compact",
+          "revisor_target_title": "Develop one seed per run: claim, implement, gate, review (PR #99 merged)",
+          "thread.select.current_node": "analyze",
+          "failure_class": "",
+          "graph.preamble_budget_kb": "24",
+          "internal.thread_id": "analyze",
+          "last_stage": "file",
+          "preferred_label": "Staged",
+          "internal.retry_count.analyze": 0,
           "response.analyze": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.analyze",
             "chars": 4647,
             "preview": "Pass complete: one `fabro_ask` on run `01M23EDVNHPGD8QNBWZN8WNTDD`, answer persisted verbatim to `.fabro/reviews/develop/01M23EDVNHPGD8QNBWZN8WNTDD.md` (only change on the tree), tracker checked via `"
           },
-          "internal.exit_kind": "natural",
-          "thread.start.current_node": "select",
-          "thread.select.current_node": "analyze",
-          "thread.analyze.current_node": "file",
-          "revisor_target_status": "succeeded",
-          "last_response": "Bookkeeping pass complete: duplicate searches found no matches, filed seeds `fabro-c4ce` and `fabro-0586` with basis lines, wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M23EDVNHPG",
-          "internal.run_id": "01M23GM0FBEWXQYWTJ92ZVTRM4",
-          "seed_cycles": {
-            "select": 1,
-            "analyze": 1,
-            "file": 1
-          },
-          "revisor_target_workflow_version": "70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1",
-          "graph.preamble_budget_kb": "24",
+          "filed_seed_ids": [
+            "fabro-c4ce",
+            "fabro-0586"
+          ],
+          "internal.node_visit_count": 1,
           "revision_findings": [
             {
               "title": "Scope implementer nextest to test-file-touched crates only",
@@ -973,134 +986,12 @@
               "priority": 2
             }
           ],
-          "internal.node_visit_count": 1,
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "graph.max_node_visits": "30",
-          "last_stage": "file",
-          "current_node": "file",
-          "internal.retry_count.select": 0,
-          "response.file": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.file",
-            "chars": 733,
-            "preview": "Bookkeeping pass complete: duplicate searches found no matches, filed seeds `fabro-c4ce` and `fabro-0586` with basis lines, wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M23EDVNHPG"
-          },
-          "internal.retry_count.analyze": 0,
-          "internal.retry_count.file": 0
+          "current_node": "file"
         },
         "node_outcomes": {
-          "file": {
-            "status": "succeeded",
-            "preferred_label": "Staged",
-            "context_updates": {
-              "last_response": "Bookkeeping pass complete: duplicate searches found no matches, filed seeds `fabro-c4ce` and `fabro-0586` with basis lines, wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M23EDVNHPG",
-              "response.file": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.file",
-                "chars": 733,
-                "preview": "Bookkeeping pass complete: duplicate searches found no matches, filed seeds `fabro-c4ce` and `fabro-0586` with basis lines, wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M23EDVNHPG"
-              },
-              "last_stage": "file",
-              "filed_seed_ids": [
-                "fabro-c4ce",
-                "fabro-0586"
-              ],
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "fabro-0586 deliberately overlaps open fabro-3d2d's theme (crate-path map) but covers only the tool-availability half — cross-referenced, no supersession",
-                  "sd create output printed only the first seed id per shell call; both creations succeeded (fabro-c4ce, fabro-0586)"
-                ]
-              }
-            },
-            "notes": "Stage completed: file",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 16766,
-                    "output_tokens": 1658,
-                    "reasoning_tokens": 132,
-                    "cache_read_tokens": 76544,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 51243
-            },
-            "files_touched": [
-              "/workspace/fabro/.fabro/revisions/01M23EDVNHPGD8QNBWZN8WNTDD.md"
-            ],
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 41215,
-              "tool_time_ms": 1265,
-              "active_time_ms": 42480
-            }
-          },
           "start": {
             "status": "succeeded",
             "usage": null
-          },
-          "select": {
-            "status": "succeeded",
-            "preferred_label": "Run selected",
-            "context_updates": {
-              "revisor_target_status": "succeeded",
-              "last_response": "{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Run selected\",\n  \"context_updates\": {\n    \"revisor_target_run_id\": \"01M23EDVNHPGD8QNBWZN8WNTDD\",\n    \"revisor_target_title\": \"Develop one seed pe",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "13 develop runs stale-evidence (version drift), 0 sandbox-less, 2 merge-upstream runs unrevised but older than selected develop run; 14 develop runs already revised"
-                ]
-              },
-              "revisor_target_title": "Develop one seed per run: claim, implement, gate, review (PR #99 merged)",
-              "revisor_target_run_id": "01M23EDVNHPGD8QNBWZN8WNTDD",
-              "revisor_target_workflow_version": "70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1",
-              "revisor_target_wall": "36.7 min",
-              "response.select": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.select",
-                "chars": 703,
-                "preview": "{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Run selected\",\n  \"context_updates\": {\n    \"revisor_target_run_id\": \"01M23EDVNHPGD8QNBWZN8WNTDD\",\n    \"revisor_target_title\": \"Develop one seed pe"
-              },
-              "last_stage": "select"
-            },
-            "notes": "Stage completed: select",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 17478,
-                    "output_tokens": 626,
-                    "reasoning_tokens": 75,
-                    "cache_read_tokens": 27264,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 34639
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 18917,
-              "tool_time_ms": 2497,
-              "active_time_ms": 21414
-            }
           },
           "analyze": {
             "status": "succeeded",
@@ -1175,20 +1066,215 @@
               "tool_time_ms": 209988,
               "active_time_ms": 563402
             }
+          },
+          "file": {
+            "status": "succeeded",
+            "preferred_label": "Staged",
+            "context_updates": {
+              "last_response": "Bookkeeping pass complete: duplicate searches found no matches, filed seeds `fabro-c4ce` and `fabro-0586` with basis lines, wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M23EDVNHPG",
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 733,
+                "preview": "Bookkeeping pass complete: duplicate searches found no matches, filed seeds `fabro-c4ce` and `fabro-0586` with basis lines, wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M23EDVNHPG"
+              },
+              "last_stage": "file",
+              "filed_seed_ids": [
+                "fabro-c4ce",
+                "fabro-0586"
+              ],
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-0586 deliberately overlaps open fabro-3d2d's theme (crate-path map) but covers only the tool-availability half — cross-referenced, no supersession",
+                  "sd create output printed only the first seed id per shell call; both creations succeeded (fabro-c4ce, fabro-0586)"
+                ]
+              }
+            },
+            "notes": "Stage completed: file",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16766,
+                    "output_tokens": 1658,
+                    "reasoning_tokens": 132,
+                    "cache_read_tokens": 76544,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 51243
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/revisions/01M23EDVNHPGD8QNBWZN8WNTDD.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 41215,
+              "tool_time_ms": 1265,
+              "active_time_ms": 42480
+            }
+          },
+          "select": {
+            "status": "succeeded",
+            "preferred_label": "Run selected",
+            "context_updates": {
+              "revisor_target_status": "succeeded",
+              "last_response": "{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Run selected\",\n  \"context_updates\": {\n    \"revisor_target_run_id\": \"01M23EDVNHPGD8QNBWZN8WNTDD\",\n    \"revisor_target_title\": \"Develop one seed pe",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "13 develop runs stale-evidence (version drift), 0 sandbox-less, 2 merge-upstream runs unrevised but older than selected develop run; 14 develop runs already revised"
+                ]
+              },
+              "revisor_target_title": "Develop one seed per run: claim, implement, gate, review (PR #99 merged)",
+              "revisor_target_run_id": "01M23EDVNHPGD8QNBWZN8WNTDD",
+              "revisor_target_workflow_version": "70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1",
+              "revisor_target_wall": "36.7 min",
+              "response.select": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.select",
+                "chars": 703,
+                "preview": "{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Run selected\",\n  \"context_updates\": {\n    \"revisor_target_run_id\": \"01M23EDVNHPGD8QNBWZN8WNTDD\",\n    \"revisor_target_title\": \"Develop one seed pe"
+              },
+              "last_stage": "select"
+            },
+            "notes": "Stage completed: select",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 17478,
+                    "output_tokens": 626,
+                    "reasoning_tokens": 75,
+                    "cache_read_tokens": 27264,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 34639
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 18917,
+              "tool_time_ms": 2497,
+              "active_time_ms": 21414
+            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "3bf6496d153c1ada24d24ff2cb64ff1694e4467f",
         "node_visits": {
-          "analyze": 1,
           "select": 1,
           "file": 1,
-          "start": 1
+          "start": 1,
+          "analyze": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M23GM0FBEWXQYWTJ92ZVTRM4.jsonl b/.fabro/journal/01M23GM0FBEWXQYWTJ92ZVTRM4.jsonl\nindex 3e04b456c..1ec9ec2ef 100644\n--- a/.fabro/journal/01M23GM0FBEWXQYWTJ92ZVTRM4.jsonl\n+++ b/.fabro/journal/01M23GM0FBEWXQYWTJ92ZVTRM4.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23GM0FBEWXQYWTJ92ZVTRM4\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T16:39:43Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23GM0FBEWXQYWTJ92ZVTRM4\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T16:40:06Z\",\"data\":{\"painpoints\":[],\"observations\":[\"13 develop runs stale-evidence (version drift), 0 sandbox-less, 2 merge-upstream runs unrevised but older than selected develop run; 14 develop runs already revised\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23GM0FBEWXQYWTJ92ZVTRM4\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T16:49:35Z\",\"data\":{\"painpoints\":[{\"text\":\"Ask-Fabro analyst re-recommended 6 of 8 findings that are already open seeds it cited by id (fabro-c3b4, fabro-8d2c, fabro-cf3e, fabro-3d2d, fabro-89dd, fabro-b769, fabro-8275), shifting the whole dedupe burden to the revisor; fix idea is open seed fabro-88a4 (feed the revision-labeled backlog digest into the ask preamble). Evidence: `.fabro/reviews/develop/01M23EDVNHPGD8QNBWZN8WNTDD.md` recs 3-8.\"},{\"text\":\"The one-edit-per-file hard rule is now triple-filed: open seeds fabro-4601 and fabro-1d94 plus analyst rec 2 of this pass (4 fresh concurrent-write warnings in `run_event/mod.rs`, `event/events.rs`, `serve.rs`, `pull_request_supervisor.rs` at 16:10-16:16); overlapping open seeds need a sweep-merge pass (related: open fabro-ab38).\"}],\"observations\":[\"Duplicate-run check: NOT a duplicate. Claimed seed fabro-94e8 is still open on base `origin/denkhaus` (tip `533b3c4dc`, fetched 2026-09-09 16:41+0000), no commit in any ref mentions 94e8, last merged develop-loop PR is #98; healthy-pass verdict.\",\"Run title says 'PR #99 merged' but no develop-loop #99 merge exists on the base at fetch time (the only (#99) commit in history is an old upstream product PR); the merge likely landed on GitHub post-run — re-check base before closing fabro-94e8 at filing time.\",\"Dropped as duplicates of open seeds: rec 2 → fabro-4601 and fabro-1d94; rec 3 → fabro-c3b4; rec 4 → fabro-8d2c and fabro-cf3e (mechanism variant fabro-e4c4); rec 5 map half → fabro-3d2d; rec 6 → fabro-89dd; rec 7 → fabro-b769; rec 8 → fabro-8275.\",\"Fresh evidence for existing seed owners: this run's 42,947-byte evidence capture exceeds the 32 KB raises pending in fabro-8d2c and fabro-cf3e — 32 KB would still blob-ref captures of this size; amend those targets to 48 KB.\",\"`sd list` returned exactly 50 entries (the cap, per open seed fabro-5ff7); this dedupe relied on `sd search` per theme plus `sd show` on every analyst-cited id.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23GM0FBEWXQYWTJ92ZVTRM4\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T16:50:23Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-0586 deliberately overlaps open fabro-3d2d's theme (crate-path map) but covers only the tool-availability half — cross-referenced, no supersession\",\"sd create output printed only the first seed id per shell call; both creations succeeded (fabro-c4ce, fabro-0586)\"]}}\ndiff --git a/.fabro/revisions/01M23EDVNHPGD8QNBWZN8WNTDD.md b/.fabro/revisions/01M23EDVNHPGD8QNBWZN8WNTDD.md\nnew file mode 100644\nindex 000000000..14bb1fa56\n--- /dev/null\n+++ b/.fabro/revisions/01M23EDVNHPGD8QNBWZN8WNTDD.md\n@@ -0,0 +1,17 @@\n+# Revision — run 01M23EDVNHPGD8QNBWZN8WNTDD\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M23EDVNHPGD8QNBWZN8WNTDD.md\n+- seeds filed:\n+  - fabro-c4ce — Scope implementer nextest to test-file-touched crates only\n+  - fabro-0586 — Add an available-binaries line to develop PROJECT_FACTS\n+- basis: run 01M23EDVNHPGD8QNBWZN8WNTDD, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 1bd14a4d41278a40a3615a61ffe55368fe0959e2\n+- revised_at_commit: 1bd14a4d41278a40a3615a61ffe55368fe0959e2 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Scope implementer nextest to test-file-touched crates only (fabro-c4ce)\n+Make step 4 test scoping in `.fabro/workflows/develop/prompts/implementer.md` mechanical: nextest only for crates whose test files the seed touched; fmt and clippy for every code-touched crate. In this run the implementer ran the full suite on all five touched crates (3,370 tests) although tests were added only in `lib/components/fabro-github` and `lib/apps/fabro-server`, and the tester gate deterministically re-ran the identical five-crate commands (227 s) anyway. Refines closed seed fabro-fc1b, whose rule was over-applied here. Expected effect: large cut of implementer wall and cost (30.1 min / $2.04 of $2.20 total, 1,092 s tool time) on every multi-crate Rust seed with gate coverage unchanged.\n+\n+### Add an available-binaries line to develop PROJECT_FACTS (fabro-0586)\n+Add one line to `.fabro/workflows/develop/prompts/project-facts.md` stating which shell binaries the run toolchain provides (rg, sd, ml, just, nu — no fd). The planner lost a call to `fd: command not found` (event 46) and the implementer guessed a wrong crate directory before finding `lib/components/` (event 99). Crate-to-path-map half is open seed fabro-3d2d; this seed covers only the tool-availability line. Expected effect: removes binary-probing calls in planner and implementer on every run.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 26d36ea54..2ed9ebd3a 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -320,3 +320,5 @@\n {\"id\":\"fabro-607a\",\"title\":\"Keep concrete literals at PROJECT_FACTS indirection sites\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T15:30:01.177Z\",\"updatedAt\":\"2026-09-09T15:42:20.679Z\",\"description\":\"After seed fabro-4814 externalized repo facts, planner.md step 4 now says \\\"shell grep for the seed id prefix (PROJECT_FACTS)\\\" where `fabro-` used to be inline — an LLM must resolve the indirection through the include to run the double-pick guard correctly (reviewer observation, non-blocking). Change `.fabro/workflows/develop/prompts/planner.md` step 4 and the corresponding use sites in `prompts/project-facts.md` to carry the concrete example at each site (\\\"the seed id prefix (e.g. `fabro-`)\\\") and keep the table as the source of truth. Expected effect: removes a misparse class from the exact mechanism that prevents fabro-22e4-style double-picks; near-zero cost. Basis: run 01M23B02H3ZNND8AT2D3Y2S4SG, workflow version 3bd915204178a8e5fd6796670d1bbfae4248a4b01f5d0fb7201e53b394cfdda8, commit db6b8ca5b4f7c0fc7583e1d28df1fa9ba295958e\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-9967\",\"title\":\"Planner prompt: cap sd ready to a top-N view and pass created_since to fabro_runs_list\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T15:30:01.314Z\",\"updatedAt\":\"2026-09-09T15:42:21.005Z\",\"description\":\"Run 01M23B02H3ZNND8AT2D3Y2S4SG seq 32: `sd ready --assignee fabro --limit 200` returned 189 issues / 25,613 bytes to pick one candidate; seq 41: `fabro_runs_list` returned 12,676 bytes / 14 runs where only status, PR state, and goal matter for the in-flight guard. Change the command table in `.fabro/workflows/develop/prompts/planner.md` to use `--limit 10` for `sd ready` and pass a recency filter to `fabro_runs_list` (in-flight runs are recent by definition). Expected effect: ~35KB less context in the planner's early turns, faster first output, less tie-break distraction. Basis: run 01M23B02H3ZNND8AT2D3Y2S4SG, workflow version 3bd915204178a8e5fd6796670d1bbfae4248a4b01f5d0fb7201e53b394cfdda8, commit db6b8ca5b4f7c0fc7583e1d28df1fa9ba295958e\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-09T15:42:21.005Z\",\"closeReason\":\"Duplicate of fabro-c3b4 (sd ready top-N firehose); the incremental created_since bit merged into fabro-c3b4's scope 2026-09-09.\"}\n {\"id\":\"fabro-b769\",\"title\":\"Add a long-stage heartbeat notification for run visibility\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T15:30:01.376Z\",\"updatedAt\":\"2026-09-09T15:42:20.763Z\",\"description\":\"Slack notifications in `.fabro/workflows/develop/workflow.toml` are configured only for run.completed/run.failed; in run 01M23B02H3ZNND8AT2D3Y2S4SG the implementer ran 15 of the run's 19 minutes with no external signal and no operator hook to cancel (run settings, cost concentration). Change the notifications block to add a stage-level event or a \\\"stage exceeds N minutes\\\" heartbeat alongside the terminal events. Expected effect: mid-run visibility into single-stage cost concentration while intervention is still possible. Basis: run 01M23B02H3ZNND8AT2D3Y2S4SG, workflow version 3bd915204178a8e5fd6796670d1bbfae4248a4b01f5d0fb7201e53b394cfdda8, commit db6b8ca5b4f7c0fc7583e1d28df1fa9ba295958e\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-c4ce\",\"title\":\"Scope implementer nextest to test-file-touched crates only\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T16:50:01.120Z\",\"updatedAt\":\"2026-09-09T16:50:01.120Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, make test scoping mechanical: run nextest only for crates whose test files the seed touched; run fmt and clippy for every code-touched crate. Evidence: in run 01M23EDVNHPGD8QNBWZN8WNTDD the implementer ran the full suite on all five touched crates (3,370 tests) although tests were added only in lib/components/fabro-github and lib/apps/fabro-server, and the tester gate deterministically re-ran the identical five-crate commands (227 s) anyway. Refines closed seed fabro-fc1b, whose rule was over-applied here. Expected effect: large cut of implementer wall and cost on every multi-crate Rust seed with gate coverage unchanged. Basis: run 01M23EDVNHPGD8QNBWZN8WNTDD, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 1bd14a4d41278a40a3615a61ffe55368fe0959e2\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-0586\",\"title\":\"Add an available-binaries line to develop PROJECT_FACTS\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T16:50:01.248Z\",\"updatedAt\":\"2026-09-09T16:50:01.248Z\",\"description\":\"In .fabro/workflows/develop/prompts/project-facts.md, add one line stating which shell binaries the run toolchain provides (rg, sd, ml, just, nu — no fd). Evidence: in run 01M23EDVNHPGD8QNBWZN8WNTDD the planner lost a call to fd: command not found (event 46) and the implementer guessed a wrong crate directory before finding lib/components/ (event 99). The crate-to-path-map half of that finding is already open seed fabro-3d2d; this seed covers only the tool-availability line. Expected effect: removes binary-probing calls in planner and implementer on every run. Basis: run 01M23EDVNHPGD8QNBWZN8WNTDD, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 1bd14a4d41278a40a3615a61ffe55368fe0959e2\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 75,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-09T16:50:29.277517015Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 649053,
+      "inference_time_ms": 413546,
+      "tool_time_ms": 213750,
+      "active_time_ms": 627296
+    },
+    "final_git_commit_sha": "3bf6496d153c1ada24d24ff2cb64ff1694e4467f",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 22025,
+          "inference_time_ms": 18917,
+          "tool_time_ms": 2497,
+          "active_time_ms": 21414
+        },
+        "billing_usd_micros": 34639,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 563986,
+          "inference_time_ms": 353414,
+          "tool_time_ms": 209988,
+          "active_time_ms": 563402
+        },
+        "billing_usd_micros": 243641,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 43152,
+          "inference_time_ms": 41215,
+          "tool_time_ms": 1265,
+          "active_time_ms": 42480
+        },
+        "billing_usd_micros": 51243,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 81674,
+      "output_tokens": 7283,
+      "total_tokens": 458050,
+      "reasoning_tokens": 21061,
+      "cache_read_tokens": 348032,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 329523
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M23GM0FBEWXQYWTJ92ZVTRM4.jsonl b/.fabro/journal/01M23GM0FBEWXQYWTJ92ZVTRM4.jsonl\nnew file mode 100644\nindex 000000000..1ec9ec2ef\n--- /dev/null\n+++ b/.fabro/journal/01M23GM0FBEWXQYWTJ92ZVTRM4.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23GM0FBEWXQYWTJ92ZVTRM4\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T16:39:43Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23GM0FBEWXQYWTJ92ZVTRM4\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T16:40:06Z\",\"data\":{\"painpoints\":[],\"observations\":[\"13 develop runs stale-evidence (version drift), 0 sandbox-less, 2 merge-upstream runs unrevised but older than selected develop run; 14 develop runs already revised\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23GM0FBEWXQYWTJ92ZVTRM4\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T16:49:35Z\",\"data\":{\"painpoints\":[{\"text\":\"Ask-Fabro analyst re-recommended 6 of 8 findings that are already open seeds it cited by id (fabro-c3b4, fabro-8d2c, fabro-cf3e, fabro-3d2d, fabro-89dd, fabro-b769, fabro-8275), shifting the whole dedupe burden to the revisor; fix idea is open seed fabro-88a4 (feed the revision-labeled backlog digest into the ask preamble). Evidence: `.fabro/reviews/develop/01M23EDVNHPGD8QNBWZN8WNTDD.md` recs 3-8.\"},{\"text\":\"The one-edit-per-file hard rule is now triple-filed: open seeds fabro-4601 and fabro-1d94 plus analyst rec 2 of this pass (4 fresh concurrent-write warnings in `run_event/mod.rs`, `event/events.rs`, `serve.rs`, `pull_request_supervisor.rs` at 16:10-16:16); overlapping open seeds need a sweep-merge pass (related: open fabro-ab38).\"}],\"observations\":[\"Duplicate-run check: NOT a duplicate. Claimed seed fabro-94e8 is still open on base `origin/denkhaus` (tip `533b3c4dc`, fetched 2026-09-09 16:41+0000), no commit in any ref mentions 94e8, last merged develop-loop PR is #98; healthy-pass verdict.\",\"Run title says 'PR #99 merged' but no develop-loop #99 merge exists on the base at fetch time (the only (#99) commit in history is an old upstream product PR); the merge likely landed on GitHub post-run — re-check base before closing fabro-94e8 at filing time.\",\"Dropped as duplicates of open seeds: rec 2 → fabro-4601 and fabro-1d94; rec 3 → fabro-c3b4; rec 4 → fabro-8d2c and fabro-cf3e (mechanism variant fabro-e4c4); rec 5 map half → fabro-3d2d; rec 6 → fabro-89dd; rec 7 → fabro-b769; rec 8 → fabro-8275.\",\"Fresh evidence for existing seed owners: this run's 42,947-byte evidence capture exceeds the 32 KB raises pending in fabro-8d2c and fabro-cf3e — 32 KB would still blob-ref captures of this size; amend those targets to 48 KB.\",\"`sd list` returned exactly 50 entries (the cap, per open seed fabro-5ff7); this dedupe relied on `sd search` per theme plus `sd show` on every analyst-cited id.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23GM0FBEWXQYWTJ92ZVTRM4\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T16:50:23Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-0586 deliberately overlaps open fabro-3d2d's theme (crate-path map) but covers only the tool-availability half — cross-referenced, no supersession\",\"sd create output printed only the first seed id per shell call; both creations succeeded (fabro-c4ce, fabro-0586)\"]}}\ndiff --git a/.fabro/reviews/develop/01M23EDVNHPGD8QNBWZN8WNTDD.md b/.fabro/reviews/develop/01M23EDVNHPGD8QNBWZN8WNTDD.md\nnew file mode 100644\nindex 000000000..65c5b1b6e\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M23EDVNHPGD8QNBWZN8WNTDD.md\n@@ -0,0 +1,52 @@\n+# Improve review — run 01M23EDVNHPGD8QNBWZN8WNTDD\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (36.7 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-09 16:48+0000 by revisor `fabro_ask`\n+\n+---\n+\n+Recommendations, ordered by expected impact. Each is grounded in a specific observation from this run (run 01M23EDVNHPGD8QNBWZN8WNTDD, seed fabro-94e8, total 36.7 min / $2.20, implementer stage = 30.1 min / $2.04 = 92.6% of cost).\n+\n+## 1. Scope the implementer's nextest to test-touched crates only\n+**Evidence (run events, implementer summary):** the implementer ran the FULL nextest suite on all **five** touched crates — \"3370 passed across the five touched crates\" — but tests were only added in `fabro-github` and `fabro-server` (`lib/components/fabro-github/src/lib.rs`, `lib/apps/fabro-server/src/server/tests.rs`). `fabro-types`, `fabro-store`, `fabro-workflow` got code changes only. The tester gate then re-ran the identical five-crate commands (gate log in reviewer preamble: fmt + clippy + nextest on the same five) in 227 s. The rule in the prompt (\"full crate suite for every crate whose tests the seed touched\") was over-applied, and the deterministic gate re-covers everything anyway.\n+**Change:** `.fabro/workflows/develop/prompts/implementer.md`, step 4 — make the scoping mechanical: \"nextest only for crates whose *test files* the seed touched; fmt/clippy for every code-touched crate.\"\n+**Expected effect:** cuts a large slice of the implementer's 1,092 s tool time / 30-min wall on every multi-crate Rust seed; gate still verifies deterministically.\n+\n+## 2. Hard rule against parallel edits to the same file\n+**Evidence (worker log, 4 warnings):** `concurrent write to the same file in one batch; serializing` for `run_event/mod.rs` (16:10), `event/events.rs` (16:11), `serve.rs` (16:12), `pull_request_supervisor.rs` (16:16). This is exactly the near-miss class the prompt cites from run 01M11P68SHFS (19 warnings, one swallowed loop body) — the prose warning did not stop the behavior.\n+**Change:** `.fabro/workflows/develop/prompts/implementer.md` — promote to a hard rule (\"never two edits to one path in a single tool batch\"), or enforce engine-side per open seed fabro-1d94.\n+**Expected effect:** eliminates the serialization-detour and the swallowed-edit correctness risk on every multi-file seed.\n+\n+## 3. Stop the planner `sd ready` firehose\n+**Evidence (event 32):** one `sd ready --assignee fabro --limit 200` poured **25,841 bytes / 191 seed lines** into the planner conversation just to learn that fabro-94e8 is top — ~40% of the planner's 27.5k-token context. Open seed fabro-c3b4 proposes exactly this and its body says \"fresh evidence\" was still needed.\n+**Change:** `.fabro/workflows/develop/prompts/planner.md` + the command table in `prompts/project-facts.md` — top-N/priority-filtered first call (`--priority high`-style, ~10 rows), full listing only when top candidates are unclaimable.\n+**Expected effect:** ~25 KB less context per planning pass on every run; cheaper, less distracted picks.\n+\n+## 4. Inline the evidence capture for the reviewer\n+**Evidence (reviewer journal + stage transcript):** the 42,947-byte capture exceeded `preamble_budget_kb=24`, arrived as a blob ref, and the reviewer \"had to page `/tmp/fabro/runtime/blobs/6a86853c…json` manually … the preview alone would have been insufficient\" — while using 2.5% of its 1M window. Recurring friction (open seeds fabro-8d2c, fabro-cf3e).\n+**Change:** `.fabro/workflows/develop/workflow.fabro` — raise graph `preamble_budget_kb` 24→48, or reviewer `preamble_inline_max_kb` 16→48.\n+**Expected effect:** no blob round-trip per review; removes the \"Verification blocked\" re-capture risk (a full evidence re-cycle) when a reviewer can't or doesn't page the blob.\n+\n+## 5. Add a crate→path map and available-binaries line to PROJECT_FACTS\n+**Evidence (events 46, 99):** planner ran `fd` → `fd: command not found`; implementer guessed `lib/foundation/fabro-github` → \"No such file or directory\" (it lives in `lib/components/`). Both stages burned calls discovering layout the loop already knows. Open seed fabro-3d2d.\n+**Change:** `.fabro/workflows/develop/prompts/project-facts.md` — add a crate→directory map (github/components, server/apps, types/foundation…) and a \"shell has rg/sd/ml/just/nu; no fd\" line.\n+**Expected effect:** removes path/binary probing calls in planner and implementer on every run.\n+\n+## 6. Give non-blocking review findings a durable channel\n+**Evidence (reviewer journal):** \"staleness_supervisor_skips_clean_and_blocked_run_pull_requests only tests the clean fixture, not blocked\" — non-blocking, so it lived only in the journal; the seed was closed at 16:37 and no future planner is bound to fold it into a brief. That test gap is now effectively orphaned. Open seed fabro-89dd.\n+**Change:** `.fabro/workflows/develop/workflow.fabro` reviewer node — add a `review_notes` context key relayed to closeout/planner.\n+**Expected effect:** small follow-ups (the blocked fixture, the in-memory-cap persistence note) become actionable instead of evaporating at closeout.\n+\n+## 7. Stage heartbeat notification\n+**Evidence (settings + timings):** notifications are only `run.completed`/`run.failed` to `#dev-fabro`; the implementer ran **30 minutes** with zero operator visibility (16:02→16:32). Open seed fabro-b769.\n+**Change:** run settings terminal notification config — add a long-stage heartbeat (e.g. >10 min).\n+**Expected effect:** mid-run visibility; faster human intervention on stalls.\n+\n+## 8. Downgrade the by-design allow-key warning\n+**Evidence (worker log):** `preamble_allow_keys entry absent … output.gate_known_bug_hits` fired on the green-path implementer start — expected, since that key only exists on gate-red bounces. Open seed fabro-8275.\n+**Change:** engine (`fabro_workflow::lifecycle::fidelity`) — downgrade to info.\n+**Expected effect:** one less noise line per green run; keeps warn+ logs meaningful.\n+\n+Not inspected: the PR-body generation (auto-merge, `zai:glm-4.7`) happened after run completion (last event 16:40:55) and its transcript is outside the run events I could read, so I made no recommendation about it.\ndiff --git a/.fabro/revisions/01M23EDVNHPGD8QNBWZN8WNTDD.md b/.fabro/revisions/01M23EDVNHPGD8QNBWZN8WNTDD.md\nnew file mode 100644\nindex 000000000..14bb1fa56\n--- /dev/null\n+++ b/.fabro/revisions/01M23EDVNHPGD8QNBWZN8WNTDD.md\n@@ -0,0 +1,17 @@\n+# Revision — run 01M23EDVNHPGD8QNBWZN8WNTDD\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M23EDVNHPGD8QNBWZN8WNTDD.md\n+- seeds filed:\n+  - fabro-c4ce — Scope implementer nextest to test-file-touched crates only\n+  - fabro-0586 — Add an available-binaries line to develop PROJECT_FACTS\n+- basis: run 01M23EDVNHPGD8QNBWZN8WNTDD, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 1bd14a4d41278a40a3615a61ffe55368fe0959e2\n+- revised_at_commit: 1bd14a4d41278a40a3615a61ffe55368fe0959e2 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Scope implementer nextest to test-file-touched crates only (fabro-c4ce)\n+Make step 4 test scoping in `.fabro/workflows/develop/prompts/implementer.md` mechanical: nextest only for crates whose test files the seed touched; fmt and clippy for every code-touched crate. In this run the implementer ran the full suite on all five touched crates (3,370 tests) although tests were added only in `lib/components/fabro-github` and `lib/apps/fabro-server`, and the tester gate deterministically re-ran the identical five-crate commands (227 s) anyway. Refines closed seed fabro-fc1b, whose rule was over-applied here. Expected effect: large cut of implementer wall and cost (30.1 min / $2.04 of $2.20 total, 1,092 s tool time) on every multi-crate Rust seed with gate coverage unchanged.\n+\n+### Add an available-binaries line to develop PROJECT_FACTS (fabro-0586)\n+Add one line to `.fabro/workflows/develop/prompts/project-facts.md` stating which shell binaries the run toolchain provides (rg, sd, ml, just, nu — no fd). The planner lost a call to `fd: command not found` (event 46) and the implementer guessed a wrong crate directory before finding `lib/components/` (event 99). Crate-to-path-map half is open seed fabro-3d2d; this seed covers only the tool-availability line. Expected effect: removes binary-probing calls in planner and implementer on every run.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 26d36ea54..2ed9ebd3a 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -320,3 +320,5 @@\n {\"id\":\"fabro-607a\",\"title\":\"Keep concrete literals at PROJECT_FACTS indirection sites\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T15:30:01.177Z\",\"updatedAt\":\"2026-09-09T15:42:20.679Z\",\"description\":\"After seed fabro-4814 externalized repo facts, planner.md step 4 now says \\\"shell grep for the seed id prefix (PROJECT_FACTS)\\\" where `fabro-` used to be inline — an LLM must resolve the indirection through the include to run the double-pick guard correctly (reviewer observation, non-blocking). Change `.fabro/workflows/develop/prompts/planner.md` step 4 and the corresponding use sites in `prompts/project-facts.md` to carry the concrete example at each site (\\\"the seed id prefix (e.g. `fabro-`)\\\") and keep the table as the source of truth. Expected effect: removes a misparse class from the exact mechanism that prevents fabro-22e4-style double-picks; near-zero cost. Basis: run 01M23B02H3ZNND8AT2D3Y2S4SG, workflow version 3bd915204178a8e5fd6796670d1bbfae4248a4b01f5d0fb7201e53b394cfdda8, commit db6b8ca5b4f7c0fc7583e1d28df1fa9ba295958e\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-9967\",\"title\":\"Planner prompt: cap sd ready to a top-N view and pass created_since to fabro_runs_list\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T15:30:01.314Z\",\"updatedAt\":\"2026-09-09T15:42:21.005Z\",\"description\":\"Run 01M23B02H3ZNND8AT2D3Y2S4SG seq 32: `sd ready --assignee fabro --limit 200` returned 189 issues / 25,613 bytes to pick one candidate; seq 41: `fabro_runs_list` returned 12,676 bytes / 14 runs where only status, PR state, and goal matter for the in-flight guard. Change the command table in `.fabro/workflows/develop/prompts/planner.md` to use `--limit 10` for `sd ready` and pass a recency filter to `fabro_runs_list` (in-flight runs are recent by definition). Expected effect: ~35KB less context in the planner's early turns, faster first output, less tie-break distraction. Basis: run 01M23B02H3ZNND8AT2D3Y2S4SG, workflow version 3bd915204178a8e5fd6796670d1bbfae4248a4b01f5d0fb7201e53b394cfdda8, commit db6b8ca5b4f7c0fc7583e1d28df1fa9ba295958e\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-09T15:42:21.005Z\",\"closeReason\":\"Duplicate of fabro-c3b4 (sd ready top-N firehose); the incremental created_since bit merged into fabro-c3b4's scope 2026-09-09.\"}\n {\"id\":\"fabro-b769\",\"title\":\"Add a long-stage heartbeat notification for run visibility\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T15:30:01.376Z\",\"updatedAt\":\"2026-09-09T15:42:20.763Z\",\"description\":\"Slack notifications in `.fabro/workflows/develop/workflow.toml` are configured only for run.completed/run.failed; in run 01M23B02H3ZNND8AT2D3Y2S4SG the implementer ran 15 of the run's 19 minutes with no external signal and no operator hook to cancel (run settings, cost concentration). Change the notifications block to add a stage-level event or a \\\"stage exceeds N minutes\\\" heartbeat alongside the terminal events. Expected effect: mid-run visibility into single-stage cost concentration while intervention is still possible. Basis: run 01M23B02H3ZNND8AT2D3Y2S4SG, workflow version 3bd915204178a8e5fd6796670d1bbfae4248a4b01f5d0fb7201e53b394cfdda8, commit db6b8ca5b4f7c0fc7583e1d28df1fa9ba295958e\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-c4ce\",\"title\":\"Scope implementer nextest to test-file-touched crates only\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T16:50:01.120Z\",\"updatedAt\":\"2026-09-09T16:50:01.120Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, make test scoping mechanical: run nextest only for crates whose test files the seed touched; run fmt and clippy for every code-touched crate. Evidence: in run 01M23EDVNHPGD8QNBWZN8WNTDD the implementer ran the full suite on all five touched crates (3,370 tests) although tests were added only in lib/components/fabro-github and lib/apps/fabro-server, and the tester gate deterministically re-ran the identical five-crate commands (227 s) anyway. Refines closed seed fabro-fc1b, whose rule was over-applied here. Expected effect: large cut of implementer wall and cost on every multi-crate Rust seed with gate coverage unchanged. Basis: run 01M23EDVNHPGD8QNBWZN8WNTDD, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 1bd14a4d41278a40a3615a61ffe55368fe0959e2\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-0586\",\"title\":\"Add an available-binaries line to develop PROJECT_FACTS\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T16:50:01.248Z\",\"updatedAt\":\"2026-09-09T16:50:01.248Z\",\"description\":\"In .fabro/workflows/develop/prompts/project-facts.md, add one line stating which shell binaries the run toolchain provides (rg, sd, ml, just, nu — no fd). Evidence: in run 01M23EDVNHPGD8QNBWZN8WNTDD the planner lost a call to fd: command not found (event 46) and the implementer guessed a wrong crate directory before finding lib/components/ (event 99). The crate-to-path-map half of that finding is already open seed fabro-3d2d; this seed covers only the tool-availability line. Expected effect: removes binary-probing calls in planner and implementer on every run. Basis: run 01M23EDVNHPGD8QNBWZN8WNTDD, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 1bd14a4d41278a40a3615a61ffe55368fe0959e2\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 75,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1738,6 +1824,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 207,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T16:50:29.233484284Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T16:50:29.233342010Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
