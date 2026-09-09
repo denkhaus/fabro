@@ -1,0 +1,23 @@
+diff --git a/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl b/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl
+index 4491b8c..0ece646 100644
+--- a/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl
++++ b/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M22STYHHYV9J9B7NTE03PH4G","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T10:01:34Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M22STYHHYV9J9B7NTE03PH4G","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-09T10:02:13Z","data":{"painpoints":[],"observations":["fabro-a18d basis verified against current tree: planner.md steps 6/7 at lines ~42-46 contain no journal-observation-to-brief rule; basis resolves cleanly","In-flight PR check: 6 develop runs listed, only open-PR states count and none were open (all merged or the current running run) — no exclusions applied"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M22STYHHYV9J9B7NTE03PH4G","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-09T10:03:01Z","data":{"painpoints":[],"observations":["none"]}}
+diff --git a/.fabro/workflows/develop/prompts/planner.md b/.fabro/workflows/develop/prompts/planner.md
+index 4a30469..7b64a47 100644
+--- a/.fabro/workflows/develop/prompts/planner.md
++++ b/.fabro/workflows/develop/prompts/planner.md
+@@ -41,7 +41,9 @@ The engine maintains `seed_cycles` deterministically: `{ node -> completed visit
+    - `-pretty flag: aligned column output, combines with -json`
+    - `-n flag: default 100, rejects values < 1 with non-zero exit`
+    - `tests: table-driven, cover flag combinations`
+-7. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong. When the spec names a heading, anchor, or file path, confirm it exists in the target file before forwarding the brief; when it does not, annotate the ACTUAL location (the real heading name or path) instead of transcribing the spec verbatim.
++
++   Journal-observation rule: any journal observation from a prior pass that names required consistency or scope work (e.g. 'keep line X consistent with rule Y') MUST be folded into the brief as an explicit bullet — or explicitly waived in the brief with a one-line reason. Reviewers and the implementer's PASS/FAIL report check bullets, not journals; a requirement that lives only in a journal entry does not exist (run 01M22PCGN4E3X1XGN630MDDH39: a journaled consistency note was skipped and contradictory prompt text shipped through an approving review).
++7. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). An unresolved journal observation naming consistency or scope work is itself such a contradiction: it MUST surface in the brief as an explicit bullet (or an explicit one-line waiver), never stay journal-only — see the journal-observation rule in step 6. Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong. When the spec names a heading, anchor, or file path, confirm it exists in the target file before forwarding the brief; when it does not, annotate the ACTUAL location (the real heading name or path) instead of transcribing the spec verbatim.
+ 
+ If the top candidate looks already implemented (its acceptance criteria appear satisfied in the worktree — often a stale tracker from an earlier run), do NOT close it yourself and do NOT skip it. Claim it normally and mark the brief as verification-only (see below). The normal cycle then proves it: implementer verifies, gate runs, reviewer approves. Only an approved review closes a seed.
+ 

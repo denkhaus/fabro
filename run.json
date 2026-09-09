@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T10:01:32.094192565Z",
-  "last_event_at": "2026-09-09T10:03:01.381881860Z",
+  "last_event_at": "2026-09-09T10:03:10.418521281Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -873,9 +873,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 118,
       "checkpoint": {
-        "timestamp": "2026-09-09T10:03:01.583425745Z",
+        "timestamp": "2026-09-09T10:03:05.957942192Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -884,9 +884,200 @@
         ],
         "node_retries": {},
         "context_values": {
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.start": 0,
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "last_response": "The edit is in place: step 6 gains the journal-observation rule (fold consistency/scope work into `current_seed_brief` bullets or waive with a one-line reason), and step 7's contradiction check now tr",
+          "graph.max_node_visits": "40",
+          "thread.start.current_node": "planner",
+          "internal.retry_count.planner": 0,
+          "preferred_label": "Implemented",
+          "thread.planner.current_node": "implementer",
+          "current_node": "implementer",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.work_dir": "/workspace/fabro",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "none"
+            ]
+          },
+          "implementation_summary": "Extended steps 6 and 7 of the 'Plan the next seed' section in `.fabro/workflows/develop/prompts/planner.md` (prompt-only change, +3/−1): step 6 now carries an explicit journal-observation rule requiring any prior-pass journal observation naming consistency or scope work to be folded into `current_seed_brief` as an explicit bullet or explicitly waived there with a one-line reason, grounded in the reviewers/implementers-check-bullets-not-journals rationale and run `01M22PCGN4E3X1XGN630MDDH39`; step 7's contradiction-check text cross-references that rule, making an unresolved consistency finding a contradiction that must surface in the brief rather than staying journal-only. No section restructuring, no step renumbering. Lesson capture: nothing durable — skipped (one-off prompt edit fully specified by the seed). Verification report: - PASS step 6 gains explicit journal-observation rule (bullet-or-waiver): `.fabro/workflows/develop/prompts/planner.md` step 6 'Journal-observation rule' paragraph — PASS step 7 contradiction-check cross-references the obligation: `.fabro/workflows/develop/prompts/planner.md` step 7 opening sentences — PASS wording consistent with existing bullets-not-journals rationale (cites run `01M22PCGN4E3X1XGN630MDDH39`): same paragraph — PASS prompt-only change, no Rust/TS code, no snapshot/gate impact beyond the prompt file: `git diff --stat` shows only `.fabro/workflows/develop/prompts/planner.md` — PASS minimal edit, steps extended not restructured, no renumbering: diff adds one paragraph inside step 6 and sentences inside step 7.",
+          "failure_class": "",
+          "graph.rankdir": "LR",
+          "internal.thread_id": "planner",
+          "lesson_capture": "nothing durable — skipped",
+          "graph.inspects": "develop",
+          "internal.run_id": "01M22STYHHYV9J9B7NTE03PH4G",
+          "internal.retry_count.implementer": 0,
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2117,
+            "preview": "Claimed fabro-a18d: the planner prompt's steps 6/7 currently have no rule forcing journal observations that name consistency work into `current_seed_brief` bullets, so such work is invisible to implem"
+          },
+          "outcome": "succeeded",
+          "last_stage": "implementer",
+          "current_seed_id": "fabro-a18d",
+          "internal.fidelity": "summary:high",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.node_visit_count": 1,
+          "failure_signature": "",
+          "current_seed_title": "Planner: observations naming consistency work must become current_seed_brief bullets",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2372,
+            "preview": "The edit is in place: step 6 gains the journal-observation rule (fold consistency/scope work into `current_seed_brief` bullets or waive with a one-line reason), and step 7's contradiction check now tr"
+          },
+          "internal.seed_cycle_anchor": "fabro-a18d",
+          "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/planner.md` (steps 6 and 7 of the 'Plan the next seed' section, currently at lines ~42-46) so consistency/scope work named in journal observations cannot stay journal-only. Acceptance criteria: (1) step 6 gains an explicit rule: any journal observation from a prior pass that names required consistency or scope work (e.g. 'keep line X consistent with rule Y') MUST be folded into `current_seed_brief` as an explicit bullet, or explicitly waived in the brief with a one-line reason; (2) step 7's contradiction-check text cross-references the same obligation (an unresolved consistency finding is a contradiction that must surface in the brief, not only in the journal); (3) wording stays consistent with the existing rationale that reviewers and implementer PASS/FAIL check bullets, not journals (basis: run 01M22PCGN4E3X1XGN630MDDH39 where a journaled consistency note was skipped and contradictory prompt text shipped through an approving review); (4) prompt-only change: no Rust/TS code touched, no snapshot or gate impact beyond the workflow prompt file itself; (5) the edit is minimal — extend steps 6/7, do not restructure the section or renumber subsequent steps."
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2117,
+                "preview": "Claimed fabro-a18d: the planner prompt's steps 6/7 currently have no rule forcing journal observations that name consistency work into `current_seed_brief` bullets, so such work is invisible to implem"
+              },
+              "last_response": "Claimed fabro-a18d: the planner prompt's steps 6/7 currently have no rule forcing journal observations that name consistency work into `current_seed_brief` bullets, so such work is invisible to implem",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-a18d basis verified against current tree: planner.md steps 6/7 at lines ~42-46 contain no journal-observation-to-brief rule; basis resolves cleanly",
+                  "In-flight PR check: 6 develop runs listed, only open-PR states count and none were open (all merged or the current running run) — no exclusions applied"
+                ]
+              },
+              "current_seed_id": "fabro-a18d",
+              "current_seed_title": "Planner: observations naming consistency work must become current_seed_brief bullets",
+              "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/planner.md` (steps 6 and 7 of the 'Plan the next seed' section, currently at lines ~42-46) so consistency/scope work named in journal observations cannot stay journal-only. Acceptance criteria: (1) step 6 gains an explicit rule: any journal observation from a prior pass that names required consistency or scope work (e.g. 'keep line X consistent with rule Y') MUST be folded into `current_seed_brief` as an explicit bullet, or explicitly waived in the brief with a one-line reason; (2) step 7's contradiction-check text cross-references the same obligation (an unresolved consistency finding is a contradiction that must surface in the brief, not only in the journal); (3) wording stays consistent with the existing rationale that reviewers and implementer PASS/FAIL check bullets, not journals (basis: run 01M22PCGN4E3X1XGN630MDDH39 where a journaled consistency note was skipped and contradictory prompt text shipped through an approving review); (4) prompt-only change: no Rust/TS code touched, no snapshot or gate impact beyond the workflow prompt file itself; (5) the edit is minimal — extend steps 6/7, do not restructure the section or renumber subsequent steps."
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 22849,
+                    "output_tokens": 761,
+                    "reasoning_tokens": 116,
+                    "cache_read_tokens": 97216,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 61115
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 36437,
+              "tool_time_ms": 2193,
+              "active_time_ms": 38630
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "lesson_capture": "nothing durable — skipped",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2372,
+                "preview": "The edit is in place: step 6 gains the journal-observation rule (fold consistency/scope work into `current_seed_brief` bullets or waive with a one-line reason), and step 7's contradiction check now tr"
+              },
+              "implementation_summary": "Extended steps 6 and 7 of the 'Plan the next seed' section in `.fabro/workflows/develop/prompts/planner.md` (prompt-only change, +3/−1): step 6 now carries an explicit journal-observation rule requiring any prior-pass journal observation naming consistency or scope work to be folded into `current_seed_brief` as an explicit bullet or explicitly waived there with a one-line reason, grounded in the reviewers/implementers-check-bullets-not-journals rationale and run `01M22PCGN4E3X1XGN630MDDH39`; step 7's contradiction-check text cross-references that rule, making an unresolved consistency finding a contradiction that must surface in the brief rather than staying journal-only. No section restructuring, no step renumbering. Lesson capture: nothing durable — skipped (one-off prompt edit fully specified by the seed). Verification report: - PASS step 6 gains explicit journal-observation rule (bullet-or-waiver): `.fabro/workflows/develop/prompts/planner.md` step 6 'Journal-observation rule' paragraph — PASS step 7 contradiction-check cross-references the obligation: `.fabro/workflows/develop/prompts/planner.md` step 7 opening sentences — PASS wording consistent with existing bullets-not-journals rationale (cites run `01M22PCGN4E3X1XGN630MDDH39`): same paragraph — PASS prompt-only change, no Rust/TS code, no snapshot/gate impact beyond the prompt file: `git diff --stat` shows only `.fabro/workflows/develop/prompts/planner.md` — PASS minimal edit, steps extended not restructured, no renumbering: diff adds one paragraph inside step 6 and sentences inside step 7.",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "none"
+                ]
+              },
+              "last_response": "The edit is in place: step 6 gains the journal-observation rule (fold consistency/scope work into `current_seed_brief` bullets or waive with a one-line reason), and step 7's contradiction check now tr"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 17690,
+                    "output_tokens": 1115,
+                    "reasoning_tokens": 139,
+                    "cache_read_tokens": 58560,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 45502
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 43883,
+              "tool_time_ms": 767,
+              "active_time_ms": 44650
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "9222d5efb2a3c86df9b401afaa205d4eac4f98da",
+        "node_visits": {
+          "start": 1,
+          "planner": 1,
+          "implementer": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl b/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl\nindex 4491b8c..0ece646 100644\n--- a/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl\n+++ b/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22STYHHYV9J9B7NTE03PH4G\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:01:34Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22STYHHYV9J9B7NTE03PH4G\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:02:13Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-a18d basis verified against current tree: planner.md steps 6/7 at lines ~42-46 contain no journal-observation-to-brief rule; basis resolves cleanly\",\"In-flight PR check: 6 develop runs listed, only open-PR states count and none were open (all merged or the current running run) — no exclusions applied\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22STYHHYV9J9B7NTE03PH4G\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:03:01Z\",\"data\":{\"painpoints\":[],\"observations\":[\"none\"]}}\ndiff --git a/.fabro/workflows/develop/prompts/planner.md b/.fabro/workflows/develop/prompts/planner.md\nindex 4a30469..7b64a47 100644\n--- a/.fabro/workflows/develop/prompts/planner.md\n+++ b/.fabro/workflows/develop/prompts/planner.md\n@@ -41,7 +41,9 @@ The engine maintains `seed_cycles` deterministically: `{ node -> completed visit\n    - `-pretty flag: aligned column output, combines with -json`\n    - `-n flag: default 100, rejects values < 1 with non-zero exit`\n    - `tests: table-driven, cover flag combinations`\n-7. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong. When the spec names a heading, anchor, or file path, confirm it exists in the target file before forwarding the brief; when it does not, annotate the ACTUAL location (the real heading name or path) instead of transcribing the spec verbatim.\n+\n+   Journal-observation rule: any journal observation from a prior pass that names required consistency or scope work (e.g. 'keep line X consistent with rule Y') MUST be folded into the brief as an explicit bullet — or explicitly waived in the brief with a one-line reason. Reviewers and the implementer's PASS/FAIL report check bullets, not journals; a requirement that lives only in a journal entry does not exist (run 01M22PCGN4E3X1XGN630MDDH39: a journaled consistency note was skipped and contradictory prompt text shipped through an approving review).\n+7. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). An unresolved journal observation naming consistency or scope work is itself such a contradiction: it MUST surface in the brief as an explicit bullet (or an explicit one-line waiver), never stay journal-only — see the journal-observation rule in step 6. Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong. When the spec names a heading, anchor, or file path, confirm it exists in the target file before forwarding the brief; when it does not, annotate the ACTUAL location (the real heading name or path) instead of transcribing the spec verbatim.\n \n If the top candidate looks already implemented (its acceptance criteria appear satisfied in the worktree — often a stale tracker from an earlier run), do NOT close it yourself and do NOT skip it. Claim it normally and mark the brief as verification-only (see below). The normal cycle then proves it: implementer verifies, gate runs, reviewer approves. Only an approved review closes a seed.\n \n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 7,
+          "deletions": 2
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T10:03:10.663283484Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
           "internal.retry_count.planner": 0,
           "thread.planner.current_node": "implementer",
-          "internal.fidelity": "summary:high",
+          "internal.retry_count.tester": 0,
+          "internal.fidelity": "compact",
           "last_stage": "implementer",
           "preferred_label": "Implemented",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
@@ -899,12 +1090,14 @@
           },
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
           "current_seed_title": "Planner: observations naming consistency work must become current_seed_brief bullets",
           "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/planner.md` (steps 6 and 7 of the 'Plan the next seed' section, currently at lines ~42-46) so consistency/scope work named in journal observations cannot stay journal-only. Acceptance criteria: (1) step 6 gains an explicit rule: any journal observation from a prior pass that names required consistency or scope work (e.g. 'keep line X consistent with rule Y') MUST be folded into `current_seed_brief` as an explicit bullet, or explicitly waived in the brief with a one-line reason; (2) step 7's contradiction-check text cross-references the same obligation (an unresolved consistency finding is a contradiction that must surface in the brief, not only in the journal); (3) wording stays consistent with the existing rationale that reviewers and implementer PASS/FAIL check bullets, not journals (basis: run 01M22PCGN4E3X1XGN630MDDH39 where a journaled consistency note was skipped and contradictory prompt text shipped through an approving review); (4) prompt-only change: no Rust/TS code touched, no snapshot or gate impact beyond the workflow prompt file itself; (5) the edit is minimal — extend steps 6/7, do not restructure the section or renumber subsequent steps.",
           "internal.retry_count.start": 0,
-          "current_node": "implementer",
+          "thread.implementer.current_node": "tester",
+          "current_node": "tester",
           "failure_class": "",
           "internal.retry_count.implementer": 0,
           "graph.preamble_budget_kb": "24",
@@ -916,6 +1109,7 @@
           "failure_signature": "",
           "implementation_summary": "Extended steps 6 and 7 of the 'Plan the next seed' section in `.fabro/workflows/develop/prompts/planner.md` (prompt-only change, +3/−1): step 6 now carries an explicit journal-observation rule requiring any prior-pass journal observation naming consistency or scope work to be folded into `current_seed_brief` as an explicit bullet or explicitly waived there with a one-line reason, grounded in the reviewers/implementers-check-bullets-not-journals rationale and run `01M22PCGN4E3X1XGN630MDDH39`; step 7's contradiction-check text cross-references that rule, making an unresolved consistency finding a contradiction that must surface in the brief rather than staying journal-only. No section restructuring, no step renumbering. Lesson capture: nothing durable — skipped (one-off prompt edit fully specified by the seed). Verification report: - PASS step 6 gains explicit journal-observation rule (bullet-or-waiver): `.fabro/workflows/develop/prompts/planner.md` step 6 'Journal-observation rule' paragraph — PASS step 7 contradiction-check cross-references the obligation: `.fabro/workflows/develop/prompts/planner.md` step 7 opening sentences — PASS wording consistent with existing bullets-not-journals rationale (cites run `01M22PCGN4E3X1XGN630MDDH39`): same paragraph — PASS prompt-only change, no Rust/TS code, no snapshot/gate impact beyond the prompt file: `git diff --stat` shows only `.fabro/workflows/develop/prompts/planner.md` — PASS minimal edit, steps extended not restructured, no renumbering: diff adds one paragraph inside step 6 and sentences inside step 7.",
           "graph.max_node_visits": "40",
+          "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
           "internal.run_id": "01M22STYHHYV9J9B7NTE03PH4G",
           "outcome": "succeeded",
           "response.planner": {
@@ -933,10 +1127,24 @@
             "chars": 2372,
             "preview": "The edit is in place: step 6 gains the journal-observation rule (fold consistency/scope work into `current_seed_brief` bullets or waive with a one-line reason), and step 7's contradiction check now tr"
           },
-          "internal.thread_id": "planner",
+          "internal.thread_id": "implementer",
           "internal.seed_cycle_anchor": "fabro-a18d"
         },
         "node_outcomes": {
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 4437,
+              "active_time_ms": 4437
+            }
+          },
           "implementer": {
             "status": "succeeded",
             "preferred_label": "Implemented",
@@ -1044,11 +1252,12 @@
             }
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
-          "start": 1,
           "planner": 1,
-          "implementer": 1
+          "implementer": 1,
+          "start": 1,
+          "tester": 1
         }
       },
       "diff": {}
@@ -1080,220 +1289,6 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
-    "implementer@1": {
-      "first_event_seq": 73,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Stage completed: implementer",
-        "failure_reason": null,
-        "timestamp": "2026-09-09T10:03:01.381881860Z"
-      },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "low"
-      },
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-09T10:02:17.177176450Z",
-      "handler": "agent",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 45242,
-        "inference_time_ms": 43883,
-        "tool_time_ms": 767,
-        "active_time_ms": 44650
-      },
-      "usage": {
-        "input_tokens": 17690,
-        "output_tokens": 1115,
-        "total_tokens": 77504,
-        "reasoning_tokens": 139,
-        "cache_read_tokens": 58560,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 45502
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": true
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 17515,
-        "usage_percent": 1.6703605651855469,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-09T10:03:01.371568909Z",
-        "event_seq": 111,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1094,
-            "usage_percent": 0.10433197021484375
-          },
-          {
-            "category": "tools",
-            "tokens": 1567,
-            "usage_percent": 0.14944076538085938
-          },
-          {
-            "category": "memory",
-            "tokens": 5503,
-            "usage_percent": 0.5248069763183594
-          },
-          {
-            "category": "conversation",
-            "tokens": 9345,
-            "usage_percent": 0.8912086486816406
-          },
-          {
-            "category": "other",
-            "tokens": 6,
-            "usage_percent": 0.00057220458984375
-          }
-        ],
-        "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "start@1": {
       "first_event_seq": 16,
       "prompt": null,
@@ -1549,6 +1544,271 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "implementer@1": {
+      "first_event_seq": 73,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T10:03:01.381881860Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T10:02:17.177176450Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 45242,
+        "inference_time_ms": 43883,
+        "tool_time_ms": 767,
+        "active_time_ms": 44650
+      },
+      "usage": {
+        "input_tokens": 17690,
+        "output_tokens": 1115,
+        "total_tokens": 77504,
+        "reasoning_tokens": 139,
+        "cache_read_tokens": 58560,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 45502
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 17515,
+        "usage_percent": 1.6703605651855469,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-09T10:03:01.371568909Z",
+        "event_seq": 111,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1094,
+            "usage_percent": 0.10433197021484375
+          },
+          {
+            "category": "tools",
+            "tokens": 1567,
+            "usage_percent": 0.14944076538085938
+          },
+          {
+            "category": "memory",
+            "tokens": 5503,
+            "usage_percent": 0.5248069763183594
+          },
+          {
+            "category": "conversation",
+            "tokens": 9345,
+            "usage_percent": 0.8912086486816406
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@1": {
+      "first_event_seq": 121,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T10:03:10.418521281Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+        "exit_code": 0,
+        "duration_ms": 4437,
+        "termination": "exited",
+        "output_bytes": 87,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 87,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T10:03:05.968030877Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 4441,
+        "inference_time_ms": 0,
+        "tool_time_ms": 4437,
+        "active_time_ms": 4437
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
