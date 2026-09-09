@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M230M352TRDS15S0DS7NZ43B.jsonl b/.fabro/journal/01M230M352TRDS15S0DS7NZ43B.jsonl
+new file mode 100644
+index 000000000..4a21eafdd
+--- /dev/null
++++ b/.fabro/journal/01M230M352TRDS15S0DS7NZ43B.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M230M352TRDS15S0DS7NZ43B","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T12:00:18Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M230M352TRDS15S0DS7NZ43B","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-09T12:00:58Z","data":{"painpoints":[{"text":"`git fetch upstream --prune` on a repo with hundreds of run/meta branches floods stderr (~95k tokens truncated in tool output), making it easy to lose the actual `rev-list --count` result printed on stdout. Suggestion: in the survey loop, run fetches with `2>/dev/null` or `--quiet` and/or add `remote.<name>.fetch` refspec narrowing so the count line stays readable. No run id; observed in this pass (run 01M230M352TRDS15S0DS7NZ43B)."}],"observations":["upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject not applicable at zero drift — threshold of 5 not met, drift accumulates from 0 this pass","revisor backlog: none — develop and revisor runs pair 1:1 (9 each); newest develop 01M22YZBNJ0Y06H8C8C0G3VN3W was revised by revisor run 01M22Z63T0K8354PEDZNQ8D82D (PR #89, merged)","route Work: run one develop+revisor cycle; children only after previous child merged; next surveyor should re-check the drift count as usual"]}}
