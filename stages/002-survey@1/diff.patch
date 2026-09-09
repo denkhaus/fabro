@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M23AXP23FE3V223TWH45F447.jsonl b/.fabro/journal/01M23AXP23FE3V223TWH45F447.jsonl
+new file mode 100644
+index 000000000..b725e3a4b
+--- /dev/null
++++ b/.fabro/journal/01M23AXP23FE3V223TWH45F447.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M23AXP23FE3V223TWH45F447","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T15:00:18Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M23AXP23FE3V223TWH45F447","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-09T15:01:04Z","data":{"painpoints":[{"text":"First-ever `git fetch upstream --prune` in this clone emitted hundreds of new-branch lines and blew the shell output budget (exit 0, stdout truncated ~350k tokens, evidence: run 01M23AXP23FE3V223TWH45F447 survey pass 2026-09-09). Suggested fix: in the surveyor procedure, fetch with `git fetch upstream --prune --quiet` or narrow `remote.upstream.fetch` to main so the count command stays readable in one call."}],"observations":["upstream count 0 (origin/denkhaus..upstream/main), newest upstream subject: 'Bump version to 0.348.0-nightly.0' — fork is fully synced, well below MIN threshold 5; drift accumulates from zero.","revisor backlog: 01M237JNJW4FNRRZ70EX7WZF6D — newest develop run (PR #96 merged) has revisor child 01M2395PSPYDC1KZA45Q171BDE which FAILED, so the run is effectively unrevised; next revisor pass should burn this down.","Next surveyor should know: all other develop runs pair 1:1 with succeeded revisor children; only the failed-revisor case creates backlog."]}}
