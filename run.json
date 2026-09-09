@@ -689,14 +689,184 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M23TE61D4Y33415BK5M7C70X",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-09-09T19:31:16.576943572Z",
+    "run_branch": "fabro/run/01M23TE61D4Y33415BK5M7C70X",
+    "base_sha": "54ecc38c6cb6aa38f02840976793f1be54c3d32f"
   },
-  "status_updated_at": "2026-09-09T19:31:10.128036794Z",
-  "last_event_at": "2026-09-09T19:31:15.853797346Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-09-09T19:31:16.577010927Z",
+  "last_event_at": "2026-09-09T19:32:30.476287926Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 19,
+      "checkpoint": {
+        "timestamp": "2026-09-09T19:31:19.175330274Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "current_node": "start",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.run_id": "01M23TE61D4Y33415BK5M7C70X",
+          "internal.seed_cycle_anchor": "",
+          "graph.preamble_budget_kb": "24",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "seed_cycles": {
+            "start": 1
+          },
+          "graph.inspects": "develop",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.thread_id": null,
+          "outcome": "succeeded",
+          "internal.fidelity": "compact",
+          "internal.retry_count.start": 0,
+          "graph.max_node_visits": "40",
+          "graph.rankdir": "LR",
+          "failure_signature": "",
+          "internal.node_visit_count": 1,
+          "failure_class": ""
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "planner",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T19:32:30.715302991Z",
+        "current_node": "planner",
+        "completed_nodes": [
+          "start",
+          "planner"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.node_visit_count": 1,
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "seed_cycles": {
+            "planner": 1
+          },
+          "last_response": "Claimed `fabro-c0e5`. The evidence script's per-seed churn demotion (counts-only when seed work exists, gated at `evidence.nu` ~line 409) is confirmed present, so the seed's basis resolves against the",
+          "last_stage": "planner",
+          "graph.max_node_visits": "40",
+          "internal.run_id": "01M23TE61D4Y33415BK5M7C70X",
+          "graph.rankdir": "LR",
+          "current_seed_id": "fabro-c0e5",
+          "graph.preamble_budget_kb": "24",
+          "failure_class": "",
+          "internal.work_dir": "/workspace/fabro",
+          "failure_signature": "",
+          "current_seed_title": "Evidence capture must flag out-of-spec seed-work files (residue detection), not just demote loop files to counts-only",
+          "current_seed_brief": "In `.fabro/workflows/develop/scripts/evidence.nu`, loop-path changes are demoted to a counts-only churn section whenever seed work exists (gate at the `loop-diff-section` emission in `main`, ~line 409), so PR #109's out-of-spec `auto_merge=false` flip across three `workflow.toml` files was invisible to the reviewer. NOTE: `.fabro/**` is fs_hide-bound for file tools — read/edit `evidence.nu` and the prompts through the shell (sed/cat/python3 heredoc); write_file/edit_file will fail. Acceptance criteria (bulleted):\n- Anomaly section: when `seed_rows` is non-empty AND `churn_rows` is non-empty (the mixed case), `evidence.nu` emits a NEW named+diffed section (reuse `diff-walk` against the per-seed claim base) headed like `== anomaly: changed files NOT named by the seed spec (loop paths changed alongside seed work — reviewer must adjudicate: residue vs adjacent repair vs scope creep) ==`, listing each file with its full diff, NOT counts-only.\n- Churn-only seeds (seed_rows empty) keep the existing `loop-diff-section` behavior unchanged — the anomaly section is additive for the mixed case; integrity counts line stays as-is.\n- Reviewer adjudication: `.fabro/workflows/develop/prompts/reviewer.md` gains a line telling the reviewer to explicitly adjudicate every file in the anomaly section (residue / adjacent repair / scope creep) and reject on unexplained residue.\n- Verification test: a scratch-git exercise (temp repo or temp claim-base ref in the worktree, cleaned up after) with one in-spec source file plus one out-of-spec `.fabro/workflows/*/workflow.toml` change, proving the output names the workflow.toml and shows its diff in the anomaly section — cheapest checks first: `nu -c 'source ...'` parse/compile check, then the scratch run, then prompt-text grep for the adjudication line.\n- Scope guard: do NOT implement spec-named path promotion (fabro-93a7, still open) or worktree-diff quarantine (fabro-9d2f) — this seed is detection-only; the anomaly fires for ANY loop-path change alongside seed work.",
+          "thread.start.current_node": "planner",
+          "internal.thread_id": "start",
+          "graph.inspects": "develop",
+          "internal.fidelity": "compact",
+          "current_node": "planner",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3165,
+            "preview": "Claimed `fabro-c0e5`. The evidence script's per-seed churn demotion (counts-only when seed work exists, gated at `evidence.nu` ~line 409) is confirmed present, so the seed's basis resolves against the"
+          },
+          "internal.retry_count.planner": 0,
+          "preferred_label": "Seed claimed",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "fabro-c0e5 basis verified against current tree: evidence.nu still demotes mixed-case loop churn to counts-only (gate at ~line 409); loop-diff-section exists only for churn-only seeds (fabro-4b57)",
+              "Kept fabro-93a7 (spec-named path promotion) and fabro-9d2f (residue quarantine) explicitly out of scope — both remain open and overlap this seed's territory",
+              "No dedicated test harness exists for evidence.nu; acceptance test must be a scratch-git exercise, not a checked-in nushell test file unless the implementer finds an existing pattern"
+            ]
+          },
+          "outcome": "succeeded",
+          "internal.seed_cycle_anchor": "fabro-c0e5",
+          "internal.retry_count.start": 0
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Claimed `fabro-c0e5`. The evidence script's per-seed churn demotion (counts-only when seed work exists, gated at `evidence.nu` ~line 409) is confirmed present, so the seed's basis resolves against the",
+              "current_seed_brief": "In `.fabro/workflows/develop/scripts/evidence.nu`, loop-path changes are demoted to a counts-only churn section whenever seed work exists (gate at the `loop-diff-section` emission in `main`, ~line 409), so PR #109's out-of-spec `auto_merge=false` flip across three `workflow.toml` files was invisible to the reviewer. NOTE: `.fabro/**` is fs_hide-bound for file tools — read/edit `evidence.nu` and the prompts through the shell (sed/cat/python3 heredoc); write_file/edit_file will fail. Acceptance criteria (bulleted):\n- Anomaly section: when `seed_rows` is non-empty AND `churn_rows` is non-empty (the mixed case), `evidence.nu` emits a NEW named+diffed section (reuse `diff-walk` against the per-seed claim base) headed like `== anomaly: changed files NOT named by the seed spec (loop paths changed alongside seed work — reviewer must adjudicate: residue vs adjacent repair vs scope creep) ==`, listing each file with its full diff, NOT counts-only.\n- Churn-only seeds (seed_rows empty) keep the existing `loop-diff-section` behavior unchanged — the anomaly section is additive for the mixed case; integrity counts line stays as-is.\n- Reviewer adjudication: `.fabro/workflows/develop/prompts/reviewer.md` gains a line telling the reviewer to explicitly adjudicate every file in the anomaly section (residue / adjacent repair / scope creep) and reject on unexplained residue.\n- Verification test: a scratch-git exercise (temp repo or temp claim-base ref in the worktree, cleaned up after) with one in-spec source file plus one out-of-spec `.fabro/workflows/*/workflow.toml` change, proving the output names the workflow.toml and shows its diff in the anomaly section — cheapest checks first: `nu -c 'source ...'` parse/compile check, then the scratch run, then prompt-text grep for the adjudication line.\n- Scope guard: do NOT implement spec-named path promotion (fabro-93a7, still open) or worktree-diff quarantine (fabro-9d2f) — this seed is detection-only; the anomaly fires for ANY loop-path change alongside seed work.",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-c0e5 basis verified against current tree: evidence.nu still demotes mixed-case loop churn to counts-only (gate at ~line 409); loop-diff-section exists only for churn-only seeds (fabro-4b57)",
+                  "Kept fabro-93a7 (spec-named path promotion) and fabro-9d2f (residue quarantine) explicitly out of scope — both remain open and overlap this seed's territory",
+                  "No dedicated test harness exists for evidence.nu; acceptance test must be a scratch-git exercise, not a checked-in nushell test file unless the implementer finds an existing pattern"
+                ]
+              },
+              "current_seed_id": "fabro-c0e5",
+              "current_seed_title": "Evidence capture must flag out-of-spec seed-work files (residue detection), not just demote loop files to counts-only",
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3165,
+                "preview": "Claimed `fabro-c0e5`. The evidence script's per-seed churn demotion (counts-only when seed work exists, gated at `evidence.nu` ~line 409) is confirmed present, so the seed's basis resolves against the"
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 32340,
+                    "output_tokens": 1348,
+                    "reasoning_tokens": 931,
+                    "cache_read_tokens": 187520,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 104049
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 66797,
+              "tool_time_ms": 4081,
+              "active_time_ms": 70878
+            }
+          }
+        },
+        "next_node_id": "implementer",
+        "node_visits": {
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -722,5 +892,265 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "planner@1": {
+      "first_event_seq": 20,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T19:32:30.476287926Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T19:31:19.184378283Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 71428,
+        "inference_time_ms": 66797,
+        "tool_time_ms": 4081,
+        "active_time_ms": 70878
+      },
+      "usage": {
+        "input_tokens": 32340,
+        "output_tokens": 1348,
+        "total_tokens": 222139,
+        "reasoning_tokens": 931,
+        "cache_read_tokens": 187520,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 104049
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 32093,
+        "usage_percent": 3.060626983642578,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-09T19:32:30.465562236Z",
+        "event_seq": 75,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1204,
+            "usage_percent": 0.1148223876953125
+          },
+          {
+            "category": "tools",
+            "tokens": 1908,
+            "usage_percent": 0.1819610595703125
+          },
+          {
+            "category": "memory",
+            "tokens": 6345,
+            "usage_percent": 0.6051063537597656
+          },
+          {
+            "category": "conversation",
+            "tokens": 22628,
+            "usage_percent": 2.1579742431640625
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T19:31:18.943383135Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T19:31:18.935119740Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
