@@ -25,6 +25,11 @@ pub enum RunNoticeCode {
     CheckpointMetadataDegraded,
     CheckpointMetadataPushFailed,
     CheckpointMetadataWriteFailed,
+    /// A node's `context_allow_keys` declared keys that the completing
+    /// stage emitted none of (seed fabro-8bf4) — visibility lint only.
+    /// Journal-specific output-schema enforcement is tracked separately
+    /// (fabro-017f) and is NOT this code's concern.
+    ContextAllowKeysNeverEmitted,
     /// A node's `context_allow_keys` dropped agent-authored context
     /// updates (seed fabro-900e). The message names the node and keys.
     ContextUpdateDropped,
