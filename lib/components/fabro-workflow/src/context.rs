@@ -160,6 +160,28 @@ pub(crate) fn enforce_stage_envelope(
     dropped
 }
 
+/// Keys declared in the node's `context_allow_keys` that the completed
+/// stage never emitted into its `context_updates` (fabro-8bf4): a
+/// completion lint, not a drop. Engine-stamped keys are excluded — the
+/// engine owns their presence, so their absence in the updates map is
+/// never an agent omission. Returns the keys sorted for a deterministic
+/// notice message.
+pub(crate) fn missing_allow_keys(
+    node: &Node,
+    updates: &HashMap<String, serde_json::Value>,
+) -> Vec<String> {
+    let Some(allow) = node.context_allow_keys() else {
+        return Vec::new();
+    };
+    let mut missing: Vec<String> = allow
+        .into_iter()
+        .filter(|key| !updates.contains_key(*key) && !keys::is_engine_stamped_key(key, &node.id))
+        .map(str::to_string)
+        .collect();
+    missing.sort();
+    missing
+}
+
 /// Read a context key the way workflow authors write one: the declared key
 /// first, then the same key with a leading `context.` stripped.
 ///

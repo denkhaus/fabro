@@ -28,6 +28,11 @@ pub enum RunNoticeCode {
     /// A node's `context_allow_keys` dropped agent-authored context
     /// updates (seed fabro-900e). The message names the node and keys.
     ContextUpdateDropped,
+    /// A node completed successfully without emitting one or more keys
+    /// declared in its `context_allow_keys` (seed fabro-8bf4). The
+    /// message names the node and keys; warning-only — the stage still
+    /// completes, this is auditability, not a failure.
+    ContextKeyOmitted,
     DirtyWorktree,
     GitDiffFailed,
     GitPushFailed,

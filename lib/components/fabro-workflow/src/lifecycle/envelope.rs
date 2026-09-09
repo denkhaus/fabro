@@ -28,6 +28,11 @@ type WfNodeResult = NodeResult<Option<BilledModelUsage>>;
 /// updates only. Dropped keys are reported with a `ContextUpdateDropped`
 /// warning notice — drops are drift protection, never silent and never a
 /// stage failure.
+///
+/// On successful completions it also runs the fabro-8bf4 lint: a key
+/// declared in `context_allow_keys` that the stage never emitted is
+/// reported with a `ContextKeyOmitted` warning. Warning-only — the stage
+/// still completes; the lint makes silent output omissions auditable.
 pub(crate) struct EnvelopeLifecycle {
     emitter:          Arc<Emitter>,
     stage_executions: StageExecutionTracker,
@@ -55,13 +60,31 @@ impl RunLifecycle<WorkflowGraph> for EnvelopeLifecycle {
             &state.context,
             &mut result.outcome.context_updates,
         );
-        if dropped.is_empty() {
+        if !dropped.is_empty() {
+            self.emitter.notice_scoped(
+                RunNoticeLevel::Warn,
+                RunNoticeCode::ContextUpdateDropped,
+                format!("context_allow_keys dropped: {}", dropped.join(", ")),
+                &stage_scope_for(&self.stage_executions, state, node.id()),
+            );
+        }
+
+        // Completion lint (fabro-8bf4): a successful stage that never
+        // emitted a key it declared in `context_allow_keys` warns — the
+        // omission is auditable, never a stage failure. Failed/retried
+        // attempts are exempt: their updates are not a completion.
+        let missing = if result.outcome.status.is_successful() {
+            context::missing_allow_keys(node.inner(), &result.outcome.context_updates)
+        } else {
+            Vec::new()
+        };
+        if missing.is_empty() {
             return Ok(());
         }
         self.emitter.notice_scoped(
             RunNoticeLevel::Warn,
-            RunNoticeCode::ContextUpdateDropped,
-            format!("context_allow_keys dropped: {}", dropped.join(", ")),
+            RunNoticeCode::ContextKeyOmitted,
+            format!("context_allow_keys never emitted: {}", missing.join(", ")),
             &stage_scope_for(&self.stage_executions, state, node.id()),
         );
         Ok(())
@@ -175,6 +198,13 @@ mod tests {
     #[tokio::test]
     async fn after_node_without_envelope_attrs_is_a_noop() {
         let emitter = Arc::new(Emitter::new(RunId::new()));
+        let notices = Arc::new(std::sync::Mutex::new(Vec::<RunEvent>::new()));
+        let capture = Arc::clone(&notices);
+        emitter.on_event(move |event| {
+            if matches!(event.body, EventBody::RunNotice(_)) {
+                capture.lock().expect("test mutex").push(event.clone());
+            }
+        });
         let lifecycle = EnvelopeLifecycle::new(&emitter, StageExecutionTracker::default());
 
         let node = envelope_node(&[]);
@@ -187,5 +217,103 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.outcome.context_updates.len(), 1);
+        assert!(
+            notices.lock().expect("test mutex").is_empty(),
+            "no allowlist declared: no drop and no omission notice"
+        );
+    }
+
+    fn notice_recorder(emitter: &Arc<Emitter>) -> Arc<std::sync::Mutex<Vec<RunEvent>>> {
+        let notices = Arc::new(std::sync::Mutex::new(Vec::<RunEvent>::new()));
+        let capture = Arc::clone(&notices);
+        emitter.on_event(move |event| {
+            if matches!(event.body, EventBody::RunNotice(_)) {
+                capture.lock().expect("test mutex").push(event.clone());
+            }
+        });
+        notices
+    }
+
+    #[tokio::test]
+    async fn after_node_warns_when_allow_key_never_emitted() {
+        let emitter = Arc::new(Emitter::new(RunId::new()));
+        let notices = notice_recorder(&emitter);
+        let lifecycle = EnvelopeLifecycle::new(&emitter, StageExecutionTracker::default());
+
+        let node = envelope_node(&[("context_allow_keys", "current_seed_id,journal")]);
+        let mut result = node_result(&[("current_seed_id", serde_json::json!("fabro-8bf4"))]);
+        let state = run_state();
+
+        lifecycle
+            .after_node(&node, &mut result, &state)
+            .await
+            .unwrap();
+
+        // Warning-only: the omitted key does not fail the stage or
+        // mutate the emitted updates (fabro-8bf4).
+        assert_eq!(result.outcome.context_updates.len(), 1);
+        let notices = notices.lock().expect("test mutex");
+        assert_eq!(notices.len(), 1, "exactly one omission notice");
+        match &notices[0].body {
+            EventBody::RunNotice(props) => {
+                assert_eq!(props.level, RunNoticeLevel::Warn);
+                assert_eq!(props.code, "context_key_omitted");
+                assert_eq!(notices[0].node_id.as_deref(), Some("planner"));
+                assert!(
+                    props.message.contains("journal"),
+                    "message names the omitted key: {}",
+                    props.message
+                );
+            }
+            other => panic!("expected RunNotice, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn after_node_all_allow_keys_emitted_is_silent() {
+        let emitter = Arc::new(Emitter::new(RunId::new()));
+        let notices = notice_recorder(&emitter);
+        let lifecycle = EnvelopeLifecycle::new(&emitter, StageExecutionTracker::default());
+
+        let node = envelope_node(&[("context_allow_keys", "current_seed_id,journal")]);
+        let mut result = node_result(&[
+            ("current_seed_id", serde_json::json!("fabro-8bf4")),
+            ("journal", serde_json::json!({"painpoints": []})),
+        ]);
+        let state = run_state();
+
+        lifecycle
+            .after_node(&node, &mut result, &state)
+            .await
+            .unwrap();
+
+        assert_eq!(result.outcome.context_updates.len(), 2);
+        assert!(
+            notices.lock().expect("test mutex").is_empty(),
+            "all declared keys emitted: no notice"
+        );
+    }
+
+    #[tokio::test]
+    async fn after_node_ignores_engine_stamped_allow_keys() {
+        let emitter = Arc::new(Emitter::new(RunId::new()));
+        let notices = notice_recorder(&emitter);
+        let lifecycle = EnvelopeLifecycle::new(&emitter, StageExecutionTracker::default());
+
+        // `current.preamble` is engine-stamped: its absence from the
+        // agent's updates is not an omission.
+        let node = envelope_node(&[("context_allow_keys", "current_seed_id,current.preamble")]);
+        let mut result = node_result(&[("current_seed_id", serde_json::json!("fabro-8bf4"))]);
+        let state = run_state();
+
+        lifecycle
+            .after_node(&node, &mut result, &state)
+            .await
+            .unwrap();
+
+        assert!(
+            notices.lock().expect("test mutex").is_empty(),
+            "engine-stamped keys are never omissions"
+        );
     }
 }
