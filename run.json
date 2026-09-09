@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T09:31:23.835093852Z",
-  "last_event_at": "2026-09-09T09:39:17.999334275Z",
+  "last_event_at": "2026-09-09T09:39:23.200384363Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1067,9 +1067,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 306,
       "checkpoint": {
-        "timestamp": "2026-09-09T09:39:18.251331890Z",
+        "timestamp": "2026-09-09T09:39:22.786416758Z",
         "current_node": "tester",
         "completed_nodes": [
           "start",
@@ -1079,15 +1079,230 @@
         ],
         "node_retries": {},
         "context_values": {
-          "lesson_capture": "mx-84a287",
-          "internal.thread_id": "implementer",
-          "outcome": "succeeded",
+          "thread.implementer.current_node": "tester",
+          "current_seed_brief": "In `.fabro/workflows/develop/scripts/closeout.nu`, before `sd close` runs, detect whether the run's diff touches any `Dockerfile*` path and emit a prominent warning that the fix takes effect only after the `fabro-toolchain:noble` image rebuilds. Acceptance criteria: (1) diff base: reuse the seed-claim-base approach from `.fabro/workflows/develop/scripts/evidence.nu` (newest commit where the current seed transitioned to in_progress; fallback to run base, flagged) — do not invent a new anchoring scheme; (2) detection: `git diff --name-only <base>` filtered with a glob matching any path segment named `Dockerfile*` (covers `.fabro/Dockerfile.toolchain`, `.fabro/Dockerfile`, root `Dockerfile`); (3) when matched, print a warning line to stderr AND stdout naming the touched files and stating the fix is inert until `fabro-toolchain:noble` is rebuilt — the warning must NEVER fail or block the close (wrap in `do { ... } | complete` so git errors degrade to silence); (4) SPEC ANNOTATION (resolved contradiction): the seed asks for the warning 'surfaced in the run summary and PR body', but that run-level warning channel is exactly what open seed fabro-5b0a proposes and does not exist yet — this seed must NOT build that channel; emitting the warning from closeout's captured stdout/stderr (which lands in the stage journal and run output) satisfies this seed, and fabro-5b0a remains the follow-up for PR-body surfacing (cross-reference it in a comment); (5) keep the existing close semantics byte-identical when no Dockerfile is touched (stdin seed-id validation, sd close, exit codes); (6) add a comment in the script explaining why (run 01M1YTVK73YEJXW4542MWDX4BJ: Dockerfile-only fix approved green while run containers still hit exit 127). Test: a nu-level smoke of the glob/filter logic (pure function over a path list) plus one manual invocation check; no engine changes, no new node.",
+          "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+          "internal.retry_count.start": 0,
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
             "tester": 1
           },
-          "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+          "last_stage": "implementer",
+          "current_seed_id": "fabro-6f6e",
+          "outcome": "succeeded",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.rankdir": "LR",
+          "failure_class": "",
+          "implementation_summary": "Added to `.fabro/workflows/develop/scripts/closeout.nu` (insert-only): a pure `dockerfile-hits` any-segment `Dockerfile*` filter, evidence.nu's seed-claim-base anchoring mirrored (`run-base`/`seed-status-at`/`seed-claim-base`, verified live resolving to bc1f4e6 grounded), and a `warn-dockerfile-diff` command printing the inert-until-`fabro-toolchain:noble`-rebuild warning to both stderr and stdout before `sd close`, guarded so it can never block the close (each git call in `do { ... } | complete`, orchestrator under `do -i` — `complete` is external-only in nu, documented in-script). New `closeout-smoke.nu` covers the pure glob/filter logic; manual invocation checks verified both the no-Dockerfile byte-identical path and the warning path with a temporarily touched `.fabro/Dockerfile` (restored). Lesson captured as mx-84a287. Per-criterion: PASS diff base reuse (mirrored helpers, live-verified); PASS detection glob (dockerfile-hits + smoke); PASS dual-stream warning, non-blocking wrappers (manual check exit driven only by sd close); PASS no PR-body channel, fabro-5b0a cross-referenced in comment; PASS byte-identical close semantics (baseline run identical, diff insert-only); PASS rationale comment citing run 01M1YTVK73YEJXW4542MWDX4BJ; PASS smoke + manual invocation test per spec.",
+          "current_seed_title": "Closeout: warn when the run diff touches a Dockerfile — the fix is inert until the toolchain image rebuilds",
+          "failure_signature": "",
+          "internal.thread_id": "implementer",
+          "lesson_capture": "mx-84a287",
+          "thread.planner.current_node": "implementer",
+          "last_response": "Implementation complete. Summary of the work:\n\n**Files touched** (all under `.fabro/workflows/develop/scripts/`, platform-targeting per the seed brief):\n- `closeout.nu` — additions only (102 inserti",
+          "internal.node_visit_count": 1,
+          "thread.start.current_node": "planner",
+          "internal.retry_count.tester": 0,
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.inspects": "develop",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "nu 0.115: `do { ... } | complete` errors ('Complete only works with external commands') when the block's final expression is a value, not an external call — the brief's literal 'wrap in do|complete' had to become per-git-call do|complete plus an outer `do -i` guard in closeout.nu; also, sourcing a script with `def main` auto-invokes that main after the sourcing script's top level, so closeout-smoke.nu ends with an explicit `exit 0`.",
+              "In nushell interpolated strings ($\"...\"), parenthesized prose is parsed as code — the first warning message hit a parse error from '(run sandboxes build the image; ...)' and was reworded; nu `source <const>` resolves relative to the sourcing script's directory, not the invocation cwd."
+            ]
+          },
+          "internal.retry_count.planner": 0,
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2926,
+            "preview": "Fresh cycle (`seed_cycles: {start:1}`), no review verdict to fold in. Claimed `fabro-6f6e` (highest-priority unblocked seed; basis verified — `closeout.nu` exists with no Dockerfile warning; no open"
+          },
+          "internal.run_id": "01M22R3TBFP86JPX0ZD8CA0QF5",
+          "internal.seed_cycle_anchor": "fabro-6f6e",
+          "graph.preamble_budget_kb": "24",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.implementer": 0,
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5175,
+            "preview": "Implementation complete. Summary of the work:\n\n**Files touched** (all under `.fabro/workflows/develop/scripts/`, platform-targeting per the seed brief):\n- `closeout.nu` — additions only (102 inserti"
+          },
+          "internal.work_dir": "/workspace/fabro",
+          "preferred_label": "Implemented",
+          "current_node": "tester",
+          "internal.fidelity": "compact"
+        },
+        "node_outcomes": {
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5106,
+              "active_time_ms": 5106
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_id": "fabro-6f6e",
+              "last_response": "Fresh cycle (`seed_cycles: {start:1}`), no review verdict to fold in. Claimed `fabro-6f6e` (highest-priority unblocked seed; basis verified — `closeout.nu` exists with no Dockerfile warning; no open",
+              "last_stage": "planner",
+              "current_seed_brief": "In `.fabro/workflows/develop/scripts/closeout.nu`, before `sd close` runs, detect whether the run's diff touches any `Dockerfile*` path and emit a prominent warning that the fix takes effect only after the `fabro-toolchain:noble` image rebuilds. Acceptance criteria: (1) diff base: reuse the seed-claim-base approach from `.fabro/workflows/develop/scripts/evidence.nu` (newest commit where the current seed transitioned to in_progress; fallback to run base, flagged) — do not invent a new anchoring scheme; (2) detection: `git diff --name-only <base>` filtered with a glob matching any path segment named `Dockerfile*` (covers `.fabro/Dockerfile.toolchain`, `.fabro/Dockerfile`, root `Dockerfile`); (3) when matched, print a warning line to stderr AND stdout naming the touched files and stating the fix is inert until `fabro-toolchain:noble` is rebuilt — the warning must NEVER fail or block the close (wrap in `do { ... } | complete` so git errors degrade to silence); (4) SPEC ANNOTATION (resolved contradiction): the seed asks for the warning 'surfaced in the run summary and PR body', but that run-level warning channel is exactly what open seed fabro-5b0a proposes and does not exist yet — this seed must NOT build that channel; emitting the warning from closeout's captured stdout/stderr (which lands in the stage journal and run output) satisfies this seed, and fabro-5b0a remains the follow-up for PR-body surfacing (cross-reference it in a comment); (5) keep the existing close semantics byte-identical when no Dockerfile is touched (stdin seed-id validation, sd close, exit codes); (6) add a comment in the script explaining why (run 01M1YTVK73YEJXW4542MWDX4BJ: Dockerfile-only fix approved green while run containers still hit exit 127). Test: a nu-level smoke of the glob/filter logic (pure function over a path list) plus one manual invocation check; no engine changes, no new node.",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2926,
+                "preview": "Fresh cycle (`seed_cycles: {start:1}`), no review verdict to fold in. Claimed `fabro-6f6e` (highest-priority unblocked seed; basis verified — `closeout.nu` exists with no Dockerfile warning; no open"
+              },
+              "current_seed_title": "Closeout: warn when the run diff touches a Dockerfile — the fix is inert until the toolchain image rebuilds",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "closeout.nu is fs_hide-hidden to read_file — used shell cat per the documented bypass; basis of fabro-6f6e resolved against current tree (no Dockerfile warning exists in closeout.nu)",
+                  "fabro_runs_list showed 5 develop runs, none with an open PR — no in-flight exclusions applied",
+                  "brief annotates the fabro-5b0a dependency: run-summary/PR-body warning channel does not exist yet, so this seed lands the closeout-emitted warning only"
+                ]
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 25580,
+                    "output_tokens": 1360,
+                    "reasoning_tokens": 659,
+                    "cache_read_tokens": 222912,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 102637
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 90523,
+              "tool_time_ms": 3386,
+              "active_time_ms": 93909
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_response": "Implementation complete. Summary of the work:\n\n**Files touched** (all under `.fabro/workflows/develop/scripts/`, platform-targeting per the seed brief):\n- `closeout.nu` — additions only (102 inserti",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5175,
+                "preview": "Implementation complete. Summary of the work:\n\n**Files touched** (all under `.fabro/workflows/develop/scripts/`, platform-targeting per the seed brief):\n- `closeout.nu` — additions only (102 inserti"
+              },
+              "implementation_summary": "Added to `.fabro/workflows/develop/scripts/closeout.nu` (insert-only): a pure `dockerfile-hits` any-segment `Dockerfile*` filter, evidence.nu's seed-claim-base anchoring mirrored (`run-base`/`seed-status-at`/`seed-claim-base`, verified live resolving to bc1f4e6 grounded), and a `warn-dockerfile-diff` command printing the inert-until-`fabro-toolchain:noble`-rebuild warning to both stderr and stdout before `sd close`, guarded so it can never block the close (each git call in `do { ... } | complete`, orchestrator under `do -i` — `complete` is external-only in nu, documented in-script). New `closeout-smoke.nu` covers the pure glob/filter logic; manual invocation checks verified both the no-Dockerfile byte-identical path and the warning path with a temporarily touched `.fabro/Dockerfile` (restored). Lesson captured as mx-84a287. Per-criterion: PASS diff base reuse (mirrored helpers, live-verified); PASS detection glob (dockerfile-hits + smoke); PASS dual-stream warning, non-blocking wrappers (manual check exit driven only by sd close); PASS no PR-body channel, fabro-5b0a cross-referenced in comment; PASS byte-identical close semantics (baseline run identical, diff insert-only); PASS rationale comment citing run 01M1YTVK73YEJXW4542MWDX4BJ; PASS smoke + manual invocation test per spec.",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "nu 0.115: `do { ... } | complete` errors ('Complete only works with external commands') when the block's final expression is a value, not an external call — the brief's literal 'wrap in do|complete' had to become per-git-call do|complete plus an outer `do -i` guard in closeout.nu; also, sourcing a script with `def main` auto-invokes that main after the sourcing script's top level, so closeout-smoke.nu ends with an explicit `exit 0`.",
+                  "In nushell interpolated strings ($\"...\"), parenthesized prose is parsed as code — the first warning message hit a parse error from '(run sandboxes build the image; ...)' and was reworded; nu `source <const>` resolves relative to the sourcing script's directory, not the invocation cwd."
+                ]
+              },
+              "lesson_capture": "mx-84a287"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 34720,
+                    "output_tokens": 7248,
+                    "reasoning_tokens": 7790,
+                    "cache_read_tokens": 694208,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 295231
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 368493,
+              "tool_time_ms": 9500,
+              "active_time_ms": 377993
+            }
+          }
+        },
+        "next_node_id": "evidence",
+        "git_commit_sha": "2155a453a12174037ed36c58077e71fb8ce21bab",
+        "node_visits": {
+          "planner": 1,
+          "implementer": 1,
+          "start": 1,
+          "tester": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M22R3TBFP86JPX0ZD8CA0QF5.jsonl b/.fabro/journal/01M22R3TBFP86JPX0ZD8CA0QF5.jsonl\nindex 0df6545..ffe1abd 100644\n--- a/.fabro/journal/01M22R3TBFP86JPX0ZD8CA0QF5.jsonl\n+++ b/.fabro/journal/01M22R3TBFP86JPX0ZD8CA0QF5.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22R3TBFP86JPX0ZD8CA0QF5\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:31:26Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22R3TBFP86JPX0ZD8CA0QF5\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:32:57Z\",\"data\":{\"painpoints\":[],\"observations\":[\"closeout.nu is fs_hide-hidden to read_file — used shell cat per the documented bypass; basis of fabro-6f6e resolved against current tree (no Dockerfile warning exists in closeout.nu)\",\"fabro_runs_list showed 5 develop runs, none with an open PR — no in-flight exclusions applied\",\"brief annotates the fabro-5b0a dependency: run-summary/PR-body warning channel does not exist yet, so this seed lands the closeout-emitted warning only\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22R3TBFP86JPX0ZD8CA0QF5\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:39:08Z\",\"data\":{\"painpoints\":[],\"observations\":[\"nu 0.115: `do { ... } | complete` errors ('Complete only works with external commands') when the block's final expression is a value, not an external call — the brief's literal 'wrap in do|complete' had to become per-git-call do|complete plus an outer `do -i` guard in closeout.nu; also, sourcing a script with `def main` auto-invokes that main after the sourcing script's top level, so closeout-smoke.nu ends with an explicit `exit 0`.\",\"In nushell interpolated strings ($\\\"...\\\"), parenthesized prose is parsed as code — the first warning message hit a parse error from '(run sandboxes build the image; ...)' and was reworded; nu `source <const>` resolves relative to the sourcing script's directory, not the invocation cwd.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22R3TBFP86JPX0ZD8CA0QF5\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:39:18Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 158,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T09:39:23.434830720Z",
+        "current_node": "evidence",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "lesson_capture": "mx-84a287",
+          "internal.thread_id": "tester",
+          "outcome": "succeeded",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1
+          },
+          "command.output": "blob://sha256/0c6e9aae24e56f2cc3becc2cf71445f6cdbe81495840f2f322f0f0e43908399a",
+          "internal.retry_count.evidence": 0,
           "failure_class": "",
           "graph.cycle_counter_reset_key": "current_seed_id",
           "internal.retry_count.implementer": 0,
@@ -1109,6 +1324,7 @@
           "thread.implementer.current_node": "tester",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "current_seed_brief": "In `.fabro/workflows/develop/scripts/closeout.nu`, before `sd close` runs, detect whether the run's diff touches any `Dockerfile*` path and emit a prominent warning that the fix takes effect only after the `fabro-toolchain:noble` image rebuilds. Acceptance criteria: (1) diff base: reuse the seed-claim-base approach from `.fabro/workflows/develop/scripts/evidence.nu` (newest commit where the current seed transitioned to in_progress; fallback to run base, flagged) — do not invent a new anchoring scheme; (2) detection: `git diff --name-only <base>` filtered with a glob matching any path segment named `Dockerfile*` (covers `.fabro/Dockerfile.toolchain`, `.fabro/Dockerfile`, root `Dockerfile`); (3) when matched, print a warning line to stderr AND stdout naming the touched files and stating the fix is inert until `fabro-toolchain:noble` is rebuilt — the warning must NEVER fail or block the close (wrap in `do { ... } | complete` so git errors degrade to silence); (4) SPEC ANNOTATION (resolved contradiction): the seed asks for the warning 'surfaced in the run summary and PR body', but that run-level warning channel is exactly what open seed fabro-5b0a proposes and does not exist yet — this seed must NOT build that channel; emitting the warning from closeout's captured stdout/stderr (which lands in the stage journal and run output) satisfies this seed, and fabro-5b0a remains the follow-up for PR-body surfacing (cross-reference it in a comment); (5) keep the existing close semantics byte-identical when no Dockerfile is touched (stdin seed-id validation, sd close, exit codes); (6) add a comment in the script explaining why (run 01M1YTVK73YEJXW4542MWDX4BJ: Dockerfile-only fix approved green while run containers still hit exit 127). Test: a nu-level smoke of the glob/filter logic (pure function over a path list) plus one manual invocation check; no engine changes, no new node.",
+          "thread.tester.current_node": "evidence",
           "internal.work_dir": "/workspace/fabro",
           "current_seed_id": "fabro-6f6e",
           "last_response": "Implementation complete. Summary of the work:\n\n**Files touched** (all under `.fabro/workflows/develop/scripts/`, platform-targeting per the seed brief):\n- `closeout.nu` — additions only (102 inserti",
@@ -1123,7 +1339,7 @@
           "internal.retry_count.start": 0,
           "graph.rankdir": "LR",
           "graph.inspects": "develop",
-          "current_node": "tester",
+          "current_node": "evidence",
           "last_stage": "implementer",
           "current_seed_title": "Closeout: warn when the run diff touches a Dockerfile — the fix is inert until the toolchain image rebuilds",
           "implementation_summary": "Added to `.fabro/workflows/develop/scripts/closeout.nu` (insert-only): a pure `dockerfile-hits` any-segment `Dockerfile*` filter, evidence.nu's seed-claim-base anchoring mirrored (`run-base`/`seed-status-at`/`seed-claim-base`, verified live resolving to bc1f4e6 grounded), and a `warn-dockerfile-diff` command printing the inert-until-`fabro-toolchain:noble`-rebuild warning to both stderr and stdout before `sd close`, guarded so it can never block the close (each git call in `do { ... } | complete`, orchestrator under `do -i` — `complete` is external-only in nu, documented in-script). New `closeout-smoke.nu` covers the pure glob/filter logic; manual invocation checks verified both the no-Dockerfile byte-identical path and the warning path with a temporarily touched `.fabro/Dockerfile` (restored). Lesson captured as mx-84a287. Per-criterion: PASS diff base reuse (mirrored helpers, live-verified); PASS detection glob (dockerfile-hits + smoke); PASS dual-stream warning, non-blocking wrappers (manual check exit driven only by sd close); PASS no PR-body channel, fabro-5b0a cross-referenced in comment; PASS byte-identical close semantics (baseline run identical, diff insert-only); PASS rationale comment citing run 01M1YTVK73YEJXW4542MWDX4BJ; PASS smoke + manual invocation test per spec.",
@@ -1258,14 +1474,29 @@
               "tool_time_ms": 5106,
               "active_time_ms": 5106
             }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/0c6e9aae24e56f2cc3becc2cf71445f6cdbe81495840f2f322f0f0e43908399a"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 387,
+              "active_time_ms": 387
+            }
           }
         },
-        "next_node_id": "evidence",
+        "next_node_id": "reviewer",
         "node_visits": {
           "planner": 1,
           "implementer": 1,
           "tester": 1,
-          "start": 1
+          "start": 1,
+          "evidence": 1
         }
       },
       "diff": {}
@@ -1336,6 +1567,57 @@
         "inference_time_ms": 0,
         "tool_time_ms": 5106,
         "active_time_ms": 5106
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "evidence@1": {
+      "first_event_seq": 309,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T09:39:23.200384363Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/0c6e9aae24e56f2cc3becc2cf71445f6cdbe81495840f2f322f0f0e43908399a",
+        "exit_code": 0,
+        "duration_ms": 387,
+        "termination": "exited",
+        "output_bytes": 15263,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 15263,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T09:39:22.798527336Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 392,
+        "inference_time_ms": 0,
+        "tool_time_ms": 387,
+        "active_time_ms": 387
       },
       "usage": {
         "input_tokens": 0,
