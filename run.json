@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T12:01:18.087904104Z",
-  "last_event_at": "2026-09-09T12:22:45.861395984Z",
+  "last_event_at": "2026-09-09T12:23:00.088861895Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -875,9 +875,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 380,
       "checkpoint": {
-        "timestamp": "2026-09-09T12:22:46.252440783Z",
+        "timestamp": "2026-09-09T12:22:51.814206551Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -886,9 +886,214 @@
         ],
         "node_retries": {},
         "context_values": {
+          "outcome": "succeeded",
+          "internal.retry_count.start": 0,
+          "current_seed_brief": "Fix the double-develop-claim class exposed by the 2026-09-09 incident (runs 01M22X67GYXC / 01M22VF9PWJH both claimed fabro-8bf4). Acceptance criteria: - (a) Overlap semantics: root-cause why on_overlap=skip admitted a second conductor pass while the first was active (check `lib/apps/fabro-server/src/server/automation_scheduler.rs` around the 'Scheduled fire skipped: overlapping run still non-terminal' logic and `lib/components/fabro-automation/src/model.rs:124`; test hypotheses: overlap check ignores runs parked/waiting-on-child, or the fabro-ee5d run_wait blocked-instantly misjudgment made pass X look terminal); fix so a non-terminal run of the same automation always suppresses the fire, with a regression test covering the waiting-on-child state. - (b) Mid-flight blind spot: the develop planner in-flight guard (currently open run-linked PRs only) must ALSO skip seeds claimed by running develop runs whose PR does not exist yet; preferred direction is engine-side — extend the fabro_runs_list projection or its callers so the guard can see `status=running` develop runs and their claimed seed id (note open seed fabro-9372 already asks to expose current_seed_id in that projection — implement that key here if it is the natural enabler, but keep this seed's diff scoped to the guard fix); alternatively serialize develop legs engine-side. Update the planner prompt in `.fabro/workflows/develop/workflow.toml` (read via shell/sed — fs_hide blocks read_file on `.fabro/**`) to run the extended guard. - (c) Revisor duplicate-run checklist: add to the revisor/analyst checklist (`.fabro/workflows/revisor/`) a pre-distillation check that the run's seed is not already closed on the base branch, so a duplicate run cannot pass review as healthy. - Verification cheapest-first: `cargo nextest run -p fabro-automation` then `cargo nextest run -p fabro-server` (pin run.environment id=local per convention), TOML-parse `.fabro/workflows/develop/workflow.toml` and `revisor` prompts via python3 before any cargo run; no behavior change to already-correct skip paths.",
+          "graph.rankdir": "LR",
+          "implementation_summary": "Fixed the double-develop-claim class: `lib/components/fabro-store/src/run_summary_store.rs` extends `active_run_for_automation` so a non-terminal child of an automation run also suppresses scheduled fires (covers waiting-on-child, parked-parent, and fabro-ee5d soft-stop windows), with regression test `active_run_for_automation_covers_waiting_states_and_live_children`; `.fabro/workflows/develop/prompts/planner.md` step 4 now treats non-terminal-status develop runs as in-flight claims even before their PR exists; `.fabro/workflows/revisor/prompts/analyze.md` gains Step 3.5 duplicate-run pre-distillation check. Lesson captured as mx-2400f9. Verification: PASS (a) overlap semantics + regression test (fabro-store 289/289, fabro-server 930/930 incl. scheduler overlap tests); PASS (b) mid-flight guard via projection caller, TOML-parsed; PASS (c) revisor duplicate-run checklist added; PASS cheapest-first verification (fabro-automation 40/40, fmt+clippy clean, no skip-path behavior change).",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "fabro-91ff brief asked to root-cause the exact incident path, but the runs/automation DB state from runs 01M22X67GYXC/01M22VF9PWJH is not reachable from the product repo, so hypotheses could only be validated against code semantics (run 01M230P8RGN6HWTR6PZ966Q3B1). Suggestion: when incident seeds cite run ids, expose a read-only run/automation state dump command (e.g. `fabro ps -a --json` persisted per run) so implementers can distinguish 'parent was terminal' from 'overlap check raced' instead of implementing the superset fix."
+              }
+            ],
+            "observations": [
+              "The fabro_runs_list projection already exposes `status` and full `goal` per run — the (b) guard gap was purely caller-side (prompt never used status), so no engine-side projection change was needed; fabro-9372's current_seed_id field remains open and orthogonal.",
+              "active_run_for_automation had no store-level test before this seed; the scheduler-level tests only covered non-terminal parent in submitted/runnable, never the waiting-on-child or live-child shapes."
+            ]
+          },
+          "last_response": "Implementation complete. Summary of the pass:\n\n**Files touched**\n- `lib/components/fabro-store/src/run_summary_store.rs` — (a) `active_run_for_automation` now also matches non-terminal CHILD runs of",
+          "current_node": "implementer",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.thread_id": "planner",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.implementer": 0,
+          "thread.start.current_node": "planner",
+          "failure_class": "",
+          "failure_signature": "",
+          "graph.inspects": "develop",
+          "lesson_capture": "mx-2400f9",
+          "graph.preamble_budget_kb": "24",
+          "current_seed_title": "engine: conductor passes overlapped despite on_overlap=skip — double develop claim on fabro-8bf4 (PR #84 vs #86)",
+          "internal.run_id": "01M230P8RGN6HWTR6PZ966Q3B1",
+          "internal.node_visit_count": 1,
+          "internal.fidelity": "summary:high",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3061,
+            "preview": "Claimed fabro-91ff. Brief written below; no open in-flight PRs blocked the pick (all listed PRs are merged/closed except this run itself).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed "
+          },
+          "thread.planner.current_node": "implementer",
+          "last_stage": "implementer",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 4691,
+            "preview": "Implementation complete. Summary of the pass:\n\n**Files touched**\n- `lib/components/fabro-store/src/run_summary_store.rs` — (a) `active_run_for_automation` now also matches non-terminal CHILD runs of"
+          },
+          "current_seed_id": "fabro-91ff",
+          "internal.seed_cycle_anchor": "fabro-91ff",
+          "internal.retry_count.planner": 0,
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "preferred_label": "Implemented"
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Fix the double-develop-claim class exposed by the 2026-09-09 incident (runs 01M22X67GYXC / 01M22VF9PWJH both claimed fabro-8bf4). Acceptance criteria: - (a) Overlap semantics: root-cause why on_overlap=skip admitted a second conductor pass while the first was active (check `lib/apps/fabro-server/src/server/automation_scheduler.rs` around the 'Scheduled fire skipped: overlapping run still non-terminal' logic and `lib/components/fabro-automation/src/model.rs:124`; test hypotheses: overlap check ignores runs parked/waiting-on-child, or the fabro-ee5d run_wait blocked-instantly misjudgment made pass X look terminal); fix so a non-terminal run of the same automation always suppresses the fire, with a regression test covering the waiting-on-child state. - (b) Mid-flight blind spot: the develop planner in-flight guard (currently open run-linked PRs only) must ALSO skip seeds claimed by running develop runs whose PR does not exist yet; preferred direction is engine-side — extend the fabro_runs_list projection or its callers so the guard can see `status=running` develop runs and their claimed seed id (note open seed fabro-9372 already asks to expose current_seed_id in that projection — implement that key here if it is the natural enabler, but keep this seed's diff scoped to the guard fix); alternatively serialize develop legs engine-side. Update the planner prompt in `.fabro/workflows/develop/workflow.toml` (read via shell/sed — fs_hide blocks read_file on `.fabro/**`) to run the extended guard. - (c) Revisor duplicate-run checklist: add to the revisor/analyst checklist (`.fabro/workflows/revisor/`) a pre-distillation check that the run's seed is not already closed on the base branch, so a duplicate run cannot pass review as healthy. - Verification cheapest-first: `cargo nextest run -p fabro-automation` then `cargo nextest run -p fabro-server` (pin run.environment id=local per convention), TOML-parse `.fabro/workflows/develop/workflow.toml` and `revisor` prompts via python3 before any cargo run; no behavior change to already-correct skip paths.",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "No open in-flight PRs among the last 10 develop runs (all merged/closed except this run) — in-flight guard was a clean no-op skip check",
+                  "Seed fabro-91ff has no explicit Basis: line but its incident evidence (runs, PRs #84/#86, automation_scheduler.rs on_overlap code) all resolve against the current tree",
+                  "Brief notes overlap with fabro-9372 (expose current_seed_id in fabro_runs_list) — implementer should reuse that key if natural but keep this diff scoped to the guard"
+                ]
+              },
+              "current_seed_title": "engine: conductor passes overlapped despite on_overlap=skip — double develop claim on fabro-8bf4 (PR #84 vs #86)",
+              "last_stage": "planner",
+              "last_response": "Claimed fabro-91ff. Brief written below; no open in-flight PRs blocked the pick (all listed PRs are merged/closed except this run itself).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed ",
+              "current_seed_id": "fabro-91ff",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3061,
+                "preview": "Claimed fabro-91ff. Brief written below; no open in-flight PRs blocked the pick (all listed PRs are merged/closed except this run itself).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed "
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 26202,
+                    "output_tokens": 1067,
+                    "reasoning_tokens": 407,
+                    "cache_read_tokens": 106176,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 70768
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 70042,
+              "tool_time_ms": 2840,
+              "active_time_ms": 72882
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "Fixed the double-develop-claim class: `lib/components/fabro-store/src/run_summary_store.rs` extends `active_run_for_automation` so a non-terminal child of an automation run also suppresses scheduled fires (covers waiting-on-child, parked-parent, and fabro-ee5d soft-stop windows), with regression test `active_run_for_automation_covers_waiting_states_and_live_children`; `.fabro/workflows/develop/prompts/planner.md` step 4 now treats non-terminal-status develop runs as in-flight claims even before their PR exists; `.fabro/workflows/revisor/prompts/analyze.md` gains Step 3.5 duplicate-run pre-distillation check. Lesson captured as mx-2400f9. Verification: PASS (a) overlap semantics + regression test (fabro-store 289/289, fabro-server 930/930 incl. scheduler overlap tests); PASS (b) mid-flight guard via projection caller, TOML-parsed; PASS (c) revisor duplicate-run checklist added; PASS cheapest-first verification (fabro-automation 40/40, fmt+clippy clean, no skip-path behavior change).",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "fabro-91ff brief asked to root-cause the exact incident path, but the runs/automation DB state from runs 01M22X67GYXC/01M22VF9PWJH is not reachable from the product repo, so hypotheses could only be validated against code semantics (run 01M230P8RGN6HWTR6PZ966Q3B1). Suggestion: when incident seeds cite run ids, expose a read-only run/automation state dump command (e.g. `fabro ps -a --json` persisted per run) so implementers can distinguish 'parent was terminal' from 'overlap check raced' instead of implementing the superset fix."
+                  }
+                ],
+                "observations": [
+                  "The fabro_runs_list projection already exposes `status` and full `goal` per run — the (b) guard gap was purely caller-side (prompt never used status), so no engine-side projection change was needed; fabro-9372's current_seed_id field remains open and orthogonal.",
+                  "active_run_for_automation had no store-level test before this seed; the scheduler-level tests only covered non-terminal parent in submitted/runnable, never the waiting-on-child or live-child shapes."
+                ]
+              },
+              "lesson_capture": "mx-2400f9",
+              "last_stage": "implementer",
+              "last_response": "Implementation complete. Summary of the pass:\n\n**Files touched**\n- `lib/components/fabro-store/src/run_summary_store.rs` — (a) `active_run_for_automation` now also matches non-terminal CHILD runs of",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 4691,
+                "preview": "Implementation complete. Summary of the pass:\n\n**Files touched**\n- `lib/components/fabro-store/src/run_summary_store.rs` — (a) `active_run_for_automation` now also matches non-terminal CHILD runs of"
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 54340,
+                    "output_tokens": 6582,
+                    "reasoning_tokens": 7560,
+                    "cache_read_tokens": 1841408,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 617003
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/components/fabro-store/src/run_summary_store.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 684226,
+              "tool_time_ms": 523281,
+              "active_time_ms": 1207507
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "1eb805d156460e4ee224a5ff3b85178b9a681136",
+        "node_visits": {
+          "implementer": 1,
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M230P8RGN6HWTR6PZ966Q3B1.jsonl b/.fabro/journal/01M230P8RGN6HWTR6PZ966Q3B1.jsonl\nindex 7af0b86..12724f4 100644\n--- a/.fabro/journal/01M230P8RGN6HWTR6PZ966Q3B1.jsonl\n+++ b/.fabro/journal/01M230P8RGN6HWTR6PZ966Q3B1.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M230P8RGN6HWTR6PZ966Q3B1\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T12:01:20Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M230P8RGN6HWTR6PZ966Q3B1\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T12:02:34Z\",\"data\":{\"painpoints\":[],\"observations\":[\"No open in-flight PRs among the last 10 develop runs (all merged/closed except this run) — in-flight guard was a clean no-op skip check\",\"Seed fabro-91ff has no explicit Basis: line but its incident evidence (runs, PRs #84/#86, automation_scheduler.rs on_overlap code) all resolve against the current tree\",\"Brief notes overlap with fabro-9372 (expose current_seed_id in fabro_runs_list) — implementer should reuse that key if natural but keep this diff scoped to the guard\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M230P8RGN6HWTR6PZ966Q3B1\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T12:22:46Z\",\"data\":{\"painpoints\":[{\"text\":\"fabro-91ff brief asked to root-cause the exact incident path, but the runs/automation DB state from runs 01M22X67GYXC/01M22VF9PWJH is not reachable from the product repo, so hypotheses could only be validated against code semantics (run 01M230P8RGN6HWTR6PZ966Q3B1). Suggestion: when incident seeds cite run ids, expose a read-only run/automation state dump command (e.g. `fabro ps -a --json` persisted per run) so implementers can distinguish 'parent was terminal' from 'overlap check raced' instead of implementing the superset fix.\"}],\"observations\":[\"The fabro_runs_list projection already exposes `status` and full `goal` per run — the (b) guard gap was purely caller-side (prompt never used status), so no engine-side projection change was needed; fabro-9372's current_seed_id field remains open and orthogonal.\",\"active_run_for_automation had no store-level test before this seed; the scheduler-level tests only covered non-terminal parent in submitted/runnable, never the waiting-on-child or live-child shapes.\"]}}\ndiff --git a/.fabro/workflows/develop/prompts/planner.md b/.fabro/workflows/develop/prompts/planner.md\nindex 173a2cb..830a1d4 100644\n--- a/.fabro/workflows/develop/prompts/planner.md\n+++ b/.fabro/workflows/develop/prompts/planner.md\n@@ -34,7 +34,7 @@ The engine maintains `seed_cycles` deterministically: `{ node -> completed visit\n 1. FAST-PATH: first check the `<goal>` text for a seed id (e.g. fabro-37a6). When one is named, the FIRST tracker call is `sd show <id> --format json`, not `sd ready`; judge resolution from the JSON `success` field / issue body, NOT the process exit code (seeds-cli exits 0 on errors, fabro-d936). A named seed is honored ONLY when its JSON `assignee` is exactly `fabro` AND it is open and unblocked — continue at step 2 with it. A named-but-unassigned seed, one assigned to someone else, one that does not resolve, or one that cannot be claimed (closed or blocked) must NOT be claimed: fall through and run `sd ready --assignee fabro --limit 200` to list unblocked fabro-assigned seeds; `sd list --format json --assignee fabro --limit 200` for the full picture if needed (do NOT also run `sd list` when `sd ready` suffices). The user naming a seed in the goal is a request, not an override of their ownership decision — if they wanted the line to take it, they would have assigned it to fabro. A named seed that matches an OPEN run-linked PR is equally untouchable (see the IN-FLIGHT PR CHECK at step 4): skip it, journal `skipped: in-flight PR <n>`, and fall through to `sd ready --assignee fabro --limit 200`.\n 2. Pick the highest-priority unblocked seed that serves the goal. If two compete, prefer the one with fewest blockers.\n 3. STALE-BASIS CHECK (ADR-0015): before claiming, read the seed body for its `Basis:` line (source run id, workflow version, repo commit). Open the referenced files/prompts in the CURRENT worktree: if the behavior the seed describes no longer exists, already changed, or the finding is moot against the current tree, the seed is superseded — close it with `sd close <id> --reason \"superseded: basis stale (<what changed>)\"` and pick the next candidate. Never implement a seed whose basis does not resolve. That close is for a FULLY moot basis. An intermediate case is distinct: the basis RESOLVES but the seed's named path/target/details are wrong against the current tree (e.g. it names `.fabro/Dockerfile` when the real target lives elsewhere). The seed is otherwise valid — do NOT close it as superseded and do NOT claim it as-is: first record the correction into the seed body via `sd update <id> --description \"<full corrected body>\"` so the implementer never re-hits the contradiction, THEN claim normally. `--description` replaces the body WHOLESALE — the planner must re-emit the FULL corrected body including the existing `Basis:` line, appending/amending only the corrected facts and never dropping the original basis (evidence: run 01M1YTVK7, seed fabro-05d0 — ~6 wasted tool calls / 39% of run cost re-proving a wrong path, and the contradiction recurred for every later reader because nobody applied the update). When a seed's `Basis:` references platform paths (`.fabro/**` etc.), open them through the shell — fs_hide binds tool calls only, so read_file fails while sed/grep/cat succeed; never burn tool calls discovering the denial. Seeds without a Basis line are legacy (pre-2026-09-05): judge them the same way against the current tree before claiming.\n-4. IN-FLIGHT PR CHECK (credential-less, fabro-06e0): after selecting the candidate and BEFORE the claim, call the `fabro_runs_list` tool with workflow \"develop\". From the returned runs, collect those whose `pull_request.state` is exactly \"open\" (only \"open\" counts — \"closed\"/\"merged\"/null/absent are not in flight), and extract the seed id from each such run's `goal` text (the `current_seed_id` the run was created for). Skip any top candidate whose seed id or title matches one of those in-flight seeds — a seed whose PR is sitting in the gate is already taken (fabro-22e4 double-pick: the identical fix was re-implemented while PR #47 waited in gate). For each skipped candidate, add a journal line (painpoints or observations) containing the exact phrase `skipped: in-flight PR <n>` (the linked PR number) so the skip is auditable. A skip is not a park: continue down the `sd ready --assignee fabro --limit 200` candidate list to the next unblocked seed and claim that one — the run still routes Seed claimed (or Tracker empty if nothing remains). If the `fabro_runs_list` tool is ABSENT from the available toolset (check `agent.tools.available`; the engine only registers it on this stage via the node-level `fabro_tools` opt-in), journal the degraded mode explicitly in observations (state that the in-flight PR guard ran as a no-op and why) and proceed with no in-flight exclusions. Likewise, if the tool call fails or every run's PR state is null/absent, note that in observations and proceed with no in-flight exclusions — never dead-end the planner on this check. The check is opportunistic: absence or failure of the tool is a journaled degraded mode, never a blocked run. There is no `gh` binary and no GitHub credential in this environment: never attempt `gh` or any direct GitHub API call.\n+4. IN-FLIGHT PR CHECK (credential-less, fabro-06e0): after selecting the candidate and BEFORE the claim, call the `fabro_runs_list` tool with workflow \"develop\". From the returned runs, collect those whose `pull_request.state` is exactly \"open\" (only \"open\" counts — \"closed\"/\"merged\"/null/absent are not in flight), and extract the seed id from each such run's `goal` text (the `current_seed_id` the run was created for). Skip any top candidate whose seed id or title matches one of those in-flight seeds — a seed whose PR is sitting in the gate is already taken (fabro-22e4 double-pick: the identical fix was re-implemented while PR #47 waited in gate). MID-FLIGHT CLAIMS (fabro-91ff, 2026-09-09): runs whose `status` field is a NON-TERMINAL kind — submitted, pending, runnable, starting, running, blocked, paused — are equally in flight EVEN BEFORE their pull request exists (the ~15-minute claim-to-PR window per develop pass): from those runs collect the seed id out of `goal` the same way (ignore their `pull_request`, which may be null) and skip any candidate matching it, journaling the exact phrase `skipped: in-flight run <run_id>` (the developing run's id) so the skip is auditable. For each skipped candidate, add a journal line (painpoints or observations) containing the exact phrase `skipped: in-flight PR <n>` (the linked PR number) so the skip is auditable. A skip is not a park: continue down the `sd ready --assignee fabro --limit 200` candidate list to the next unblocked seed and claim that one — the run still routes Seed claimed (or Tracker empty if nothing remains). If the `fabro_runs_list` tool is ABSENT from the available toolset (check `agent.tools.available`; the engine only registers it on this stage via the node-level `fabro_tools` opt-in), journal the degraded mode explicitly in observations (state that the in-flight PR guard ran as a no-op and why) and proceed with no in-flight exclusions. Likewise, if the tool call fails or every run's PR state is null/absent, note that in observations and proceed with no in-flight exclusions — never dead-end the planner on this check. The check is opportunistic: absence or failure of the tool is a journaled degraded mode, never a blocked run. There is no `gh` binary and no GitHub credential in this environment: never attempt `gh` or any direct GitHub API call.\n 5. Claim it: `sd update <id> --status in_progress --assignee fabro`.\n 6. Write the implementation brief into the context as BULLETED acceptance criteria, not prose: seed id, title, then one bullet per requirement, plus review feedback if this is a re-plan. Bullets are cheaper to re-read, harder to misparse, and the reviewer and the implementer's PASS/FAIL report check them item-by-item. Shape each bullet as a checkable statement, e.g.:\n \ndiff --git a/.fabro/workflows/revisor/prompts/analyze.md b/.fabro/workflows/revisor/prompts/analyze.md\nindex 508529f..9ca9d2d 100644\n--- a/.fabro/workflows/revisor/prompts/analyze.md\n+++ b/.fabro/workflows/revisor/prompts/analyze.md\n@@ -41,6 +41,16 @@ The backlog runs share root causes; without a tracker check every pass re-distil\n \n Filed seeds carry the `revision` label (the bookkeeper sets it), so `sd list --label revision` shows this loop's whole output — assume that set exists and grows.\n \n+## Step 3.5 — duplicate-run check BEFORE distilling (fabro-91ff, 2026-09-09)\n+\n+The target run may itself be a duplicate: two overlapping conductor passes can claim the SAME seed, and the first duplicate to merge closes it on the base branch before this revisor runs. A green run whose seed is already closed on the base branch must NOT pass review as healthy. So, before Step 4:\n+\n+1. Identify the seed the target run claimed: read the `fabro-xxxx` seed id from the run's goal/journal (`.fabro/journal/<revisor_target_run_id>.jsonl` or the run summary).\n+2. Run `git fetch origin <base-branch>` then check `git log origin/<base-branch> --oneline -50` for whether the seed id appears in a commit NOT authored by the target run (a sibling duplicate's merged PR).\n+3. If the seed is already closed on the base branch by ANOTHER run's merge: this run is a duplicate. Record it in the journal with the exact phrase `duplicate run: <seed id> already closed on base branch` naming the closing PR/commit, and distill with that verdict attached — the revision report must present the run as a duplicate, never as a healthy pass. Its findings may still seed follow-ups, but the duplicate verdict is mandatory output.\n+\n+---\n+\n ## Step 4 — distill\n \n Convert the SURVIVING recommendations into `revision_findings`: an array of seed candidates. A candidate is actionable only when it names ONE concrete change (file or node, what to change, expected effect) attributable to THIS run's evidence. Drop generic advice, drop praise, merge duplicates among themselves. Each entry: {\"title\": \"<short imperative, English>\", \"description\": \"<what/where/effect, grounded in this run>\", \"priority\": <2 normal, 1 high impact>}. An empty array is a valid outcome: a healthy run gets a marker-only revision. Name the dropped duplicates with their seed ids in the journal observation — the report must show what was withheld and why.\ndiff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl\nindex 4015885..7c9b23d 100644\n--- a/.mulch/expertise/engine.jsonl\n+++ b/.mulch/expertise/engine.jsonl\n@@ -47,3 +47,4 @@\n {\"type\":\"convention\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-08T18:20:29.952Z\",\"evidence\":{\"commit\":\"a4850e681\"},\"content\":\"Set [run.clone] depth = 0 in workflow.toml for any workflow whose stages run git rev-list --count or git merge-base across origin and upstream remotes; verify with git rev-parse --is-shallow-repository in the sandbox when counts look inflated.\",\"id\":\"mx-588afd\"}\n {\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-08T19:44:10.382Z\",\"evidence\":{\"seeds\":\"fabro-85a1\",\"commit\":\"3e23ee57c98bd03e1556f32c4dc13e867c6e3893\"},\"name\":\"run-clone-depth-zero-for-range-math\",\"description\":\"Workflows doing git range math against upstream (rev-list --count, merge-base) need [run.clone] depth = 0 in their .fabro/workflows/<name>/workflow.toml; default depth-100 shallow clone breaks the math. Conductor (a4850e681) and merge-upstream (fabro-85a1) both set it; audit any new clone-based workflow that compares upstream refs. Volume is ~neutral (~150 MB either way).\",\"files\":[\".fabro/workflows/merge-upstream/workflow.toml\"],\"id\":\"mx-10bfb8\"}\n {\"type\":\"decision\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-08T21:07:45.325Z\",\"evidence\":{\"commit\":\"a2933be71de5b9a6d79dd055d500270dbab4d334\"},\"title\":\"FabroRunToolServices presence vs run_wide provenance\",\"rationale\":\"The worker-token agent:run_tools scope is granted for both the run-wide flag and node-level fabro_tools opt-ins, so services presence alone can no longer decide whether attribute-less stages get the full tool set; provenance must travel with the services to keep per-stage least privilege (ADR-0019, user-approved Option A on fabro-c419).\",\"id\":\"mx-dd2618\"}\n+{\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-09T12:22:03.485Z\",\"evidence\":{\"commit\":\"3e49d004d0ae22ef2dba3fd1557062a8bcdee933\"},\"name\":\"overlap-guard-live-children\",\"description\":\"Overlap guard (on_overlap=skip) must treat non-terminal CHILD runs of an automation's runs as active, not only non-terminal automation runs: a conductor pass that parks at a boundary exit or soft-stops via a misjudged run_wait (fabro-ee5d) is terminal itself while its develop child still runs — that window admitted a second overlapping pass (fabro-91ff incident, PR #84 vs #86). active_run_for_automation in lib/components/fabro-store/src/run_summary_store.rs matches parent automation_id OR parent_id IN automation runs with status NOT IN (succeeded,failed,dead); also note the develop planner in-flight guard now needs run STATUS (running) not just open PRs, since claims precede PRs by ~15 min.\",\"files\":[\".fabro/workflows/develop/prompts/planner.md\",\".fabro/workflows/revisor/prompts/analyze.md\",\"lib/components/fabro-store/src/run_summary_store.rs\"],\"id\":\"mx-2400f9\"}\ndiff --git a/lib/components/fabro-store/src/run_summary_store.rs b/lib/components/fabro-store/src/run_summary_store.rs\nindex 5248e7e..9766370 100644\n--- a/lib/components/fabro-store/src/run_summary_store.rs\n+++ b/lib/components/fabro-store/src/run_summary_store.rs\n@@ -576,18 +576,31 @@ ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms\n     /// Newest non-terminal run created by the given automation, if any\n     /// (fabro-09ea overlap guard). Terminal statuses are exactly the\n     /// immutable kinds: succeeded, failed, dead.\n+    ///\n+    /// A non-terminal CHILD of an automation run also counts as active\n+    /// (fabro-91ff): a conductor pass that parked at a boundary exit or\n+    /// soft-stopped through a misjudged `run_wait` is terminal itself,\n+    /// but its spawned develop/revisor children may still be running —\n+    /// firing the next scheduled pass in that window is exactly the\n+    /// double-claim overlap `on_overlap=skip` exists to prevent. The\n+    /// returned id is whichever live run was found (parent or child);\n+    /// callers use it for skip logging, not for control flow.\n     pub async fn active_run_for_automation(&self, automation_id: &str) -> Result<Option<RunId>> {\n         let stored: Option<String> = sqlx::query_scalar(\n             r\"\n SELECT id\n FROM runs\n-WHERE automation_id = ?\n-  AND status NOT IN ('succeeded', 'failed', 'dead')\n+WHERE status NOT IN ('succeeded', 'failed', 'dead')\n+  AND (\n+    automation_id = ?\n+    OR parent_id IN (SELECT id FROM runs WHERE automation_id = ?)\n+  )\n ORDER BY created_at_ms DESC\n LIMIT 1\n \",\n         )\n         .bind(automation_id)\n+        .bind(automation_id)\n         .fetch_optional(&self.pool)\n         .await?;\n         stored\n@@ -2632,6 +2645,89 @@ mod tests {\n         assert_eq!(child.title, \"new title\");\n     }\n \n+    /// Regression (fabro-91ff): the overlap guard must see a conductor\n+    /// pass as active while it waits on a child (any non-terminal parent\n+    /// status) AND while the parent is terminal but its spawned child is\n+    /// still running — the parked/soft-stopped parent with a live develop\n+    /// child was the window that admitted the second overlapping pass.\n+    #[tokio::test]\n+    async fn active_run_for_automation_covers_waiting_states_and_live_children() {\n+        let (_directory, store) = store().await;\n+        let created_at = dt(\"2026-09-09T10:53:00Z\");\n+        let parent_id = run_id(created_at.timestamp_millis().cast_unsigned(), 1);\n+        let child_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 2);\n+\n+        let mut parent = projection(parent_id, \"conductor pass\", created_at);\n+        parent.spec.automation = Some(AutomationRef {\n+            id:              \"conductor\".to_string(),\n+            name:            None,\n+            trigger_id:      None,\n+            workflow_source: None,\n+        });\n+\n+        let mut child_projection = projection(child_id, \"develop leg\", created_at);\n+        child_projection.parent_id = Some(parent_id);\n+        child_projection.last_event_at = created_at + chrono::Duration::seconds(2);\n+\n+        // Waiting-on-child, phase 1: parent running, child running.\n+        parent.status = sample_status(RunStatusKind::Running);\n+        child_projection.status = sample_status(RunStatusKind::Running);\n+        store\n+            .upsert_projection(&entry(parent.clone(), 5))\n+            .await\n+            .unwrap();\n+        store\n+            .upsert_projection(&entry(child_projection.clone(), 5))\n+            .await\n+            .unwrap();\n+        assert!(\n+            store\n+                .active_run_for_automation(\"conductor\")\n+                .await\n+                .unwrap()\n+                .is_some()\n+        );\n+\n+        // Waiting-on-child, phase 2: parent blocked/paused at a gate —\n+        // still non-terminal, still suppresses.\n+        parent.status = sample_status(RunStatusKind::Paused);\n+        store\n+            .upsert_projection(&entry(parent.clone(), 6))\n+            .await\n+            .unwrap();\n+        assert!(\n+            store\n+                .active_run_for_automation(\"conductor\")\n+                .await\n+                .unwrap()\n+                .is_some()\n+        );\n+\n+        // Parent terminal (parked boundary / soft-stop misjudgment,\n+        // fabro-ee5d) while the develop child is still running: the child\n+        // keeps the pass active.\n+        parent.status = sample_status(RunStatusKind::Succeeded);\n+        store\n+            .upsert_projection(&entry(parent.clone(), 7))\n+            .await\n+            .unwrap();\n+        assert_eq!(\n+            store.active_run_for_automation(\"conductor\").await.unwrap(),\n+            Some(child_id)\n+        );\n+\n+        // Child terminal too: nothing live, the next fire may proceed.\n+        child_projection.status = sample_status(RunStatusKind::Succeeded);\n+        store\n+            .upsert_projection(&entry(child_projection, 8))\n+            .await\n+            .unwrap();\n+        assert_eq!(\n+            store.active_run_for_automation(\"conductor\").await.unwrap(),\n+            None\n+        );\n+    }\n+\n     #[tokio::test]\n     async fn list_filters_sorts_and_paginates_in_sqlite() {\n         let (_directory, store) = store().await;\n",
+        "summary": {
+          "files_changed": 6,
+          "additions": 114,
+          "deletions": 4
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T12:23:00.341288877Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
           "thread.start.current_node": "planner",
           "thread.planner.current_node": "implementer",
           "internal.retry_count.implementer": 0,
+          "thread.implementer.current_node": "tester",
           "internal.run_id": "01M230P8RGN6HWTR6PZ966Q3B1",
           "graph.cycle_counter_reset_key": "current_seed_id",
           "outcome": "succeeded",
@@ -903,7 +1108,7 @@
           },
           "failure_signature": "",
           "graph.inspects": "develop",
-          "current_node": "implementer",
+          "current_node": "tester",
           "journal": {
             "painpoints": [
               {
@@ -916,15 +1121,17 @@
             ]
           },
           "implementation_summary": "Fixed the double-develop-claim class: `lib/components/fabro-store/src/run_summary_store.rs` extends `active_run_for_automation` so a non-terminal child of an automation run also suppresses scheduled fires (covers waiting-on-child, parked-parent, and fabro-ee5d soft-stop windows), with regression test `active_run_for_automation_covers_waiting_states_and_live_children`; `.fabro/workflows/develop/prompts/planner.md` step 4 now treats non-terminal-status develop runs as in-flight claims even before their PR exists; `.fabro/workflows/revisor/prompts/analyze.md` gains Step 3.5 duplicate-run pre-distillation check. Lesson captured as mx-2400f9. Verification: PASS (a) overlap semantics + regression test (fabro-store 289/289, fabro-server 930/930 incl. scheduler overlap tests); PASS (b) mid-flight guard via projection caller, TOML-parsed; PASS (c) revisor duplicate-run checklist added; PASS cheapest-first verification (fabro-automation 40/40, fmt+clippy clean, no skip-path behavior change).",
+          "command.output": "blob://sha256/9e50c5a5e543408c6c6b44cc1e889796a107963d02b42dc26873ffa96e56a5c2",
           "preferred_label": "Implemented",
-          "internal.fidelity": "summary:high",
+          "internal.fidelity": "compact",
           "current_seed_id": "fabro-91ff",
           "graph.rankdir": "LR",
           "last_stage": "implementer",
           "graph.preamble_budget_kb": "24",
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
           "internal.retry_count.planner": 0,
           "lesson_capture": "mx-2400f9",
@@ -939,14 +1146,29 @@
           "failure_class": "",
           "current_seed_title": "engine: conductor passes overlapped despite on_overlap=skip — double develop claim on fabro-8bf4 (PR #84 vs #86)",
           "current_seed_brief": "Fix the double-develop-claim class exposed by the 2026-09-09 incident (runs 01M22X67GYXC / 01M22VF9PWJH both claimed fabro-8bf4). Acceptance criteria: - (a) Overlap semantics: root-cause why on_overlap=skip admitted a second conductor pass while the first was active (check `lib/apps/fabro-server/src/server/automation_scheduler.rs` around the 'Scheduled fire skipped: overlapping run still non-terminal' logic and `lib/components/fabro-automation/src/model.rs:124`; test hypotheses: overlap check ignores runs parked/waiting-on-child, or the fabro-ee5d run_wait blocked-instantly misjudgment made pass X look terminal); fix so a non-terminal run of the same automation always suppresses the fire, with a regression test covering the waiting-on-child state. - (b) Mid-flight blind spot: the develop planner in-flight guard (currently open run-linked PRs only) must ALSO skip seeds claimed by running develop runs whose PR does not exist yet; preferred direction is engine-side — extend the fabro_runs_list projection or its callers so the guard can see `status=running` develop runs and their claimed seed id (note open seed fabro-9372 already asks to expose current_seed_id in that projection — implement that key here if it is the natural enabler, but keep this seed's diff scoped to the guard fix); alternatively serialize develop legs engine-side. Update the planner prompt in `.fabro/workflows/develop/workflow.toml` (read via shell/sed — fs_hide blocks read_file on `.fabro/**`) to run the extended guard. - (c) Revisor duplicate-run checklist: add to the revisor/analyst checklist (`.fabro/workflows/revisor/`) a pre-distillation check that the run's seed is not already closed on the base branch, so a duplicate run cannot pass review as healthy. - Verification cheapest-first: `cargo nextest run -p fabro-automation` then `cargo nextest run -p fabro-server` (pin run.environment id=local per convention), TOML-parse `.fabro/workflows/develop/workflow.toml` and `revisor` prompts via python3 before any cargo run; no behavior change to already-correct skip paths.",
-          "internal.thread_id": "planner",
+          "internal.thread_id": "implementer",
           "internal.seed_cycle_anchor": "fabro-91ff",
+          "internal.retry_count.tester": 0,
           "internal.work_dir": "/workspace/fabro"
         },
         "node_outcomes": {
           "start": {
             "status": "succeeded",
             "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/9e50c5a5e543408c6c6b44cc1e889796a107963d02b42dc26873ffa96e56a5c2"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 8233,
+              "active_time_ms": 8233
+            }
           },
           "planner": {
             "status": "succeeded",
@@ -1060,11 +1282,12 @@
             }
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
           "implementer": 1,
           "start": 1,
-          "planner": 1
+          "planner": 1,
+          "tester": 1
         }
       },
       "diff": {}
@@ -1334,6 +1557,57 @@
         "inference_time_ms": 0,
         "tool_time_ms": 0,
         "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@1": {
+      "first_event_seq": 383,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T12:23:00.088861895Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/9e50c5a5e543408c6c6b44cc1e889796a107963d02b42dc26873ffa96e56a5c2",
+        "exit_code": 0,
+        "duration_ms": 8233,
+        "termination": "exited",
+        "output_bytes": 222,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 222,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T12:22:51.824558109Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 8253,
+        "inference_time_ms": 0,
+        "tool_time_ms": 8233,
+        "active_time_ms": 8233
       },
       "usage": {
         "input_tokens": 0,
