@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T17:31:21.788935450Z",
-  "last_event_at": "2026-09-09T17:33:34.646113557Z",
+  "last_event_at": "2026-09-09T17:33:43.875757312Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -873,9 +873,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 124,
       "checkpoint": {
-        "timestamp": "2026-09-09T17:33:34.858591887Z",
+        "timestamp": "2026-09-09T17:33:39.595100499Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -884,15 +884,207 @@
         ],
         "node_retries": {},
         "context_values": {
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.inspects": "develop",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "The seed's verification criterion required the implementer to run `just qualitygate` even though step 4 of the very prompt being edited forbids the implementer from running the gate — a deliberate, seed-scoped exception this time, but worth noting the tension in case future seeds assume the prompt's rule rather than the seed's acceptance criteria."
+            ]
+          },
+          "current_seed_brief": "Reword step 4 of `.fabro/workflows/develop/prompts/implementer.md` (the numbered list item at ~line 27 beginning 'Do NOT run the quality gate') so test scoping is mechanical and unambiguous. Acceptance criteria:\n- nextest rule: run `cargo nextest run -p <crate>` ONLY for crates where the seed touched TEST files (tests added/edited); crates with only non-test code changes get NO nextest run from the implementer\n- fmt/clippy rule unchanged in effect: pinned-toolchain `cargo +<pin> fmt -p <crate>` and `cargo +<pin> clippy -p <crate> --all-targets -- -D warnings` (default features) on EVERY code-touched crate\n- keep the existing guards intact: workspace-wide suite stays forbidden, the default-features clippy mandate and the known-default-features-break FAIL rule stay verbatim, and all existing run-id citations in the item are preserved\n- state the distinction explicitly: 'test-file-touched crate' vs 'code-touched crate' — the current text's `-p <touched-crate>` phrasing is what run 01M23EDVNHPGD8QNBWZN8WNTDD over-applied (full suite on 5 crates when tests changed in only fabro-github and fabro-server, 3,370 tests)\n- note (may be one clause): the deterministic tester gate re-runs the full touched-crate set anyway, so gate coverage is unchanged\n- verification: `python3 -c \"import tomllib\"`-level not applicable; grep the edited item for both rule sentences, then `just qualitygate` per PROJECT_FACTS\nContradiction check: none — the current wording is ambiguous rather than wrong; this edit disambiguates it in the direction the seed specifies.",
+          "internal.retry_count.planner": 0,
+          "last_stage": "implementer",
+          "outcome": "succeeded",
+          "graph.rankdir": "LR",
+          "thread.start.current_node": "planner",
+          "graph.max_node_visits": "40",
+          "internal.work_dir": "/workspace/fabro",
+          "implementation_summary": "Reworded step 4 of `.fabro/workflows/develop/prompts/implementer.md` (loop-asset path, edited via shell python heredoc): the item now defines the two crate classes explicitly — test-file-touched crate (seed added/edited TEST files) vs code-touched crate (any crate whose code the seed touched) — and scopes the implementer's `cargo nextest run -p <crate>` to test-file-touched crates ONLY, with code-touched-but-not-test-touched crates getting no nextest run, plus one clause noting the deterministic tester gate re-runs the full touched-crate set so gate coverage is unchanged. The fmt/clippy sentence now says EVERY code-touched crate (same effect, same pinned-toolchain commands). All guards, the default-features clippy mandate, the FAIL rule, and every run-id citation (01M20T9S8JRXETASN64768TRRP, 01M1YJ8R820R7ZMSN55GJGMZ4A, 01M1S6VRWQMD56M1X8HWAXDSNN/fabro-0d56, 01M11P68SHFS) are preserved verbatim. Lesson capture: nothing durable — skipped (the convention itself is what this seed codified into the prompt). Verification report: - PASS nextest only for test-file-touched crates: grep 'ONLY for test-file-touched crates' matches 1; item states code-touched-only crates get NO nextest run — `.fabro/workflows/develop/prompts/implementer.md` step 4. - PASS fmt/clippy unchanged in effect on every code-touched crate: grep 'EVERY code-touched crate' matches 1; pinned-toolchain commands verbatim — same file. - PASS guards intact: 'workspace-wide suite remains forbidden in both cases (run 01M20T9S8JRXETASN64768TRRP', 'DEFAULT features: run it on EVERY touched crate IN ADDITION', \"FAILS your 'gate passes' self-assessment\" all match 1; all five run-id/fabro-id citations present. - PASS explicit distinction 'test-file-touched crate' vs 'code-touched crate': both terms defined in the first new sentence — same file. - PASS tester-gate re-run note: 'The deterministic tester gate re-runs the full touched-crate set anyway, so gate coverage is unchanged' present — same file. - PASS verification: both rule sentences grepped (1 match each), then `just qualitygate` exited 0 ('no crates touched', 'format clean').",
+          "lesson_capture": "nothing durable — skipped",
+          "failure_class": "",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2653,
+            "preview": "Seed `fabro-c4ce` claimed. Brief distilled from the seed body with the current-tree wording verified against `implementer.md` step 4 (line 27). In-flight check: no open PRs; the only non-terminal run "
+          },
+          "current_node": "implementer",
+          "internal.seed_cycle_anchor": "fabro-c4ce",
+          "last_response": "Gate green (exit 0 — \"no crates touched\", markdown-only change correctly scoped). The edit is complete: step 4 of `.fabro/workflows/develop/prompts/implementer.md` now defines \"test-file-touched cra",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "graph.preamble_budget_kb": "24",
+          "preferred_label": "Implemented",
+          "current_seed_id": "fabro-c4ce",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.implementer": 0,
+          "internal.thread_id": "planner",
+          "thread.planner.current_node": "implementer",
+          "current_seed_title": "Scope implementer nextest to test-file-touched crates only",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3196,
+            "preview": "Gate green (exit 0 — \"no crates touched\", markdown-only change correctly scoped). The edit is complete: step 4 of `.fabro/workflows/develop/prompts/implementer.md` now defines \"test-file-touched cra"
+          },
+          "internal.run_id": "01M23KJM3SM70S2S6QSSEWSJPY",
+          "internal.fidelity": "summary:high",
           "internal.node_visit_count": 1,
+          "failure_signature": ""
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_stage": "planner",
+              "current_seed_brief": "Reword step 4 of `.fabro/workflows/develop/prompts/implementer.md` (the numbered list item at ~line 27 beginning 'Do NOT run the quality gate') so test scoping is mechanical and unambiguous. Acceptance criteria:\n- nextest rule: run `cargo nextest run -p <crate>` ONLY for crates where the seed touched TEST files (tests added/edited); crates with only non-test code changes get NO nextest run from the implementer\n- fmt/clippy rule unchanged in effect: pinned-toolchain `cargo +<pin> fmt -p <crate>` and `cargo +<pin> clippy -p <crate> --all-targets -- -D warnings` (default features) on EVERY code-touched crate\n- keep the existing guards intact: workspace-wide suite stays forbidden, the default-features clippy mandate and the known-default-features-break FAIL rule stay verbatim, and all existing run-id citations in the item are preserved\n- state the distinction explicitly: 'test-file-touched crate' vs 'code-touched crate' — the current text's `-p <touched-crate>` phrasing is what run 01M23EDVNHPGD8QNBWZN8WNTDD over-applied (full suite on 5 crates when tests changed in only fabro-github and fabro-server, 3,370 tests)\n- note (may be one clause): the deterministic tester gate re-runs the full touched-crate set anyway, so gate coverage is unchanged\n- verification: `python3 -c \"import tomllib\"`-level not applicable; grep the edited item for both rule sentences, then `just qualitygate` per PROJECT_FACTS\nContradiction check: none — the current wording is ambiguous rather than wrong; this edit disambiguates it in the direction the seed specifies.",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2653,
+                "preview": "Seed `fabro-c4ce` claimed. Brief distilled from the seed body with the current-tree wording verified against `implementer.md` step 4 (line 27). In-flight check: no open PRs; the only non-terminal run "
+              },
+              "current_seed_id": "fabro-c4ce",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Seed fabro-c4ce basis verified: implementer.md step 4 (line 27) still carries the ambiguous '-p <touched-crate> — FULL crate suite, for every crate whose tests the seed touched' phrasing that the basis run over-applied; the edit is a disambiguation, not a behavior reversal of PR #78's rule.",
+                  "In-flight check clean: no open PRs among 17 develop runs; the only non-terminal run (01M23KJM3SM70S2S6QSSEWSJPY) is this run itself, and its goal names no seed id, so no journal fallback or exclusions were needed."
+                ]
+              },
+              "current_seed_title": "Scope implementer nextest to test-file-touched crates only",
+              "last_response": "Seed `fabro-c4ce` claimed. Brief distilled from the seed body with the current-tree wording verified against `implementer.md` step 4 (line 27). In-flight check: no open PRs; the only non-terminal run "
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 29222,
+                    "output_tokens": 1198,
+                    "reasoning_tokens": 1051,
+                    "cache_read_tokens": 123200,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 82832
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 50367,
+              "tool_time_ms": 3055,
+              "active_time_ms": 53422
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "Reworded step 4 of `.fabro/workflows/develop/prompts/implementer.md` (loop-asset path, edited via shell python heredoc): the item now defines the two crate classes explicitly — test-file-touched crate (seed added/edited TEST files) vs code-touched crate (any crate whose code the seed touched) — and scopes the implementer's `cargo nextest run -p <crate>` to test-file-touched crates ONLY, with code-touched-but-not-test-touched crates getting no nextest run, plus one clause noting the deterministic tester gate re-runs the full touched-crate set so gate coverage is unchanged. The fmt/clippy sentence now says EVERY code-touched crate (same effect, same pinned-toolchain commands). All guards, the default-features clippy mandate, the FAIL rule, and every run-id citation (01M20T9S8JRXETASN64768TRRP, 01M1YJ8R820R7ZMSN55GJGMZ4A, 01M1S6VRWQMD56M1X8HWAXDSNN/fabro-0d56, 01M11P68SHFS) are preserved verbatim. Lesson capture: nothing durable — skipped (the convention itself is what this seed codified into the prompt). Verification report: - PASS nextest only for test-file-touched crates: grep 'ONLY for test-file-touched crates' matches 1; item states code-touched-only crates get NO nextest run — `.fabro/workflows/develop/prompts/implementer.md` step 4. - PASS fmt/clippy unchanged in effect on every code-touched crate: grep 'EVERY code-touched crate' matches 1; pinned-toolchain commands verbatim — same file. - PASS guards intact: 'workspace-wide suite remains forbidden in both cases (run 01M20T9S8JRXETASN64768TRRP', 'DEFAULT features: run it on EVERY touched crate IN ADDITION', \"FAILS your 'gate passes' self-assessment\" all match 1; all five run-id/fabro-id citations present. - PASS explicit distinction 'test-file-touched crate' vs 'code-touched crate': both terms defined in the first new sentence — same file. - PASS tester-gate re-run note: 'The deterministic tester gate re-runs the full touched-crate set anyway, so gate coverage is unchanged' present — same file. - PASS verification: both rule sentences grepped (1 match each), then `just qualitygate` exited 0 ('no crates touched', 'format clean').",
+              "lesson_capture": "nothing durable — skipped",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The seed's verification criterion required the implementer to run `just qualitygate` even though step 4 of the very prompt being edited forbids the implementer from running the gate — a deliberate, seed-scoped exception this time, but worth noting the tension in case future seeds assume the prompt's rule rather than the seed's acceptance criteria."
+                ]
+              },
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3196,
+                "preview": "Gate green (exit 0 — \"no crates touched\", markdown-only change correctly scoped). The edit is complete: step 4 of `.fabro/workflows/develop/prompts/implementer.md` now defines \"test-file-touched cra"
+              },
+              "last_stage": "implementer",
+              "last_response": "Gate green (exit 0 — \"no crates touched\", markdown-only change correctly scoped). The edit is complete: step 4 of `.fabro/workflows/develop/prompts/implementer.md` now defines \"test-file-touched cra"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19404,
+                    "output_tokens": 1760,
+                    "reasoning_tokens": 2246,
+                    "cache_read_tokens": 85568,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 67032
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 65094,
+              "tool_time_ms": 4960,
+              "active_time_ms": 70054
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "758a8b3723347d2700d48f77f31652b64d1e9c0c",
+        "node_visits": {
+          "implementer": 1,
+          "planner": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M23KJM3SM70S2S6QSSEWSJPY.jsonl b/.fabro/journal/01M23KJM3SM70S2S6QSSEWSJPY.jsonl\nindex b5f2814..d2d089d 100644\n--- a/.fabro/journal/01M23KJM3SM70S2S6QSSEWSJPY.jsonl\n+++ b/.fabro/journal/01M23KJM3SM70S2S6QSSEWSJPY.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23KJM3SM70S2S6QSSEWSJPY\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:31:24Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23KJM3SM70S2S6QSSEWSJPY\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:32:18Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Seed fabro-c4ce basis verified: implementer.md step 4 (line 27) still carries the ambiguous '-p <touched-crate> — FULL crate suite, for every crate whose tests the seed touched' phrasing that the basis run over-applied; the edit is a disambiguation, not a behavior reversal of PR #78's rule.\",\"In-flight check clean: no open PRs among 17 develop runs; the only non-terminal run (01M23KJM3SM70S2S6QSSEWSJPY) is this run itself, and its goal names no seed id, so no journal fallback or exclusions were needed.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23KJM3SM70S2S6QSSEWSJPY\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:33:34Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The seed's verification criterion required the implementer to run `just qualitygate` even though step 4 of the very prompt being edited forbids the implementer from running the gate — a deliberate, seed-scoped exception this time, but worth noting the tension in case future seeds assume the prompt's rule rather than the seed's acceptance criteria.\"]}}\ndiff --git a/.fabro/workflows/develop/prompts/implementer.md b/.fabro/workflows/develop/prompts/implementer.md\nindex 5d99d0a..0f2bf74 100644\n--- a/.fabro/workflows/develop/prompts/implementer.md\n+++ b/.fabro/workflows/develop/prompts/implementer.md\n@@ -24,7 +24,7 @@ Tracker mechanics (sd is installed and authoritative):\n 1. Re-read the seed requirements from `sd show <current_seed_id>`. The seed description is the specification; follow it literally.\n 2. Implement it in the current worktree: create and edit files, keep the project's conventions (commands run through its `just` recipes).\n 3. Write or update tests exactly as the seed demands.\n-4. Do NOT run the quality gate — NOT the PROJECT_FACTS gate command, NOT its equivalent. The deterministic tester step after you owns the gate; a redundant run (observed: implementer + tester + reviewer all gating the same tree) wastes a cold cache's tens of seconds and blurs role boundaries. Your check: when the seed adds or edits tests in a crate, run `cargo nextest run -p <touched-crate>` — the FULL crate suite, for every crate whose tests the seed touched; when the seed does NOT touch tests, the project's compile check or ONE focused test. The workspace-wide suite remains forbidden in both cases (run 01M20T9S8JRXETASN64768TRRP: targeted-only tests missed two pre-existing fabro-server Docker-socket failures; the gate-red bounce cost ~22 min, ~40% of that 55-min run). Plus, for Rust changes, crate-scoped fmt and clippy on EVERY touched crate, using the two pinned-toolchain commands from PROJECT_FACTS (`cargo +<pin> fmt -p <touched-crate>` and `cargo +<pin> clippy -p <touched-crate> --all-targets -- -D warnings`). That clippy invocation is the literal gate command with DEFAULT features: run it on EVERY touched crate IN ADDITION to any feature-scoped clippy checks you may also run (e.g. `--features docker`) — a feature-scoped pass must never substitute for the default-features run (run 01M1YJ8R820R7ZMSN55GJGMZ4A: the implementer verified only under a feature flag while a default-features E0432 it had itself diagnosed red-lined the tester 11s in). Accordingly, a known default-features break in a touched crate (e.g. an E0432 that only appears without features) FAILS your 'gate passes' self-assessment: you may not report success while such a break is outstanding — fix it, or route Blocked if you cannot. Never the full workspace fmt/clippy and never the full suite (fabro-0d56: two of three tester cycles in run 01M1S6VRWQMD56M1X8HWAXDSNN were pure style failures — rustfmt drift and two denied clippy lints — burning ~25% of run LLM spend; the crate-scoped pass here keeps the tester's first gate compile-warm).\n+4. Do NOT run the quality gate — NOT the PROJECT_FACTS gate command, NOT its equivalent. The deterministic tester step after you owns the gate; a redundant run (observed: implementer + tester + reviewer all gating the same tree) wastes a cold cache's tens of seconds and blurs role boundaries. Make the test scope mechanical by distinguishing two crate classes up front: a test-file-touched crate is one where the seed added or edited TEST files (a test was written or changed); a code-touched crate is any crate whose code the seed touched at all, tests included. Your check: run `cargo nextest run -p <crate>` — the FULL crate suite — ONLY for test-file-touched crates; a code-touched crate with only non-test changes gets NO nextest run from you (when the seed touched no tests anywhere, the project's compile check or ONE focused test stands in). The deterministic tester gate re-runs the full touched-crate set anyway, so gate coverage is unchanged. The workspace-wide suite remains forbidden in both cases (run 01M20T9S8JRXETASN64768TRRP: targeted-only tests missed two pre-existing fabro-server Docker-socket failures; the gate-red bounce cost ~22 min, ~40% of that 55-min run). Plus, for Rust changes, crate-scoped fmt and clippy on EVERY code-touched crate, using the two pinned-toolchain commands from PROJECT_FACTS (`cargo +<pin> fmt -p <touched-crate>` and `cargo +<pin> clippy -p <touched-crate> --all-targets -- -D warnings`). That clippy invocation is the literal gate command with DEFAULT features: run it on EVERY touched crate IN ADDITION to any feature-scoped clippy checks you may also run (e.g. `--features docker`) — a feature-scoped pass must never substitute for the default-features run (run 01M1YJ8R820R7ZMSN55GJGMZ4A: the implementer verified only under a feature flag while a default-features E0432 it had itself diagnosed red-lined the tester 11s in). Accordingly, a known default-features break in a touched crate (e.g. an E0432 that only appears without features) FAILS your 'gate passes' self-assessment: you may not report success while such a break is outstanding — fix it, or route Blocked if you cannot. Never the full workspace fmt/clippy and never the full suite (fabro-0d56: two of three tester cycles in run 01M1S6VRWQMD56M1X8HWAXDSNN were pure style failures — rustfmt drift and two denied clippy lints — burning ~25% of run LLM spend; the crate-scoped pass here keeps the tester's first gate compile-warm).\n    For repetitive, pattern-shaped rewrites — call-site adaptation after a signature change, or a rename rippling through many sites — do ONE mechanical shell pass with a transform tool (`sed`, `perl -pi -e`, a small script) instead of N per-site `edit_file` calls, then verify with ONE focused check (compile check or ONE focused test, as above). Measured (run `01M11P68SHFS`, implementer@2): 277 s inference against 6 s tool time, ~43% of the run's LLM spend (US$0.486, 51.8k tokens). Correctness, not only cost: hand-editing many identical sites produced 19 concurrent-write serialization warnings and one swallowed-loop-body near-miss; mechanical transforms eliminate that near-miss class.\n    Cost-tier the smoke check itself: config-only seeds (no Rust touched) satisfy the smoke check with a parse-level verification (e.g. `python3 -c \"import tomllib; tomllib.load(open('<file>','rb'))\"` for TOML) — never build binaries to validate config; if a built check is genuinely required, never `cargo run` cold — `cargo build` once with timeout_ms >= 600000, then invoke `target/debug/<bin>`; a timed-out build is not a failure — retry once with a doubled timeout; only a non-zero exit is a failure.\n 5. Do NOT close the seed and do NOT review — the Reviewer decides, the deterministic Closeout closes.\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 5,
+          "deletions": 2
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T17:33:44.099538019Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.node_visit_count": 1,
+          "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
           "failure_class": "",
           "implementation_summary": "Reworded step 4 of `.fabro/workflows/develop/prompts/implementer.md` (loop-asset path, edited via shell python heredoc): the item now defines the two crate classes explicitly — test-file-touched crate (seed added/edited TEST files) vs code-touched crate (any crate whose code the seed touched) — and scopes the implementer's `cargo nextest run -p <crate>` to test-file-touched crates ONLY, with code-touched-but-not-test-touched crates getting no nextest run, plus one clause noting the deterministic tester gate re-runs the full touched-crate set so gate coverage is unchanged. The fmt/clippy sentence now says EVERY code-touched crate (same effect, same pinned-toolchain commands). All guards, the default-features clippy mandate, the FAIL rule, and every run-id citation (01M20T9S8JRXETASN64768TRRP, 01M1YJ8R820R7ZMSN55GJGMZ4A, 01M1S6VRWQMD56M1X8HWAXDSNN/fabro-0d56, 01M11P68SHFS) are preserved verbatim. Lesson capture: nothing durable — skipped (the convention itself is what this seed codified into the prompt). Verification report: - PASS nextest only for test-file-touched crates: grep 'ONLY for test-file-touched crates' matches 1; item states code-touched-only crates get NO nextest run — `.fabro/workflows/develop/prompts/implementer.md` step 4. - PASS fmt/clippy unchanged in effect on every code-touched crate: grep 'EVERY code-touched crate' matches 1; pinned-toolchain commands verbatim — same file. - PASS guards intact: 'workspace-wide suite remains forbidden in both cases (run 01M20T9S8JRXETASN64768TRRP', 'DEFAULT features: run it on EVERY touched crate IN ADDITION', \"FAILS your 'gate passes' self-assessment\" all match 1; all five run-id/fabro-id citations present. - PASS explicit distinction 'test-file-touched crate' vs 'code-touched crate': both terms defined in the first new sentence — same file. - PASS tester-gate re-run note: 'The deterministic tester gate re-runs the full touched-crate set anyway, so gate coverage is unchanged' present — same file. - PASS verification: both rule sentences grepped (1 match each), then `just qualitygate` exited 0 ('no crates touched', 'format clean').",
           "graph.max_node_visits": "40",
           "internal.work_dir": "/workspace/fabro",
-          "internal.fidelity": "summary:high",
-          "internal.thread_id": "planner",
+          "internal.fidelity": "compact",
+          "internal.thread_id": "implementer",
           "failure_signature": "",
           "last_response": "Gate green (exit 0 — \"no crates touched\", markdown-only change correctly scoped). The edit is complete: step 4 of `.fabro/workflows/develop/prompts/implementer.md` now defines \"test-file-touched cra",
+          "internal.retry_count.tester": 0,
           "outcome": "succeeded",
           "graph.preamble_budget_kb": "24",
           "graph.rankdir": "LR",
@@ -914,7 +1106,8 @@
           "last_stage": "implementer",
           "thread.planner.current_node": "implementer",
           "internal.retry_count.start": 0,
-          "current_node": "implementer",
+          "thread.implementer.current_node": "tester",
+          "current_node": "tester",
           "current_seed_brief": "Reword step 4 of `.fabro/workflows/develop/prompts/implementer.md` (the numbered list item at ~line 27 beginning 'Do NOT run the quality gate') so test scoping is mechanical and unambiguous. Acceptance criteria:\n- nextest rule: run `cargo nextest run -p <crate>` ONLY for crates where the seed touched TEST files (tests added/edited); crates with only non-test code changes get NO nextest run from the implementer\n- fmt/clippy rule unchanged in effect: pinned-toolchain `cargo +<pin> fmt -p <crate>` and `cargo +<pin> clippy -p <crate> --all-targets -- -D warnings` (default features) on EVERY code-touched crate\n- keep the existing guards intact: workspace-wide suite stays forbidden, the default-features clippy mandate and the known-default-features-break FAIL rule stay verbatim, and all existing run-id citations in the item are preserved\n- state the distinction explicitly: 'test-file-touched crate' vs 'code-touched crate' — the current text's `-p <touched-crate>` phrasing is what run 01M23EDVNHPGD8QNBWZN8WNTDD over-applied (full suite on 5 crates when tests changed in only fabro-github and fabro-server, 3,370 tests)\n- note (may be one clause): the deterministic tester gate re-runs the full touched-crate set anyway, so gate coverage is unchanged\n- verification: `python3 -c \"import tomllib\"`-level not applicable; grep the edited item for both rule sentences, then `just qualitygate` per PROJECT_FACTS\nContradiction check: none — the current wording is ambiguous rather than wrong; this edit disambiguates it in the direction the seed specifies.",
           "current_seed_id": "fabro-c4ce",
           "response.planner": {
@@ -925,7 +1118,8 @@
           },
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
           "internal.seed_cycle_anchor": "fabro-c4ce",
           "journal": {
@@ -1042,11 +1236,26 @@
               "tool_time_ms": 3055,
               "active_time_ms": 53422
             }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 4259,
+              "active_time_ms": 4259
+            }
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
           "start": 1,
+          "tester": 1,
           "planner": 1,
           "implementer": 1
         }
@@ -1549,6 +1758,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@1": {
+      "first_event_seq": 127,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T17:33:43.875757312Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+        "exit_code": 0,
+        "duration_ms": 4259,
+        "termination": "exited",
+        "output_bytes": 87,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 87,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T17:33:39.604831110Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 4263,
+        "inference_time_ms": 0,
+        "tool_time_ms": 4259,
+        "active_time_ms": 4259
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
