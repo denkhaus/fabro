@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M22VF9PWJHVND4E2S8QBX600.jsonl b/.fabro/journal/01M22VF9PWJHVND4E2S8QBX600.jsonl
+new file mode 100644
+index 000000000..3ead6ca05
+--- /dev/null
++++ b/.fabro/journal/01M22VF9PWJHVND4E2S8QBX600.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M22VF9PWJHVND4E2S8QBX600","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T10:30:16Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M22VF9PWJHVND4E2S8QBX600","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-09T10:30:51Z","data":{"painpoints":[],"observations":["upstream count 0 (origin/denkhaus..upstream/main); newest upstream/main subject: 'Bump version to 0.348.0-nightly.0' — no drift accumulated, merge threshold (>=5) not met","no revisor backlog: all 6 listed develop runs have paired revisor runs; newest develop 01M22STYHHYV9J9B7NTE03PH4G was revised by revisor run 01M22T14PWSRB6QSB5G51TJCW1 (PR #83, merged) per shared parent 01M22SRBWTM6SHHEHNRDG6FT5M","note: revisor run 01M22RPXB3ZHH78T50PNADJY2M (PR #81) is still open — next surveyor should check whether it merges before starting another cycle child","next surveyor: route Work again unless upstream drift reaches 5; count was 0 this pass"]}}
