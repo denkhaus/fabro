@@ -49,6 +49,7 @@ tool writes are refused. The shell is unaffected — reads AND writes to
 those paths all succeed through shell commands (grep, sed -n, sed -i,
 cat, python3 heredocs). The `sd` and `just` commands
 keep working through the shell.
+rg flag discipline: `rg -r <text>` REPLACES matches — never write `rg -rn`; `-n` alone is the line-number flag (run 01M22X87J1RKQ6A8FZB7RC2RN8: `rg -rn "is_engine_stamped_key"` parsed `-r n` as replace-with-literal-n, producing `pub fn n(key: &str...)`, then misdiagnosed as 'sandbox rg unreliable' — the sandbox rg was fine, the flag was wrong).
 
 Carve-out for platform-targeting seeds: when the claimed seed's brief
 explicitly targets platform files (e.g. prompts under `.fabro/**`),
