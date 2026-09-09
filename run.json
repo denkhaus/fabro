@@ -483,7 +483,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T20:09:02.658740516Z",
-  "last_event_at": "2026-09-09T20:15:08.593101584Z",
+  "last_event_at": "2026-09-09T20:15:14.326046348Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -898,9 +898,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 207,
       "checkpoint": {
-        "timestamp": "2026-09-09T20:15:08.818780390Z",
+        "timestamp": "2026-09-09T20:15:13.475497898Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -910,19 +910,18 @@
         ],
         "node_retries": {},
         "context_values": {
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "thread.start.current_node": "select",
-          "graph.rankdir": "LR",
-          "revisor_target_workflow_version": "38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c",
-          "graph.max_node_visits": "30",
+          "revisor_target_run_id": "01M23W4S7Q2GNEVPY779M4GMN6",
           "revisor_target_wall": "7.0 min",
-          "internal.thread_id": "analyze",
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "seed_cycles": {
-            "select": 1,
-            "analyze": 1,
-            "file": 1
-          },
+          "graph.inspects": "develop,merge-upstream",
+          "internal.fidelity": "compact",
+          "internal.node_visit_count": 1,
+          "thread.analyze.current_node": "file",
+          "graph.preamble_budget_kb": "24",
+          "internal.seed_cycle_anchor": "01M23W4S7Q2GNEVPY779M4GMN6",
+          "filed_seed_ids": [
+            "fabro-c49c",
+            "fabro-5e3c"
+          ],
           "revision_findings": [
             {
               "title": "Close the gate-ban equivalence loophole in planner step 7",
@@ -935,44 +934,9 @@
               "priority": 2
             }
           ],
-          "internal.retry_count.start": 0,
-          "internal.exit_kind": "natural",
-          "current_node": "file",
-          "revisor_target_run_id": "01M23W4S7Q2GNEVPY779M4GMN6",
-          "response.analyze": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "chars": 4235,
-            "preview": "Pass complete: one `fabro_ask` call, review persisted, tracker and duplicate-run checks done, two new seed candidates distilled from eight recommendations (six dropped as duplicates of open seeds).\n\n{"
-          },
-          "internal.retry_count.analyze": 0,
-          "filed_seed_ids": [
-            "fabro-c49c",
-            "fabro-5e3c"
-          ],
-          "failure_class": "",
-          "internal.retry_count.file": 0,
-          "graph.preamble_budget_kb": "24",
-          "internal.seed_cycle_anchor": "01M23W4S7Q2GNEVPY779M4GMN6",
-          "graph.inspects": "develop,merge-upstream",
-          "response.select": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.select",
-            "chars": 1357,
-            "preview": "Selection complete. Develop baseline version is `38bab0b8…` (from the newest develop run, created 2026-09-09T20:00:59Z); that run `01M23W4S7Q2GNEVPY779M4GMN6` is terminal (succeeded), `sandbox_avail"
-          },
-          "internal.fidelity": "compact",
-          "internal.work_dir": "/workspace/fabro",
-          "outcome": "succeeded",
-          "failure_signature": "",
-          "internal.retry_count.select": 0,
-          "response.file": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.file",
-            "chars": 1467,
-            "preview": "Revision complete: searched both themes (no duplicates — `fabro-f7cf` closed/implemented prior mechanism, `fabro-bfe1` open but different change), filed `fabro-c49c` (P1, gate-ban equivalence loopho"
-          },
-          "internal.run_id": "01M23WKBD1G394W0APEKVQ002N",
+          "graph.max_node_visits": "30",
+          "revisor_target_title": "Develop one seed per run (PR #113, merged)",
+          "internal.thread_id": "analyze",
           "journal": {
             "painpoints": [
               {
@@ -983,72 +947,52 @@
               "fabro-c49c cross-references fabro-f7cf (closed, implemented — different mechanism, not supersession); fabro-5e3c cross-references fabro-bfe1 (open, thematic overlap only, nothing closed per ADR-0018 D2)."
             ]
           },
-          "preferred_label": "Staged",
-          "internal.node_visit_count": 1,
           "revisor_target_status": "succeeded",
-          "revisor_target_title": "Develop one seed per run (PR #113, merged)",
-          "last_response": "Revision complete: searched both themes (no duplicates — `fabro-f7cf` closed/implemented prior mechanism, `fabro-bfe1` open but different change), filed `fabro-c49c` (P1, gate-ban equivalence loopho",
-          "thread.select.current_node": "analyze",
+          "internal.exit_kind": "natural",
+          "revisor_target_workflow_version": "38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c",
+          "outcome": "succeeded",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 1357,
+            "preview": "Selection complete. Develop baseline version is `38bab0b8…` (from the newest develop run, created 2026-09-09T20:00:59Z); that run `01M23W4S7Q2GNEVPY779M4GMN6` is terminal (succeeded), `sandbox_avail"
+          },
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "thread.start.current_node": "select",
+          "current_node": "file",
           "last_stage": "file",
-          "thread.analyze.current_node": "file"
+          "internal.retry_count.start": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 1467,
+            "preview": "Revision complete: searched both themes (no duplicates — `fabro-f7cf` closed/implemented prior mechanism, `fabro-bfe1` open but different change), filed `fabro-c49c` (P1, gate-ban equivalence loopho"
+          },
+          "failure_class": "",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "internal.run_id": "01M23WKBD1G394W0APEKVQ002N",
+          "preferred_label": "Staged",
+          "thread.select.current_node": "analyze",
+          "last_response": "Revision complete: searched both themes (no duplicates — `fabro-f7cf` closed/implemented prior mechanism, `fabro-bfe1` open but different change), filed `fabro-c49c` (P1, gate-ban equivalence loopho",
+          "graph.rankdir": "LR",
+          "failure_signature": "",
+          "internal.retry_count.analyze": 0,
+          "internal.retry_count.file": 0,
+          "internal.retry_count.select": 0,
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 4235,
+            "preview": "Pass complete: one `fabro_ask` call, review persisted, tracker and duplicate-run checks done, two new seed candidates distilled from eight recommendations (six dropped as duplicates of open seeds).\n\n{"
+          }
         },
         "node_outcomes": {
-          "file": {
-            "status": "succeeded",
-            "preferred_label": "Staged",
-            "context_updates": {
-              "last_stage": "file",
-              "filed_seed_ids": [
-                "fabro-c49c",
-                "fabro-5e3c"
-              ],
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "Finding 2's defect (hardcoded cwd in scripts/evidence-smoke.nu, journal seq 296) was known to the reviewer before merge but had no cheap channel short of a full Changes-requested cycle — consider a reviewer note field that flows to the revisor without blocking approval. Evidence: run 01M23W4S7Q2GNEVPY779M4GMN6 review record; fix idea: reviewer-approved-with-notes verdict that auto-attaches to the revision input."
-                  }
-                ],
-                "observations": [
-                  "fabro-c49c cross-references fabro-f7cf (closed, implemented — different mechanism, not supersession); fabro-5e3c cross-references fabro-bfe1 (open, thematic overlap only, nothing closed per ADR-0018 D2)."
-                ]
-              },
-              "response.file": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.file",
-                "chars": 1467,
-                "preview": "Revision complete: searched both themes (no duplicates — `fabro-f7cf` closed/implemented prior mechanism, `fabro-bfe1` open but different change), filed `fabro-c49c` (P1, gate-ban equivalence loopho"
-              },
-              "last_response": "Revision complete: searched both themes (no duplicates — `fabro-f7cf` closed/implemented prior mechanism, `fabro-bfe1` open but different change), filed `fabro-c49c` (P1, gate-ban equivalence loopho"
-            },
-            "notes": "Stage completed: file",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 21199,
-                    "output_tokens": 2488,
-                    "reasoning_tokens": 1074,
-                    "cache_read_tokens": 128768,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 78822
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 55863,
-              "tool_time_ms": 1336,
-              "active_time_ms": 57199
-            }
-          },
           "start": {
             "status": "succeeded",
             "usage": null
@@ -1179,20 +1123,162 @@
               "tool_time_ms": 133394,
               "active_time_ms": 274964
             }
+          },
+          "file": {
+            "status": "succeeded",
+            "preferred_label": "Staged",
+            "context_updates": {
+              "last_stage": "file",
+              "filed_seed_ids": [
+                "fabro-c49c",
+                "fabro-5e3c"
+              ],
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Finding 2's defect (hardcoded cwd in scripts/evidence-smoke.nu, journal seq 296) was known to the reviewer before merge but had no cheap channel short of a full Changes-requested cycle — consider a reviewer note field that flows to the revisor without blocking approval. Evidence: run 01M23W4S7Q2GNEVPY779M4GMN6 review record; fix idea: reviewer-approved-with-notes verdict that auto-attaches to the revision input."
+                  }
+                ],
+                "observations": [
+                  "fabro-c49c cross-references fabro-f7cf (closed, implemented — different mechanism, not supersession); fabro-5e3c cross-references fabro-bfe1 (open, thematic overlap only, nothing closed per ADR-0018 D2)."
+                ]
+              },
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 1467,
+                "preview": "Revision complete: searched both themes (no duplicates — `fabro-f7cf` closed/implemented prior mechanism, `fabro-bfe1` open but different change), filed `fabro-c49c` (P1, gate-ban equivalence loopho"
+              },
+              "last_response": "Revision complete: searched both themes (no duplicates — `fabro-f7cf` closed/implemented prior mechanism, `fabro-bfe1` open but different change), filed `fabro-c49c` (P1, gate-ban equivalence loopho"
+            },
+            "notes": "Stage completed: file",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 21199,
+                    "output_tokens": 2488,
+                    "reasoning_tokens": 1074,
+                    "cache_read_tokens": 128768,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 78822
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 55863,
+              "tool_time_ms": 1336,
+              "active_time_ms": 57199
+            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "30188ba228f8ecd45bcced87b65f39a5ee1f6f6e",
         "node_visits": {
+          "file": 1,
           "select": 1,
-          "start": 1,
           "analyze": 1,
-          "file": 1
+          "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M23WKBD1G394W0APEKVQ002N.jsonl b/.fabro/journal/01M23WKBD1G394W0APEKVQ002N.jsonl\nindex 8ffe10e..91853c9 100644\n--- a/.fabro/journal/01M23WKBD1G394W0APEKVQ002N.jsonl\n+++ b/.fabro/journal/01M23WKBD1G394W0APEKVQ002N.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23WKBD1G394W0APEKVQ002N\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T20:09:05Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23WKBD1G394W0APEKVQ002N\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T20:09:25Z\",\"data\":{\"painpoints\":[],\"observations\":[\"24 runs listed (22 develop, 2 merge-upstream), all terminal, all sandbox_available true; 1 selected (newest develop, fresh version)\",\"21 develop runs stale-evidence (version drift vs baseline `38bab0b8…`), 0 no live sandbox; merge-upstream runs fresh against their own baseline `2bf1da4f…` but older than the selected run\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23WKBD1G394W0APEKVQ002N\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T20:14:05Z\",\"data\":{\"painpoints\":[{\"text\":\"Multi-word `sd search` queries (e.g. 'preamble_budget_kb blob') returned empty results because search is case-insensitive substring on title+description, not tokenized — a naive analyst would have concluded six themes were new and re-filed them. Fix idea: add a note to the revisor prompt to search single keywords only, or make `sd search` tokenize.\"},{\"text\":\"The target run's journal file `.fabro/journal/01M23W4S7Q2GNEVPY779M4GMN6.jsonl` does not exist even though the run is terminal and succeeded — the claimed seed id had to be recovered from the Ask-Fabro answer itself. Fix idea: investigate why this run's journal record is missing (postlude write path or merge-time JSONL dedupe dropping it).\"}],\"observations\":[\"Duplicate-run verdict: NOT a duplicate — seed fabro-bfe1 is still open in the tracker and the only origin/denkhaus commit mentioning it is `4c5822a` (PR #112, the improve pass that filed it); the target run itself implemented it via PR #113.\",\"Dropped as duplicates of OPEN seeds (rec-number from review file `.fabro/reviews/develop/01M23W4S7Q2GNEVPY779M4GMN6.md`): rec2 duplicate_of fabro-55a7 and fabro-c3b4 (recon batching + sd ready top-N), rec3 duplicate_of fabro-8d2c (preamble_budget_kb 24 to 32), rec4 duplicate_of fabro-89dd (review_notes channel), rec5 duplicate_of fabro-9e49 (bulleted brief), rec6 duplicate_of fabro-9588 (per-node memory scoping), rec7 duplicate_of fabro-50c9 (reviewer capture-only judging), rec8 duplicate_of fabro-652d and fabro-c2ca (snapshot/push batching).\",\"Rec1 survived because closed seed fabro-f7cf implemented the literal-name rule; the recipe-body equivalence bypass found in THIS run is a different mechanism. Rec4's evidence yielded a separate new candidate (evidence-smoke.nu cwd hardcode) distinct from fabro-89dd's channel mechanism.\",\"Run cost profile: $0.389 total, planner 26% of cost for zero code, gate executed 3x — planner-brief discipline remains the highest-leverage lever this run re-proves.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23WKBD1G394W0APEKVQ002N\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T20:15:08Z\",\"data\":{\"painpoints\":[{\"text\":\"Finding 2's defect (hardcoded cwd in scripts/evidence-smoke.nu, journal seq 296) was known to the reviewer before merge but had no cheap channel short of a full Changes-requested cycle — consider a reviewer note field that flows to the revisor without blocking approval. Evidence: run 01M23W4S7Q2GNEVPY779M4GMN6 review record; fix idea: reviewer-approved-with-notes verdict that auto-attaches to the revision input.\"}],\"observations\":[\"fabro-c49c cross-references fabro-f7cf (closed, implemented — different mechanism, not supersession); fabro-5e3c cross-references fabro-bfe1 (open, thematic overlap only, nothing closed per ADR-0018 D2).\"]}}\ndiff --git a/.fabro/revisions/01M23W4S7Q2GNEVPY779M4GMN6.md b/.fabro/revisions/01M23W4S7Q2GNEVPY779M4GMN6.md\nnew file mode 100644\nindex 0000000..ded2d72\n--- /dev/null\n+++ b/.fabro/revisions/01M23W4S7Q2GNEVPY779M4GMN6.md\n@@ -0,0 +1,17 @@\n+# Revision — run 01M23W4S7Q2GNEVPY779M4GMN6\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M23W4S7Q2GNEVPY779M4GMN6.md\n+- seeds filed: fabro-c49c — Close the gate-ban equivalence loophole in planner step 7; fabro-5e3c — Fix hardcoded cwd restore in evidence-smoke.nu\n+- basis: run 01M23W4S7Q2GNEVPY779M4GMN6, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4c8683243f8c295438cf019e2f061f8812fc58db\n+- revised_at_commit: 4c8683243f8c295438cf019e2f061f8812fc58db (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Close the gate-ban equivalence loophole in planner step 7\n+- filed: fabro-c49c\n+- Change: in `.fabro/workflows/develop/prompts/planner.md` step 7, extend the gate-command rewrite rule from matching only `just qualitygate` to also matching its recipe body or equivalent invocation (per PROJECT_FACTS the recipe delegates to `nu scripts/qualitygate.nu`); the permitted substitute stays gate-green via the deterministic tester step. Evidence: in this run the planner rewrote the banned command into its byte-equivalent body (checkpoint seq 82, `justfile:128`), so the implementer and reviewer each ran the full gate on top of the tester — three gate executions on one tree. The prior fix (fabro-f7cf, closed and implemented) only matched the literal command name; this is the bypass of that rule, a different mechanism — not a duplicate. Expected effect: no redundant full-gate runs; on Rust-touching seeds each avoided run is a cold compile measured at 8-15 min.\n+\n+### Fix hardcoded cwd restore in evidence-smoke.nu\n+- filed: fabro-5e3c\n+- Change: in `scripts/evidence-smoke.nu` (~line 60), replace the hardcoded `cd /workspace/fabro` cwd restore with a captured `$env.PWD` at script start. Evidence: the reviewer in this run found the defect (journal seq 296) and approved anyway because the only channel was a full Changes-requested cycle; the smoke was checked into the gate by seed fabro-bfe1's new loop-asset tier (open; thematic overlap, not the same change — cross-referenced, nothing closed) and now executes in every future `just qualitygate`, misbehaving in any worktree checkout. Expected effect: the new gate tier stays green outside the canonical checkout path, and the latent break stops executing on every run.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 2ce266a..dbbd450 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -348,3 +348,5 @@\n {\"id\":\"fabro-55a7\",\"title\":\"Planner: batch reconnaissance into one shell call (sd ready + sd show + base-branch grep)\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T19:28:38.909Z\",\"updatedAt\":\"2026-09-09T19:38:45.247Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md, batch reconnaissance into a single shell call instead of many tool calls. In the basis run the two planner passes spent 92.0 s and 93.5 s inference over 8 separate calls each; the in-flight check alone took 3 round-trips. Expected ~40-60 s and ~$0.06 saved per pass (36% of run cost was planner), and a shorter claim-to-dispatch window (21 s here) narrows the duplicate-claim race. Basis: run 01M23RQRCB748R4VRXA2WE6BZ0, workflow version 3b17faf145735aa14caf619a38c0b079a1ff1c91acf24211c9ab08a2612c6f6f, commit d55d6ea53c41f53c116ba063221f2988223072dd\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-c080\",\"title\":\"Engine: re-resolve stage prompt files from the run branch tip so self-referential seeds don't review under stale prompts\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T19:47:40.170Z\",\"updatedAt\":\"2026-09-09T19:52:24.377Z\",\"description\":\"Run 01M23TE61D4Y33415BK5M7C70X: the deliverable added an adjudication line to reviewer.md, but the reviewer's injected prompt was the pre-change snapshot materialized at run creation; it judged correctly only because it happened to cross-check the on-disk file (journal observation 3, seq 288). Change: engine run-spec resolution — re-resolve prompt files from the run branch tip at stage start, or at minimum append a 'this run modified your prompt — judge the on-disk version, diff in evidence' notice; same mechanism fabro-dc81 requests for [run.pull_request] in lib/components/fabro-workflow/src/pipeline/publish.rs. Effect: prompt-editing seeds (half the backlog) can never silently review against superseded instructions. Basis: run 01M23TE61D4Y33415BK5M7C70X, workflow version c25ec2416a5e45108d80b6ea43ca9f9e394a3f8fab9ed6d0e53cfa2d3e45bdfa, commit 592f64bd92615069d6a7dbf32cc98c75eabb74e6\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-bfe1\",\"title\":\"Qualitygate: add a loop-asset tier with a checked-in evidence-smoke.nu regression\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T19:47:40.355Z\",\"updatedAt\":\"2026-09-09T19:52:24.301Z\",\"description\":\"Run 01M23TE61D4Y33415BK5M7C70X: the tester's 'just qualitygate' ran 4.15s with 'no crates touched / format clean' — zero machine verification of the actual changes (evidence.nu, reviewer.md). Verification fell to the two costliest LLM stages: implementer hand-built a scratch-git exercise (216s inference) and the reviewer re-ran it (57s), then the regression exercise was deleted at closeout. Change: in the qualitygate recipe (justfile / scripts/qualitygate.nu) add a loop-asset tier — a 'nu -c source' check for .fabro/workflows/develop/scripts/*.nu plus a checked-in mixed-capture scratch exercise as evidence-smoke.nu following the existing closeout-smoke.nu pattern. Effect: deterministic verification of loop-asset changes, durable regression coverage, fewer manual-verification turns. Distinct from fabro-50f8 (prompt-mandated ad-hoc exercises) and fabro-574d (crate derivation): gate infrastructure plus a durable checked-in regression. Basis: run 01M23TE61D4Y33415BK5M7C70X, workflow version c25ec2416a5e45108d80b6ea43ca9f9e394a3f8fab9ed6d0e53cfa2d3e45bdfa, commit 592f64bd92615069d6a7dbf32cc98c75eabb74e6\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-c49c\",\"title\":\"Close the gate-ban equivalence loophole in planner step 7\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T20:14:39.400Z\",\"updatedAt\":\"2026-09-09T20:14:39.400Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 7, extend the gate-command rewrite rule from matching only 'just qualitygate' to also matching its recipe body or equivalent invocation (per PROJECT_FACTS the recipe delegates to 'nu scripts/qualitygate.nu'); the permitted substitute stays gate-green via the deterministic tester step. In run 01M23W4S7Q2GNEVPY779M4GMN6 the planner rewrote the banned command into its byte-equivalent body (checkpoint seq 82, justfile:128), so the implementer and reviewer each ran the full gate on top of the tester — three gate executions on one tree. The prior fix (fabro-f7cf, closed) only matched the literal command name; this is the bypass of that implemented rule, a different mechanism. Expected effect: no redundant full-gate runs; on Rust-touching seeds each avoided run is a cold compile measured at 8-15 min. Cross-references: fabro-f7cf (prior, implemented). Basis: run 01M23W4S7Q2GNEVPY779M4GMN6, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4c8683243f8c295438cf019e2f061f8812fc58db\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-5e3c\",\"title\":\"Fix hardcoded cwd restore in evidence-smoke.nu\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T20:14:45.326Z\",\"updatedAt\":\"2026-09-09T20:14:45.326Z\",\"description\":\"In scripts/evidence-smoke.nu (~line 60), replace the hardcoded 'cd /workspace/fabro' cwd restore with a captured $env.PWD at script start. The reviewer in run 01M23W4S7Q2GNEVPY779M4GMN6 found this defect (journal seq 296) and approved anyway because the only channel was a full Changes-requested cycle; the smoke was checked into the gate by seed fabro-bfe1's new loop-asset tier and now executes in every future 'just qualitygate', misbehaving in any worktree checkout. Expected effect: the new gate tier stays green outside the canonical checkout path, and the latent break stops executing on every run. Cross-references: fabro-bfe1 (open — added the tier that checked this script into the gate; thematic overlap, not the same change). Basis: run 01M23W4S7Q2GNEVPY779M4GMN6, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4c8683243f8c295438cf019e2f061f8812fc58db\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 82,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-09T20:15:13.517139849Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 371384,
+      "inference_time_ms": 213902,
+      "tool_time_ms": 137741,
+      "active_time_ms": 351643
+    },
+    "final_git_commit_sha": "30188ba228f8ecd45bcced87b65f39a5ee1f6f6e",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 20048,
+          "inference_time_ms": 16469,
+          "tool_time_ms": 3011,
+          "active_time_ms": 19480
+        },
+        "billing_usd_micros": 33107,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 275582,
+          "inference_time_ms": 141570,
+          "tool_time_ms": 133394,
+          "active_time_ms": 274964
+        },
+        "billing_usd_micros": 150332,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 57840,
+          "inference_time_ms": 55863,
+          "tool_time_ms": 1336,
+          "active_time_ms": 57199
+        },
+        "billing_usd_micros": 78822,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 93825,
+      "output_tokens": 8106,
+      "total_tokens": 357950,
+      "reasoning_tokens": 6931,
+      "cache_read_tokens": 249088,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 262261
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M23WKBD1G394W0APEKVQ002N.jsonl b/.fabro/journal/01M23WKBD1G394W0APEKVQ002N.jsonl\nnew file mode 100644\nindex 0000000..91853c9\n--- /dev/null\n+++ b/.fabro/journal/01M23WKBD1G394W0APEKVQ002N.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23WKBD1G394W0APEKVQ002N\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T20:09:05Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23WKBD1G394W0APEKVQ002N\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T20:09:25Z\",\"data\":{\"painpoints\":[],\"observations\":[\"24 runs listed (22 develop, 2 merge-upstream), all terminal, all sandbox_available true; 1 selected (newest develop, fresh version)\",\"21 develop runs stale-evidence (version drift vs baseline `38bab0b8…`), 0 no live sandbox; merge-upstream runs fresh against their own baseline `2bf1da4f…` but older than the selected run\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23WKBD1G394W0APEKVQ002N\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T20:14:05Z\",\"data\":{\"painpoints\":[{\"text\":\"Multi-word `sd search` queries (e.g. 'preamble_budget_kb blob') returned empty results because search is case-insensitive substring on title+description, not tokenized — a naive analyst would have concluded six themes were new and re-filed them. Fix idea: add a note to the revisor prompt to search single keywords only, or make `sd search` tokenize.\"},{\"text\":\"The target run's journal file `.fabro/journal/01M23W4S7Q2GNEVPY779M4GMN6.jsonl` does not exist even though the run is terminal and succeeded — the claimed seed id had to be recovered from the Ask-Fabro answer itself. Fix idea: investigate why this run's journal record is missing (postlude write path or merge-time JSONL dedupe dropping it).\"}],\"observations\":[\"Duplicate-run verdict: NOT a duplicate — seed fabro-bfe1 is still open in the tracker and the only origin/denkhaus commit mentioning it is `4c5822a` (PR #112, the improve pass that filed it); the target run itself implemented it via PR #113.\",\"Dropped as duplicates of OPEN seeds (rec-number from review file `.fabro/reviews/develop/01M23W4S7Q2GNEVPY779M4GMN6.md`): rec2 duplicate_of fabro-55a7 and fabro-c3b4 (recon batching + sd ready top-N), rec3 duplicate_of fabro-8d2c (preamble_budget_kb 24 to 32), rec4 duplicate_of fabro-89dd (review_notes channel), rec5 duplicate_of fabro-9e49 (bulleted brief), rec6 duplicate_of fabro-9588 (per-node memory scoping), rec7 duplicate_of fabro-50c9 (reviewer capture-only judging), rec8 duplicate_of fabro-652d and fabro-c2ca (snapshot/push batching).\",\"Rec1 survived because closed seed fabro-f7cf implemented the literal-name rule; the recipe-body equivalence bypass found in THIS run is a different mechanism. Rec4's evidence yielded a separate new candidate (evidence-smoke.nu cwd hardcode) distinct from fabro-89dd's channel mechanism.\",\"Run cost profile: $0.389 total, planner 26% of cost for zero code, gate executed 3x — planner-brief discipline remains the highest-leverage lever this run re-proves.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23WKBD1G394W0APEKVQ002N\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T20:15:08Z\",\"data\":{\"painpoints\":[{\"text\":\"Finding 2's defect (hardcoded cwd in scripts/evidence-smoke.nu, journal seq 296) was known to the reviewer before merge but had no cheap channel short of a full Changes-requested cycle — consider a reviewer note field that flows to the revisor without blocking approval. Evidence: run 01M23W4S7Q2GNEVPY779M4GMN6 review record; fix idea: reviewer-approved-with-notes verdict that auto-attaches to the revision input.\"}],\"observations\":[\"fabro-c49c cross-references fabro-f7cf (closed, implemented — different mechanism, not supersession); fabro-5e3c cross-references fabro-bfe1 (open, thematic overlap only, nothing closed per ADR-0018 D2).\"]}}\ndiff --git a/.fabro/reviews/develop/01M23W4S7Q2GNEVPY779M4GMN6.md b/.fabro/reviews/develop/01M23W4S7Q2GNEVPY779M4GMN6.md\nnew file mode 100644\nindex 0000000..cfe7eed\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M23W4S7Q2GNEVPY779M4GMN6.md\n@@ -0,0 +1,59 @@\n+# Improve review — run 01M23W4S7Q2GNEVPY779M4GMN6\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (7.0 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-09 20:09+0000 by revisor `fabro_ask`\n+- duplicate-run check: NOT a duplicate — seed fabro-bfe1 still open in tracker; only base-branch commit mentioning it is `4c5822a` (PR #112, the filing pass), no sibling run closed it\n+\n+---\n+\n+# Run facts (grounding)\n+\n+Seed fabro-bfe1 (qualitygate loop-asset tier). 7 stages, 1 visit each, zero retries, first-pass approval. Wall 406 s, active 371 s, **$0.389 total**: planner $0.102 (64 s), implementer $0.228 (228 s), reviewer $0.059 (76 s); script stages 5 s combined. All numbers from run checkpoints/events (seq 78, 232, 296, 306) and the tester/evidence script timings.\n+\n+---\n+\n+## 1. Close the gate-ban loophole the planner drove a truck through\n+**Evidence:** The brief's criterion (6) told the implementer to end verification with \"a direct `nu scripts/qualitygate.nu` run reaching the new tier (expect GATE GREEN)\" (checkpoint seq 82). `justfile:128` is literally `nu scripts/qualitygate.nu` — so the planner rewrote the banned `just qualitygate` into its byte-equivalent recipe body, and the implementer ran the full gate (its PASS report: \"direct `nu scripts/qualitygate.nu` GATE GREEN\", seq 232). Result: **the gate ran three times on one tree** — implementer, tester (4.3 s), reviewer re-ran it again (reviewer journal obs 1, seq 296).\n+**Change:** `.fabro/workflows/develop/prompts/planner.md`, step 7 — extend the gate-command rewrite rule from \"names `just qualitygate`\" to \"names the gate command **or its recipe body/equivalent invocation** (per PROJECT_FACTS, the recipe delegates to `nu scripts/qualitygate.nu`)\"; permitted substitute stays \"gate green via the deterministic tester step\".\n+**Expected effect:** Eliminates implementer/reviewer redundant gate executions. Free here (4 s, no crates); on any Rust-touching seed it saves a cold compile (8–15 min per the gate measurement cited in `scripts/qualitygate.nu`'s own header) and the risk of a bounce cycle on a self-inflicted red.\n+\n+## 2. Batch planner reconnaissance and kill the `sd ready` firehose\n+**Evidence:** The planner spent 8 sequential tool calls before claiming (seq 31–69: `sd ready` → `fabro_runs_list`+`sd show` → `ls`/`grep justfile` → `grep`+`sed` closeout-smoke → `grep` qualitygate defs → `sed 130,179p` + evidence defs → claim). The `sd ready --limit 200` call returned **200 issues / 27,483 bytes of stdout** (seq 32) to select 1 seed. Planner: 59.8 s inference, $0.102 = **26% of run cost** for zero code.\n+**Change:** `.fabro/workflows/develop/prompts/planner.md` steps 1–3 — prescribe ONE batched shell call for the stale-basis probes (`ls` + `grep -n` + `sed -n` combined, as the model already did pairwise at seq 45/51/57/63), and a top-N view of `sd ready` (open seeds fabro-55a7/fabro-c3b4 target exactly this; this run re-proves both).\n+**Expected effect:** ~40–60 s and ~$0.06 per planner pass (fabro-55a7's measured basis; this run's numbers are consistent), and a shorter claim-to-dispatch window, which is the window that caused the duplicate-claim races the in-flight check exists to guard.\n+\n+## 3. Raise `preamble_budget_kb` 24 → 32 — the blob detour happened again\n+**Evidence:** The reviewer's preamble rendered the evidence capture as `Output (11.5 KB; full value: /tmp/fabro/runtime/blobs/a38ae5cd…json)` (stage prompt, seq 255) even though 11.5 KB fits the reviewer's own `preamble_inline_max_kb=16` — the **aggregate** 24 KB graph budget demoted it first, forcing a `read_file` detour (reviewer tool_time 4.5 s, `read_file` invoked=true). The graph comment in `workflow.fabro` documents this exact failure at 12 KB; raising to 24 did not fix it.\n+**Change:** `.fabro/workflows/develop/workflow.fabro`, graph attr `preamble_budget_kb=24` → `32` (open seed fabro-8d2c).\n+**Expected effect:** Evidence arrives inline; the reviewer saves a tool round-trip per review and the run avoids the Verification-blocked → evidence-re-capture → re-review path (one such cycle costs ~80 s + $0.06+, or a wrong rejection as in run 01M0SS23MJ cited in the graph comments).\n+\n+## 4. Give non-blocking review findings a durable home\n+**Evidence:** The reviewer found a real defect — `evidence-smoke.nu` (~line 60) restores cwd with hardcoded `cd /workspace/fabro` instead of capturing `$env.PWD`, so the smoke \"would misbehave in a worktree checkout\" (reviewer painpoint, seq 296) — and approved anyway, correctly, because the only alternative was a full Changes-requested cycle (~4 min, ~$0.39) for a one-line fix. That finding now lives only in journal prose; worse, the broken smoke is **checked into the gate and runs in every future `just qualitygate`** (the tier the seed just added), so the latent break executes on every run.\n+**Change:** `.fabro/workflows/develop/prompts/reviewer.md` Decision section — allow `Approved` with a `review_notes` context key for non-blocking findings (open seed fabro-89dd), and have the improve workflow auto-file non-empty `review_notes` as low-priority seeds.\n+**Expected effect:** Known defects stop evaporating at approval; specifically the cwd hardcode gets a tracked fix before someone's host checkout reds the new gate tier.\n+\n+## 5. Make the brief actually bulleted\n+**Evidence:** `planner.md` step 6 mandates \"BULLETED acceptance criteria, not prose\". The shipped brief is a **~3.5 KB single paragraph** with inline \"(1)…(6)\" numbering (checkpoint seq 82). The implementer then re-parsed it into its own PASS/FAIL list, and the reviewer re-parsed it again — three parses of one dense paragraph.\n+**Change:** `.fabro/workflows/develop/prompts/planner.md` step 6 — require newline-separated `- ` bullets in `current_seed_brief` verbatim (open seed fabro-9e49); optionally enforce via the routing output schema.\n+**Expected effect:** Cheaper, less error-prone criterion checking for implementer and reviewer (both prompts promise \"bullets are checked item-by-item\"); removes a misparse class that has historically produced reviewer ping-pong.\n+\n+## 6. Scope per-stage memory (AGENTS.md is loaded whole into all three agents)\n+**Evidence:** `agent.memory.loaded` shows AGENTS.md at **24,605 bytes loaded identically into planner (seq 23), implementer (seq 88), and reviewer** (~6.0–6.5 k tokens each in the memory category of every context breakdown). Most of it is Rust build/test guidance irrelevant to the planner, which writes no Rust.\n+**Change:** Engine per-node memory scoping (open seed fabro-9588), or split AGENTS.md so agent stages load a role-filtered section.\n+**Expected effect:** ~5 k fewer input tokens per non-Rust stage and faster first output; mostly cache-read cost today, so moderate — but it compounds across every run and every cycle visit.\n+\n+## 7. Tighten the reviewer's gate re-run trigger\n+**Evidence:** The reviewer's preamble already contained the tester's full green output including the new tier executing (`== checking loop-asset scripts == / loop-asset scripts green / GATE GREEN`, seq 255), yet it \"re-ran the smoke standalone and the full qualitygate.nu directly\" (journal obs 1). Permitted by policy (\"when you doubt the gate\") but nothing was doubted — it was routine re-verification.\n+**Change:** `.fabro/workflows/develop/prompts/reviewer.md` — gate re-runs only when the capture contradicts the tester section or the seed targets the gate itself; otherwise judge from the inline tester output.\n+**Expected effect:** One fewer full-gate execution per review; negligible this run (4 s), but on Rust seeds each avoided re-run is a cold compile measured in minutes.\n+\n+## 8. (Low) Batch checkpoint metadata snapshots\n+**Evidence:** Metadata snapshots cost 2.16 s (init, seq 15) and 1.99 s (planner checkpoint, seq 81) per stage boundary; wall 406 s vs active 371 s leaves ~35 s (8.6%) of inter-stage overhead including pushes.\n+**Change:** Engine: skip snapshots on non-agent stages / batch pushes at exit boundaries (open seeds fabro-c2ca, fabro-652d).\n+**Expected effect:** ~20–30 s off every run's wall time; no quality change.\n+\n+---\n+\n+**What I could not inspect:** the implementer's tool-by-tool transcript after seq 100 in raw form (I relied on its recorded `implementation_summary` and the committed diff, both in checkpoints seq 232); and engine-side costs (snapshot internals) are visible only as durations. Everything else above is event-backed.\ndiff --git a/.fabro/revisions/01M23W4S7Q2GNEVPY779M4GMN6.md b/.fabro/revisions/01M23W4S7Q2GNEVPY779M4GMN6.md\nnew file mode 100644\nindex 0000000..ded2d72\n--- /dev/null\n+++ b/.fabro/revisions/01M23W4S7Q2GNEVPY779M4GMN6.md\n@@ -0,0 +1,17 @@\n+# Revision — run 01M23W4S7Q2GNEVPY779M4GMN6\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M23W4S7Q2GNEVPY779M4GMN6.md\n+- seeds filed: fabro-c49c — Close the gate-ban equivalence loophole in planner step 7; fabro-5e3c — Fix hardcoded cwd restore in evidence-smoke.nu\n+- basis: run 01M23W4S7Q2GNEVPY779M4GMN6, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4c8683243f8c295438cf019e2f061f8812fc58db\n+- revised_at_commit: 4c8683243f8c295438cf019e2f061f8812fc58db (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Close the gate-ban equivalence loophole in planner step 7\n+- filed: fabro-c49c\n+- Change: in `.fabro/workflows/develop/prompts/planner.md` step 7, extend the gate-command rewrite rule from matching only `just qualitygate` to also matching its recipe body or equivalent invocation (per PROJECT_FACTS the recipe delegates to `nu scripts/qualitygate.nu`); the permitted substitute stays gate-green via the deterministic tester step. Evidence: in this run the planner rewrote the banned command into its byte-equivalent body (checkpoint seq 82, `justfile:128`), so the implementer and reviewer each ran the full gate on top of the tester — three gate executions on one tree. The prior fix (fabro-f7cf, closed and implemented) only matched the literal command name; this is the bypass of that rule, a different mechanism — not a duplicate. Expected effect: no redundant full-gate runs; on Rust-touching seeds each avoided run is a cold compile measured at 8-15 min.\n+\n+### Fix hardcoded cwd restore in evidence-smoke.nu\n+- filed: fabro-5e3c\n+- Change: in `scripts/evidence-smoke.nu` (~line 60), replace the hardcoded `cd /workspace/fabro` cwd restore with a captured `$env.PWD` at script start. Evidence: the reviewer in this run found the defect (journal seq 296) and approved anyway because the only channel was a full Changes-requested cycle; the smoke was checked into the gate by seed fabro-bfe1's new loop-asset tier (open; thematic overlap, not the same change — cross-referenced, nothing closed) and now executes in every future `just qualitygate`, misbehaving in any worktree checkout. Expected effect: the new gate tier stays green outside the canonical checkout path, and the latent break stops executing on every run.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 2ce266a..dbbd450 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -348,3 +348,5 @@\n {\"id\":\"fabro-55a7\",\"title\":\"Planner: batch reconnaissance into one shell call (sd ready + sd show + base-branch grep)\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T19:28:38.909Z\",\"updatedAt\":\"2026-09-09T19:38:45.247Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md, batch reconnaissance into a single shell call instead of many tool calls. In the basis run the two planner passes spent 92.0 s and 93.5 s inference over 8 separate calls each; the in-flight check alone took 3 round-trips. Expected ~40-60 s and ~$0.06 saved per pass (36% of run cost was planner), and a shorter claim-to-dispatch window (21 s here) narrows the duplicate-claim race. Basis: run 01M23RQRCB748R4VRXA2WE6BZ0, workflow version 3b17faf145735aa14caf619a38c0b079a1ff1c91acf24211c9ab08a2612c6f6f, commit d55d6ea53c41f53c116ba063221f2988223072dd\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-c080\",\"title\":\"Engine: re-resolve stage prompt files from the run branch tip so self-referential seeds don't review under stale prompts\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T19:47:40.170Z\",\"updatedAt\":\"2026-09-09T19:52:24.377Z\",\"description\":\"Run 01M23TE61D4Y33415BK5M7C70X: the deliverable added an adjudication line to reviewer.md, but the reviewer's injected prompt was the pre-change snapshot materialized at run creation; it judged correctly only because it happened to cross-check the on-disk file (journal observation 3, seq 288). Change: engine run-spec resolution — re-resolve prompt files from the run branch tip at stage start, or at minimum append a 'this run modified your prompt — judge the on-disk version, diff in evidence' notice; same mechanism fabro-dc81 requests for [run.pull_request] in lib/components/fabro-workflow/src/pipeline/publish.rs. Effect: prompt-editing seeds (half the backlog) can never silently review against superseded instructions. Basis: run 01M23TE61D4Y33415BK5M7C70X, workflow version c25ec2416a5e45108d80b6ea43ca9f9e394a3f8fab9ed6d0e53cfa2d3e45bdfa, commit 592f64bd92615069d6a7dbf32cc98c75eabb74e6\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-bfe1\",\"title\":\"Qualitygate: add a loop-asset tier with a checked-in evidence-smoke.nu regression\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T19:47:40.355Z\",\"updatedAt\":\"2026-09-09T19:52:24.301Z\",\"description\":\"Run 01M23TE61D4Y33415BK5M7C70X: the tester's 'just qualitygate' ran 4.15s with 'no crates touched / format clean' — zero machine verification of the actual changes (evidence.nu, reviewer.md). Verification fell to the two costliest LLM stages: implementer hand-built a scratch-git exercise (216s inference) and the reviewer re-ran it (57s), then the regression exercise was deleted at closeout. Change: in the qualitygate recipe (justfile / scripts/qualitygate.nu) add a loop-asset tier — a 'nu -c source' check for .fabro/workflows/develop/scripts/*.nu plus a checked-in mixed-capture scratch exercise as evidence-smoke.nu following the existing closeout-smoke.nu pattern. Effect: deterministic verification of loop-asset changes, durable regression coverage, fewer manual-verification turns. Distinct from fabro-50f8 (prompt-mandated ad-hoc exercises) and fabro-574d (crate derivation): gate infrastructure plus a durable checked-in regression. Basis: run 01M23TE61D4Y33415BK5M7C70X, workflow version c25ec2416a5e45108d80b6ea43ca9f9e394a3f8fab9ed6d0e53cfa2d3e45bdfa, commit 592f64bd92615069d6a7dbf32cc98c75eabb74e6\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-c49c\",\"title\":\"Close the gate-ban equivalence loophole in planner step 7\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T20:14:39.400Z\",\"updatedAt\":\"2026-09-09T20:14:39.400Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 7, extend the gate-command rewrite rule from matching only 'just qualitygate' to also matching its recipe body or equivalent invocation (per PROJECT_FACTS the recipe delegates to 'nu scripts/qualitygate.nu'); the permitted substitute stays gate-green via the deterministic tester step. In run 01M23W4S7Q2GNEVPY779M4GMN6 the planner rewrote the banned command into its byte-equivalent body (checkpoint seq 82, justfile:128), so the implementer and reviewer each ran the full gate on top of the tester — three gate executions on one tree. The prior fix (fabro-f7cf, closed) only matched the literal command name; this is the bypass of that implemented rule, a different mechanism. Expected effect: no redundant full-gate runs; on Rust-touching seeds each avoided run is a cold compile measured at 8-15 min. Cross-references: fabro-f7cf (prior, implemented). Basis: run 01M23W4S7Q2GNEVPY779M4GMN6, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4c8683243f8c295438cf019e2f061f8812fc58db\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-5e3c\",\"title\":\"Fix hardcoded cwd restore in evidence-smoke.nu\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T20:14:45.326Z\",\"updatedAt\":\"2026-09-09T20:14:45.326Z\",\"description\":\"In scripts/evidence-smoke.nu (~line 60), replace the hardcoded 'cd /workspace/fabro' cwd restore with a captured $env.PWD at script start. The reviewer in run 01M23W4S7Q2GNEVPY779M4GMN6 found this defect (journal seq 296) and approved anyway because the only channel was a full Changes-requested cycle; the smoke was checked into the gate by seed fabro-bfe1's new loop-asset tier and now executes in every future 'just qualitygate', misbehaving in any worktree checkout. Expected effect: the new gate tier stays green outside the canonical checkout path, and the latent break stops executing on every run. Cross-references: fabro-bfe1 (open — added the tier that checked this script into the gate; thematic overlap, not the same change). Basis: run 01M23W4S7Q2GNEVPY779M4GMN6, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4c8683243f8c295438cf019e2f061f8812fc58db\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 82,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1218,6 +1304,42 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 210,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T20:15:13.475909625Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T20:15:13.475792021Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 16,
       "prompt": null,
