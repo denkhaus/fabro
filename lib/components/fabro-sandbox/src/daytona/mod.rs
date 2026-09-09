@@ -239,6 +239,8 @@ fn create_snapshot_params(
             ..Default::default()
         }),
         entrypoint: None,
+        region_id: None,
+        sandbox_class: None,
     })
 }
 
