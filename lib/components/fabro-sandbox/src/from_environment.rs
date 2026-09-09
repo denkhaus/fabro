@@ -5,7 +5,6 @@
 
 use std::path::{Path, PathBuf};
 
-#[cfg(feature = "docker")]
 use fabro_types::settings::ResolveError;
 #[cfg(feature = "daytona")]
 use fabro_types::settings::run::DockerfileSource as ResolvedDockerfileSource;
@@ -20,7 +19,6 @@ use crate::config::{
 };
 #[cfg(feature = "daytona")]
 use crate::daytona::DaytonaConfig;
-#[cfg(feature = "docker")]
 use crate::docker::DockerSandboxOptions;
 
 #[cfg(feature = "daytona")]
@@ -74,7 +72,6 @@ pub fn daytona_config_from_environment(
     }
 }
 
-#[cfg(feature = "docker")]
 #[must_use]
 pub fn docker_config_from_environment(
     settings: &RunEnvironmentSettings,
@@ -96,7 +93,6 @@ pub fn docker_config_from_environment(
     docker_config_from_environment_env(settings, clone, env)
 }
 
-#[cfg(feature = "docker")]
 pub fn docker_config_from_environment_with_secrets(
     settings: &RunEnvironmentSettings,
     clone: &RunCloneSettings,
@@ -106,7 +102,6 @@ pub fn docker_config_from_environment_with_secrets(
     Ok(docker_config_from_environment_env(settings, clone, env))
 }
 
-#[cfg(feature = "docker")]
 fn docker_config_from_environment_env(
     settings: &RunEnvironmentSettings,
     clone: &RunCloneSettings,

@@ -89,9 +89,12 @@ pub fn is_sensitive_env_var(key: &str) -> bool {
 
 /// Fabro's exec policy bound to one driver [`Exec`] facet.
 pub struct SandboxExec<'a> {
-    exec:       &'a dyn Exec,
-    env_policy: ExplicitEnvPolicy,
-    stop_grace: Duration,
+    exec:        &'a dyn Exec,
+    env_policy:  ExplicitEnvPolicy,
+    stop_grace:  Duration,
+    /// Where a command runs when the caller names no directory. `None`
+    /// leaves the choice to the provider's own working directory.
+    working_dir: Option<String>,
 }
 
 impl<'a> SandboxExec<'a> {
@@ -101,7 +104,17 @@ impl<'a> SandboxExec<'a> {
             exec,
             env_policy,
             stop_grace: DEFAULT_STOP_GRACE,
+            working_dir: None,
         }
+    }
+
+    /// The directory commands run in when the caller names none. Fabro's
+    /// working directory can sit below the provider's (a cloned repository
+    /// inside the container workspace), so it is passed explicitly.
+    #[must_use]
+    pub fn with_working_dir(mut self, working_dir: impl Into<String>) -> Self {
+        self.working_dir = Some(working_dir.into());
+        self
     }
 
     /// Time between `TERM` and `KILL` when a command is stopped.
@@ -161,7 +174,7 @@ impl<'a> SandboxExec<'a> {
         let started = Instant::now();
 
         let mut spec = ExecSpec::bash(command).no_timeout();
-        if let Some(dir) = working_dir {
+        if let Some(dir) = working_dir.or(self.working_dir.as_deref()) {
             spec = spec.working_dir(dir);
         }
         for (key, value) in self.explicit_env(env_vars) {
@@ -222,7 +235,7 @@ impl<'a> SandboxExec<'a> {
         cancel_token: Option<CancellationToken>,
     ) -> crate::Result<StdioProcess> {
         let mut spec = SpawnSpec::bash(format!("exec {command}"));
-        if let Some(dir) = working_dir {
+        if let Some(dir) = working_dir.or(self.working_dir.as_deref()) {
             spec = spec.working_dir(dir);
         }
         for (key, value) in self.explicit_env(env_vars) {

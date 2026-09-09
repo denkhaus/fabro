@@ -3,12 +3,9 @@ use async_trait::async_trait;
 use fabro_static::EnvVars;
 use fabro_types::{BundledProvider, RunId, RunSandboxInstance};
 
-#[cfg(any(feature = "daytona", feature = "docker"))]
-use crate::Sandbox;
 #[cfg(feature = "daytona")]
 use crate::daytona::{DEFAULT_DAYTONA_API_URL, DaytonaSandbox};
-#[cfg(feature = "docker")]
-use crate::docker::DockerSandbox;
+use crate::{Sandbox, docker};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TerminalSize {
@@ -33,6 +30,52 @@ pub trait TerminalSession: Send + Sync {
     async fn close(&self) -> crate::Result<()>;
 }
 
+/// A terminal over the driver's Pty facet.
+pub struct DriverTerminalSession {
+    session: Box<dyn sandbox_driver::PtySession>,
+}
+
+impl DriverTerminalSession {
+    #[must_use]
+    pub fn new(session: Box<dyn sandbox_driver::PtySession>) -> Self {
+        Self { session }
+    }
+}
+
+#[async_trait]
+impl TerminalSession for DriverTerminalSession {
+    async fn write_input(&self, bytes: &[u8]) -> crate::Result<()> {
+        self.session
+            .write_input(bytes)
+            .await
+            .map_err(|err| crate::Error::context("Failed to write terminal input", err))
+    }
+
+    async fn read_output(&self) -> crate::Result<Option<Vec<u8>>> {
+        self.session
+            .read_output()
+            .await
+            .map_err(|err| crate::Error::context("Failed to read terminal output", err))
+    }
+
+    async fn resize(&self, size: TerminalSize) -> crate::Result<()> {
+        self.session
+            .resize(sandbox_driver::PtySize {
+                rows: size.rows,
+                cols: size.cols,
+            })
+            .await
+            .map_err(|err| crate::Error::context("Failed to resize terminal", err))
+    }
+
+    async fn close(&self) -> crate::Result<()> {
+        self.session
+            .close()
+            .await
+            .map_err(|err| crate::Error::context("Failed to close terminal", err))
+    }
+}
+
 pub async fn open_terminal_for_run(
     record: &RunSandboxInstance,
     daytona_api_key: Option<String>,
@@ -40,14 +83,9 @@ pub async fn open_terminal_for_run(
     run_id: Option<RunId>,
     size: TerminalSize,
 ) -> crate::Result<Box<dyn TerminalSession>> {
-    #[cfg(any(feature = "daytona", feature = "docker"))]
     let runtime = &record.runtime;
     #[cfg(not(feature = "daytona"))]
     let _ = (&daytona_api_key, &daytona_organization_id);
-    #[cfg(not(feature = "docker"))]
-    let _ = &run_id;
-    #[cfg(not(any(feature = "daytona", feature = "docker")))]
-    let _ = size;
 
     match record.provider.bundled() {
         #[cfg(feature = "daytona")]
@@ -81,28 +119,21 @@ pub async fn open_terminal_for_run(
         Some(BundledProvider::Daytona) => Err(crate::Error::message(
             "Daytona sandbox support is not enabled",
         )),
-        #[cfg(feature = "docker")]
         Some(BundledProvider::Docker) => {
             let repo_cloned = runtime.repo_cloned.ok_or_else(|| {
                 crate::Error::message("Docker run sandbox is missing clone metadata")
             })?;
-            let sandbox = DockerSandbox::reconnect(
+            let sandbox = docker::attach_docker(
                 &runtime.id,
                 repo_cloned,
                 runtime.working_directory.clone(),
                 runtime.clone_origin_url.clone(),
-                runtime.clone_branch.clone(),
                 run_id,
             )
             .await?;
             sandbox.activate().await?;
-            let session = DockerTerminalSession::open(&sandbox, size).await?;
-            Ok(Box::new(session))
+            Ok(Box::new(sandbox.open_terminal(size).await?))
         }
-        #[cfg(not(feature = "docker"))]
-        Some(BundledProvider::Docker) => Err(crate::Error::message(
-            "Docker sandbox support is not enabled",
-        )),
         Some(BundledProvider::Local) => Err(crate::Error::message(
             "Local sandboxes do not support embedded terminals",
         )),
@@ -680,213 +711,3 @@ mod daytona_terminal {
 
 #[cfg(feature = "daytona")]
 use daytona_terminal::DaytonaTerminalSession;
-
-#[cfg(feature = "docker")]
-mod docker_terminal {
-    use std::pin::Pin;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    use async_trait::async_trait;
-    use bollard::Docker;
-    use bollard::container::LogOutput;
-    use bollard::errors::Error as DockerError;
-    use bollard::exec::{CreateExecOptions, ResizeExecOptions, StartExecResults};
-    use futures::{Stream, StreamExt};
-    use tokio::io::{AsyncWrite, AsyncWriteExt};
-    use tokio::sync::Mutex;
-
-    use super::{TerminalSession, TerminalSize};
-    use crate::Sandbox;
-    use crate::docker::DockerSandbox;
-
-    type DockerInput = Pin<Box<dyn AsyncWrite + Send>>;
-    type DockerOutput = Pin<Box<dyn Stream<Item = Result<LogOutput, DockerError>> + Send>>;
-
-    pub(super) struct DockerTerminalSession {
-        docker:       Docker,
-        container_id: String,
-        exec_id:      String,
-        pid_file:     String,
-        input:        Mutex<Option<DockerInput>>,
-        output:       Mutex<Option<DockerOutput>>,
-        closed:       Mutex<bool>,
-    }
-
-    impl DockerTerminalSession {
-        pub(super) async fn open(
-            sandbox: &DockerSandbox,
-            size: TerminalSize,
-        ) -> crate::Result<Self> {
-            let docker = sandbox.docker_client();
-            let container_id = sandbox.container_identifier()?.to_string();
-            let pid_file = format!("/tmp/fabro-terminal-{}.pid", uuid_fragment());
-            let exec_opts = docker_terminal_exec_options(sandbox.working_directory(), &pid_file);
-            let exec = docker
-                .create_exec(&container_id, exec_opts)
-                .await
-                .map_err(|err| {
-                    crate::Error::context("Failed to create Docker terminal exec", err)
-                })?;
-            let exec_id = exec.id;
-            let start = docker.start_exec(&exec_id, None).await.map_err(|err| {
-                crate::Error::context("Failed to start Docker terminal exec", err)
-            })?;
-            let StartExecResults::Attached { output, input } = start else {
-                return Err(crate::Error::message("Docker terminal exec did not attach"));
-            };
-            docker
-                .resize_exec(&exec_id, ResizeExecOptions {
-                    height: size.rows,
-                    width:  size.cols,
-                })
-                .await
-                .map_err(|err| {
-                    crate::Error::context("Failed to resize Docker terminal exec", err)
-                })?;
-            Ok(Self {
-                docker,
-                container_id,
-                exec_id,
-                pid_file,
-                input: Mutex::new(Some(input)),
-                output: Mutex::new(Some(output)),
-                closed: Mutex::new(false),
-            })
-        }
-
-        async fn kill_shell(&self) -> crate::Result<()> {
-            let command = format!(
-                "if [ -f {pid_file} ]; then kill -TERM \"$(cat {pid_file})\" 2>/dev/null || true; rm -f {pid_file}; fi",
-                pid_file = crate::shell_quote(&self.pid_file),
-            );
-            let exec = self
-                .docker
-                .create_exec(&self.container_id, CreateExecOptions {
-                    cmd: Some(vec!["sh".to_string(), "-lc".to_string(), command]),
-                    attach_stdout: Some(false),
-                    attach_stderr: Some(false),
-                    ..Default::default()
-                })
-                .await
-                .map_err(|err| {
-                    crate::Error::context("Failed to create Docker terminal cleanup exec", err)
-                })?;
-            self.docker
-                .start_exec(&exec.id, None)
-                .await
-                .map_err(|err| {
-                    crate::Error::context("Failed to run Docker terminal cleanup exec", err)
-                })?;
-            Ok(())
-        }
-    }
-
-    #[async_trait]
-    impl TerminalSession for DockerTerminalSession {
-        async fn write_input(&self, bytes: &[u8]) -> crate::Result<()> {
-            let mut input = self.input.lock().await;
-            let Some(input) = input.as_mut() else {
-                return Ok(());
-            };
-            input
-                .write_all(bytes)
-                .await
-                .map_err(|err| crate::Error::context("Failed to write Docker terminal input", err))
-        }
-
-        async fn read_output(&self) -> crate::Result<Option<Vec<u8>>> {
-            let mut output = self.output.lock().await;
-            let Some(output) = output.as_mut() else {
-                return Ok(None);
-            };
-            match output.next().await {
-                Some(Ok(chunk)) => Ok(Some(chunk.into_bytes().to_vec())),
-                Some(Err(err)) => Err(crate::Error::context(
-                    "Failed to read Docker terminal output",
-                    err,
-                )),
-                None => Ok(None),
-            }
-        }
-
-        async fn resize(&self, size: TerminalSize) -> crate::Result<()> {
-            self.docker
-                .resize_exec(&self.exec_id, ResizeExecOptions {
-                    height: size.rows,
-                    width:  size.cols,
-                })
-                .await
-                .map_err(|err| crate::Error::context("Failed to resize Docker terminal exec", err))
-        }
-
-        async fn close(&self) -> crate::Result<()> {
-            let mut closed = self.closed.lock().await;
-            if *closed {
-                return Ok(());
-            }
-            *closed = true;
-            drop(closed);
-            let _ = self.input.lock().await.take();
-            let _ = self.output.lock().await.take();
-            self.kill_shell().await
-        }
-    }
-
-    fn docker_terminal_exec_options(
-        working_directory: &str,
-        pid_file: &str,
-    ) -> CreateExecOptions<String> {
-        let command = format!(
-            "printf '%s\\n' $$ > {pid_file}; exec sh -l",
-            pid_file = crate::shell_quote(pid_file),
-        );
-        CreateExecOptions {
-            attach_stdin: Some(true),
-            attach_stdout: Some(true),
-            attach_stderr: Some(true),
-            tty: Some(true),
-            cmd: Some(vec!["sh".to_string(), "-lc".to_string(), command]),
-            working_dir: Some(working_directory.to_string()),
-            env: Some(vec![
-                "TERM=xterm-256color".to_string(),
-                "LANG=C.UTF-8".to_string(),
-            ]),
-            ..Default::default()
-        }
-    }
-
-    static DOCKER_TERMINAL_COUNTER: AtomicU64 = AtomicU64::new(1);
-
-    fn uuid_fragment() -> String {
-        format!(
-            "{:016x}",
-            DOCKER_TERMINAL_COUNTER.fetch_add(1, Ordering::Relaxed)
-        )
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn docker_terminal_exec_options_attach_tty_and_workspace_env() {
-            let options = docker_terminal_exec_options("/workspace", "/tmp/fabro-terminal.pid");
-            assert_eq!(options.attach_stdin, Some(true));
-            assert_eq!(options.attach_stdout, Some(true));
-            assert_eq!(options.attach_stderr, Some(true));
-            assert_eq!(options.tty, Some(true));
-            assert_eq!(options.working_dir.as_deref(), Some("/workspace"));
-            assert_eq!(
-                options.env,
-                Some(vec![
-                    "TERM=xterm-256color".to_string(),
-                    "LANG=C.UTF-8".to_string()
-                ])
-            );
-            assert!(options.cmd.unwrap().join(" ").contains("exec sh -l"));
-        }
-    }
-}
-
-#[cfg(feature = "docker")]
-use docker_terminal::DockerTerminalSession;

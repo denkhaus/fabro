@@ -1,7 +1,5 @@
 use std::fmt::Write as _;
 
-#[cfg(feature = "docker")]
-use bollard::errors::Error as BollardError;
 use fabro_util::error::{collect_causes, render_with_causes};
 
 use crate::ExecResult;
@@ -24,29 +22,6 @@ pub enum Error {
         message: String,
         #[source]
         source:  anyhow::Error,
-    },
-
-    #[cfg(feature = "docker")]
-    #[error("Failed to connect to Docker daemon")]
-    DockerConnect {
-        #[source]
-        source: BollardError,
-    },
-
-    #[cfg(feature = "docker")]
-    #[error("Failed to inspect Docker image {image}")]
-    DockerImageInspect {
-        image:  String,
-        #[source]
-        source: BollardError,
-    },
-
-    #[cfg(feature = "docker")]
-    #[error("Failed to pull Docker image {image}")]
-    DockerImagePull {
-        image:  String,
-        #[source]
-        source: BollardError,
     },
 
     /// A sandbox-driver failure: provider, transport, or an operation whose
@@ -99,27 +74,6 @@ impl Error {
 
     pub fn default_redacted_output_tail(&self) -> Option<fabro_types::ExecOutputTail> {
         default_redacted_output_tail(self)
-    }
-
-    #[cfg(feature = "docker")]
-    pub fn docker_connect(source: BollardError) -> Self {
-        Self::DockerConnect { source }
-    }
-
-    #[cfg(feature = "docker")]
-    pub fn docker_image_inspect(image: impl Into<String>, source: BollardError) -> Self {
-        Self::DockerImageInspect {
-            image: image.into(),
-            source,
-        }
-    }
-
-    #[cfg(feature = "docker")]
-    pub fn docker_image_pull(image: impl Into<String>, source: BollardError) -> Self {
-        Self::DockerImagePull {
-            image: image.into(),
-            source,
-        }
     }
 
     pub fn causes(&self) -> Vec<String> {

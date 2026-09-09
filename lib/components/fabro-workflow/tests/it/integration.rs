@@ -13760,7 +13760,8 @@ async fn asset_collection_docker_sandbox() {
         ..Default::default()
     };
     let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(
-        fabro_agent::DockerSandbox::new(config, None, None, None, None, None, None)
+        fabro_agent::docker_sandbox(config, None, None, None, None, None, None)
+            .await
             .expect("Docker not available"),
     );
     sandbox.initialize().await.expect("Docker init failed");

@@ -13,7 +13,7 @@ use fabro_types::{CommandOutputStream, CommandTermination};
 use fabro_util::shell;
 use fabro_util::workspace_glob::WorkspaceGlob;
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 use tokio::sync::Mutex as TokioMutex;
 use tokio::task::JoinHandle;
 use tokio::time;
@@ -31,11 +31,9 @@ pub const DEFAULT_EXEC_OUTPUT_TAIL_BYTES: usize = 8 * 1024;
 pub(crate) const BASH_PROBE_TIMEOUT_MS: u64 = 10_000;
 
 /// Bash path required by Linux-backed remote sandbox providers.
-#[cfg(any(feature = "docker", feature = "daytona"))]
 pub(crate) const REMOTE_BASH: &str = "/bin/bash";
 
 /// Timeout for provider-neutral remote file traversal.
-#[cfg(any(feature = "docker", feature = "daytona"))]
 pub(crate) const REMOTE_WALK_TIMEOUT_MS: u64 = 30_000;
 
 /// Environment variable Bash consults for non-interactive startup source.
@@ -946,42 +944,6 @@ impl<'a> ExecStreamingRequest<'a> {
     }
 }
 
-pub(crate) async fn write_process_stdin<W>(mut writer: W, stdin: &[u8]) -> crate::Result<()>
-where
-    W: AsyncWrite + Unpin,
-{
-    // A command that stops reading its input (`head -1`, an early exit) is
-    // not an error; its exit code is the authoritative result. Local pipes
-    // surface that as `BrokenPipe`, remote transports (a TCP Docker daemon)
-    // as `ConnectionReset`/`ConnectionAborted`.
-    fn command_stopped_reading(err: &std::io::Error) -> bool {
-        matches!(
-            err.kind(),
-            std::io::ErrorKind::BrokenPipe
-                | std::io::ErrorKind::ConnectionReset
-                | std::io::ErrorKind::ConnectionAborted
-        )
-    }
-
-    if let Err(err) = writer.write_all(stdin).await {
-        if !command_stopped_reading(&err) {
-            return Err(crate::Error::context(
-                "Failed to write command standard input",
-                err,
-            ));
-        }
-    }
-    if let Err(err) = writer.shutdown().await {
-        if !command_stopped_reading(&err) {
-            return Err(crate::Error::context(
-                "Failed to close command standard input",
-                err,
-            ));
-        }
-    }
-    Ok(())
-}
-
 pub(crate) async fn replay_exec_result(
     mut result: ExecResult,
     streams_separated: bool,
@@ -1603,7 +1565,6 @@ pub(crate) fn join_sandbox_path(base: &str, relative_path: &str) -> String {
     format!("{}/{relative_path}", base.trim_end_matches('/'))
 }
 
-#[cfg(any(feature = "docker", feature = "daytona"))]
 pub(crate) fn build_remote_walk_command(
     base: &str,
     relative_start: &str,
@@ -1637,7 +1598,6 @@ pub(crate) fn build_remote_walk_command(
     command
 }
 
-#[cfg(any(feature = "docker", feature = "daytona"))]
 pub(crate) fn parse_remote_walk_output(
     base: &str,
     relative_start: &str,

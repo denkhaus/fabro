@@ -194,6 +194,42 @@ pub fn classify_failure(message: &str, cred: CredentialContext) -> Option<GitRet
     classify_message(message, cred).retry_reason()
 }
 
+/// Classify a sandbox-driver git failure.
+///
+/// A command the driver ran surfaces as [`sandbox_driver::Error::Exec`] with
+/// the git output attached, and is classified like fabro's own exec output.
+/// A provider-side failure carries a message and a retryability hint. An
+/// operation whose outcome is unknown (a transport break, a timeout, an
+/// incomplete operation) is never retried: replaying it could overlap a
+/// clone that is still running.
+#[must_use]
+pub(crate) fn classify_driver_failure(
+    error: &sandbox_driver::Error,
+    cred: CredentialContext,
+) -> Option<GitRetryReason> {
+    match error {
+        sandbox_driver::Error::Exec(failure) => classify_output(
+            &String::from_utf8_lossy(failure.stderr()),
+            &String::from_utf8_lossy(failure.stdout()),
+            cred,
+        )
+        .retry_reason(),
+        sandbox_driver::Error::Provider(provider) => {
+            match classify_message(&provider.message, cred) {
+                GitMessageClass::Retry(reason) => Some(reason),
+                GitMessageClass::Permanent => None,
+                GitMessageClass::Unknown => {
+                    provider.retryable.then_some(GitRetryReason::TransientInfra)
+                }
+            }
+        }
+        sandbox_driver::Error::RateLimited { .. } | sandbox_driver::Error::Overloaded { .. } => {
+            Some(GitRetryReason::TransientInfra)
+        }
+        _ => None,
+    }
+}
+
 /// Backoff between attempts: 3s, then 9s.
 ///
 /// GitHub's guidance for token replication is to wait a few seconds and retry

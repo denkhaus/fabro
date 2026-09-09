@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Context as _;
-#[cfg(any(feature = "docker", feature = "daytona"))]
 use fabro_github::GitHubCredentials;
 #[allow(
     unused_imports,
@@ -10,21 +9,17 @@ use fabro_github::GitHubCredentials;
 )]
 use fabro_types::{RunId, RunSandboxInstance, RunSandboxRuntime, SandboxProviderKind};
 
-#[cfg(any(feature = "docker", feature = "daytona"))]
-use crate::clone_source;
 #[cfg(feature = "daytona")]
 use crate::daytona::{self, DaytonaConfig, DaytonaSandbox};
-#[cfg(feature = "docker")]
-use crate::docker::{self, DockerSandbox, DockerSandboxOptions};
+use crate::docker::{self, DockerSandboxOptions};
 use crate::driver_sandbox::local_sandbox;
-use crate::{Sandbox, SandboxEventCallback};
+use crate::{Sandbox, SandboxEventCallback, clone_source};
 
 /// Options for sandbox initialization and construction.
 pub enum SandboxSpec {
     Local {
         working_directory: PathBuf,
     },
-    #[cfg(feature = "docker")]
     Docker {
         config:           DockerSandboxOptions,
         github_app:       Option<GitHubCredentials>,
@@ -51,7 +46,6 @@ impl SandboxSpec {
     pub fn provider(&self) -> SandboxProviderKind {
         match self {
             Self::Local { .. } => SandboxProviderKind::LOCAL,
-            #[cfg(feature = "docker")]
             Self::Docker { .. } => SandboxProviderKind::DOCKER,
             #[cfg(feature = "daytona")]
             Self::Daytona { .. } => SandboxProviderKind::DAYTONA,
@@ -61,7 +55,6 @@ impl SandboxSpec {
     pub fn provider_name(&self) -> &'static str {
         match self {
             Self::Local { .. } => "local",
-            #[cfg(feature = "docker")]
             Self::Docker { .. } => "docker",
             #[cfg(feature = "daytona")]
             Self::Daytona { .. } => "daytona",
@@ -85,7 +78,6 @@ impl SandboxSpec {
         };
 
         match self {
-            #[cfg(feature = "docker")]
             Self::Docker {
                 config,
                 clone_origin_url,
@@ -198,7 +190,6 @@ impl SandboxSpec {
                 }
                 Ok(Arc::new(sandbox))
             }
-            #[cfg(feature = "docker")]
             Self::Docker {
                 config,
                 github_app,
@@ -208,7 +199,7 @@ impl SandboxSpec {
                 clone_tag,
                 clone_commit_sha,
             } => {
-                let mut sandbox = DockerSandbox::new(
+                let mut sandbox = docker::docker_sandbox(
                     config.clone(),
                     github_app.as_ref(),
                     *run_id,
@@ -217,6 +208,7 @@ impl SandboxSpec {
                     clone_tag.clone(),
                     clone_commit_sha.clone(),
                 )
+                .await
                 .context("Failed to create Docker sandbox")?;
                 if let Some(callback) = event_callback {
                     sandbox.set_event_callback(callback);
@@ -255,7 +247,6 @@ impl SandboxSpec {
     }
 }
 
-#[cfg(any(feature = "docker", feature = "daytona"))]
 fn runtime_layout_metadata(
     repo_cloned: Option<bool>,
     clone_origin_url: Option<&str>,
@@ -270,15 +261,11 @@ fn runtime_layout_metadata(
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "docker")]
     use fabro_types::RunId;
 
-    #[cfg(feature = "docker")]
     use super::*;
-    #[cfg(feature = "docker")]
     use crate::test_support::MockSandbox;
 
-    #[cfg(feature = "docker")]
     #[test]
     fn docker_run_sandbox_persists_layout_metadata_for_cloned_repo() {
         let spec = SandboxSpec::Docker {
@@ -317,7 +304,6 @@ mod tests {
         assert!(runtime_json.get("clone_commit_sha").is_none());
     }
 
-    #[cfg(feature = "docker")]
     #[tokio::test]
     async fn invalid_exact_checkout_spec_fails_before_provider_connection() {
         let spec = SandboxSpec::Docker {
@@ -344,7 +330,6 @@ mod tests {
         assert!(!format!("{error:#}").contains("Docker daemon"));
     }
 
-    #[cfg(feature = "docker")]
     #[test]
     fn docker_run_sandbox_omits_primary_repo_metadata_for_empty_workspace() {
         let spec = SandboxSpec::Docker {

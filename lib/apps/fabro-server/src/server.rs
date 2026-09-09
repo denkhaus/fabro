@@ -69,10 +69,11 @@ use fabro_model::{BilledTokenCounts, Catalog, ModelRef, ModelTestMode, ProviderI
 use fabro_redact::redact_jsonl_line;
 use fabro_sandbox::daytona::{self, DaytonaSandbox};
 use fabro_sandbox::details::sandbox_details;
+use fabro_sandbox::driver::ProviderConnectOptions;
 use fabro_sandbox::reconnect::reconnect_for_run;
 use fabro_sandbox::{
-    DaytonaSandboxProvider, DockerSandboxProvider, LocalSandboxProvider, Sandbox, SandboxProvider,
-    SandboxProviderRegistry,
+    DaytonaSandboxProvider, DriverInventoryProvider, LocalSandboxProvider, Sandbox,
+    SandboxProvider, SandboxProviderRegistry,
 };
 use fabro_slack::client::{PostedMessage as SlackPostedMessage, SlackClient};
 use fabro_slack::config::{
@@ -2340,8 +2341,14 @@ fn build_sandbox_provider_registry(
         providers.push(Arc::new(LocalSandboxProvider));
     }
 
-    if provider_settings.is_enabled(&SandboxProviderKind::DOCKER) {
-        providers.push(Arc::new(DockerSandboxProvider::new()));
+    if let Some(docker) = provider_settings.get(&SandboxProviderKind::DOCKER) {
+        if docker.enabled {
+            providers.push(Arc::new(DriverInventoryProvider::lazy(
+                SandboxProviderKind::DOCKER,
+                docker.clone(),
+                ProviderConnectOptions::default(),
+            )));
+        }
     }
 
     if provider_settings.is_enabled(&SandboxProviderKind::DAYTONA) && daytona_api_key.is_some() {

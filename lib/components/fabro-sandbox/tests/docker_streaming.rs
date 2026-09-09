@@ -1,12 +1,24 @@
-#![cfg(feature = "docker")]
+//! Docker sandbox behaviour through the sandbox-driver Docker provider.
 
 use std::sync::Arc;
 
-use bollard::Docker;
 use fabro_sandbox::{
-    CommandOutputCallback, DockerSandbox, DockerSandboxOptions, ExecStreamingRequest, Sandbox,
+    CommandOutputCallback, DockerSandboxOptions, ExecStreamingRequest, Sandbox, docker_sandbox,
 };
+use tokio::process::Command;
 use tokio::sync::Mutex;
+
+/// Whether a Docker daemon answers and has `image` locally. The tests are
+/// skipped (not failed) otherwise, matching the ignore reason.
+async fn docker_image_available(image: &str) -> bool {
+    Command::new("docker")
+        .args(["image", "inspect", image])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await
+        .is_ok_and(|status| status.success())
+}
 
 fn capture_bytes(chunks: Arc<Mutex<Vec<u8>>>) -> CommandOutputCallback {
     Arc::new(move |_stream, bytes| {
@@ -22,14 +34,11 @@ fn capture_bytes(chunks: Arc<Mutex<Vec<u8>>>) -> CommandOutputCallback {
 #[ignore = "requires real Docker container lifecycle; run explicitly when changing Docker exec integration"]
 async fn streaming_timeout_terminates_docker_exec_before_returning() {
     let image = "buildpack-deps:noble";
-    let Ok(docker) = Docker::connect_with_local_defaults() else {
-        return;
-    };
-    if docker.inspect_image(image).await.is_err() {
+    if !docker_image_available(image).await {
         return;
     }
 
-    let sandbox = DockerSandbox::new(
+    let sandbox = docker_sandbox(
         DockerSandboxOptions {
             image: image.to_string(),
             auto_pull: false,
@@ -43,6 +52,7 @@ async fn streaming_timeout_terminates_docker_exec_before_returning() {
         None,
         None,
     )
+    .await
     .expect("docker sandbox should construct");
     sandbox
         .initialize()
@@ -96,14 +106,11 @@ async fn streaming_timeout_terminates_docker_exec_before_returning() {
 #[ignore = "requires real Docker container lifecycle; run explicitly when changing Docker exec integration"]
 async fn streaming_command_receives_exact_stdin_and_eof() {
     let image = "buildpack-deps:noble";
-    let Ok(docker) = Docker::connect_with_local_defaults() else {
-        return;
-    };
-    if docker.inspect_image(image).await.is_err() {
+    if !docker_image_available(image).await {
         return;
     }
 
-    let sandbox = DockerSandbox::new(
+    let sandbox = docker_sandbox(
         DockerSandboxOptions {
             image: image.to_string(),
             auto_pull: false,
@@ -117,6 +124,7 @@ async fn streaming_command_receives_exact_stdin_and_eof() {
         None,
         None,
     )
+    .await
     .expect("docker sandbox should construct");
     sandbox
         .initialize()
@@ -159,14 +167,11 @@ async fn streaming_command_receives_exact_stdin_and_eof() {
 #[ignore = "requires real Docker container lifecycle, image, network, and a public GitHub clone"]
 async fn cloned_docker_sandbox_uses_repos_checkout_and_workspace_symlink() {
     let image = "buildpack-deps:noble";
-    let Ok(docker) = Docker::connect_with_local_defaults() else {
-        return;
-    };
-    if docker.inspect_image(image).await.is_err() {
+    if !docker_image_available(image).await {
         return;
     }
 
-    let sandbox = DockerSandbox::new(
+    let sandbox = docker_sandbox(
         DockerSandboxOptions {
             image: image.to_string(),
             auto_pull: false,
@@ -180,6 +185,7 @@ async fn cloned_docker_sandbox_uses_repos_checkout_and_workspace_symlink() {
         None,
         None,
     )
+    .await
     .expect("docker sandbox should construct");
     sandbox
         .initialize()
@@ -226,14 +232,11 @@ async fn cloned_docker_sandbox_uses_repos_checkout_and_workspace_symlink() {
 #[ignore = "requires real Docker container lifecycle; run explicitly when changing Docker exec integration"]
 async fn docker_runs_clean_bash_through_both_command_paths() {
     let image = "buildpack-deps:noble";
-    let Ok(docker) = Docker::connect_with_local_defaults() else {
-        return;
-    };
-    if docker.inspect_image(image).await.is_err() {
+    if !docker_image_available(image).await {
         return;
     }
 
-    let sandbox = DockerSandbox::new(
+    let sandbox = docker_sandbox(
         DockerSandboxOptions {
             image: image.to_string(),
             auto_pull: false,
@@ -248,6 +251,7 @@ async fn docker_runs_clean_bash_through_both_command_paths() {
         None,
         None,
     )
+    .await
     .expect("docker sandbox should construct");
     sandbox
         .initialize()
@@ -322,14 +326,11 @@ async fn docker_runs_clean_bash_through_both_command_paths() {
 #[ignore = "requires real Docker container lifecycle; run explicitly when changing Sandbox::glob"]
 async fn docker_glob_matches_patterns_containing_a_path_separator() {
     let image = "buildpack-deps:noble";
-    let Ok(docker) = Docker::connect_with_local_defaults() else {
-        return;
-    };
-    if docker.inspect_image(image).await.is_err() {
+    if !docker_image_available(image).await {
         return;
     }
 
-    let sandbox = DockerSandbox::new(
+    let sandbox = docker_sandbox(
         DockerSandboxOptions {
             image: image.to_string(),
             auto_pull: false,
@@ -343,6 +344,7 @@ async fn docker_glob_matches_patterns_containing_a_path_separator() {
         None,
         None,
     )
+    .await
     .expect("docker sandbox should construct");
     sandbox
         .initialize()
@@ -408,14 +410,11 @@ async fn docker_glob_matches_patterns_containing_a_path_separator() {
 #[ignore = "requires real Docker container lifecycle; run explicitly when changing Docker runtime directory setup"]
 async fn docker_runtime_directory_is_private_and_outside_workspace() {
     let image = "buildpack-deps:noble";
-    let Ok(docker) = Docker::connect_with_local_defaults() else {
-        return;
-    };
-    if docker.inspect_image(image).await.is_err() {
+    if !docker_image_available(image).await {
         return;
     }
 
-    let sandbox = DockerSandbox::new(
+    let sandbox = docker_sandbox(
         DockerSandboxOptions {
             image: image.to_string(),
             auto_pull: false,
@@ -429,6 +428,7 @@ async fn docker_runtime_directory_is_private_and_outside_workspace() {
         None,
         None,
     )
+    .await
     .expect("docker sandbox should construct");
     sandbox
         .initialize()

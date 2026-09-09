@@ -11,8 +11,6 @@ keywords = ["llm", "ai", "agent", "coding"]
 categories = ["api-bindings"]
 
 [features]
-default = ["docker"]
-docker = ["fabro-sandbox/docker"]
 quarantine = []
 
 [lib]

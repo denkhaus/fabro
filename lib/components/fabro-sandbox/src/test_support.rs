@@ -741,7 +741,7 @@ mod fake_provider {
         SandboxTimestamps,
     };
 
-    use crate::provider::{SandboxCreateSpec, SandboxProvider, SandboxProviderRegistry};
+    use crate::provider::{SandboxProvider, SandboxProviderRegistry};
 
     #[derive(Clone)]
     pub enum FakeList {
@@ -787,10 +787,6 @@ mod fake_provider {
                 FakeGet::Missing => Ok(None),
                 FakeGet::Err(message) => Err(crate::Error::message(*message)),
             }
-        }
-
-        async fn create(&self, _spec: SandboxCreateSpec) -> crate::Result<SandboxInfo> {
-            Err(crate::Error::message("not implemented"))
         }
 
         async fn delete(&self, _id: &str) -> crate::Result<()> {

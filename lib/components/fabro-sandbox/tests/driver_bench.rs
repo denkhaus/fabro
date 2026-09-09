@@ -4,9 +4,9 @@
 //! Three comparisons, each over the same medium repository (fabro's own
 //! `lib/` tree, about 1,100 Rust files):
 //!
-//! - Docker file reads and content search: fabro's `DockerSandbox` (archive API
-//!   reads, `docker exec` grep) against the driver `DockerProvider` (archive
-//!   API reads, exec-derived search) in-process.
+//! - Docker file reads and content search: fabro's driver-backed Docker sandbox
+//!   (its path resolution and result shaping) against the bare driver
+//!   `DockerProvider` in-process.
 //! - Host tool calls: fabro's local sandbox against the driver `HostProvider`
 //!   in-process, to confirm no regression on the path every local run takes.
 //! - The wire: the driver Host and Docker providers served over the JSON-RPC
@@ -15,10 +15,9 @@
 //!
 //! Ignored: it needs a Docker daemon with `buildpack-deps:noble` present and
 //! takes a minute. Run with
-//! `cargo nextest run -p fabro-sandbox --features docker --test driver_bench
-//! --run-ignored only --no-capture`.
+//! `cargo nextest run -p fabro-sandbox --test driver_bench --run-ignored only
+//! --no-capture`.
 
-#![cfg(feature = "docker")]
 #![allow(
     clippy::print_stderr,
     clippy::cast_precision_loss,
@@ -36,8 +35,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use bollard::Docker;
-use fabro_sandbox::{DockerSandbox, DockerSandboxOptions, Sandbox as FabroSandbox, local_sandbox};
+use fabro_sandbox::{DockerSandboxOptions, Sandbox as FabroSandbox, docker_sandbox, local_sandbox};
 use sandbox_driver::{
     ExecSpec, GrepOptions, Sandbox as DriverSandbox, SandboxProvider, SandboxSource, SandboxSpec,
     Search,
@@ -324,12 +322,13 @@ async fn serve_over_duplex(provider: Arc<dyn SandboxProvider>) -> PluginProvider
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "benchmark: needs a Docker daemon with buildpack-deps:noble and takes about a minute"]
 async fn agent_tool_call_latency_through_the_driver() {
-    let Ok(docker) = Docker::connect_with_local_defaults() else {
-        eprintln!("no Docker daemon; skipping");
-        return;
-    };
-    if docker.inspect_image(IMAGE).await.is_err() {
-        eprintln!("{IMAGE} is not present locally; skipping");
+    let image_check = Command::new("docker")
+        .args(["image", "inspect", IMAGE])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    if !image_check.is_ok_and(|status| status.success()) {
+        eprintln!("no Docker daemon or {IMAGE} is not present locally; skipping");
         return;
     }
     let repo = Repository::pack();
@@ -363,8 +362,8 @@ async fn agent_tool_call_latency_through_the_driver() {
     remote_host.shutdown().await.expect("shutdown");
     host.delete().await.expect("host delete");
 
-    // -- Docker, in-process: fabro DockerSandbox vs driver DockerProvider.
-    let fabro_docker = DockerSandbox::new(
+    // -- Docker, in-process: fabro's driver-backed sandbox vs the bare driver.
+    let fabro_docker = docker_sandbox(
         DockerSandboxOptions {
             image: IMAGE.to_owned(),
             auto_pull: false,
@@ -378,10 +377,11 @@ async fn agent_tool_call_latency_through_the_driver() {
         None,
         None,
     )
+    .await
     .expect("fabro docker sandbox");
     fabro_docker.initialize().await.expect("fabro docker init");
     unpack_fabro(&fabro_docker, &repo).await;
-    rows.extend(bench_fabro("fabro DockerSandbox", &fabro_docker, &repo).await);
+    rows.extend(bench_fabro("fabro Docker (driver-backed)", &fabro_docker, &repo).await);
     fabro_docker.cleanup().await.expect("fabro docker cleanup");
 
     let docker_provider = Arc::new(DockerProvider::connect().await.expect("docker connect"));

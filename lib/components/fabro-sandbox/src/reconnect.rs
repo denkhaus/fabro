@@ -7,12 +7,10 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use fabro_types::{BundledProvider, RunId, RunSandboxInstance};
 
-use crate::SandboxEventCallback;
 #[cfg(feature = "daytona")]
 use crate::daytona::DaytonaSandbox;
-#[cfg(feature = "docker")]
-use crate::docker::DockerSandbox;
 use crate::driver_sandbox::local_sandbox;
+use crate::{SandboxEventCallback, docker};
 
 /// Reconnect to a sandbox from a saved record.
 ///
@@ -66,17 +64,15 @@ pub async fn reconnect_for_run_with_callback(
             }
             Ok(Box::new(sandbox))
         }
-        #[cfg(feature = "docker")]
         Some(BundledProvider::Docker) => {
             let repo_cloned = runtime
                 .repo_cloned
                 .context("Docker run sandbox missing repo_cloned metadata")?;
-            let mut sandbox = DockerSandbox::reconnect(
+            let mut sandbox = docker::attach_docker(
                 &runtime.id,
                 repo_cloned,
                 runtime.working_directory.clone(),
                 runtime.clone_origin_url.clone(),
-                runtime.clone_branch.clone(),
                 run_id,
             )
             .await
@@ -86,8 +82,6 @@ pub async fn reconnect_for_run_with_callback(
             }
             Ok(Box::new(sandbox))
         }
-        #[cfg(not(feature = "docker"))]
-        Some(BundledProvider::Docker) => bail!("Docker sandbox support is not enabled"),
         #[cfg(feature = "daytona")]
         Some(BundledProvider::Daytona) => {
             let repo_cloned = runtime

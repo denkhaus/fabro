@@ -4,10 +4,9 @@ use async_trait::async_trait;
 use fabro_static::EnvVars;
 use fabro_types::{SandboxInfo, SandboxProviderKind};
 
-use super::{SandboxCreateSpec, SandboxProvider};
-use crate::daytona::{self, DaytonaSandbox};
+use super::SandboxProvider;
 use crate::managed_labels::{self, MANAGED_LABEL, MANAGED_LABEL_VALUE};
-use crate::{Sandbox, details};
+use crate::{daytona, details};
 
 const DAYTONA_LIST_PAGE_SIZE: i32 = 100;
 
@@ -103,42 +102,6 @@ impl SandboxProvider for DaytonaSandboxProvider {
         Ok(Some(details::daytona::daytona_info_from_sdk_sandbox(
             &sandbox,
         )))
-    }
-
-    async fn create(&self, spec: SandboxCreateSpec) -> crate::Result<SandboxInfo> {
-        let SandboxCreateSpec::Daytona {
-            config,
-            github_app,
-            run_id,
-            clone_origin_url,
-            clone_branch,
-            api_key,
-        } = spec
-        else {
-            return Err(crate::Error::message(
-                "Daytona sandbox provider can only create Daytona sandboxes",
-            ));
-        };
-
-        let api_key = api_key.or_else(|| self.api_key.clone()).ok_or_else(|| {
-            crate::Error::message(format!("{} is not configured", EnvVars::DAYTONA_API_KEY))
-        })?;
-        let sandbox = DaytonaSandbox::new(
-            config.as_ref().clone(),
-            github_app,
-            run_id,
-            clone_origin_url,
-            clone_branch,
-            None,
-            None,
-            Some(api_key),
-        )
-        .await?;
-        sandbox.initialize().await?;
-        let sdk_sandbox = sandbox.sandbox_handle().ok_or_else(|| {
-            crate::Error::message("Daytona sandbox was created but no SDK handle is available")
-        })?;
-        Ok(details::daytona::daytona_info_from_sdk_sandbox(sdk_sandbox))
     }
 
     async fn delete(&self, id: &str) -> crate::Result<()> {

@@ -1,6 +1,3 @@
-#[cfg(feature = "docker")]
-pub mod docker_sandbox;
-
 pub mod agent_profile;
 pub mod apply_patch;
 pub mod cli;
@@ -38,11 +35,10 @@ pub use config::{
     NativeToolOptions, SessionOptions, ToolAccess, ToolAccessPolicy, ToolApprovalAdapter,
     ToolExposureMode, ToolHookCallback, ToolHookDecision, ToolSecrets,
 };
-#[cfg(feature = "docker")]
-pub use docker_sandbox::{DockerSandbox, DockerSandboxOptions};
 pub use error::{CompactionError, Error, InterruptReason, Result};
 pub use event::Emitter;
 pub use fabro_mcp::config::McpServerSettings;
+pub use fabro_sandbox::{DockerSandboxOptions, docker_sandbox};
 pub use fabro_types::SteeringMessage;
 pub use history::History;
 pub use local_sandbox::{DriverSandbox, local_sandbox};

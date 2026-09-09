@@ -10,7 +10,7 @@ use fabro_llm::client::Client as LlmClient;
 use fabro_llm::model_test::{ModelTestStatus, run_basic_model_probe_with_timeout};
 use fabro_model::{Catalog, ProviderId};
 use fabro_redact::redact_string;
-use fabro_sandbox::{DockerSandboxProvider, daytona};
+use fabro_sandbox::daytona;
 use fabro_static::EnvVars;
 use fabro_types::SandboxProviderKind;
 use fabro_types::settings::ServerAuthMethod;
@@ -584,7 +584,7 @@ async fn check_docker_sandbox(state: &AppState) -> CheckResult {
             .providers
             .is_enabled(&SandboxProviderKind::DOCKER),
         || async {
-            DockerSandboxProvider::check_daemon()
+            fabro_sandbox::check_docker_daemon()
                 .await
                 .map_err(|err| err.display_with_causes())
         },

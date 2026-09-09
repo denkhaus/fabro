@@ -13,20 +13,28 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use fabro_github::GitHubCredentials;
+use fabro_github::token_source::InstallationTokenSource;
 use fabro_types::SandboxProviderKind;
 use sandbox_driver::{
-    FileKind, LifecycleTimers, Sandbox as DriverHandle, SandboxProvider as _, SandboxSource,
+    Action, Event, EventBody, EventContext, EventObserver, FileKind, LifecycleTimers, ProgressCode,
+    PtyOptions, PtySize, Sandbox as DriverHandle, SandboxProvider as DriverProvider, SandboxSource,
     SandboxSpec as DriverSpec, SandboxState, Search as _, WaitOptions,
 };
 use sandbox_driver_host::HostProvider;
 use tokio::fs;
+use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
 
-use crate::RetryPlan;
+use crate::clone::{self, GitHubClone};
+use crate::clone_source::{self, CloneDecision, EmptyWorkspaceReason};
+use crate::push_credentials::{self, PushCredentialState};
+use crate::terminal::{DriverTerminalSession, TerminalSize};
+use crate::{GitRunInfo, GitSetupIntent, RefreshOutcome, RetryPlan};
 
 /// A sandbox on the worker host at `working_directory`, the fabro `local`
 /// kind, served by the driver's in-process Host provider.
@@ -59,10 +67,158 @@ use crate::sandbox::{
     WalkOptions,
 };
 
+/// Where a clone-based provider puts its files: the run works under
+/// `workspace_root`, and repositories check out under `repos_root`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct WorkspaceLayout {
+    pub(crate) workspace_root: String,
+    pub(crate) repos_root:     String,
+}
+
+/// What `initialize` does to the workspace once the sandbox runs.
+enum WorkspacePlan {
+    /// Clone this GitHub repository into the layout.
+    Clone(GitHubClone),
+    /// Create the empty workspace root and nothing else.
+    Empty(EmptyWorkspaceReason),
+    /// The workspace was prepared by an earlier process; leave it alone.
+    Attached,
+}
+
+/// Fabro's clone-based workspace on an isolated sandbox: the layout, the
+/// clone it performs, and the GitHub credentials its checkout carries.
+pub(crate) struct RepoWorkspace {
+    layout:              WorkspaceLayout,
+    plan:                WorkspacePlan,
+    credentials:         PushCredentialState,
+    repo_cloned:         OnceLock<bool>,
+    origin_url:          OnceLock<String>,
+    /// The directory the run works in once known: the repository link for a
+    /// clone, the workspace root otherwise.
+    execution_directory: OnceLock<String>,
+    /// The real checkout behind the workspace link, for traversals that
+    /// must not start at a symlink.
+    checkout_path:       OnceLock<String>,
+}
+
+impl RepoWorkspace {
+    /// Decide the clone for a new sandbox. Fails before any provider call
+    /// when the selectors are inconsistent (a pin without a branch, a
+    /// non-GitHub origin without `skip_clone`).
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the clone selectors are validated together by decide_clone"
+    )]
+    pub(crate) fn plan(
+        layout: WorkspaceLayout,
+        skip_clone: bool,
+        clone_origin_url: Option<&str>,
+        clone_branch: Option<&str>,
+        clone_tag: Option<&str>,
+        clone_commit_sha: Option<&str>,
+        clone_depth: Option<u32>,
+        github_app: Option<&GitHubCredentials>,
+    ) -> crate::Result<Self> {
+        let decision = clone_source::decide_clone(
+            skip_clone,
+            clone_origin_url,
+            clone_branch,
+            clone_tag,
+            clone_commit_sha,
+        )?;
+        let credentials = PushCredentialState::new(push_credentials::build_token_source(
+            github_app,
+            clone_origin_url,
+        )?);
+        let plan = match decision {
+            CloneDecision::EmptyWorkspace { reason } => WorkspacePlan::Empty(reason),
+            CloneDecision::GitHub {
+                origin_url,
+                branch,
+                tag,
+                commit_sha,
+            } => WorkspacePlan::Clone(GitHubClone {
+                origin_url,
+                branch,
+                tag,
+                commit_sha,
+                depth: clone_depth,
+            }),
+        };
+        Ok(Self {
+            layout,
+            plan,
+            credentials,
+            repo_cloned: OnceLock::new(),
+            origin_url: OnceLock::new(),
+            execution_directory: OnceLock::new(),
+            checkout_path: OnceLock::new(),
+        })
+    }
+
+    /// A workspace prepared by an earlier process, described by the run
+    /// record. Pushes from a reattached sandbox use whatever credentials the
+    /// checkout's `origin` already carries.
+    pub(crate) fn attached(
+        layout: WorkspaceLayout,
+        repo_cloned: bool,
+        working_directory: String,
+        clone_origin_url: Option<String>,
+    ) -> Self {
+        let workspace = Self {
+            layout,
+            plan: WorkspacePlan::Attached,
+            credentials: PushCredentialState::new(None),
+            repo_cloned: OnceLock::new(),
+            origin_url: OnceLock::new(),
+            execution_directory: OnceLock::new(),
+            checkout_path: OnceLock::new(),
+        };
+        let _ = workspace.repo_cloned.set(repo_cloned);
+        let _ = workspace.execution_directory.set(working_directory);
+        if repo_cloned {
+            if let Some(origin) = clone_origin_url {
+                if let Ok(repo_layout) = clone_source::github_repo_layout(
+                    &origin,
+                    &workspace.layout.workspace_root,
+                    &workspace.layout.repos_root,
+                ) {
+                    let _ = workspace.checkout_path.set(repo_layout.primary_repo_path);
+                }
+                let _ = workspace.origin_url.set(origin);
+            }
+        }
+        workspace
+    }
+
+    fn repo_cloned(&self) -> bool {
+        self.repo_cloned.get().copied().unwrap_or(false)
+    }
+
+    fn working_directory(&self) -> &str {
+        self.execution_directory
+            .get()
+            .map_or(self.layout.workspace_root.as_str(), String::as_str)
+    }
+}
+
+/// A sandbox that does not exist yet: `initialize` creates it from the
+/// spec on the provider.
+struct PendingCreate {
+    provider: Arc<dyn DriverProvider>,
+    spec:     DriverSpec,
+    /// The image or snapshot named by the spec, for pull progress events.
+    source:   Option<String>,
+}
+
 /// A fabro sandbox backed by a sandbox-driver handle.
 pub struct DriverSandbox {
     kind:           SandboxProviderKind,
-    handle:         Arc<dyn DriverHandle>,
+    /// Set at construction for an existing sandbox, at `initialize` for a
+    /// pending one.
+    handle:         OnceCell<Arc<dyn DriverHandle>>,
+    pending:        Option<PendingCreate>,
+    workspace:      Option<RepoWorkspace>,
     env_policy:     ExplicitEnvPolicy,
     event_callback: Option<SandboxEventCallback>,
     /// `(platform, os_version)` learned from the sandbox at initialize or
@@ -76,6 +232,43 @@ impl DriverSandbox {
     /// is isolated and takes the caller's environment as composed.
     #[must_use]
     pub fn new(kind: SandboxProviderKind, handle: Arc<dyn DriverHandle>) -> Self {
+        let sandbox = Self::empty(kind);
+        let _ = sandbox.handle.set(handle);
+        sandbox
+    }
+
+    /// A sandbox `initialize` will create from `spec` on `provider`, then
+    /// prepare per `workspace`.
+    pub(crate) fn pending(
+        kind: SandboxProviderKind,
+        provider: Arc<dyn DriverProvider>,
+        spec: DriverSpec,
+        source: Option<String>,
+        workspace: RepoWorkspace,
+    ) -> Self {
+        let mut sandbox = Self::empty(kind);
+        sandbox.pending = Some(PendingCreate {
+            provider,
+            spec,
+            source,
+        });
+        sandbox.workspace = Some(workspace);
+        sandbox
+    }
+
+    /// An existing sandbox reattached by handle, with the workspace an
+    /// earlier process prepared.
+    pub(crate) fn attached(
+        kind: SandboxProviderKind,
+        handle: Arc<dyn DriverHandle>,
+        workspace: RepoWorkspace,
+    ) -> Self {
+        let mut sandbox = Self::new(kind, handle);
+        sandbox.workspace = Some(workspace);
+        sandbox
+    }
+
+    fn empty(kind: SandboxProviderKind) -> Self {
         let env_policy = if kind.is_local() {
             ExplicitEnvPolicy::FilterSensitive
         } else {
@@ -83,7 +276,9 @@ impl DriverSandbox {
         };
         Self {
             kind,
-            handle,
+            handle: OnceCell::new(),
+            pending: None,
+            workspace: None,
             env_policy,
             event_callback: None,
             platform: OnceLock::new(),
@@ -101,14 +296,37 @@ impl DriverSandbox {
     }
 
     /// The driver handle, for callers that need a facet fabro's trait does
-    /// not carry (git, services, access).
-    #[must_use]
-    pub fn handle(&self) -> &Arc<dyn DriverHandle> {
-        &self.handle
+    /// not carry (git, services, access). Absent until a pending sandbox is
+    /// initialized.
+    pub fn handle(&self) -> crate::Result<&Arc<dyn DriverHandle>> {
+        self.handle.get().ok_or_else(|| {
+            crate::Error::message(format!(
+                "{} sandbox is not initialized; call initialize() first",
+                self.kind
+            ))
+        })
     }
 
-    fn exec(&self) -> SandboxExec<'_> {
-        SandboxExec::new(self.handle.exec(), self.env_policy)
+    fn exec(&self) -> crate::Result<SandboxExec<'_>> {
+        let mut exec = SandboxExec::new(self.handle()?.exec(), self.env_policy);
+        if let Some(workspace) = &self.workspace {
+            if let Some(dir) = workspace.execution_directory.get() {
+                exec = exec.with_working_dir(dir.clone());
+            }
+        }
+        Ok(exec)
+    }
+
+    /// Resolve a caller path against fabro's working directory. The driver
+    /// resolves relative paths against the sandbox's own working directory,
+    /// which sits above a cloned repository's link.
+    fn resolve(&self, path: &str) -> String {
+        match &self.workspace {
+            Some(workspace) if workspace.execution_directory.get().is_some() => {
+                sandbox::resolve_path(path, workspace.working_directory())
+            }
+            _ => path.to_string(),
+        }
     }
 
     fn provider_name(&self) -> String {
@@ -123,7 +341,7 @@ impl DriverSandbox {
     }
 
     fn search(&self) -> crate::Result<sandbox_driver::SearchFacet<'_>> {
-        self.handle.search().ok_or_else(|| {
+        self.handle()?.search().ok_or_else(|| {
             crate::Error::message(format!(
                 "sandbox provider `{}` does not support search",
                 self.kind
@@ -131,18 +349,142 @@ impl DriverSandbox {
         })
     }
 
+    /// Create the sandbox on the provider when it does not exist yet.
+    async fn ensure_created(&self) -> crate::Result<()> {
+        if self.handle.get().is_some() {
+            return Ok(());
+        }
+        let Some(pending) = &self.pending else {
+            return self.handle().map(|_| ());
+        };
+        let observer = Arc::new(CreateProgress::new(
+            pending.source.clone(),
+            self.event_callback.clone(),
+        ));
+        let handle = pending
+            .provider
+            .create(&pending.spec, Some(EventContext::new(observer)))
+            .await
+            .map_err(|error| {
+                crate::Error::context(format!("Failed to create {} sandbox", self.kind), error)
+            })?;
+        let _ = self.handle.set(handle);
+        Ok(())
+    }
+
     /// Bring the sandbox to `Running` with a verified Bash, and learn its
     /// platform. Shared by initialize and start.
     async fn make_ready(&self) -> crate::Result<()> {
-        sandbox_driver::activate(self.handle.as_ref(), &WaitOptions::default()).await?;
+        sandbox_driver::activate(self.handle()?.as_ref(), &WaitOptions::default()).await?;
         self.learn_platform().await
+    }
+
+    /// Prepare the workspace after the sandbox runs for the first time:
+    /// an empty root, or fabro's clone.
+    async fn prepare_workspace(&self) -> crate::Result<()> {
+        let Some(workspace) = &self.workspace else {
+            return Ok(());
+        };
+        match &workspace.plan {
+            WorkspacePlan::Attached => Ok(()),
+            WorkspacePlan::Empty(reason) => {
+                if matches!(reason, EmptyWorkspaceReason::MissingOrigin) {
+                    tracing::warn!(
+                        provider = %self.kind,
+                        reason = reason.message(),
+                        "Clone source missing for clone-based sandbox"
+                    );
+                }
+                self.handle()?
+                    .fs()
+                    .create_dir(&workspace.layout.workspace_root)
+                    .await
+                    .map_err(|error| {
+                        crate::Error::context(
+                            format!("Failed to create {}", workspace.layout.workspace_root),
+                            error,
+                        )
+                    })?;
+                let _ = workspace.repo_cloned.set(false);
+                Ok(())
+            }
+            WorkspacePlan::Clone(plan) => {
+                self.emit(SandboxEvent::GitCloneStarted {
+                    url:    plan.origin_url.clone(),
+                    branch: plan.branch.clone(),
+                });
+                let started = Instant::now();
+                let handle = self.handle()?;
+                // The clone names every directory it touches, so it runs
+                // without fabro's working-directory override.
+                let exec = SandboxExec::new(handle.exec(), self.env_policy);
+                let outcome = clone::clone_github_repo(
+                    &self.kind,
+                    handle.as_ref(),
+                    &exec,
+                    plan,
+                    &workspace.layout.workspace_root,
+                    &workspace.layout.repos_root,
+                    &workspace.credentials,
+                )
+                .await;
+                match outcome {
+                    Ok(outcome) => {
+                        let _ = workspace.repo_cloned.set(true);
+                        let _ = workspace.origin_url.set(plan.origin_url.clone());
+                        let _ = workspace
+                            .checkout_path
+                            .set(outcome.layout.primary_repo_path.clone());
+                        let _ = workspace
+                            .execution_directory
+                            .set(outcome.layout.execution_directory.clone());
+                        self.emit(SandboxEvent::GitCloneCompleted {
+                            url:         plan.origin_url.clone(),
+                            duration_ms: elapsed_ms(started),
+                        });
+                        Ok(())
+                    }
+                    Err(error) => {
+                        self.emit(SandboxEvent::GitCloneFailed {
+                            url:    plan.origin_url.clone(),
+                            error:  error.to_string(),
+                            causes: error.causes(),
+                        });
+                        Err(error)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Open an interactive shell in the sandbox's working directory over the
+    /// driver's Pty facet.
+    pub async fn open_terminal(&self, size: TerminalSize) -> crate::Result<DriverTerminalSession> {
+        let handle = self.handle()?;
+        let pty = handle.pty().ok_or_else(|| {
+            crate::Error::message(format!(
+                "sandbox provider `{}` does not support terminals",
+                self.kind
+            ))
+        })?;
+        let mut options = PtyOptions::default();
+        options.size = PtySize {
+            rows: size.rows,
+            cols: size.cols,
+        };
+        options.working_dir = Some(self.working_directory().to_string());
+        let session = pty
+            .open(&options)
+            .await
+            .map_err(|error| crate::Error::context("Failed to open sandbox terminal", error))?;
+        Ok(DriverTerminalSession::new(session))
     }
 
     /// Ask the sandbox for its platform once; `platform` and `os_version`
     /// report `unknown` until this has run.
     async fn learn_platform(&self) -> crate::Result<()> {
         if self.platform.get().is_none() {
-            let info = self.handle.platform_info().await?;
+            let info = self.handle()?.platform_info().await?;
             let platform = fabro_platform_name(&info.os).to_string();
             let os_version = if info.version.is_empty() {
                 platform.clone()
@@ -160,13 +502,109 @@ impl DriverSandbox {
     /// walked as given.
     fn walk_base(&self, base: &str, relative_start: &str) -> String {
         if base == self.working_directory() || base.is_empty() || base == "." {
+            // A cloned repository is reached through a workspace link. The
+            // driver refuses a symlinked traversal root, so walk the real
+            // checkout; results are reported under the link.
+            if let Some(checkout) = self
+                .workspace
+                .as_ref()
+                .and_then(|workspace| workspace.checkout_path.get())
+            {
+                return sandbox::join_sandbox_path(checkout, relative_start);
+            }
             if relative_start.is_empty() {
                 ".".to_string()
             } else {
                 relative_start.to_string()
             }
         } else {
-            sandbox::join_sandbox_path(base, relative_start)
+            sandbox::join_sandbox_path(&self.resolve(base), relative_start)
+        }
+    }
+}
+
+/// Turns the driver's create-time progress into fabro's snapshot events:
+/// an image pull starts `SnapshotPulling` and the create's completion ends
+/// it. A create without a pull emits nothing.
+struct CreateProgress {
+    source:       Option<String>,
+    callback:     Option<SandboxEventCallback>,
+    pull_started: Mutex<Option<Instant>>,
+}
+
+impl CreateProgress {
+    fn new(source: Option<String>, callback: Option<SandboxEventCallback>) -> Self {
+        Self {
+            source,
+            callback,
+            pull_started: Mutex::new(None),
+        }
+    }
+
+    fn emit(&self, event: SandboxEvent) {
+        event.trace();
+        if let Some(cb) = &self.callback {
+            cb(event);
+        }
+    }
+
+    fn name(&self) -> String {
+        self.source.clone().unwrap_or_default()
+    }
+}
+
+#[async_trait]
+impl EventObserver for CreateProgress {
+    async fn observe(&self, event: Event) {
+        match &event.body {
+            EventBody::OperationProgress { progress, .. }
+                if progress.code.as_str() == ProgressCode::IMAGE_PULL =>
+            {
+                let mut started = self
+                    .pull_started
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner);
+                if started.is_none() {
+                    *started = Some(Instant::now());
+                    drop(started);
+                    self.emit(SandboxEvent::SnapshotPulling { name: self.name() });
+                }
+            }
+            EventBody::OperationCompleted {
+                action: Action::Create,
+                ..
+            } => {
+                let started = self
+                    .pull_started
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .take();
+                if let Some(started) = started {
+                    self.emit(SandboxEvent::SnapshotReady {
+                        name:        self.name(),
+                        duration_ms: elapsed_ms(started),
+                    });
+                }
+            }
+            EventBody::OperationFailed {
+                action: Action::Create,
+                error,
+                ..
+            } => {
+                let started = self
+                    .pull_started
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .take();
+                if started.is_some() {
+                    self.emit(SandboxEvent::SnapshotFailed {
+                        name:   self.name(),
+                        error:  error.message.clone(),
+                        causes: error.causes.clone(),
+                    });
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -186,17 +624,17 @@ fn file_context(action: &str, path: &str) -> String {
 #[async_trait]
 impl Sandbox for DriverSandbox {
     async fn read_file_bytes(&self, path: &str) -> crate::Result<Vec<u8>> {
-        self.handle
+        self.handle()?
             .fs()
-            .read(path)
+            .read(&self.resolve(path))
             .await
             .map_err(|error| crate::Error::context(file_context("read", path), error))
     }
 
     async fn write_file(&self, path: &str, content: &str) -> crate::Result<()> {
-        self.handle
+        self.handle()?
             .fs()
-            .write(path, content.as_bytes())
+            .write(&self.resolve(path), content.as_bytes())
             .await
             .map_err(|error| crate::Error::context(file_context("write", path), error))
     }
@@ -210,17 +648,17 @@ impl Sandbox for DriverSandbox {
                 file_context("delete", path)
             )));
         }
-        self.handle
+        self.handle()?
             .fs()
-            .delete(path, false)
+            .delete(&self.resolve(path), false)
             .await
             .map_err(|error| crate::Error::context(file_context("delete", path), error))
     }
 
     async fn file_exists(&self, path: &str) -> crate::Result<bool> {
-        self.handle
+        self.handle()?
             .fs()
-            .exists(path)
+            .exists(&self.resolve(path))
             .await
             .map_err(|error| crate::Error::context(file_context("stat", path), error))
     }
@@ -231,9 +669,9 @@ impl Sandbox for DriverSandbox {
         depth: Option<usize>,
     ) -> crate::Result<Vec<DirEntry>> {
         let entries = self
-            .handle
+            .handle()?
             .fs()
-            .list_dir(path, depth.unwrap_or(1))
+            .list_dir(&self.resolve(path), depth.unwrap_or(1))
             .await
             .map_err(|error| crate::Error::context(file_context("list", path), error))?;
         let mut entries: Vec<DirEntry> = entries
@@ -258,7 +696,7 @@ impl Sandbox for DriverSandbox {
         env_vars: Option<&HashMap<String, String>>,
         cancel_token: Option<CancellationToken>,
     ) -> crate::Result<ExecResult> {
-        self.exec()
+        self.exec()?
             .run(
                 command,
                 Some(Duration::from_millis(timeout_ms)),
@@ -273,7 +711,7 @@ impl Sandbox for DriverSandbox {
         &self,
         request: ExecStreamingRequest<'_>,
     ) -> crate::Result<ExecStreamingResult> {
-        self.exec().run_streaming(request).await
+        self.exec()?.run_streaming(request).await
     }
 
     async fn spawn_stdio_process(
@@ -283,7 +721,7 @@ impl Sandbox for DriverSandbox {
         env_vars: Option<&HashMap<String, String>>,
         cancel_token: Option<CancellationToken>,
     ) -> crate::Result<StdioProcess> {
-        self.exec()
+        self.exec()?
             .spawn_stdio(command, working_dir, env_vars, cancel_token)
             .await
     }
@@ -300,7 +738,7 @@ impl Sandbox for DriverSandbox {
         driver_options.include.clone_from(&options.glob_filter);
         let matches = self
             .search()?
-            .grep(pattern, path, &driver_options)
+            .grep(pattern, &self.resolve(path), &driver_options)
             .await
             .map_err(|error| crate::Error::context("Failed to search file contents", error))?;
         Ok(matches
@@ -337,7 +775,7 @@ impl Sandbox for DriverSandbox {
             let size = match file.size {
                 Some(size) => size,
                 None => {
-                    self.handle
+                    self.handle()?
                         .fs()
                         .metadata(&path)
                         .await
@@ -359,9 +797,9 @@ impl Sandbox for DriverSandbox {
         remote_path: &str,
         local_path: &Path,
     ) -> crate::Result<()> {
-        self.handle
+        self.handle()?
             .fs()
-            .download(remote_path, local_path)
+            .download(&self.resolve(remote_path), local_path)
             .await
             .map_err(|error| crate::Error::context(file_context("download", remote_path), error))
     }
@@ -371,19 +809,26 @@ impl Sandbox for DriverSandbox {
         local_path: &Path,
         remote_path: &str,
     ) -> crate::Result<()> {
-        self.handle
+        self.handle()?
             .fs()
-            .upload(local_path, remote_path)
+            .upload(local_path, &self.resolve(remote_path))
             .await
             .map_err(|error| crate::Error::context(file_context("upload", remote_path), error))
     }
 
+    /// Create the sandbox when it is pending, bring it to `Running`, and
+    /// prepare fabro's workspace (empty root or clone) on first use.
     async fn initialize(&self) -> crate::Result<()> {
         self.emit(SandboxEvent::Initializing {
             provider: self.provider_name(),
         });
         let started = Instant::now();
-        let result = self.make_ready().await;
+        let result = async {
+            self.ensure_created().await?;
+            self.make_ready().await?;
+            self.prepare_workspace().await
+        }
+        .await;
         let duration_ms = elapsed_ms(started);
         match &result {
             Ok(()) => self.emit(SandboxEvent::Ready {
@@ -407,7 +852,7 @@ impl Sandbox for DriverSandbox {
     /// Idempotent access-time check: a running sandbox is left alone; a
     /// stopped or paused one is brought back and its Bash verified.
     async fn activate(&self) -> crate::Result<()> {
-        let status = self.handle.describe().await?;
+        let status = self.handle()?.describe().await?;
         if status.state == SandboxState::Running {
             return Ok(());
         }
@@ -439,7 +884,10 @@ impl Sandbox for DriverSandbox {
             provider: self.provider_name(),
         });
         let started = Instant::now();
-        let result = self.handle.stop().await.map_err(crate::Error::from);
+        let result = match self.handle() {
+            Ok(handle) => handle.stop().await.map_err(crate::Error::from),
+            Err(error) => Err(error),
+        };
         match &result {
             Ok(()) => self.emit(SandboxEvent::StopCompleted {
                 provider:    self.provider_name(),
@@ -459,7 +907,7 @@ impl Sandbox for DriverSandbox {
             provider: self.provider_name(),
         });
         let started = Instant::now();
-        let result = self.handle.delete().await.map_err(crate::Error::from);
+        let result = self.release().await;
         match &result {
             Ok(()) => self.emit(SandboxEvent::DeleteCompleted {
                 provider:    self.provider_name(),
@@ -482,7 +930,7 @@ impl Sandbox for DriverSandbox {
             provider: self.provider_name(),
         });
         let started = Instant::now();
-        let result = self.handle.delete().await.map_err(crate::Error::from);
+        let result = self.release().await;
         match &result {
             Ok(()) => self.emit(SandboxEvent::CleanupCompleted {
                 provider:    self.provider_name(),
@@ -497,12 +945,21 @@ impl Sandbox for DriverSandbox {
         result
     }
 
+    /// The directory the run works in: the cloned repository's link for a
+    /// clone-based workspace, the provider's working directory otherwise.
     fn working_directory(&self) -> &str {
-        self.handle.working_directory()
+        if let Some(workspace) = &self.workspace {
+            return workspace.working_directory();
+        }
+        self.handle
+            .get()
+            .map_or("", |handle| handle.working_directory())
     }
 
     fn runtime_directory(&self) -> Option<&str> {
-        self.handle.runtime_directory()
+        self.handle
+            .get()
+            .and_then(|handle| handle.runtime_directory())
     }
 
     fn platform(&self) -> &str {
@@ -521,12 +978,15 @@ impl Sandbox for DriverSandbox {
     /// The provider's id for this sandbox, or empty for `local`: a local
     /// sandbox is its working directory, which the run record already
     /// carries, and its Host registry id does not outlive the process.
+    /// Empty for a pending sandbox that has not been created.
     fn sandbox_info(&self) -> String {
         if self.kind.is_local() {
-            String::new()
-        } else {
-            self.handle.id().to_string()
+            return String::new();
         }
+        self.handle
+            .get()
+            .map(|handle| handle.id().to_string())
+            .unwrap_or_default()
     }
 
     async fn set_autostop_interval(&self, minutes: i32) -> crate::Result<()> {
@@ -535,7 +995,7 @@ impl Sandbox for DriverSandbox {
             .ok()
             .filter(|minutes| *minutes > 0)
             .map(Duration::from_mins);
-        match self.handle.set_timers(&timers).await {
+        match self.handle()?.set_timers(&timers).await {
             // A provider without timers has nothing to stop automatically.
             Ok(()) | Err(sandbox_driver::Error::Unsupported { .. }) => Ok(()),
             Err(error) => Err(crate::Error::context(
@@ -545,33 +1005,108 @@ impl Sandbox for DriverSandbox {
         }
     }
 
+    async fn setup_git(&self, intent: &GitSetupIntent) -> crate::Result<Option<GitRunInfo>> {
+        if !self.repo_cloned() {
+            return Ok(None);
+        }
+        sandbox::setup_git_via_exec(self, intent).await.map(Some)
+    }
+
+    fn resume_setup_commands(&self, run_branch: &str) -> Vec<String> {
+        if !self.repo_cloned() {
+            return Vec::new();
+        }
+        vec![format!(
+            "git fetch origin {} && git checkout {}",
+            sandbox::shell_quote(run_branch),
+            sandbox::shell_quote(run_branch)
+        )]
+    }
+
     async fn git_push_ref(&self, refspec: &str, plan: &RetryPlan) -> Result<PushReport, PushError> {
-        let has_origin = match self
-            .exec_command("git remote get-url origin", 10_000, None, None, None)
-            .await
-        {
-            Ok(result) if result.is_success() => true,
-            Ok(_) => false,
-            Err(err) => {
-                return Err(PushError {
-                    report: PushReport::default(),
-                    error:  crate::Error::context("git remote get-url origin", err),
-                });
+        let Some(workspace) = &self.workspace else {
+            // A designated directory: push only when the checkout has an
+            // origin, with whatever credentials its URL already carries.
+            let has_origin = match self
+                .exec_command("git remote get-url origin", 10_000, None, None, None)
+                .await
+            {
+                Ok(result) if result.is_success() => true,
+                Ok(_) => false,
+                Err(err) => {
+                    return Err(PushError {
+                        report: PushReport::default(),
+                        error:  crate::Error::context("git remote get-url origin", err),
+                    });
+                }
+            };
+            if !has_origin {
+                return Ok(PushReport::default());
             }
+            return sandbox::git_push_via_exec(self, None, refspec, plan).await;
         };
-        if !has_origin {
+        if !workspace.repo_cloned() {
             return Ok(PushReport::default());
         }
-        // No managed credentials yet: the checkout pushes with whatever the
-        // remote URL already carries.
-        sandbox::git_push_via_exec(self, None, refspec, plan).await
+        let credentials = workspace
+            .origin_url
+            .get()
+            .map(|origin_url| (&workspace.credentials, origin_url.as_str()));
+        sandbox::git_push_via_exec(self, credentials, refspec, plan).await
+    }
+
+    fn origin_url(&self) -> Option<&str> {
+        let workspace = self.workspace.as_ref()?;
+        if !workspace.repo_cloned() {
+            return None;
+        }
+        workspace.origin_url.get().map(String::as_str)
+    }
+
+    #[tracing::instrument(name = "git_op", skip_all, fields(op = "refresh-credentials"))]
+    async fn refresh_push_credentials(&self) -> crate::Result<RefreshOutcome> {
+        let Some(workspace) = &self.workspace else {
+            return Ok(RefreshOutcome::none());
+        };
+        if !workspace.repo_cloned() {
+            return Ok(RefreshOutcome::none());
+        }
+        let Some(origin_url) = workspace.origin_url.get() else {
+            return Ok(RefreshOutcome::none());
+        };
+        workspace
+            .credentials
+            .refresh(origin_url, |auth_url| {
+                push_credentials::set_auth_url_via_exec(self, auth_url)
+            })
+            .await
+    }
+
+    fn push_token_source(&self) -> Option<Arc<InstallationTokenSource>> {
+        self.workspace
+            .as_ref()
+            .and_then(|workspace| workspace.credentials.source().cloned())
+    }
+
+    /// The local command that opens a shell in the sandbox, from the
+    /// provider's access facet. `None` when the provider has no such
+    /// command (the local sandbox is the host).
+    async fn ssh_access_command(&self) -> crate::Result<Option<String>> {
+        let Some(shell) = self.handle()?.shell_command() else {
+            return Ok(None);
+        };
+        shell
+            .shell_command()
+            .await
+            .map(Some)
+            .map_err(|error| crate::Error::context("Failed to build sandbox shell command", error))
     }
 
     async fn get_preview_url(
         &self,
         port: u16,
     ) -> crate::Result<Option<(String, HashMap<String, String>)>> {
-        let Some(previews) = self.handle.preview_urls() else {
+        let Some(previews) = self.handle()?.preview_urls() else {
             return Ok(None);
         };
         let preview = previews
@@ -585,14 +1120,30 @@ impl Sandbox for DriverSandbox {
     }
 }
 
+impl DriverSandbox {
+    fn repo_cloned(&self) -> bool {
+        self.workspace
+            .as_ref()
+            .is_some_and(RepoWorkspace::repo_cloned)
+    }
+
+    /// Delete the sandbox on the provider. A pending sandbox that was never
+    /// created has nothing to release.
+    async fn release(&self) -> crate::Result<()> {
+        match self.handle.get() {
+            Some(handle) => handle.delete().await.map_err(crate::Error::from),
+            None if self.pending.is_some() => Ok(()),
+            None => self.handle().map(|_| ()),
+        }
+    }
+}
+
 fn elapsed_ms(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
-
     use fabro_types::CommandTermination;
     use sandbox_driver::{SandboxProvider as _, SandboxSource, SandboxSpec};
     use sandbox_driver_host::HostProvider;
@@ -832,9 +1383,9 @@ mod tests {
             "",
             "local sandboxes are identified by directory"
         );
-        let isolated =
-            DriverSandbox::new(SandboxProviderKind::DOCKER, Arc::clone(f.sandbox.handle()));
-        assert_eq!(isolated.sandbox_info(), f.sandbox.handle().id().to_string());
+        let handle = Arc::clone(f.sandbox.handle().unwrap());
+        let isolated = DriverSandbox::new(SandboxProviderKind::DOCKER, Arc::clone(&handle));
+        assert_eq!(isolated.sandbox_info(), handle.id().to_string());
 
         f.sandbox.stop().await.unwrap();
         f.sandbox.activate().await.unwrap();

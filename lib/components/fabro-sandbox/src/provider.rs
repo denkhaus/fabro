@@ -1,15 +1,10 @@
 #[cfg(feature = "daytona")]
 pub mod daytona;
-#[cfg(feature = "docker")]
-pub mod docker;
+pub mod driver;
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
-#[cfg(any(feature = "docker", feature = "daytona"))]
-use fabro_github::GitHubCredentials;
-#[cfg(any(feature = "docker", feature = "daytona"))]
-use fabro_types::RunId;
 use fabro_types::{
     SandboxInfo, SandboxListMeta, SandboxListResponse, SandboxProviderKind,
     SandboxProviderLookupError,
@@ -17,39 +12,12 @@ use fabro_types::{
 use fabro_util::error::collect_chain;
 use futures::future::join_all;
 
-#[cfg(feature = "daytona")]
-use crate::daytona::DaytonaConfig;
-#[cfg(feature = "docker")]
-use crate::docker::DockerSandboxOptions;
-
-pub enum SandboxCreateSpec {
-    Local,
-    #[cfg(feature = "docker")]
-    Docker {
-        config:           DockerSandboxOptions,
-        github_app:       Option<GitHubCredentials>,
-        run_id:           Option<RunId>,
-        clone_origin_url: Option<String>,
-        clone_branch:     Option<String>,
-    },
-    #[cfg(feature = "daytona")]
-    Daytona {
-        config:           Box<DaytonaConfig>,
-        github_app:       Option<GitHubCredentials>,
-        run_id:           Option<RunId>,
-        clone_origin_url: Option<String>,
-        clone_branch:     Option<String>,
-        api_key:          Option<String>,
-    },
-}
-
 #[async_trait]
 pub trait SandboxProvider: Send + Sync {
     fn kind(&self) -> SandboxProviderKind;
 
     async fn list(&self) -> crate::Result<Vec<SandboxInfo>>;
     async fn get(&self, id: &str) -> crate::Result<Option<SandboxInfo>>;
-    async fn create(&self, spec: SandboxCreateSpec) -> crate::Result<SandboxInfo>;
     async fn delete(&self, id: &str) -> crate::Result<()>;
 }
 
@@ -166,12 +134,6 @@ impl SandboxProvider for LocalSandboxProvider {
 
     async fn get(&self, _id: &str) -> crate::Result<Option<SandboxInfo>> {
         Ok(None)
-    }
-
-    async fn create(&self, _spec: SandboxCreateSpec) -> crate::Result<SandboxInfo> {
-        Err(crate::Error::message(
-            "local sandbox provider has no provider-managed inventory",
-        ))
     }
 
     async fn delete(&self, _id: &str) -> crate::Result<()> {

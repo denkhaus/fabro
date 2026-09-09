@@ -1,20 +1,20 @@
 use std::collections::BTreeMap;
 
 use anyhow::Result;
-#[cfg(any(feature = "docker", feature = "daytona"))]
 use chrono::{DateTime, Utc};
 use fabro_types::{
     BundledProvider, RunId, RunSandboxInstance, SandboxDetails, SandboxNetwork, SandboxResources,
     SandboxState, SandboxTimestamps,
 };
 
+use crate::docker;
+
 /// Inspect the sandbox identified by `record` and return provider-neutral
 /// details for control-plane display.
 ///
-/// Provider feature flags determine which branches resolve real data:
 /// - `local` always returns a minimal record describing the host.
-/// - `docker` inspects the managed container through Bollard.
-/// - `daytona` reconnects to the SDK sandbox.
+/// - `docker` describes the managed container through the sandbox driver.
+/// - `daytona` reconnects to the SDK sandbox (feature-gated).
 #[allow(
     unused_variables,
     reason = "Feature-gated providers consume some parameters only when enabled."
@@ -27,8 +27,7 @@ pub async fn sandbox_details(
 ) -> Result<SandboxDetails> {
     match record.provider.bundled() {
         Some(BundledProvider::Local) => Ok(local_details(record)),
-        #[cfg(feature = "docker")]
-        Some(BundledProvider::Docker) => docker::docker_details(record, run_id).await,
+        Some(BundledProvider::Docker) => docker_details(record, run_id).await,
         #[cfg(feature = "daytona")]
         Some(BundledProvider::Daytona) => daytona::daytona_details(record, daytona_api_key).await,
         _ => Err(anyhow::anyhow!(
@@ -52,434 +51,128 @@ fn local_details(record: &RunSandboxInstance) -> SandboxDetails {
     }
 }
 
-#[cfg(any(feature = "docker", feature = "daytona"))]
+#[cfg(feature = "daytona")]
 fn parse_rfc3339_utc(value: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(value)
         .ok()
         .map(|dt| dt.with_timezone(&Utc))
 }
 
-#[cfg(feature = "docker")]
-pub(crate) mod docker {
-    use std::collections::BTreeMap;
-
-    use anyhow::{Context, Result, anyhow};
-    use bollard::Docker;
-    use bollard::container::InspectContainerOptions;
-    use bollard::models::{ContainerInspectResponse, ContainerStateStatusEnum, HostConfig};
-    use fabro_types::{
-        RunId, RunSandboxInstance, SandboxDetails, SandboxInfo, SandboxNetwork,
-        SandboxNetworkPolicy, SandboxProviderKind, SandboxResources, SandboxState,
-        SandboxTimestamps,
-    };
-
-    use super::parse_rfc3339_utc;
-    use crate::docker::WORKING_DIRECTORY;
-
-    pub(super) async fn docker_details(
-        record: &RunSandboxInstance,
-        _run_id: Option<RunId>,
-    ) -> Result<SandboxDetails> {
-        let docker =
-            Docker::connect_with_local_defaults().context("Failed to connect to Docker daemon")?;
-        let runtime = &record.runtime;
-        let inspect = docker
-            .inspect_container(&runtime.id, None::<InspectContainerOptions>)
-            .await
-            .map_err(|err| anyhow!("Failed to inspect Docker container '{}': {err}", runtime.id))?;
-        Ok(map_docker_inspect(&inspect, record))
+/// Projection of a sandbox-driver [`sandbox_driver::SandboxStatus`] into
+/// fabro's inventory shape. The driver reports what a provider exposes
+/// through its public facets; fields no facet carries (network policy) stay
+/// unknown rather than being read from provider SDK types.
+pub(crate) fn info_from_status(
+    kind: &fabro_types::SandboxProviderKind,
+    status: &sandbox_driver::SandboxStatus,
+) -> fabro_types::SandboxInfo {
+    let fields = fields_from_status(status);
+    fabro_types::SandboxInfo {
+        provider:          kind.clone(),
+        id:                status.id.to_string(),
+        display_name:      status.name.clone().filter(|name| !name.is_empty()),
+        state:             fields.state,
+        native_state:      fields.native_state,
+        image:             status.source.clone(),
+        snapshot:          None,
+        region:            status.region.clone(),
+        web_url:           status.web_url.clone(),
+        working_directory: None,
+        resources:         fields.resources,
+        network:           SandboxNetwork::unknown(),
+        labels:            status.labels.clone(),
+        timestamps:        fields.timestamps,
     }
+}
 
-    pub(crate) fn docker_info_from_inspect(inspect: &ContainerInspectResponse) -> SandboxInfo {
-        let fields = docker_fields_from_inspect(inspect);
-        SandboxInfo {
-            provider:          SandboxProviderKind::DOCKER,
-            id:                fields.id,
-            display_name:      fields.display_name,
-            state:             fields.state,
-            native_state:      fields.native_state,
-            image:             fields.image,
-            snapshot:          None,
-            region:            None,
-            web_url:           None,
-            working_directory: fields.working_directory,
-            resources:         fields.resources,
-            network:           fields.network,
-            labels:            fields.labels,
-            timestamps:        fields.timestamps,
-        }
+pub(crate) fn details_from_status(
+    record: &RunSandboxInstance,
+    status: &sandbox_driver::SandboxStatus,
+) -> SandboxDetails {
+    let fields = fields_from_status(status);
+    SandboxDetails {
+        sandbox:      RunSandboxInstance {
+            image: status.source.clone().or_else(|| record.image.clone()),
+            ..record.clone()
+        },
+        state:        fields.state,
+        native_state: fields.native_state,
+        region:       status.region.clone(),
+        web_url:      status.web_url.clone(),
+        resources:    fields.resources,
+        network:      SandboxNetwork::unknown(),
+        labels:       status.labels.clone(),
+        timestamps:   fields.timestamps,
     }
+}
 
-    pub(super) fn map_docker_inspect(
-        inspect: &ContainerInspectResponse,
-        record: &RunSandboxInstance,
-    ) -> SandboxDetails {
-        let fields = docker_fields_from_inspect(inspect);
-        let image = fields.image.clone().or_else(|| record.image.clone());
+struct StatusFields {
+    state:        SandboxState,
+    native_state: Option<String>,
+    resources:    SandboxResources,
+    timestamps:   SandboxTimestamps,
+}
 
-        SandboxDetails {
-            sandbox:      RunSandboxInstance {
-                image,
-                ..record.clone()
-            },
-            state:        fields.state,
-            native_state: fields.native_state,
-            region:       None,
-            web_url:      None,
-            resources:    fields.resources,
-            network:      fields.network,
-            labels:       fields.labels,
-            timestamps:   fields.timestamps,
-        }
-    }
-
-    struct DockerFields {
-        id:                String,
-        display_name:      Option<String>,
-        state:             SandboxState,
-        native_state:      Option<String>,
-        image:             Option<String>,
-        working_directory: Option<String>,
-        resources:         SandboxResources,
-        network:           SandboxNetwork,
-        labels:            BTreeMap<String, String>,
-        timestamps:        SandboxTimestamps,
-    }
-
-    fn docker_fields_from_inspect(inspect: &ContainerInspectResponse) -> DockerFields {
-        let status_enum = inspect
-            .state
+fn fields_from_status(status: &sandbox_driver::SandboxStatus) -> StatusFields {
+    StatusFields {
+        state:        normalize_driver_state(status.state),
+        native_state: Some(status.provider_state.clone()).filter(|value| !value.is_empty()),
+        resources:    status
+            .resources
             .as_ref()
-            .and_then(|state| state.status.as_ref())
-            .copied();
-        let normalized_state = status_enum.map_or(SandboxState::Unknown, normalize_docker_state);
-        let native_state = status_enum
-            .map(|status| status.to_string())
-            .filter(|value| !value.is_empty());
-
-        let host_config = inspect.host_config.as_ref();
-        let resources = SandboxResources {
-            cpu_cores:    host_config.and_then(docker_cpu_cores),
-            memory_bytes: host_config
-                .and_then(|host| host.memory)
-                .filter(|bytes| *bytes > 0)
-                .and_then(|bytes| u64::try_from(bytes).ok()),
-            disk_bytes:   None,
-        };
-        let network = docker_network(host_config);
-
-        let labels: BTreeMap<String, String> = inspect
-            .config
-            .as_ref()
-            .and_then(|config| config.labels.clone())
-            .map(|map| map.into_iter().collect())
-            .unwrap_or_default();
-
-        let image = inspect
-            .config
-            .as_ref()
-            .and_then(|config| config.image.clone())
-            .or_else(|| inspect.image.clone())
-            .filter(|value| !value.is_empty());
-        let working_directory = inspect
-            .config
-            .as_ref()
-            .and_then(|config| config.working_dir.clone())
-            .filter(|value| !value.is_empty())
-            .or_else(|| Some(WORKING_DIRECTORY.to_string()));
-
-        let id = inspect
-            .id
-            .clone()
-            .or_else(|| inspect.name.as_ref().map(|name| trim_container_name(name)))
-            .unwrap_or_default();
-        let display_name = inspect
-            .name
-            .as_ref()
-            .map(|name| trim_container_name(name))
-            .filter(|name| !name.is_empty());
-
-        let created_at = inspect.created.as_deref().and_then(parse_rfc3339_utc);
-
-        DockerFields {
-            id,
-            display_name,
-            state: normalized_state,
-            native_state,
-            image,
-            working_directory,
-            resources,
-            network,
-            labels,
-            timestamps: SandboxTimestamps {
-                created_at,
-                last_activity_at: None,
-            },
-        }
+            .map(|resources| SandboxResources {
+                cpu_cores:    resources.cpu_cores.map(f64::from),
+                memory_bytes: resources.memory_mb.map(|mb| mb * 1024 * 1024),
+                disk_bytes:   resources.disk_mb.map(|mb| mb * 1024 * 1024),
+            })
+            .unwrap_or_default(),
+        timestamps:   SandboxTimestamps {
+            created_at:       status.created_at.map(DateTime::<Utc>::from),
+            last_activity_at: status.updated_at.map(DateTime::<Utc>::from),
+        },
     }
+}
 
-    fn trim_container_name(name: &str) -> String {
-        name.strip_prefix('/').unwrap_or(name).to_string()
+pub(crate) fn normalize_driver_state(state: sandbox_driver::SandboxState) -> SandboxState {
+    use sandbox_driver::SandboxState as Driver;
+    match state {
+        Driver::Creating | Driver::Forking => SandboxState::Provisioning,
+        Driver::Starting | Driver::Resuming => SandboxState::Starting,
+        // A sandbox mid-snapshot keeps serving commands.
+        Driver::Running | Driver::Snapshotting => SandboxState::Running,
+        Driver::Stopping | Driver::Archiving => SandboxState::Stopping,
+        Driver::Stopped => SandboxState::Stopped,
+        Driver::Pausing | Driver::Paused => SandboxState::Paused,
+        Driver::Archived => SandboxState::Archived,
+        Driver::Restoring => SandboxState::Restoring,
+        Driver::Resizing => SandboxState::Resizing,
+        Driver::Deleting => SandboxState::Deleting,
+        Driver::Deleted => SandboxState::Deleted,
+        Driver::Error => SandboxState::Error,
+        _ => SandboxState::Unknown,
     }
+}
 
-    fn docker_network(host_config: Option<&HostConfig>) -> SandboxNetwork {
-        match host_config.and_then(|host| host.network_mode.as_deref()) {
-            Some("none") => {
-                let blocked = SandboxNetworkPolicy::blocked();
-                SandboxNetwork {
-                    egress:  blocked.clone(),
-                    ingress: blocked,
-                }
-            }
-            _ => SandboxNetwork::unknown(),
-        }
-    }
-
-    pub(super) fn docker_cpu_cores(host_config: &HostConfig) -> Option<f64> {
-        let quota = host_config.cpu_quota?;
-        let period = host_config.cpu_period?;
-        if quota <= 0 || period <= 0 {
-            return None;
-        }
-        #[allow(
-            clippy::cast_precision_loss,
-            reason = "CPU quota/period are bounded well within f64 mantissa precision."
-        )]
-        let cores = (quota as f64) / (period as f64);
-        Some(cores)
-    }
-
-    pub(super) fn normalize_docker_state(status: ContainerStateStatusEnum) -> SandboxState {
-        match status {
-            ContainerStateStatusEnum::EMPTY => SandboxState::Unknown,
-            ContainerStateStatusEnum::CREATED => SandboxState::Provisioning,
-            ContainerStateStatusEnum::RUNNING => SandboxState::Running,
-            ContainerStateStatusEnum::PAUSED => SandboxState::Paused,
-            ContainerStateStatusEnum::RESTARTING => SandboxState::Starting,
-            ContainerStateStatusEnum::REMOVING => SandboxState::Deleting,
-            ContainerStateStatusEnum::EXITED => SandboxState::Stopped,
-            ContainerStateStatusEnum::DEAD => SandboxState::Error,
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use bollard::models::HostConfig;
-        use fabro_types::{
-            RunSandboxInstance, RunSandboxRuntime, SandboxNetwork, SandboxNetworkPolicy,
-            SandboxProviderKind,
-        };
-
-        use super::*;
-
-        fn record() -> RunSandboxInstance {
-            RunSandboxInstance {
-                provider: SandboxProviderKind::DOCKER,
-                image:    None,
-                snapshot: None,
-                runtime:  RunSandboxRuntime {
-                    id:                "container-abc123".to_string(),
-                    working_directory: "/workspace".to_string(),
-                    repo_cloned:       Some(true),
-                    clone_origin_url:  None,
-                    clone_branch:      None,
-                    workspace_root:    None,
-                    repos_root:        None,
-                    primary_repo_path: None,
-                    primary_repo_link: None,
-                },
-            }
-        }
-
-        #[test]
-        fn cpu_cores_divides_quota_by_period() {
-            let host = HostConfig {
-                cpu_quota: Some(200_000),
-                cpu_period: Some(100_000),
-                ..Default::default()
-            };
-            assert_eq!(docker_cpu_cores(&host), Some(2.0));
-        }
-
-        #[test]
-        fn cpu_cores_returns_none_when_quota_missing() {
-            let host = HostConfig {
-                cpu_quota: None,
-                cpu_period: Some(100_000),
-                ..Default::default()
-            };
-            assert_eq!(docker_cpu_cores(&host), None);
-        }
-
-        #[test]
-        fn cpu_cores_returns_none_when_period_zero() {
-            let host = HostConfig {
-                cpu_quota: Some(200_000),
-                cpu_period: Some(0),
-                ..Default::default()
-            };
-            assert_eq!(docker_cpu_cores(&host), None);
-        }
-
-        #[test]
-        fn memory_bytes_zero_is_unset() {
-            let inspect = ContainerInspectResponse {
-                host_config: Some(HostConfig {
-                    memory: Some(0),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            };
-            let details = map_docker_inspect(&inspect, &record());
-            assert_eq!(details.resources.memory_bytes, None);
-        }
-
-        #[test]
-        fn memory_bytes_present_is_carried_through() {
-            let inspect = ContainerInspectResponse {
-                host_config: Some(HostConfig {
-                    memory: Some(2 * 1024 * 1024 * 1024),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            };
-            let details = map_docker_inspect(&inspect, &record());
-            assert_eq!(details.resources.memory_bytes, Some(2_147_483_648));
-        }
-
-        #[test]
-        fn network_mode_none_blocks_ingress_and_egress() {
-            let inspect = ContainerInspectResponse {
-                host_config: Some(HostConfig {
-                    network_mode: Some("none".to_string()),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            };
-            let details = map_docker_inspect(&inspect, &record());
-            assert_eq!(details.network.egress, SandboxNetworkPolicy::blocked());
-            assert_eq!(details.network.ingress, SandboxNetworkPolicy::blocked());
-        }
-
-        #[test]
-        fn non_none_network_mode_is_unknown() {
-            let inspect = ContainerInspectResponse {
-                host_config: Some(HostConfig {
-                    network_mode: Some("bridge".to_string()),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            };
-            let details = map_docker_inspect(&inspect, &record());
-            assert_eq!(details.network, SandboxNetwork::unknown());
-        }
-
-        #[test]
-        fn record_identity_is_carried_through() {
-            let inspect = ContainerInspectResponse {
-                name: Some("/fabro-run-abc".to_string()),
-                ..Default::default()
-            };
-            let details = map_docker_inspect(&inspect, &record());
-            let runtime = details.sandbox.runtime;
-            assert_eq!(runtime.id, "container-abc123");
-            assert_eq!(runtime.working_directory, "/workspace");
-        }
-
-        #[test]
-        fn inventory_identity_uses_native_id_and_display_name() {
-            let inspect = ContainerInspectResponse {
-                id: Some("container-abc123".to_string()),
-                name: Some("/fabro-run-abc".to_string()),
-                ..Default::default()
-            };
-            let info = docker_info_from_inspect(&inspect);
-            assert_eq!(info.id, "container-abc123");
-            assert_eq!(info.display_name.as_deref(), Some("fabro-run-abc"));
-        }
-
-        #[test]
-        fn inventory_working_directory_defaults_to_fabro_workspace() {
-            let inspect = ContainerInspectResponse::default();
-            let info = docker_info_from_inspect(&inspect);
-            assert_eq!(info.working_directory.as_deref(), Some("/workspace"));
-        }
-
-        #[test]
-        fn empty_status_is_unknown() {
-            assert_eq!(
-                normalize_docker_state(ContainerStateStatusEnum::EMPTY),
-                SandboxState::Unknown
-            );
-        }
-
-        #[test]
-        fn created_status_is_provisioning() {
-            assert_eq!(
-                normalize_docker_state(ContainerStateStatusEnum::CREATED),
-                SandboxState::Provisioning
-            );
-        }
-
-        #[test]
-        fn running_status_is_running() {
-            assert_eq!(
-                normalize_docker_state(ContainerStateStatusEnum::RUNNING),
-                SandboxState::Running
-            );
-        }
-
-        #[test]
-        fn paused_status_is_paused() {
-            assert_eq!(
-                normalize_docker_state(ContainerStateStatusEnum::PAUSED),
-                SandboxState::Paused
-            );
-        }
-
-        #[test]
-        fn restarting_status_is_starting() {
-            assert_eq!(
-                normalize_docker_state(ContainerStateStatusEnum::RESTARTING),
-                SandboxState::Starting
-            );
-        }
-
-        #[test]
-        fn removing_status_is_deleting() {
-            assert_eq!(
-                normalize_docker_state(ContainerStateStatusEnum::REMOVING),
-                SandboxState::Deleting
-            );
-        }
-
-        #[test]
-        fn exited_status_is_stopped() {
-            assert_eq!(
-                normalize_docker_state(ContainerStateStatusEnum::EXITED),
-                SandboxState::Stopped
-            );
-        }
-
-        #[test]
-        fn dead_status_is_error() {
-            assert_eq!(
-                normalize_docker_state(ContainerStateStatusEnum::DEAD),
-                SandboxState::Error
-            );
-        }
-
-        #[test]
-        fn parse_timestamp_accepts_rfc3339() {
-            let parsed = parse_rfc3339_utc("2026-05-09T12:00:00Z");
-            assert!(parsed.is_some());
-        }
-
-        #[test]
-        fn parse_timestamp_rejects_garbage() {
-            assert!(parse_rfc3339_utc("not a date").is_none());
-        }
-    }
+async fn docker_details(
+    record: &RunSandboxInstance,
+    run_id: Option<RunId>,
+) -> Result<SandboxDetails> {
+    let runtime = &record.runtime;
+    let sandbox = docker::attach_docker(
+        &runtime.id,
+        runtime.repo_cloned.unwrap_or(false),
+        runtime.working_directory.clone(),
+        runtime.clone_origin_url.clone(),
+        run_id,
+    )
+    .await?;
+    let status = sandbox.handle()?.describe().await.map_err(|err| {
+        anyhow::anyhow!(
+            "Failed to describe Docker container '{}': {err}",
+            runtime.id
+        )
+    })?;
+    Ok(details_from_status(record, &status))
 }
 
 #[cfg(feature = "daytona")]
@@ -823,8 +516,85 @@ pub(crate) mod daytona {
 #[cfg(test)]
 mod tests {
     use fabro_types::SandboxProviderKind;
+    use sandbox_driver::SandboxId;
 
     use super::*;
+
+    #[test]
+    fn driver_states_map_onto_fabro_states() {
+        use sandbox_driver::SandboxState as Driver;
+        for (driver, fabro) in [
+            (Driver::Creating, SandboxState::Provisioning),
+            (Driver::Starting, SandboxState::Starting),
+            (Driver::Running, SandboxState::Running),
+            (Driver::Snapshotting, SandboxState::Running),
+            (Driver::Stopping, SandboxState::Stopping),
+            (Driver::Stopped, SandboxState::Stopped),
+            (Driver::Paused, SandboxState::Paused),
+            (Driver::Archived, SandboxState::Archived),
+            (Driver::Deleting, SandboxState::Deleting),
+            (Driver::Deleted, SandboxState::Deleted),
+            (Driver::Error, SandboxState::Error),
+            (Driver::Unknown, SandboxState::Unknown),
+        ] {
+            assert_eq!(normalize_driver_state(driver), fabro, "{driver:?}");
+        }
+    }
+
+    #[test]
+    fn status_projection_carries_identity_source_and_labels() {
+        let mut status = sandbox_driver::SandboxStatus::new(
+            SandboxId::try_new("container-abc123").unwrap(),
+            sandbox_driver::SandboxState::Running,
+        );
+        status.name = Some("fabro-run-abc".to_string());
+        status.provider_state = "running".to_string();
+        status.source = Some("buildpack-deps:noble".to_string());
+        status
+            .labels
+            .insert("sh.fabro.managed".to_string(), "true".to_string());
+        let mut resources = sandbox_driver::Resources::default();
+        resources.cpu_cores = Some(2);
+        resources.memory_mb = Some(2048);
+        status.resources = Some(resources);
+
+        let info = info_from_status(&SandboxProviderKind::DOCKER, &status);
+        assert_eq!(info.id, "container-abc123");
+        assert_eq!(info.display_name.as_deref(), Some("fabro-run-abc"));
+        assert_eq!(info.state, SandboxState::Running);
+        assert_eq!(info.native_state.as_deref(), Some("running"));
+        assert_eq!(info.image.as_deref(), Some("buildpack-deps:noble"));
+        assert_eq!(info.resources.cpu_cores, Some(2.0));
+        assert_eq!(info.resources.memory_bytes, Some(2_147_483_648));
+        assert_eq!(
+            info.labels.get("sh.fabro.managed").map(String::as_str),
+            Some("true")
+        );
+
+        let record = RunSandboxInstance {
+            provider: SandboxProviderKind::DOCKER,
+            image:    None,
+            snapshot: None,
+            runtime:  fabro_types::RunSandboxRuntime {
+                id:                "container-abc123".to_string(),
+                working_directory: "/workspace".to_string(),
+                repo_cloned:       Some(true),
+                clone_origin_url:  None,
+                clone_branch:      None,
+                workspace_root:    None,
+                repos_root:        None,
+                primary_repo_path: None,
+                primary_repo_link: None,
+            },
+        };
+        let details = details_from_status(&record, &status);
+        assert_eq!(
+            details.sandbox.image.as_deref(),
+            Some("buildpack-deps:noble")
+        );
+        assert_eq!(details.sandbox.runtime.id, "container-abc123");
+        assert_eq!(details.network, SandboxNetwork::unknown());
+    }
 
     #[test]
     fn local_details_returns_running_with_no_metadata() {

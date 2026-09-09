@@ -1,17 +1,14 @@
 pub mod config;
 pub mod error;
-#[cfg(any(feature = "docker", feature = "daytona"))]
 pub mod from_environment;
 pub mod provider;
 pub mod sandbox;
 pub mod sandbox_spec;
 
-#[cfg(any(feature = "docker", feature = "daytona"))]
 mod clone_source;
 
 mod git_retry;
 
-#[cfg(any(feature = "docker", feature = "daytona", test))]
 mod managed_labels;
 
 mod push_credentials;
@@ -29,7 +26,7 @@ pub mod reconnect;
 
 pub mod terminal;
 
-#[cfg(feature = "docker")]
+mod clone;
 pub mod docker;
 
 #[cfg(feature = "daytona")]
@@ -39,8 +36,7 @@ pub mod daytona;
 pub mod test_support;
 
 pub use details::sandbox_details;
-#[cfg(feature = "docker")]
-pub use docker::{DockerSandbox, DockerSandboxOptions};
+pub use docker::{DockerSandboxOptions, attach_docker, check_docker_daemon, docker_sandbox};
 pub use driver_sandbox::{DriverSandbox, local_sandbox};
 pub use error::{Error, Result, default_redacted_output_tail, display_for_log};
 pub use exec::{ExplicitEnvPolicy, SandboxExec, is_sensitive_env_var};
@@ -53,11 +49,9 @@ pub use git_retry::{
 };
 #[cfg(feature = "daytona")]
 pub use provider::daytona::DaytonaSandboxProvider;
-#[cfg(feature = "docker")]
-pub use provider::docker::DockerSandboxProvider;
+pub use provider::driver::DriverInventoryProvider;
 pub use provider::{
-    LocalSandboxProvider, SandboxCreateSpec, SandboxLookupError, SandboxProvider,
-    SandboxProviderRegistry,
+    LocalSandboxProvider, SandboxLookupError, SandboxProvider, SandboxProviderRegistry,
 };
 pub use push_credentials::RefreshErrorKind;
 pub use reconnect::{reconnect, reconnect_for_run, reconnect_for_run_with_callback};
@@ -70,4 +64,4 @@ pub use sandbox::{
     redacted_output_tail, setup_git_via_exec, shell_quote,
 };
 pub use sandbox_spec::SandboxSpec;
-pub use terminal::{TerminalSession, TerminalSize, open_terminal_for_run};
+pub use terminal::{DriverTerminalSession, TerminalSession, TerminalSize, open_terminal_for_run};
