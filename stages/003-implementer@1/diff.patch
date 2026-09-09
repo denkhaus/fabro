@@ -1,0 +1,40 @@
+diff --git a/.fabro/journal/01M22PCGN4E3X1XGN630MDDH39.jsonl b/.fabro/journal/01M22PCGN4E3X1XGN630MDDH39.jsonl
+index b95bc01..e8b0c84 100644
+--- a/.fabro/journal/01M22PCGN4E3X1XGN630MDDH39.jsonl
++++ b/.fabro/journal/01M22PCGN4E3X1XGN630MDDH39.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M22PCGN4E3X1XGN630MDDH39","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T09:01:15Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M22PCGN4E3X1XGN630MDDH39","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-09T09:01:49Z","data":{"painpoints":[],"observations":["No open develop PRs existed, so the in-flight PR guard excluded nothing; all listed runs had merged or null PRs.","fabro-fc1b basis resolved cleanly against the current tree: the 'ONE focused test' clause is at line 25 of .fabro/workflows/develop/prompts/implementer.md; note the same rule is referenced again at line 78 (cross-reference to step 4), which the implementer should keep consistent."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M22PCGN4E3X1XGN630MDDH39","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-09T09:03:00Z","data":{"painpoints":[],"observations":["ml record for type convention requires --content in addition to --description; the first attempt failed with a copy-paste retry hint (this session, seed fabro-fc1b) — worth knowing for future lesson captures."]}}
+diff --git a/.fabro/workflows/develop/prompts/implementer.md b/.fabro/workflows/develop/prompts/implementer.md
+index e77bdac..cc12252 100644
+--- a/.fabro/workflows/develop/prompts/implementer.md
++++ b/.fabro/workflows/develop/prompts/implementer.md
+@@ -22,7 +22,7 @@ Tracker mechanics (sd is installed and authoritative):
+ 1. Re-read the seed requirements from `sd show <current_seed_id>`. The seed description is the specification; follow it literally.
+ 2. Implement it in the current worktree: create and edit files, keep the project's conventions (commands run through its `just` recipes).
+ 3. Write or update tests exactly as the seed demands.
+-4. Do NOT run the quality gate — NOT `just qualitygate`, NOT its equivalent. The deterministic tester step after you owns the gate; a redundant run (observed: implementer + tester + reviewer all gating the same tree) wastes a cold cache's tens of seconds and blurs role boundaries. Your check: the project's compile check or ONE focused test — plus, for Rust changes, crate-scoped fmt and clippy on EVERY touched crate: `cargo +nightly-2026-04-14 fmt -p <touched-crate>` and `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings`. That clippy invocation is the literal gate command with DEFAULT features: run it on EVERY touched crate IN ADDITION to any feature-scoped clippy checks you may also run (e.g. `--features docker`) — a feature-scoped pass must never substitute for the default-features run (run 01M1YJ8R820R7ZMSN55GJGMZ4A: the implementer verified only under a feature flag while a default-features E0432 it had itself diagnosed red-lined the tester 11s in). Accordingly, a known default-features break in a touched crate (e.g. an E0432 that only appears without features) FAILS your 'gate passes' self-assessment: you may not report success while such a break is outstanding — fix it, or route Blocked if you cannot. Never the full workspace fmt/clippy and never the full suite (fabro-0d56: two of three tester cycles in run 01M1S6VRWQMD56M1X8HWAXDSNN were pure style failures — rustfmt drift and two denied clippy lints — burning ~25% of run LLM spend; the crate-scoped pass here keeps the tester's first gate compile-warm).
++4. Do NOT run the quality gate — NOT `just qualitygate`, NOT its equivalent. The deterministic tester step after you owns the gate; a redundant run (observed: implementer + tester + reviewer all gating the same tree) wastes a cold cache's tens of seconds and blurs role boundaries. Your check: when the seed adds or edits tests in a crate, run `cargo nextest run -p <touched-crate>` — the FULL crate suite, for every crate whose tests the seed touched; when the seed does NOT touch tests, the project's compile check or ONE focused test. The workspace-wide suite remains forbidden in both cases (run 01M20T9S8JRXETASN64768TRRP: targeted-only tests missed two pre-existing fabro-server Docker-socket failures; the gate-red bounce cost ~22 min, ~40% of that 55-min run). Plus, for Rust changes, crate-scoped fmt and clippy on EVERY touched crate: `cargo +nightly-2026-04-14 fmt -p <touched-crate>` and `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings`. That clippy invocation is the literal gate command with DEFAULT features: run it on EVERY touched crate IN ADDITION to any feature-scoped clippy checks you may also run (e.g. `--features docker`) — a feature-scoped pass must never substitute for the default-features run (run 01M1YJ8R820R7ZMSN55GJGMZ4A: the implementer verified only under a feature flag while a default-features E0432 it had itself diagnosed red-lined the tester 11s in). Accordingly, a known default-features break in a touched crate (e.g. an E0432 that only appears without features) FAILS your 'gate passes' self-assessment: you may not report success while such a break is outstanding — fix it, or route Blocked if you cannot. Never the full workspace fmt/clippy and never the full suite (fabro-0d56: two of three tester cycles in run 01M1S6VRWQMD56M1X8HWAXDSNN were pure style failures — rustfmt drift and two denied clippy lints — burning ~25% of run LLM spend; the crate-scoped pass here keeps the tester's first gate compile-warm).
+    For repetitive, pattern-shaped rewrites — call-site adaptation after a signature change, or a rename rippling through many sites — do ONE mechanical shell pass with a transform tool (`sed`, `perl -pi -e`, a small script) instead of N per-site `edit_file` calls, then verify with ONE focused check (compile check or ONE focused test, as above). Measured (run `01M11P68SHFS`, implementer@2): 277 s inference against 6 s tool time, ~43% of the run's LLM spend (US$0.486, 51.8k tokens). Correctness, not only cost: hand-editing many identical sites produced 19 concurrent-write serialization warnings and one swallowed-loop-body near-miss; mechanical transforms eliminate that near-miss class.
+ 5. Do NOT close the seed and do NOT review — the Reviewer decides, the deterministic Closeout closes.
+ 6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. Skip if nothing surfaced. Either way, the answer has a required home: name the mx-id (format `mx-xxxxxx`) or the literal skip text in `lesson_capture` — see 'Lesson capture' below.
+diff --git a/.mulch/expertise/workflow.jsonl b/.mulch/expertise/workflow.jsonl
+new file mode 100644
+index 0000000..8cf8a4d
+--- /dev/null
++++ b/.mulch/expertise/workflow.jsonl
+@@ -0,0 +1 @@
++{"type":"convention","classification":"tactical","recorded_at":"2026-09-09T09:02:41.006Z","evidence":{"seeds":"fabro-fc1b","commit":"76e8534309746b5d0d2b3815abc7c668f340566f"},"content":"In the develop workflow implementer prompt (step 4), when a seed adds or edits tests in a crate, the pre-gate check is cargo nextest run -p <touched-crate> (full crate suite) instead of ONE focused test; when tests are untouched, compile check or ONE focused test still applies. Workspace-wide suite always forbidden. Evidence: run 01M20T9S8JRXETASN64768TRRP — targeted-only tests missed two pre-existing fabro-server Docker-socket failures, gate-red bounce cost ~22 min (~40% of the run).","id":"mx-e26272"}
+diff --git a/.mulch/mulch.config.yaml b/.mulch/mulch.config.yaml
+index 7895d3f..7c4468c 100644
+--- a/.mulch/mulch.config.yaml
++++ b/.mulch/mulch.config.yaml
+@@ -15,6 +15,7 @@ domains:
+   platform: {}
+   store: {}
+   lab: {}
++  workflow: {}
+ governance:
+   max_entries: 100
+   warn_entries: 150
