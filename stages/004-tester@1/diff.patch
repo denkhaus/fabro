@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl b/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl
+index 50d03de..d87aa69 100644
+--- a/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl
++++ b/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl
+@@ -1,3 +1,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M23HWFFSB9NK78PGSCZWE6MA","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T17:01:50Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M23HWFFSB9NK78PGSCZWE6MA","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-09T17:03:11Z","data":{"painpoints":[],"observations":["Seed fabro-3d2d contained stale repo name 'gofib' (repo is fabro) and its AGENTS.md claim predates the existing '## Architecture' section; corrected the seed body via sd update before claiming — implementer should follow the corrected target, not the original text.","In-flight check: the only non-terminal develop run was this run itself; no open PRs, so no skips were needed."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M23HWFFSB9NK78PGSCZWE6MA","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-09T17:04:00Z","data":{"painpoints":[],"observations":["`CLAUDE.md` is a symlink to `AGENTS.md`; editing the real file at repo root via edit_file worked directly and the symlink picked the change up — no shell detour was needed despite the section living in repo-wiring territory the seed explicitly targeted."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M23HWFFSB9NK78PGSCZWE6MA","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-09T17:04:09Z","data":{}}
