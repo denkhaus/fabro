@@ -571,7 +571,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T19:30:14.994500588Z",
-  "last_event_at": "2026-09-09T19:48:40.487751151Z",
+  "last_event_at": "2026-09-09T19:48:45.198405021Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -928,9 +928,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 141,
       "checkpoint": {
-        "timestamp": "2026-09-09T19:48:40.708295956Z",
+        "timestamp": "2026-09-09T19:48:45.198032873Z",
         "current_node": "revise",
         "completed_nodes": [
           "start",
@@ -940,57 +940,33 @@
         ],
         "node_retries": {},
         "context_values": {
+          "child_run_id": "01M23TE61D4Y33415BK5M7C70X",
           "internal.node_visit_count": 1,
-          "internal.fidelity": "compact",
+          "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Cycle complete\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"revisor child 01M23TXPY6KC2QBCARSY2GY60",
           "internal.run_id": "01M23TC2C49X96SRM6SY01ZWVM",
-          "internal.thread_id": "develop",
+          "internal.work_dir": "/workspace/fabro",
           "preferred_label": "Cycle complete",
-          "thread.start.current_node": "survey",
-          "internal.retry_count.survey": 0,
-          "current_node": "revise",
-          "failure_signature": "",
+          "outcome": "succeeded",
+          "graph.inspects": "develop,merge-upstream,revisor",
           "seed_cycles": {
             "start": 1,
             "survey": 1,
             "develop": 1,
             "revise": 1
           },
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "response.survey": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.survey",
-            "chars": 621,
-            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"upstream count 0 (<5 thresh"
-          },
-          "thread.develop.current_node": "revise",
-          "internal.exit_kind": "natural",
-          "thread.survey.current_node": "develop",
-          "graph.cycle_counter_reset_key": "pass_id",
-          "internal.seed_cycle_anchor": "",
+          "internal.retry_count.survey": 0,
+          "internal.thread_id": "develop",
           "internal.retry_count.revise": 0,
+          "internal.seed_cycle_anchor": "",
           "response.develop": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.develop",
             "chars": 980,
             "preview": "Child `01M23TE61D4Y33415BK5M7C70X` succeeded (seed `fabro-c0e5`, PR #111), but the merge gate stayed blocked across all 3 bounded waits (~60 min) — persistently stuck per fabro-bde4 semantics. Routi"
           },
-          "graph.max_node_visits": "12",
-          "internal.retry_count.develop": 0,
-          "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Cycle complete\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"revisor child 01M23TXPY6KC2QBCARSY2GY60",
           "graph.preamble_budget_kb": "12",
-          "failure_class": "",
           "internal.retry_count.start": 0,
-          "outcome": "succeeded",
-          "response.revise": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.revise",
-            "chars": 486,
-            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Cycle complete\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"revisor child 01M23TXPY6KC2QBCARSY2GY60"
-          },
-          "last_stage": "revise",
-          "graph.rankdir": "LR",
-          "internal.work_dir": "/workspace/fabro",
-          "graph.inspects": "develop,merge-upstream,revisor",
+          "graph.cycle_counter_reset_key": "pass_id",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -998,59 +974,33 @@
               "no PR from revisor; next surveyor should confirm whether develop PR #111 merged (previous gate waits all reported blocked) or needs manual gate attention"
             ]
           },
-          "child_run_id": "01M23TE61D4Y33415BK5M7C70X"
+          "current_node": "revise",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "graph.max_node_visits": "12",
+          "internal.fidelity": "compact",
+          "failure_class": "",
+          "response.revise": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.revise",
+            "chars": 486,
+            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Cycle complete\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"revisor child 01M23TXPY6KC2QBCARSY2GY60"
+          },
+          "internal.exit_kind": "natural",
+          "failure_signature": "",
+          "thread.develop.current_node": "revise",
+          "internal.retry_count.develop": 0,
+          "thread.survey.current_node": "develop",
+          "graph.rankdir": "LR",
+          "last_stage": "revise",
+          "thread.start.current_node": "survey",
+          "response.survey": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.survey",
+            "chars": 621,
+            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Work\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"upstream count 0 (<5 thresh"
+          }
         },
         "node_outcomes": {
-          "develop": {
-            "status": "succeeded",
-            "preferred_label": "Gate stuck — revise anyway",
-            "context_updates": {
-              "response.develop": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.develop",
-                "chars": 980,
-                "preview": "Child `01M23TE61D4Y33415BK5M7C70X` succeeded (seed `fabro-c0e5`, PR #111), but the merge gate stayed blocked across all 3 bounded waits (~60 min) — persistently stuck per fabro-bde4 semantics. Routi"
-              },
-              "last_stage": "develop",
-              "last_response": "Child `01M23TE61D4Y33415BK5M7C70X` succeeded (seed `fabro-c0e5`, PR #111), but the merge gate stayed blocked across all 3 bounded waits (~60 min) — persistently stuck per fabro-bde4 semantics. Routi",
-              "child_run_id": "01M23TE61D4Y33415BK5M7C70X",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "develop child 01M23TE61D4Y33415BK5M7C70X succeeded in ~7 min: seed fabro-c0e5 (evidence.nu anomaly section for out-of-spec loop files + reviewer adjudication line) implemented, gate green, approved, seed closed; PR #111 created",
-                  "gate stuck: PR #111 reported blocked on all 3 bounded merged-waits (~60 min ceiling, fabro-bde4/fabro-1dc9 semantics) — child itself succeeded; revise-any-any pass runs the revisor, next surveyor should confirm whether #111 merged or needs manual gate attention"
-                ]
-              }
-            },
-            "notes": "Stage completed: develop",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 115426,
-                    "output_tokens": 697,
-                    "reasoning_tokens": 115,
-                    "cache_read_tokens": 380480,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 264088
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 41706,
-              "tool_time_ms": 462980,
-              "active_time_ms": 504686
-            }
-          },
           "start": {
             "status": "succeeded",
             "usage": null
@@ -1105,6 +1055,56 @@
               "active_time_ms": 37434
             }
           },
+          "develop": {
+            "status": "succeeded",
+            "preferred_label": "Gate stuck — revise anyway",
+            "context_updates": {
+              "response.develop": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.develop",
+                "chars": 980,
+                "preview": "Child `01M23TE61D4Y33415BK5M7C70X` succeeded (seed `fabro-c0e5`, PR #111), but the merge gate stayed blocked across all 3 bounded waits (~60 min) — persistently stuck per fabro-bde4 semantics. Routi"
+              },
+              "last_stage": "develop",
+              "last_response": "Child `01M23TE61D4Y33415BK5M7C70X` succeeded (seed `fabro-c0e5`, PR #111), but the merge gate stayed blocked across all 3 bounded waits (~60 min) — persistently stuck per fabro-bde4 semantics. Routi",
+              "child_run_id": "01M23TE61D4Y33415BK5M7C70X",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "develop child 01M23TE61D4Y33415BK5M7C70X succeeded in ~7 min: seed fabro-c0e5 (evidence.nu anomaly section for out-of-spec loop files + reviewer adjudication line) implemented, gate green, approved, seed closed; PR #111 created",
+                  "gate stuck: PR #111 reported blocked on all 3 bounded merged-waits (~60 min ceiling, fabro-bde4/fabro-1dc9 semantics) — child itself succeeded; revise-any-any pass runs the revisor, next surveyor should confirm whether #111 merged or needs manual gate attention"
+                ]
+              }
+            },
+            "notes": "Stage completed: develop",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 115426,
+                    "output_tokens": 697,
+                    "reasoning_tokens": 115,
+                    "cache_read_tokens": 380480,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 264088
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 41706,
+              "tool_time_ms": 462980,
+              "active_time_ms": 504686
+            }
+          },
           "revise": {
             "status": "succeeded",
             "preferred_label": "Cycle complete",
@@ -1156,17 +1156,103 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "7df9ac398db4b401f0d0dfc6a9c297ac0f1b1d33",
         "node_visits": {
           "start": 1,
           "revise": 1,
-          "develop": 1,
-          "survey": 1
+          "survey": 1,
+          "develop": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M23TC2C49X96SRM6SY01ZWVM.jsonl b/.fabro/journal/01M23TC2C49X96SRM6SY01ZWVM.jsonl\nindex 5b666f4bd..d97f00803 100644\n--- a/.fabro/journal/01M23TC2C49X96SRM6SY01ZWVM.jsonl\n+++ b/.fabro/journal/01M23TC2C49X96SRM6SY01ZWVM.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23TC2C49X96SRM6SY01ZWVM\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:30:17Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23TC2C49X96SRM6SY01ZWVM\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:30:56Z\",\"data\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (<5 threshold), newest upstream subject: 'Bump version to 0.348.0-nightly.0' — drift accumulates toward the 5-commit merge threshold\",\"no revisor backlog: newest develop run 01M23RQRCB748R4VRXA2WE6BZ0 already covered by succeeded revisor run 01M23SSXSB1CVEW6F146P93M55 (parent 01M23RN4J1ZCE4JY6295C45RDX, PR #110 state null — next surveyor may want to confirm it merged)\",\"route Work: one develop+revisor cycle this pass\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23TC2C49X96SRM6SY01ZWVM\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:39:26Z\",\"data\":{\"painpoints\":[],\"observations\":[\"develop child 01M23TE61D4Y33415BK5M7C70X succeeded in ~7 min: seed fabro-c0e5 (evidence.nu anomaly section for out-of-spec loop files + reviewer adjudication line) implemented, gate green, approved, seed closed; PR #111 created\",\"gate stuck: PR #111 reported blocked on all 3 bounded merged-waits (~60 min ceiling, fabro-bde4/fabro-1dc9 semantics) — child itself succeeded; revise-any-any pass runs the revisor, next surveyor should confirm whether #111 merged or needs manual gate attention\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23TC2C49X96SRM6SY01ZWVM\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:48:40Z\",\"data\":{\"painpoints\":[],\"observations\":[\"revisor child 01M23TXPY6KC2QBCARSY2GY604 (revision of develop run 01M23TE61D4Y33415BK5M7C70X) reached terminal: succeeded (completed) — pass child cycle complete\",\"no PR from revisor; next surveyor should confirm whether develop PR #111 merged (previous gate waits all reported blocked) or needs manual gate attention\"]}}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 4,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-09T19:48:45.244660928Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 1112667,
+      "inference_time_ms": 85225,
+      "tool_time_ms": 1006284,
+      "active_time_ms": 1091509
+    },
+    "final_git_commit_sha": "7df9ac398db4b401f0d0dfc6a9c297ac0f1b1d33",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 38099,
+          "inference_time_ms": 24808,
+          "tool_time_ms": 12626,
+          "active_time_ms": 37434
+        },
+        "billing_usd_micros": 73247,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 505276,
+          "inference_time_ms": 41706,
+          "tool_time_ms": 462980,
+          "active_time_ms": 504686
+        },
+        "billing_usd_micros": 264088,
+        "retries": 0
+      },
+      {
+        "stage_id": "revise",
+        "stage_label": "revise",
+        "timing": {
+          "wall_time_ms": 549985,
+          "inference_time_ms": 18711,
+          "tool_time_ms": 530678,
+          "active_time_ms": 549389
+        },
+        "billing_usd_micros": 27659,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 163607,
+      "output_tokens": 1728,
+      "total_tokens": 654273,
+      "reasoning_tokens": 298,
+      "cache_read_tokens": 488640,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 364994
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M23TC2C49X96SRM6SY01ZWVM.jsonl b/.fabro/journal/01M23TC2C49X96SRM6SY01ZWVM.jsonl\nnew file mode 100644\nindex 000000000..d97f00803\n--- /dev/null\n+++ b/.fabro/journal/01M23TC2C49X96SRM6SY01ZWVM.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23TC2C49X96SRM6SY01ZWVM\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:30:17Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23TC2C49X96SRM6SY01ZWVM\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:30:56Z\",\"data\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (<5 threshold), newest upstream subject: 'Bump version to 0.348.0-nightly.0' — drift accumulates toward the 5-commit merge threshold\",\"no revisor backlog: newest develop run 01M23RQRCB748R4VRXA2WE6BZ0 already covered by succeeded revisor run 01M23SSXSB1CVEW6F146P93M55 (parent 01M23RN4J1ZCE4JY6295C45RDX, PR #110 state null — next surveyor may want to confirm it merged)\",\"route Work: one develop+revisor cycle this pass\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23TC2C49X96SRM6SY01ZWVM\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:39:26Z\",\"data\":{\"painpoints\":[],\"observations\":[\"develop child 01M23TE61D4Y33415BK5M7C70X succeeded in ~7 min: seed fabro-c0e5 (evidence.nu anomaly section for out-of-spec loop files + reviewer adjudication line) implemented, gate green, approved, seed closed; PR #111 created\",\"gate stuck: PR #111 reported blocked on all 3 bounded merged-waits (~60 min ceiling, fabro-bde4/fabro-1dc9 semantics) — child itself succeeded; revise-any-any pass runs the revisor, next surveyor should confirm whether #111 merged or needs manual gate attention\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23TC2C49X96SRM6SY01ZWVM\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:48:40Z\",\"data\":{\"painpoints\":[],\"observations\":[\"revisor child 01M23TXPY6KC2QBCARSY2GY604 (revision of develop run 01M23TE61D4Y33415BK5M7C70X) reached terminal: succeeded (completed) — pass child cycle complete\",\"no PR from revisor; next surveyor should confirm whether develop PR #111 merged (previous gate waits all reported blocked) or needs manual gate attention\"]}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 4,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2016,6 +2102,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 144,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T19:48:45.198405021Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T19:48:45.198307968Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
