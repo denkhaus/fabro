@@ -346,6 +346,30 @@ def loop-diff-section [base: string, churn_rows: list]: nothing -> string {
     }
 }
 
+# Mixed captures (seed work AND loop churn, fabro-c0e5) used to demote
+# loop paths to counts-only churn, hiding out-of-spec residue from the
+# reviewer (PR #109: an auto_merge=false flip across three workflow.toml
+# files was approved unseen). This section surfaces every loop-path
+# change alongside seed work as a NAMED, DIFFED anomaly — same walk, same
+# cap, same disclosure as the two diff sections above — and the reviewer
+# prompt makes adjudicating it (residue vs adjacent repair vs scope
+# creep) mandatory. Detection-only by design: spec-named path promotion
+# (fabro-93a7) and worktree-diff quarantine (fabro-9d2f) are separate
+# open seeds and stay out.
+def anomaly-section [base: string, churn_rows: list]: nothing -> string {
+    let head = "\n== anomaly: changed files NOT named by the seed spec (loop paths changed alongside seed work — reviewer must adjudicate: residue vs adjacent repair vs scope creep) ==\n"
+    let churn_files = ($churn_rows | get -o path | default [] | sort-by {|f| diff-sort-key $f })
+    let walk = (diff-walk $base $churn_files)
+    if ($walk.omitted | is-empty) and ($walk.body | is-empty) {
+        return ($head + "(no anomaly hunks against the claim base — loop files changed before the claim only)\n")
+    }
+    if ($walk.omitted | is-empty) {
+        $head + $walk.body
+    } else {
+        $head + $walk.body + "\n(hard cap hit: " + ($walk.omitted | length | into string) + " of " + ($churn_files | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
+    }
+}
+
 def loop-churn-section [churn_rows: list]: nothing -> string {
     let head = "\n== loop churn (dev-loop machinery: workflow/scripts/tracker/expertise/config; counts only, not seed work) ==\n"
     if ($churn_rows | is-empty) {
@@ -409,6 +433,12 @@ def main []: nothing -> nothing {
     let loop_diff = (if ($seed_rows | is-empty) and (not ($churn_rows | is-empty)) {
         loop-diff-section $claim.base $churn_rows
     } else { "" })
+    # Mixed captures (seed work AND loop churn) get an anomaly section
+    # (fabro-c0e5): loop paths changed alongside seed work are diffed,
+    # not demoted to the counts-only churn above.
+    let anomaly = (if (not ($seed_rows | is-empty)) and (not ($churn_rows | is-empty)) {
+        anomaly-section $claim.base $churn_rows
+    } else { "" })
     let worktree = (worktree-section $wt.lines)
 
     # …then the diff gets whatever remains under the hard output budget
@@ -424,6 +454,7 @@ def main []: nothing -> nothing {
     emit $diff
     emit $churn
     if ($loop_diff | is-not-empty) { emit $loop_diff }
+    if ($anomaly | is-not-empty) { emit $anomaly }
     emit $worktree
     # Duplicate of the header line: survives a tail-anchored truncation too.
     print ""
