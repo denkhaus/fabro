@@ -191,6 +191,13 @@ decision, not an accident - it needs the user plus an ADR.
   tool; the dispatch path had already resolved them to file:// pointers.
   The premise was wrong, but it exposed an adjacent hardening gap that
   WAS real. Read the call path first, then fix what is actually true.
+  Same rule for REVISOR reviews and their seed citations (fabro-01b9,
+  2026-09-09): review 01M22PCGN4 rec 8 justified a change with 'open
+  seed fabro-01b9' whose demand the tree had already implemented since
+  619765c63 (qualitygate lite path). Before filing, extending, or
+  assigning from a review rec, verify the cited seed's premise AND its
+  implementation status against the tree; close stale seeds with the
+  evidence, never implement them again.
 - Clippy failures on UNTOUCHED files after mixing stable builds with the
   pinned nightly can be stale-cache artifacts (e804): snapshot the diff
   (including untracked files - stash ^3 parent carries them) BEFORE a
