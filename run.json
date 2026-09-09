@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T09:31:23.835093852Z",
-  "last_event_at": "2026-09-09T09:32:57.619842488Z",
+  "last_event_at": "2026-09-09T09:39:07.952028119Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -746,9 +746,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 101,
       "checkpoint": {
-        "timestamp": "2026-09-09T09:32:57.860803218Z",
+        "timestamp": "2026-09-09T09:33:02.992074627Z",
         "current_node": "planner",
         "completed_nodes": [
           "start",
@@ -756,16 +756,16 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.thread_id": "start",
-          "outcome": "succeeded",
+          "current_seed_brief": "In `.fabro/workflows/develop/scripts/closeout.nu`, before `sd close` runs, detect whether the run's diff touches any `Dockerfile*` path and emit a prominent warning that the fix takes effect only after the `fabro-toolchain:noble` image rebuilds. Acceptance criteria: (1) diff base: reuse the seed-claim-base approach from `.fabro/workflows/develop/scripts/evidence.nu` (newest commit where the current seed transitioned to in_progress; fallback to run base, flagged) — do not invent a new anchoring scheme; (2) detection: `git diff --name-only <base>` filtered with a glob matching any path segment named `Dockerfile*` (covers `.fabro/Dockerfile.toolchain`, `.fabro/Dockerfile`, root `Dockerfile`); (3) when matched, print a warning line to stderr AND stdout naming the touched files and stating the fix is inert until `fabro-toolchain:noble` is rebuilt — the warning must NEVER fail or block the close (wrap in `do { ... } | complete` so git errors degrade to silence); (4) SPEC ANNOTATION (resolved contradiction): the seed asks for the warning 'surfaced in the run summary and PR body', but that run-level warning channel is exactly what open seed fabro-5b0a proposes and does not exist yet — this seed must NOT build that channel; emitting the warning from closeout's captured stdout/stderr (which lands in the stage journal and run output) satisfies this seed, and fabro-5b0a remains the follow-up for PR-body surfacing (cross-reference it in a comment); (5) keep the existing close semantics byte-identical when no Dockerfile is touched (stdin seed-id validation, sd close, exit codes); (6) add a comment in the script explaining why (run 01M1YTVK73YEJXW4542MWDX4BJ: Dockerfile-only fix approved green while run containers still hit exit 127). Test: a nu-level smoke of the glob/filter logic (pure function over a path list) plus one manual invocation check; no engine changes, no new node.",
+          "failure_class": "",
+          "graph.inspects": "develop",
+          "internal.seed_cycle_anchor": "fabro-6f6e",
+          "last_response": "Fresh cycle (`seed_cycles: {start:1}`), no review verdict to fold in. Claimed `fabro-6f6e` (highest-priority unblocked seed; basis verified — `closeout.nu` exists with no Dockerfile warning; no open",
           "seed_cycles": {
             "planner": 1
           },
-          "failure_class": "",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "thread.start.current_node": "planner",
-          "internal.fidelity": "compact",
-          "internal.run_id": "01M22R3TBFP86JPX0ZD8CA0QF5",
+          "current_node": "planner",
+          "internal.retry_count.start": 0,
           "journal": {
             "painpoints": [],
             "observations": [
@@ -774,30 +774,30 @@
               "brief annotates the fabro-5b0a dependency: run-summary/PR-body warning channel does not exist yet, so this seed lands the closeout-emitted warning only"
             ]
           },
-          "internal.retry_count.planner": 0,
-          "graph.preamble_budget_kb": "24",
-          "internal.node_visit_count": 1,
-          "internal.seed_cycle_anchor": "fabro-6f6e",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "current_seed_brief": "In `.fabro/workflows/develop/scripts/closeout.nu`, before `sd close` runs, detect whether the run's diff touches any `Dockerfile*` path and emit a prominent warning that the fix takes effect only after the `fabro-toolchain:noble` image rebuilds. Acceptance criteria: (1) diff base: reuse the seed-claim-base approach from `.fabro/workflows/develop/scripts/evidence.nu` (newest commit where the current seed transitioned to in_progress; fallback to run base, flagged) — do not invent a new anchoring scheme; (2) detection: `git diff --name-only <base>` filtered with a glob matching any path segment named `Dockerfile*` (covers `.fabro/Dockerfile.toolchain`, `.fabro/Dockerfile`, root `Dockerfile`); (3) when matched, print a warning line to stderr AND stdout naming the touched files and stating the fix is inert until `fabro-toolchain:noble` is rebuilt — the warning must NEVER fail or block the close (wrap in `do { ... } | complete` so git errors degrade to silence); (4) SPEC ANNOTATION (resolved contradiction): the seed asks for the warning 'surfaced in the run summary and PR body', but that run-level warning channel is exactly what open seed fabro-5b0a proposes and does not exist yet — this seed must NOT build that channel; emitting the warning from closeout's captured stdout/stderr (which lands in the stage journal and run output) satisfies this seed, and fabro-5b0a remains the follow-up for PR-body surfacing (cross-reference it in a comment); (5) keep the existing close semantics byte-identical when no Dockerfile is touched (stdin seed-id validation, sd close, exit codes); (6) add a comment in the script explaining why (run 01M1YTVK73YEJXW4542MWDX4BJ: Dockerfile-only fix approved green while run containers still hit exit 127). Test: a nu-level smoke of the glob/filter logic (pure function over a path list) plus one manual invocation check; no engine changes, no new node.",
-          "internal.work_dir": "/workspace/fabro",
-          "current_seed_id": "fabro-6f6e",
-          "last_response": "Fresh cycle (`seed_cycles: {start:1}`), no review verdict to fold in. Claimed `fabro-6f6e` (highest-priority unblocked seed; basis verified — `closeout.nu` exists with no Dockerfile warning; no open",
-          "graph.max_node_visits": "40",
-          "internal.retry_count.start": 0,
-          "graph.rankdir": "LR",
-          "graph.inspects": "develop",
-          "current_node": "planner",
-          "last_stage": "planner",
-          "current_seed_title": "Closeout: warn when the run diff touches a Dockerfile — the fix is inert until the toolchain image rebuilds",
           "failure_signature": "",
+          "graph.max_node_visits": "40",
+          "internal.fidelity": "compact",
+          "internal.node_visit_count": 1,
+          "internal.work_dir": "/workspace/fabro",
+          "last_stage": "planner",
+          "graph.preamble_budget_kb": "24",
+          "internal.run_id": "01M22R3TBFP86JPX0ZD8CA0QF5",
+          "thread.start.current_node": "planner",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.planner": 0,
+          "internal.thread_id": "start",
+          "current_seed_id": "fabro-6f6e",
+          "preferred_label": "Seed claimed",
+          "outcome": "succeeded",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
             "chars": 2926,
             "preview": "Fresh cycle (`seed_cycles: {start:1}`), no review verdict to fold in. Claimed `fabro-6f6e` (highest-priority unblocked seed; basis verified — `closeout.nu` exists with no Dockerfile warning; no open"
           },
-          "preferred_label": "Seed claimed"
+          "current_seed_title": "Closeout: warn when the run diff touches a Dockerfile — the fix is inert until the toolchain image rebuilds",
+          "graph.rankdir": "LR",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit"
         },
         "node_outcomes": {
           "start": {
@@ -859,9 +859,201 @@
           }
         },
         "next_node_id": "implementer",
+        "git_commit_sha": "bc1f4e60daea033a43ff35a9098a1b6fc77b3732",
         "node_visits": {
           "start": 1,
           "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M22R3TBFP86JPX0ZD8CA0QF5.jsonl b/.fabro/journal/01M22R3TBFP86JPX0ZD8CA0QF5.jsonl\nnew file mode 100644\nindex 0000000..e6b99f4\n--- /dev/null\n+++ b/.fabro/journal/01M22R3TBFP86JPX0ZD8CA0QF5.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22R3TBFP86JPX0ZD8CA0QF5\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:31:26Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22R3TBFP86JPX0ZD8CA0QF5\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:32:57Z\",\"data\":{\"painpoints\":[],\"observations\":[\"closeout.nu is fs_hide-hidden to read_file — used shell cat per the documented bypass; basis of fabro-6f6e resolved against current tree (no Dockerfile warning exists in closeout.nu)\",\"fabro_runs_list showed 5 develop runs, none with an open PR — no in-flight exclusions applied\",\"brief annotates the fabro-5b0a dependency: run-summary/PR-body warning channel does not exist yet, so this seed lands the closeout-emitted warning only\"]}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 9f34cfe..f69c0ef 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -259,7 +259,7 @@\n {\"id\":\"fabro-6db3\",\"title\":\"Classify the engine journal file as expected churn in evidence.nu\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T20:12:21.007Z\",\"updatedAt\":\"2026-09-07T20:22:11.204Z\",\"description\":\"In `.fabro/workflows/develop/scripts/evidence.nu`, add `.fabro/journal/**` (and `.fabro/blobs/**`) to the known-transient/churn section with an explicit '(engine journal, expected)' label. This run's reviewer found `.fabro/journal/<run>.jsonl +3` in its `git diff` beyond the churn list because the stage-journal hook writes after capture, and burned verification budget rationalizing an unexplained diff line instead of judging the seed. Distinct from open fabro-43ba (no-net-diff detection — the journal file grows monotonically) and fabro-93a7 (seed-spec paths). Effect: every review sees a reconciled churn list; removes a recurring false-deviation risk.\\nBasis: run 01M1YQD03JZJCGRJ53SNRBTM8P, workflow version 4ff76f32665f954e9a8e2027ec2a4a5b48266707730ae0620fcfd3f79acd4a10, commit 26c7ce34ffeb12df96dc464c485f83e5d1ba0b85\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-05d0\",\"title\":\"Bake gh into the develop toolchain image (or check open PRs engine-side) so the in-flight-PR guard functions\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T20:40:40.695Z\",\"updatedAt\":\"2026-09-07T22:33:02.930Z\",\"description\":\"CORRECTED 2026-09-08 (user decision, ADR-0019): the gh-baking approach implemented via PR #53 was REVERTED (commit f00fdb102). WHY GH IS FORBIDDEN IN AGENT SANDBOXES: the engine injects a freshly minted GITHUB_TOKEN into every agent shell call (fabro-workflow services.rs resolve_workflow_env) plus a git credential bridge (git_bridge.rs) - combined with the gh binary this was a fully WRITE-CAPABLE forge client in every agent shell (merge, close, force-push, branch delete), bypassing every engine governance control (gate, revisor, auto-merge; fabro-github is the only sanctioned write path, engine-side). Baking a raw forge client into the agent image was a capability addition without a user decision - exactly what ADR-0019 now forbids: direct agent tools are read-only at most, extend existing tools over new ones, capability changes are needs-user. The guard's legitimate need (open-PR visibility) is solved credential-less via fabro_runs_list (fabro-06e0, Weg A). This seed stays CLOSED; the correction documents the revert and the prohibition rationale for the tracker record.\\n\\n(original request: bake gh into the develop toolchain image so the in-flight-PR guard works; implemented as PR #53, reverted 2026-09-08)\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-07T21:06:39.364Z\"}\n {\"id\":\"fabro-5b0a\",\"title\":\"Surface degraded fail-open planner checks as run-level warnings in the run summary and PR body\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T20:40:43.171Z\",\"updatedAt\":\"2026-09-07T20:56:07.608Z\",\"description\":\"In run 01M1YS4NJH27NS7CQ02AWM9BNE the gh open-PR check degraded fail-open but the degradation was visible only in a journal line; a human reading PR #51 cannot distinguish 'succeeded' from 'succeeded with guards down'. Change: engine-side, emit a run-level warning (surfaced in the run summary and the PR body) whenever a mandated planner check degrades fail-open instead of logging it only to the journal. Expected effect: guard-down runs become human-visible at review time instead of silently passing.\\nBasis: run 01M1YS4NJH27NS7CQ02AWM9BNE, workflow version ae2869aca84cea61832e77a2926b97ebb79d70300014555c724f2862e12612c9, commit 774f67e9548357656f837bd152c22be72920eb1e\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-6f6e\",\"title\":\"Closeout: warn when the run diff touches a Dockerfile — the fix is inert until the toolchain image rebuilds\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T21:13:09.464Z\",\"updatedAt\":\"2026-09-07T21:32:11.484Z\",\"description\":\"Run 01M1YTVK73YEJXW4542MWDX4BJ (seed fabro-05d0) delivered only a .fabro/Dockerfile.toolchain edit; Docker is absent from run sandboxes so no build ran and the reviewer approved anyway — the same gap that left gh in .fabro/Dockerfile since commit 98ed9f1 while run containers still hit exit 127 on Sep 7. Change: in .fabro/workflows/develop/scripts/closeout.nu, detect a diff touching Dockerfile* and emit a run-level warning ('seed closes, but takes effect only after fabro-toolchain:noble rebuild') surfaced in the run summary and PR body (the channel open seed fabro-5b0a proposes — complementary, cross-referenced, not superseded). Expected effect: eliminates the recurring class of seeds closed green while the promised behavior stays broken for N subsequent runs.\\\\nBasis: run 01M1YTVK73YEJXW4542MWDX4BJ, workflow version 5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21, commit 54612515b569d36aa68872cb119b12ae7f9c4eaf\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-6f6e\",\"title\":\"Closeout: warn when the run diff touches a Dockerfile — the fix is inert until the toolchain image rebuilds\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T21:13:09.464Z\",\"updatedAt\":\"2026-09-09T09:32:12.632Z\",\"description\":\"Run 01M1YTVK73YEJXW4542MWDX4BJ (seed fabro-05d0) delivered only a .fabro/Dockerfile.toolchain edit; Docker is absent from run sandboxes so no build ran and the reviewer approved anyway — the same gap that left gh in .fabro/Dockerfile since commit 98ed9f1 while run containers still hit exit 127 on Sep 7. Change: in .fabro/workflows/develop/scripts/closeout.nu, detect a diff touching Dockerfile* and emit a run-level warning ('seed closes, but takes effect only after fabro-toolchain:noble rebuild') surfaced in the run summary and PR body (the channel open seed fabro-5b0a proposes — complementary, cross-referenced, not superseded). Expected effect: eliminates the recurring class of seeds closed green while the promised behavior stays broken for N subsequent runs.\\\\nBasis: run 01M1YTVK73YEJXW4542MWDX4BJ, workflow version 5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21, commit 54612515b569d36aa68872cb119b12ae7f9c4eaf\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-c0a8\",\"title\":\"Develop planner: record stale-spec corrections via sd update before claiming\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-07T21:13:15.362Z\",\"updatedAt\":\"2026-09-07T22:04:39.352Z\",\"description\":\"Seed fabro-05d0 named .fabro/Dockerfile as the fix target; the planner burned ~6 tool calls / ~45 s / $0.097 (39% of run cost, events seq 44-82) proving the path wrong, then the implementer re-hit the contradiction and journaled a suggested sd update that nobody applied — the seed closed with the stale body. Change: .fabro/workflows/develop/prompts/planner.md step 3 (stale-basis check): when the basis resolves but the spec's named path is wrong, the planner (already the sole tracker writer) must record the correction via sd update <id> --description before claiming. Expected effect: ~40% planner time/token cut on platform-path seeds (the tracker's most common class) and the contradiction stops recurring in every future reader's context.\\\\nBasis: run 01M1YTVK73YEJXW4542MWDX4BJ, workflow version 5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21, commit 54612515b569d36aa68872cb119b12ae7f9c4eaf\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-07T22:04:39.352Z\"}\n {\"id\":\"fabro-96bd\",\"title\":\"Implementer prompt: document the ml record flag contract per record type\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T21:13:20.579Z\",\"updatedAt\":\"2026-09-07T21:32:11.677Z\",\"description\":\"The implementer's lesson-capture call failed with 'pattern records are missing required flag(s): --name' yet exited 0 with is_error: false (events seq 163-165) — only the stdout text revealed the failure. .fabro/workflows/develop/prompts/implementer.md step 6 teaches the exact failing form (ml record <domain> --type ... --description ... with no --name). Change: document the exact flag set per record type (pattern requires --name) in step 6, and note the mulch-cli exit-0-on-error bug (same class as sd's fabro-d936) for upstream filing. Expected effect: one fewer failed tool call + LLM round per lesson capture and deterministic error detection.\\\\nBasis: run 01M1YTVK73YEJXW4542MWDX4BJ, workflow version 5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21, commit 54612515b569d36aa68872cb119b12ae7f9c4eaf\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-9a43\",\"title\":\"Point reviewer phrase checks at read_file offset/limit when diff line numbers are known\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-07T21:40:22.698Z\",\"updatedAt\":\"2026-09-07T21:49:26.064Z\",\"description\":\"In .fabro/workflows/develop/prompts/reviewer.md (tool-guidance/verification section), instruct the reviewer to verify phrase-presence claims with read_file offset/limit on the exact lines the diff already names — or pass an explicit max_results to grep — instead of multi-pattern grep alternations. Grounded in run 01M1YWHK6F8F2VZ6F6FZV8A7VE: the reviewer's first grep alternation returned only the line-25 match in truncated output (journal event seq 174, observation 2), forcing a second targeted grep for the carve-out clause — an extra model round-trip (~3–4 s of the reviewer's 23.7 s) for a verification the diff had already localized to lines 25 and 78. Expected effect: one fewer verification round-trip per review of text-edit seeds. Related to open fabro-a0fe (blob reads with read_file offset/limit) but targets the phrase-check guidance — different section, different mechanism (grep-truncation avoidance vs improvised blob reads).\\nBasis: run 01M1YWHK6F8F2VZ6F6FZV8A7VE, workflow version 5603b5e729f24c8e4ab21d9e7599599d18c4c910b381de3682f7a9a6b8628a21, commit 50367ecee388a4806948c80162dc93c2f95f7bb2\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 3,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T09:39:08.165794206Z",
+        "current_node": "implementer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "lesson_capture": "mx-84a287",
+          "internal.thread_id": "planner",
+          "outcome": "succeeded",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "failure_class": "",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.implementer": 0,
+          "thread.start.current_node": "planner",
+          "internal.fidelity": "summary:high",
+          "internal.run_id": "01M22R3TBFP86JPX0ZD8CA0QF5",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "nu 0.115: `do { ... } | complete` errors ('Complete only works with external commands') when the block's final expression is a value, not an external call — the brief's literal 'wrap in do|complete' had to become per-git-call do|complete plus an outer `do -i` guard in closeout.nu; also, sourcing a script with `def main` auto-invokes that main after the sourcing script's top level, so closeout-smoke.nu ends with an explicit `exit 0`.",
+              "In nushell interpolated strings ($\"...\"), parenthesized prose is parsed as code — the first warning message hit a parse error from '(run sandboxes build the image; ...)' and was reworded; nu `source <const>` resolves relative to the sourcing script's directory, not the invocation cwd."
+            ]
+          },
+          "internal.retry_count.planner": 0,
+          "thread.planner.current_node": "implementer",
+          "graph.preamble_budget_kb": "24",
+          "internal.node_visit_count": 1,
+          "internal.seed_cycle_anchor": "fabro-6f6e",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "current_seed_brief": "In `.fabro/workflows/develop/scripts/closeout.nu`, before `sd close` runs, detect whether the run's diff touches any `Dockerfile*` path and emit a prominent warning that the fix takes effect only after the `fabro-toolchain:noble` image rebuilds. Acceptance criteria: (1) diff base: reuse the seed-claim-base approach from `.fabro/workflows/develop/scripts/evidence.nu` (newest commit where the current seed transitioned to in_progress; fallback to run base, flagged) — do not invent a new anchoring scheme; (2) detection: `git diff --name-only <base>` filtered with a glob matching any path segment named `Dockerfile*` (covers `.fabro/Dockerfile.toolchain`, `.fabro/Dockerfile`, root `Dockerfile`); (3) when matched, print a warning line to stderr AND stdout naming the touched files and stating the fix is inert until `fabro-toolchain:noble` is rebuilt — the warning must NEVER fail or block the close (wrap in `do { ... } | complete` so git errors degrade to silence); (4) SPEC ANNOTATION (resolved contradiction): the seed asks for the warning 'surfaced in the run summary and PR body', but that run-level warning channel is exactly what open seed fabro-5b0a proposes and does not exist yet — this seed must NOT build that channel; emitting the warning from closeout's captured stdout/stderr (which lands in the stage journal and run output) satisfies this seed, and fabro-5b0a remains the follow-up for PR-body surfacing (cross-reference it in a comment); (5) keep the existing close semantics byte-identical when no Dockerfile is touched (stdin seed-id validation, sd close, exit codes); (6) add a comment in the script explaining why (run 01M1YTVK73YEJXW4542MWDX4BJ: Dockerfile-only fix approved green while run containers still hit exit 127). Test: a nu-level smoke of the glob/filter logic (pure function over a path list) plus one manual invocation check; no engine changes, no new node.",
+          "internal.work_dir": "/workspace/fabro",
+          "current_seed_id": "fabro-6f6e",
+          "last_response": "Implementation complete. Summary of the work:\n\n**Files touched** (all under `.fabro/workflows/develop/scripts/`, platform-targeting per the seed brief):\n- `closeout.nu` — additions only (102 inserti",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5175,
+            "preview": "Implementation complete. Summary of the work:\n\n**Files touched** (all under `.fabro/workflows/develop/scripts/`, platform-targeting per the seed brief):\n- `closeout.nu` — additions only (102 inserti"
+          },
+          "graph.max_node_visits": "40",
+          "internal.retry_count.start": 0,
+          "graph.rankdir": "LR",
+          "graph.inspects": "develop",
+          "current_node": "implementer",
+          "last_stage": "implementer",
+          "current_seed_title": "Closeout: warn when the run diff touches a Dockerfile — the fix is inert until the toolchain image rebuilds",
+          "implementation_summary": "Added to `.fabro/workflows/develop/scripts/closeout.nu` (insert-only): a pure `dockerfile-hits` any-segment `Dockerfile*` filter, evidence.nu's seed-claim-base anchoring mirrored (`run-base`/`seed-status-at`/`seed-claim-base`, verified live resolving to bc1f4e6 grounded), and a `warn-dockerfile-diff` command printing the inert-until-`fabro-toolchain:noble`-rebuild warning to both stderr and stdout before `sd close`, guarded so it can never block the close (each git call in `do { ... } | complete`, orchestrator under `do -i` — `complete` is external-only in nu, documented in-script). New `closeout-smoke.nu` covers the pure glob/filter logic; manual invocation checks verified both the no-Dockerfile byte-identical path and the warning path with a temporarily touched `.fabro/Dockerfile` (restored). Lesson captured as mx-84a287. Per-criterion: PASS diff base reuse (mirrored helpers, live-verified); PASS detection glob (dockerfile-hits + smoke); PASS dual-stream warning, non-blocking wrappers (manual check exit driven only by sd close); PASS no PR-body channel, fabro-5b0a cross-referenced in comment; PASS byte-identical close semantics (baseline run identical, diff insert-only); PASS rationale comment citing run 01M1YTVK73YEJXW4542MWDX4BJ; PASS smoke + manual invocation test per spec.",
+          "failure_signature": "",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2926,
+            "preview": "Fresh cycle (`seed_cycles: {start:1}`), no review verdict to fold in. Claimed `fabro-6f6e` (highest-priority unblocked seed; basis verified — `closeout.nu` exists with no Dockerfile warning; no open"
+          },
+          "preferred_label": "Implemented"
+        },
+        "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_response": "Implementation complete. Summary of the work:\n\n**Files touched** (all under `.fabro/workflows/develop/scripts/`, platform-targeting per the seed brief):\n- `closeout.nu` — additions only (102 inserti",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5175,
+                "preview": "Implementation complete. Summary of the work:\n\n**Files touched** (all under `.fabro/workflows/develop/scripts/`, platform-targeting per the seed brief):\n- `closeout.nu` — additions only (102 inserti"
+              },
+              "implementation_summary": "Added to `.fabro/workflows/develop/scripts/closeout.nu` (insert-only): a pure `dockerfile-hits` any-segment `Dockerfile*` filter, evidence.nu's seed-claim-base anchoring mirrored (`run-base`/`seed-status-at`/`seed-claim-base`, verified live resolving to bc1f4e6 grounded), and a `warn-dockerfile-diff` command printing the inert-until-`fabro-toolchain:noble`-rebuild warning to both stderr and stdout before `sd close`, guarded so it can never block the close (each git call in `do { ... } | complete`, orchestrator under `do -i` — `complete` is external-only in nu, documented in-script). New `closeout-smoke.nu` covers the pure glob/filter logic; manual invocation checks verified both the no-Dockerfile byte-identical path and the warning path with a temporarily touched `.fabro/Dockerfile` (restored). Lesson captured as mx-84a287. Per-criterion: PASS diff base reuse (mirrored helpers, live-verified); PASS detection glob (dockerfile-hits + smoke); PASS dual-stream warning, non-blocking wrappers (manual check exit driven only by sd close); PASS no PR-body channel, fabro-5b0a cross-referenced in comment; PASS byte-identical close semantics (baseline run identical, diff insert-only); PASS rationale comment citing run 01M1YTVK73YEJXW4542MWDX4BJ; PASS smoke + manual invocation test per spec.",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "nu 0.115: `do { ... } | complete` errors ('Complete only works with external commands') when the block's final expression is a value, not an external call — the brief's literal 'wrap in do|complete' had to become per-git-call do|complete plus an outer `do -i` guard in closeout.nu; also, sourcing a script with `def main` auto-invokes that main after the sourcing script's top level, so closeout-smoke.nu ends with an explicit `exit 0`.",
+                  "In nushell interpolated strings ($\"...\"), parenthesized prose is parsed as code — the first warning message hit a parse error from '(run sandboxes build the image; ...)' and was reworded; nu `source <const>` resolves relative to the sourcing script's directory, not the invocation cwd."
+                ]
+              },
+              "lesson_capture": "mx-84a287"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 34720,
+                    "output_tokens": 7248,
+                    "reasoning_tokens": 7790,
+                    "cache_read_tokens": 694208,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 295231
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 368493,
+              "tool_time_ms": 9500,
+              "active_time_ms": 377993
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_id": "fabro-6f6e",
+              "last_response": "Fresh cycle (`seed_cycles: {start:1}`), no review verdict to fold in. Claimed `fabro-6f6e` (highest-priority unblocked seed; basis verified — `closeout.nu` exists with no Dockerfile warning; no open",
+              "last_stage": "planner",
+              "current_seed_brief": "In `.fabro/workflows/develop/scripts/closeout.nu`, before `sd close` runs, detect whether the run's diff touches any `Dockerfile*` path and emit a prominent warning that the fix takes effect only after the `fabro-toolchain:noble` image rebuilds. Acceptance criteria: (1) diff base: reuse the seed-claim-base approach from `.fabro/workflows/develop/scripts/evidence.nu` (newest commit where the current seed transitioned to in_progress; fallback to run base, flagged) — do not invent a new anchoring scheme; (2) detection: `git diff --name-only <base>` filtered with a glob matching any path segment named `Dockerfile*` (covers `.fabro/Dockerfile.toolchain`, `.fabro/Dockerfile`, root `Dockerfile`); (3) when matched, print a warning line to stderr AND stdout naming the touched files and stating the fix is inert until `fabro-toolchain:noble` is rebuilt — the warning must NEVER fail or block the close (wrap in `do { ... } | complete` so git errors degrade to silence); (4) SPEC ANNOTATION (resolved contradiction): the seed asks for the warning 'surfaced in the run summary and PR body', but that run-level warning channel is exactly what open seed fabro-5b0a proposes and does not exist yet — this seed must NOT build that channel; emitting the warning from closeout's captured stdout/stderr (which lands in the stage journal and run output) satisfies this seed, and fabro-5b0a remains the follow-up for PR-body surfacing (cross-reference it in a comment); (5) keep the existing close semantics byte-identical when no Dockerfile is touched (stdin seed-id validation, sd close, exit codes); (6) add a comment in the script explaining why (run 01M1YTVK73YEJXW4542MWDX4BJ: Dockerfile-only fix approved green while run containers still hit exit 127). Test: a nu-level smoke of the glob/filter logic (pure function over a path list) plus one manual invocation check; no engine changes, no new node.",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2926,
+                "preview": "Fresh cycle (`seed_cycles: {start:1}`), no review verdict to fold in. Claimed `fabro-6f6e` (highest-priority unblocked seed; basis verified — `closeout.nu` exists with no Dockerfile warning; no open"
+              },
+              "current_seed_title": "Closeout: warn when the run diff touches a Dockerfile — the fix is inert until the toolchain image rebuilds",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "closeout.nu is fs_hide-hidden to read_file — used shell cat per the documented bypass; basis of fabro-6f6e resolved against current tree (no Dockerfile warning exists in closeout.nu)",
+                  "fabro_runs_list showed 5 develop runs, none with an open PR — no in-flight exclusions applied",
+                  "brief annotates the fabro-5b0a dependency: run-summary/PR-body warning channel does not exist yet, so this seed lands the closeout-emitted warning only"
+                ]
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 25580,
+                    "output_tokens": 1360,
+                    "reasoning_tokens": 659,
+                    "cache_read_tokens": 222912,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 102637
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 90523,
+              "tool_time_ms": 3386,
+              "active_time_ms": 93909
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "node_visits": {
+          "start": 1,
+          "planner": 1,
+          "implementer": 1
         }
       },
       "diff": {}
@@ -893,6 +1085,220 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "implementer@1": {
+      "first_event_seq": 104,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T09:39:07.952028119Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T09:33:03.005998411Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 378647,
+        "inference_time_ms": 368493,
+        "tool_time_ms": 9500,
+        "active_time_ms": 377993
+      },
+      "usage": {
+        "input_tokens": 34720,
+        "output_tokens": 7248,
+        "total_tokens": 743966,
+        "reasoning_tokens": 7790,
+        "cache_read_tokens": 694208,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 295231
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 33866,
+        "usage_percent": 3.2297134399414062,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-09T09:39:07.940343936Z",
+        "event_seq": 289,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1015,
+            "usage_percent": 0.09679794311523438
+          },
+          {
+            "category": "tools",
+            "tokens": 1437,
+            "usage_percent": 0.13704299926757812
+          },
+          {
+            "category": "memory",
+            "tokens": 5047,
+            "usage_percent": 0.4813194274902344
+          },
+          {
+            "category": "conversation",
+            "tokens": 26361,
+            "usage_percent": 2.5139808654785156
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 16,
       "prompt": null,
