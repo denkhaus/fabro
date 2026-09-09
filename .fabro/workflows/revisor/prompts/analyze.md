@@ -41,6 +41,16 @@ The backlog runs share root causes; without a tracker check every pass re-distil
 
 Filed seeds carry the `revision` label (the bookkeeper sets it), so `sd list --label revision` shows this loop's whole output — assume that set exists and grows.
 
+## Step 3.5 — duplicate-run check BEFORE distilling (fabro-91ff, 2026-09-09)
+
+The target run may itself be a duplicate: two overlapping conductor passes can claim the SAME seed, and the first duplicate to merge closes it on the base branch before this revisor runs. A green run whose seed is already closed on the base branch must NOT pass review as healthy. So, before Step 4:
+
+1. Identify the seed the target run claimed: read the `fabro-xxxx` seed id from the run's goal/journal (`.fabro/journal/<revisor_target_run_id>.jsonl` or the run summary).
+2. Run `git fetch origin <base-branch>` then check `git log origin/<base-branch> --oneline -50` for whether the seed id appears in a commit NOT authored by the target run (a sibling duplicate's merged PR).
+3. If the seed is already closed on the base branch by ANOTHER run's merge: this run is a duplicate. Record it in the journal with the exact phrase `duplicate run: <seed id> already closed on base branch` naming the closing PR/commit, and distill with that verdict attached — the revision report must present the run as a duplicate, never as a healthy pass. Its findings may still seed follow-ups, but the duplicate verdict is mandatory output.
+
+---
+
 ## Step 4 — distill
 
 Convert the SURVIVING recommendations into `revision_findings`: an array of seed candidates. A candidate is actionable only when it names ONE concrete change (file or node, what to change, expected effect) attributable to THIS run's evidence. Drop generic advice, drop praise, merge duplicates among themselves. Each entry: {"title": "<short imperative, English>", "description": "<what/where/effect, grounded in this run>", "priority": <2 normal, 1 high impact>}. An empty array is a valid outcome: a healthy run gets a marker-only revision. Name the dropped duplicates with their seed ids in the journal observation — the report must show what was withheld and why.
