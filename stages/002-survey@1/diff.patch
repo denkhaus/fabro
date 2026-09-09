@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M23PY6QYTK22GA94VHZWVQ7N.jsonl b/.fabro/journal/01M23PY6QYTK22GA94VHZWVQ7N.jsonl
+new file mode 100644
+index 000000000..0b7b8cb72
+--- /dev/null
++++ b/.fabro/journal/01M23PY6QYTK22GA94VHZWVQ7N.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M23PY6QYTK22GA94VHZWVQ7N","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T18:30:17Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M23PY6QYTK22GA94VHZWVQ7N","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-09T18:31:14Z","data":{"painpoints":[],"observations":["upstream count 0 (< 5 threshold); newest upstream/main subject: 'Bump version to 0.348.0-nightly.0' — no drift, no merge needed this pass","revisor backlog: none — newest develop run 01M23N9E3R1GKHRRA4MPB3GY2A (PR #105) already reviewed by revisor pass (`.fabro/reviews/develop/01M23N9E3R1GKHRRA4MPB3GY2A.md`, commit d9e19582c); no unreviewed completed develop runs newer than that","next surveyor: count stays at 0; drift accumulates toward the 5-commit MIN threshold per user decision 2026-09-05"]}}
