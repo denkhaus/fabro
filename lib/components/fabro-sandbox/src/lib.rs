@@ -21,6 +21,7 @@ pub mod redact;
 pub mod details;
 
 pub mod driver;
+pub mod driver_sandbox;
 
 pub mod exec;
 
@@ -42,6 +43,7 @@ pub mod test_support;
 pub use details::sandbox_details;
 #[cfg(feature = "docker")]
 pub use docker::{DockerSandbox, DockerSandboxOptions};
+pub use driver_sandbox::DriverSandbox;
 pub use error::{Error, Result, default_redacted_output_tail, display_for_log};
 pub use exec::{ExplicitEnvPolicy, SandboxExec, is_sensitive_env_var};
 pub use fabro_github::token_source::{
