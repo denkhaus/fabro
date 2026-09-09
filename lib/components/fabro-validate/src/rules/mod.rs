@@ -31,6 +31,7 @@ mod random_selection_no_conditions;
 mod reachability;
 mod reserved_keyword_node_id;
 mod retry_target_exists;
+mod routing_fallback_silent;
 mod script_absolute_cd;
 mod selection_valid;
 mod start_no_incoming;
@@ -96,6 +97,7 @@ pub fn built_in_rules() -> Vec<Box<dyn LintRule>> {
         random_selection_no_conditions::rule(),
         inert_attribute::rule(),
         parallel_branch_inert_attribute::rule(),
+        routing_fallback_silent::rule(),
     ]
 }
 

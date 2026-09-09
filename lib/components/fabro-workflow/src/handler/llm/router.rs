@@ -124,6 +124,7 @@ mod tests {
 
         let result = router
             .one_shot(OneShotRequest {
+                graph:         &fabro_graphviz::graph::Graph::new("test"),
                 node:          &node,
                 prompt:        "prompt",
                 system_prompt: None,

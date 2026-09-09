@@ -1,7 +1,7 @@
 use std::fmt::Write as _;
 use std::sync::{Arc, LazyLock};
 
-use fabro_graphviz::graph::Node;
+use fabro_graphviz::graph::{Graph, Node};
 use fabro_llm::types::{ResponseFormat, ResponseFormatType};
 use jsonschema::error::ValidationErrorKind;
 use jsonschema::paths::Location;
@@ -9,6 +9,7 @@ use jsonschema::{ValidationError, Validator};
 use serde_json::Value;
 
 use crate::error::Error;
+use crate::graph::routing::normalize_label;
 use crate::outcome::{FailureCategory, FailureDetail, Outcome, StageOutcome};
 
 pub(crate) const ROUTING_KEYWORD: &str = "routing";
@@ -33,7 +34,12 @@ const QUOTED_ROUTING_STATUS_FIELDS: &[&str] = &[
 /// repair turns don't recompile the schema on every iteration.
 #[derive(Debug, Clone)]
 pub(crate) enum OutputSchemaKind {
-    Routing,
+    /// Labels of the node's unconditional outgoing edges — the values a
+    /// `preferred_label`/`preferred_next_label` may routing-match (mirrors the
+    /// preferred-label loop in `graph::routing::select_edge`). Empty when no
+    /// edge information is available, in which case the label stays free-form
+    /// (fabro-de4d).
+    Routing { allowed_labels: Vec<String> },
     JsonSchema {
         schema:    Value,
         validator: Arc<Validator>,
@@ -46,10 +52,21 @@ impl OutputSchemaKind {
     /// drift.
     fn expectation(&self) -> String {
         match self {
-            Self::Routing => format!(
-                "Return a single JSON object with at least one routing field: {}.",
-                ROUTING_STATUS_FIELDS.join(", ")
-            ),
+            Self::Routing { allowed_labels } => {
+                let mut expectation = format!(
+                    "Return a single JSON object with at least one routing field: {}.",
+                    ROUTING_STATUS_FIELDS.join(", ")
+                );
+                if !allowed_labels.is_empty() {
+                    let _ = write!(
+                        expectation,
+                        "\npreferred_next_label must be one of this node's outgoing edge \
+                         labels: {}.",
+                        quote_join(allowed_labels),
+                    );
+                }
+                expectation
+            }
             Self::JsonSchema { schema, .. } => format!(
                 "Return a single JSON object that satisfies this JSON Schema:\n\
                  <output_schema>\n\
@@ -378,7 +395,10 @@ pub(crate) fn exhausted_failure_outcome(repair_attempts: i64) -> Outcome {
     }
 }
 
-pub(crate) fn parse_node_output_schema(node: &Node) -> Result<Option<OutputSchemaKind>, Error> {
+pub(crate) fn parse_node_output_schema(
+    graph: &Graph,
+    node: &Node,
+) -> Result<Option<OutputSchemaKind>, Error> {
     let Some(raw) = node.output_schema() else {
         return Ok(None);
     };
@@ -390,7 +410,9 @@ pub(crate) fn parse_node_output_schema(node: &Node) -> Result<Option<OutputSchem
         )));
     }
     if value == ROUTING_KEYWORD {
-        return Ok(Some(OutputSchemaKind::Routing));
+        return Ok(Some(OutputSchemaKind::Routing {
+            allowed_labels: routable_edge_labels(graph, &node.id),
+        }));
     }
     if value.starts_with('@') {
         return Err(Error::Validation(format!(
@@ -420,7 +442,7 @@ pub(crate) fn parse_node_output_schema(node: &Node) -> Result<Option<OutputSchem
 #[must_use]
 pub(crate) fn prompt_response_format(schema: &OutputSchemaKind) -> ResponseFormat {
     match schema {
-        OutputSchemaKind::Routing => ResponseFormat {
+        OutputSchemaKind::Routing { .. } => ResponseFormat {
             kind:        ResponseFormatType::JsonObject,
             json_schema: None,
             strict:      false,
@@ -438,7 +460,9 @@ pub(crate) fn validate_response_text(
     text: &str,
 ) -> Result<ValidatedStructuredOutput, StructuredOutputError> {
     match schema {
-        OutputSchemaKind::Routing => validate_routing_response_text(text),
+        OutputSchemaKind::Routing { allowed_labels } => {
+            validate_routing_response_text(allowed_labels, text)
+        }
         OutputSchemaKind::JsonSchema { schema, validator } => {
             validate_custom_response_text(validator, schema, text)
         }
@@ -452,7 +476,7 @@ pub(crate) fn apply_validated_output(
     outcome: &mut Outcome,
 ) {
     match schema {
-        OutputSchemaKind::Routing => apply_routing_fields(&validated.value, outcome),
+        OutputSchemaKind::Routing { .. } => apply_routing_fields(&validated.value, outcome),
         OutputSchemaKind::JsonSchema { .. } => {
             outcome
                 .context_updates
@@ -534,6 +558,7 @@ pub(crate) fn extract_status_fields(text: &str, outcome: &mut Outcome) -> bool {
 }
 
 fn validate_routing_response_text(
+    allowed_labels: &[String],
     text: &str,
 ) -> Result<ValidatedStructuredOutput, StructuredOutputError> {
     let candidates = find_json_objects(text);
@@ -562,6 +587,7 @@ fn validate_routing_response_text(
             continue;
         }
         validate_value_against_validator(routing_validator(), &parsed, None)?;
+        validate_preferred_label(allowed_labels, &parsed)?;
         return Ok(ValidatedStructuredOutput { value: parsed });
     }
 
@@ -628,6 +654,68 @@ fn contains_routing_field(obj: &serde_json::Map<String, Value>) -> bool {
     ROUTING_STATUS_FIELDS
         .iter()
         .any(|field| obj.contains_key(*field))
+}
+
+/// Labels of the node's unconditional outgoing edges — the only edges a
+/// `preferred_label` can routing-match in `graph::routing::select_edge`.
+/// Conditional edges and unlabeled edges never match by label, so their
+/// labels are not part of the allowed vocabulary.
+#[must_use]
+pub(crate) fn routable_edge_labels(graph: &Graph, node_id: &str) -> Vec<String> {
+    graph
+        .outgoing_edges(node_id)
+        .into_iter()
+        .filter(|edge| edge.condition().is_none_or(str::is_empty))
+        .filter_map(|edge| edge.label().map(str::to_owned))
+        .filter(|label| !label.trim().is_empty())
+        .collect()
+}
+
+/// Fail the OUTPUT (not the run) when `preferred_next_label` is not one of the
+/// node's outgoing edge labels (fabro-de4d). Verbose validation: the error
+/// names the offending value AND the full allowed-label list so a repair turn
+/// can correct it without guessing. When no edge labels are available (no
+/// graph edges for the node), the field stays free-form — the label is simply
+/// dropped later because no edge matches it.
+fn validate_preferred_label(
+    allowed_labels: &[String],
+    value: &Value,
+) -> Result<(), StructuredOutputError> {
+    let Some(obj) = value.as_object() else {
+        return Ok(());
+    };
+    // Non-string values already fail the base routing schema's type check.
+    let Some(label) = obj.get("preferred_next_label").and_then(Value::as_str) else {
+        return Ok(());
+    };
+    if allowed_labels.is_empty() {
+        return Ok(());
+    }
+    let matched = allowed_labels
+        .iter()
+        .any(|allowed| normalize_label(allowed) == normalize_label(label));
+    if matched {
+        Ok(())
+    } else {
+        Err(StructuredOutputError::new(
+            StructuredOutputErrorKind::SchemaValidation,
+            format!(
+                "preferred_next_label {} is not one of this node's outgoing edge labels: {}. \
+                 Use exactly one of the listed labels (case-insensitive; accelerator prefixes \
+                 like \"[F] \" are ignored) or omit the field.",
+                Value::String(label.to_string()),
+                quote_join(allowed_labels),
+            ),
+        ))
+    }
+}
+
+fn quote_join(values: &[String]) -> String {
+    values
+        .iter()
+        .map(|value| Value::String(value.clone()).to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn raw_mentions_routing_field(candidate: &str) -> bool {
@@ -709,7 +797,15 @@ mod tests {
     use super::*;
 
     fn routing() -> OutputSchemaKind {
-        OutputSchemaKind::Routing
+        OutputSchemaKind::Routing {
+            allowed_labels: Vec::new(),
+        }
+    }
+
+    fn routing_with_labels(labels: &[&str]) -> OutputSchemaKind {
+        OutputSchemaKind::Routing {
+            allowed_labels: labels.iter().map(ToString::to_string).collect(),
+        }
     }
 
     fn schema(value: Value) -> OutputSchemaKind {
@@ -815,6 +911,153 @@ mod tests {
             "unexpected messages: {:?}",
             error.messages(),
         );
+    }
+
+    #[test]
+    fn known_preferred_label_passes_validation() {
+        let schema = routing_with_labels(&["Approve", "[F] Fix"]);
+
+        let validated = validate_response_text(
+            &schema,
+            r#"{"outcome":"succeeded","preferred_next_label":"Approve"}"#,
+        );
+
+        assert_eq!(
+            validated.unwrap().value,
+            serde_json::json!({"outcome": "succeeded", "preferred_next_label": "Approve"}),
+        );
+    }
+
+    #[test]
+    fn known_preferred_label_matches_case_and_accelerator_insensitively() {
+        let schema = routing_with_labels(&["[F] Fix"]);
+
+        let validated = validate_response_text(&schema, r#"{"preferred_next_label":"fix"}"#);
+
+        assert_eq!(
+            validated.unwrap().value,
+            serde_json::json!({"preferred_next_label": "fix"}),
+        );
+    }
+
+    #[test]
+    fn unknown_preferred_label_fails_the_output_with_verbose_error() {
+        // fabro-de4d incident shape: reviewer emitted 'deploy', a label no
+        // outgoing edge knows. The output must fail (routing repair), not the
+        // run, and the error must name the offending value AND the full
+        // allowed-label list.
+        let schema = routing_with_labels(&["Approve", "Changes requested"]);
+
+        let error = validate_response_text(
+            &schema,
+            r#"{"outcome":"succeeded","preferred_next_label":"deploy"}"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), StructuredOutputErrorKind::SchemaValidation);
+        assert!(!error.allows_routing_fallback());
+        let message = error.messages().join("\n");
+        assert!(
+            message.contains("\"deploy\""),
+            "error must name the offending value: {message}"
+        );
+        assert!(
+            message.contains("\"Approve\"") && message.contains("\"Changes requested\""),
+            "error must list every allowed label: {message}"
+        );
+    }
+
+    #[test]
+    fn routing_repair_message_for_unknown_label_carries_the_allowed_list() {
+        let schema = routing_with_labels(&["Approve", "Changes requested"]);
+
+        let error =
+            validate_response_text(&schema, r#"{"preferred_next_label":"deploy"}"#).unwrap_err();
+        let repair = error.repair_message(&schema, None);
+
+        assert!(
+            repair.contains("\"deploy\""),
+            "repair message must name the offending value: {repair}"
+        );
+        assert!(
+            repair.contains("\"Changes requested\""),
+            "repair message must carry the allowed-label list: {repair}"
+        );
+    }
+
+    #[test]
+    fn routing_without_edge_labels_keeps_free_form_drop_semantics() {
+        // No edge information available: the label is unconstrained at the
+        // output boundary and dropped later when no edge matches it.
+        let schema = routing();
+
+        let validated = validate_response_text(&schema, r#"{"preferred_next_label":"deploy"}"#);
+
+        assert_eq!(
+            validated.unwrap().value,
+            serde_json::json!({"preferred_next_label": "deploy"}),
+        );
+    }
+
+    #[test]
+    fn routing_agent_prompt_lists_the_allowed_labels() {
+        let prompt = routing_with_labels(&["Approve", "Changes requested"])
+            .agent_prompt("Pick the next step");
+
+        assert!(
+            prompt.contains(
+                "preferred_next_label must be one of this node's outgoing edge \
+                             labels: \"Approve\", \"Changes requested\"."
+            ),
+            "unexpected prompt: {prompt}"
+        );
+    }
+
+    #[test]
+    fn parse_node_output_schema_threads_outgoing_edge_labels_into_routing() {
+        let mut graph = fabro_graphviz::graph::Graph::new("test");
+        graph
+            .nodes
+            .insert("review".to_string(), Node::new("review"));
+        graph
+            .nodes
+            .insert("approve".to_string(), Node::new("approve"));
+        graph
+            .nodes
+            .insert("recover".to_string(), Node::new("recover"));
+        let mut labeled = fabro_graphviz::graph::Edge::new("review", "approve");
+        labeled.attrs.insert(
+            "label".to_string(),
+            AttrValue::String("Approve".to_string()),
+        );
+        graph.edges.push(labeled);
+        let mut conditional = fabro_graphviz::graph::Edge::new("review", "recover");
+        conditional.attrs.insert(
+            "condition".to_string(),
+            AttrValue::String("outcome=failed".to_string()),
+        );
+        conditional.attrs.insert(
+            "label".to_string(),
+            AttrValue::String("Recover".to_string()),
+        );
+        graph.edges.push(conditional);
+
+        let mut node = Node::new("review");
+        node.attrs.insert(
+            "output_schema".to_string(),
+            AttrValue::String("routing".to_string()),
+        );
+
+        let parsed = parse_node_output_schema(&graph, &node).unwrap();
+
+        // Only the unconditional edge's label is routable: select_edge never
+        // matches preferred_label against a conditional edge.
+        match parsed {
+            Some(OutputSchemaKind::Routing { allowed_labels }) => {
+                assert_eq!(allowed_labels, vec!["Approve".to_string()]);
+            }
+            other => panic!("expected routing schema, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1074,7 +1317,7 @@ mod tests {
             AttrValue::String(r#"{"type": 5}"#.to_string()),
         );
 
-        let error = parse_node_output_schema(&node).unwrap_err();
+        let error = parse_node_output_schema(&Graph::new("test"), &node).unwrap_err();
 
         assert!(
             error.to_string().contains("Invalid output_schema"),
@@ -1108,14 +1351,14 @@ mod tests {
             AttrValue::String("routing".to_string()),
         );
 
-        let parsed = parse_node_output_schema(&node).unwrap();
+        let parsed = parse_node_output_schema(&Graph::new("test"), &node).unwrap();
 
-        assert!(matches!(parsed, Some(OutputSchemaKind::Routing)));
+        assert!(matches!(parsed, Some(OutputSchemaKind::Routing { .. })));
     }
 
     #[test]
     fn routing_agent_prompt_lists_routing_fields_instead_of_a_schema() {
-        let prompt = OutputSchemaKind::Routing.agent_prompt("Pick the next step");
+        let prompt = routing().agent_prompt("Pick the next step");
 
         assert!(prompt.starts_with("Pick the next step\n\n"));
         assert!(prompt.contains("Fabro final-output contract"));

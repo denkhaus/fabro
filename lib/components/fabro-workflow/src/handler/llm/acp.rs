@@ -1046,6 +1046,7 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
                 node:               &node,
                 prompt:             "write hello",
                 context:            &context,
@@ -1095,6 +1096,7 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
                 node:               &node,
                 prompt:             "write hello",
                 context:            &context,
@@ -1166,6 +1168,7 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
                 node:               &node,
                 prompt:             "write hello",
                 context:            &context,
@@ -1215,6 +1218,7 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
                 node:               &node,
                 prompt:             "write hello",
                 context:            &context,
@@ -1255,6 +1259,7 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
                 node:               &node,
                 prompt:             "write hello",
                 context:            &context,
@@ -1306,6 +1311,7 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
                 node:               &node,
                 prompt:             "cancel",
                 context:            &context,
@@ -1361,6 +1367,7 @@ mod tests {
         let context = Context::new();
         backend
             .run(CodergenRunRequest {
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
                 node:               &node,
                 prompt:             "write hello",
                 context:            &context,
@@ -1404,6 +1411,7 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
                 node:               &node,
                 prompt:             "write hello",
                 context:            &context,
@@ -1458,6 +1466,7 @@ mod tests {
         let context = Context::new();
         let result = backend
             .run(CodergenRunRequest {
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
                 node:               &node,
                 prompt:             "write hello",
                 context:            &context,

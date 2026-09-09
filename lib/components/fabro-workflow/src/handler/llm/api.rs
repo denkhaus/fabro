@@ -1700,6 +1700,7 @@ impl CodergenBackend for AgentApiBackend {
 
     async fn one_shot(&self, request: OneShotRequest<'_>) -> Result<CodergenResult, Error> {
         let node = request.node;
+        let graph = request.graph;
         let prompt = request.prompt;
         let system_prompt = request.system_prompt;
         let emitter = request.emitter;
@@ -1722,7 +1723,7 @@ impl CodergenBackend for AgentApiBackend {
         }
         messages.push(Message::user(prompt));
 
-        let output_schema = structured_output::parse_node_output_schema(node)?;
+        let output_schema = structured_output::parse_node_output_schema(graph, node)?;
         let response_format = output_schema
             .as_ref()
             .map(structured_output::prompt_response_format);
@@ -1806,8 +1807,9 @@ impl CodergenBackend for AgentApiBackend {
 
     async fn run(&self, request: CodergenRunRequest<'_>) -> Result<CodergenResult, Error> {
         let node = request.node;
+        let graph = request.graph;
         let emitter = request.emitter;
-        let output_schema = structured_output::parse_node_output_schema(node)?;
+        let output_schema = structured_output::parse_node_output_schema(graph, node)?;
 
         let fidelity = request.context.fidelity();
         let reuse_key = if fidelity == Fidelity::Full {
@@ -4487,6 +4489,7 @@ enabled = true
 
         let result = backend
             .one_shot(OneShotRequest {
+                graph:         &fabro_graphviz::graph::Graph::new("test"),
                 node:          &node,
                 prompt:        "Audit the result",
                 system_prompt: None,
@@ -4553,6 +4556,7 @@ enabled = true
 
         let result = backend
             .one_shot(OneShotRequest {
+                graph:         &fabro_graphviz::graph::Graph::new("test"),
                 node:          &node,
                 prompt:        "Audit the result",
                 system_prompt: None,
@@ -4614,6 +4618,7 @@ enabled = true
 
         let result = backend
             .run(CodergenRunRequest {
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
                 node:               &node,
                 prompt:             "Audit the result",
                 context:            &context,
@@ -4687,6 +4692,7 @@ enabled = true
 
         let result = backend
             .run(CodergenRunRequest {
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
                 node:               &node,
                 prompt:             "Audit the result",
                 context:            &context,
@@ -4759,6 +4765,7 @@ enabled = true
 
         let result = backend
             .run(CodergenRunRequest {
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
                 node:               &node,
                 prompt:             "Audit the result",
                 context:            &context,
@@ -4834,6 +4841,7 @@ enabled = true
 
         let result = backend
             .run(CodergenRunRequest {
+                graph:              &fabro_graphviz::graph::Graph::new("test"),
                 node:               &node,
                 prompt:             "Search the web",
                 context:            &context,
