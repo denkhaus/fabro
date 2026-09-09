@@ -483,7 +483,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T10:47:31.866137952Z",
-  "last_event_at": "2026-09-09T10:54:20.125006999Z",
+  "last_event_at": "2026-09-09T10:54:25.663359325Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -887,9 +887,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 146,
       "checkpoint": {
-        "timestamp": "2026-09-09T10:54:20.348997874Z",
+        "timestamp": "2026-09-09T10:54:24.678638531Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -899,19 +899,39 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.retry_count.analyze": 0,
-          "graph.preamble_budget_kb": "24",
-          "internal.node_visit_count": 1,
-          "thread.select.current_node": "analyze",
-          "internal.work_dir": "/workspace/fabro",
-          "revisor_target_workflow_version": "14ab451ff2f9375f4927ce7d994c63bc96f48f3c617f3baff15119472f3af3e4",
-          "outcome": "succeeded",
-          "revisor_target_wall": "15.2 min",
-          "internal.seed_cycle_anchor": "01M22VHABGCNWT7DKJC9HP1XKC",
-          "thread.start.current_node": "select",
+          "last_stage": "file",
+          "preferred_label": "Staged",
           "filed_seed_ids": [
             "fabro-a341"
           ],
+          "failure_signature": "",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 1215,
+            "preview": "Filed `fabro-a341` (complementary to open `fabro-8bf4`, cross-referenced, nothing closed), wrote the revision marker at `.fabro/revisions/01M22VHABGCNWT7DKJC9HP1XKC.md`, and committed exactly the allo"
+          },
+          "internal.retry_count.start": 0,
+          "graph.inspects": "develop,merge-upstream",
+          "graph.max_node_visits": "30",
+          "internal.retry_count.analyze": 0,
+          "failure_class": "",
+          "thread.analyze.current_node": "file",
+          "current_node": "file",
+          "revisor_target_status": "succeeded",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 3552,
+            "preview": "All verification done. Result: the analyst's six recommendations map 1:1 to existing open seeds (`fabro-fe15`, `fabro-8d2c`, `fabro-c3b4`, `fabro-9588`+`fabro-944d`, `fabro-89dd`, `fabro-ad1b`+`fabro-"
+          },
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 1495,
+            "preview": "Candidate pool reviewed: the newest unrevised, terminal, live-sandbox, fresh run is develop run `01M22VHABGCNWT7DKJC9HP1XKC` (created 2026-09-09T10:31Z, succeeded, sandbox available, PR #84 merged, ~1"
+          },
+          "internal.run_id": "01M22WF6T04KEWPVCCJJ9YQXQB",
           "revision_findings": [
             {
               "title": "Align the unemitted_allow_keys lint with read_context_key's context.-prefix tolerance",
@@ -919,46 +939,13 @@
               "priority": 2
             }
           ],
-          "seed_cycles": {
-            "select": 1,
-            "analyze": 1,
-            "file": 1
-          },
-          "internal.run_id": "01M22WF6T04KEWPVCCJJ9YQXQB",
-          "internal.retry_count.select": 0,
-          "graph.max_node_visits": "30",
-          "failure_class": "",
-          "revisor_target_status": "succeeded",
-          "graph.rankdir": "LR",
-          "preferred_label": "Staged",
-          "internal.retry_count.file": 0,
-          "revisor_target_title": "Develop one seed per run: claim next open seed, implement, gate, review, exit (PR #84)",
-          "graph.inspects": "develop,merge-upstream",
-          "revisor_target_run_id": "01M22VHABGCNWT7DKJC9HP1XKC",
-          "response.analyze": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "chars": 3552,
-            "preview": "All verification done. Result: the analyst's six recommendations map 1:1 to existing open seeds (`fabro-fe15`, `fabro-8d2c`, `fabro-c3b4`, `fabro-9588`+`fabro-944d`, `fabro-89dd`, `fabro-ad1b`+`fabro-"
-          },
-          "last_stage": "file",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
           "internal.exit_kind": "natural",
-          "internal.thread_id": "analyze",
-          "response.select": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.select",
-            "chars": 1495,
-            "preview": "Candidate pool reviewed: the newest unrevised, terminal, live-sandbox, fresh run is develop run `01M22VHABGCNWT7DKJC9HP1XKC` (created 2026-09-09T10:31Z, succeeded, sandbox available, PR #84 merged, ~1"
-          },
-          "response.file": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.file",
-            "chars": 1215,
-            "preview": "Filed `fabro-a341` (complementary to open `fabro-8bf4`, cross-referenced, nothing closed), wrote the revision marker at `.fabro/revisions/01M22VHABGCNWT7DKJC9HP1XKC.md`, and committed exactly the allo"
-          },
-          "thread.analyze.current_node": "file",
-          "current_node": "file",
-          "failure_signature": "",
+          "thread.start.current_node": "select",
+          "revisor_target_run_id": "01M22VHABGCNWT7DKJC9HP1XKC",
+          "graph.rankdir": "LR",
+          "graph.preamble_budget_kb": "24",
+          "outcome": "succeeded",
           "journal": {
             "painpoints": [
               {
@@ -970,11 +957,24 @@
               "sd search for 'allow-keys lint' and 'read_context_key' returned no hits despite fabro-8bf4 existing with matching keywords — search may only cover title/description fields in a way that missed it; bookkeepers should not rely on sd search alone"
             ]
           },
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "internal.retry_count.start": 0,
           "last_response": "Filed `fabro-a341` (complementary to open `fabro-8bf4`, cross-referenced, nothing closed), wrote the revision marker at `.fabro/revisions/01M22VHABGCNWT7DKJC9HP1XKC.md`, and committed exactly the allo",
-          "internal.fidelity": "compact"
+          "revisor_target_title": "Develop one seed per run: claim next open seed, implement, gate, review, exit (PR #84)",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "internal.retry_count.select": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "thread.select.current_node": "analyze",
+          "internal.node_visit_count": 1,
+          "revisor_target_workflow_version": "14ab451ff2f9375f4927ce7d994c63bc96f48f3c617f3baff15119472f3af3e4",
+          "internal.fidelity": "compact",
+          "revisor_target_wall": "15.2 min",
+          "internal.retry_count.file": 0,
+          "internal.thread_id": "analyze",
+          "internal.seed_cycle_anchor": "01M22VHABGCNWT7DKJC9HP1XKC"
         },
         "node_outcomes": {
           "select": {
@@ -1032,9 +1032,64 @@
               "active_time_ms": 23660
             }
           },
-          "start": {
+          "file": {
             "status": "succeeded",
-            "usage": null
+            "preferred_label": "Staged",
+            "context_updates": {
+              "filed_seed_ids": [
+                "fabro-a341"
+              ],
+              "last_stage": "file",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "`sd list --format compact` shows titles only, so judging whether a finding duplicates an open seed requires reading descriptions (`sd show`); a theme/keyword column or richer compact format would speed the bookkeeper's duplicate check — evidence: fabro-8bf4 title alone looked like a potential duplicate until its description was read; fix idea: add `sd list --format id+title+labels+first-120-chars`"
+                  }
+                ],
+                "observations": [
+                  "fabro-a341 complements (not supersedes) open fabro-8bf4; both concern the allow-keys lint but name different concrete changes — cross-referenced, nothing closed",
+                  "sd search for 'allow-keys lint' and 'read_context_key' returned no hits despite fabro-8bf4 existing with matching keywords — search may only cover title/description fields in a way that missed it; bookkeepers should not rely on sd search alone"
+                ]
+              },
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 1215,
+                "preview": "Filed `fabro-a341` (complementary to open `fabro-8bf4`, cross-referenced, nothing closed), wrote the revision marker at `.fabro/revisions/01M22VHABGCNWT7DKJC9HP1XKC.md`, and committed exactly the allo"
+              },
+              "last_response": "Filed `fabro-a341` (complementary to open `fabro-8bf4`, cross-referenced, nothing closed), wrote the revision marker at `.fabro/revisions/01M22VHABGCNWT7DKJC9HP1XKC.md`, and committed exactly the allo"
+            },
+            "notes": "Stage completed: file",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 17243,
+                    "output_tokens": 1237,
+                    "reasoning_tokens": 157,
+                    "cache_read_tokens": 64064,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 46926
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/revisions/01M22VHABGCNWT7DKJC9HP1XKC.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 51479,
+              "tool_time_ms": 860,
+              "active_time_ms": 52339
+            }
           },
           "analyze": {
             "status": "succeeded",
@@ -1102,78 +1157,109 @@
               "active_time_ms": 320855
             }
           },
-          "file": {
+          "start": {
             "status": "succeeded",
-            "preferred_label": "Staged",
-            "context_updates": {
-              "filed_seed_ids": [
-                "fabro-a341"
-              ],
-              "last_stage": "file",
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "`sd list --format compact` shows titles only, so judging whether a finding duplicates an open seed requires reading descriptions (`sd show`); a theme/keyword column or richer compact format would speed the bookkeeper's duplicate check — evidence: fabro-8bf4 title alone looked like a potential duplicate until its description was read; fix idea: add `sd list --format id+title+labels+first-120-chars`"
-                  }
-                ],
-                "observations": [
-                  "fabro-a341 complements (not supersedes) open fabro-8bf4; both concern the allow-keys lint but name different concrete changes — cross-referenced, nothing closed",
-                  "sd search for 'allow-keys lint' and 'read_context_key' returned no hits despite fabro-8bf4 existing with matching keywords — search may only cover title/description fields in a way that missed it; bookkeepers should not rely on sd search alone"
-                ]
-              },
-              "response.file": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.file",
-                "chars": 1215,
-                "preview": "Filed `fabro-a341` (complementary to open `fabro-8bf4`, cross-referenced, nothing closed), wrote the revision marker at `.fabro/revisions/01M22VHABGCNWT7DKJC9HP1XKC.md`, and committed exactly the allo"
-              },
-              "last_response": "Filed `fabro-a341` (complementary to open `fabro-8bf4`, cross-referenced, nothing closed), wrote the revision marker at `.fabro/revisions/01M22VHABGCNWT7DKJC9HP1XKC.md`, and committed exactly the allo"
-            },
-            "notes": "Stage completed: file",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 17243,
-                    "output_tokens": 1237,
-                    "reasoning_tokens": 157,
-                    "cache_read_tokens": 64064,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 46926
-            },
-            "files_touched": [
-              "/workspace/fabro/.fabro/revisions/01M22VHABGCNWT7DKJC9HP1XKC.md"
-            ],
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 51479,
-              "tool_time_ms": 860,
-              "active_time_ms": 52339
-            }
+            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "55be2295f60ae248a795bf378c2be0788543ea77",
         "node_visits": {
-          "start": 1,
-          "analyze": 1,
           "file": 1,
+          "analyze": 1,
+          "start": 1,
           "select": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M22WF6T04KEWPVCCJJ9YQXQB.jsonl b/.fabro/journal/01M22WF6T04KEWPVCCJJ9YQXQB.jsonl\nindex 74e948e..fc446cc 100644\n--- a/.fabro/journal/01M22WF6T04KEWPVCCJJ9YQXQB.jsonl\n+++ b/.fabro/journal/01M22WF6T04KEWPVCCJJ9YQXQB.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22WF6T04KEWPVCCJJ9YQXQB\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:47:34Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22WF6T04KEWPVCCJJ9YQXQB\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:47:58Z\",\"data\":{\"painpoints\":[],\"observations\":[\"9 runs listed (7 develop, 2 merge-upstream); selected the newest unrevised develop run 01M22VHABGCNWT7DKJC9HP1XKC\",\"2 fresh unrevised merge-upstream runs from 2026-09-08 remain eligible for a future pass (01M20N60ZY6DZDTX60WW0161KP, 01M20E43YS004DCEYPJ0GJQH4B)\",\"no sandbox-less or non-terminal runs in this pool; all older develop runs are revised\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22WF6T04KEWPVCCJJ9YQXQB\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:53:23Z\",\"data\":{\"painpoints\":[{\"text\":\"The Ask-Fabro analyst re-derived 6/6 already-tracked findings in this pass — every recommendation mapped 1:1 to an existing open seed, so the only novel content was one observation buried in evidence prose. This is the exact failure mode of open seed fabro-88a4 (give the analyst an open-backlog digest); implementing it would let revisor passes converge on genuinely new findings instead of restating the backlog.\"}],\"observations\":[\"Selected newest unrevised develop run 01M22VHABGCNWT7DKJC9HP1XKC (PR #84, seed fabro-8bf4, 15.2 min, $0.482, 7/7 green first-pass); review persisted to `.fabro/reviews/develop/01M22VHABGCNWT7DKJC9HP1XKC.md`\",\"Duplicates withheld: build-cache warm → fabro-fe15; preamble_budget_kb 24→32 → fabro-8d2c; sd ready top-N → fabro-c3b4; per-stage memory scoping + shared cache prefix → fabro-9588 + fabro-944d; review_notes channel → fabro-89dd; acceptance-bullet restating → fabro-ad1b + fabro-4cd8 (all open, same concrete change)\",\"One new finding survived: key-normalization divergence between the fabro-8bf4 lint and `read_context_key` — no tracker coverage found via sd search (read_context_key, context key prefix, normaliz all empty or unrelated)\",\"sd search 'review notes' returned nothing even though fabro-89dd exists and matches by title — content search misses underscore terms; direct `sd show` of every analyst-cited id (per fabro-5ff7) remains the reliable duplicate check\",\"2 fresh unrevised merge-upstream runs from 2026-09-08 remain eligible for a future pass (01M20N60ZY6DZDTX60WW0161KP, 01M20E43YS004DCEYPJ0GJQH4B)\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22WF6T04KEWPVCCJJ9YQXQB\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:54:20Z\",\"data\":{\"painpoints\":[{\"text\":\"`sd list --format compact` shows titles only, so judging whether a finding duplicates an open seed requires reading descriptions (`sd show`); a theme/keyword column or richer compact format would speed the bookkeeper's duplicate check — evidence: fabro-8bf4 title alone looked like a potential duplicate until its description was read; fix idea: add `sd list --format id+title+labels+first-120-chars`\"}],\"observations\":[\"fabro-a341 complements (not supersedes) open fabro-8bf4; both concern the allow-keys lint but name different concrete changes — cross-referenced, nothing closed\",\"sd search for 'allow-keys lint' and 'read_context_key' returned no hits despite fabro-8bf4 existing with matching keywords — search may only cover title/description fields in a way that missed it; bookkeepers should not rely on sd search alone\"]}}\ndiff --git a/.fabro/revisions/01M22VHABGCNWT7DKJC9HP1XKC.md b/.fabro/revisions/01M22VHABGCNWT7DKJC9HP1XKC.md\nnew file mode 100644\nindex 0000000..bba6baa\n--- /dev/null\n+++ b/.fabro/revisions/01M22VHABGCNWT7DKJC9HP1XKC.md\n@@ -0,0 +1,13 @@\n+# Revision — run 01M22VHABGCNWT7DKJC9HP1XKC\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M22VHABGCNWT7DKJC9HP1XKC.md\n+- seeds filed: fabro-a341 — Align the unemitted_allow_keys lint with read_context_key's context.-prefix tolerance\n+- basis: run 01M22VHABGCNWT7DKJC9HP1XKC, workflow version 14ab451ff2f9375f4927ce7d994c63bc96f48f3c617f3baff15119472f3af3e4, commit a546610719fbe1058f9f820d9eee65d03ed681e4\n+- revised_at_commit: a546610719fbe1058f9f820d9eee65d03ed681e4 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Align the unemitted_allow_keys lint with read_context_key's context.-prefix tolerance\n+- filed: fabro-a341\n+- The stage-envelope allow-keys lint (seed fabro-8bf4, `lib/components/fabro-workflow`) matches raw keys only for the unemitted check, while `read_context_key` also accepts `context.`-prefixed forms; reviewer@1 flagged the divergence as a future watch item. Normalize the lint's key matching to the reader's semantics so prefixed-form emissions are not reported unemitted and the code paths cannot drift. Complements open seed fabro-8bf4 (cross-referenced, not superseded — different concrete change). Expected effect: no false-positive completion warnings once the fabro-8bf4 lint merges; one shared key-normalization rule.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 4f3bd7c..951e4b3 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -302,3 +302,4 @@\n {\"id\":\"fabro-b94d\",\"title\":\"Develop: stop ml record from mutating .mulch/mulch.config.yaml mid-run\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T09:12:30.174Z\",\"updatedAt\":\"2026-09-09T09:40:28.701Z\",\"description\":\"Pre-create the ml workflow domain (toolchain image or implementer prompt lesson-capture step) so ml record stops auto-creating it and writing '+ workflow: {}' to tracked .mulch/mulch.config.yaml mid-run; until then, classify that file as expected churn in evidence.nu (sibling pattern of fabro-6db3, distinct from fabro-43ba's no-net-diff transients). Basis: run 01M22PCGN4E3X1XGN630MDDH39 — the implementer's failed lesson-capture call (seq 96-97) still auto-created the domain, producing surprise churn the reviewer had to classify. Effect: no surprise tracked-config churn per lesson capture. Orthogonal to fabro-96bd (flag-contract docs), which covers only the failed-call retry. Basis: run 01M22PCGN4E3X1XGN630MDDH39, workflow version e6202c3d2f79d43966a4f1fc60620f8b3f3d8c36f6facf82a41cd18b0c9c1b4e, commit 6d05194d18b7f1085cbac66a27b5cee0defacce9\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-d19e\",\"title\":\"Add a nushell-scripts skill so the implementer stops re-deriving nu 0.115 semantics\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T09:49:58.539Z\",\"updatedAt\":\"2026-09-09T10:33:13.300Z\",\"description\":\"Run 01M22R3TBFP86JPX0ZD8CA0QF5: the implementer (69% of wall, 66% of cost for a 102-line insert-only change) spent three probe turns reverse-engineering nu 0.115 semantics — `complete` is external-only (failed twice, seq 170/176), `source` const resolution, `def main` auto-invoke collision (seq 182), plus one parse failure from parenthesized prose in $\\\"…\\\" (seq 194) — its two heaviest reasoning turns (1,254 + 2,437 reasoning tokens ≈ $0.029). Lessons exist as mx-84a287 in .mulch/expertise/workflows.jsonl, but agent.memory.loaded shows only AGENTS.md is injected, so the next .nu seed re-derives everything. Change: add .fabro/skills/nushell-scripts/SKILL.md (discovery already scans the workflow skills dir) plus one line in .fabro/workflows/develop/prompts/implementer.md step 2 to load it when the seed touches .nu files. Expected effect: next script seed skips the probe/debug cycle — conservatively 1-2 min and $0.03-0.08 per run, fewer failed writes. Delivery-side complement to open seed fabro-ee2c (recording-side); not a duplicate of fabro-81b7 (rust-style-guide loading is a sibling pattern, different skill).\\nBasis: run 01M22R3TBFP86JPX0ZD8CA0QF5, workflow version 57bfc82454a2182c84939466acec9710916f642ceb8b5d804d46e80c2a30150a, commit 75c5220e994bae4fe63dd4ecbaf19f7f6fbbab98\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-1314\",\"title\":\"Planner briefs must prescribe outcomes, not unverified language mechanics\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T09:50:09.907Z\",\"updatedAt\":\"2026-09-09T10:33:13.392Z\",\"description\":\"Run 01M22R3TBFP86JPX0ZD8CA0QF5: the seed brief's criterion (3) literally prescribed `do { ... } | complete` — a construct that errors in nu 0.115 when the block returns a value. The implementer had to discover the prescription was wrong, deviate (per-git-call wrappers + outer `do -i`), and journal the deviation. The requirement (\\\"must NEVER fail or block the close\\\") was correct; the mechanism was not, and the planner had no way to verify it. Change: add to .fabro/workflows/develop/prompts/planner.md step 7 — state acceptance criteria as outcomes; annotate any code-snippet prescription in the seed body as advisory unless verified against the current tree. Expected effect: prevents brief-induced debug cycles on script seeds and keeps the reviewer's PASS/FAIL lines outcome-aligned. Distinct from closed fabro-cf76 (existence verification of anchors/paths cannot catch semantic wrongness) and from open fabro-b8ed/fabro-9e49 (verification assertion and bullet formatting, different mechanisms).\\nBasis: run 01M22R3TBFP86JPX0ZD8CA0QF5, workflow version 57bfc82454a2182c84939466acec9710916f642ceb8b5d804d46e80c2a30150a, commit 75c5220e994bae4fe63dd4ecbaf19f7f6fbbab98\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-a341\",\"title\":\"Align the unemitted_allow_keys lint with read_context_key's context.-prefix tolerance\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T10:53:50.784Z\",\"updatedAt\":\"2026-09-09T10:53:50.784Z\",\"description\":\"In the stage-envelope allow-keys lint added for seed fabro-8bf4 in lib/components/fabro-workflow, the unemitted-key check matches raw keys only, while read_context_key also accepts context.-prefixed forms — reviewer@1 of run 01M22VHABGCNWT7DKJC9HP1XKC flagged the divergence as a future watch item and it survives only as journal prose. Normalize the lint's key matching to the reader's semantics so a key emitted in prefixed form is not reported unemitted and the two code paths cannot drift apart. Complements open seed fabro-8bf4 (the lint feature itself); do not close it. Expected effect: no false-positive completion warnings once the fabro-8bf4 lint merges; lint and reader share one key-normalization rule. Basis: run 01M22VHABGCNWT7DKJC9HP1XKC, workflow version 14ab451ff2f9375f4927ce7d994c63bc96f48f3c617f3baff15119472f3af3e4, commit a546610719fbe1058f9f820d9eee65d03ed681e4\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 52,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-09T10:54:24.714060387Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 415603,
+      "inference_time_ms": 253431,
+      "tool_time_ms": 143423,
+      "active_time_ms": 396854
+    },
+    "final_git_commit_sha": "55be2295f60ae248a795bf378c2be0788543ea77",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 24237,
+          "inference_time_ms": 22100,
+          "tool_time_ms": 1560,
+          "active_time_ms": 23660
+        },
+        "billing_usd_micros": 26420,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 321432,
+          "inference_time_ms": 179852,
+          "tool_time_ms": 141003,
+          "active_time_ms": 320855
+        },
+        "billing_usd_micros": 83227,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 52970,
+          "inference_time_ms": 51479,
+          "tool_time_ms": 860,
+          "active_time_ms": 52339
+        },
+        "billing_usd_micros": 46926,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 52535,
+      "output_tokens": 5068,
+      "total_tokens": 210631,
+      "reasoning_tokens": 5060,
+      "cache_read_tokens": 147968,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 156573
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M22WF6T04KEWPVCCJJ9YQXQB.jsonl b/.fabro/journal/01M22WF6T04KEWPVCCJJ9YQXQB.jsonl\nnew file mode 100644\nindex 0000000..fc446cc\n--- /dev/null\n+++ b/.fabro/journal/01M22WF6T04KEWPVCCJJ9YQXQB.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22WF6T04KEWPVCCJJ9YQXQB\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:47:34Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22WF6T04KEWPVCCJJ9YQXQB\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:47:58Z\",\"data\":{\"painpoints\":[],\"observations\":[\"9 runs listed (7 develop, 2 merge-upstream); selected the newest unrevised develop run 01M22VHABGCNWT7DKJC9HP1XKC\",\"2 fresh unrevised merge-upstream runs from 2026-09-08 remain eligible for a future pass (01M20N60ZY6DZDTX60WW0161KP, 01M20E43YS004DCEYPJ0GJQH4B)\",\"no sandbox-less or non-terminal runs in this pool; all older develop runs are revised\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22WF6T04KEWPVCCJJ9YQXQB\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:53:23Z\",\"data\":{\"painpoints\":[{\"text\":\"The Ask-Fabro analyst re-derived 6/6 already-tracked findings in this pass — every recommendation mapped 1:1 to an existing open seed, so the only novel content was one observation buried in evidence prose. This is the exact failure mode of open seed fabro-88a4 (give the analyst an open-backlog digest); implementing it would let revisor passes converge on genuinely new findings instead of restating the backlog.\"}],\"observations\":[\"Selected newest unrevised develop run 01M22VHABGCNWT7DKJC9HP1XKC (PR #84, seed fabro-8bf4, 15.2 min, $0.482, 7/7 green first-pass); review persisted to `.fabro/reviews/develop/01M22VHABGCNWT7DKJC9HP1XKC.md`\",\"Duplicates withheld: build-cache warm → fabro-fe15; preamble_budget_kb 24→32 → fabro-8d2c; sd ready top-N → fabro-c3b4; per-stage memory scoping + shared cache prefix → fabro-9588 + fabro-944d; review_notes channel → fabro-89dd; acceptance-bullet restating → fabro-ad1b + fabro-4cd8 (all open, same concrete change)\",\"One new finding survived: key-normalization divergence between the fabro-8bf4 lint and `read_context_key` — no tracker coverage found via sd search (read_context_key, context key prefix, normaliz all empty or unrelated)\",\"sd search 'review notes' returned nothing even though fabro-89dd exists and matches by title — content search misses underscore terms; direct `sd show` of every analyst-cited id (per fabro-5ff7) remains the reliable duplicate check\",\"2 fresh unrevised merge-upstream runs from 2026-09-08 remain eligible for a future pass (01M20N60ZY6DZDTX60WW0161KP, 01M20E43YS004DCEYPJ0GJQH4B)\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22WF6T04KEWPVCCJJ9YQXQB\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:54:20Z\",\"data\":{\"painpoints\":[{\"text\":\"`sd list --format compact` shows titles only, so judging whether a finding duplicates an open seed requires reading descriptions (`sd show`); a theme/keyword column or richer compact format would speed the bookkeeper's duplicate check — evidence: fabro-8bf4 title alone looked like a potential duplicate until its description was read; fix idea: add `sd list --format id+title+labels+first-120-chars`\"}],\"observations\":[\"fabro-a341 complements (not supersedes) open fabro-8bf4; both concern the allow-keys lint but name different concrete changes — cross-referenced, nothing closed\",\"sd search for 'allow-keys lint' and 'read_context_key' returned no hits despite fabro-8bf4 existing with matching keywords — search may only cover title/description fields in a way that missed it; bookkeepers should not rely on sd search alone\"]}}\ndiff --git a/.fabro/reviews/develop/01M22VHABGCNWT7DKJC9HP1XKC.md b/.fabro/reviews/develop/01M22VHABGCNWT7DKJC9HP1XKC.md\nnew file mode 100644\nindex 0000000..85ac858\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M22VHABGCNWT7DKJC9HP1XKC.md\n@@ -0,0 +1,34 @@\n+# Improve review — run 01M22VHABGCNWT7DKJC9HP1XKC\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (15.2 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-09 10:50+0000 by revisor `fabro_ask`\n+\n+---\n+\n+All claims below are from this run's events, stage prompts/transcripts, conclusion billing, and the graph spec as submitted (mirrored in `.fabro/workflows/develop/workflow.fabro`, confirmed present in the workspace). Run shape for context: 907 s wall, **$0.482** total, 7/7 stages green first-pass, zero retries — seed `fabro-8bf4`, PR #84. The implementer stage alone: **789 s wall (87%) and $0.396 (82% of cost), of which 516 s was tool time** vs 272 s inference.\n+\n+## Recommendations, by expected impact\n+\n+**1. Warm the Rust build cache for run containers — the single biggest lever.**\n+Evidence: implementer tool time was 516 s (crate-scoped nextest/fmt/clippy on a cold `target/`), yet the tester ran the identical tree's `just qualitygate` in **24 s** — that 490 s delta is pure cold-cache compile cost, paid inside the LLM-billed stage. Change: implement open seed `fabro-fe15` (bake a debug `fabro-cli`/shared cargo cache into the toolchain image, or engine-mount a persistent `target/` across run containers) — file: the inline toolchain Dockerfile in the run environment spec (`.fabro/Dockerfile*`), needs the pending ADR-0019 user approval. Expected effect: implementer wall drops from ~13 min toward ~5–6 min; ~40% off every Rust-seed run's wall clock, independent of prompt behavior.\n+\n+**2. Raise `preamble_budget_kb` 24 → 32 — the evidence blob detour fired again in this run.**\n+Evidence: the reviewer node sets `preamble_inline_max_kb=16`, but the 12.9 KB evidence capture was still demoted to a blob ref (`Output (12.9 KB; full value: /tmp/fabro/runtime/blobs/…)` in the reviewer@1 prompt) because the aggregate 24 KB graph budget was exhausted by the tester section + context keys. The reviewer's **only tool call of the pass** (12 ms `read_file`) was spent paging that blob. Change: graph attr `preamble_budget_kb=32` in `.fabro/workflows/develop/workflow.fabro` (open seed `fabro-8d2c`). Expected effect: captures up to ~16 KB render inline; removes one tool round-trip + one LLM turn per review, and removes the \"unread blob = verification blocked\" failure mode for typical captures.\n+\n+**3. Give the planner a top-N `sd ready` view instead of the 24 KB firehose.**\n+Evidence: planner@1's `sd ready --assignee fabro --limit 200` returned **179 issues, stdout truncated at 24,175 bytes**; the next LLM call's input jumped 12,414 → 21,261 tokens — ~9 k tokens of Medium/Low/Backlog tail the planner never used (it took the first High item). Change: implement open seed `fabro-c3b4` — pipe through `head -40` (or add an `sd ready --top N` flag), and update step 1 of `.fabro/workflows/develop/prompts/planner.md`. Expected effect: ~9 k input tokens + paging latency removed from every planner pass; this run's planner was 34.8 s inference / $0.057 — expect roughly half that.\n+\n+**4. Scope per-stage memory — full `AGENTS.md` rides into all three agent sessions.**\n+Evidence: `agent.memory.loaded` shows the identical **23,967-byte `AGENTS.md`** (~6 k tokens) in planner@1, implementer@1, and reviewer@1; the planner never touches the Rust workspace it describes. Related: `cache_write_tokens=0` all run and each stage's first LLM call starts cache-cold (planner call 1: 12.4 k input, 0 cache-read) — the system+tools+memory prefix is re-paid per stage (open seed `fabro-944d`). Change: per-node memory scoping (`fabro-9588`) — tracker/loop sections for planner, Rust conventions for implementer/reviewer; engine-side, shared prompt-cache prefix (`fabro-944d`) compounds it. Expected effect: ~12–18 k input tokens saved per run and less cross-role distraction; small dollars, but every run pays it.\n+\n+**5. Give non-blocking review findings a durable home.**\n+Evidence: the reviewer's one substantive observation — `unemitted_allow_keys` matches raw keys while `read_context_key` tolerates `context.`-prefixed forms, \"key-normalization divergence is a future watch item\" — exists **only as journal prose** (`reviewer@1` journal, and the run-diff `.fabro/journal/…jsonl`). Nothing converts it into a tracker seed; it survives only if the improve workflow scans journals. Change: add a `review_notes` context key to the reviewer's `context_allow_keys` and have `closeout.nu` file non-blocking notes as Low-priority seeds (open seed `fabro-89dd`), files: `.fabro/workflows/develop/workflow.fabro` + `scripts/closeout.nu`. Expected effect: real latent-bug findings become tracked work automatically instead of depending on a second scan loop.\n+\n+**6. Stop restating acceptance bullets in every artifact.**\n+Evidence: the 1.6 KB `current_seed_brief` appears verbatim in the planner output, implementer prompt, and reviewer prompt; the implementer's `implementation_summary` (1.4 KB) then restates each bullet inside its PASS lines, and the reviewer's 3.4 KB response restates them a third time — ~3 KB of duplicated criterion text per downstream stage. Change: implement open seeds `fabro-4cd8`/`fabro-ad1b` — cite bullets by index (`PASS #2: context.rs envelope_lint_* tests`) — prompt edits in `prompts/implementer.md` and `prompts/reviewer.md`. Expected effect: 1.5–2 KB less preamble per stage; zero-risk.\n+\n+## What I could not ground\n+\n+**Error handling:** this run had zero failures, retries, gate-reds, or output-schema retries, so no failure-path data exists to improve. The nearest grounded items: (a) the implementer's two compile iterations (fn-pointer vs clippy-form mismatch) are now captured as `mx-7eb5e7`, so the existing `ml prime` flow will surface them next time — no change warranted from this run; (b) the only degradation that actually fired was the blob demotion (covered in #2). I did not inspect PR #84's post-closeout merge state (still `null` at last event) or the runner logs.\ndiff --git a/.fabro/revisions/01M22VHABGCNWT7DKJC9HP1XKC.md b/.fabro/revisions/01M22VHABGCNWT7DKJC9HP1XKC.md\nnew file mode 100644\nindex 0000000..bba6baa\n--- /dev/null\n+++ b/.fabro/revisions/01M22VHABGCNWT7DKJC9HP1XKC.md\n@@ -0,0 +1,13 @@\n+# Revision — run 01M22VHABGCNWT7DKJC9HP1XKC\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M22VHABGCNWT7DKJC9HP1XKC.md\n+- seeds filed: fabro-a341 — Align the unemitted_allow_keys lint with read_context_key's context.-prefix tolerance\n+- basis: run 01M22VHABGCNWT7DKJC9HP1XKC, workflow version 14ab451ff2f9375f4927ce7d994c63bc96f48f3c617f3baff15119472f3af3e4, commit a546610719fbe1058f9f820d9eee65d03ed681e4\n+- revised_at_commit: a546610719fbe1058f9f820d9eee65d03ed681e4 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Align the unemitted_allow_keys lint with read_context_key's context.-prefix tolerance\n+- filed: fabro-a341\n+- The stage-envelope allow-keys lint (seed fabro-8bf4, `lib/components/fabro-workflow`) matches raw keys only for the unemitted check, while `read_context_key` also accepts `context.`-prefixed forms; reviewer@1 flagged the divergence as a future watch item. Normalize the lint's key matching to the reader's semantics so prefixed-form emissions are not reported unemitted and the code paths cannot drift. Complements open seed fabro-8bf4 (cross-referenced, not superseded — different concrete change). Expected effect: no false-positive completion warnings once the fabro-8bf4 lint merges; one shared key-normalization rule.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 4f3bd7c..951e4b3 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -302,3 +302,4 @@\n {\"id\":\"fabro-b94d\",\"title\":\"Develop: stop ml record from mutating .mulch/mulch.config.yaml mid-run\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T09:12:30.174Z\",\"updatedAt\":\"2026-09-09T09:40:28.701Z\",\"description\":\"Pre-create the ml workflow domain (toolchain image or implementer prompt lesson-capture step) so ml record stops auto-creating it and writing '+ workflow: {}' to tracked .mulch/mulch.config.yaml mid-run; until then, classify that file as expected churn in evidence.nu (sibling pattern of fabro-6db3, distinct from fabro-43ba's no-net-diff transients). Basis: run 01M22PCGN4E3X1XGN630MDDH39 — the implementer's failed lesson-capture call (seq 96-97) still auto-created the domain, producing surprise churn the reviewer had to classify. Effect: no surprise tracked-config churn per lesson capture. Orthogonal to fabro-96bd (flag-contract docs), which covers only the failed-call retry. Basis: run 01M22PCGN4E3X1XGN630MDDH39, workflow version e6202c3d2f79d43966a4f1fc60620f8b3f3d8c36f6facf82a41cd18b0c9c1b4e, commit 6d05194d18b7f1085cbac66a27b5cee0defacce9\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-d19e\",\"title\":\"Add a nushell-scripts skill so the implementer stops re-deriving nu 0.115 semantics\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T09:49:58.539Z\",\"updatedAt\":\"2026-09-09T10:33:13.300Z\",\"description\":\"Run 01M22R3TBFP86JPX0ZD8CA0QF5: the implementer (69% of wall, 66% of cost for a 102-line insert-only change) spent three probe turns reverse-engineering nu 0.115 semantics — `complete` is external-only (failed twice, seq 170/176), `source` const resolution, `def main` auto-invoke collision (seq 182), plus one parse failure from parenthesized prose in $\\\"…\\\" (seq 194) — its two heaviest reasoning turns (1,254 + 2,437 reasoning tokens ≈ $0.029). Lessons exist as mx-84a287 in .mulch/expertise/workflows.jsonl, but agent.memory.loaded shows only AGENTS.md is injected, so the next .nu seed re-derives everything. Change: add .fabro/skills/nushell-scripts/SKILL.md (discovery already scans the workflow skills dir) plus one line in .fabro/workflows/develop/prompts/implementer.md step 2 to load it when the seed touches .nu files. Expected effect: next script seed skips the probe/debug cycle — conservatively 1-2 min and $0.03-0.08 per run, fewer failed writes. Delivery-side complement to open seed fabro-ee2c (recording-side); not a duplicate of fabro-81b7 (rust-style-guide loading is a sibling pattern, different skill).\\nBasis: run 01M22R3TBFP86JPX0ZD8CA0QF5, workflow version 57bfc82454a2182c84939466acec9710916f642ceb8b5d804d46e80c2a30150a, commit 75c5220e994bae4fe63dd4ecbaf19f7f6fbbab98\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-1314\",\"title\":\"Planner briefs must prescribe outcomes, not unverified language mechanics\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T09:50:09.907Z\",\"updatedAt\":\"2026-09-09T10:33:13.392Z\",\"description\":\"Run 01M22R3TBFP86JPX0ZD8CA0QF5: the seed brief's criterion (3) literally prescribed `do { ... } | complete` — a construct that errors in nu 0.115 when the block returns a value. The implementer had to discover the prescription was wrong, deviate (per-git-call wrappers + outer `do -i`), and journal the deviation. The requirement (\\\"must NEVER fail or block the close\\\") was correct; the mechanism was not, and the planner had no way to verify it. Change: add to .fabro/workflows/develop/prompts/planner.md step 7 — state acceptance criteria as outcomes; annotate any code-snippet prescription in the seed body as advisory unless verified against the current tree. Expected effect: prevents brief-induced debug cycles on script seeds and keeps the reviewer's PASS/FAIL lines outcome-aligned. Distinct from closed fabro-cf76 (existence verification of anchors/paths cannot catch semantic wrongness) and from open fabro-b8ed/fabro-9e49 (verification assertion and bullet formatting, different mechanisms).\\nBasis: run 01M22R3TBFP86JPX0ZD8CA0QF5, workflow version 57bfc82454a2182c84939466acec9710916f642ceb8b5d804d46e80c2a30150a, commit 75c5220e994bae4fe63dd4ecbaf19f7f6fbbab98\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-a341\",\"title\":\"Align the unemitted_allow_keys lint with read_context_key's context.-prefix tolerance\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T10:53:50.784Z\",\"updatedAt\":\"2026-09-09T10:53:50.784Z\",\"description\":\"In the stage-envelope allow-keys lint added for seed fabro-8bf4 in lib/components/fabro-workflow, the unemitted-key check matches raw keys only, while read_context_key also accepts context.-prefixed forms — reviewer@1 of run 01M22VHABGCNWT7DKJC9HP1XKC flagged the divergence as a future watch item and it survives only as journal prose. Normalize the lint's key matching to the reader's semantics so a key emitted in prefixed form is not reported unemitted and the two code paths cannot drift apart. Complements open seed fabro-8bf4 (the lint feature itself); do not close it. Expected effect: no false-positive completion warnings once the fabro-8bf4 lint merges; lint and reader share one key-normalization rule. Basis: run 01M22VHABGCNWT7DKJC9HP1XKC, workflow version 14ab451ff2f9375f4927ce7d994c63bc96f48f3c617f3baff15119472f3af3e4, commit a546610719fbe1058f9f820d9eee65d03ed681e4\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 52,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1531,6 +1617,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 149,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T10:54:24.678933403Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T10:54:24.678909504Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
