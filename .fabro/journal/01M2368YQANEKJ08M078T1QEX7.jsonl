@@ -1,0 +1,2 @@
+{"$schema":"fabro-journal-v1","run_id":"01M2368YQANEKJ08M078T1QEX7","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T13:38:55Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M2368YQANEKJ08M078T1QEX7","node":"select","visit":1,"status":"succeeded","ts":"2026-09-09T13:39:23Z","data":{"painpoints":[],"observations":["14 runs listed; selected the newest unrevised terminal run; 11 develop runs stale-evidence (version drift, unrevisable), 2 fresh unrevised merge-upstream runs remain eligible for later passes; 0 runs lacking live sandbox; no active runs"]}}
