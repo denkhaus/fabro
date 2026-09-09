@@ -12,6 +12,7 @@ use tokio::task::spawn_blocking;
 use tokio::{fs, time};
 use tokio_util::sync::CancellationToken;
 
+use crate::exec::is_sensitive_env_var;
 use crate::sandbox::{
     self, BASH_ENV_VAR, BASH_PROBE_SCRIPT, BASH_PROBE_TIMEOUT_MS, OutputCaptureBuffer,
     StdioProcessControl, optional_timeout, validate_bash_probe, write_process_stdin,
@@ -142,29 +143,8 @@ impl LocalSandbox {
         }
     }
 
-    const ENV_SAFELIST: &'static [&'static str] = &[
-        EnvVars::PATH,
-        EnvVars::HOME,
-        EnvVars::USER,
-        EnvVars::SHELL,
-        EnvVars::LANG,
-        EnvVars::TERM,
-        EnvVars::TMPDIR,
-        EnvVars::GOPATH,
-        EnvVars::CARGO_HOME,
-        EnvVars::NVM_DIR,
-    ];
-
     fn should_filter_env_var(key: &str) -> bool {
-        if Self::ENV_SAFELIST.contains(&key) {
-            return false;
-        }
-        let lower = key.to_lowercase();
-        lower.ends_with("_api_key")
-            || lower.ends_with("_secret")
-            || lower.ends_with("_token")
-            || lower.ends_with("_password")
-            || lower.ends_with("_credential")
+        is_sensitive_env_var(key)
     }
 
     fn resolve_path(&self, path: &str) -> PathBuf {

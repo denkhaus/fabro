@@ -1040,31 +1040,63 @@ pub struct StdioProcess {
 
 #[derive(Debug, Clone)]
 pub struct StderrCollector {
-    inner:     Arc<TokioMutex<Vec<u8>>>,
-    max_bytes: usize,
+    inner: StderrCollectorInner,
+}
+
+#[derive(Debug, Clone)]
+enum StderrCollectorInner {
+    Buffer {
+        bytes:     Arc<TokioMutex<Vec<u8>>>,
+        max_bytes: usize,
+    },
+    /// A tail the sandbox driver already keeps for a spawned process.
+    Driver(sandbox_driver::StderrTail),
 }
 
 impl StderrCollector {
     #[must_use]
     pub fn new(max_bytes: usize) -> Self {
         Self {
-            inner: Arc::new(TokioMutex::new(Vec::new())),
-            max_bytes,
+            inner: StderrCollectorInner::Buffer {
+                bytes: Arc::new(TokioMutex::new(Vec::new())),
+                max_bytes,
+            },
+        }
+    }
+
+    /// Wraps the rolling stderr tail of a driver-spawned process.
+    #[must_use]
+    pub fn from_driver_tail(tail: sandbox_driver::StderrTail) -> Self {
+        Self {
+            inner: StderrCollectorInner::Driver(tail),
         }
     }
 
     pub async fn push(&self, bytes: &[u8]) {
-        let mut tail = self.inner.lock().await;
-        tail.extend_from_slice(bytes);
-        if tail.len() > self.max_bytes {
-            let excess = tail.len() - self.max_bytes;
-            tail.drain(..excess);
+        match &self.inner {
+            StderrCollectorInner::Buffer {
+                bytes: buffer,
+                max_bytes,
+            } => {
+                let mut tail = buffer.lock().await;
+                tail.extend_from_slice(bytes);
+                if tail.len() > *max_bytes {
+                    let excess = tail.len() - max_bytes;
+                    tail.drain(..excess);
+                }
+            }
+            StderrCollectorInner::Driver(tail) => tail.push(bytes),
         }
     }
 
     pub async fn tail_string(&self) -> String {
-        let tail = self.inner.lock().await;
-        String::from_utf8_lossy(&tail).into_owned()
+        match &self.inner {
+            StderrCollectorInner::Buffer { bytes, .. } => {
+                let tail = bytes.lock().await;
+                String::from_utf8_lossy(&tail).into_owned()
+            }
+            StderrCollectorInner::Driver(tail) => tail.to_string_lossy(),
+        }
     }
 
     pub fn spawn_reader<R>(&self, mut reader: R) -> JoinHandle<()>

@@ -5,6 +5,7 @@ use bollard::errors::Error as BollardError;
 use fabro_util::error::{collect_causes, render_with_causes};
 
 use crate::ExecResult;
+use crate::sandbox::{DEFAULT_EXEC_OUTPUT_TAIL_BYTES, redacted_output_tail};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -47,6 +48,13 @@ pub enum Error {
         #[source]
         source: BollardError,
     },
+
+    /// A sandbox-driver failure: provider, transport, or an operation whose
+    /// outcome is unknown. The driver's own variants stay reachable through
+    /// [`Error::driver`] so callers can act on `NotFound`, `Unsupported`,
+    /// `Transport`, and `Incomplete` without string matching.
+    #[error(transparent)]
+    Driver(Box<sandbox_driver::Error>),
 
     #[error(
         "{label} failed (exit {exit}, termination={termination}, duration_ms={duration_ms}) - hint: {hint}",
@@ -118,8 +126,64 @@ impl Error {
         collect_causes(self)
     }
 
+    pub fn driver_error(source: sandbox_driver::Error) -> Self {
+        Self::Driver(Box::new(source))
+    }
+
+    /// The underlying sandbox-driver error, when this error carries one
+    /// anywhere in its chain.
+    pub fn driver(&self) -> Option<&sandbox_driver::Error> {
+        let mut current: Option<&(dyn std::error::Error + 'static)> = Some(self);
+        while let Some(err) = current {
+            if let Some(Self::Driver(driver)) = err.downcast_ref::<Self>() {
+                return Some(driver.as_ref());
+            }
+            if let Some(driver) = err.downcast_ref::<sandbox_driver::Error>() {
+                return Some(driver);
+            }
+            current = err.source();
+        }
+        None
+    }
+
+    /// The facts established when a driver operation ended without a
+    /// complete outcome. A caller that sees `Some` must not replay the
+    /// operation: its effects may already have happened.
+    pub fn incomplete_operation(&self) -> Option<&sandbox_driver::IncompleteOperation> {
+        match self.driver()? {
+            sandbox_driver::Error::Incomplete(incomplete) => Some(incomplete),
+            _ => None,
+        }
+    }
+
+    /// True when communication with an out-of-process provider failed. The
+    /// operation may or may not have run; fabro rebuilds handles through
+    /// `attach` rather than retrying blind.
+    pub fn is_transport(&self) -> bool {
+        matches!(self.driver(), Some(sandbox_driver::Error::Transport(_)))
+    }
+
+    /// True when the driver reported the resource missing.
+    pub fn is_not_found(&self) -> bool {
+        matches!(self.driver(), Some(sandbox_driver::Error::NotFound { .. }))
+    }
+
+    /// True when the provider does not support the requested capability.
+    pub fn is_unsupported(&self) -> bool {
+        matches!(
+            self.driver(),
+            Some(sandbox_driver::Error::Unsupported { .. })
+        )
+    }
+
     pub fn display_with_causes(&self) -> String {
         render_with_causes(&self.to_string(), &self.causes())
+    }
+}
+
+impl From<sandbox_driver::Error> for Error {
+    fn from(value: sandbox_driver::Error) -> Self {
+        Self::driver_error(value)
     }
 }
 
@@ -182,6 +246,15 @@ pub fn default_redacted_output_tail(
     while let Some(err) = current {
         if let Some(Error::Exec { result, .. }) = err.downcast_ref::<Error>() {
             return result.default_redacted_output_tail();
+        }
+        if let Some(sandbox_driver::Error::Exec(failure)) =
+            err.downcast_ref::<sandbox_driver::Error>()
+        {
+            return redacted_output_tail(
+                &String::from_utf8_lossy(failure.stdout()),
+                &String::from_utf8_lossy(failure.stderr()),
+                DEFAULT_EXEC_OUTPUT_TAIL_BYTES,
+            );
         }
         current = err.source();
     }
