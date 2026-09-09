@@ -1,0 +1,60 @@
+diff --git a/.fabro/journal/01M2323WFBXXKVTCQMRSZP3NKY.jsonl b/.fabro/journal/01M2323WFBXXKVTCQMRSZP3NKY.jsonl
+index beb1f2c..b222902 100644
+--- a/.fabro/journal/01M2323WFBXXKVTCQMRSZP3NKY.jsonl
++++ b/.fabro/journal/01M2323WFBXXKVTCQMRSZP3NKY.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M2323WFBXXKVTCQMRSZP3NKY","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T12:26:15Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M2323WFBXXKVTCQMRSZP3NKY","node":"select","visit":1,"status":"succeeded","ts":"2026-09-09T12:26:39Z","data":{"painpoints":[],"observations":["Selected newest unrevised develop run 01M230P8RGN6HWTR6PZ966Q3B1 (PR #90 merged, 23.6 min wall, live sandbox, current baseline version). 5 older unrevised develop runs are stale-evidence (version drift: 14ab45/57bfc/e620/8aed/af036 versions superseded by fdcab06e baseline); 0 runs sandbox-less; no active develop runs at inspection time."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M2323WFBXXKVTCQMRSZP3NKY","node":"analyze","visit":1,"status":"succeeded","ts":"2026-09-09T12:32:28Z","data":{"painpoints":[{"text":"Tracker duplicate check needed manual compensation: `sd list --format compact` is capped at 50 and every analyst-cited seed id (fabro-93a7, fabro-8d2c, fabro-8275, fabro-8296) fell beyond the cap; only per-theme `sd search` recovered them. Fix already tracked in fabro-5ff7 (sd show every analyst-cited seed id) — still hurts every revisor pass until landed."}],"observations":["Withheld 4 recommendations as tracker duplicates of OPEN seeds: evidence.nu seed-spec-path promotion = fabro-93a7; raise `preamble_budget_kb` 24→32 = fabro-8d2c; checkpoint push batching at terminal/soft-exit = fabro-652d; allow-key absence WARN→info = fabro-8275. Rec 1's engine route = fabro-9372 (prompt-side fallback survives as new scope); rec 6's engine/implementer variants = fabro-8296 and fabro-2eb6 (planner.md one-liners survive as new scope).","Verified on current tree: `.fabro/workflows/develop/prompts/planner.md` step 4 (line 37) extracts seed ids from `goal` text with no journal fallback, and step 3's fs_hide note covers read_file denial only — grounds findings 1 and 3.","Review persisted verbatim to `.fabro/reviews/develop/01M230P8RGN6HWTR6PZ966Q3B1.md`; analyst metrics for the target run: $0.728 total, 23.4 min wall, gate green in 8.2 s, zero retries."]}}
+diff --git a/.fabro/reviews/develop/01M230P8RGN6HWTR6PZ966Q3B1.md b/.fabro/reviews/develop/01M230P8RGN6HWTR6PZ966Q3B1.md
+new file mode 100644
+index 0000000..776da44
+--- /dev/null
++++ b/.fabro/reviews/develop/01M230P8RGN6HWTR6PZ966Q3B1.md
+@@ -0,0 +1,46 @@
++# Improve review — run 01M230P8RGN6HWTR6PZ966Q3B1
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: succeeded (23.6 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-09 12:29+0000 by revisor `fabro_ask`
++
++---
++
++All grounding below is from this run's events, checkpoints, stage transcripts, journal, and worker log (run 01M230P8RGN6HWTR6PZ966Q3B1, seed fabro-91ff, $0.728 total, 23.4 min, zero retries, gate green in 8.2 s). Ordered by expected impact.
++
++## 1. The mid-flight guard this run shipped cannot work — goals carry no seed id
++**What happened:** The implementer extended `.fabro/workflows/develop/prompts/planner.md` step 4 (line 37): "from those runs collect the seed id out of `goal` the same way." But the `fabro_runs_list` output in this very run (event seq 41) shows all 10 develop runs share the identical generic goal — "Develop the project one seed per run…" — with **no seed id in any of them**. A concurrent planner applying the new text verbatim extracts nothing and skips nothing, so the fabro-91ff double-claim window stays open. Notably, the revisor Step 3.5 shipped in the same commit *does* have the journal fallback (`.fabro/journal/<run_id>.jsonl`); planner.md doesn't.
++**Change:** Add the one-line fallback to `planner.md` step 4 (read the seed id from `.fabro/journal/<run_id>.jsonl` when `goal` has none), or implement open seed fabro-9372 (`current_seed_id` in the `fabro_runs_list` projection / as a run label) in `lib/components/fabro-workflow`.
++**Effect:** The guard becomes functional in the ~15-min claim-to-PR window; otherwise this run's headline fix is inert and the next overlap re-costs a wasted run + duplicate PR (~15 min, ~$0.73 each).
++
++## 2. Evidence classifier hid 2 of 3 deliverables from review
++**What happened:** The reviewer's journal painpoint (stage reviewer@1): `evidence.nu` classified `.fabro/workflows/develop/prompts/planner.md` and `.fabro/workflows/revisor/prompts/analyze.md` as "loop churn — counts only," yet the seed spec named both as acceptance criteria (b) and (c). The reviewer had no diff for a third of the scope and blind-read files (tool_time 204 ms, read_file + shell) — it approved, but a less careful pass routes Verification blocked.
++**Change:** In `.fabro/workflows/develop/scripts/evidence.nu`, `is-loop-path` (lines 34, 146, 385–386) splits seed-work vs churn purely by path prefix; promote a loop-prefix file to `seed_rows` when its path appears in the in-progress seed spec text (path match, as the reviewer suggested; matches open seed fabro-93a7).
++**Effect:** Platform-targeting seeds — now common — get their prompt diffs in the capture; reviewer judges inline instead of blind re-reads; removes a Verification-blocked bounce class.
++
++## 3. Root-cause seeds can't reach incident state → superset fixes
++**What happened:** Implementer painpoint (stage implementer@1): the seed demanded root-causing *which* hypothesis admitted the second conductor pass, but "the runs/automation DB state from runs 01M22X67GYXC/01M22VF9PWJH is not reachable from the product repo," so it implemented the superset fix. The regression test asserts guard semantics, not the incident path — and the alternative hypothesis (fabro-ee5d run_wait misjudgment) is still open, so the true cause may be unfixed.
++**Change:** Persist a read-only run/automation state dump per run (e.g., a `fabro ps -a --json`-style snapshot the implementer can read), or extend the run projection with a status timeline — engine-side, `fabro-store`/`fabro_runs_list`.
++**Effect:** Incident-citing seeds become verifiable; fixes target the actual cause instead of the union of hypotheses, and open bugs stop hiding behind superset fixes.
++
++## 4. The evidence blob detour happened again — third-plus recurrence
++**What happened:** The reviewer's stage prompt shows the 8.7 KB evidence capture demoted to a blob ref (`Output (8.7 KB; full value: /tmp/fabro/runtime/blobs/e4ba….json)`) even though the reviewer node's own `preamble_inline_max_kb=16` would have kept it whole — the aggregate graph budget (24 KB) demoted it. The reviewer paged the blob with tools (this time it self-reported the friction, unlike run 01M22X87J1R).
++**Change:** Raise `preamble_budget_kb` 24→32 in `.fabro/workflows/develop/workflow.fabro` (open fabro-8d2c), or exempt values under a node's own `preamble_inline_max_kb` from the aggregate demote pass (engine preamble renderer).
++**Effect:** One less tool round-trip per review and no blob-paging painpoint on every run whose capture exceeds the aggregate budget — this is a per-run tax now.
++
++## 5. ~27 s of checkpoint overhead on a 23.4-min run
++**What happened:** Measured boundary gaps from events: planner done 12:02:34.2 → implementer 12:02:39.4 (5.2 s); implementer 12:22:45.9 → tester 12:22:51.8 (6.0 s); tester 12:23:00.1 → evidence 12:23:05.0 (4.9 s); evidence 12:23:06.6 → reviewer 12:23:12.6 (5.9 s); reviewer 12:24:24.8 → closeout 12:24:30.2 (5.4 s). ~27 s total (~2% of wall), all snapshot+commit+push at stage boundaries — exactly what open seed fabro-652d measured on the previous run.
++**Change:** Engine checkpoint pipeline: keep per-stage commits, push only at terminal/soft-exit boundaries (fabro-652d).
++**Effect:** ~25–30 s off every develop run, independent of seed size; command stages (tester/evidence/closeout, 10.2 s combined work here) stop paying full push treatment.
++
++## 6. Prompt footguns the planner hit live this run
++**What happened:** (a) Planner globbed `.fabro/workflows/develop/**` under fs_hide → silently empty (seq 46–47), then burned a shell `ls`/`rg` round to locate prompts (seq 52–54). (b) That same shell call ran `rg -rn "fabro_runs_list" .fabro -l` — the exact `-r n`-means-replace footgun from open seed fabro-2eb6; it was accidentally harmless only because `-l` discards replacements.
++**Change:** Two one-liners in `.fabro/workflows/develop/prompts/planner.md`: "glob on fs_hide paths returns EMPTY, not an error — go straight to shell for `.fabro/**`" and "never `rg -rn` — `-r` replaces; use `-n`" (fabro-2eb6). Engine-side alternative for (a): make hidden-path glob return the fs_hide notice (fabro-8296).
++**Effect:** −2 tool calls and −1 LLM round per planner pass touching platform paths; kills the rg-replace error class before it bites a run where output isn't discarded.
++
++## 7. Two smaller consistency items
++- **The run's only WARN is by-design noise:** worker log shows exactly one line — `preamble_allow_keys entry absent … key=output.gate_known_bug_hits` at implementer start, expected on first visit (the key exists only after a gatebounce). Downgrade to info unless the gatebounce node has run (engine fidelity lint; open fabro-8275). **Effect:** a clean warn channel so real degradations surface.
++- **ADR-0019 ambiguity the reviewer had to adjudicate:** reviewer observation 2 wrestled with whether revisor Step 3.5's `git fetch origin <base-branch>` (new code path on the engine credential bridge) counts as a "recorded user decision" — it ratified it as "spec-mandated." Add one line to `.fabro/workflows/develop/prompts/reviewer.md` stating whether a seed-spec mandate satisfies ADR-0019. **Effect:** identical capability-delta verdicts across reviewers instead of judgment calls that could flip between false blocks and silent ratification.
++
++**What worked and needs no change** (from this run's numbers): implementer crate-scoped checks kept the tester's gate warm (8.2 s green, single pass, zero gate cycles); `reasoning_effort=low` held planner/reviewer at $0.07/$0.04 with clean outputs; deterministic closeout closed the seed in 0.4 s; the journal channel delivered both real painpoints that ground recommendations 1–3.
