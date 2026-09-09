@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "duplicate run: fabro-6a5a already merged as #107",
+  "timestamp": "2026-09-09T19:14:47.667380216Z"
+}

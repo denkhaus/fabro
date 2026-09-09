@@ -1,0 +1,159 @@
+diff --git a/.fabro/workflows/develop/workflow.toml b/.fabro/workflows/develop/workflow.toml
+index f7fff76..41467d7 100644
+--- a/.fabro/workflows/develop/workflow.toml
++++ b/.fabro/workflows/develop/workflow.toml
+@@ -42,15 +42,22 @@ push = true
+ [run.meta_branch]
+ push = true
+ 
+-# Autonomous merge-back (run -> PR -> base branch): every successful run
+-# with a non-empty diff opens a PR against the base branch; auto-merge
+-# lands it once required checks pass. Without this, scheduled runs would
+-# re-implement the same seed every run (observed: three parallel
+-# -pretty implementations on orphaned run branches).
++# Merge-back (run -> PR -> base branch): every successful run with a
++# non-empty diff opens a PR against the base branch. Auto-merge is OFF:
++# the enablePullRequestAutoMerge GraphQL call deterministically fails on
++# this repository ("Auto merge is not allowed for this repository",
++# fabro-6a5a) and only burned ~1 round-trip + a recurring warn per run.
++# Double-pick risk (a scheduled run re-implementing a seed that already
++# has a landed/landing PR — observed: three parallel -pretty
++# implementations on orphaned run branches) is now covered by the
++# planner-side in-flight PR/run check (fabro-06e0/fabro-91ff), which
++# skips seeds whose run already has an open PR or in-flight run before
++# the implementer is ever dispatched. PRs land via manual/scheduled
++# merge-back instead of GitHub auto-merge.
+ [run.pull_request]
+ enabled = true
+ draft = false
+-auto_merge = true
++auto_merge = false
+ merge_strategy = "squash"
+ # glm-4.7: non-reasoning (catalog features.reasoning = false) — cheap,
+ # clean JSON for PR titling; no reasoning_effort needed (and "off" is not
+diff --git a/.fabro/workflows/merge-upstream/workflow.toml b/.fabro/workflows/merge-upstream/workflow.toml
+index a641ef0..73a2501 100644
+--- a/.fabro/workflows/merge-upstream/workflow.toml
++++ b/.fabro/workflows/merge-upstream/workflow.toml
+@@ -47,7 +47,7 @@ push = true
+ [run.pull_request]
+ enabled = true
+ draft = false
+-auto_merge = true
++auto_merge = false  # GraphQL call deterministically fails here (fabro-6a5a); aligned with develop
+ merge_strategy = "squash"
+ model = "zai:glm-4.7"
+ 
+diff --git a/.fabro/workflows/revisor/workflow.toml b/.fabro/workflows/revisor/workflow.toml
+index 0ceff72..38b5239 100644
+--- a/.fabro/workflows/revisor/workflow.toml
++++ b/.fabro/workflows/revisor/workflow.toml
+@@ -57,7 +57,7 @@ push = true
+ [run.pull_request]
+ enabled = true
+ draft = false
+-auto_merge = true
++auto_merge = false  # GraphQL call deterministically fails here (fabro-6a5a); aligned with develop
+ merge_strategy = "squash"
+ # glm-4.7: non-reasoning (catalog features.reasoning = false) — cheap,
+ # clean JSON for PR titling; no reasoning_effort needed (and "off" is not
+diff --git a/lib/components/fabro-workflow/src/pipeline/pull_request.rs b/lib/components/fabro-workflow/src/pipeline/pull_request.rs
+index 5e600d3..6d20ffa 100644
+--- a/lib/components/fabro-workflow/src/pipeline/pull_request.rs
++++ b/lib/components/fabro-workflow/src/pipeline/pull_request.rs
+@@ -403,7 +403,11 @@ async fn generate_pr_content(params: GenerateParams) -> Result<PrContent, String
+     match structured {
+         Ok(content) => Ok(content),
+         Err(first_error) => {
+-            warn!(
++            // Expected degradation, not an unexpected failure (fabro-6a5a):
++            // reasoning models periodically answer prose to JSON-schema
++            // requests, so the retry below is part of the normal path. Log at
++            // info so a recurring non-JSON first attempt does not spam warn.
++            info!(
+                 error = %first_error,
+                 "PR content structured generation failed; retrying once without strict JSON output"
+             );
+@@ -417,7 +421,7 @@ async fn generate_pr_content(params: GenerateParams) -> Result<PrContent, String
+             }
+             let prose = text.trim();
+             if prose.len() >= 40 {
+-                warn!(
++                info!(
+                     "PR content retry was not JSON; salvaging prose body with deterministic title"
+                 );
+                 return Ok(PrContent {
+@@ -504,7 +508,11 @@ async fn build_pr_content_with_client(
+             (title, llm_body)
+         }
+         Err(error) => {
+-            warn!(
++            // Expected degradation (fabro-6a5a): both generation attempts
++            // failing is handled by the deterministic fallback — the run's
++            // work is already pushed. Info, not warn: a recurring
++            // non-JSON model answer must not log as a failure every run.
++            info!(
+                 model = %model,
+                 error = %error,
+                 "PR content generation failed; using deterministic fallback title and skeleton body"
+@@ -606,6 +614,12 @@ async fn reconcile_existing_pull_request(
+     }))
+ }
+ 
++/// Enable auto-merge on the created pull request when the run configuration
++/// requested it. When auto-merge was NOT requested (`options` is `None`) this
++/// is a silent no-op: no GitHub call, no log line (fabro-6a5a — the GraphQL
++/// mutation deterministically fails with "Auto merge is not allowed for this
++/// repository" on repos without the setting, so configs now default to leaving
++/// auto-merge off and must not pay a warn per run).
+ async fn enable_auto_merge_if_requested(
+     github: &github_app::GitHubContext<'_>,
+     owner: &str,
+@@ -2477,6 +2491,47 @@ mod tests {
+         assert!(error.contains("attempt 2"), "{error}");
+     }
+ 
++    /// Auto-merge not requested (`options = None`): the enable call must
++    /// short-circuit with no GitHub request at all — a silent no-op, so a
++    /// config with `auto_merge = false` never pays the "Auto merge is not
++    /// allowed" GraphQL round-trip or its warn (fabro-6a5a).
++    #[tokio::test]
++    async fn enable_auto_merge_is_silent_noop_when_not_requested() {
++        let server = MockServer::start_async().await;
++        // Catch-alls: any GET or POST reaching the mock GitHub server counts
++        // against the short-circuit claim.
++        let any_get = server
++            .mock_async(|when, then| {
++                when.method(GET);
++                then.status(500);
++            })
++            .await;
++        let any_post = server
++            .mock_async(|when, then| {
++                when.method(POST);
++                then.status(500);
++            })
++            .await;
++        let creds = fabro_github::GitHubCredentials::Pat("test-token".to_string());
++        let github_base_url = server.url("");
++        let github = github_app::GitHubContext::new(&creds, &github_base_url);
++
++        enable_auto_merge_if_requested(&github, "owner", "repo", "PR_kwTest1", 7, None).await;
++
++        assert_eq!(
++            httpmock::Mock::new(any_get.id, &server).calls_async().await,
++            0,
++            "auto-merge must short-circuit without any GitHub GET when not requested"
++        );
++        assert_eq!(
++            httpmock::Mock::new(any_post.id, &server)
++                .calls_async()
++                .await,
++            0,
++            "auto-merge must short-circuit without any GitHub POST when not requested"
++        );
++    }
++
+     /// An open pull request already exists for the head branch at the
+     /// expected commit — for example after a crash between GitHub creating
+     /// the pull request and the caller persisting it. `open_pull_request`

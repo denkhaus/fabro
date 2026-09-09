@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T19:01:32.875024407Z",
-  "last_event_at": "2026-09-09T19:14:47.655639118Z",
+  "last_event_at": "2026-09-09T19:16:30.599050456Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -875,9 +875,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 322,
       "checkpoint": {
-        "timestamp": "2026-09-09T19:14:47.667588077Z",
+        "timestamp": "2026-09-09T19:14:52.576999126Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -886,24 +886,48 @@
         ],
         "node_retries": {},
         "context_values": {
-          "graph.rankdir": "LR",
-          "last_stage": "implementer",
+          "internal.node_visit_count": 1,
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "internal.retry_count.start": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "failure_class": "deterministic",
+          "graph.max_node_visits": "40",
+          "last_response": "Stopping all work — no further edits or tool calls. Emitting the failed stage output as instructed.\n\nImplemented:\n{\n  \"outcome\": \"failed\",\n  \"preferred_next_label\": \"Blocked\",\n  \"failure_reason\": \"d",
+          "outcome": "failed",
+          "preferred_label": "Blocked",
+          "current_seed_brief": "Set auto_merge=false in `.fabro/workflows/develop/workflow.toml` [run.pull_request] (anchor: the 'Autonomous merge-back' comment) and update that comment to name the planner in-flight PR/run check as the replacement double-pick guard. Make `enable_auto_merge_if_requested` in `lib/components/fabro-workflow/src/pipeline/pull_request.rs` (~line 609) a silent no-op when not requested so the recurring 'Auto merge is not allowed' warn stops. For the PR-body LLM call (`generate_pr_content` ~line 490): make it reliable or demote its failure logging so no warn-level failure recurs while keeping the deterministic fallback (publish must never fail on narrative); goal is ~50s less postlude time. Check merge-upstream/revisor workflow.toml for the same setting and align or annotate. Acceptance bullets:\n- develop workflow.toml: auto_merge=false + rewritten rationale comment\n- enable_auto_merge_if_requested: no-op (no warn) when auto_merge not requested; unit test proves short-circuit\n- PR-body call: no recurring warn-level failure; fallback retained; test covers the failure path\n- touched-crate checks green: cargo nextest run -p fabro-workflow pull_request, pinned clippy -D warnings, fmt\n- gate green via the deterministic tester step (implementer never runs the full gate)\n- PR body states the auto-merge-off trade-off and why the in-flight check covers re-implementation risk",
+          "internal.retry_count.planner": 0,
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.implementer",
             "chars": 1806,
             "preview": "Stopping all work — no further edits or tool calls. Emitting the failed stage output as instructed.\n\nImplemented:\n{\n  \"outcome\": \"failed\",\n  \"preferred_next_label\": \"Blocked\",\n  \"failure_reason\": \"d"
           },
-          "current_seed_brief": "Set auto_merge=false in `.fabro/workflows/develop/workflow.toml` [run.pull_request] (anchor: the 'Autonomous merge-back' comment) and update that comment to name the planner in-flight PR/run check as the replacement double-pick guard. Make `enable_auto_merge_if_requested` in `lib/components/fabro-workflow/src/pipeline/pull_request.rs` (~line 609) a silent no-op when not requested so the recurring 'Auto merge is not allowed' warn stops. For the PR-body LLM call (`generate_pr_content` ~line 490): make it reliable or demote its failure logging so no warn-level failure recurs while keeping the deterministic fallback (publish must never fail on narrative); goal is ~50s less postlude time. Check merge-upstream/revisor workflow.toml for the same setting and align or annotate. Acceptance bullets:\n- develop workflow.toml: auto_merge=false + rewritten rationale comment\n- enable_auto_merge_if_requested: no-op (no warn) when auto_merge not requested; unit test proves short-circuit\n- PR-body call: no recurring warn-level failure; fallback retained; test covers the failure path\n- touched-crate checks green: cargo nextest run -p fabro-workflow pull_request, pinned clippy -D warnings, fmt\n- gate green via the deterministic tester step (implementer never runs the full gate)\n- PR body states the auto-merge-off trade-off and why the in-flight check covers re-implementation risk",
-          "internal.thread_id": "planner",
-          "preferred_label": "Blocked",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "last_response": "Stopping all work — no further edits or tool calls. Emitting the failed stage output as instructed.\n\nImplemented:\n{\n  \"outcome\": \"failed\",\n  \"preferred_next_label\": \"Blocked\",\n  \"failure_reason\": \"d",
-          "seed_cycles": {
-            "planner": 1,
-            "implementer": 1
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 4301,
+            "preview": "Seed claimed. Brief:\n\n- fabro-6a5a — Fix PR postlude: disable auto-merge and stop the failing PR-body model call\n- `.fabro/workflows/develop/workflow.toml` `[run.pull_request]` (anchor: the comment "
           },
+          "graph.preamble_budget_kb": "24",
+          "current_seed_id": "fabro-6a5a",
+          "current_node": "implementer",
+          "internal.thread_id": "planner",
+          "internal.seed_cycle_anchor": "fabro-6a5a",
+          "graph.inspects": "develop",
+          "thread.start.current_node": "planner",
+          "internal.fidelity": "summary:high",
+          "current_seed_title": "Fix PR postlude: disable auto-merge and stop the failing PR-body model call",
+          "last_stage": "implementer",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "failure_signature": "implementer|deterministic|duplicate run: fabro-6a5a already merged as #<n>",
+          "graph.rankdir": "LR",
           "thread.planner.current_node": "implementer",
+          "internal.retry_count.implementer": 0,
+          "internal.run_id": "01M23RQRCB748R4VRXA2WE6BZ0",
           "journal": {
             "painpoints": [
               {
@@ -914,31 +938,7 @@
               "Local worktree carries an uncommitted duplicate diff (.fabro/workflows/{develop,merge-upstream,revisor}/workflow.toml + lib/components/fabro-workflow/src/pipeline/pipeline.rs pull_request tests) — it must NOT be committed or PR'd; the base branch already contains #107 and the user reverted its auto_merge=false part."
             ]
           },
-          "graph.max_node_visits": "40",
-          "current_seed_id": "fabro-6a5a",
-          "internal.retry_count.start": 0,
-          "outcome": "failed",
-          "internal.retry_count.implementer": 0,
-          "failure_signature": "implementer|deterministic|duplicate run: fabro-6a5a already merged as #<n>",
-          "internal.retry_count.planner": 0,
-          "graph.preamble_budget_kb": "24",
-          "current_node": "implementer",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "failure_class": "deterministic",
-          "thread.start.current_node": "planner",
-          "internal.node_visit_count": 1,
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 4301,
-            "preview": "Seed claimed. Brief:\n\n- fabro-6a5a — Fix PR postlude: disable auto-merge and stop the failing PR-body model call\n- `.fabro/workflows/develop/workflow.toml` `[run.pull_request]` (anchor: the comment "
-          },
-          "internal.run_id": "01M23RQRCB748R4VRXA2WE6BZ0",
-          "current_seed_title": "Fix PR postlude: disable auto-merge and stop the failing PR-body model call",
-          "internal.seed_cycle_anchor": "fabro-6a5a",
-          "internal.fidelity": "summary:high",
-          "internal.work_dir": "/workspace/fabro",
-          "graph.inspects": "develop"
+          "graph.cycle_counter_reset_key": "current_seed_id"
         },
         "node_outcomes": {
           "start": {
@@ -1059,10 +1059,221 @@
           }
         },
         "next_node_id": "planner",
+        "git_commit_sha": "ae95484ebca9a6a7372f9e19373ffcab221681ab",
+        "loop_failure_signatures": {
+          "implementer|deterministic|duplicate run: fabro-6a5a already merged as #<n>": 1
+        },
+        "node_visits": {
+          "start": 1,
+          "planner": 1,
+          "implementer": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/workflows/develop/workflow.toml b/.fabro/workflows/develop/workflow.toml\nindex f7fff76..41467d7 100644\n--- a/.fabro/workflows/develop/workflow.toml\n+++ b/.fabro/workflows/develop/workflow.toml\n@@ -42,15 +42,22 @@ push = true\n [run.meta_branch]\n push = true\n \n-# Autonomous merge-back (run -> PR -> base branch): every successful run\n-# with a non-empty diff opens a PR against the base branch; auto-merge\n-# lands it once required checks pass. Without this, scheduled runs would\n-# re-implement the same seed every run (observed: three parallel\n-# -pretty implementations on orphaned run branches).\n+# Merge-back (run -> PR -> base branch): every successful run with a\n+# non-empty diff opens a PR against the base branch. Auto-merge is OFF:\n+# the enablePullRequestAutoMerge GraphQL call deterministically fails on\n+# this repository (\"Auto merge is not allowed for this repository\",\n+# fabro-6a5a) and only burned ~1 round-trip + a recurring warn per run.\n+# Double-pick risk (a scheduled run re-implementing a seed that already\n+# has a landed/landing PR — observed: three parallel -pretty\n+# implementations on orphaned run branches) is now covered by the\n+# planner-side in-flight PR/run check (fabro-06e0/fabro-91ff), which\n+# skips seeds whose run already has an open PR or in-flight run before\n+# the implementer is ever dispatched. PRs land via manual/scheduled\n+# merge-back instead of GitHub auto-merge.\n [run.pull_request]\n enabled = true\n draft = false\n-auto_merge = true\n+auto_merge = false\n merge_strategy = \"squash\"\n # glm-4.7: non-reasoning (catalog features.reasoning = false) — cheap,\n # clean JSON for PR titling; no reasoning_effort needed (and \"off\" is not\ndiff --git a/.fabro/workflows/merge-upstream/workflow.toml b/.fabro/workflows/merge-upstream/workflow.toml\nindex a641ef0..73a2501 100644\n--- a/.fabro/workflows/merge-upstream/workflow.toml\n+++ b/.fabro/workflows/merge-upstream/workflow.toml\n@@ -47,7 +47,7 @@ push = true\n [run.pull_request]\n enabled = true\n draft = false\n-auto_merge = true\n+auto_merge = false  # GraphQL call deterministically fails here (fabro-6a5a); aligned with develop\n merge_strategy = \"squash\"\n model = \"zai:glm-4.7\"\n \ndiff --git a/.fabro/workflows/revisor/workflow.toml b/.fabro/workflows/revisor/workflow.toml\nindex 0ceff72..38b5239 100644\n--- a/.fabro/workflows/revisor/workflow.toml\n+++ b/.fabro/workflows/revisor/workflow.toml\n@@ -57,7 +57,7 @@ push = true\n [run.pull_request]\n enabled = true\n draft = false\n-auto_merge = true\n+auto_merge = false  # GraphQL call deterministically fails here (fabro-6a5a); aligned with develop\n merge_strategy = \"squash\"\n # glm-4.7: non-reasoning (catalog features.reasoning = false) — cheap,\n # clean JSON for PR titling; no reasoning_effort needed (and \"off\" is not\ndiff --git a/lib/components/fabro-workflow/src/pipeline/pull_request.rs b/lib/components/fabro-workflow/src/pipeline/pull_request.rs\nindex 5e600d3..6d20ffa 100644\n--- a/lib/components/fabro-workflow/src/pipeline/pull_request.rs\n+++ b/lib/components/fabro-workflow/src/pipeline/pull_request.rs\n@@ -403,7 +403,11 @@ async fn generate_pr_content(params: GenerateParams) -> Result<PrContent, String\n     match structured {\n         Ok(content) => Ok(content),\n         Err(first_error) => {\n-            warn!(\n+            // Expected degradation, not an unexpected failure (fabro-6a5a):\n+            // reasoning models periodically answer prose to JSON-schema\n+            // requests, so the retry below is part of the normal path. Log at\n+            // info so a recurring non-JSON first attempt does not spam warn.\n+            info!(\n                 error = %first_error,\n                 \"PR content structured generation failed; retrying once without strict JSON output\"\n             );\n@@ -417,7 +421,7 @@ async fn generate_pr_content(params: GenerateParams) -> Result<PrContent, String\n             }\n             let prose = text.trim();\n             if prose.len() >= 40 {\n-                warn!(\n+                info!(\n                     \"PR content retry was not JSON; salvaging prose body with deterministic title\"\n                 );\n                 return Ok(PrContent {\n@@ -504,7 +508,11 @@ async fn build_pr_content_with_client(\n             (title, llm_body)\n         }\n         Err(error) => {\n-            warn!(\n+            // Expected degradation (fabro-6a5a): both generation attempts\n+            // failing is handled by the deterministic fallback — the run's\n+            // work is already pushed. Info, not warn: a recurring\n+            // non-JSON model answer must not log as a failure every run.\n+            info!(\n                 model = %model,\n                 error = %error,\n                 \"PR content generation failed; using deterministic fallback title and skeleton body\"\n@@ -606,6 +614,12 @@ async fn reconcile_existing_pull_request(\n     }))\n }\n \n+/// Enable auto-merge on the created pull request when the run configuration\n+/// requested it. When auto-merge was NOT requested (`options` is `None`) this\n+/// is a silent no-op: no GitHub call, no log line (fabro-6a5a — the GraphQL\n+/// mutation deterministically fails with \"Auto merge is not allowed for this\n+/// repository\" on repos without the setting, so configs now default to leaving\n+/// auto-merge off and must not pay a warn per run).\n async fn enable_auto_merge_if_requested(\n     github: &github_app::GitHubContext<'_>,\n     owner: &str,\n@@ -2477,6 +2491,47 @@ mod tests {\n         assert!(error.contains(\"attempt 2\"), \"{error}\");\n     }\n \n+    /// Auto-merge not requested (`options = None`): the enable call must\n+    /// short-circuit with no GitHub request at all — a silent no-op, so a\n+    /// config with `auto_merge = false` never pays the \"Auto merge is not\n+    /// allowed\" GraphQL round-trip or its warn (fabro-6a5a).\n+    #[tokio::test]\n+    async fn enable_auto_merge_is_silent_noop_when_not_requested() {\n+        let server = MockServer::start_async().await;\n+        // Catch-alls: any GET or POST reaching the mock GitHub server counts\n+        // against the short-circuit claim.\n+        let any_get = server\n+            .mock_async(|when, then| {\n+                when.method(GET);\n+                then.status(500);\n+            })\n+            .await;\n+        let any_post = server\n+            .mock_async(|when, then| {\n+                when.method(POST);\n+                then.status(500);\n+            })\n+            .await;\n+        let creds = fabro_github::GitHubCredentials::Pat(\"test-token\".to_string());\n+        let github_base_url = server.url(\"\");\n+        let github = github_app::GitHubContext::new(&creds, &github_base_url);\n+\n+        enable_auto_merge_if_requested(&github, \"owner\", \"repo\", \"PR_kwTest1\", 7, None).await;\n+\n+        assert_eq!(\n+            httpmock::Mock::new(any_get.id, &server).calls_async().await,\n+            0,\n+            \"auto-merge must short-circuit without any GitHub GET when not requested\"\n+        );\n+        assert_eq!(\n+            httpmock::Mock::new(any_post.id, &server)\n+                .calls_async()\n+                .await,\n+            0,\n+            \"auto-merge must short-circuit without any GitHub POST when not requested\"\n+        );\n+    }\n+\n     /// An open pull request already exists for the head branch at the\n     /// expected commit — for example after a crash between GitHub creating\n     /// the pull request and the caller persisting it. `open_pull_request`\n",
+        "summary": {
+          "files_changed": 6,
+          "additions": 76,
+          "deletions": 12
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T19:16:30.811879984Z",
+        "current_node": "planner",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "planner"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.rankdir": "LR",
+          "last_stage": "planner",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 1806,
+            "preview": "Stopping all work — no further edits or tool calls. Emitting the failed stage output as instructed.\n\nImplemented:\n{\n  \"outcome\": \"failed\",\n  \"preferred_next_label\": \"Blocked\",\n  \"failure_reason\": \"d"
+          },
+          "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/implementer.md` (fs_hide-bound: edit via shell, e.g. python3 heredoc or sed -i; anchor: the `## Your job this pass` section, lines 22-31, specifically step 4's guidance paragraphs). Add two hard rules: (a) any shell call that compiles or tests MUST pass timeout_ms >= 60000 — cite run 01M0WWKAQCWZC0Q0JK019H0ZC7's chained append+gofmt+vet+test that died at the 10s default with zero output, forcing a blind re-run; integrate with the existing cost-tier text at the end of step 4 (which already mandates >= 600000 for cold `cargo build`) — do not duplicate that rule, extend the family so the >= 60000 floor covers ALL compile/test shell calls including chained ones. (b) never append placeholder code 'to fix later' — cite the mangled-heredoc-test + wrong `head -n -28` cut costing ~48s and ~6 calls; require that any heredoc/appended code block be complete and final, and that removal edits re-verify with a read-back of the touched range. Acceptance criteria: - implementer.md 'Your job this pass' step 4 contains a compile/test timeout_ms >= 60000 rule covering chained shell calls, consistent with (not duplicating) the existing cargo-build >= 600000 rule; - implementer.md bans placeholder appends and mandates complete-code appends plus read-back verification after removal edits; - both rules cite their evidence runs inline per the prompt's existing style; - verification: `grep -n 'timeout_ms\\|placeholder' .fabro/workflows/develop/prompts/implementer.md` shows both rules; `python3 -c \"open('.fabro/workflows/develop/prompts/implementer.md').read()\"` parses (file intact, no truncation); - gate green via the deterministic tester step (implementer never runs the full gate); - no other prompt files or workflow config touched (this is a single-prompt seed); note: auto_merge stays true — do NOT touch `.fabro/workflows/*/workflow.toml` auto-merge settings (user reverted that decision from #107).",
+          "internal.thread_id": "implementer",
+          "preferred_label": "Seed claimed",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "last_response": "Claimed fabro-e702. The named seed fabro-6a5a was superseded (merged as #107; user reverted the auto_merge=false part — auto-merge stays), so I closed it per the stale-basis rule and took the top ca",
+          "seed_cycles": {
+            "planner": 1
+          },
+          "thread.planner.current_node": "implementer",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "Duplicate-run claim race recurred: this run claimed fabro-6a5a ~40s before PR #107 merged (run 01M23Q0), the claim-time in-flight check missed the merging PR, and the implementer was line-watch-halted. The in-flight check should treat a PR in mergeable/merging state (or a merge commit younger than N seconds) as already-landed — matches seed fabro-6b58's direction; also the tracker left fabro-6a5a in_progress after #107 merged, so no approved-review close ever fired for it (planner had to supersede-close it manually, run 01M23RQRCB748R4VRXA2WE6BZ0)."
+              }
+            ],
+            "observations": [
+              "fabro-6a5a closed as superseded: implemented via #107, and the user's revert reversed the auto_merge=false half — auto-merge must stay true; future re-attempts must not disable auto_merge",
+              "the previously-reported uncommitted duplicate diff in the worktree is gone (git status clean at planner pass 2); no cleanup needed",
+              "fabro-e702 is a legacy seed without a Basis: line — basis verified manually against the current implementer.md (neither rule exists; the only timeout text is the cargo-build >= 600000 cost-tier note at end of step 4, so the new rule must extend, not duplicate, it)"
+            ]
+          },
+          "graph.max_node_visits": "40",
+          "current_seed_id": "fabro-e702",
+          "internal.retry_count.start": 0,
+          "outcome": "succeeded",
+          "thread.implementer.current_node": "planner",
+          "internal.retry_count.implementer": 0,
+          "failure_signature": "",
+          "internal.retry_count.planner": 0,
+          "graph.preamble_budget_kb": "24",
+          "current_node": "planner",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "failure_class": "",
+          "thread.start.current_node": "planner",
+          "internal.node_visit_count": 2,
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3755,
+            "preview": "Claimed fabro-e702. The named seed fabro-6a5a was superseded (merged as #107; user reverted the auto_merge=false part — auto-merge stays), so I closed it per the stale-basis rule and took the top ca"
+          },
+          "internal.run_id": "01M23RQRCB748R4VRXA2WE6BZ0",
+          "current_seed_title": "Require timeout_ms on compile/test shells and ban placeholder appends in implementer prompt",
+          "internal.seed_cycle_anchor": "fabro-e702",
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.inspects": "develop"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Claimed fabro-e702. The named seed fabro-6a5a was superseded (merged as #107; user reverted the auto_merge=false part — auto-merge stays), so I closed it per the stale-basis rule and took the top ca",
+              "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/implementer.md` (fs_hide-bound: edit via shell, e.g. python3 heredoc or sed -i; anchor: the `## Your job this pass` section, lines 22-31, specifically step 4's guidance paragraphs). Add two hard rules: (a) any shell call that compiles or tests MUST pass timeout_ms >= 60000 — cite run 01M0WWKAQCWZC0Q0JK019H0ZC7's chained append+gofmt+vet+test that died at the 10s default with zero output, forcing a blind re-run; integrate with the existing cost-tier text at the end of step 4 (which already mandates >= 600000 for cold `cargo build`) — do not duplicate that rule, extend the family so the >= 60000 floor covers ALL compile/test shell calls including chained ones. (b) never append placeholder code 'to fix later' — cite the mangled-heredoc-test + wrong `head -n -28` cut costing ~48s and ~6 calls; require that any heredoc/appended code block be complete and final, and that removal edits re-verify with a read-back of the touched range. Acceptance criteria: - implementer.md 'Your job this pass' step 4 contains a compile/test timeout_ms >= 60000 rule covering chained shell calls, consistent with (not duplicating) the existing cargo-build >= 600000 rule; - implementer.md bans placeholder appends and mandates complete-code appends plus read-back verification after removal edits; - both rules cite their evidence runs inline per the prompt's existing style; - verification: `grep -n 'timeout_ms\\|placeholder' .fabro/workflows/develop/prompts/implementer.md` shows both rules; `python3 -c \"open('.fabro/workflows/develop/prompts/implementer.md').read()\"` parses (file intact, no truncation); - gate green via the deterministic tester step (implementer never runs the full gate); - no other prompt files or workflow config touched (this is a single-prompt seed); note: auto_merge stays true — do NOT touch `.fabro/workflows/*/workflow.toml` auto-merge settings (user reverted that decision from #107).",
+              "current_seed_id": "fabro-e702",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Duplicate-run claim race recurred: this run claimed fabro-6a5a ~40s before PR #107 merged (run 01M23Q0), the claim-time in-flight check missed the merging PR, and the implementer was line-watch-halted. The in-flight check should treat a PR in mergeable/merging state (or a merge commit younger than N seconds) as already-landed — matches seed fabro-6b58's direction; also the tracker left fabro-6a5a in_progress after #107 merged, so no approved-review close ever fired for it (planner had to supersede-close it manually, run 01M23RQRCB748R4VRXA2WE6BZ0)."
+                  }
+                ],
+                "observations": [
+                  "fabro-6a5a closed as superseded: implemented via #107, and the user's revert reversed the auto_merge=false half — auto-merge must stay true; future re-attempts must not disable auto_merge",
+                  "the previously-reported uncommitted duplicate diff in the worktree is gone (git status clean at planner pass 2); no cleanup needed",
+                  "fabro-e702 is a legacy seed without a Basis: line — basis verified manually against the current implementer.md (neither rule exists; the only timeout text is the cargo-build >= 600000 cost-tier note at end of step 4, so the new rule must extend, not duplicate, it)"
+                ]
+              },
+              "current_seed_title": "Require timeout_ms on compile/test shells and ban placeholder appends in implementer prompt",
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3755,
+                "preview": "Claimed fabro-e702. The named seed fabro-6a5a was superseded (merged as #107; user reverted the auto_merge=false part — auto-merge stays), so I closed it per the stale-basis rule and took the top ca"
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 35024,
+                    "output_tokens": 1731,
+                    "reasoning_tokens": 1932,
+                    "cache_read_tokens": 215040,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 121048
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 93490,
+              "tool_time_ms": 4159,
+              "active_time_ms": 97649
+            }
+          },
+          "implementer": {
+            "status": "failed",
+            "preferred_label": "Blocked",
+            "context_updates": {
+              "last_stage": "implementer",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Claim race: this run (01M23RQRCB748R4VRXA2WE6BZ0) claimed fabro-6a5a, but the seed was already implemented and merged as PR #107 (c67ab33d5) at 2026-09-09T19:03:55Z — roughly 40 seconds after this run's claim — and the seed is CLOSED on the base branch. The claim-time in-flight PR/run check (fabro-06e0/fabro-91ff) apparently did not see the about-to-merge PR, so both the duplicate run and the merged PR landed. Evidence: line-watch operator halt at implementer stage; the local diff (workflow.toml auto_merge + pull_request.rs log demotions) duplicates #107's changes. Suggested fix: the planner's in-flight PR check should treat a PR in a mergeable/merging state (or a merge commit younger than N seconds) as already-landed, or the claim should re-verify seed status immediately before dispatching the implementer. Note also: the user REVERTED the auto_merge=false decision from #107 — auto-merge must stay — so any future re-attempt of this seed must not disable auto_merge."
+                  }
+                ],
+                "observations": [
+                  "Local worktree carries an uncommitted duplicate diff (.fabro/workflows/{develop,merge-upstream,revisor}/workflow.toml + lib/components/fabro-workflow/src/pipeline/pipeline.rs pull_request tests) — it must NOT be committed or PR'd; the base branch already contains #107 and the user reverted its auto_merge=false part."
+                ]
+              },
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 1806,
+                "preview": "Stopping all work — no further edits or tool calls. Emitting the failed stage output as instructed.\n\nImplemented:\n{\n  \"outcome\": \"failed\",\n  \"preferred_next_label\": \"Blocked\",\n  \"failure_reason\": \"d"
+              },
+              "last_response": "Stopping all work — no further edits or tool calls. Emitting the failed stage output as instructed.\n\nImplemented:\n{\n  \"outcome\": \"failed\",\n  \"preferred_next_label\": \"Blocked\",\n  \"failure_reason\": \"d"
+            },
+            "notes": "Stage completed: implementer",
+            "failure": {
+              "message": "duplicate run: fabro-6a5a already merged as #107",
+              "category": "deterministic"
+            },
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 44418,
+                    "output_tokens": 5167,
+                    "reasoning_tokens": 4693,
+                    "cache_read_tokens": 1028288,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 372880
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/components/fabro-workflow/src/pipeline/pull_request.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 252724,
+              "tool_time_ms": 438635,
+              "active_time_ms": 691359
+            }
+          }
+        },
+        "next_node_id": "implementer",
         "node_visits": {
           "implementer": 1,
           "start": 1,
-          "planner": 1
+          "planner": 2
         }
       },
       "diff": {}
@@ -1094,11 +1305,52 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T19:01:35.493720437Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T19:01:35.485325310Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "implementer@1": {
       "first_event_seq": 103,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "failed",
+        "notes": null,
+        "failure_reason": "duplicate run: fabro-6a5a already merged as #107",
+        "timestamp": "2026-09-09T19:14:47.667380216Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -1113,8 +1365,12 @@
       "started_at": "2026-09-09T19:03:17.941988326Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 251790,
-      "live_tool_ms": 437274,
+      "timing": {
+        "wall_time_ms": 691978,
+        "inference_time_ms": 252724,
+        "tool_time_ms": 438635,
+        "active_time_ms": 691359
+      },
       "usage": {
         "input_tokens": 44418,
         "output_tokens": 5167,
@@ -1297,40 +1553,227 @@
         "warnings": []
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "failed"
     },
-    "start@1": {
-      "first_event_seq": 16,
+    "planner@2": {
+      "first_event_seq": 325,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": null,
+        "notes": "Stage completed: planner",
         "failure_reason": null,
-        "timestamp": "2026-09-09T19:01:35.493720437Z"
+        "timestamp": "2026-09-09T19:16:30.599050456Z"
       },
-      "provider_used": null,
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
       "diff": null,
       "script_invocation": null,
       "script_timing": null,
       "parallel_results": null,
       "output": null,
-      "started_at": "2026-09-09T19:01:35.485325310Z",
-      "handler": "start",
-      "graph_visit": 1,
+      "started_at": "2026-09-09T19:14:52.587585876Z",
+      "handler": "agent",
+      "graph_visit": 2,
       "timing": {
-        "wall_time_ms": 0,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
+        "wall_time_ms": 98250,
+        "inference_time_ms": 93490,
+        "tool_time_ms": 4159,
+        "active_time_ms": 97649
       },
       "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
+        "input_tokens": 35024,
+        "output_tokens": 1731,
+        "total_tokens": 253727,
+        "reasoning_tokens": 1932,
+        "cache_read_tokens": 215040,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 121048
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 34770,
+        "usage_percent": 3.3159255981445312,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-09T19:16:30.588965559Z",
+        "event_seq": 386,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1210,
+            "usage_percent": 0.11539459228515625
+          },
+          {
+            "category": "tools",
+            "tokens": 1874,
+            "usage_percent": 0.17871856689453125
+          },
+          {
+            "category": "memory",
+            "tokens": 6232,
+            "usage_percent": 0.594329833984375
+          },
+          {
+            "category": "conversation",
+            "tokens": 25446,
+            "usage_percent": 2.4267196655273438
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
       },
       "agent_control": "running",
       "state": "succeeded"
