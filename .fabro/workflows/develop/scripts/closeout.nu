@@ -9,8 +9,8 @@
 # single-seed working field and keep run cost predictable).
 #
 # The seed id comes from CONTEXT, never from "first in_progress seed":
-# the merged-world tracker carries parallel platform claims (stale or
-# live), and run 01M1NK4V3YG3AQAMEKDJ6V471F closed two WRONG stale seeds
+# the tracker carries parallel claims (stale or live), and run
+# 01M1NK4V3YG3AQAMEKDJ6V471F closed two WRONG stale seeds
 # that way before this fix.
 #
 # Never an LLM: run 01M0… measured planner@2 at 21s / $0.021 / ~7% of wall

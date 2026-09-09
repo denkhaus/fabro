@@ -65,7 +65,7 @@ digraph Develop {
         reasoning_effort="low",
         preamble_stages_ignore="planner,implementer,evidence",
         // fabro-1dae (stage envelope fs scope): planning never touches
-        // platform assets — the tracker is reached via the sd CLI (shell
+        // loop assets — the tracker is reached via the sd CLI (shell
         // is the documented escape hatch), never by file tools, and the
         // planner writes no files at all (context_updates + sd only).
         fs_hide=".fabro/**,.seeds/**,.mulch/**,.agents/**,scripts/**,justfile",
@@ -115,10 +115,11 @@ digraph Develop {
         // input) — and with them the planner's painpoints, which never were
         // implementer inputs (stage_ignore alone cannot filter ## Context).
         preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief,output.gate_known_bug_hits",
-        // fabro-1dae: same platform scope as the planner — hidden means no
+        // fabro-1dae: same loop-asset scope as the planner — hidden means no
         // read, no discovery, no write through file tools. fs_write stays
-        // unset: hidden paths are unwritable anyway, and product seeds may
-        // legitimately touch files outside src/ (README, fixtures). Gate
+        // unset: hidden paths are unwritable anyway, and seed work may
+        // legitimately touch files outside the primary code areas (README,
+        // fixtures). Gate
         // re-runs keep working through the shell escape hatch.
         fs_hide=".fabro/**,.seeds/**,.mulch/**,.agents/**,scripts/**,justfile",
         // fabro-900e: stable context_updates contract (see planner).
@@ -135,7 +136,7 @@ digraph Develop {
         label="Quality Gate",
         shape=parallelogram,
         script="just qualitygate",
-        // 20m (merged world, was 10m on the lab): the touched-crates gate
+        // 20m: the touched-crates gate
         // measures ~15m worst-case COLD in the run container (build 8m46s
         // + clippy + nextest at 8 CPU; scripts/gate-measure-8cpu.log).
         timeout="20m",
@@ -251,7 +252,7 @@ digraph Develop {
         // fabro-1dae: read-only is a CAPABILITY, not just policy — an empty
         // fs_write denies every file-tool write (deletes and patch targets
         // included). Deliberately NO fs_hide: review must see every diff,
-        // including illegal platform touches, to reject them. Shell remains
+        // including illegal loop-asset touches, to reject them. Shell remains
         // the documented escape hatch; the prompt's policy line governs it.
         fs_write="",
         output_schema="routing",
@@ -263,8 +264,8 @@ digraph Develop {
     // Refiner REMOVED (seed fabro-176b, ADR-0009 candidate): painpoint
     // delivery no longer needs an in-graph fan-in node. The stage-journal
     // hook writes .fabro/journal/<node>@<visit>.json at every stage
-    // completion; the checkpoint carries it durably; the platform-side
-    // improve workflow scans run branches for journals. Delivery is
+    // completion; the checkpoint carries it durably; the improve workflow
+    // scans run branches for journals. Delivery is
     // intrinsic — no exit-bound path can miss it.
 
     // Closeout: DETERMINISTIC post-approval bookkeeping (ADR-0010). Never
