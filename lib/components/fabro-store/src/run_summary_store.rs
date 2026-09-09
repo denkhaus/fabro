@@ -576,17 +576,30 @@ ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms
     /// Newest non-terminal run created by the given automation, if any
     /// (fabro-09ea overlap guard). Terminal statuses are exactly the
     /// immutable kinds: succeeded, failed, dead.
+    ///
+    /// A non-terminal CHILD of an automation run also counts as active
+    /// (fabro-91ff): a conductor pass that parked at a boundary exit or
+    /// soft-stopped through a misjudged `run_wait` is terminal itself,
+    /// but its spawned develop/revisor children may still be running —
+    /// firing the next scheduled pass in that window is exactly the
+    /// double-claim overlap `on_overlap=skip` exists to prevent. The
+    /// returned id is whichever live run was found (parent or child);
+    /// callers use it for skip logging, not for control flow.
     pub async fn active_run_for_automation(&self, automation_id: &str) -> Result<Option<RunId>> {
         let stored: Option<String> = sqlx::query_scalar(
             r"
 SELECT id
 FROM runs
-WHERE automation_id = ?
-  AND status NOT IN ('succeeded', 'failed', 'dead')
+WHERE status NOT IN ('succeeded', 'failed', 'dead')
+  AND (
+    automation_id = ?
+    OR parent_id IN (SELECT id FROM runs WHERE automation_id = ?)
+  )
 ORDER BY created_at_ms DESC
 LIMIT 1
 ",
         )
+        .bind(automation_id)
         .bind(automation_id)
         .fetch_optional(&self.pool)
         .await?;
@@ -2630,6 +2643,89 @@ mod tests {
         let child = store.get(&child_id, created_at).await.unwrap().unwrap();
         assert_eq!(parent.children_count, 1);
         assert_eq!(child.title, "new title");
+    }
+
+    /// Regression (fabro-91ff): the overlap guard must see a conductor
+    /// pass as active while it waits on a child (any non-terminal parent
+    /// status) AND while the parent is terminal but its spawned child is
+    /// still running — the parked/soft-stopped parent with a live develop
+    /// child was the window that admitted the second overlapping pass.
+    #[tokio::test]
+    async fn active_run_for_automation_covers_waiting_states_and_live_children() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-09-09T10:53:00Z");
+        let parent_id = run_id(created_at.timestamp_millis().cast_unsigned(), 1);
+        let child_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 2);
+
+        let mut parent = projection(parent_id, "conductor pass", created_at);
+        parent.spec.automation = Some(AutomationRef {
+            id:              "conductor".to_string(),
+            name:            None,
+            trigger_id:      None,
+            workflow_source: None,
+        });
+
+        let mut child_projection = projection(child_id, "develop leg", created_at);
+        child_projection.parent_id = Some(parent_id);
+        child_projection.last_event_at = created_at + chrono::Duration::seconds(2);
+
+        // Waiting-on-child, phase 1: parent running, child running.
+        parent.status = sample_status(RunStatusKind::Running);
+        child_projection.status = sample_status(RunStatusKind::Running);
+        store
+            .upsert_projection(&entry(parent.clone(), 5))
+            .await
+            .unwrap();
+        store
+            .upsert_projection(&entry(child_projection.clone(), 5))
+            .await
+            .unwrap();
+        assert!(
+            store
+                .active_run_for_automation("conductor")
+                .await
+                .unwrap()
+                .is_some()
+        );
+
+        // Waiting-on-child, phase 2: parent blocked/paused at a gate —
+        // still non-terminal, still suppresses.
+        parent.status = sample_status(RunStatusKind::Paused);
+        store
+            .upsert_projection(&entry(parent.clone(), 6))
+            .await
+            .unwrap();
+        assert!(
+            store
+                .active_run_for_automation("conductor")
+                .await
+                .unwrap()
+                .is_some()
+        );
+
+        // Parent terminal (parked boundary / soft-stop misjudgment,
+        // fabro-ee5d) while the develop child is still running: the child
+        // keeps the pass active.
+        parent.status = sample_status(RunStatusKind::Succeeded);
+        store
+            .upsert_projection(&entry(parent.clone(), 7))
+            .await
+            .unwrap();
+        assert_eq!(
+            store.active_run_for_automation("conductor").await.unwrap(),
+            Some(child_id)
+        );
+
+        // Child terminal too: nothing live, the next fire may proceed.
+        child_projection.status = sample_status(RunStatusKind::Succeeded);
+        store
+            .upsert_projection(&entry(child_projection, 8))
+            .await
+            .unwrap();
+        assert_eq!(
+            store.active_run_for_automation("conductor").await.unwrap(),
+            None
+        );
     }
 
     #[tokio::test]
