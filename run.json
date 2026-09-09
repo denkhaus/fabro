@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T09:01:13.178622347Z",
-  "last_event_at": "2026-09-09T09:03:49.777066096Z",
+  "last_event_at": "2026-09-09T09:03:55.950939968Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1788,9 +1788,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 184,
       "checkpoint": {
-        "timestamp": "2026-09-09T09:03:49.992989533Z",
+        "timestamp": "2026-09-09T09:03:54.885548586Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -1803,29 +1803,67 @@
         ],
         "node_retries": {},
         "context_values": {
-          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/implementer.md` step 4 (line 25) via a single python replace through the shell (platform file, fs_hide carve-out): the 'Your check' clause now mandates `cargo nextest run -p <touched-crate>` (the FULL crate suite for every crate whose tests the seed touched) when the seed adds or edits tests, keeps the compile-check-or-ONE-focused-test rule when tests are untouched, explicitly forbids the workspace-wide suite in both cases, and adds a short parenthetical citing run 01M20T9S8JRXETASN64768TRRP (two pre-existing fabro-server Docker-socket failures missed; ~22 min / ~40% gate-red bounce). The fmt/clippy crate-scoped sentence and the mechanical-rewrite paragraph are verbatim-unchanged; `git diff --stat` = 1 file, 1 insertion, 1 deletion. No Rust code touched, so no fmt/clippy runs required. Lesson recorded as mx-e26272 (convention: full touched-crate suite pre-gate when tests are touched). Per-criterion: PASS full-crate-suite rule when tests touched (implementer.md:25); PASS unchanged rule when tests untouched (same clause); PASS workspace suite forbidden in both cases; PASS fmt/clippy + mechanical-rewrite rules intact (grep verified single 'mechanical shell pass' occurrence, surrounding sentence unchanged); PASS short evidence parenthetical citing run 01M20T9S8JRXETASN64768TRRP.",
-          "thread.tester.current_node": "evidence",
-          "internal.run_id": "01M22PCGN4E3X1XGN630MDDH39",
-          "graph.inspects": "develop",
-          "internal.retry_count.evidence": 0,
-          "review_verdict": "approved",
-          "last_response": "Verification complete. The file state at HEAD matches the diff exactly.\n\n**Requirement check (seed fabro-fc1b spec):**\n\n1. **Full crate suite when tests touched** — ✓ `cargo nextest run -p <touche",
+          "internal.retry_count.start": 0,
+          "thread.planner.current_node": "implementer",
+          "current_seed_id": "fabro-fc1b",
+          "failure_signature": "",
+          "last_stage": "reviewer",
+          "outcome": "succeeded",
+          "current_node": "closeout",
+          "command.output": "blob://sha256/6ce13002d616ac9f9e243f49c35f1e1c65d565d27525d41ba6ff15e0b51b8b31",
           "internal.node_visit_count": 1,
+          "thread.reviewer.current_node": "closeout",
           "internal.fidelity": "compact",
-          "failure_class": "",
+          "current_seed_brief": "Edit `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` step 4 (line 25) to change the pre-gate verification rule. Acceptance criteria: (bullet) when the seed adds or edits tests in a crate, the pre-gate check becomes `cargo nextest run -p <touched-crate>` (the FULL crate suite), replacing the 'ONE focused test' rule for that case; (bullet) when the seed does NOT touch tests, the existing rule (compile check or ONE focused test) stays unchanged; (bullet) the workspace-wide suite remains explicitly forbidden; (bullet) keep the existing fmt/clippy crate-scoped rules and the mechanical-rewrite rule intact — the edit is scoped to the test-verification clause only; (bullet) keep the parenthetical evidence rationale short, citing run 01M20T9S8JRXETASN64768TRRP (targeted-only tests missed two pre-existing fabro-server Docker-socket failures; gate-red bounce cost ~22 min / ~40% of the 55-min run). Note: the file is under `.fabro/` — read it via shell (sed/grep), read_file is blocked by fs_hide. Distinct from closed seeds fabro-0d56/fabro-2254 (lint scope, already merged).",
+          "internal.retry_count.tester": 0,
+          "last_response": "Verification complete. The file state at HEAD matches the diff exactly.\n\n**Requirement check (seed fabro-fc1b spec):**\n\n1. **Full crate suite when tests touched** — ✓ `cargo nextest run -p <touche",
+          "internal.retry_count.implementer": 0,
           "journal": {
             "painpoints": [],
             "observations": [
               "Verified the loop-work diff line-by-line against all five acceptance criteria and re-read implementer.md:25 at HEAD via shell to confirm the diff matches the file (it does, byte-for-byte on the changed clause; fmt/clippy and mechanical-rewrite clauses intact). Capability-delta check clean: no env/credential/tool-surface changes in this churn-only seed."
             ]
           },
-          "current_node": "closeout",
+          "lesson_capture": "mx-e26272",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.retry_count.evidence": 0,
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.run_id": "01M22PCGN4E3X1XGN630MDDH39",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2757,
+            "preview": "Implementation complete. Edited step 4 of `.fabro/workflows/develop/prompts/implementer.md` via shell (platform-targeting seed), replacing only the test-verification clause; the fmt/clippy sentence, m"
+          },
+          "current_seed_title": "Implementer prompt: require the full touched-crate test suite when the seed touches tests",
           "internal.retry_count.planner": 0,
-          "internal.retry_count.tester": 0,
-          "thread.evidence.current_node": "reviewer",
-          "internal.retry_count.reviewer": 0,
-          "thread.planner.current_node": "implementer",
+          "internal.thread_id": "reviewer",
+          "preferred_label": "Approved",
+          "thread.start.current_node": "planner",
+          "graph.inspects": "develop",
+          "graph.rankdir": "LR",
           "graph.max_node_visits": "40",
+          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/implementer.md` step 4 (line 25) via a single python replace through the shell (platform file, fs_hide carve-out): the 'Your check' clause now mandates `cargo nextest run -p <touched-crate>` (the FULL crate suite for every crate whose tests the seed touched) when the seed adds or edits tests, keeps the compile-check-or-ONE-focused-test rule when tests are untouched, explicitly forbids the workspace-wide suite in both cases, and adds a short parenthetical citing run 01M20T9S8JRXETASN64768TRRP (two pre-existing fabro-server Docker-socket failures missed; ~22 min / ~40% gate-red bounce). The fmt/clippy crate-scoped sentence and the mechanical-rewrite paragraph are verbatim-unchanged; `git diff --stat` = 1 file, 1 insertion, 1 deletion. No Rust code touched, so no fmt/clippy runs required. Lesson recorded as mx-e26272 (convention: full touched-crate suite pre-gate when tests are touched). Per-criterion: PASS full-crate-suite rule when tests touched (implementer.md:25); PASS unchanged rule when tests untouched (same clause); PASS workspace suite forbidden in both cases; PASS fmt/clippy + mechanical-rewrite rules intact (grep verified single 'mechanical shell pass' occurrence, surrounding sentence unchanged); PASS short evidence parenthetical citing run 01M20T9S8JRXETASN64768TRRP.",
+          "internal.retry_count.closeout": 0,
+          "internal.seed_cycle_anchor": "fabro-fc1b",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 1963,
+            "preview": "Claimed `fabro-fc1b`. Basis verified against the current tree, no in-flight PR conflicts (all recent develop PRs are merged).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \""
+          },
+          "graph.preamble_budget_kb": "24",
+          "thread.evidence.current_node": "reviewer",
+          "thread.implementer.current_node": "tester",
+          "thread.tester.current_node": "evidence",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 1945,
+            "preview": "Verification complete. The file state at HEAD matches the diff exactly.\n\n**Requirement check (seed fabro-fc1b spec):**\n\n1. **Full crate suite when tests touched** — ✓ `cargo nextest run -p <touche"
+          },
+          "internal.retry_count.reviewer": 0,
+          "internal.exit_kind": "natural",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -1834,49 +1872,107 @@
             "reviewer": 1,
             "closeout": 1
           },
-          "lesson_capture": "mx-e26272",
-          "internal.thread_id": "reviewer",
-          "thread.start.current_node": "planner",
-          "internal.seed_cycle_anchor": "fabro-fc1b",
-          "preferred_label": "Approved",
-          "response.reviewer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.reviewer",
-            "chars": 1945,
-            "preview": "Verification complete. The file state at HEAD matches the diff exactly.\n\n**Requirement check (seed fabro-fc1b spec):**\n\n1. **Full crate suite when tests touched** — ✓ `cargo nextest run -p <touche"
-          },
-          "current_seed_brief": "Edit `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` step 4 (line 25) to change the pre-gate verification rule. Acceptance criteria: (bullet) when the seed adds or edits tests in a crate, the pre-gate check becomes `cargo nextest run -p <touched-crate>` (the FULL crate suite), replacing the 'ONE focused test' rule for that case; (bullet) when the seed does NOT touch tests, the existing rule (compile check or ONE focused test) stays unchanged; (bullet) the workspace-wide suite remains explicitly forbidden; (bullet) keep the existing fmt/clippy crate-scoped rules and the mechanical-rewrite rule intact — the edit is scoped to the test-verification clause only; (bullet) keep the parenthetical evidence rationale short, citing run 01M20T9S8JRXETASN64768TRRP (targeted-only tests missed two pre-existing fabro-server Docker-socket failures; gate-red bounce cost ~22 min / ~40% of the 55-min run). Note: the file is under `.fabro/` — read it via shell (sed/grep), read_file is blocked by fs_hide. Distinct from closed seeds fabro-0d56/fabro-2254 (lint scope, already merged).",
-          "last_stage": "reviewer",
-          "current_seed_id": "fabro-fc1b",
-          "current_seed_title": "Implementer prompt: require the full touched-crate test suite when the seed touches tests",
-          "thread.implementer.current_node": "tester",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "thread.reviewer.current_node": "closeout",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "graph.preamble_budget_kb": "24",
-          "internal.retry_count.start": 0,
-          "internal.exit_kind": "natural",
-          "response.implementer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 2757,
-            "preview": "Implementation complete. Edited step 4 of `.fabro/workflows/develop/prompts/implementer.md` via shell (platform-targeting seed), replacing only the test-verification clause; the fmt/clippy sentence, m"
-          },
-          "internal.retry_count.implementer": 0,
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 1963,
-            "preview": "Claimed `fabro-fc1b`. Basis verified against the current tree, no in-flight PR conflicts (all recent develop PRs are merged).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \""
-          },
           "internal.work_dir": "/workspace/fabro",
-          "outcome": "succeeded",
-          "internal.retry_count.closeout": 0,
-          "failure_signature": "",
-          "graph.rankdir": "LR",
-          "command.output": "blob://sha256/6ce13002d616ac9f9e243f49c35f1e1c65d565d27525d41ba6ff15e0b51b8b31"
+          "review_verdict": "approved",
+          "failure_class": ""
         },
         "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "lesson_capture": "mx-e26272",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2757,
+                "preview": "Implementation complete. Edited step 4 of `.fabro/workflows/develop/prompts/implementer.md` via shell (platform-targeting seed), replacing only the test-verification clause; the fmt/clippy sentence, m"
+              },
+              "implementation_summary": "Edited `.fabro/workflows/develop/prompts/implementer.md` step 4 (line 25) via a single python replace through the shell (platform file, fs_hide carve-out): the 'Your check' clause now mandates `cargo nextest run -p <touched-crate>` (the FULL crate suite for every crate whose tests the seed touched) when the seed adds or edits tests, keeps the compile-check-or-ONE-focused-test rule when tests are untouched, explicitly forbids the workspace-wide suite in both cases, and adds a short parenthetical citing run 01M20T9S8JRXETASN64768TRRP (two pre-existing fabro-server Docker-socket failures missed; ~22 min / ~40% gate-red bounce). The fmt/clippy crate-scoped sentence and the mechanical-rewrite paragraph are verbatim-unchanged; `git diff --stat` = 1 file, 1 insertion, 1 deletion. No Rust code touched, so no fmt/clippy runs required. Lesson recorded as mx-e26272 (convention: full touched-crate suite pre-gate when tests are touched). Per-criterion: PASS full-crate-suite rule when tests touched (implementer.md:25); PASS unchanged rule when tests untouched (same clause); PASS workspace suite forbidden in both cases; PASS fmt/clippy + mechanical-rewrite rules intact (grep verified single 'mechanical shell pass' occurrence, surrounding sentence unchanged); PASS short evidence parenthetical citing run 01M20T9S8JRXETASN64768TRRP.",
+              "last_response": "Implementation complete. Edited step 4 of `.fabro/workflows/develop/prompts/implementer.md` via shell (platform-targeting seed), replacing only the test-verification clause; the fmt/clippy sentence, m",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "ml record for type convention requires --content in addition to --description; the first attempt failed with a copy-paste retry hint (this session, seed fabro-fc1b) — worth knowing for future lesson captures."
+                ]
+              },
+              "last_stage": "implementer"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16829,
+                    "output_tokens": 1694,
+                    "reasoning_tokens": 553,
+                    "cache_read_tokens": 104768,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 60675
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 62872,
+              "tool_time_ms": 3118,
+              "active_time_ms": 65990
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/6ce13002d616ac9f9e243f49c35f1e1c65d565d27525d41ba6ff15e0b51b8b31"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 313,
+              "active_time_ms": 313
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/d72a8e284f20fb2b1eb5a6b30e2367b5cd50fb77efb5d7231fa844b2bfe23eb0"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 406,
+              "active_time_ms": 406
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5403,
+              "active_time_ms": 5403
+            }
+          },
           "reviewer": {
             "status": "succeeded",
             "preferred_label": "Approved",
@@ -1977,119 +2073,142 @@
               "tool_time_ms": 2246,
               "active_time_ms": 33857
             }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
-          "implementer": {
-            "status": "succeeded",
-            "preferred_label": "Implemented",
-            "context_updates": {
-              "lesson_capture": "mx-e26272",
-              "response.implementer": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.implementer",
-                "chars": 2757,
-                "preview": "Implementation complete. Edited step 4 of `.fabro/workflows/develop/prompts/implementer.md` via shell (platform-targeting seed), replacing only the test-verification clause; the fmt/clippy sentence, m"
-              },
-              "implementation_summary": "Edited `.fabro/workflows/develop/prompts/implementer.md` step 4 (line 25) via a single python replace through the shell (platform file, fs_hide carve-out): the 'Your check' clause now mandates `cargo nextest run -p <touched-crate>` (the FULL crate suite for every crate whose tests the seed touched) when the seed adds or edits tests, keeps the compile-check-or-ONE-focused-test rule when tests are untouched, explicitly forbids the workspace-wide suite in both cases, and adds a short parenthetical citing run 01M20T9S8JRXETASN64768TRRP (two pre-existing fabro-server Docker-socket failures missed; ~22 min / ~40% gate-red bounce). The fmt/clippy crate-scoped sentence and the mechanical-rewrite paragraph are verbatim-unchanged; `git diff --stat` = 1 file, 1 insertion, 1 deletion. No Rust code touched, so no fmt/clippy runs required. Lesson recorded as mx-e26272 (convention: full touched-crate suite pre-gate when tests are touched). Per-criterion: PASS full-crate-suite rule when tests touched (implementer.md:25); PASS unchanged rule when tests untouched (same clause); PASS workspace suite forbidden in both cases; PASS fmt/clippy + mechanical-rewrite rules intact (grep verified single 'mechanical shell pass' occurrence, surrounding sentence unchanged); PASS short evidence parenthetical citing run 01M20T9S8JRXETASN64768TRRP.",
-              "last_response": "Implementation complete. Edited step 4 of `.fabro/workflows/develop/prompts/implementer.md` via shell (platform-targeting seed), replacing only the test-verification clause; the fmt/clippy sentence, m",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "ml record for type convention requires --content in addition to --description; the first attempt failed with a copy-paste retry hint (this session, seed fabro-fc1b) — worth knowing for future lesson captures."
-                ]
-              },
-              "last_stage": "implementer"
-            },
-            "notes": "Stage completed: implementer",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 16829,
-                    "output_tokens": 1694,
-                    "reasoning_tokens": 553,
-                    "cache_read_tokens": 104768,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 60675
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 62872,
-              "tool_time_ms": 3118,
-              "active_time_ms": 65990
-            }
-          },
-          "evidence": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/d72a8e284f20fb2b1eb5a6b30e2367b5cd50fb77efb5d7231fa844b2bfe23eb0"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 406,
-              "active_time_ms": 406
-            }
-          },
-          "tester": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
-            },
-            "notes": "Script completed: just qualitygate",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 5403,
-              "active_time_ms": 5403
-            }
-          },
-          "closeout": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/6ce13002d616ac9f9e243f49c35f1e1c65d565d27525d41ba6ff15e0b51b8b31"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 313,
-              "active_time_ms": 313
-            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "de58cbd6936c36552c4c2a92a27a22a6bf151808",
         "node_visits": {
-          "closeout": 1,
-          "start": 1,
-          "implementer": 1,
           "planner": 1,
+          "reviewer": 1,
+          "start": 1,
           "tester": 1,
-          "evidence": 1,
-          "reviewer": 1
+          "closeout": 1,
+          "implementer": 1,
+          "evidence": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M22PCGN4E3X1XGN630MDDH39.jsonl b/.fabro/journal/01M22PCGN4E3X1XGN630MDDH39.jsonl\nindex e1e2b51..49d3bba 100644\n--- a/.fabro/journal/01M22PCGN4E3X1XGN630MDDH39.jsonl\n+++ b/.fabro/journal/01M22PCGN4E3X1XGN630MDDH39.jsonl\n@@ -4,3 +4,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22PCGN4E3X1XGN630MDDH39\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:03:10Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22PCGN4E3X1XGN630MDDH39\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:03:15Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22PCGN4E3X1XGN630MDDH39\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:03:45Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified the loop-work diff line-by-line against all five acceptance criteria and re-read implementer.md:25 at HEAD via shell to confirm the diff matches the file (it does, byte-for-byte on the changed clause; fmt/clippy and mechanical-rewrite clauses intact). Capability-delta check clean: no env/credential/tool-surface changes in this churn-only seed.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22PCGN4E3X1XGN630MDDH39\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:03:49Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex c6ec320..220df40 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -282,7 +282,7 @@\n {\"id\":\"fabro-ee5d\",\"title\":\"fabro_run_wait until=merged returns blocked immediately; conductor misjudges successful merge pass as \\\"Merge child failed\\\"\",\"status\":\"open\",\"type\":\"bug\",\"priority\":2,\"createdAt\":\"2026-09-08T13:53:47.604Z\",\"updatedAt\":\"2026-09-08T18:11:08.716Z\",\"assignee\":\"fabro\",\"description\":\"fabro_run_wait until=merged returns blocked immediately; conductor misjudges successful merge pass as \\\"Merge child failed\\\"\\n\\nSYMPTOM (conductor run 01M20DMYEK5B3GDQAYFR83DNGN, pass 11:49 2026-09-08):\\nmerge child 01M20E43YS004DCEYPJ0GJQH4B succeeded and opened PR #64, but the conductor merge leg labeled \\\"Merge child failed\\\" and parked at the kind=\\\"soft\\\" exit (failed/soft_stop). The PR merged seconds later (squash commit 9613ec4d8) - the pass was actually successful. Reproduced identically at 14:00 (child 01M20N60ZY6DZDTX60WW0161KP, PR #65, conductor 01M20N33G1T3MHVAJ4T3KJ1NRG).\\n\\nEVIDENCE (conductor events, run 01M20DMYEK5B3GDQAYFR83DNGN):\\n- seq 75/76: fabro_run_wait {run_id: child, timeout_ms: 2400000, until: \\\"terminal\\\"} -> reached=terminal, status succeeded. Correct.\\n- seq 80/81: fabro_run_wait {run_id: child, timeout_ms: 1200000, until: \\\"merged\\\"} -> reached=blocked IMMEDIATELY (child completed 12:07:09, stage concluded ~12:07:3x). PR #64 existed at that point with auto-merge pending. The wait should have polled until the 20-min timeout or the merge, not returned blocked at once.\\n- The merge-leg journal: \\\"returned reached=blocked on the first wait call (~immediate); merge gate stuck - failed required checks or dirty/blocked base. Never re-wait (fabro-bde4).\\\"\\n\\nHYPOTHESIS: the until=merged wait path treats a PR whose merge is merely PENDING (checks running / auto-merge enabled but not yet merged) as blocked, instead of waiting. Likely in the wait/merge-detection implementation (server run_wait handler or its GitHub merge check).\\n\\nACCEPTANCE: until=merged with a 20-min timeout keeps polling while the PR is open, auto-merge-enabled, and not failed; blocked only on a terminal unmergeable state (failed required checks, conflict, closed). Add a regression test with a PR that merges 30s after terminal.\\n\\nNOTE: secondary effect - Failed{SoftStop} counts as a breaker failure for the schedule breaker (3 consecutive same-signature pauses the trigger). A conductor that soft-parks normally must not get its cron paused; revisit counts_as_breaker_failure if soft parks stay common.\\n\\nSCOPE UPDATE (agent sweep, 2026-09-08 evening): commit a4850e681 'conductor: full-history clone so the upstream survey counts deterministically (fabro-ee5d)' fixed the ADJACENT survey bug (depth-100 clone inflated `git rev-list --count origin/denkhaus..upstream/main` to ~4900, routing spurious no-op merge passes - PRs #64/#65). That fix is LANDED ([run.clone] depth = 0 in .fabro/workflows/conductor/workflow.toml). The REMAINING scope of this seed is ONLY the until=merged wait path: fabro_run_wait {until: \\\"merged\\\"} returning reached=blocked immediately on a PR that is open with auto-merge pending, plus the counts_as_breaker_failure/soft-park note above. Do not re-fix the survey count.\",\"labels\":[\"engine\",\"workflows\"]}\n {\"id\":\"fabro-e4c4\",\"title\":\"Develop evidence node: deliver the capture inline via output_schema\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T15:14:48.322Z\",\"updatedAt\":\"2026-09-08T15:24:21.820Z\",\"description\":\"In .fabro/workflows/develop/workflow.fabro, give the evidence node an output_schema (e.g. @schemas/evidence-capture.schema.json) and declare it in context_allow_keys, mirroring how gatebounce ships stdout inline as output.gate_known_bug_hits; swap the reviewer's preamble_allow_keys entry from command.output to output.evidence. In run 01M20RK7XFNPJRZ2T437XGDEP8 the 12.4 KB capture reached the reviewer as a blob ref with a ~300-byte preview, forcing a read_file detour plus one extra model round inside its 42.0s inference (the reviewer's own journal painpoint). Expected effect: one tool call and one model round removed per review, and the verification_blocked-on-blob failure mode disappears; composes with open seeds fabro-9ef9 (evidence re-key, overwrite fix) and fabro-c1bb (drop duplicated brief spec) rather than duplicating them — 12.4 KB fits the 16 KB inline ceiling once the duplicated spec is dropped. Basis: run 01M20RK7XFNPJRZ2T437XGDEP8, workflow version af036506627c2c235dc58d52e1ceda475fc4053f219b513e9582f644224dc129, commit 6f23b48525bf1ff7b11d3a4c49ad43681a9ff1fb\",\"labels\":[\"revision\",\"workflows\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-a08a\",\"title\":\"Develop planner prompt: visit-1 fresh-cycle line to skip dead context reads\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T15:14:55.468Z\",\"updatedAt\":\"2026-09-08T15:24:21.706Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 1, add one line: 'visit 1 with no current_seed_id in ## Context = fresh cycle; go straight to sd ready'. In run 01M20RK7XFNPJRZ2T437XGDEP8 the planner opened with two context_read calls at pass start, one erroring with unknown context key 'current_seed_id' because it was visit 1 and nothing existed to read (events seq 31-34). Expected effect: two fewer tool rounds per fresh planner pass (~$0.02, ~8 s of the 59.7 s stage); orthogonal to fabro-c3b4 (top-N view, output volume) and fabro-e4fa (call economy). Basis: run 01M20RK7XFNPJRZ2T437XGDEP8, workflow version af036506627c2c235dc58d52e1ceda475fc4053f219b513e9582f644224dc129, commit 6f23b48525bf1ff7b11d3a4c49ad43681a9ff1fb\",\"labels\":[\"revision\",\"workflows\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-fc1b\",\"title\":\"Implementer prompt: require the full touched-crate test suite when the seed touches tests\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T16:34:54.153Z\",\"updatedAt\":\"2026-09-09T09:01:39.058Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, replace the 'ONE focused test' verification rule with: when the seed adds or edits tests in a crate, the pre-gate check is cargo nextest -p <touched-crate> (full crate suite), still never the workspace suite. Evidence from run 01M20T9S8JRXETASN64768TRRP: implementer@1 ran targeted fabro-server tests only and missed the two pre-existing Docker-socket failures (run_start_grants_github_token_bridge_only_to_user_principals, worker_principal_run_without_vault_token_takes_no_token_path) that live in the full fabro-server suite; the resulting gate-red bounce (tester@1 340s + implementer@2 915s/$0.769 + tester@2 91s) cost ~22 min, ~40% of the 55-min run wall, to apply a 6-line [run.environment] id = \\\"local\\\" pin. Expected effect: pre-existing or adjacent breaks in the touched crate surface in the same implementer pass, eliminating ~20 min / ~$0.8 per bounce of this class. Distinct from closed seeds fabro-0d56/fabro-2254 (fmt/clippy scope) which cover lint checks, not the test-suite scope. Basis: run 01M20T9S8JRXETASN64768TRRP, workflow version 8aedc5a9bbdd71b2f882af0b6c7d28a947212553646a31a390f5d173a91c8a69, commit 9966d125e665593fcd4f21137a19659625d58ed0\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-fc1b\",\"title\":\"Implementer prompt: require the full touched-crate test suite when the seed touches tests\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T16:34:54.153Z\",\"updatedAt\":\"2026-09-09T09:03:49.682Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, replace the 'ONE focused test' verification rule with: when the seed adds or edits tests in a crate, the pre-gate check is cargo nextest -p <touched-crate> (full crate suite), still never the workspace suite. Evidence from run 01M20T9S8JRXETASN64768TRRP: implementer@1 ran targeted fabro-server tests only and missed the two pre-existing Docker-socket failures (run_start_grants_github_token_bridge_only_to_user_principals, worker_principal_run_without_vault_token_takes_no_token_path) that live in the full fabro-server suite; the resulting gate-red bounce (tester@1 340s + implementer@2 915s/$0.769 + tester@2 91s) cost ~22 min, ~40% of the 55-min run wall, to apply a 6-line [run.environment] id = \\\"local\\\" pin. Expected effect: pre-existing or adjacent breaks in the touched crate surface in the same implementer pass, eliminating ~20 min / ~$0.8 per bounce of this class. Distinct from closed seeds fabro-0d56/fabro-2254 (fmt/clippy scope) which cover lint checks, not the test-suite scope. Basis: run 01M20T9S8JRXETASN64768TRRP, workflow version 8aedc5a9bbdd71b2f882af0b6c7d28a947212553646a31a390f5d173a91c8a69, commit 9966d125e665593fcd4f21137a19659625d58ed0\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-09T09:03:49.682Z\"}\n {\"id\":\"fabro-8d1c\",\"title\":\"ADR-0019: record the engine-provided-credentials doctrine in the ADR file itself (PR #68 landed prompts-only)\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T18:11:58.469Z\",\"updatedAt\":\"2026-09-08T20:04:33.382Z\",\"assignee\":\"fabro\",\"description\":\"ADR-0019 doctrine extension (PR #68: 'treat engine-provided credentials as agent-reachable capabilities') landed ONLY in workflow prompts (.fabro/workflows/develop/prompts/reviewer.md step 5, .fabro/workflows/revisor/prompts/file.md capability paragraph) - the ADR file itself (docs/lab/adr/0019-capability-gate-for-agent-surfaces.md) does not mention engine-provided credentials at all: no reference to the GITHUB_TOKEN injection via resolve_workflow_env (lib/components/fabro-workflow/src/services.rs), the git credential bridge (lib/components/fabro-workflow/src/git_bridge.rs), or the rule that a diff merely USING an engine-provided credential on a new code path is a capability delta requiring recorded user approval.\\n\\nWHY IT MATTERS: the ADR is the durable decision record; prompts get rewritten by every revision pass and are agent-reachable surface themselves. Reviewers, revisors, and future grill sessions cite ADR-0019 - if the record omits the engine-provided-credential class, the gate doctrine silently narrows back to container-env-visible capability on the next prompt rewrite (exactly the PR #53 blind spot the extension closed).\\n\\nFIX: add one paragraph to ADR-0019 Decision section (or a numbered extension like .7) stating: engine-provided credentials and bridges (GITHUB_TOKEN injection, git credential bridge) ARE agent-reachable capability; diffs that use them on new code paths are capability deltas requiring recorded user approval; cite PR #68, run 01M20RK7XFNPJRZ2T437XGDEP8, and the fabro-16ff user directive (2026-09-08). Docs-only change, no code.\\n\\nBasis: agent sweep of other-machine runs 2026-09-08 evening, commit e078c27b2 (PR #68) vs docs/lab/adr/0019-capability-gate-for-agent-surfaces.md, commit 47b491b8e (repo state).\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-08T20:04:33.382Z\"}\n {\"id\":\"fabro-85a1\",\"title\":\"merge-upstream: full-history clone (run.clone depth=0) - shallow clone broke range math in 3 consecutive merge runs\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-08T18:19:37.228Z\",\"updatedAt\":\"2026-09-08T19:45:16.677Z\",\"assignee\":\"fabro\",\"description\":\"The shallow-clone trap hit THREE consecutive merge-upstream runs (01M20E43YS, 01M20N60ZY, both merge+reviewer nodes journaled it with 'Do not keep rediscovering this'): the run sandbox clone arrives at depth 100 (.git/shallow boundary e.g. 43036bb477), so git rev-list --count origin/denkhaus..upstream/main reports a misleading ~4919 and git merge-base returns nothing until the merger unshallows mid-pass (~8s). Commit a4850e681 fixed this for the CONDUCTOR survey only ([run.clone] depth = 0 in .fabro/workflows/conductor/workflow.toml) - the merge children are their own workflow and .fabro/workflows/merge-upstream/workflow.toml has NO [run.clone] section, so every merge child still rediscovers the trap. Each child run clones origin/denkhaus fresh at creation (conductor workflow.toml comment).\\n\\nFIX: add [run.clone] depth = 0 to .fabro/workflows/merge-upstream/workflow.toml, mirroring the conductor commit a4850e681 (volume is ~neutral - the survey's unbounded git fetch upstream already pulls the full shared history into the shallow clone each pass, ~150 MB either way, measured). Alternative considered and rejected: a merger-procedure is-shallow guard + git fetch --unshallow is per-pass remediation, not a fix.\\n\\nBasis: journals .fabro/journal/01M20E43YS004DCEYPJ0GJQH4B.jsonl and 01M20N60ZY6DZDTX60WW0161KP.jsonl (merge v1 + reviewer v1 painpoints), agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"engine\"],\"closedAt\":\"2026-09-08T19:45:16.677Z\"}\n {\"id\":\"fabro-ad74\",\"title\":\"merge-upstream touchpoints.md: refresh two stale paths (web header.tsx moved, improve.md retired)\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-08T18:19:50.477Z\",\"updatedAt\":\"2026-09-08T18:19:50.477Z\",\"assignee\":\"fabro\",\"description\":\"The merge-upstream reviewer burned a grep pass producing false MISSING on two stale paths in .agents/skills/merge-upstream/references/touchpoints.md (run 01M20N60ZY6DZDTX60WW0161KP, reviewer v1 painpoint): (1) 'web header.tsx' actually lives at apps/fabro-web/app/routes/run-detail/header.tsx (src->app layout move), (2) scripts/prompts/improve.md no longer exists (retired per ADR-0015, prompt embedded in the revisor workflow - documented in scripts/run_workflow.nu header). The reviewer noted: 'Platform asset - next maintainer should refresh the touchpoints table paths; I did not modify it.'\\n\\nFIX: refresh the two rows in touchpoints.md to the current paths; while there, add a one-line maintenance note that the table is verified against the tree by the reviewer probe each pass, so path drift is caught at the next pass instead of causing false MISSING.\\n\\nBasis: journal .fabro/journal/01M20N60ZY6DZDTX60WW0161KP.jsonl reviewer v1 painpoint, agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"workflows\"]}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 11,
+          "deletions": 2
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-09T09:03:54.944182754Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 167491,
+      "inference_time_ms": 118670,
+      "tool_time_ms": 11694,
+      "active_time_ms": 130364
+    },
+    "final_git_commit_sha": "de58cbd6936c36552c4c2a92a27a22a6bf151808",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 34452,
+          "inference_time_ms": 31611,
+          "tool_time_ms": 2246,
+          "active_time_ms": 33857
+        },
+        "billing_usd_micros": 53267,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 66555,
+          "inference_time_ms": 62872,
+          "tool_time_ms": 3118,
+          "active_time_ms": 65990
+        },
+        "billing_usd_micros": 60675,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 5430,
+          "inference_time_ms": 0,
+          "tool_time_ms": 5403,
+          "active_time_ms": 5403
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 411,
+          "inference_time_ms": 0,
+          "tool_time_ms": 406,
+          "active_time_ms": 406
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 25106,
+          "inference_time_ms": 24187,
+          "tool_time_ms": 208,
+          "active_time_ms": 24395
+        },
+        "billing_usd_micros": 30924,
+        "retries": 0
+      },
+      {
+        "stage_id": "closeout",
+        "stage_label": "closeout",
+        "timing": {
+          "wall_time_ms": 318,
+          "inference_time_ms": 0,
+          "tool_time_ms": 313,
+          "active_time_ms": 313
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 53968,
+      "output_tokens": 2990,
+      "total_tokens": 250259,
+      "reasoning_tokens": 1429,
+      "cache_read_tokens": 191872,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 144866
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M22PCGN4E3X1XGN630MDDH39.jsonl b/.fabro/journal/01M22PCGN4E3X1XGN630MDDH39.jsonl\nnew file mode 100644\nindex 0000000..49d3bba\n--- /dev/null\n+++ b/.fabro/journal/01M22PCGN4E3X1XGN630MDDH39.jsonl\n@@ -0,0 +1,7 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22PCGN4E3X1XGN630MDDH39\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:01:15Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22PCGN4E3X1XGN630MDDH39\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:01:49Z\",\"data\":{\"painpoints\":[],\"observations\":[\"No open develop PRs existed, so the in-flight PR guard excluded nothing; all listed runs had merged or null PRs.\",\"fabro-fc1b basis resolved cleanly against the current tree: the 'ONE focused test' clause is at line 25 of .fabro/workflows/develop/prompts/implementer.md; note the same rule is referenced again at line 78 (cross-reference to step 4), which the implementer should keep consistent.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22PCGN4E3X1XGN630MDDH39\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:03:00Z\",\"data\":{\"painpoints\":[],\"observations\":[\"ml record for type convention requires --content in addition to --description; the first attempt failed with a copy-paste retry hint (this session, seed fabro-fc1b) — worth knowing for future lesson captures.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22PCGN4E3X1XGN630MDDH39\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:03:10Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22PCGN4E3X1XGN630MDDH39\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:03:15Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22PCGN4E3X1XGN630MDDH39\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:03:45Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified the loop-work diff line-by-line against all five acceptance criteria and re-read implementer.md:25 at HEAD via shell to confirm the diff matches the file (it does, byte-for-byte on the changed clause; fmt/clippy and mechanical-rewrite clauses intact). Capability-delta check clean: no env/credential/tool-surface changes in this churn-only seed.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22PCGN4E3X1XGN630MDDH39\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:03:49Z\",\"data\":{}}\ndiff --git a/.fabro/workflows/develop/prompts/implementer.md b/.fabro/workflows/develop/prompts/implementer.md\nindex e77bdac..cc12252 100644\n--- a/.fabro/workflows/develop/prompts/implementer.md\n+++ b/.fabro/workflows/develop/prompts/implementer.md\n@@ -22,7 +22,7 @@ Tracker mechanics (sd is installed and authoritative):\n 1. Re-read the seed requirements from `sd show <current_seed_id>`. The seed description is the specification; follow it literally.\n 2. Implement it in the current worktree: create and edit files, keep the project's conventions (commands run through its `just` recipes).\n 3. Write or update tests exactly as the seed demands.\n-4. Do NOT run the quality gate — NOT `just qualitygate`, NOT its equivalent. The deterministic tester step after you owns the gate; a redundant run (observed: implementer + tester + reviewer all gating the same tree) wastes a cold cache's tens of seconds and blurs role boundaries. Your check: the project's compile check or ONE focused test — plus, for Rust changes, crate-scoped fmt and clippy on EVERY touched crate: `cargo +nightly-2026-04-14 fmt -p <touched-crate>` and `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings`. That clippy invocation is the literal gate command with DEFAULT features: run it on EVERY touched crate IN ADDITION to any feature-scoped clippy checks you may also run (e.g. `--features docker`) — a feature-scoped pass must never substitute for the default-features run (run 01M1YJ8R820R7ZMSN55GJGMZ4A: the implementer verified only under a feature flag while a default-features E0432 it had itself diagnosed red-lined the tester 11s in). Accordingly, a known default-features break in a touched crate (e.g. an E0432 that only appears without features) FAILS your 'gate passes' self-assessment: you may not report success while such a break is outstanding — fix it, or route Blocked if you cannot. Never the full workspace fmt/clippy and never the full suite (fabro-0d56: two of three tester cycles in run 01M1S6VRWQMD56M1X8HWAXDSNN were pure style failures — rustfmt drift and two denied clippy lints — burning ~25% of run LLM spend; the crate-scoped pass here keeps the tester's first gate compile-warm).\n+4. Do NOT run the quality gate — NOT `just qualitygate`, NOT its equivalent. The deterministic tester step after you owns the gate; a redundant run (observed: implementer + tester + reviewer all gating the same tree) wastes a cold cache's tens of seconds and blurs role boundaries. Your check: when the seed adds or edits tests in a crate, run `cargo nextest run -p <touched-crate>` — the FULL crate suite, for every crate whose tests the seed touched; when the seed does NOT touch tests, the project's compile check or ONE focused test. The workspace-wide suite remains forbidden in both cases (run 01M20T9S8JRXETASN64768TRRP: targeted-only tests missed two pre-existing fabro-server Docker-socket failures; the gate-red bounce cost ~22 min, ~40% of that 55-min run). Plus, for Rust changes, crate-scoped fmt and clippy on EVERY touched crate: `cargo +nightly-2026-04-14 fmt -p <touched-crate>` and `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings`. That clippy invocation is the literal gate command with DEFAULT features: run it on EVERY touched crate IN ADDITION to any feature-scoped clippy checks you may also run (e.g. `--features docker`) — a feature-scoped pass must never substitute for the default-features run (run 01M1YJ8R820R7ZMSN55GJGMZ4A: the implementer verified only under a feature flag while a default-features E0432 it had itself diagnosed red-lined the tester 11s in). Accordingly, a known default-features break in a touched crate (e.g. an E0432 that only appears without features) FAILS your 'gate passes' self-assessment: you may not report success while such a break is outstanding — fix it, or route Blocked if you cannot. Never the full workspace fmt/clippy and never the full suite (fabro-0d56: two of three tester cycles in run 01M1S6VRWQMD56M1X8HWAXDSNN were pure style failures — rustfmt drift and two denied clippy lints — burning ~25% of run LLM spend; the crate-scoped pass here keeps the tester's first gate compile-warm).\n    For repetitive, pattern-shaped rewrites — call-site adaptation after a signature change, or a rename rippling through many sites — do ONE mechanical shell pass with a transform tool (`sed`, `perl -pi -e`, a small script) instead of N per-site `edit_file` calls, then verify with ONE focused check (compile check or ONE focused test, as above). Measured (run `01M11P68SHFS`, implementer@2): 277 s inference against 6 s tool time, ~43% of the run's LLM spend (US$0.486, 51.8k tokens). Correctness, not only cost: hand-editing many identical sites produced 19 concurrent-write serialization warnings and one swallowed-loop-body near-miss; mechanical transforms eliminate that near-miss class.\n 5. Do NOT close the seed and do NOT review — the Reviewer decides, the deterministic Closeout closes.\n 6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. Skip if nothing surfaced. Either way, the answer has a required home: name the mx-id (format `mx-xxxxxx`) or the literal skip text in `lesson_capture` — see 'Lesson capture' below.\ndiff --git a/.mulch/expertise/workflow.jsonl b/.mulch/expertise/workflow.jsonl\nnew file mode 100644\nindex 0000000..8cf8a4d\n--- /dev/null\n+++ b/.mulch/expertise/workflow.jsonl\n@@ -0,0 +1 @@\n+{\"type\":\"convention\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-09T09:02:41.006Z\",\"evidence\":{\"seeds\":\"fabro-fc1b\",\"commit\":\"76e8534309746b5d0d2b3815abc7c668f340566f\"},\"content\":\"In the develop workflow implementer prompt (step 4), when a seed adds or edits tests in a crate, the pre-gate check is cargo nextest run -p <touched-crate> (full crate suite) instead of ONE focused test; when tests are untouched, compile check or ONE focused test still applies. Workspace-wide suite always forbidden. Evidence: run 01M20T9S8JRXETASN64768TRRP — targeted-only tests missed two pre-existing fabro-server Docker-socket failures, gate-red bounce cost ~22 min (~40% of the run).\",\"id\":\"mx-e26272\"}\ndiff --git a/.mulch/mulch.config.yaml b/.mulch/mulch.config.yaml\nindex 7895d3f..7c4468c 100644\n--- a/.mulch/mulch.config.yaml\n+++ b/.mulch/mulch.config.yaml\n@@ -15,6 +15,7 @@ domains:\n   platform: {}\n   store: {}\n   lab: {}\n+  workflow: {}\n governance:\n   max_entries: 100\n   warn_entries: 150\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex c6e2046..220df40 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -282,7 +282,7 @@\n {\"id\":\"fabro-ee5d\",\"title\":\"fabro_run_wait until=merged returns blocked immediately; conductor misjudges successful merge pass as \\\"Merge child failed\\\"\",\"status\":\"open\",\"type\":\"bug\",\"priority\":2,\"createdAt\":\"2026-09-08T13:53:47.604Z\",\"updatedAt\":\"2026-09-08T18:11:08.716Z\",\"assignee\":\"fabro\",\"description\":\"fabro_run_wait until=merged returns blocked immediately; conductor misjudges successful merge pass as \\\"Merge child failed\\\"\\n\\nSYMPTOM (conductor run 01M20DMYEK5B3GDQAYFR83DNGN, pass 11:49 2026-09-08):\\nmerge child 01M20E43YS004DCEYPJ0GJQH4B succeeded and opened PR #64, but the conductor merge leg labeled \\\"Merge child failed\\\" and parked at the kind=\\\"soft\\\" exit (failed/soft_stop). The PR merged seconds later (squash commit 9613ec4d8) - the pass was actually successful. Reproduced identically at 14:00 (child 01M20N60ZY6DZDTX60WW0161KP, PR #65, conductor 01M20N33G1T3MHVAJ4T3KJ1NRG).\\n\\nEVIDENCE (conductor events, run 01M20DMYEK5B3GDQAYFR83DNGN):\\n- seq 75/76: fabro_run_wait {run_id: child, timeout_ms: 2400000, until: \\\"terminal\\\"} -> reached=terminal, status succeeded. Correct.\\n- seq 80/81: fabro_run_wait {run_id: child, timeout_ms: 1200000, until: \\\"merged\\\"} -> reached=blocked IMMEDIATELY (child completed 12:07:09, stage concluded ~12:07:3x). PR #64 existed at that point with auto-merge pending. The wait should have polled until the 20-min timeout or the merge, not returned blocked at once.\\n- The merge-leg journal: \\\"returned reached=blocked on the first wait call (~immediate); merge gate stuck - failed required checks or dirty/blocked base. Never re-wait (fabro-bde4).\\\"\\n\\nHYPOTHESIS: the until=merged wait path treats a PR whose merge is merely PENDING (checks running / auto-merge enabled but not yet merged) as blocked, instead of waiting. Likely in the wait/merge-detection implementation (server run_wait handler or its GitHub merge check).\\n\\nACCEPTANCE: until=merged with a 20-min timeout keeps polling while the PR is open, auto-merge-enabled, and not failed; blocked only on a terminal unmergeable state (failed required checks, conflict, closed). Add a regression test with a PR that merges 30s after terminal.\\n\\nNOTE: secondary effect - Failed{SoftStop} counts as a breaker failure for the schedule breaker (3 consecutive same-signature pauses the trigger). A conductor that soft-parks normally must not get its cron paused; revisit counts_as_breaker_failure if soft parks stay common.\\n\\nSCOPE UPDATE (agent sweep, 2026-09-08 evening): commit a4850e681 'conductor: full-history clone so the upstream survey counts deterministically (fabro-ee5d)' fixed the ADJACENT survey bug (depth-100 clone inflated `git rev-list --count origin/denkhaus..upstream/main` to ~4900, routing spurious no-op merge passes - PRs #64/#65). That fix is LANDED ([run.clone] depth = 0 in .fabro/workflows/conductor/workflow.toml). The REMAINING scope of this seed is ONLY the until=merged wait path: fabro_run_wait {until: \\\"merged\\\"} returning reached=blocked immediately on a PR that is open with auto-merge pending, plus the counts_as_breaker_failure/soft-park note above. Do not re-fix the survey count.\",\"labels\":[\"engine\",\"workflows\"]}\n {\"id\":\"fabro-e4c4\",\"title\":\"Develop evidence node: deliver the capture inline via output_schema\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T15:14:48.322Z\",\"updatedAt\":\"2026-09-08T15:24:21.820Z\",\"description\":\"In .fabro/workflows/develop/workflow.fabro, give the evidence node an output_schema (e.g. @schemas/evidence-capture.schema.json) and declare it in context_allow_keys, mirroring how gatebounce ships stdout inline as output.gate_known_bug_hits; swap the reviewer's preamble_allow_keys entry from command.output to output.evidence. In run 01M20RK7XFNPJRZ2T437XGDEP8 the 12.4 KB capture reached the reviewer as a blob ref with a ~300-byte preview, forcing a read_file detour plus one extra model round inside its 42.0s inference (the reviewer's own journal painpoint). Expected effect: one tool call and one model round removed per review, and the verification_blocked-on-blob failure mode disappears; composes with open seeds fabro-9ef9 (evidence re-key, overwrite fix) and fabro-c1bb (drop duplicated brief spec) rather than duplicating them — 12.4 KB fits the 16 KB inline ceiling once the duplicated spec is dropped. Basis: run 01M20RK7XFNPJRZ2T437XGDEP8, workflow version af036506627c2c235dc58d52e1ceda475fc4053f219b513e9582f644224dc129, commit 6f23b48525bf1ff7b11d3a4c49ad43681a9ff1fb\",\"labels\":[\"revision\",\"workflows\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-a08a\",\"title\":\"Develop planner prompt: visit-1 fresh-cycle line to skip dead context reads\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T15:14:55.468Z\",\"updatedAt\":\"2026-09-08T15:24:21.706Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 1, add one line: 'visit 1 with no current_seed_id in ## Context = fresh cycle; go straight to sd ready'. In run 01M20RK7XFNPJRZ2T437XGDEP8 the planner opened with two context_read calls at pass start, one erroring with unknown context key 'current_seed_id' because it was visit 1 and nothing existed to read (events seq 31-34). Expected effect: two fewer tool rounds per fresh planner pass (~$0.02, ~8 s of the 59.7 s stage); orthogonal to fabro-c3b4 (top-N view, output volume) and fabro-e4fa (call economy). Basis: run 01M20RK7XFNPJRZ2T437XGDEP8, workflow version af036506627c2c235dc58d52e1ceda475fc4053f219b513e9582f644224dc129, commit 6f23b48525bf1ff7b11d3a4c49ad43681a9ff1fb\",\"labels\":[\"revision\",\"workflows\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-fc1b\",\"title\":\"Implementer prompt: require the full touched-crate test suite when the seed touches tests\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T16:34:54.153Z\",\"updatedAt\":\"2026-09-08T18:11:08.818Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, replace the 'ONE focused test' verification rule with: when the seed adds or edits tests in a crate, the pre-gate check is cargo nextest -p <touched-crate> (full crate suite), still never the workspace suite. Evidence from run 01M20T9S8JRXETASN64768TRRP: implementer@1 ran targeted fabro-server tests only and missed the two pre-existing Docker-socket failures (run_start_grants_github_token_bridge_only_to_user_principals, worker_principal_run_without_vault_token_takes_no_token_path) that live in the full fabro-server suite; the resulting gate-red bounce (tester@1 340s + implementer@2 915s/$0.769 + tester@2 91s) cost ~22 min, ~40% of the 55-min run wall, to apply a 6-line [run.environment] id = \\\"local\\\" pin. Expected effect: pre-existing or adjacent breaks in the touched crate surface in the same implementer pass, eliminating ~20 min / ~$0.8 per bounce of this class. Distinct from closed seeds fabro-0d56/fabro-2254 (fmt/clippy scope) which cover lint checks, not the test-suite scope. Basis: run 01M20T9S8JRXETASN64768TRRP, workflow version 8aedc5a9bbdd71b2f882af0b6c7d28a947212553646a31a390f5d173a91c8a69, commit 9966d125e665593fcd4f21137a19659625d58ed0\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-fc1b\",\"title\":\"Implementer prompt: require the full touched-crate test suite when the seed touches tests\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T16:34:54.153Z\",\"updatedAt\":\"2026-09-09T09:03:49.682Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, replace the 'ONE focused test' verification rule with: when the seed adds or edits tests in a crate, the pre-gate check is cargo nextest -p <touched-crate> (full crate suite), still never the workspace suite. Evidence from run 01M20T9S8JRXETASN64768TRRP: implementer@1 ran targeted fabro-server tests only and missed the two pre-existing Docker-socket failures (run_start_grants_github_token_bridge_only_to_user_principals, worker_principal_run_without_vault_token_takes_no_token_path) that live in the full fabro-server suite; the resulting gate-red bounce (tester@1 340s + implementer@2 915s/$0.769 + tester@2 91s) cost ~22 min, ~40% of the 55-min run wall, to apply a 6-line [run.environment] id = \\\"local\\\" pin. Expected effect: pre-existing or adjacent breaks in the touched crate surface in the same implementer pass, eliminating ~20 min / ~$0.8 per bounce of this class. Distinct from closed seeds fabro-0d56/fabro-2254 (fmt/clippy scope) which cover lint checks, not the test-suite scope. Basis: run 01M20T9S8JRXETASN64768TRRP, workflow version 8aedc5a9bbdd71b2f882af0b6c7d28a947212553646a31a390f5d173a91c8a69, commit 9966d125e665593fcd4f21137a19659625d58ed0\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-09T09:03:49.682Z\"}\n {\"id\":\"fabro-8d1c\",\"title\":\"ADR-0019: record the engine-provided-credentials doctrine in the ADR file itself (PR #68 landed prompts-only)\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T18:11:58.469Z\",\"updatedAt\":\"2026-09-08T20:04:33.382Z\",\"assignee\":\"fabro\",\"description\":\"ADR-0019 doctrine extension (PR #68: 'treat engine-provided credentials as agent-reachable capabilities') landed ONLY in workflow prompts (.fabro/workflows/develop/prompts/reviewer.md step 5, .fabro/workflows/revisor/prompts/file.md capability paragraph) - the ADR file itself (docs/lab/adr/0019-capability-gate-for-agent-surfaces.md) does not mention engine-provided credentials at all: no reference to the GITHUB_TOKEN injection via resolve_workflow_env (lib/components/fabro-workflow/src/services.rs), the git credential bridge (lib/components/fabro-workflow/src/git_bridge.rs), or the rule that a diff merely USING an engine-provided credential on a new code path is a capability delta requiring recorded user approval.\\n\\nWHY IT MATTERS: the ADR is the durable decision record; prompts get rewritten by every revision pass and are agent-reachable surface themselves. Reviewers, revisors, and future grill sessions cite ADR-0019 - if the record omits the engine-provided-credential class, the gate doctrine silently narrows back to container-env-visible capability on the next prompt rewrite (exactly the PR #53 blind spot the extension closed).\\n\\nFIX: add one paragraph to ADR-0019 Decision section (or a numbered extension like .7) stating: engine-provided credentials and bridges (GITHUB_TOKEN injection, git credential bridge) ARE agent-reachable capability; diffs that use them on new code paths are capability deltas requiring recorded user approval; cite PR #68, run 01M20RK7XFNPJRZ2T437XGDEP8, and the fabro-16ff user directive (2026-09-08). Docs-only change, no code.\\n\\nBasis: agent sweep of other-machine runs 2026-09-08 evening, commit e078c27b2 (PR #68) vs docs/lab/adr/0019-capability-gate-for-agent-surfaces.md, commit 47b491b8e (repo state).\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-08T20:04:33.382Z\"}\n {\"id\":\"fabro-85a1\",\"title\":\"merge-upstream: full-history clone (run.clone depth=0) - shallow clone broke range math in 3 consecutive merge runs\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-08T18:19:37.228Z\",\"updatedAt\":\"2026-09-08T19:45:16.677Z\",\"assignee\":\"fabro\",\"description\":\"The shallow-clone trap hit THREE consecutive merge-upstream runs (01M20E43YS, 01M20N60ZY, both merge+reviewer nodes journaled it with 'Do not keep rediscovering this'): the run sandbox clone arrives at depth 100 (.git/shallow boundary e.g. 43036bb477), so git rev-list --count origin/denkhaus..upstream/main reports a misleading ~4919 and git merge-base returns nothing until the merger unshallows mid-pass (~8s). Commit a4850e681 fixed this for the CONDUCTOR survey only ([run.clone] depth = 0 in .fabro/workflows/conductor/workflow.toml) - the merge children are their own workflow and .fabro/workflows/merge-upstream/workflow.toml has NO [run.clone] section, so every merge child still rediscovers the trap. Each child run clones origin/denkhaus fresh at creation (conductor workflow.toml comment).\\n\\nFIX: add [run.clone] depth = 0 to .fabro/workflows/merge-upstream/workflow.toml, mirroring the conductor commit a4850e681 (volume is ~neutral - the survey's unbounded git fetch upstream already pulls the full shared history into the shallow clone each pass, ~150 MB either way, measured). Alternative considered and rejected: a merger-procedure is-shallow guard + git fetch --unshallow is per-pass remediation, not a fix.\\n\\nBasis: journals .fabro/journal/01M20E43YS004DCEYPJ0GJQH4B.jsonl and 01M20N60ZY6DZDTX60WW0161KP.jsonl (merge v1 + reviewer v1 painpoints), agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"engine\"],\"closedAt\":\"2026-09-08T19:45:16.677Z\"}\n {\"id\":\"fabro-ad74\",\"title\":\"merge-upstream touchpoints.md: refresh two stale paths (web header.tsx moved, improve.md retired)\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-08T18:19:50.477Z\",\"updatedAt\":\"2026-09-08T18:19:50.477Z\",\"assignee\":\"fabro\",\"description\":\"The merge-upstream reviewer burned a grep pass producing false MISSING on two stale paths in .agents/skills/merge-upstream/references/touchpoints.md (run 01M20N60ZY6DZDTX60WW0161KP, reviewer v1 painpoint): (1) 'web header.tsx' actually lives at apps/fabro-web/app/routes/run-detail/header.tsx (src->app layout move), (2) scripts/prompts/improve.md no longer exists (retired per ADR-0015, prompt embedded in the revisor workflow - documented in scripts/run_workflow.nu header). The reviewer noted: 'Platform asset - next maintainer should refresh the touchpoints table paths; I did not modify it.'\\n\\nFIX: refresh the two rows in touchpoints.md to the current paths; while there, add a one-line maintenance note that the table is verified against the tree by the reviewer probe each pass, so path drift is caught at the next pass instead of causing false MISSING.\\n\\nBasis: journal .fabro/journal/01M20N60ZY6DZDTX60WW0161KP.jsonl reviewer v1 painpoint, agent sweep 2026-09-08 evening, commit ccf927888.\",\"labels\":[\"workflows\"]}\n",
+      "summary": {
+        "files_changed": 5,
+        "additions": 11,
+        "deletions": 2
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2115,6 +2234,57 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "closeout@1": {
+      "first_event_seq": 177,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T09:03:49.777066096Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/6ce13002d616ac9f9e243f49c35f1e1c65d565d27525d41ba6ff15e0b51b8b31",
+        "exit_code": 0,
+        "duration_ms": 313,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T09:03:49.450352336Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 318,
+        "inference_time_ms": 0,
+        "tool_time_ms": 313,
+        "active_time_ms": 313
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "planner@1": {
       "first_event_seq": 20,
       "prompt": null,
@@ -2389,57 +2559,6 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "evidence@1": {
-      "first_event_seq": 140,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-        "failure_reason": null,
-        "timestamp": "2026-09-09T09:03:15.383961009Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
-        "language": "shell",
-        "timeout_ms": 120000
-      },
-      "script_timing": {
-        "output": "blob://sha256/d72a8e284f20fb2b1eb5a6b30e2367b5cd50fb77efb5d7231fa844b2bfe23eb0",
-        "exit_code": 0,
-        "duration_ms": 406,
-        "termination": "exited",
-        "output_bytes": 9105,
-        "live_streaming": true
-      },
-      "parallel_results": null,
-      "output": null,
-      "output_bytes": 9105,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-09T09:03:14.964803774Z",
-      "handler": "command",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 411,
-        "inference_time_ms": 0,
-        "tool_time_ms": 406,
-        "active_time_ms": 406
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "reviewer@1": {
       "first_event_seq": 150,
       "prompt": null,
@@ -2677,45 +2796,81 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "closeout@1": {
-      "first_event_seq": 177,
+    "evidence@1": {
+      "first_event_seq": 140,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
         "failure_reason": null,
-        "timestamp": "2026-09-09T09:03:49.777066096Z"
+        "timestamp": "2026-09-09T09:03:15.383961009Z"
       },
       "provider_used": null,
       "diff": null,
       "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
         "language": "shell",
-        "timeout_ms": 60000
+        "timeout_ms": 120000
       },
       "script_timing": {
-        "output": "blob://sha256/6ce13002d616ac9f9e243f49c35f1e1c65d565d27525d41ba6ff15e0b51b8b31",
+        "output": "blob://sha256/d72a8e284f20fb2b1eb5a6b30e2367b5cd50fb77efb5d7231fa844b2bfe23eb0",
         "exit_code": 0,
-        "duration_ms": 313,
+        "duration_ms": 406,
         "termination": "exited",
-        "output_bytes": 58,
+        "output_bytes": 9105,
         "live_streaming": true
       },
       "parallel_results": null,
       "output": null,
-      "output_bytes": 58,
+      "output_bytes": 9105,
       "live_streaming": true,
       "termination": "exited",
-      "started_at": "2026-09-09T09:03:49.450352336Z",
+      "started_at": "2026-09-09T09:03:14.964803774Z",
       "handler": "command",
       "graph_visit": 1,
       "timing": {
-        "wall_time_ms": 318,
+        "wall_time_ms": 411,
         "inference_time_ms": 0,
-        "tool_time_ms": 313,
-        "active_time_ms": 313
+        "tool_time_ms": 406,
+        "active_time_ms": 406
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 187,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T09:03:54.885814797Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T09:03:54.885776226Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
       },
       "usage": {
         "input_tokens": 0,
