@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M23HSD9PCXWYJQC0755D3VDP.jsonl b/.fabro/journal/01M23HSD9PCXWYJQC0755D3VDP.jsonl
+new file mode 100644
+index 000000000..32ca2e799
+--- /dev/null
++++ b/.fabro/journal/01M23HSD9PCXWYJQC0755D3VDP.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M23HSD9PCXWYJQC0755D3VDP","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T17:00:16Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M23HSD9PCXWYJQC0755D3VDP","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-09T17:01:23Z","data":{"painpoints":[{"text":"Revisor-backfill detection is ambiguous: revisor commits/journals key on the launcher parent id (e.g. d9186dc73 'fabro(01M237FTD80QQB7B2QA56D56RS): revise') while fabro_runs_list reports develop run ids, so matching requires walking parent_id per run. Evidence: develop runs 01M237JNJ/01M23EDVN/01M23B02H all looked unreviewed by run-id grep until parent-id grep matched. Fix idea: revisor journals should record the revised develop run id explicitly, or fabro_runs_list should expose the revisor child link."}],"observations":["upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0' — no drift accumulating, threshold (5) far away","revisor backlog: none — all completed develop runs newer than the oldest listed have revisor passes keyed by parent_id (d9186dc73, 370e7259a, 8cb459e08, fcb283d09, 69c8af8dc)","routed to Work: expect a develop+revisor cycle this pass; next surveyor should re-check drift count (currently 0, accumulates toward 5)"]}}
