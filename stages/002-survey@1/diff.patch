@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M23TC2C49X96SRM6SY01ZWVM.jsonl b/.fabro/journal/01M23TC2C49X96SRM6SY01ZWVM.jsonl
+new file mode 100644
+index 000000000..3528ccdff
+--- /dev/null
++++ b/.fabro/journal/01M23TC2C49X96SRM6SY01ZWVM.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M23TC2C49X96SRM6SY01ZWVM","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T19:30:17Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M23TC2C49X96SRM6SY01ZWVM","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-09T19:30:56Z","data":{"painpoints":[],"observations":["upstream count 0 (<5 threshold), newest upstream subject: 'Bump version to 0.348.0-nightly.0' — drift accumulates toward the 5-commit merge threshold","no revisor backlog: newest develop run 01M23RQRCB748R4VRXA2WE6BZ0 already covered by succeeded revisor run 01M23SSXSB1CVEW6F146P93M55 (parent 01M23RN4J1ZCE4JY6295C45RDX, PR #110 state null — next surveyor may want to confirm it merged)","route Work: one develop+revisor cycle this pass"]}}
