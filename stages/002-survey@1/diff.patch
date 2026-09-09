@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M23N78XVH8F79V0G3QMG19QA.jsonl b/.fabro/journal/01M23N78XVH8F79V0G3QMG19QA.jsonl
+new file mode 100644
+index 000000000..ff274ee1e
+--- /dev/null
++++ b/.fabro/journal/01M23N78XVH8F79V0G3QMG19QA.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M23N78XVH8F79V0G3QMG19QA","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T18:00:17Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M23N78XVH8F79V0G3QMG19QA","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-09T18:00:57Z","data":{"painpoints":[{"text":"First fetch of a fresh clone lacks the `upstream` remote, and `git fetch upstream --prune` on a new remote floods stderr with hundreds of `[new branch]` lines, truncating tool output around the very count line we need (this pass, run 01M23N78XVH8F79V0G3QMG19QA). Suggestion: add `--quiet` to both fetches in the surveyor procedure so only the rev-list count and subject line survive; the remote-add fallback already worked fine."}],"observations":["upstream count 0 (origin/denkhaus..upstream/main), newest upstream subject: 'Bump version to 0.348.0-nightly.0' — well below MIN threshold 5, drift accumulates from zero","revisor backlog: none confirmed — every completed develop run has a revisor pairing via shared parent, newest develop 01M23KJM3SM70S2S6QSSEWSJPY revised by 01M23KXJA5F501C5Z5ZFAARHFQ (PR 104); caveat: develop 01M237JNJW4FNRRZ70EX7WZF6D's revisor run 01M2395PSPYDC1KZA45Q171BDE failed, so its evidence was never distilled — revisor may want to revisit it once newer runs are exhausted","next surveyor: seed_cycles start=1, this pass routed Work; upstream drift was 0 so the count baseline is fresh"]}}
