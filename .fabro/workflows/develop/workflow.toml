@@ -46,14 +46,17 @@ push = true
 # non-empty diff opens a PR against the base branch. Without this,
 # scheduled runs would re-implement the same seed every run (observed:
 # three parallel -pretty implementations on orphaned run branches).
-# auto_merge = false (fabro-6a5a): the enable-auto-merge GraphQL call
-# deterministically fails ("Auto merge is not allowed for this
-# repository") on this repo and emitted a warn every run; a human or the
-# deterministic closeout merges instead.
+# auto_merge = true (REVERTED fabro-6a5a, user decision 2026-09-09
+# "automerge muss bleiben"): the 6a5a premise was STALE — the
+# enableAutoMerge call works on this repo (setting allow_auto_merge=true;
+# PRs #102 and #107 itself carried active auto-merge enabled by the
+# engine and GitHub merged them). The failure evidence cited by fabro-6a5a
+# came from 2026-09-02 (run 01M0WWKAQCWZC0Q0JK019H0ZC7, pre-setting era).
+# The other half of fabro-6a5a (resolve_pr_model fix + tests) stays.
 [run.pull_request]
 enabled = true
 draft = false
-auto_merge = false
+auto_merge = true
 merge_strategy = "squash"
 # glm-4.7: non-reasoning (catalog features.reasoning = false) — cheap,
 # clean JSON for PR titling; no reasoning_effort needed (and "off" is not
