@@ -571,7 +571,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T11:00:14.147813767Z",
-  "last_event_at": "2026-09-09T11:26:13.772641213Z",
+  "last_event_at": "2026-09-09T11:26:18.460820724Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -930,9 +930,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 137,
       "checkpoint": {
-        "timestamp": "2026-09-09T11:26:14.013409517Z",
+        "timestamp": "2026-09-09T11:26:18.460397693Z",
         "current_node": "revise",
         "completed_nodes": [
           "start",
@@ -942,55 +942,58 @@
         ],
         "node_retries": {},
         "context_values": {
-          "child_run_id": "01M22X87J1RKQ6A8FZB7RC2RN8",
-          "graph.rankdir": "LR",
-          "internal.run_id": "01M22X67GYXC65DXA3G33FQKG1",
-          "internal.exit_kind": "natural",
-          "thread.survey.current_node": "develop",
-          "internal.retry_count.develop": 0,
-          "failure_signature": "",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "last_stage": "revise",
+          "thread.start.current_node": "survey",
           "thread.develop.current_node": "revise",
-          "internal.seed_cycle_anchor": "",
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "failure_class": "",
-          "internal.retry_count.start": 0,
-          "internal.retry_count.revise": 0,
-          "graph.max_node_visits": "12",
-          "internal.work_dir": "/workspace/fabro",
-          "last_response": "The revisor run succeeded: it selected develop run 01M22X87J1RKQ6A8FZB7RC2RN8, persisted the review, filed 3 new seeds (`fabro-2eb6`, `fabro-9372`, `fabro-7613`), wrote the revision marker, and opened",
-          "preferred_label": "Cycle complete",
-          "current_node": "revise",
-          "response.revise": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.revise",
-            "chars": 1421,
-            "preview": "The revisor run succeeded: it selected develop run 01M22X87J1RKQ6A8FZB7RC2RN8, persisted the review, filed 3 new seeds (`fabro-2eb6`, `fabro-9372`, `fabro-7613`), wrote the revision marker, and opened"
-          },
           "internal.fidelity": "compact",
-          "outcome": "succeeded",
-          "internal.thread_id": "develop",
-          "response.develop": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.develop",
-            "chars": 1118,
-            "preview": "Gate blocked after 3 waits (~60 min ceiling) — routing \"Gate stuck — revise anyway\" per fabro-bde4 semantics.\n\n```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Gate stuck — revise "
-          },
-          "seed_cycles": {
-            "start": 1,
-            "survey": 1,
-            "develop": 1,
-            "revise": 1
-          },
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 700,
             "preview": "{\"preferred_next_label\": \"Work\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"upstream count 0 (origin/de"
           },
+          "thread.survey.current_node": "develop",
+          "last_stage": "revise",
+          "internal.retry_count.revise": 0,
+          "last_response": "The revisor run succeeded: it selected develop run 01M22X87J1RKQ6A8FZB7RC2RN8, persisted the review, filed 3 new seeds (`fabro-2eb6`, `fabro-9372`, `fabro-7613`), wrote the revision marker, and opened",
           "graph.cycle_counter_reset_key": "pass_id",
-          "thread.start.current_node": "survey",
+          "graph.rankdir": "LR",
+          "internal.retry_count.develop": 0,
+          "child_run_id": "01M22X87J1RKQ6A8FZB7RC2RN8",
+          "internal.retry_count.start": 0,
+          "failure_signature": "",
+          "internal.thread_id": "develop",
+          "current_node": "revise",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "develop": 1,
+            "revise": 1
+          },
+          "internal.retry_count.survey": 0,
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "internal.exit_kind": "natural",
+          "graph.preamble_budget_kb": "12",
+          "graph.max_node_visits": "12",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.run_id": "01M22X67GYXC65DXA3G33FQKG1",
+          "preferred_label": "Cycle complete",
+          "internal.node_visit_count": 1,
+          "outcome": "succeeded",
+          "response.revise": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.revise",
+            "chars": 1421,
+            "preview": "The revisor run succeeded: it selected develop run 01M22X87J1RKQ6A8FZB7RC2RN8, persisted the review, filed 3 new seeds (`fabro-2eb6`, `fabro-9372`, `fabro-7613`), wrote the revision marker, and opened"
+          },
+          "failure_class": "",
+          "response.develop": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.develop",
+            "chars": 1118,
+            "preview": "Gate blocked after 3 waits (~60 min ceiling) — routing \"Gate stuck — revise anyway\" per fabro-bde4 semantics.\n\n```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Gate stuck — revise "
+          },
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "internal.seed_cycle_anchor": "",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -999,10 +1002,7 @@
               "Seeds fabro-9372 and fabro-7613 are engine-side changes outside the develop run-scope gate — the develop planner should skip them until an engine-scoped implementer exists.",
               "Revisor findings retract the false 'sandbox rg unreliable' lore from run 01M22X87's implementer journal (it was an `rg -r n` replace-flag misread) — future passes must not cite it."
             ]
-          },
-          "graph.preamble_budget_kb": "12",
-          "internal.node_visit_count": 1,
-          "internal.retry_count.survey": 0
+          }
         },
         "node_outcomes": {
           "develop": {
@@ -1056,9 +1056,56 @@
               "active_time_ms": 1006449
             }
           },
-          "start": {
+          "revise": {
             "status": "succeeded",
-            "usage": null
+            "preferred_label": "Cycle complete",
+            "context_updates": {
+              "response.revise": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.revise",
+                "chars": 1421,
+                "preview": "The revisor run succeeded: it selected develop run 01M22X87J1RKQ6A8FZB7RC2RN8, persisted the review, filed 3 new seeds (`fabro-2eb6`, `fabro-9372`, `fabro-7613`), wrote the revision marker, and opened"
+              },
+              "last_stage": "revise",
+              "last_response": "The revisor run succeeded: it selected develop run 01M22X87J1RKQ6A8FZB7RC2RN8, persisted the review, filed 3 new seeds (`fabro-2eb6`, `fabro-9372`, `fabro-7613`), wrote the revision marker, and opened",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Revisor child 01M22Y70W9KN3W3WPKWP1NK0YJ succeeded (7.9 min, $0.21): revised develop run 01M22X87J1RKQ6A8FZB7RC2RN8 (seed fabro-8bf4), filed seeds fabro-2eb6 (rg -rn replace-flag discipline, priority 1), fabro-9372 (current_seed_id in fabro_runs_list projection), fabro-7613 (engine auto-stamps painpoints on blob-ref reads); marker `.fabro/revisions/01M22X87J1RKQ6A8FZB7RC2RN8.md` written; PR #87 opened (https://github.com/denkhaus/fabro/pull/87).",
+                  "Next develop leg: two gates now queue-ordered — PR #86 (develop child) and PR #87 (revisor) both need merge before the next develop child per serialized-line rule; check both PRs' state first.",
+                  "Seeds fabro-9372 and fabro-7613 are engine-side changes outside the develop run-scope gate — the develop planner should skip them until an engine-scoped implementer exists.",
+                  "Revisor findings retract the false 'sandbox rg unreliable' lore from run 01M22X87's implementer journal (it was an `rg -r n` replace-flag misread) — future passes must not cite it."
+                ]
+              }
+            },
+            "notes": "Stage completed: revise",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 75139,
+                    "output_tokens": 627,
+                    "reasoning_tokens": 86,
+                    "cache_read_tokens": 34432,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 117280
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 28257,
+              "tool_time_ms": 481230,
+              "active_time_ms": 509487
+            }
           },
           "survey": {
             "status": "succeeded",
@@ -1110,70 +1157,109 @@
               "active_time_ms": 35336
             }
           },
-          "revise": {
+          "start": {
             "status": "succeeded",
-            "preferred_label": "Cycle complete",
-            "context_updates": {
-              "response.revise": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.revise",
-                "chars": 1421,
-                "preview": "The revisor run succeeded: it selected develop run 01M22X87J1RKQ6A8FZB7RC2RN8, persisted the review, filed 3 new seeds (`fabro-2eb6`, `fabro-9372`, `fabro-7613`), wrote the revision marker, and opened"
-              },
-              "last_stage": "revise",
-              "last_response": "The revisor run succeeded: it selected develop run 01M22X87J1RKQ6A8FZB7RC2RN8, persisted the review, filed 3 new seeds (`fabro-2eb6`, `fabro-9372`, `fabro-7613`), wrote the revision marker, and opened",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "Revisor child 01M22Y70W9KN3W3WPKWP1NK0YJ succeeded (7.9 min, $0.21): revised develop run 01M22X87J1RKQ6A8FZB7RC2RN8 (seed fabro-8bf4), filed seeds fabro-2eb6 (rg -rn replace-flag discipline, priority 1), fabro-9372 (current_seed_id in fabro_runs_list projection), fabro-7613 (engine auto-stamps painpoints on blob-ref reads); marker `.fabro/revisions/01M22X87J1RKQ6A8FZB7RC2RN8.md` written; PR #87 opened (https://github.com/denkhaus/fabro/pull/87).",
-                  "Next develop leg: two gates now queue-ordered — PR #86 (develop child) and PR #87 (revisor) both need merge before the next develop child per serialized-line rule; check both PRs' state first.",
-                  "Seeds fabro-9372 and fabro-7613 are engine-side changes outside the develop run-scope gate — the develop planner should skip them until an engine-scoped implementer exists.",
-                  "Revisor findings retract the false 'sandbox rg unreliable' lore from run 01M22X87's implementer journal (it was an `rg -r n` replace-flag misread) — future passes must not cite it."
-                ]
-              }
-            },
-            "notes": "Stage completed: revise",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 75139,
-                    "output_tokens": 627,
-                    "reasoning_tokens": 86,
-                    "cache_read_tokens": 34432,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 117280
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 28257,
-              "tool_time_ms": 481230,
-              "active_time_ms": 509487
-            }
+            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "8d0a1b13a1c3fecd2bd06b1501d98877c1eea70a",
         "node_visits": {
           "survey": 1,
-          "start": 1,
           "revise": 1,
+          "start": 1,
           "develop": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M22X67GYXC65DXA3G33FQKG1.jsonl b/.fabro/journal/01M22X67GYXC65DXA3G33FQKG1.jsonl\nindex 5d0746527..f99a4de3f 100644\n--- a/.fabro/journal/01M22X67GYXC65DXA3G33FQKG1.jsonl\n+++ b/.fabro/journal/01M22X67GYXC65DXA3G33FQKG1.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22X67GYXC65DXA3G33FQKG1\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T11:00:16Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22X67GYXC65DXA3G33FQKG1\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T11:00:52Z\",\"data\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0' — drift below MIN threshold 5, accumulates toward it\",\"revisor backlog: none — newest develop run 01M22VHABGCNWT7DKJC9HP1XKC was reviewed (commit 641227160, PR #84 still open), older runs 01M22STYHH and 01M22R3T also have revisor passes\",\"next surveyor: PR #84 is open and awaiting merge; children are created only after the previous child merged, so the Work pass should verify #84 state before spawning\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22X67GYXC65DXA3G33FQKG1\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T11:17:40Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Child develop run 01M22X87J1RKQ6A8FZB7RC2RN8 (seed fabro-8bf4 'Engine: lint stage completion when a key declared in context_allow_keys was never emitted') succeeded: seed implemented, gate green, review approved, seed closed, PR #86 opened (https://github.com/denkhaus/fabro/pull/86).\",\"gate stuck: PR #86 remained blocked across 3 merged-waits (~60 min ceiling, waits at ~11:17, ~11:37, ~11:57 UTC) — the merge is soft-parked, NOT a child failure; child_run_id stays for the revisor leg to review the unreviewed develop run.\",\"Next develop leg should check PR #86 state first (children only after previous child merged); if still blocked, a human may need to inspect required checks or the dirty/blocked base on #86.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22X67GYXC65DXA3G33FQKG1\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T11:26:13Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Revisor child 01M22Y70W9KN3W3WPKWP1NK0YJ succeeded (7.9 min, $0.21): revised develop run 01M22X87J1RKQ6A8FZB7RC2RN8 (seed fabro-8bf4), filed seeds fabro-2eb6 (rg -rn replace-flag discipline, priority 1), fabro-9372 (current_seed_id in fabro_runs_list projection), fabro-7613 (engine auto-stamps painpoints on blob-ref reads); marker `.fabro/revisions/01M22X87J1RKQ6A8FZB7RC2RN8.md` written; PR #87 opened (https://github.com/denkhaus/fabro/pull/87).\",\"Next develop leg: two gates now queue-ordered — PR #86 (develop child) and PR #87 (revisor) both need merge before the next develop child per serialized-line rule; check both PRs' state first.\",\"Seeds fabro-9372 and fabro-7613 are engine-side changes outside the develop run-scope gate — the develop planner should skip them until an engine-scoped implementer exists.\",\"Revisor findings retract the false 'sandbox rg unreliable' lore from run 01M22X87's implementer journal (it was an `rg -r n` replace-flag misread) — future passes must not cite it.\"]}}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 4,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-09T11:26:18.510696050Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 1570490,
+      "inference_time_ms": 105982,
+      "tool_time_ms": 1445290,
+      "active_time_ms": 1551272
+    },
+    "final_git_commit_sha": "8d0a1b13a1c3fecd2bd06b1501d98877c1eea70a",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 35963,
+          "inference_time_ms": 26342,
+          "tool_time_ms": 8994,
+          "active_time_ms": 35336
+        },
+        "billing_usd_micros": 27669,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 1007071,
+          "inference_time_ms": 51383,
+          "tool_time_ms": 955066,
+          "active_time_ms": 1006449
+        },
+        "billing_usd_micros": 256585,
+        "retries": 0
+      },
+      {
+        "stage_id": "revise",
+        "stage_label": "revise",
+        "timing": {
+          "wall_time_ms": 510123,
+          "inference_time_ms": 28257,
+          "tool_time_ms": 481230,
+          "active_time_ms": 509487
+        },
+        "billing_usd_micros": 117280,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 200320,
+      "output_tokens": 1984,
+      "total_tokens": 629378,
+      "reasoning_tokens": 322,
+      "cache_read_tokens": 426752,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 401534
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M22X67GYXC65DXA3G33FQKG1.jsonl b/.fabro/journal/01M22X67GYXC65DXA3G33FQKG1.jsonl\nnew file mode 100644\nindex 000000000..f99a4de3f\n--- /dev/null\n+++ b/.fabro/journal/01M22X67GYXC65DXA3G33FQKG1.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22X67GYXC65DXA3G33FQKG1\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T11:00:16Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22X67GYXC65DXA3G33FQKG1\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T11:00:52Z\",\"data\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0' — drift below MIN threshold 5, accumulates toward it\",\"revisor backlog: none — newest develop run 01M22VHABGCNWT7DKJC9HP1XKC was reviewed (commit 641227160, PR #84 still open), older runs 01M22STYHH and 01M22R3T also have revisor passes\",\"next surveyor: PR #84 is open and awaiting merge; children are created only after the previous child merged, so the Work pass should verify #84 state before spawning\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22X67GYXC65DXA3G33FQKG1\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T11:17:40Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Child develop run 01M22X87J1RKQ6A8FZB7RC2RN8 (seed fabro-8bf4 'Engine: lint stage completion when a key declared in context_allow_keys was never emitted') succeeded: seed implemented, gate green, review approved, seed closed, PR #86 opened (https://github.com/denkhaus/fabro/pull/86).\",\"gate stuck: PR #86 remained blocked across 3 merged-waits (~60 min ceiling, waits at ~11:17, ~11:37, ~11:57 UTC) — the merge is soft-parked, NOT a child failure; child_run_id stays for the revisor leg to review the unreviewed develop run.\",\"Next develop leg should check PR #86 state first (children only after previous child merged); if still blocked, a human may need to inspect required checks or the dirty/blocked base on #86.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22X67GYXC65DXA3G33FQKG1\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T11:26:13Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Revisor child 01M22Y70W9KN3W3WPKWP1NK0YJ succeeded (7.9 min, $0.21): revised develop run 01M22X87J1RKQ6A8FZB7RC2RN8 (seed fabro-8bf4), filed seeds fabro-2eb6 (rg -rn replace-flag discipline, priority 1), fabro-9372 (current_seed_id in fabro_runs_list projection), fabro-7613 (engine auto-stamps painpoints on blob-ref reads); marker `.fabro/revisions/01M22X87J1RKQ6A8FZB7RC2RN8.md` written; PR #87 opened (https://github.com/denkhaus/fabro/pull/87).\",\"Next develop leg: two gates now queue-ordered — PR #86 (develop child) and PR #87 (revisor) both need merge before the next develop child per serialized-line rule; check both PRs' state first.\",\"Seeds fabro-9372 and fabro-7613 are engine-side changes outside the develop run-scope gate — the develop planner should skip them until an engine-scoped implementer exists.\",\"Revisor findings retract the false 'sandbox rg unreliable' lore from run 01M22X87's implementer journal (it was an `rg -r n` replace-flag misread) — future passes must not cite it.\"]}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 4,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2009,6 +2095,42 @@
       "output": null,
       "started_at": "2026-09-09T11:00:16.408869987Z",
       "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 140,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T11:26:18.460820724Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T11:26:18.460719746Z",
+      "handler": "exit",
       "graph_visit": 1,
       "timing": {
         "wall_time_ms": 0,
