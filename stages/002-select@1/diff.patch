@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M2395PSPYDC1KZA45Q171BDE.jsonl b/.fabro/journal/01M2395PSPYDC1KZA45Q171BDE.jsonl
+new file mode 100644
+index 0000000..911b731
+--- /dev/null
++++ b/.fabro/journal/01M2395PSPYDC1KZA45Q171BDE.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M2395PSPYDC1KZA45Q171BDE","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T14:29:35Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M2395PSPYDC1KZA45Q171BDE","node":"select","visit":1,"status":"succeeded","ts":"2026-09-09T14:29:59Z","data":{"painpoints":[],"observations":["Selected run's PR #96 is closed but NOT merged while every earlier develop PR merged — inspect why this run's output was rejected","2 merge-upstream runs (01M20N60ZY6DZDTX60WW0161KP, 01M20E43YS004DCEYPJ0GJQH4B) remain unrevised but on-current-version; eligible for future passes","No stale-evidence or sandbox-less runs in this pass; all 13 develop runs terminal, 12 already revised"]}}

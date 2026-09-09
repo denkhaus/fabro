@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "fabro_ask on run 01M237JNJW4FNRRZ70EX7WZF6D errored: LLM stream error 'malformed tool call stream from zai: delta for tool_calls[1] arrived before tool_calls[0] was started'. Hard rule forbids a retry/re-ask within the same pass, so no review file was written and no findings distilled. The run remains unrevised and should be re-selected next invocation.",
+  "timestamp": "2026-09-09T14:36:07.331487478Z"
+}
