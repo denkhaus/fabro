@@ -571,7 +571,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T18:30:14.048433077Z",
-  "last_event_at": "2026-09-09T18:51:44.240064593Z",
+  "last_event_at": "2026-09-09T18:51:49.320505458Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -934,9 +934,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 148,
       "checkpoint": {
-        "timestamp": "2026-09-09T18:51:44.462241050Z",
+        "timestamp": "2026-09-09T18:51:49.320233723Z",
         "current_node": "revise",
         "completed_nodes": [
           "start",
@@ -946,9 +946,12 @@
         ],
         "node_retries": {},
         "context_values": {
-          "thread.start.current_node": "survey",
-          "internal.retry_count.develop": 0,
-          "failure_signature": "",
+          "internal.fidelity": "compact",
+          "thread.develop.current_node": "revise",
+          "last_stage": "revise",
+          "child_run_id": "01M23Q0VM3YVECMSHDNX2HH3PJ",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "graph.max_node_visits": "12",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -956,26 +959,40 @@
               "PR #107 remains parked awaiting human merge: auto_merge is now disabled repo-wide (fabro-6a5a), so subsequent develop children's PRs will also need human merges — 'Gate stuck — revise anyway' is the expected steady state unless auto-merge is re-enabled."
             ]
           },
-          "thread.survey.current_node": "develop",
-          "outcome": "succeeded",
-          "last_stage": "revise",
-          "internal.retry_count.survey": 0,
+          "failure_signature": "",
+          "internal.exit_kind": "natural",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "graph.preamble_budget_kb": "12",
+          "internal.node_visit_count": 1,
+          "response.develop": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.develop",
+            "chars": 1949,
+            "preview": "Three waits exhausted — PR #107 persistently blocked (consistent with the seed's own change: fabro-6a5a disabled auto-merge, so this PR requires a human merge). Routing \"Gate stuck — revise anyway"
+          },
+          "thread.start.current_node": "survey",
+          "response.revise": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.revise",
+            "chars": 650,
+            "preview": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"Revisor run 01M23"
+          },
+          "internal.seed_cycle_anchor": "",
+          "internal.work_dir": "/workspace/fabro",
+          "current_node": "revise",
+          "internal.retry_count.revise": 0,
+          "internal.retry_count.start": 0,
+          "internal.run_id": "01M23PY6QYTK22GA94VHZWVQ7N",
+          "internal.retry_count.develop": 0,
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 666,
             "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (< 5 threshold); newest"
           },
-          "current_node": "revise",
+          "preferred_label": "Cycle complete",
           "graph.cycle_counter_reset_key": "pass_id",
-          "internal.seed_cycle_anchor": "",
-          "internal.retry_count.start": 0,
-          "internal.fidelity": "compact",
-          "internal.work_dir": "/workspace/fabro",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "failure_class": "",
-          "internal.exit_kind": "natural",
-          "internal.run_id": "01M23PY6QYTK22GA94VHZWVQ7N",
+          "last_response": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"Revisor run 01M23",
           "seed_cycles": {
             "start": 1,
             "survey": 1,
@@ -983,84 +1000,13 @@
             "revise": 1
           },
           "internal.thread_id": "develop",
-          "child_run_id": "01M23Q0VM3YVECMSHDNX2HH3PJ",
-          "graph.max_node_visits": "12",
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "internal.node_visit_count": 1,
-          "internal.retry_count.revise": 0,
-          "last_response": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"Revisor run 01M23",
-          "preferred_label": "Cycle complete",
-          "response.revise": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.revise",
-            "chars": 650,
-            "preview": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"Revisor run 01M23"
-          },
-          "graph.rankdir": "LR",
-          "graph.preamble_budget_kb": "12",
-          "response.develop": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.develop",
-            "chars": 1949,
-            "preview": "Three waits exhausted — PR #107 persistently blocked (consistent with the seed's own change: fabro-6a5a disabled auto-merge, so this PR requires a human merge). Routing \"Gate stuck — revise anyway"
-          },
-          "thread.develop.current_node": "revise"
+          "internal.retry_count.survey": 0,
+          "thread.survey.current_node": "develop",
+          "outcome": "succeeded",
+          "failure_class": "",
+          "graph.rankdir": "LR"
         },
         "node_outcomes": {
-          "survey": {
-            "status": "succeeded",
-            "preferred_label": "Work",
-            "context_updates": {
-              "last_stage": "survey",
-              "response.survey": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.survey",
-                "chars": 666,
-                "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (< 5 threshold); newest"
-              },
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "upstream count 0 (< 5 threshold); newest upstream/main subject: 'Bump version to 0.348.0-nightly.0' — no drift, no merge needed this pass",
-                  "revisor backlog: none — newest develop run 01M23N9E3R1GKHRRA4MPB3GY2A (PR #105) already reviewed by revisor pass (`.fabro/reviews/develop/01M23N9E3R1GKHRRA4MPB3GY2A.md`, commit d9e19582c); no unreviewed completed develop runs newer than that",
-                  "next surveyor: count stays at 0; drift accumulates toward the 5-commit MIN threshold per user decision 2026-09-05"
-                ]
-              },
-              "last_response": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (< 5 threshold); newest"
-            },
-            "notes": "Stage completed: survey",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 17625,
-                    "output_tokens": 777,
-                    "reasoning_tokens": 396,
-                    "cache_read_tokens": 59328,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 45255
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 46309,
-              "tool_time_ms": 9416,
-              "active_time_ms": 55725
-            }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "develop": {
             "status": "succeeded",
             "preferred_label": "Gate stuck — revise anyway",
@@ -1114,6 +1060,56 @@
               "active_time_ms": 796574
             }
           },
+          "survey": {
+            "status": "succeeded",
+            "preferred_label": "Work",
+            "context_updates": {
+              "last_stage": "survey",
+              "response.survey": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.survey",
+                "chars": 666,
+                "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (< 5 threshold); newest"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "upstream count 0 (< 5 threshold); newest upstream/main subject: 'Bump version to 0.348.0-nightly.0' — no drift, no merge needed this pass",
+                  "revisor backlog: none — newest develop run 01M23N9E3R1GKHRRA4MPB3GY2A (PR #105) already reviewed by revisor pass (`.fabro/reviews/develop/01M23N9E3R1GKHRRA4MPB3GY2A.md`, commit d9e19582c); no unreviewed completed develop runs newer than that",
+                  "next surveyor: count stays at 0; drift accumulates toward the 5-commit MIN threshold per user decision 2026-09-05"
+                ]
+              },
+              "last_response": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (< 5 threshold); newest"
+            },
+            "notes": "Stage completed: survey",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 17625,
+                    "output_tokens": 777,
+                    "reasoning_tokens": 396,
+                    "cache_read_tokens": 59328,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 45255
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 46309,
+              "tool_time_ms": 9416,
+              "active_time_ms": 55725
+            }
+          },
           "revise": {
             "status": "succeeded",
             "preferred_label": "Cycle complete",
@@ -1162,20 +1158,110 @@
               "tool_time_ms": 398529,
               "active_time_ms": 423988
             }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "73256e0a904b5615bb0f878b3616a2cf1124caf3",
         "node_visits": {
+          "start": 1,
           "survey": 1,
-          "revise": 1,
           "develop": 1,
-          "start": 1
+          "revise": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M23PY6QYTK22GA94VHZWVQ7N.jsonl b/.fabro/journal/01M23PY6QYTK22GA94VHZWVQ7N.jsonl\nindex 0a9a8805b..866e7e5de 100644\n--- a/.fabro/journal/01M23PY6QYTK22GA94VHZWVQ7N.jsonl\n+++ b/.fabro/journal/01M23PY6QYTK22GA94VHZWVQ7N.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23PY6QYTK22GA94VHZWVQ7N\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T18:30:17Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23PY6QYTK22GA94VHZWVQ7N\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T18:31:14Z\",\"data\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (< 5 threshold); newest upstream/main subject: 'Bump version to 0.348.0-nightly.0' — no drift, no merge needed this pass\",\"revisor backlog: none — newest develop run 01M23N9E3R1GKHRRA4MPB3GY2A (PR #105) already reviewed by revisor pass (`.fabro/reviews/develop/01M23N9E3R1GKHRRA4MPB3GY2A.md`, commit d9e19582c); no unreviewed completed develop runs newer than that\",\"next surveyor: count stays at 0; drift accumulates toward the 5-commit MIN threshold per user decision 2026-09-05\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23PY6QYTK22GA94VHZWVQ7N\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T18:44:35Z\",\"data\":{\"painpoints\":[{\"text\":\"fabro_run_wait until=merged returned blocked 3/3 times (~60 min ceiling, run 01M23Q0VM3YVECMSHDNX2HH3PJ, PR #107). Note: this child's own seed fabro-6a5a set auto_merge=false in .fabro/workflows/develop/workflow.toml — this run's spec was created before that change and still had auto_merge=true, but the GraphQL enable-auto-merge call deterministically fails on this repo ('Auto merge is not allowed for this repository'), so the PR can never auto-merge and needs a human merge. The conductor's wait loop cannot distinguish 'checks running' from 'auto-merge structurally impossible'; suggestion: surface the enable-auto-merge failure reason in the run_wait blocked payload so the conductor can park immediately instead of burning 3 waits.\"}],\"observations\":[\"Child 01M23Q0VM3YVECMSHDNX2HH3PJ (seed fabro-6a5a, 'Fix PR postlude: disable auto-merge and stop the failing PR-body model call') SUCCEEDED in ~12 min: auto_merge=false set in .fabro/workflows/develop/workflow.toml, two resolve_pr_model regression tests added to lib/components/fabro-workflow/src/operations/start.rs, gate green, review approved, seed closed by closeout. Gate wait outcome: blocked x3 — PR #107 parked, unreviewed develop run goes to revisor; next develop leg should expect future runs' PRs to require human merge (auto_merge now off), so 'Gate stuck — revise anyway' becomes the expected steady state for every subsequent develop child unless auto-merge is re-enabled.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23PY6QYTK22GA94VHZWVQ7N\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T18:51:44Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Revisor run 01M23QS9GHH2N18HY55B1X86Q0 (parent 01M23PY6QYTK22GA94VHZWVQ7N) created against develop child 01M23Q0VM3YVECMSHDNX2HH3PJ (seed fabro-6a5a, PR #107) and terminated succeeded in one wait call.\",\"PR #107 remains parked awaiting human merge: auto_merge is now disabled repo-wide (fabro-6a5a), so subsequent develop children's PRs will also need human merges — 'Gate stuck — revise anyway' is the expected steady state unless auto-merge is re-enabled.\"]}}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 4,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-09T18:51:49.368032382Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 1298599,
+      "inference_time_ms": 118543,
+      "tool_time_ms": 1157744,
+      "active_time_ms": 1276287
+    },
+    "final_git_commit_sha": "73256e0a904b5615bb0f878b3616a2cf1124caf3",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 56393,
+          "inference_time_ms": 46309,
+          "tool_time_ms": 9416,
+          "active_time_ms": 55725
+        },
+        "billing_usd_micros": 45255,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 797176,
+          "inference_time_ms": 46775,
+          "tool_time_ms": 749799,
+          "active_time_ms": 796574
+        },
+        "billing_usd_micros": 262536,
+        "retries": 0
+      },
+      {
+        "stage_id": "revise",
+        "stage_label": "revise",
+        "timing": {
+          "wall_time_ms": 424619,
+          "inference_time_ms": 25459,
+          "tool_time_ms": 398529,
+          "active_time_ms": 423988
+        },
+        "billing_usd_micros": 29074,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 144371,
+      "output_tokens": 2190,
+      "total_tokens": 618928,
+      "reasoning_tokens": 559,
+      "cache_read_tokens": 471808,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 336865
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M23PY6QYTK22GA94VHZWVQ7N.jsonl b/.fabro/journal/01M23PY6QYTK22GA94VHZWVQ7N.jsonl\nnew file mode 100644\nindex 000000000..866e7e5de\n--- /dev/null\n+++ b/.fabro/journal/01M23PY6QYTK22GA94VHZWVQ7N.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23PY6QYTK22GA94VHZWVQ7N\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T18:30:17Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23PY6QYTK22GA94VHZWVQ7N\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T18:31:14Z\",\"data\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (< 5 threshold); newest upstream/main subject: 'Bump version to 0.348.0-nightly.0' — no drift, no merge needed this pass\",\"revisor backlog: none — newest develop run 01M23N9E3R1GKHRRA4MPB3GY2A (PR #105) already reviewed by revisor pass (`.fabro/reviews/develop/01M23N9E3R1GKHRRA4MPB3GY2A.md`, commit d9e19582c); no unreviewed completed develop runs newer than that\",\"next surveyor: count stays at 0; drift accumulates toward the 5-commit MIN threshold per user decision 2026-09-05\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23PY6QYTK22GA94VHZWVQ7N\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T18:44:35Z\",\"data\":{\"painpoints\":[{\"text\":\"fabro_run_wait until=merged returned blocked 3/3 times (~60 min ceiling, run 01M23Q0VM3YVECMSHDNX2HH3PJ, PR #107). Note: this child's own seed fabro-6a5a set auto_merge=false in .fabro/workflows/develop/workflow.toml — this run's spec was created before that change and still had auto_merge=true, but the GraphQL enable-auto-merge call deterministically fails on this repo ('Auto merge is not allowed for this repository'), so the PR can never auto-merge and needs a human merge. The conductor's wait loop cannot distinguish 'checks running' from 'auto-merge structurally impossible'; suggestion: surface the enable-auto-merge failure reason in the run_wait blocked payload so the conductor can park immediately instead of burning 3 waits.\"}],\"observations\":[\"Child 01M23Q0VM3YVECMSHDNX2HH3PJ (seed fabro-6a5a, 'Fix PR postlude: disable auto-merge and stop the failing PR-body model call') SUCCEEDED in ~12 min: auto_merge=false set in .fabro/workflows/develop/workflow.toml, two resolve_pr_model regression tests added to lib/components/fabro-workflow/src/operations/start.rs, gate green, review approved, seed closed by closeout. Gate wait outcome: blocked x3 — PR #107 parked, unreviewed develop run goes to revisor; next develop leg should expect future runs' PRs to require human merge (auto_merge now off), so 'Gate stuck — revise anyway' becomes the expected steady state for every subsequent develop child unless auto-merge is re-enabled.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23PY6QYTK22GA94VHZWVQ7N\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T18:51:44Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Revisor run 01M23QS9GHH2N18HY55B1X86Q0 (parent 01M23PY6QYTK22GA94VHZWVQ7N) created against develop child 01M23Q0VM3YVECMSHDNX2HH3PJ (seed fabro-6a5a, PR #107) and terminated succeeded in one wait call.\",\"PR #107 remains parked awaiting human merge: auto_merge is now disabled repo-wide (fabro-6a5a), so subsequent develop children's PRs will also need human merges — 'Gate stuck — revise anyway' is the expected steady state unless auto-merge is re-enabled.\"]}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 4,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1470,6 +1556,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 151,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T18:51:49.320505458Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T18:51:49.320433929Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
