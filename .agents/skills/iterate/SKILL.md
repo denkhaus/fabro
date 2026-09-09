@@ -21,11 +21,15 @@ decision, not an accident - it needs the user plus an ADR.
 
 ## Phase 0 - Orient (always, cheap)
 
-- Which world am I in? `git branch --show-current`. Since the world
-  merger (d9138572c, ADR-0013) platform AND product work both live on
-  `denkhaus`; `denkhaus-lab` is legacy (retirement pending, multi-context
-  see docs/agents/domain.md). NEVER git worktrees - branch switches
-  happen in the main checkout.
+- One world (user directive 2026-09-09; retirement landed 2026-09-05):
+  all work - platform, engine, product, docs - lives on `denkhaus` in
+  the main checkout (`git branch --show-current` must say `denkhaus`).
+  The product/lab branches are gone (archived as tags
+  archive/denkhaus-lab-final, archive/meta-denkhaus-lab-final); there is
+  nothing to switch between. Local machine = the dev/agent checkout;
+  runs execute on the fabro server deployment (`fabro ps`, container
+  fabro-fabro-1). NEVER git worktrees - branch switches happen in the
+  main checkout.
 - Is a workflow cycle in flight? (`fabro ps`, or a `just run`/`just
   cycle` process). Serialization principle (ADR-0015): while the
   develop/revisor workflow works the tracker, this agent session does
@@ -109,7 +113,7 @@ decision, not an accident - it needs the user plus an ADR.
   with pointers (files, trait seams, guideline pages) instead of
   writing the code. Direct code edits happen only when the user
   explicitly assigns them to this agent in chat.
-- Product/lab change or engine+workflow validation: run the develop
+- Engine+workflow validation: run the develop
   workflow via the wrapper (`just run <workflow> ...`, or `just cycle`
   for develop+revisor; ADR-0015: the wrapper no longer runs an ask
   review - the revisor owns revisioning); quality gates run inside the run.
@@ -240,8 +244,8 @@ decision, not an accident - it needs the user plus an ADR.
 
 ## Phase 5 - Integrate
 
-- Commit and push. Deploy/smoke where the domain requires it
-  (platform: `just up`; lab: run_workflow integration).
+- Commit and push. Deploy/smoke where the domain requires it:
+  `just up` refreshes the fabro server deployment the runs live on.
 - DEPLOY WINDOWS (user directive 2026-09-07): `just up` ONLY while no
   conductor pass runs. Pause the line first (PUT automation replace
   with schedule enabled:false - PRESERVE on_overlap, replaces and UI
@@ -360,9 +364,10 @@ decision, not an accident - it needs the user plus an ADR.
   artifacts first, never to engine seams.
 - Upstream posture: we offer nothing until upstream reacts to our open
   issues/PRs (fabro-f251 parked, no priority).
-- The two worlds are temporary (fabro-a9bb): the envelope family feeds
-  the retirement. The move timing is decided jointly - when close,
-  propose a dedicated grilling session instead of drifting.
+- Single-world reality (user directive 2026-09-09): there is exactly
+  one working world - `denkhaus` locally, the fabro server for runs.
+  Do not reintroduce world/branch switching or worktree setups; retired
+  contexts live only as archive tags and docs/lab/ history.
 - Boundaries: mulch = expertise, seeds = actionable work, ADRs =
   decisions, this skill = process. Nothing stays in chat that belongs
   in one of them.
