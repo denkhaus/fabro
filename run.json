@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T17:01:47.736547946Z",
-  "last_event_at": "2026-09-09T17:04:15.210645917Z",
+  "last_event_at": "2026-09-09T17:04:38.374917981Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1277,9 +1277,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 145,
       "checkpoint": {
-        "timestamp": "2026-09-09T17:04:15.442040649Z",
+        "timestamp": "2026-09-09T17:04:20.440705505Z",
         "current_node": "evidence",
         "completed_nodes": [
           "start",
@@ -1290,11 +1290,244 @@
         ],
         "node_retries": {},
         "context_values": {
+          "internal.retry_count.evidence": 0,
+          "thread.implementer.current_node": "tester",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "`CLAUDE.md` is a symlink to `AGENTS.md`; editing the real file at repo root via edit_file worked directly and the symlink picked the change up — no shell detour was needed despite the section living in repo-wiring territory the seed explicitly targeted."
+            ]
+          },
+          "current_seed_id": "fabro-3d2d",
           "last_stage": "implementer",
+          "graph.inspects": "develop",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1
+          },
+          "command.output": "blob://sha256/3ea60913ef3483c77e0303590ea3c16563d7845997b82f03b9ce66543d77c16e",
+          "outcome": "succeeded",
+          "failure_signature": "",
+          "internal.fidelity": "compact",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2805,
+            "preview": "Implementation complete. The `### Dev-loop assets` subsection now sits at the end of `## Architecture` in `AGENTS.md`, listing all five asset roots and the fs_hide/shell-escape-hatch note. Docs-only c"
+          },
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.node_visit_count": 1,
+          "internal.thread_id": "tester",
+          "current_node": "evidence",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.implementer": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "preferred_label": "Implemented",
+          "graph.rankdir": "LR",
+          "graph.preamble_budget_kb": "24",
+          "failure_class": "",
+          "internal.retry_count.planner": 0,
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 1922,
+            "preview": "Claimed `fabro-3d2d`. Brief written below; routing Seed claimed.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Seed claimed\", \"context_updates\": {\"current_seed_id\": \"fabro-3d2d\", \"current_seed_ti"
+          },
+          "thread.planner.current_node": "implementer",
+          "last_response": "Implementation complete. The `### Dev-loop assets` subsection now sits at the end of `## Architecture` in `AGENTS.md`, listing all five asset roots and the fs_hide/shell-escape-hatch note. Docs-only c",
+          "thread.tester.current_node": "evidence",
+          "internal.run_id": "01M23HWFFSB9NK78PGSCZWE6MA",
+          "lesson_capture": "nothing durable — skipped",
+          "current_seed_brief": "Add a short dev-loop asset map to AGENTS.md so the planner stops burning ~10 exploratory calls locating loop assets. Target: AGENTS.md (the real file at repo root — CLAUDE.md is a symlink to it), as a new subsection (e.g. '### Dev-loop assets') placed at the end of the existing '## Architecture' section. Acceptance criteria:\n- New subsection exists in `AGENTS.md` under `## Architecture` and is ~5-10 lines\n- Lists at minimum: dev-loop workflow assets at `.fabro/workflows/develop/` (with prompts/, scripts/, schemas/, workflow.toml noted), reviews at `.fabro/reviews/`, stage journals at `.fabro/journal/<run_id>.jsonl`, seeds tracker at `.seeds/` (sd CLI), expertise at `.mulch/` (ml CLI)\n- States that these paths are fs_hide-bound for file tools — shell reads (grep/cat/sed) succeed\n- Does NOT name 'gofib' (stale repo name; this repo is fabro) and does not duplicate the existing lib/apps architecture content\n- Verification (cheapest first): `grep -n 'Dev-loop assets' AGENTS.md` shows the section; `grep -c 'fabro/workflows/develop' AGENTS.md` >= 1; `git diff --stat` touches only `AGENTS.md`\n- Gate: `just qualitygate` (docs-only change; expect it to pass without code changes)",
+          "thread.start.current_node": "planner",
+          "internal.seed_cycle_anchor": "fabro-3d2d",
+          "current_seed_title": "Add a repo-layout map to the planner prompt or AGENTS.md",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "implementation_summary": "Added a '### Dev-loop assets' subsection at the end of the '## Architecture' section in `AGENTS.md` (12 lines): it maps `.fabro/workflows/develop/` (workflow.toml, prompts/, scripts/, schemas/), `.fabro/reviews/`, `.fabro/journal/<run_id>.jsonl`, `.seeds/` (sd CLI), and `.mulch/` (ml CLI), and states these paths are fs_hide-bound for file tools while shell reads/writes succeed. Docs-only change verified via grep; only `AGENTS.md` differs in the worktree. Lesson capture: nothing durable — skipped. Verification: PASS subsection exists under Architecture at line 154 of `AGENTS.md`; PASS all five asset roots listed with develop subpaths; PASS fs_hide/shell escape-hatch stated; PASS no 'gofib' (grep count 0) and no lib/apps duplication; PASS grep checks (`Dev-loop assets` at :154, `fabro/workflows/develop` count 1, `git diff --stat` = AGENTS.md only); PASS gate deferred to tester per role contract (no Rust touched, no crate fmt/clippy applicable).",
+          "internal.retry_count.tester": 0,
+          "graph.max_node_visits": "40"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/3ea60913ef3483c77e0303590ea3c16563d7845997b82f03b9ce66543d77c16e"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 398,
+              "active_time_ms": 398
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 4158,
+              "active_time_ms": 4158
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_response": "Implementation complete. The `### Dev-loop assets` subsection now sits at the end of `## Architecture` in `AGENTS.md`, listing all five asset roots and the fs_hide/shell-escape-hatch note. Docs-only c",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "`CLAUDE.md` is a symlink to `AGENTS.md`; editing the real file at repo root via edit_file worked directly and the symlink picked the change up — no shell detour was needed despite the section living in repo-wiring territory the seed explicitly targeted."
+                ]
+              },
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2805,
+                "preview": "Implementation complete. The `### Dev-loop assets` subsection now sits at the end of `## Architecture` in `AGENTS.md`, listing all five asset roots and the fs_hide/shell-escape-hatch note. Docs-only c"
+              },
+              "last_stage": "implementer",
+              "lesson_capture": "nothing durable — skipped",
+              "implementation_summary": "Added a '### Dev-loop assets' subsection at the end of the '## Architecture' section in `AGENTS.md` (12 lines): it maps `.fabro/workflows/develop/` (workflow.toml, prompts/, scripts/, schemas/), `.fabro/reviews/`, `.fabro/journal/<run_id>.jsonl`, `.seeds/` (sd CLI), and `.mulch/` (ml CLI), and states these paths are fs_hide-bound for file tools while shell reads/writes succeed. Docs-only change verified via grep; only `AGENTS.md` differs in the worktree. Lesson capture: nothing durable — skipped. Verification: PASS subsection exists under Architecture at line 154 of `AGENTS.md`; PASS all five asset roots listed with develop subpaths; PASS fs_hide/shell escape-hatch stated; PASS no 'gofib' (grep count 0) and no lib/apps duplication; PASS grep checks (`Dev-loop assets` at :154, `fabro/workflows/develop` count 1, `git diff --stat` = AGENTS.md only); PASS gate deferred to tester per role contract (no Rust touched, no crate fmt/clippy applicable)."
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16597,
+                    "output_tokens": 1159,
+                    "reasoning_tokens": 290,
+                    "cache_read_tokens": 59712,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 45130
+            },
+            "files_touched": [
+              "/workspace/fabro/AGENTS.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 40735,
+              "tool_time_ms": 509,
+              "active_time_ms": 41244
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 1922,
+                "preview": "Claimed `fabro-3d2d`. Brief written below; routing Seed claimed.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Seed claimed\", \"context_updates\": {\"current_seed_id\": \"fabro-3d2d\", \"current_seed_ti"
+              },
+              "current_seed_id": "fabro-3d2d",
+              "current_seed_title": "Add a repo-layout map to the planner prompt or AGENTS.md",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Seed fabro-3d2d contained stale repo name 'gofib' (repo is fabro) and its AGENTS.md claim predates the existing '## Architecture' section; corrected the seed body via sd update before claiming — implementer should follow the corrected target, not the original text.",
+                  "In-flight check: the only non-terminal develop run was this run itself; no open PRs, so no skips were needed."
+                ]
+              },
+              "last_stage": "planner",
+              "last_response": "Claimed `fabro-3d2d`. Brief written below; routing Seed claimed.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Seed claimed\", \"context_updates\": {\"current_seed_id\": \"fabro-3d2d\", \"current_seed_ti",
+              "current_seed_brief": "Add a short dev-loop asset map to AGENTS.md so the planner stops burning ~10 exploratory calls locating loop assets. Target: AGENTS.md (the real file at repo root — CLAUDE.md is a symlink to it), as a new subsection (e.g. '### Dev-loop assets') placed at the end of the existing '## Architecture' section. Acceptance criteria:\n- New subsection exists in `AGENTS.md` under `## Architecture` and is ~5-10 lines\n- Lists at minimum: dev-loop workflow assets at `.fabro/workflows/develop/` (with prompts/, scripts/, schemas/, workflow.toml noted), reviews at `.fabro/reviews/`, stage journals at `.fabro/journal/<run_id>.jsonl`, seeds tracker at `.seeds/` (sd CLI), expertise at `.mulch/` (ml CLI)\n- States that these paths are fs_hide-bound for file tools — shell reads (grep/cat/sed) succeed\n- Does NOT name 'gofib' (stale repo name; this repo is fabro) and does not duplicate the existing lib/apps architecture content\n- Verification (cheapest first): `grep -n 'Dev-loop assets' AGENTS.md` shows the section; `grep -c 'fabro/workflows/develop' AGENTS.md` >= 1; `git diff --stat` touches only `AGENTS.md`\n- Gate: `just qualitygate` (docs-only change; expect it to pass without code changes)"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 30544,
+                    "output_tokens": 1570,
+                    "reasoning_tokens": 1713,
+                    "cache_read_tokens": 174720,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 102624
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 77466,
+              "tool_time_ms": 3504,
+              "active_time_ms": 80970
+            }
+          }
+        },
+        "next_node_id": "reviewer",
+        "git_commit_sha": "31524d3834284d72a46392d6fe4a99c398d88b19",
+        "node_visits": {
+          "implementer": 1,
+          "tester": 1,
+          "planner": 1,
+          "start": 1,
+          "evidence": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl b/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl\nindex d87aa69..a3ded86 100644\n--- a/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl\n+++ b/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl\n@@ -2,3 +2,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23HWFFSB9NK78PGSCZWE6MA\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:03:11Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Seed fabro-3d2d contained stale repo name 'gofib' (repo is fabro) and its AGENTS.md claim predates the existing '## Architecture' section; corrected the seed body via sd update before claiming — implementer should follow the corrected target, not the original text.\",\"In-flight check: the only non-terminal develop run was this run itself; no open PRs, so no skips were needed.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23HWFFSB9NK78PGSCZWE6MA\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:04:00Z\",\"data\":{\"painpoints\":[],\"observations\":[\"`CLAUDE.md` is a symlink to `AGENTS.md`; editing the real file at repo root via edit_file worked directly and the symlink picked the change up — no shell detour was needed despite the section living in repo-wiring territory the seed explicitly targeted.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23HWFFSB9NK78PGSCZWE6MA\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:04:09Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23HWFFSB9NK78PGSCZWE6MA\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:04:15Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 18,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T17:04:38.605691838Z",
+        "current_node": "reviewer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "last_stage": "reviewer",
           "internal.run_id": "01M23HWFFSB9NK78PGSCZWE6MA",
           "internal.retry_count.evidence": 0,
           "failure_class": "",
           "failure_signature": "",
+          "thread.evidence.current_node": "reviewer",
           "internal.retry_count.tester": 0,
           "outcome": "succeeded",
           "response.planner": {
@@ -1312,7 +1545,7 @@
           "thread.implementer.current_node": "tester",
           "graph.preamble_budget_kb": "24",
           "internal.node_visit_count": 1,
-          "last_response": "Implementation complete. The `### Dev-loop assets` subsection now sits at the end of `## Architecture` in `AGENTS.md`, listing all five asset roots and the fs_hide/shell-escape-hatch note. Docs-only c",
+          "last_response": "Review verified against the evidence and the live repo:\n\n- **Section exists**: `### Dev-loop assets` at AGENTS.md:154, at the end of `## Architecture` — exactly as the seed spec requires.\n- **All fi",
           "thread.tester.current_node": "evidence",
           "command.output": "blob://sha256/3ea60913ef3483c77e0303590ea3c16563d7845997b82f03b9ce66543d77c16e",
           "response.implementer": {
@@ -1322,6 +1555,7 @@
             "preview": "Implementation complete. The `### Dev-loop assets` subsection now sits at the end of `## Architecture` in `AGENTS.md`, listing all five asset roots and the fs_hide/shell-escape-hatch note. Docs-only c"
           },
           "graph.max_node_visits": "40",
+          "internal.retry_count.reviewer": 0,
           "thread.planner.current_node": "implementer",
           "thread.start.current_node": "planner",
           "current_seed_brief": "Add a short dev-loop asset map to AGENTS.md so the planner stops burning ~10 exploratory calls locating loop assets. Target: AGENTS.md (the real file at repo root — CLAUDE.md is a symlink to it), as a new subsection (e.g. '### Dev-loop assets') placed at the end of the existing '## Architecture' section. Acceptance criteria:\n- New subsection exists in `AGENTS.md` under `## Architecture` and is ~5-10 lines\n- Lists at minimum: dev-loop workflow assets at `.fabro/workflows/develop/` (with prompts/, scripts/, schemas/, workflow.toml noted), reviews at `.fabro/reviews/`, stage journals at `.fabro/journal/<run_id>.jsonl`, seeds tracker at `.seeds/` (sd CLI), expertise at `.mulch/` (ml CLI)\n- States that these paths are fs_hide-bound for file tools — shell reads (grep/cat/sed) succeed\n- Does NOT name 'gofib' (stale repo name; this repo is fabro) and does not duplicate the existing lib/apps architecture content\n- Verification (cheapest first): `grep -n 'Dev-loop assets' AGENTS.md` shows the section; `grep -c 'fabro/workflows/develop' AGENTS.md` >= 1; `git diff --stat` touches only `AGENTS.md`\n- Gate: `just qualitygate` (docs-only change; expect it to pass without code changes)",
@@ -1329,24 +1563,32 @@
           "journal": {
             "painpoints": [],
             "observations": [
-              "`CLAUDE.md` is a symlink to `AGENTS.md`; editing the real file at repo root via edit_file worked directly and the symlink picked the change up — no shell detour was needed despite the section living in repo-wiring territory the seed explicitly targeted."
+              "Verified the loop-work diff (churn-only seed) against the in-progress seed spec: section placement, all five asset roots, fs_hide note, no 'gofib', and single-file scope all confirmed via grep on AGENTS.md and git diff against claim base c3d0107. Docs-only change; ADR-0019 capability axis clear."
             ]
           },
+          "review_verdict": "approved",
           "implementation_summary": "Added a '### Dev-loop assets' subsection at the end of the '## Architecture' section in `AGENTS.md` (12 lines): it maps `.fabro/workflows/develop/` (workflow.toml, prompts/, scripts/, schemas/), `.fabro/reviews/`, `.fabro/journal/<run_id>.jsonl`, `.seeds/` (sd CLI), and `.mulch/` (ml CLI), and states these paths are fs_hide-bound for file tools while shell reads/writes succeed. Docs-only change verified via grep; only `AGENTS.md` differs in the worktree. Lesson capture: nothing durable — skipped. Verification: PASS subsection exists under Architecture at line 154 of `AGENTS.md`; PASS all five asset roots listed with develop subpaths; PASS fs_hide/shell escape-hatch stated; PASS no 'gofib' (grep count 0) and no lib/apps duplication; PASS grep checks (`Dev-loop assets` at :154, `fabro/workflows/develop` count 1, `git diff --stat` = AGENTS.md only); PASS gate deferred to tester per role contract (no Rust touched, no crate fmt/clippy applicable).",
-          "internal.thread_id": "tester",
+          "internal.thread_id": "evidence",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "internal.seed_cycle_anchor": "fabro-3d2d",
           "current_seed_id": "fabro-3d2d",
-          "current_node": "evidence",
+          "current_node": "reviewer",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
             "tester": 1,
-            "evidence": 1
+            "evidence": 1,
+            "reviewer": 1
           },
           "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.fidelity": "compact",
-          "preferred_label": "Implemented",
+          "internal.fidelity": "summary:high",
+          "preferred_label": "Approved",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 1478,
+            "preview": "Review verified against the evidence and the live repo:\n\n- **Section exists**: `### Dev-loop assets` at AGENTS.md:154, at the end of `## Architecture` — exactly as the seed spec requires.\n- **All fi"
+          },
           "graph.inspects": "develop"
         },
         "node_outcomes": {
@@ -1414,6 +1656,55 @@
               "inference_time_ms": 0,
               "tool_time_ms": 398,
               "active_time_ms": 398
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Verified the loop-work diff (churn-only seed) against the in-progress seed spec: section placement, all five asset roots, fs_hide note, no 'gofib', and single-file scope all confirmed via grep on AGENTS.md and git diff against claim base c3d0107. Docs-only change; ADR-0019 capability axis clear."
+                ]
+              },
+              "review_verdict": "approved",
+              "last_stage": "reviewer",
+              "last_response": "Review verified against the evidence and the live repo:\n\n- **Section exists**: `### Dev-loop assets` at AGENTS.md:154, at the end of `## Architecture` — exactly as the seed spec requires.\n- **All fi",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 1478,
+                "preview": "Review verified against the evidence and the live repo:\n\n- **Section exists**: `### Dev-loop assets` at AGENTS.md:154, at the end of `## Architecture` — exactly as the seed spec requires.\n- **All fi"
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14325,
+                    "output_tokens": 456,
+                    "reasoning_tokens": 132,
+                    "cache_read_tokens": 14272,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 26350
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 17181,
+              "tool_time_ms": 185,
+              "active_time_ms": 17366
             }
           },
           "start": {
@@ -1488,8 +1779,9 @@
             }
           }
         },
-        "next_node_id": "reviewer",
+        "next_node_id": "closeout",
         "node_visits": {
+          "reviewer": 1,
           "planner": 1,
           "evidence": 1,
           "implementer": 1,
@@ -2097,6 +2389,243 @@
         "reasoning_tokens": 0,
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "reviewer@1": {
+      "first_event_seq": 148,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: reviewer",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T17:04:38.374917981Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T17:04:20.453019728Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 17972,
+        "inference_time_ms": 17181,
+        "tool_time_ms": 185,
+        "active_time_ms": 17366
+      },
+      "usage": {
+        "input_tokens": 14325,
+        "output_tokens": 456,
+        "total_tokens": 29185,
+        "reasoning_tokens": 132,
+        "cache_read_tokens": 14272,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 26350
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 14407,
+        "usage_percent": 1.3739585876464844,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-09T17:04:38.364721740Z",
+        "event_seq": 165,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1171,
+            "usage_percent": 0.11167526245117188
+          },
+          {
+            "category": "tools",
+            "tokens": 1664,
+            "usage_percent": 0.15869140625
+          },
+          {
+            "category": "skills",
+            "tokens": 225,
+            "usage_percent": 0.021457672119140625
+          },
+          {
+            "category": "memory",
+            "tokens": 6001,
+            "usage_percent": 0.5722999572753906
+          },
+          {
+            "category": "conversation",
+            "tokens": 5338,
+            "usage_percent": 0.5090713500976562
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
       },
       "agent_control": "running",
       "state": "succeeded"
