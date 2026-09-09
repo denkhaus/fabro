@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T11:31:19.069675540Z",
-  "last_event_at": "2026-09-09T11:32:53.534437789Z",
+  "last_event_at": "2026-09-09T11:32:58.663302681Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1062,9 +1062,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 122,
       "checkpoint": {
-        "timestamp": "2026-09-09T11:32:53.790103426Z",
+        "timestamp": "2026-09-09T11:32:58.225391764Z",
         "current_node": "tester",
         "completed_nodes": [
           "start",
@@ -1074,8 +1074,218 @@
         ],
         "node_retries": {},
         "context_values": {
-          "graph.max_node_visits": "40",
+          "last_response": "Both edits landed cleanly, minimal diffs (1 line + 2 lines), no other sections touched. Verification is parse-level (grep) — no Rust applies. Nothing durable beyond the seed's own edits; skipping le",
+          "preferred_label": "Implemented",
+          "thread.implementer.current_node": "tester",
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/workspace/fabro",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 1978,
+            "preview": "Both edits landed cleanly, minimal diffs (1 line + 2 lines), no other sections touched. Verification is parse-level (grep) — no Rust applies. Nothing durable beyond the seed's own edits; skipping le"
+          },
+          "internal.run_id": "01M22YZBNJ0Y06H8C8C0G3VN3W",
+          "outcome": "succeeded",
+          "internal.retry_count.implementer": 0,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Both named anchors from the brief ('Do NOT run the quality gate' step in implementer.md, 'Write the implementation brief' step at planner.md line ~39) existed exactly as described — brief anchoring was accurate, zero spec drift this pass."
+            ]
+          },
+          "internal.retry_count.start": 0,
+          "graph.rankdir": "LR",
+          "graph.inspects": "develop",
+          "internal.retry_count.planner": 0,
+          "thread.start.current_node": "planner",
+          "last_stage": "implementer",
+          "failure_class": "",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1
+          },
+          "current_seed_title": "Cost-tier implementer smoke checks: parse-level proof for config-only seeds, sized timeouts for built checks",
+          "thread.planner.current_node": "implementer",
+          "failure_signature": "",
+          "internal.retry_count.tester": 0,
+          "internal.seed_cycle_anchor": "fabro-3c6c",
           "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+          "current_node": "tester",
+          "internal.node_visit_count": 1,
+          "implementation_summary": "Platform-targeting seed fabro-3c6c implemented via shell (fs_hide carve-out): added a cost-tier smoke-check sub-bullet to step 4 of `.fabro/workflows/develop/prompts/implementer.md` (parse-level proof for config-only seeds; build-once-then-invoke with timeout_ms >= 600000; timed-out build retries once with doubled timeout, only non-zero exit fails) and a cheapest-first ordering line to step 6 of `.fabro/workflows/develop/prompts/planner.md` (parse-level before build-level in briefs). Both edits match the existing three-space sub-bullet style; nothing else touched. Lesson capture: nothing durable — skipped. Verification report: - PASS implementer.md step 4 gains cost-tier smoke-check rule (config-only→parse-level, never cold `cargo run`, build once then invoke, timeout-retry-once semantics): new sub-bullet at line 27 of `.fabro/workflows/develop/prompts/implementer.md`, grep 'Cost-tier the smoke check' confirms. - PASS planner.md step 6 gains cheapest-first ordering line so briefs list parse-level before build-level: new line 45 of `.fabro/workflows/develop/prompts/planner.md`, grep 'cheapest-first' confirms. - PASS edits minimal, bullet-style consistent, no other sections touched: `git diff --stat` shows exactly 3 insertions across the two files.",
+          "internal.thread_id": "implementer",
+          "graph.max_node_visits": "40",
+          "current_seed_brief": "Edit two platform prompt files via shell (fs_hide blocks file tools; shell writes succeed). Files and criteria: (1) `.fabro/workflows/develop/prompts/implementer.md` — in step 4 (the 'Do NOT run the quality gate' step that defines the implementer self-check), add a cost-tier smoke-check rule: - config-only seeds (no Rust touched) satisfy the smoke check with a parse-level verification (e.g. python3 tomllib/toml parse of the edited TOML) — never build binaries to validate config; - if a built check is genuinely required, never `cargo run` cold: `cargo build` once with timeout_ms >= 600000, then invoke `target/debug/<bin>`; - a timed-out build is not a failure: retry once with a doubled timeout; only a non-zero exit is a failure. (2) `.fabro/workflows/develop/prompts/planner.md` — in step 6 (the 'Write the implementation brief' step, line ~39), mirror one cheapest-first line so briefs stop listing the expensive option first (e.g. order verification commands cheapest-first: parse-level before build-level). Keep both edits minimal and consistent with the prompts' existing bullet style; do not touch any other section. Evidence: run 01M2183254XQ3HJ45SR4P1Y2X6 spent 81% of tool time (600s/741s) on a wasteful cargo build after a 173ms tomllib parse already proved the config. Verification: grep both files for the new rule text; parse-level check of the prompt edits themselves (they are text, no Rust tests apply). Basis: run 01M2183254XQ3HJ45SR4P1Y2X6, workflow version 84429d0a, commit 0dc16012 — verified both named steps exist in the current tree.",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.preamble_budget_kb": "24",
+          "current_seed_id": "fabro-3c6c",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2342,
+            "preview": "Claimed fabro-3c6c (High, prompt-revision seed, basis verified against current tree, no in-flight PR conflicts).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updat"
+          },
+          "lesson_capture": "nothing durable — skipped"
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2342,
+                "preview": "Claimed fabro-3c6c (High, prompt-revision seed, basis verified against current tree, no in-flight PR conflicts).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updat"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Top candidate fabro-3c6c basis resolved cleanly; no open in-flight develop PRs (checked via fabro_runs_list), so no skips needed.",
+                  "This is a platform-targeting seed (.fabro prompts) — implementer must edit through the shell per the implementer prompt's carve-out; brief states this explicitly."
+                ]
+              },
+              "current_seed_id": "fabro-3c6c",
+              "last_response": "Claimed fabro-3c6c (High, prompt-revision seed, basis verified against current tree, no in-flight PR conflicts).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updat",
+              "current_seed_brief": "Edit two platform prompt files via shell (fs_hide blocks file tools; shell writes succeed). Files and criteria: (1) `.fabro/workflows/develop/prompts/implementer.md` — in step 4 (the 'Do NOT run the quality gate' step that defines the implementer self-check), add a cost-tier smoke-check rule: - config-only seeds (no Rust touched) satisfy the smoke check with a parse-level verification (e.g. python3 tomllib/toml parse of the edited TOML) — never build binaries to validate config; - if a built check is genuinely required, never `cargo run` cold: `cargo build` once with timeout_ms >= 600000, then invoke `target/debug/<bin>`; - a timed-out build is not a failure: retry once with a doubled timeout; only a non-zero exit is a failure. (2) `.fabro/workflows/develop/prompts/planner.md` — in step 6 (the 'Write the implementation brief' step, line ~39), mirror one cheapest-first line so briefs stop listing the expensive option first (e.g. order verification commands cheapest-first: parse-level before build-level). Keep both edits minimal and consistent with the prompts' existing bullet style; do not touch any other section. Evidence: run 01M2183254XQ3HJ45SR4P1Y2X6 spent 81% of tool time (600s/741s) on a wasteful cargo build after a 173ms tomllib parse already proved the config. Verification: grep both files for the new rule text; parse-level check of the prompt edits themselves (they are text, no Rust tests apply). Basis: run 01M2183254XQ3HJ45SR4P1Y2X6, workflow version 84429d0a, commit 0dc16012 — verified both named steps exist in the current tree.",
+              "last_stage": "planner",
+              "current_seed_title": "Cost-tier implementer smoke checks: parse-level proof for config-only seeds, sized timeouts for built checks"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 26202,
+                    "output_tokens": 897,
+                    "reasoning_tokens": 175,
+                    "cache_read_tokens": 105088,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 68715
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 40364,
+              "tool_time_ms": 2216,
+              "active_time_ms": 42580
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Both named anchors from the brief ('Do NOT run the quality gate' step in implementer.md, 'Write the implementation brief' step at planner.md line ~39) existed exactly as described — brief anchoring was accurate, zero spec drift this pass."
+                ]
+              },
+              "last_response": "Both edits landed cleanly, minimal diffs (1 line + 2 lines), no other sections touched. Verification is parse-level (grep) — no Rust applies. Nothing durable beyond the seed's own edits; skipping le",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 1978,
+                "preview": "Both edits landed cleanly, minimal diffs (1 line + 2 lines), no other sections touched. Verification is parse-level (grep) — no Rust applies. Nothing durable beyond the seed's own edits; skipping le"
+              },
+              "implementation_summary": "Platform-targeting seed fabro-3c6c implemented via shell (fs_hide carve-out): added a cost-tier smoke-check sub-bullet to step 4 of `.fabro/workflows/develop/prompts/implementer.md` (parse-level proof for config-only seeds; build-once-then-invoke with timeout_ms >= 600000; timed-out build retries once with doubled timeout, only non-zero exit fails) and a cheapest-first ordering line to step 6 of `.fabro/workflows/develop/prompts/planner.md` (parse-level before build-level in briefs). Both edits match the existing three-space sub-bullet style; nothing else touched. Lesson capture: nothing durable — skipped. Verification report: - PASS implementer.md step 4 gains cost-tier smoke-check rule (config-only→parse-level, never cold `cargo run`, build once then invoke, timeout-retry-once semantics): new sub-bullet at line 27 of `.fabro/workflows/develop/prompts/implementer.md`, grep 'Cost-tier the smoke check' confirms. - PASS planner.md step 6 gains cheapest-first ordering line so briefs list parse-level before build-level: new line 45 of `.fabro/workflows/develop/prompts/planner.md`, grep 'cheapest-first' confirms. - PASS edits minimal, bullet-style consistent, no other sections touched: `git diff --stat` shows exactly 3 insertions across the two files.",
+              "lesson_capture": "nothing durable — skipped"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16349,
+                    "output_tokens": 1062,
+                    "reasoning_tokens": 183,
+                    "cache_read_tokens": 41280,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 39096
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 33321,
+              "tool_time_ms": 590,
+              "active_time_ms": 33911
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 4465,
+              "active_time_ms": 4465
+            }
+          }
+        },
+        "next_node_id": "evidence",
+        "git_commit_sha": "bab36c5ee67d8ca7bf1c8bcadc1ffb2fe2090458",
+        "node_visits": {
+          "implementer": 1,
+          "planner": 1,
+          "tester": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M22YZBNJ0Y06H8C8C0G3VN3W.jsonl b/.fabro/journal/01M22YZBNJ0Y06H8C8C0G3VN3W.jsonl\nindex 37c42c8..ecd41b0 100644\n--- a/.fabro/journal/01M22YZBNJ0Y06H8C8C0G3VN3W.jsonl\n+++ b/.fabro/journal/01M22YZBNJ0Y06H8C8C0G3VN3W.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22YZBNJ0Y06H8C8C0G3VN3W\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T11:31:21Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22YZBNJ0Y06H8C8C0G3VN3W\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T11:32:04Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Top candidate fabro-3c6c basis resolved cleanly; no open in-flight develop PRs (checked via fabro_runs_list), so no skips needed.\",\"This is a platform-targeting seed (.fabro prompts) — implementer must edit through the shell per the implementer prompt's carve-out; brief states this explicitly.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22YZBNJ0Y06H8C8C0G3VN3W\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T11:32:44Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Both named anchors from the brief ('Do NOT run the quality gate' step in implementer.md, 'Write the implementation brief' step at planner.md line ~39) existed exactly as described — brief anchoring was accurate, zero spec drift this pass.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22YZBNJ0Y06H8C8C0G3VN3W\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T11:32:53Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 8,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T11:32:58.885372943Z",
+        "current_node": "evidence",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.max_node_visits": "40",
+          "command.output": "blob://sha256/3cd303610996cf0e3e18cbe90c5bfa74b13c008dd904f967e1df6cb43b5099bf",
           "last_response": "Both edits landed cleanly, minimal diffs (1 line + 2 lines), no other sections touched. Verification is parse-level (grep) — no Rust applies. Nothing durable beyond the seed's own edits; skipping le",
           "graph.inspects": "develop",
           "current_seed_id": "fabro-3c6c",
@@ -1085,7 +1295,7 @@
           "internal.retry_count.implementer": 0,
           "internal.retry_count.tester": 0,
           "thread.planner.current_node": "implementer",
-          "internal.thread_id": "implementer",
+          "internal.thread_id": "tester",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
@@ -1094,11 +1304,12 @@
           },
           "graph.cycle_counter_reset_key": "current_seed_id",
           "internal.work_dir": "/workspace/fabro",
-          "current_node": "tester",
+          "current_node": "evidence",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
-            "tester": 1
+            "tester": 1,
+            "evidence": 1
           },
           "internal.fidelity": "compact",
           "journal": {
@@ -1118,12 +1329,14 @@
           "failure_class": "",
           "last_stage": "implementer",
           "thread.implementer.current_node": "tester",
+          "internal.retry_count.evidence": 0,
           "current_seed_brief": "Edit two platform prompt files via shell (fs_hide blocks file tools; shell writes succeed). Files and criteria: (1) `.fabro/workflows/develop/prompts/implementer.md` — in step 4 (the 'Do NOT run the quality gate' step that defines the implementer self-check), add a cost-tier smoke-check rule: - config-only seeds (no Rust touched) satisfy the smoke check with a parse-level verification (e.g. python3 tomllib/toml parse of the edited TOML) — never build binaries to validate config; - if a built check is genuinely required, never `cargo run` cold: `cargo build` once with timeout_ms >= 600000, then invoke `target/debug/<bin>`; - a timed-out build is not a failure: retry once with a doubled timeout; only a non-zero exit is a failure. (2) `.fabro/workflows/develop/prompts/planner.md` — in step 6 (the 'Write the implementation brief' step, line ~39), mirror one cheapest-first line so briefs stop listing the expensive option first (e.g. order verification commands cheapest-first: parse-level before build-level). Keep both edits minimal and consistent with the prompts' existing bullet style; do not touch any other section. Evidence: run 01M2183254XQ3HJ45SR4P1Y2X6 spent 81% of tool time (600s/741s) on a wasteful cargo build after a 173ms tomllib parse already proved the config. Verification: grep both files for the new rule text; parse-level check of the prompt edits themselves (they are text, no Rust tests apply). Basis: run 01M2183254XQ3HJ45SR4P1Y2X6, workflow version 84429d0a, commit 0dc16012 — verified both named steps exist in the current tree.",
           "outcome": "succeeded",
           "internal.run_id": "01M22YZBNJ0Y06H8C8C0G3VN3W",
           "graph.preamble_budget_kb": "24",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "internal.node_visit_count": 1,
+          "thread.tester.current_node": "evidence",
           "preferred_label": "Implemented",
           "thread.start.current_node": "planner",
           "internal.retry_count.start": 0,
@@ -1179,6 +1392,20 @@
               "inference_time_ms": 33321,
               "tool_time_ms": 590,
               "active_time_ms": 33911
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/3cd303610996cf0e3e18cbe90c5bfa74b13c008dd904f967e1df6cb43b5099bf"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 405,
+              "active_time_ms": 405
             }
           },
           "tester": {
@@ -1252,12 +1479,13 @@
             "usage": null
           }
         },
-        "next_node_id": "evidence",
+        "next_node_id": "reviewer",
         "node_visits": {
           "planner": 1,
           "start": 1,
           "implementer": 1,
-          "tester": 1
+          "tester": 1,
+          "evidence": 1
         }
       },
       "diff": {}
@@ -1289,6 +1517,57 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "evidence@1": {
+      "first_event_seq": 125,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T11:32:58.663302681Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/3cd303610996cf0e3e18cbe90c5bfa74b13c008dd904f967e1df6cb43b5099bf",
+        "exit_code": 0,
+        "duration_ms": 405,
+        "termination": "exited",
+        "output_bytes": 8740,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 8740,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T11:32:58.237202613Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 416,
+        "inference_time_ms": 0,
+        "tool_time_ms": 405,
+        "active_time_ms": 405
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "planner@1": {
       "first_event_seq": 20,
       "prompt": null,
