@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T18:31:33.865773318Z",
-  "last_event_at": "2026-09-09T18:42:18.795605730Z",
+  "last_event_at": "2026-09-09T18:42:47.194498990Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -873,9 +873,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 302,
       "checkpoint": {
-        "timestamp": "2026-09-09T18:42:19.038678907Z",
+        "timestamp": "2026-09-09T18:42:23.948404296Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -884,7 +884,201 @@
         ],
         "node_retries": {},
         "context_values": {
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3445,
+            "preview": "Seed fabro-6a5a claimed with a corrected path basis. Brief:\n\n**Seed fabro-6a5a — Fix PR postlude: disable auto-merge and stop the failing PR-body model call**\n\n- `auto_merge = false` in `.fabro/work"
+          },
+          "internal.retry_count.implementer": 0,
+          "internal.node_visit_count": 1,
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "implementation_summary": "Set auto_merge = false in `.fabro/workflows/develop/workflow.toml` with an explanatory comment, and documented the model mismatch root cause there (the 09-02 run fell back to run-model glm-5.3 because glm-4.7 was not yet in the catalog — and per mx-ae3966 the run also executed a stale pre-a1e27c9bf server binary; both are fixed on current code). Added two regression tests in `lib/components/fabro-workflow/src/operations/start.rs` pinning resolve_pr_model routing (`zai:glm-4.7` → glm-4.7, bare provider → run model). The PR-body LLM call is kept and now routes through the configured cheap non-reasoning model; the deterministic skeleton fallback stays as the non-panicking no-panic path. Lesson capture: mx-232137. Verification: python3 TOML parse OK; focused tests pass; full `cargo nextest run -p fabro-workflow` 1543/1543 pass; pinned `fmt` and default-features `clippy -p fabro-workflow --all-targets -- -D warnings` clean. Per-criterion report: - PASS auto_merge=false in [run.pull_request] of `.fabro/workflows/develop/workflow.toml` (line 57, TOML parse verified). - PASS failing PR-body LLM call fixed by routing: `resolve_pr_model` tests in `lib/components/fabro-workflow/src/operations/start.rs` (`resolve_pr_model_routes_dedicated_zai_glm47`) prove the configured model is used; deterministic fallback retained (criterion 4, `build_pr_content_falls_back_after_failed_retry` already in pull_request.rs). - PASS model mismatch reconciled: documented in workflow.toml comment + bare-provider fallback test `resolve_pr_model_falls_back_to_run_model_for_bare_provider`. - PASS deterministic fallback stays non-panicking: unchanged `generate_pr_content`/FALLBACK_BODY_NOTICE path. - PASS cheapest-first verification: python3 TOML parse, then clippy, then nextest. - PASS no gate run by me; crate-scoped fmt/clippy/nextest only. - PASS scope: real-diff runs only, fabro-9f97 untouched.",
+          "thread.start.current_node": "planner",
+          "graph.preamble_budget_kb": "24",
+          "graph.rankdir": "LR",
+          "failure_signature": "",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.start": 0,
+          "current_seed_title": "Fix PR postlude: disable auto-merge and stop the failing PR-body model call",
+          "internal.fidelity": "summary:high",
+          "internal.seed_cycle_anchor": "fabro-6a5a",
+          "internal.thread_id": "planner",
+          "last_response": "All checks green. Summary of the pass:\n\n- `.fabro/workflows/develop/workflow.toml`: `auto_merge = false` with a comment explaining the deterministic GraphQL failure; added a model-mismatch note docume",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3739,
+            "preview": "All checks green. Summary of the pass:\n\n- `.fabro/workflows/develop/workflow.toml`: `auto_merge = false` with a comment explaining the deterministic GraphQL failure; added a model-mismatch note docume"
+          },
+          "outcome": "succeeded",
+          "lesson_capture": "mx-232137",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.planner": 0,
+          "thread.planner.current_node": "implementer",
+          "current_seed_brief": "Seed fabro-6a5a — disable auto-merge and fix the failing PR-body LLM call in the develop postlude. Acceptance criteria: (1) auto_merge = false in the [run.pull_request] block of .fabro/workflows/develop/workflow.toml (currently true at ~line 53; block lives in workflow.toml, NOT project.toml as the original seed said — correction recorded in the seed body). (2) Fix or disable the PR-body LLM call in lib/components/fabro-workflow/src/pipeline/pull_request.rs (failure path ~lines 488-512, FALLBACK_BODY_NOTICE ~line 55) which fails with 'No object generated: Failed to parse response as JSON' and burns ~53s falling back to a skeleton every run. (3) Reconcile the model mismatch: failure log named model=glm-5.3 while the spec configures zai:glm-4.7 — route through the configured model or document the default. (4) Deterministic fallback stays as the non-panicking, no-retry path if the LLM call is kept. (5) Verify cheapest-first: python3 TOML parse, then cargo +nightly-2026-04-14 clippy -p fabro-workflow --all-targets -- -D warnings, then cargo nextest run -p fabro-workflow. (6) Gate green via the deterministic tester step — do not run the full gate yourself. (7) Scope: real-diff runs only; fabro-9f97 (journal-only diff) is separate — do not implement that case.",
+          "preferred_label": "Implemented",
+          "failure_class": "",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.inspects": "develop",
+          "current_seed_id": "fabro-6a5a",
+          "last_stage": "implementer",
+          "internal.run_id": "01M23Q0VM3YVECMSHDNX2HH3PJ",
+          "current_node": "implementer",
           "graph.max_node_visits": "40",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "lib/components/fabro-workflow/src/operations/start.rs resolve_pr_model: a provider-QUALIFIED unknown selector (e.g. zai:nonexistent-model) is echoed verbatim by catalog resolve_selection instead of returning None, so only bare provider tokens trigger the documented run-model fallback — a qualified-but-unknown PR model would fail at LLM client time rather than fall back. Out of fabro-6a5a scope; recorded as mx-232137 and worth a future seed."
+            ]
+          }
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3739,
+                "preview": "All checks green. Summary of the pass:\n\n- `.fabro/workflows/develop/workflow.toml`: `auto_merge = false` with a comment explaining the deterministic GraphQL failure; added a model-mismatch note docume"
+              },
+              "implementation_summary": "Set auto_merge = false in `.fabro/workflows/develop/workflow.toml` with an explanatory comment, and documented the model mismatch root cause there (the 09-02 run fell back to run-model glm-5.3 because glm-4.7 was not yet in the catalog — and per mx-ae3966 the run also executed a stale pre-a1e27c9bf server binary; both are fixed on current code). Added two regression tests in `lib/components/fabro-workflow/src/operations/start.rs` pinning resolve_pr_model routing (`zai:glm-4.7` → glm-4.7, bare provider → run model). The PR-body LLM call is kept and now routes through the configured cheap non-reasoning model; the deterministic skeleton fallback stays as the non-panicking no-panic path. Lesson capture: mx-232137. Verification: python3 TOML parse OK; focused tests pass; full `cargo nextest run -p fabro-workflow` 1543/1543 pass; pinned `fmt` and default-features `clippy -p fabro-workflow --all-targets -- -D warnings` clean. Per-criterion report: - PASS auto_merge=false in [run.pull_request] of `.fabro/workflows/develop/workflow.toml` (line 57, TOML parse verified). - PASS failing PR-body LLM call fixed by routing: `resolve_pr_model` tests in `lib/components/fabro-workflow/src/operations/start.rs` (`resolve_pr_model_routes_dedicated_zai_glm47`) prove the configured model is used; deterministic fallback retained (criterion 4, `build_pr_content_falls_back_after_failed_retry` already in pull_request.rs). - PASS model mismatch reconciled: documented in workflow.toml comment + bare-provider fallback test `resolve_pr_model_falls_back_to_run_model_for_bare_provider`. - PASS deterministic fallback stays non-panicking: unchanged `generate_pr_content`/FALLBACK_BODY_NOTICE path. - PASS cheapest-first verification: python3 TOML parse, then clippy, then nextest. - PASS no gate run by me; crate-scoped fmt/clippy/nextest only. - PASS scope: real-diff runs only, fabro-9f97 untouched.",
+              "last_response": "All checks green. Summary of the pass:\n\n- `.fabro/workflows/develop/workflow.toml`: `auto_merge = false` with a comment explaining the deterministic GraphQL failure; added a model-mismatch note docume",
+              "lesson_capture": "mx-232137",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "lib/components/fabro-workflow/src/operations/start.rs resolve_pr_model: a provider-QUALIFIED unknown selector (e.g. zai:nonexistent-model) is echoed verbatim by catalog resolve_selection instead of returning None, so only bare provider tokens trigger the documented run-model fallback — a qualified-but-unknown PR model would fail at LLM client time rather than fall back. Out of fabro-6a5a scope; recorded as mx-232137 and worth a future seed."
+                ]
+              },
+              "last_stage": "implementer"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 41849,
+                    "output_tokens": 4927,
+                    "reasoning_tokens": 2338,
+                    "cache_read_tokens": 1126208,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 383325
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/components/fabro-workflow/src/operations/start.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 189880,
+              "tool_time_ms": 402624,
+              "active_time_ms": 592504
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Seed fabro-6a5a — disable auto-merge and fix the failing PR-body LLM call in the develop postlude. Acceptance criteria: (1) auto_merge = false in the [run.pull_request] block of .fabro/workflows/develop/workflow.toml (currently true at ~line 53; block lives in workflow.toml, NOT project.toml as the original seed said — correction recorded in the seed body). (2) Fix or disable the PR-body LLM call in lib/components/fabro-workflow/src/pipeline/pull_request.rs (failure path ~lines 488-512, FALLBACK_BODY_NOTICE ~line 55) which fails with 'No object generated: Failed to parse response as JSON' and burns ~53s falling back to a skeleton every run. (3) Reconcile the model mismatch: failure log named model=glm-5.3 while the spec configures zai:glm-4.7 — route through the configured model or document the default. (4) Deterministic fallback stays as the non-panicking, no-retry path if the LLM call is kept. (5) Verify cheapest-first: python3 TOML parse, then cargo +nightly-2026-04-14 clippy -p fabro-workflow --all-targets -- -D warnings, then cargo nextest run -p fabro-workflow. (6) Gate green via the deterministic tester step — do not run the full gate yourself. (7) Scope: real-diff runs only; fabro-9f97 (journal-only diff) is separate — do not implement that case.",
+              "last_stage": "planner",
+              "current_seed_title": "Fix PR postlude: disable auto-merge and stop the failing PR-body model call",
+              "last_response": "Seed fabro-6a5a claimed with a corrected path basis. Brief:\n\n**Seed fabro-6a5a — Fix PR postlude: disable auto-merge and stop the failing PR-body model call**\n\n- `auto_merge = false` in `.fabro/work",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3445,
+                "preview": "Seed fabro-6a5a claimed with a corrected path basis. Brief:\n\n**Seed fabro-6a5a — Fix PR postlude: disable auto-merge and stop the failing PR-body model call**\n\n- `auto_merge = false` in `.fabro/work"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Seed fabro-6a5a named .fabro/project.toml [run.pull_request] as the edit target but that block moved to .fabro/workflows/develop/workflow.toml — recorded the path correction into the seed body before claiming (sd update --description) per the stale-basis intermediate case.",
+                  "No open develop PRs and no other non-terminal develop runs in fabro_runs_list; the in-flight check was clean (only this run itself is running)."
+                ]
+              },
+              "current_seed_id": "fabro-6a5a"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 30189,
+                    "output_tokens": 1776,
+                    "reasoning_tokens": 493,
+                    "cache_read_tokens": 125888,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 84970
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 41217,
+              "tool_time_ms": 3605,
+              "active_time_ms": 44822
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "cfc88722002d1b8f68b44dfa33e5a07b4a73e686",
+        "node_visits": {
+          "start": 1,
+          "implementer": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M23Q0VM3YVECMSHDNX2HH3PJ.jsonl b/.fabro/journal/01M23Q0VM3YVECMSHDNX2HH3PJ.jsonl\nindex 5d60144..e3264a5 100644\n--- a/.fabro/journal/01M23Q0VM3YVECMSHDNX2HH3PJ.jsonl\n+++ b/.fabro/journal/01M23Q0VM3YVECMSHDNX2HH3PJ.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23Q0VM3YVECMSHDNX2HH3PJ\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T18:31:36Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23Q0VM3YVECMSHDNX2HH3PJ\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T18:32:21Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Seed fabro-6a5a named .fabro/project.toml [run.pull_request] as the edit target but that block moved to .fabro/workflows/develop/workflow.toml — recorded the path correction into the seed body before claiming (sd update --description) per the stale-basis intermediate case.\",\"No open develop PRs and no other non-terminal develop runs in fabro_runs_list; the in-flight check was clean (only this run itself is running).\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23Q0VM3YVECMSHDNX2HH3PJ\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T18:42:19Z\",\"data\":{\"painpoints\":[],\"observations\":[\"lib/components/fabro-workflow/src/operations/start.rs resolve_pr_model: a provider-QUALIFIED unknown selector (e.g. zai:nonexistent-model) is echoed verbatim by catalog resolve_selection instead of returning None, so only bare provider tokens trigger the documented run-model fallback — a qualified-but-unknown PR model would fail at LLM client time rather than fall back. Out of fabro-6a5a scope; recorded as mx-232137 and worth a future seed.\"]}}\ndiff --git a/.fabro/workflows/develop/workflow.toml b/.fabro/workflows/develop/workflow.toml\nindex f7fff76..229a3dd 100644\n--- a/.fabro/workflows/develop/workflow.toml\n+++ b/.fabro/workflows/develop/workflow.toml\n@@ -42,19 +42,29 @@ push = true\n [run.meta_branch]\n push = true\n \n-# Autonomous merge-back (run -> PR -> base branch): every successful run\n-# with a non-empty diff opens a PR against the base branch; auto-merge\n-# lands it once required checks pass. Without this, scheduled runs would\n-# re-implement the same seed every run (observed: three parallel\n-# -pretty implementations on orphaned run branches).\n+# Merge-back (run -> PR -> base branch): every successful run with a\n+# non-empty diff opens a PR against the base branch. Without this,\n+# scheduled runs would re-implement the same seed every run (observed:\n+# three parallel -pretty implementations on orphaned run branches).\n+# auto_merge = false (fabro-6a5a): the enable-auto-merge GraphQL call\n+# deterministically fails (\"Auto merge is not allowed for this\n+# repository\") on this repo and emitted a warn every run; a human or the\n+# deterministic closeout merges instead.\n [run.pull_request]\n enabled = true\n draft = false\n-auto_merge = true\n+auto_merge = false\n merge_strategy = \"squash\"\n # glm-4.7: non-reasoning (catalog features.reasoning = false) — cheap,\n # clean JSON for PR titling; no reasoning_effort needed (and \"off\" is not\n # a valid value: the enum is low|medium|high|xhigh|max).\n+# Model-mismatch note (fabro-6a5a, run 01M0WWKAQCWZC0Q0JK019H0ZC7): the\n+# failure log named model=glm-5.3 because glm-4.7 was not yet in the\n+# catalog on 2026-09-02, so resolve_pr_model warned and fell back to the\n+# run model (a reasoning model whose output broke structured JSON). The\n+# catalog gained glm-4.7 on 2026-09-03 (fabro-cd27); the configured\n+# model now routes. If this ever regresses, the fallback is the run\n+# model plus the deterministic skeleton body.\n model = \"zai:glm-4.7\"\n \n # NO [run.integrations.github.permissions] (ADR-0019, user directive 2026-09-08):\ndiff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl\nindex 033ee09..bcdc9f6 100644\n--- a/.mulch/expertise/engine.jsonl\n+++ b/.mulch/expertise/engine.jsonl\n@@ -50,3 +50,4 @@\n {\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-09T12:22:03.485Z\",\"evidence\":{\"commit\":\"3e49d004d0ae22ef2dba3fd1557062a8bcdee933\"},\"name\":\"overlap-guard-live-children\",\"description\":\"Overlap guard (on_overlap=skip) must treat non-terminal CHILD runs of an automation's runs as active, not only non-terminal automation runs: a conductor pass that parks at a boundary exit or soft-stops via a misjudged run_wait (fabro-ee5d) is terminal itself while its develop child still runs — that window admitted a second overlapping pass (fabro-91ff incident, PR #84 vs #86). active_run_for_automation in lib/components/fabro-store/src/run_summary_store.rs matches parent automation_id OR parent_id IN automation runs with status NOT IN (succeeded,failed,dead); also note the develop planner in-flight guard now needs run STATUS (running) not just open PRs, since claims precede PRs by ~15 min.\",\"files\":[\".fabro/workflows/develop/prompts/planner.md\",\".fabro/workflows/revisor/prompts/analyze.md\",\"lib/components/fabro-store/src/run_summary_store.rs\"],\"id\":\"mx-2400f9\"}\n {\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-09T14:25:27.166Z\",\"evidence\":{\"commit\":\"da8ad92ccf61dc1f40915bf25ff78ac28a65d2f3\"},\"dir_anchors\":[\"lib/components/fabro-workflow/src/handler\",\"lib/components/fabro-workflow/src/handler/llm\"],\"name\":\"routing-schema-label-constraint\",\"description\":\"Routing output_schema label constraint (fabro-de4d): OutputSchemaKind::Routing carries allowed_labels derived from the node's unconditional outgoing edge labels (routable_edge_labels in structured_output.rs); parse_node_output_schema takes (graph, node) and CodergenRunRequest/OneShotRequest carry &Graph so backend repair loops enforce the constraint. Unknown preferred_next_label fails the OUTPUT with SchemaValidation kind (verbose: names value + full allowed list, normalized via graph::routing::normalize_label for case/accelerator insensitivity). Empty edge set keeps free-form drop semantics. Graph lint routing_fallback_silent warns on unlabeled unconditional catchers.\",\"files\":[\"lib/components/fabro-validate/src/rules/mod.rs\",\"lib/components/fabro-workflow/src/graph.rs\",\"lib/components/fabro-workflow/src/graph/routing.rs\",\"lib/components/fabro-workflow/src/handler/agent.rs\",\"lib/components/fabro-workflow/src/handler/command.rs\",\"lib/components/fabro-workflow/src/handler/llm/acp.rs\",\"lib/components/fabro-workflow/src/handler/llm/api.rs\",\"lib/components/fabro-workflow/src/handler/llm/router.rs\",\"lib/components/fabro-workflow/src/handler/prompt.rs\",\"lib/components/fabro-workflow/src/handler/structured_output.rs\"],\"id\":\"mx-a825f8\"}\n {\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-09T16:32:12.149Z\",\"evidence\":{\"commit\":\"bc749ae8363e61113a32774994b1cf03132c8ccc\"},\"dir_anchors\":[\"lib/components/fabro-workflow/src/event\"],\"name\":\"run-event-variant-touchpoints\",\"description\":\"Adding a run-event variant (fabro-94e8 pull_request.closed): seven touchpoints — fabro-types misc.rs Props + run_event/mod.rs EventBody variant/name/round-trip test, fabro-workflow event/events.rs variant+trace, names.rs, convert.rs, fabro-store run_state.rs reducer arm; EventBody is serde(tag=event,content=properties) so Unknown fallback makes it wire-compatible without migrations.\",\"files\":[\"lib/apps/fabro-server/src/serve.rs\",\"lib/apps/fabro-server/src/server.rs\",\"lib/apps/fabro-server/src/server/pull_request_supervisor.rs\",\"lib/apps/fabro-server/src/server/tests.rs\",\"lib/components/fabro-github/src/lib.rs\",\"lib/components/fabro-store/src/run_state.rs\",\"lib/components/fabro-store/src/run_summary_store.rs\",\"lib/components/fabro-workflow/src/event/convert.rs\",\"lib/components/fabro-workflow/src/event/events.rs\",\"lib/components/fabro-workflow/src/event/names.rs\",\"lib/foundation/fabro-types/src/run_event/misc.rs\",\"lib/foundation/fabro-types/src/run_event/mod.rs\"],\"id\":\"mx-3c1785\"}\n+{\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-09T18:41:55.712Z\",\"evidence\":{\"commit\":\"9a7a3b1a2be24180e4d240d1c089307fd639ca54\"},\"description\":\"resolve_pr_model (lib/components/fabro-workflow/src/operations/start.rs) only falls back to the run model for bare provider tokens / ambiguous refs; a provider-QUALIFIED unknown selector (e.g. zai:nonexistent-model) passes through resolve_selection which echoes the selector as the model id, so the PR-body call would fail at client time instead of falling back to the run model. Found while writing fabro-6a5a tests; documented via resolve_pr_model_falls_back_to_run_model_for_bare_provider.\",\"resolution\":\"Not fixed (out of fabro-6a5a scope): documented via the bare-provider fallback test; the qualified-unknown-selector passthrough is journal-reported for a future seed.\",\"id\":\"mx-232137\"}\ndiff --git a/lib/components/fabro-workflow/src/operations/start.rs b/lib/components/fabro-workflow/src/operations/start.rs\nindex 977509f..9847f36 100644\n--- a/lib/components/fabro-workflow/src/operations/start.rs\n+++ b/lib/components/fabro-workflow/src/operations/start.rs\n@@ -1630,6 +1630,44 @@ reasoning = false\n         assert_eq!(resolved.provider_id, ProviderId::new(\"acme\"));\n     }\n \n+    /// The develop workflow's dedicated PR model `zai:glm-4.7` must resolve\n+    /// through the builtin catalog to the cheap non-reasoning model, not the\n+    /// run model. Regression guard for the fabro-6a5a model mismatch: before\n+    /// glm-4.7 landed in the catalog (2026-09-03, fabro-cd27), the dedicated\n+    /// model was unresolvable and every PR-body call silently fell back to\n+    /// the reasoning run model (glm-5.3), whose output broke structured JSON\n+    /// (\"No object generated\") and burned ~53s falling back to the skeleton.\n+    #[test]\n+    fn resolve_pr_model_routes_dedicated_zai_glm47() {\n+        let catalog = test_catalog();\n+        let configured = [ProviderId::new(\"zai\")];\n+        let pr = PullRequestSettings {\n+            model: Some(\"zai:glm-4.7\".parse().unwrap()),\n+            ..PullRequestSettings::default()\n+        };\n+\n+        let resolved = resolve_pr_model(&catalog, &configured, Some(&pr), \"glm-5.3\");\n+\n+        assert_eq!(resolved, \"glm-4.7\");\n+    }\n+\n+    /// A dedicated model that is not a concrete model selection (a bare\n+    /// provider token) falls back to the run model — the documented default\n+    /// when the dedicated model cannot resolve.\n+    #[test]\n+    fn resolve_pr_model_falls_back_to_run_model_for_bare_provider() {\n+        let catalog = test_catalog();\n+        let configured = [ProviderId::new(\"zai\")];\n+        let pr = PullRequestSettings {\n+            model: Some(\"zai\".parse().unwrap()),\n+            ..PullRequestSettings::default()\n+        };\n+\n+        let resolved = resolve_pr_model(&catalog, &configured, Some(&pr), \"glm-5.3\");\n+\n+        assert_eq!(resolved, \"glm-5.3\");\n+    }\n+\n     #[test]\n     fn runtime_clone_config_uses_run_level_clone_policy() {\n         let settings = settings_from_run_layer(RunLayer {\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 59,
+          "deletions": 7
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T18:42:47.407605723Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.max_node_visits": "40",
+          "command.output": "blob://sha256/1005ea9ab40b1ed2e25c0d841e5c47ab5e933622f6175c4a9cf5e5475d1945d3",
           "failure_class": "",
           "graph.preamble_budget_kb": "24",
           "internal.retry_count.planner": 0,
@@ -903,12 +1097,14 @@
           },
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
           "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.tester": 0,
           "graph.rankdir": "LR",
           "thread.planner.current_node": "implementer",
-          "internal.fidelity": "summary:high",
+          "internal.fidelity": "compact",
           "last_response": "All checks green. Summary of the pass:\n\n- `.fabro/workflows/develop/workflow.toml`: `auto_merge = false` with a comment explaining the deterministic GraphQL failure; added a model-mismatch note docume",
           "implementation_summary": "Set auto_merge = false in `.fabro/workflows/develop/workflow.toml` with an explanatory comment, and documented the model mismatch root cause there (the 09-02 run fell back to run-model glm-5.3 because glm-4.7 was not yet in the catalog — and per mx-ae3966 the run also executed a stale pre-a1e27c9bf server binary; both are fixed on current code). Added two regression tests in `lib/components/fabro-workflow/src/operations/start.rs` pinning resolve_pr_model routing (`zai:glm-4.7` → glm-4.7, bare provider → run model). The PR-body LLM call is kept and now routes through the configured cheap non-reasoning model; the deterministic skeleton fallback stays as the non-panicking no-panic path. Lesson capture: mx-232137. Verification: python3 TOML parse OK; focused tests pass; full `cargo nextest run -p fabro-workflow` 1543/1543 pass; pinned `fmt` and default-features `clippy -p fabro-workflow --all-targets -- -D warnings` clean. Per-criterion report: - PASS auto_merge=false in [run.pull_request] of `.fabro/workflows/develop/workflow.toml` (line 57, TOML parse verified). - PASS failing PR-body LLM call fixed by routing: `resolve_pr_model` tests in `lib/components/fabro-workflow/src/operations/start.rs` (`resolve_pr_model_routes_dedicated_zai_glm47`) prove the configured model is used; deterministic fallback retained (criterion 4, `build_pr_content_falls_back_after_failed_retry` already in pull_request.rs). - PASS model mismatch reconciled: documented in workflow.toml comment + bare-provider fallback test `resolve_pr_model_falls_back_to_run_model_for_bare_provider`. - PASS deterministic fallback stays non-panicking: unchanged `generate_pr_content`/FALLBACK_BODY_NOTICE path. - PASS cheapest-first verification: python3 TOML parse, then clippy, then nextest. - PASS no gate run by me; crate-scoped fmt/clippy/nextest only. - PASS scope: real-diff runs only, fabro-9f97 untouched.",
           "failure_signature": "",
@@ -920,7 +1116,7 @@
           "thread.start.current_node": "planner",
           "internal.seed_cycle_anchor": "fabro-6a5a",
           "current_seed_brief": "Seed fabro-6a5a — disable auto-merge and fix the failing PR-body LLM call in the develop postlude. Acceptance criteria: (1) auto_merge = false in the [run.pull_request] block of .fabro/workflows/develop/workflow.toml (currently true at ~line 53; block lives in workflow.toml, NOT project.toml as the original seed said — correction recorded in the seed body). (2) Fix or disable the PR-body LLM call in lib/components/fabro-workflow/src/pipeline/pull_request.rs (failure path ~lines 488-512, FALLBACK_BODY_NOTICE ~line 55) which fails with 'No object generated: Failed to parse response as JSON' and burns ~53s falling back to a skeleton every run. (3) Reconcile the model mismatch: failure log named model=glm-5.3 while the spec configures zai:glm-4.7 — route through the configured model or document the default. (4) Deterministic fallback stays as the non-panicking, no-retry path if the LLM call is kept. (5) Verify cheapest-first: python3 TOML parse, then cargo +nightly-2026-04-14 clippy -p fabro-workflow --all-targets -- -D warnings, then cargo nextest run -p fabro-workflow. (6) Gate green via the deterministic tester step — do not run the full gate yourself. (7) Scope: real-diff runs only; fabro-9f97 (journal-only diff) is separate — do not implement that case.",
-          "internal.thread_id": "planner",
+          "internal.thread_id": "implementer",
           "outcome": "succeeded",
           "journal": {
             "painpoints": [],
@@ -929,11 +1125,12 @@
             ]
           },
           "last_stage": "implementer",
-          "current_node": "implementer",
+          "current_node": "tester",
           "current_seed_title": "Fix PR postlude: disable auto-merge and stop the failing PR-body model call",
           "current_seed_id": "fabro-6a5a",
           "preferred_label": "Implemented",
           "internal.retry_count.implementer": 0,
+          "thread.implementer.current_node": "tester",
           "graph.inspects": "develop"
         },
         "node_outcomes": {
@@ -1045,12 +1242,27 @@
               "tool_time_ms": 402624,
               "active_time_ms": 592504
             }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/1005ea9ab40b1ed2e25c0d841e5c47ab5e933622f6175c4a9cf5e5475d1945d3"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 23223,
+              "active_time_ms": 23223
+            }
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
           "implementer": 1,
           "start": 1,
+          "tester": 1,
           "planner": 1
         }
       },
@@ -1083,6 +1295,229 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "planner@1": {
+      "first_event_seq": 20,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T18:32:21.765272835Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T18:31:36.464450359Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 45363,
+        "inference_time_ms": 41217,
+        "tool_time_ms": 3605,
+        "active_time_ms": 44822
+      },
+      "usage": {
+        "input_tokens": 30189,
+        "output_tokens": 1776,
+        "total_tokens": 158346,
+        "reasoning_tokens": 493,
+        "cache_read_tokens": 125888,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 84970
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 30004,
+        "usage_percent": 2.8614044189453125,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-09T18:32:21.754933963Z",
+        "event_seq": 63,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1233,
+            "usage_percent": 0.11758804321289062
+          },
+          {
+            "category": "tools",
+            "tokens": 1888,
+            "usage_percent": 0.1800537109375
+          },
+          {
+            "category": "memory",
+            "tokens": 6276,
+            "usage_percent": 0.5985260009765625
+          },
+          {
+            "category": "conversation",
+            "tokens": 20600,
+            "usage_percent": 1.964569091796875
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 16,
       "prompt": null,
@@ -1333,225 +1768,53 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "planner@1": {
-      "first_event_seq": 20,
+    "tester@1": {
+      "first_event_seq": 305,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": "Stage completed: planner",
+        "notes": "Script completed: just qualitygate",
         "failure_reason": null,
-        "timestamp": "2026-09-09T18:32:21.765272835Z"
+        "timestamp": "2026-09-09T18:42:47.194498990Z"
       },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "low"
-      },
+      "provider_used": null,
       "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/1005ea9ab40b1ed2e25c0d841e5c47ab5e933622f6175c4a9cf5e5475d1945d3",
+        "exit_code": 0,
+        "duration_ms": 23223,
+        "termination": "exited",
+        "output_bytes": 231,
+        "live_streaming": true
+      },
       "parallel_results": null,
       "output": null,
-      "started_at": "2026-09-09T18:31:36.464450359Z",
-      "handler": "agent",
+      "output_bytes": 231,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T18:42:23.958639075Z",
+      "handler": "command",
       "graph_visit": 1,
       "timing": {
-        "wall_time_ms": 45363,
-        "inference_time_ms": 41217,
-        "tool_time_ms": 3605,
-        "active_time_ms": 44822
+        "wall_time_ms": 23227,
+        "inference_time_ms": 0,
+        "tool_time_ms": 23223,
+        "active_time_ms": 23223
       },
       "usage": {
-        "input_tokens": 30189,
-        "output_tokens": 1776,
-        "total_tokens": 158346,
-        "reasoning_tokens": 493,
-        "cache_read_tokens": 125888,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 84970
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "fabro_runs_list",
-          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": true
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": true
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 30004,
-        "usage_percent": 2.8614044189453125,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-09T18:32:21.754933963Z",
-        "event_seq": 63,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1233,
-            "usage_percent": 0.11758804321289062
-          },
-          {
-            "category": "tools",
-            "tokens": 1888,
-            "usage_percent": 0.1800537109375
-          },
-          {
-            "category": "memory",
-            "tokens": 6276,
-            "usage_percent": 0.5985260009765625
-          },
-          {
-            "category": "conversation",
-            "tokens": 20600,
-            "usage_percent": 1.964569091796875
-          },
-          {
-            "category": "other",
-            "tokens": 7,
-            "usage_percent": 0.000667572021484375
-          }
-        ],
-        "warnings": []
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
