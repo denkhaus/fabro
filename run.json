@@ -571,7 +571,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T14:00:15.162555548Z",
-  "last_event_at": "2026-09-09T14:36:26.487439645Z",
+  "last_event_at": "2026-09-09T14:36:31.764323083Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -934,9 +934,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 137,
       "checkpoint": {
-        "timestamp": "2026-09-09T14:36:26.716724341Z",
+        "timestamp": "2026-09-09T14:36:31.763871494Z",
         "current_node": "revise",
         "completed_nodes": [
           "start",
@@ -946,27 +946,11 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.node_visit_count": 1,
-          "thread.start.current_node": "survey",
-          "internal.retry_count.revise": 0,
-          "internal.fidelity": "compact",
+          "internal.run_id": "01M237FTD80QQB7B2QA56D56RS",
+          "graph.preamble_budget_kb": "12",
           "internal.exit_kind": "natural",
-          "child_run_id": "01M237JNJW4FNRRZ70EX7WZF6D",
-          "response.revise": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.revise",
-            "chars": 694,
-            "preview": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"revisor child 01M2395PSPYDC1KZA45Q171BDE created (auto_approve, t"
-          },
-          "current_node": "revise",
-          "internal.thread_id": "develop",
-          "graph.max_node_visits": "12",
-          "internal.retry_count.start": 0,
-          "preferred_label": "Cycle complete",
-          "graph.rankdir": "LR",
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "graph.cycle_counter_reset_key": "pass_id",
+          "internal.fidelity": "compact",
+          "last_stage": "revise",
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
@@ -974,17 +958,46 @@
             "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus is eve"
           },
           "thread.develop.current_node": "revise",
-          "failure_signature": "",
-          "failure_class": "",
-          "internal.seed_cycle_anchor": "",
+          "internal.retry_count.revise": 0,
           "last_response": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"revisor child 01M2395PSPYDC1KZA45Q171BDE created (auto_approve, t",
+          "internal.retry_count.develop": 0,
+          "internal.node_visit_count": 1,
+          "current_node": "revise",
           "response.develop": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.develop",
             "chars": 1475,
             "preview": "Three waits exhausted, gate still blocked — routing \"Gate stuck — revise anyway\". Child `01M237JNJW4FNRRZ70EX7WZF6D` succeeded (seed `fabro-de4d` implemented, gate green, review approved, seed clo"
           },
-          "last_stage": "revise",
+          "failure_signature": "",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "develop": 1,
+            "revise": 1
+          },
+          "graph.rankdir": "LR",
+          "internal.retry_count.start": 0,
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "outcome": "succeeded",
+          "internal.seed_cycle_anchor": "",
+          "graph.max_node_visits": "12",
+          "internal.thread_id": "develop",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "preferred_label": "Cycle complete",
+          "internal.retry_count.survey": 0,
+          "failure_class": "",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.start.current_node": "survey",
+          "response.revise": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.revise",
+            "chars": 694,
+            "preview": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"revisor child 01M2395PSPYDC1KZA45Q171BDE created (auto_approve, t"
+          },
+          "child_run_id": "01M237JNJW4FNRRZ70EX7WZF6D",
+          "thread.survey.current_node": "develop",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -992,126 +1005,9 @@
               "revised run: develop child 01M237JNJW4FNRRZ70EX7WZF6D (seed fabro-de4d, PR #96) — revisor selected newest revisable run; check revisor run summary for any seeds filed from its pass",
               "prior pass painpoint stands: fabro_run_wait blocked payloads lack elapsed-time/blocker-reason fields; PR #96 gate was stuck after ~60 min of bounded waits per fabro-bde4"
             ]
-          },
-          "graph.preamble_budget_kb": "12",
-          "outcome": "succeeded",
-          "seed_cycles": {
-            "start": 1,
-            "survey": 1,
-            "develop": 1,
-            "revise": 1
-          },
-          "internal.retry_count.survey": 0,
-          "internal.run_id": "01M237FTD80QQB7B2QA56D56RS",
-          "internal.work_dir": "/workspace/fabro",
-          "thread.survey.current_node": "develop",
-          "internal.retry_count.develop": 0
+          }
         },
         "node_outcomes": {
-          "survey": {
-            "status": "succeeded",
-            "preferred_label": "Work",
-            "context_updates": {
-              "last_stage": "survey",
-              "last_response": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus is eve",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "upstream count 0 (origin/denkhaus is even with upstream/main; newest upstream subject: 'Bump version to 0.348.0-nightly.0') — drift 0/5 toward MIN threshold",
-                  "revisor backlog: none — every completed develop run has a revisor pass (newest develop 01M235V6FWMNBDKS9BH3T25G2D reviewed by revisor 01M2368YQANEKJ08M078T1QEX7, PR #95)",
-                  "next surveyor: remote 'upstream' was added this pass; the freshest develop run's PR #94 is merged and its revisor seed run (PR #95) also merged, so the next Work pass should claim the newest revisor-filed seed"
-                ]
-              },
-              "response.survey": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.survey",
-                "chars": 709,
-                "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus is eve"
-              }
-            },
-            "notes": "Stage completed: survey",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 19382,
-                    "output_tokens": 717,
-                    "reasoning_tokens": 338,
-                    "cache_read_tokens": 42752,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 42887
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 47716,
-              "tool_time_ms": 11753,
-              "active_time_ms": 59469
-            }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
-          "revise": {
-            "status": "succeeded",
-            "preferred_label": "Cycle complete",
-            "context_updates": {
-              "last_stage": "revise",
-              "last_response": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"revisor child 01M2395PSPYDC1KZA45Q171BDE created (auto_approve, t",
-              "response.revise": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.revise",
-                "chars": 694,
-                "preview": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"revisor child 01M2395PSPYDC1KZA45Q171BDE created (auto_approve, t"
-              },
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "revisor child 01M2395PSPYDC1KZA45Q171BDE created (auto_approve, toolchain env) and reached terminal status failed/soft_stop — a legitimate revisor soft exit, routed Cycle complete per procedure",
-                  "revised run: develop child 01M237JNJW4FNRRZ70EX7WZF6D (seed fabro-de4d, PR #96) — revisor selected newest revisable run; check revisor run summary for any seeds filed from its pass",
-                  "prior pass painpoint stands: fabro_run_wait blocked payloads lack elapsed-time/blocker-reason fields; PR #96 gate was stuck after ~60 min of bounded waits per fabro-bde4"
-                ]
-              }
-            },
-            "notes": "Stage completed: revise",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 11607,
-                    "output_tokens": 302,
-                    "reasoning_tokens": 14,
-                    "cache_read_tokens": 22848,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 23576
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 20749,
-              "tool_time_ms": 407651,
-              "active_time_ms": 428400
-            }
-          },
           "develop": {
             "status": "succeeded",
             "preferred_label": "Gate stuck — revise anyway",
@@ -1164,20 +1060,210 @@
               "tool_time_ms": 1608866,
               "active_time_ms": 1668006
             }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "survey": {
+            "status": "succeeded",
+            "preferred_label": "Work",
+            "context_updates": {
+              "last_stage": "survey",
+              "last_response": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus is eve",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "upstream count 0 (origin/denkhaus is even with upstream/main; newest upstream subject: 'Bump version to 0.348.0-nightly.0') — drift 0/5 toward MIN threshold",
+                  "revisor backlog: none — every completed develop run has a revisor pass (newest develop 01M235V6FWMNBDKS9BH3T25G2D reviewed by revisor 01M2368YQANEKJ08M078T1QEX7, PR #95)",
+                  "next surveyor: remote 'upstream' was added this pass; the freshest develop run's PR #94 is merged and its revisor seed run (PR #95) also merged, so the next Work pass should claim the newest revisor-filed seed"
+                ]
+              },
+              "response.survey": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.survey",
+                "chars": 709,
+                "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus is eve"
+              }
+            },
+            "notes": "Stage completed: survey",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19382,
+                    "output_tokens": 717,
+                    "reasoning_tokens": 338,
+                    "cache_read_tokens": 42752,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 42887
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 47716,
+              "tool_time_ms": 11753,
+              "active_time_ms": 59469
+            }
+          },
+          "revise": {
+            "status": "succeeded",
+            "preferred_label": "Cycle complete",
+            "context_updates": {
+              "last_stage": "revise",
+              "last_response": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"revisor child 01M2395PSPYDC1KZA45Q171BDE created (auto_approve, t",
+              "response.revise": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.revise",
+                "chars": 694,
+                "preview": "{\"preferred_next_label\": \"Cycle complete\", \"outcome\": \"succeeded\", \"context_updates\": {\"journal\": {\"painpoints\": [], \"observations\": [\"revisor child 01M2395PSPYDC1KZA45Q171BDE created (auto_approve, t"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "revisor child 01M2395PSPYDC1KZA45Q171BDE created (auto_approve, toolchain env) and reached terminal status failed/soft_stop — a legitimate revisor soft exit, routed Cycle complete per procedure",
+                  "revised run: develop child 01M237JNJW4FNRRZ70EX7WZF6D (seed fabro-de4d, PR #96) — revisor selected newest revisable run; check revisor run summary for any seeds filed from its pass",
+                  "prior pass painpoint stands: fabro_run_wait blocked payloads lack elapsed-time/blocker-reason fields; PR #96 gate was stuck after ~60 min of bounded waits per fabro-bde4"
+                ]
+              }
+            },
+            "notes": "Stage completed: revise",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 11607,
+                    "output_tokens": 302,
+                    "reasoning_tokens": 14,
+                    "cache_read_tokens": 22848,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 23576
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 20749,
+              "tool_time_ms": 407651,
+              "active_time_ms": 428400
+            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "d9186dc73a7cb257f89acf62df614d38c5c02dd7",
         "node_visits": {
-          "start": 1,
-          "survey": 1,
           "develop": 1,
-          "revise": 1
+          "start": 1,
+          "revise": 1,
+          "survey": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M237FTD80QQB7B2QA56D56RS.jsonl b/.fabro/journal/01M237FTD80QQB7B2QA56D56RS.jsonl\nindex fb746a2b3..b2d8c6b49 100644\n--- a/.fabro/journal/01M237FTD80QQB7B2QA56D56RS.jsonl\n+++ b/.fabro/journal/01M237FTD80QQB7B2QA56D56RS.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M237FTD80QQB7B2QA56D56RS\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T14:00:18Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M237FTD80QQB7B2QA56D56RS\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T14:01:19Z\",\"data\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus is even with upstream/main; newest upstream subject: 'Bump version to 0.348.0-nightly.0') — drift 0/5 toward MIN threshold\",\"revisor backlog: none — every completed develop run has a revisor pass (newest develop 01M235V6FWMNBDKS9BH3T25G2D reviewed by revisor 01M2368YQANEKJ08M078T1QEX7, PR #95)\",\"next surveyor: remote 'upstream' was added this pass; the freshest develop run's PR #94 is merged and its revisor seed run (PR #95) also merged, so the next Work pass should claim the newest revisor-filed seed\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M237FTD80QQB7B2QA56D56RS\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T14:29:11Z\",\"data\":{\"painpoints\":[{\"text\":\"All 3 fabro_run_wait(until=merged) calls on run 01M237JNJW4FNRRZ70EX7WZF6D returned reached=blocked with no elapsed-time or blocker-reason field, making 'young-blocked vs persistently stuck' undecidable from the tool output alone — a seconds-return blocked and a 20-minute blocked look identical. Fix idea: include wait duration and the blocking cause (failing check name / dirty base / merge conflict) in the blocked payload so the conductor can distinguish slow gates from stuck ones without burning all 3 waits.\"}],\"observations\":[\"develop child 01M237JNJW4FNRRZ70EX7WZF6D succeeded: seed fabro-de4d (routing output_schema label constraint) implemented, quality gate green, reviewer approved, closeout closed the seed; PR #96 (denkhaus/fabro) is the deliverable, gate wait outcome: blocked after 3 bounded waits (~60 min ceiling) — gate stuck per fabro-bde4, revise leg should run the revisor pass on the child run anyway; next pass survey re-enters via PR #96 state.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M237FTD80QQB7B2QA56D56RS\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T14:36:26Z\",\"data\":{\"painpoints\":[],\"observations\":[\"revisor child 01M2395PSPYDC1KZA45Q171BDE created (auto_approve, toolchain env) and reached terminal status failed/soft_stop — a legitimate revisor soft exit, routed Cycle complete per procedure\",\"revised run: develop child 01M237JNJW4FNRRZ70EX7WZF6D (seed fabro-de4d, PR #96) — revisor selected newest revisable run; check revisor run summary for any seeds filed from its pass\",\"prior pass painpoint stands: fabro_run_wait blocked payloads lack elapsed-time/blocker-reason fields; PR #96 gate was stuck after ~60 min of bounded waits per fabro-bde4\"]}}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 4,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-09T14:36:31.810866866Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 2179296,
+      "inference_time_ms": 127605,
+      "tool_time_ms": 2028270,
+      "active_time_ms": 2155875
+    },
+    "final_git_commit_sha": "d9186dc73a7cb257f89acf62df614d38c5c02dd7",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 60039,
+          "inference_time_ms": 47716,
+          "tool_time_ms": 11753,
+          "active_time_ms": 59469
+        },
+        "billing_usd_micros": 42887,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 1668637,
+          "inference_time_ms": 59140,
+          "tool_time_ms": 1608866,
+          "active_time_ms": 1668006
+        },
+        "billing_usd_micros": 324477,
+        "retries": 0
+      },
+      {
+        "stage_id": "revise",
+        "stage_label": "revise",
+        "timing": {
+          "wall_time_ms": 429018,
+          "inference_time_ms": 20749,
+          "tool_time_ms": 407651,
+          "active_time_ms": 428400
+        },
+        "billing_usd_micros": 23576,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 173896,
+      "output_tokens": 1801,
+      "total_tokens": 704159,
+      "reasoning_tokens": 526,
+      "cache_read_tokens": 527936,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 390940
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M237FTD80QQB7B2QA56D56RS.jsonl b/.fabro/journal/01M237FTD80QQB7B2QA56D56RS.jsonl\nnew file mode 100644\nindex 000000000..b2d8c6b49\n--- /dev/null\n+++ b/.fabro/journal/01M237FTD80QQB7B2QA56D56RS.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M237FTD80QQB7B2QA56D56RS\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T14:00:18Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M237FTD80QQB7B2QA56D56RS\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T14:01:19Z\",\"data\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus is even with upstream/main; newest upstream subject: 'Bump version to 0.348.0-nightly.0') — drift 0/5 toward MIN threshold\",\"revisor backlog: none — every completed develop run has a revisor pass (newest develop 01M235V6FWMNBDKS9BH3T25G2D reviewed by revisor 01M2368YQANEKJ08M078T1QEX7, PR #95)\",\"next surveyor: remote 'upstream' was added this pass; the freshest develop run's PR #94 is merged and its revisor seed run (PR #95) also merged, so the next Work pass should claim the newest revisor-filed seed\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M237FTD80QQB7B2QA56D56RS\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T14:29:11Z\",\"data\":{\"painpoints\":[{\"text\":\"All 3 fabro_run_wait(until=merged) calls on run 01M237JNJW4FNRRZ70EX7WZF6D returned reached=blocked with no elapsed-time or blocker-reason field, making 'young-blocked vs persistently stuck' undecidable from the tool output alone — a seconds-return blocked and a 20-minute blocked look identical. Fix idea: include wait duration and the blocking cause (failing check name / dirty base / merge conflict) in the blocked payload so the conductor can distinguish slow gates from stuck ones without burning all 3 waits.\"}],\"observations\":[\"develop child 01M237JNJW4FNRRZ70EX7WZF6D succeeded: seed fabro-de4d (routing output_schema label constraint) implemented, quality gate green, reviewer approved, closeout closed the seed; PR #96 (denkhaus/fabro) is the deliverable, gate wait outcome: blocked after 3 bounded waits (~60 min ceiling) — gate stuck per fabro-bde4, revise leg should run the revisor pass on the child run anyway; next pass survey re-enters via PR #96 state.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M237FTD80QQB7B2QA56D56RS\",\"node\":\"revise\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T14:36:26Z\",\"data\":{\"painpoints\":[],\"observations\":[\"revisor child 01M2395PSPYDC1KZA45Q171BDE created (auto_approve, toolchain env) and reached terminal status failed/soft_stop — a legitimate revisor soft exit, routed Cycle complete per procedure\",\"revised run: develop child 01M237JNJW4FNRRZ70EX7WZF6D (seed fabro-de4d, PR #96) — revisor selected newest revisable run; check revisor run summary for any seeds filed from its pass\",\"prior pass painpoint stands: fabro_run_wait blocked payloads lack elapsed-time/blocker-reason fields; PR #96 gate was stuck after ~60 min of bounded waits per fabro-bde4\"]}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 4,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1203,6 +1289,42 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 140,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T14:36:31.764323083Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T14:36:31.764120474Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "survey@1": {
       "first_event_seq": 20,
       "prompt": null,
