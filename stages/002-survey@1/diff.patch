@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M22PAG8TCJ6A77R60K5ZMNFT.jsonl b/.fabro/journal/01M22PAG8TCJ6A77R60K5ZMNFT.jsonl
+new file mode 100644
+index 000000000..73f58e43c
+--- /dev/null
++++ b/.fabro/journal/01M22PAG8TCJ6A77R60K5ZMNFT.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M22PAG8TCJ6A77R60K5ZMNFT","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T09:00:20Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M22PAG8TCJ6A77R60K5ZMNFT","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-09T09:00:52Z","data":{"painpoints":[],"observations":["upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0' — below MIN threshold 5, drift accumulates","revisor backlog: none detected — newest develop run 01M20T9S8JRXETASN64768TRRP completed 16:26:10Z and revisor run 01M20XGWE2ZYM9ADRM2PVE322F started 16:27:20Z, consistent with it being reviewed; signal best-effort (no explicit run-id link)"]}}
