@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M22T14PWSRB6QSB5G51TJCW1.jsonl b/.fabro/journal/01M22T14PWSRB6QSB5G51TJCW1.jsonl
+new file mode 100644
+index 0000000..1ac954c
+--- /dev/null
++++ b/.fabro/journal/01M22T14PWSRB6QSB5G51TJCW1.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M22T14PWSRB6QSB5G51TJCW1","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T10:04:56Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M22T14PWSRB6QSB5G51TJCW1","node":"select","visit":1,"status":"succeeded","ts":"2026-09-09T10:05:18Z","data":{"painpoints":[],"observations":["8 runs listed; 5 unrevised but only 2 develop runs selectable. 4 develop runs blocked (4 stale-evidence, version drift vs baseline 57bfc824…); 0 no live sandbox; 2 merge-upstream runs (01M20N60ZY6DZDTX60WW0161KP, 01M20E43YS004DCEYPJ0GJQH4B) remain unrevised, fresh-version but older than the selected develop run","No active develop run at listing time (ramp discipline, ADR-0011)"]}}
