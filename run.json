@@ -483,7 +483,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T17:07:00.899705429Z",
-  "last_event_at": "2026-09-09T17:14:25.793043640Z",
+  "last_event_at": "2026-09-09T17:14:31.826359632Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -910,9 +910,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 187,
       "checkpoint": {
-        "timestamp": "2026-09-09T17:14:26.006096895Z",
+        "timestamp": "2026-09-09T17:14:30.728794960Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -922,8 +922,25 @@
         ],
         "node_retries": {},
         "context_values": {
-          "revisor_target_wall": "3.2 min",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "outcome": "succeeded",
+          "graph.rankdir": "LR",
           "preferred_label": "Staged",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 739,
+            "preview": "Filed `fabro-6b58`, `fabro-8d4c`, `fabro-7808` after duplicate searches came back empty, wrote the marker at `.fabro/revisions/01M23HWFFSB9NK78PGSCZWE6MA.md`, and committed the exact artifact paths (c"
+          },
+          "thread.start.current_node": "select",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "filed_seed_ids": [
+            "fabro-6b58",
+            "fabro-8d4c",
+            "fabro-7808"
+          ],
+          "internal.retry_count.analyze": 0,
+          "internal.work_dir": "/workspace/fabro",
           "revision_findings": [
             {
               "title": "Bound the planner in-flight check: created_since window plus explicit self-exclusion",
@@ -941,21 +958,21 @@
               "priority": 2
             }
           ],
-          "last_response": "Filed `fabro-6b58`, `fabro-8d4c`, `fabro-7808` after duplicate searches came back empty, wrote the marker at `.fabro/revisions/01M23HWFFSB9NK78PGSCZWE6MA.md`, and committed the exact artifact paths (c",
-          "response.file": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.file",
-            "chars": 739,
-            "preview": "Filed `fabro-6b58`, `fabro-8d4c`, `fabro-7808` after duplicate searches came back empty, wrote the marker at `.fabro/revisions/01M23HWFFSB9NK78PGSCZWE6MA.md`, and committed the exact artifact paths (c"
-          },
-          "internal.thread_id": "analyze",
           "failure_class": "",
-          "outcome": "succeeded",
-          "thread.analyze.current_node": "file",
-          "internal.seed_cycle_anchor": "01M23HWFFSB9NK78PGSCZWE6MA",
-          "revisor_target_workflow_version": "70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1",
-          "thread.start.current_node": "select",
+          "last_stage": "file",
+          "internal.thread_id": "analyze",
+          "graph.preamble_budget_kb": "24",
+          "current_node": "file",
           "internal.retry_count.file": 0,
+          "internal.retry_count.select": 0,
+          "revisor_target_workflow_version": "70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1",
+          "internal.exit_kind": "natural",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "sd searches for all three themes returned no matches, so all findings filed fresh; no supersession or closure candidates. The sd commit touched only 2 files — seeds live in .seeds but produced no visible diff, consistent with prior revisor commits."
+            ]
+          },
           "failure_signature": "",
           "response.select": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -963,50 +980,109 @@
             "chars": 1380,
             "preview": "Selection analysis: the newest develop run `01M23HWFFSB9NK78PGSCZWE6MA` (created 17:01, succeeded, sandbox live, version `70cee3b3…` = develop baseline) has no marker in `.fabro/revisions/` and is t"
           },
-          "journal": {
-            "painpoints": [],
-            "observations": [
-              "sd searches for all three themes returned no matches, so all findings filed fresh; no supersession or closure candidates. The sd commit touched only 2 files — seeds live in .seeds but produced no visible diff, consistent with prior revisor commits."
-            ]
-          },
-          "internal.retry_count.start": 0,
-          "internal.work_dir": "/workspace/fabro",
-          "current_node": "file",
-          "internal.retry_count.analyze": 0,
           "revisor_target_title": "Develop one seed per run: claim next open seed, implement, gate, review, exit (PR #101 merged)",
-          "graph.preamble_budget_kb": "24",
-          "revisor_target_status": "succeeded",
-          "internal.node_visit_count": 1,
-          "internal.run_id": "01M23J61HH8Z5SG3TG3KQ0RMRB",
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "internal.fidelity": "compact",
-          "last_stage": "file",
-          "thread.select.current_node": "analyze",
-          "graph.inspects": "develop,merge-upstream",
-          "internal.retry_count.select": 0,
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "filed_seed_ids": [
-            "fabro-6b58",
-            "fabro-8d4c",
-            "fabro-7808"
-          ],
-          "internal.exit_kind": "natural",
-          "revisor_target_run_id": "01M23HWFFSB9NK78PGSCZWE6MA",
-          "graph.max_node_visits": "30",
-          "graph.rankdir": "LR",
           "response.analyze": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.analyze",
             "chars": 5847,
             "preview": "All checks complete. Verdict summary: the run is **healthy, not a duplicate** — seed `fabro-3d2d` appears on base branch `origin/denkhaus` in exactly one commit (`0ed36cf`, the run's own PR #101). R"
           },
+          "internal.fidelity": "compact",
+          "revisor_target_status": "succeeded",
+          "last_response": "Filed `fabro-6b58`, `fabro-8d4c`, `fabro-7808` after duplicate searches came back empty, wrote the marker at `.fabro/revisions/01M23HWFFSB9NK78PGSCZWE6MA.md`, and committed the exact artifact paths (c",
+          "thread.analyze.current_node": "file",
+          "internal.run_id": "01M23J61HH8Z5SG3TG3KQ0RMRB",
+          "revisor_target_run_id": "01M23HWFFSB9NK78PGSCZWE6MA",
           "seed_cycles": {
             "select": 1,
             "analyze": 1,
             "file": 1
-          }
+          },
+          "internal.node_visit_count": 1,
+          "internal.seed_cycle_anchor": "01M23HWFFSB9NK78PGSCZWE6MA",
+          "revisor_target_wall": "3.2 min",
+          "thread.select.current_node": "analyze",
+          "internal.retry_count.start": 0,
+          "graph.max_node_visits": "30",
+          "graph.inspects": "develop,merge-upstream"
         },
         "node_outcomes": {
+          "analyze": {
+            "status": "succeeded",
+            "preferred_label": "Findings ready",
+            "context_updates": {
+              "response.analyze": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.analyze",
+                "chars": 5847,
+                "preview": "All checks complete. Verdict summary: the run is **healthy, not a duplicate** — seed `fabro-3d2d` appears on base branch `origin/denkhaus` in exactly one commit (`0ed36cf`, the run's own PR #101). R"
+              },
+              "last_stage": "analyze",
+              "last_response": "All checks complete. Verdict summary: the run is **healthy, not a duplicate** — seed `fabro-3d2d` appears on base branch `origin/denkhaus` in exactly one commit (`0ed36cf`, the run's own PR #101). R",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Revisor-stage `git fetch origin` exceeded the 10 s default shell timeout (took ~15 s); first attempt timed out and had to be re-run with an explicit longer timeout_ms. Fix idea: revisor stage guidance should prescribe a generous timeout for network git ops so the duplicate-run check doesn't look like a failure."
+                  },
+                  {
+                    "text": "Running `git remote -v` in the revisor shell echoed the origin URL with an embedded GitHub PAT into stdout — visible in the transcript. Fix idea: avoid printing remote URLs in revisor stages (engine-side clone-token scrubbing is already tracked by open seed fabro-0f22, but the revisor-side echo is a separate hygiene gap)."
+                  }
+                ],
+                "observations": [
+                  "Duplicate-run check (fabro-91ff): run 01M23HWFFSB9NK78PGSCZWE6MA is HEALTHY, not a duplicate — claimed seed fabro-3d2d is named on base branch origin/denkhaus by exactly one commit, 0ed36cf 'Add dev-loop assets section to AGENTS.md (seed fabro-3d2d) (#101)', which is this run's own merged PR; no sibling duplicate's merge closed it.",
+                  "Withheld as duplicates of OPEN seeds: sd-ready top-N/firehose bound → fabro-c3b4; capture-only reviewer judging → fabro-50c9; per-node memory scoping / AGENTS.md split → fabro-9588 (the analyst's own recommendation cites it); absent-key warn→info in `lib/components/fabro-workflow/src/lifecycle/fidelity.rs` → fabro-8275; non-empty stage journals in `.fabro/workflows/develop/scripts/stage-journal.nu` → fabro-850f; unique-completed-node pipeline progress → fabro-45bf.",
+                  "Regression found while deduplicating: closed fabro-9967 ('pass created_since to fabro_runs_list') is NOT reflected in the current planner.md step 4 (verified by grep) and this run's call returned 16 runs / 14,492 bytes — the surviving in-flight-check finding is a superset re-file (created_since + new self-exclusion line), not a pure duplicate.",
+                  "sd list --format compact caps around 50 rows (known: fabro-5ff7); the tracker check therefore leaned on per-theme `sd search` queries, which surfaced content-level duplicates hiding behind unrelated titles.",
+                  "Run shape: 181.8 s wall, $0.174 total, 0 retries, first-pass approval — the planner consumed 59% of cost (81.6 s / $0.103), which is why every surviving finding targets planner-side token economy."
+                ]
+              },
+              "revision_findings": [
+                {
+                  "title": "Bound the planner in-flight check: created_since window plus explicit self-exclusion",
+                  "description": "In `.fabro/workflows/develop/prompts/planner.md` step 4 (IN-FLIGHT PR CHECK): call `fabro_runs_list` with `created_since` ≈ 48 h, and add one line telling the planner to exclude this run's own id (from its preamble header) from the in-flight set. Grounded in run 01M23HWFFSB9NK78PGSCZWE6MA: the unbounded call (event seq 41) returned 16 runs / 14,492 bytes — 15 terminal with identical generic goal text — and the planner had to deduce 'the only non-terminal run is this run itself'. Verified regression: closed seed fabro-9967 mandated `created_since` but the current prompt text carries no such bound. Expected effect: tool output drops ~14.5 KB to ≤2 KB per run and the self-run confusion class (journal-grep fallbacks on its own run) disappears.",
+                  "priority": 2
+                },
+                {
+                  "title": "Planner prompt: probe file structure with heading greps, never head -N full files",
+                  "description": "In `.fabro/workflows/develop/prompts/planner.md` step 3 (stale-basis verification): add 'Probe structure with `grep -n \"^#\" <file>` and `ls <dir>`, never `head -N` full files.' Grounded in this run: one basis probe (`head -40 AGENTS.md` plus greps, event seq 51–53) pulled 4,677 bytes into context to answer a question about section headings, burning ~12 s re-proving layout facts the just-merged Dev-loop assets map (seed fabro-3d2d, this run's own output) already settles. Expected effect: ~4 KB less context and fewer probe calls per run; distinct from open fabro-9fa2 (fast path for pinned line anchors), which triggers on a different condition.",
+                  "priority": 2
+                },
+                {
+                  "title": "Implementer prompt: state that grep exit 1 on pre-change verification is an expected no-match",
+                  "description": "In `.fabro/workflows/develop/prompts/implementer.md` verification section, add one line: 'grep exit 1 = no match; on pre-change verification that is the expected state, not an error.' Grounded in this run: the implementer's first shell call exited 1 and was flagged `is_error: true` (event seq 97–98) only because `grep 'Dev-loop assets' AGENTS.md` found nothing before the section existed — harmless here, but it trains the model to read exit 1 as failure, and run history records a prior 'sandbox rg unreliable' misdiagnosis from the same benign signal. Expected effect: removes a recurring false-error signal and prevents misdiagnosis loops; orthogonal to open fabro-a23f (journal reporting of errored calls).",
+                  "priority": 2
+                }
+              ]
+            },
+            "notes": "Stage completed: analyze",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 27538,
+                    "output_tokens": 4950,
+                    "reasoning_tokens": 6980,
+                    "cache_read_tokens": 116352,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 121286
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 151686,
+              "tool_time_ms": 213259,
+              "active_time_ms": 364945
+            }
+          },
           "select": {
             "status": "succeeded",
             "preferred_label": "Run selected",
@@ -1121,85 +1197,10 @@
           "start": {
             "status": "succeeded",
             "usage": null
-          },
-          "analyze": {
-            "status": "succeeded",
-            "preferred_label": "Findings ready",
-            "context_updates": {
-              "response.analyze": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.analyze",
-                "chars": 5847,
-                "preview": "All checks complete. Verdict summary: the run is **healthy, not a duplicate** — seed `fabro-3d2d` appears on base branch `origin/denkhaus` in exactly one commit (`0ed36cf`, the run's own PR #101). R"
-              },
-              "last_stage": "analyze",
-              "last_response": "All checks complete. Verdict summary: the run is **healthy, not a duplicate** — seed `fabro-3d2d` appears on base branch `origin/denkhaus` in exactly one commit (`0ed36cf`, the run's own PR #101). R",
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "Revisor-stage `git fetch origin` exceeded the 10 s default shell timeout (took ~15 s); first attempt timed out and had to be re-run with an explicit longer timeout_ms. Fix idea: revisor stage guidance should prescribe a generous timeout for network git ops so the duplicate-run check doesn't look like a failure."
-                  },
-                  {
-                    "text": "Running `git remote -v` in the revisor shell echoed the origin URL with an embedded GitHub PAT into stdout — visible in the transcript. Fix idea: avoid printing remote URLs in revisor stages (engine-side clone-token scrubbing is already tracked by open seed fabro-0f22, but the revisor-side echo is a separate hygiene gap)."
-                  }
-                ],
-                "observations": [
-                  "Duplicate-run check (fabro-91ff): run 01M23HWFFSB9NK78PGSCZWE6MA is HEALTHY, not a duplicate — claimed seed fabro-3d2d is named on base branch origin/denkhaus by exactly one commit, 0ed36cf 'Add dev-loop assets section to AGENTS.md (seed fabro-3d2d) (#101)', which is this run's own merged PR; no sibling duplicate's merge closed it.",
-                  "Withheld as duplicates of OPEN seeds: sd-ready top-N/firehose bound → fabro-c3b4; capture-only reviewer judging → fabro-50c9; per-node memory scoping / AGENTS.md split → fabro-9588 (the analyst's own recommendation cites it); absent-key warn→info in `lib/components/fabro-workflow/src/lifecycle/fidelity.rs` → fabro-8275; non-empty stage journals in `.fabro/workflows/develop/scripts/stage-journal.nu` → fabro-850f; unique-completed-node pipeline progress → fabro-45bf.",
-                  "Regression found while deduplicating: closed fabro-9967 ('pass created_since to fabro_runs_list') is NOT reflected in the current planner.md step 4 (verified by grep) and this run's call returned 16 runs / 14,492 bytes — the surviving in-flight-check finding is a superset re-file (created_since + new self-exclusion line), not a pure duplicate.",
-                  "sd list --format compact caps around 50 rows (known: fabro-5ff7); the tracker check therefore leaned on per-theme `sd search` queries, which surfaced content-level duplicates hiding behind unrelated titles.",
-                  "Run shape: 181.8 s wall, $0.174 total, 0 retries, first-pass approval — the planner consumed 59% of cost (81.6 s / $0.103), which is why every surviving finding targets planner-side token economy."
-                ]
-              },
-              "revision_findings": [
-                {
-                  "title": "Bound the planner in-flight check: created_since window plus explicit self-exclusion",
-                  "description": "In `.fabro/workflows/develop/prompts/planner.md` step 4 (IN-FLIGHT PR CHECK): call `fabro_runs_list` with `created_since` ≈ 48 h, and add one line telling the planner to exclude this run's own id (from its preamble header) from the in-flight set. Grounded in run 01M23HWFFSB9NK78PGSCZWE6MA: the unbounded call (event seq 41) returned 16 runs / 14,492 bytes — 15 terminal with identical generic goal text — and the planner had to deduce 'the only non-terminal run is this run itself'. Verified regression: closed seed fabro-9967 mandated `created_since` but the current prompt text carries no such bound. Expected effect: tool output drops ~14.5 KB to ≤2 KB per run and the self-run confusion class (journal-grep fallbacks on its own run) disappears.",
-                  "priority": 2
-                },
-                {
-                  "title": "Planner prompt: probe file structure with heading greps, never head -N full files",
-                  "description": "In `.fabro/workflows/develop/prompts/planner.md` step 3 (stale-basis verification): add 'Probe structure with `grep -n \"^#\" <file>` and `ls <dir>`, never `head -N` full files.' Grounded in this run: one basis probe (`head -40 AGENTS.md` plus greps, event seq 51–53) pulled 4,677 bytes into context to answer a question about section headings, burning ~12 s re-proving layout facts the just-merged Dev-loop assets map (seed fabro-3d2d, this run's own output) already settles. Expected effect: ~4 KB less context and fewer probe calls per run; distinct from open fabro-9fa2 (fast path for pinned line anchors), which triggers on a different condition.",
-                  "priority": 2
-                },
-                {
-                  "title": "Implementer prompt: state that grep exit 1 on pre-change verification is an expected no-match",
-                  "description": "In `.fabro/workflows/develop/prompts/implementer.md` verification section, add one line: 'grep exit 1 = no match; on pre-change verification that is the expected state, not an error.' Grounded in this run: the implementer's first shell call exited 1 and was flagged `is_error: true` (event seq 97–98) only because `grep 'Dev-loop assets' AGENTS.md` found nothing before the section existed — harmless here, but it trains the model to read exit 1 as failure, and run history records a prior 'sandbox rg unreliable' misdiagnosis from the same benign signal. Expected effect: removes a recurring false-error signal and prevents misdiagnosis loops; orthogonal to open fabro-a23f (journal reporting of errored calls).",
-                  "priority": 2
-                }
-              ]
-            },
-            "notes": "Stage completed: analyze",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 27538,
-                    "output_tokens": 4950,
-                    "reasoning_tokens": 6980,
-                    "cache_read_tokens": 116352,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 121286
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 151686,
-              "tool_time_ms": 213259,
-              "active_time_ms": 364945
-            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "b9df7d70a11aa60cb50911874773e8c546c5947c",
         "node_visits": {
           "start": 1,
           "select": 1,
@@ -1207,10 +1208,95 @@
           "file": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M23J61HH8Z5SG3TG3KQ0RMRB.jsonl b/.fabro/journal/01M23J61HH8Z5SG3TG3KQ0RMRB.jsonl\nindex ca60b9012..fde609760 100644\n--- a/.fabro/journal/01M23J61HH8Z5SG3TG3KQ0RMRB.jsonl\n+++ b/.fabro/journal/01M23J61HH8Z5SG3TG3KQ0RMRB.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23J61HH8Z5SG3TG3KQ0RMRB\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:07:03Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23J61HH8Z5SG3TG3KQ0RMRB\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:07:25Z\",\"data\":{\"painpoints\":[],\"observations\":[\"18 runs listed (16 develop, 2 merge-upstream); all terminal with live sandboxes; no active develop run\",\"1 run selected; 1 unrevised-but-older fresh run (merge-upstream `01M20N60ZY6DZDTX60WW0161KP`) remains backlog\",\"12 develop runs stale-evidence (version drift vs baseline `70cee3b3…`), plus 2 merge-upstream runs fresh but older — they stay unrevised until a future pass\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23J61HH8Z5SG3TG3KQ0RMRB\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:13:35Z\",\"data\":{\"painpoints\":[{\"text\":\"Revisor-stage `git fetch origin` exceeded the 10 s default shell timeout (took ~15 s); first attempt timed out and had to be re-run with an explicit longer timeout_ms. Fix idea: revisor stage guidance should prescribe a generous timeout for network git ops so the duplicate-run check doesn't look like a failure.\"},{\"text\":\"Running `git remote -v` in the revisor shell echoed the origin URL with an embedded GitHub PAT into stdout — visible in the transcript. Fix idea: avoid printing remote URLs in revisor stages (engine-side clone-token scrubbing is already tracked by open seed fabro-0f22, but the revisor-side echo is a separate hygiene gap).\"}],\"observations\":[\"Duplicate-run check (fabro-91ff): run 01M23HWFFSB9NK78PGSCZWE6MA is HEALTHY, not a duplicate — claimed seed fabro-3d2d is named on base branch origin/denkhaus by exactly one commit, 0ed36cf 'Add dev-loop assets section to AGENTS.md (seed fabro-3d2d) (#101)', which is this run's own merged PR; no sibling duplicate's merge closed it.\",\"Withheld as duplicates of OPEN seeds: sd-ready top-N/firehose bound → fabro-c3b4; capture-only reviewer judging → fabro-50c9; per-node memory scoping / AGENTS.md split → fabro-9588 (the analyst's own recommendation cites it); absent-key warn→info in `lib/components/fabro-workflow/src/lifecycle/fidelity.rs` → fabro-8275; non-empty stage journals in `.fabro/workflows/develop/scripts/stage-journal.nu` → fabro-850f; unique-completed-node pipeline progress → fabro-45bf.\",\"Regression found while deduplicating: closed fabro-9967 ('pass created_since to fabro_runs_list') is NOT reflected in the current planner.md step 4 (verified by grep) and this run's call returned 16 runs / 14,492 bytes — the surviving in-flight-check finding is a superset re-file (created_since + new self-exclusion line), not a pure duplicate.\",\"sd list --format compact caps around 50 rows (known: fabro-5ff7); the tracker check therefore leaned on per-theme `sd search` queries, which surfaced content-level duplicates hiding behind unrelated titles.\",\"Run shape: 181.8 s wall, $0.174 total, 0 retries, first-pass approval — the planner consumed 59% of cost (81.6 s / $0.103), which is why every surviving finding targets planner-side token economy.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23J61HH8Z5SG3TG3KQ0RMRB\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:14:25Z\",\"data\":{\"painpoints\":[],\"observations\":[\"sd searches for all three themes returned no matches, so all findings filed fresh; no supersession or closure candidates. The sd commit touched only 2 files — seeds live in .seeds but produced no visible diff, consistent with prior revisor commits.\"]}}\ndiff --git a/.fabro/revisions/01M23HWFFSB9NK78PGSCZWE6MA.md b/.fabro/revisions/01M23HWFFSB9NK78PGSCZWE6MA.md\nnew file mode 100644\nindex 000000000..5e277aaf9\n--- /dev/null\n+++ b/.fabro/revisions/01M23HWFFSB9NK78PGSCZWE6MA.md\n@@ -0,0 +1,21 @@\n+# Revision — run 01M23HWFFSB9NK78PGSCZWE6MA\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M23HWFFSB9NK78PGSCZWE6MA.md\n+- seeds filed: fabro-6b58 (bound planner in-flight check with created_since + self-exclusion), fabro-8d4c (probe file structure with heading greps, never head -N), fabro-7808 (document grep exit 1 as expected no-match in implementer verification)\n+- basis: run 01M23HWFFSB9NK78PGSCZWE6MA, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 515758e102a81c1c35d8c41bb3fd96209f1f04e9\n+- revised_at_commit: 515758e102a81c1c35d8c41bb3fd96209f1f04e9 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Bound the planner in-flight check: created_since window plus explicit self-exclusion\n+- filed: fabro-6b58\n+- In `.fabro/workflows/develop/prompts/planner.md` step 4 (IN-FLIGHT PR CHECK): call `fabro_runs_list` with `created_since` ≈ 48 h and exclude this run's own id from the in-flight set. Expected effect: tool output drops ~14.5 KB to ≤2 KB per run; the self-run confusion class disappears. Regression of closed seed fabro-9967.\n+\n+### Planner prompt: probe file structure with heading greps, never head -N full files\n+- filed: fabro-8d4c\n+- In `.fabro/workflows/develop/prompts/planner.md` step 3 (stale-basis verification): probe structure with `grep -n \"^#\" <file>` and `ls <dir>`, never `head -N` full files. Expected effect: ~4 KB less context and fewer probe calls per run. Distinct from open fabro-9fa2 (different trigger condition).\n+\n+### Implementer prompt: state that grep exit 1 on pre-change verification is an expected no-match\n+- filed: fabro-7808\n+- In `.fabro/workflows/develop/prompts/implementer.md` verification section: add 'grep exit 1 = no match; on pre-change verification that is the expected state, not an error.' Expected effect: removes a recurring false-error signal; orthogonal to open fabro-a23f.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex b6804c7aa..b09c99547 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -322,3 +322,6 @@\n {\"id\":\"fabro-b769\",\"title\":\"Add a long-stage heartbeat notification for run visibility\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T15:30:01.376Z\",\"updatedAt\":\"2026-09-09T15:42:20.763Z\",\"description\":\"Slack notifications in `.fabro/workflows/develop/workflow.toml` are configured only for run.completed/run.failed; in run 01M23B02H3ZNND8AT2D3Y2S4SG the implementer ran 15 of the run's 19 minutes with no external signal and no operator hook to cancel (run settings, cost concentration). Change the notifications block to add a stage-level event or a \\\"stage exceeds N minutes\\\" heartbeat alongside the terminal events. Expected effect: mid-run visibility into single-stage cost concentration while intervention is still possible. Basis: run 01M23B02H3ZNND8AT2D3Y2S4SG, workflow version 3bd915204178a8e5fd6796670d1bbfae4248a4b01f5d0fb7201e53b394cfdda8, commit db6b8ca5b4f7c0fc7583e1d28df1fa9ba295958e\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-c4ce\",\"title\":\"Scope implementer nextest to test-file-touched crates only\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T16:50:01.120Z\",\"updatedAt\":\"2026-09-09T16:50:01.120Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, make test scoping mechanical: run nextest only for crates whose test files the seed touched; run fmt and clippy for every code-touched crate. Evidence: in run 01M23EDVNHPGD8QNBWZN8WNTDD the implementer ran the full suite on all five touched crates (3,370 tests) although tests were added only in lib/components/fabro-github and lib/apps/fabro-server, and the tester gate deterministically re-ran the identical five-crate commands (227 s) anyway. Refines closed seed fabro-fc1b, whose rule was over-applied here. Expected effect: large cut of implementer wall and cost on every multi-crate Rust seed with gate coverage unchanged. Basis: run 01M23EDVNHPGD8QNBWZN8WNTDD, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 1bd14a4d41278a40a3615a61ffe55368fe0959e2\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-0586\",\"title\":\"Add an available-binaries line to develop PROJECT_FACTS\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T16:50:01.248Z\",\"updatedAt\":\"2026-09-09T16:50:01.248Z\",\"description\":\"In .fabro/workflows/develop/prompts/project-facts.md, add one line stating which shell binaries the run toolchain provides (rg, sd, ml, just, nu — no fd). Evidence: in run 01M23EDVNHPGD8QNBWZN8WNTDD the planner lost a call to fd: command not found (event 46) and the implementer guessed a wrong crate directory before finding lib/components/ (event 99). The crate-to-path-map half of that finding is already open seed fabro-3d2d; this seed covers only the tool-availability line. Expected effect: removes binary-probing calls in planner and implementer on every run. Basis: run 01M23EDVNHPGD8QNBWZN8WNTDD, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 1bd14a4d41278a40a3615a61ffe55368fe0959e2\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-6b58\",\"title\":\"Bound the planner in-flight check: created_since window plus explicit self-exclusion\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T17:13:54.681Z\",\"updatedAt\":\"2026-09-09T17:13:54.681Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 4 (IN-FLIGHT PR CHECK): call fabro_runs_list with created_since ≈ 48 h, and add one line telling the planner to exclude this run's own id (from its preamble header) from the in-flight set. Grounded in run 01M23HWFFSB9NK78PGSCZWE6MA: the unbounded call (event seq 41) returned 16 runs / 14,492 bytes — 15 terminal with identical generic goal text — and the planner had to deduce 'the only non-terminal run is this run itself'. Verified regression: closed seed fabro-9967 mandated created_since but the current prompt text carries no such bound. Expected effect: tool output drops ~14.5 KB to ≤2 KB per run and the self-run confusion class disappears. Basis: run 01M23HWFFSB9NK78PGSCZWE6MA, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 515758e102a81c1c35d8c41bb3fd96209f1f04e9\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-8d4c\",\"title\":\"Planner prompt: probe file structure with heading greps, never head -N full files\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T17:13:59.032Z\",\"updatedAt\":\"2026-09-09T17:13:59.032Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 3 (stale-basis verification): add 'Probe structure with grep -n \\\"^#\\\" <file> and ls <dir>, never head -N full files.' Grounded in run 01M23HWFFSB9NK78PGSCZWE6MA: one basis probe (head -40 AGENTS.md plus greps, event seq 51–53) pulled 4,677 bytes into context to answer a question about section headings, burning ~12 s re-proving layout facts the just-merged Dev-loop assets map (seed fabro-3d2d) already settles. Expected effect: ~4 KB less context and fewer probe calls per run; distinct from open fabro-9fa2 (fast path for pinned line anchors), which triggers on a different condition. Basis: run 01M23HWFFSB9NK78PGSCZWE6MA, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 515758e102a81c1c35d8c41bb3fd96209f1f04e9\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-7808\",\"title\":\"Implementer prompt: state that grep exit 1 on pre-change verification is an expected no-match\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T17:14:04.379Z\",\"updatedAt\":\"2026-09-09T17:14:04.379Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md verification section, add one line: 'grep exit 1 = no match; on pre-change verification that is the expected state, not an error.' Grounded in run 01M23HWFFSB9NK78PGSCZWE6MA: the implementer's first shell call exited 1 and was flagged is_error: true (event seq 97–98) only because grep 'Dev-loop assets' AGENTS.md found nothing before the section existed — harmless here, but it trains the model to read exit 1 as failure, and run history records a prior 'sandbox rg unreliable' misdiagnosis from the same benign signal. Expected effect: removes a recurring false-error signal and prevents misdiagnosis loops; orthogonal to open fabro-a23f (journal reporting of errored calls). Basis: run 01M23HWFFSB9NK78PGSCZWE6MA, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 515758e102a81c1c35d8c41bb3fd96209f1f04e9\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 85,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-09T17:14:30.768424633Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 450713,
+      "inference_time_ms": 213763,
+      "tool_time_ms": 217332,
+      "active_time_ms": 431095
+    },
+    "final_git_commit_sha": "b9df7d70a11aa60cb50911874773e8c546c5947c",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 22093,
+          "inference_time_ms": 18663,
+          "tool_time_ms": 2834,
+          "active_time_ms": 21497
+        },
+        "billing_usd_micros": 35954,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 365563,
+          "inference_time_ms": 151686,
+          "tool_time_ms": 213259,
+          "active_time_ms": 364945
+        },
+        "billing_usd_micros": 121286,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 45285,
+          "inference_time_ms": 43414,
+          "tool_time_ms": 1239,
+          "active_time_ms": 44653
+        },
+        "billing_usd_micros": 58642,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 62896,
+      "output_tokens": 7496,
+      "total_tokens": 317169,
+      "reasoning_tokens": 7417,
+      "cache_read_tokens": 239360,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 215882
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M23J61HH8Z5SG3TG3KQ0RMRB.jsonl b/.fabro/journal/01M23J61HH8Z5SG3TG3KQ0RMRB.jsonl\nnew file mode 100644\nindex 000000000..fde609760\n--- /dev/null\n+++ b/.fabro/journal/01M23J61HH8Z5SG3TG3KQ0RMRB.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23J61HH8Z5SG3TG3KQ0RMRB\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:07:03Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23J61HH8Z5SG3TG3KQ0RMRB\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:07:25Z\",\"data\":{\"painpoints\":[],\"observations\":[\"18 runs listed (16 develop, 2 merge-upstream); all terminal with live sandboxes; no active develop run\",\"1 run selected; 1 unrevised-but-older fresh run (merge-upstream `01M20N60ZY6DZDTX60WW0161KP`) remains backlog\",\"12 develop runs stale-evidence (version drift vs baseline `70cee3b3…`), plus 2 merge-upstream runs fresh but older — they stay unrevised until a future pass\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23J61HH8Z5SG3TG3KQ0RMRB\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:13:35Z\",\"data\":{\"painpoints\":[{\"text\":\"Revisor-stage `git fetch origin` exceeded the 10 s default shell timeout (took ~15 s); first attempt timed out and had to be re-run with an explicit longer timeout_ms. Fix idea: revisor stage guidance should prescribe a generous timeout for network git ops so the duplicate-run check doesn't look like a failure.\"},{\"text\":\"Running `git remote -v` in the revisor shell echoed the origin URL with an embedded GitHub PAT into stdout — visible in the transcript. Fix idea: avoid printing remote URLs in revisor stages (engine-side clone-token scrubbing is already tracked by open seed fabro-0f22, but the revisor-side echo is a separate hygiene gap).\"}],\"observations\":[\"Duplicate-run check (fabro-91ff): run 01M23HWFFSB9NK78PGSCZWE6MA is HEALTHY, not a duplicate — claimed seed fabro-3d2d is named on base branch origin/denkhaus by exactly one commit, 0ed36cf 'Add dev-loop assets section to AGENTS.md (seed fabro-3d2d) (#101)', which is this run's own merged PR; no sibling duplicate's merge closed it.\",\"Withheld as duplicates of OPEN seeds: sd-ready top-N/firehose bound → fabro-c3b4; capture-only reviewer judging → fabro-50c9; per-node memory scoping / AGENTS.md split → fabro-9588 (the analyst's own recommendation cites it); absent-key warn→info in `lib/components/fabro-workflow/src/lifecycle/fidelity.rs` → fabro-8275; non-empty stage journals in `.fabro/workflows/develop/scripts/stage-journal.nu` → fabro-850f; unique-completed-node pipeline progress → fabro-45bf.\",\"Regression found while deduplicating: closed fabro-9967 ('pass created_since to fabro_runs_list') is NOT reflected in the current planner.md step 4 (verified by grep) and this run's call returned 16 runs / 14,492 bytes — the surviving in-flight-check finding is a superset re-file (created_since + new self-exclusion line), not a pure duplicate.\",\"sd list --format compact caps around 50 rows (known: fabro-5ff7); the tracker check therefore leaned on per-theme `sd search` queries, which surfaced content-level duplicates hiding behind unrelated titles.\",\"Run shape: 181.8 s wall, $0.174 total, 0 retries, first-pass approval — the planner consumed 59% of cost (81.6 s / $0.103), which is why every surviving finding targets planner-side token economy.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23J61HH8Z5SG3TG3KQ0RMRB\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:14:25Z\",\"data\":{\"painpoints\":[],\"observations\":[\"sd searches for all three themes returned no matches, so all findings filed fresh; no supersession or closure candidates. The sd commit touched only 2 files — seeds live in .seeds but produced no visible diff, consistent with prior revisor commits.\"]}}\ndiff --git a/.fabro/reviews/develop/01M23HWFFSB9NK78PGSCZWE6MA.md b/.fabro/reviews/develop/01M23HWFFSB9NK78PGSCZWE6MA.md\nnew file mode 100644\nindex 000000000..e7d6ff082\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M23HWFFSB9NK78PGSCZWE6MA.md\n@@ -0,0 +1,57 @@\n+# Improve review — run 01M23HWFFSB9NK78PGSCZWE6MA\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (3.2 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-09 17:10+0000 by revisor `fabro_ask`\n+\n+---\n+\n+All evidence below is from this run's events, checkpoints, and worker log (run 01M23HWFFSB9NK78PGSCZWE6MA: 181.8 s wall, $0.174 total, 0 retries, first-pass approval of seed fabro-3d2d). Ordered by expected impact.\n+\n+## 1. Bound the `sd ready` firehose the planner reads (prompting + tool usage)\n+**What happened:** `sd ready --assignee fabro --limit 200` returned 190 issues / 25,666 bytes (event seq 32–33); the claimed seed was the **first line**. That mass sat in the planner's conversation for all 8 of its LLM turns (13.6k input tokens on turn 1 alone; planner = 81.6 s / $0.103, 59% of run cost).\n+**Change:** In `.fabro/workflows/develop/prompts/planner.md`, command-table row 1: keep `--limit 200` (server-side correctness, fabro-c16d) but pipe `| head -20` client-side and instruct: expand the view only when the top-20 yields nothing claimable. `sd ready` is priority-sorted, so the claim is virtually always in the top rows.\n+**Expected effect:** ~6–7k fewer tokens on the planner's opening turns, one less reasoning pass over 190 titles — est. −15–25 s wall and −$0.02–0.04 per run; the single biggest recurring save.\n+\n+## 2. Bound `fabro_runs_list` and make self-exclusion explicit (prompting + tool usage)\n+**What happened:** The in-flight check (seq 41) returned 16 runs / 14,492 bytes — 15 of them terminal, all with the identical generic goal text. The planner had to *deduce* \"the only non-terminal run is this run itself\" (its reasoning trace says exactly that); the prompt never says to skip its own run id, and doesn't use the tool's existing `created_since` bound.\n+**Change:** In `planner.md` step 4: call `fabro_runs_list` with `created_since` ≈ 48 h (covers the claim→PR→merge window; stale PRs are auto-retired by the repo's automation), and add one line: \"exclude this run's own id (in your preamble header) from the in-flight set.\"\n+**Expected effect:** Tool output drops ~14.5 KB → ≤2 KB; eliminates the self-run confusion class (a mis-skip would dead-end a legitimate claim) and removes per-sibling journal-grep fallback calls when parallel runs exist.\n+\n+## 3. Make review capture-first, tools-on-mismatch (prompting)\n+**What happened:** The evidence capture (3.7 KB, fully inline under the 16 KB `preamble_inline_max_kb`) already contained the complete 12-line diff, and the implementer's summary carried a per-criterion PASS report verified by `grep -n 'Dev-loop assets'; grep -c …; git diff --stat` (seq 112). The reviewer then re-ran **the same grep battery** as its only tool call (seq 159).\n+**Change:** In `.fabro/workflows/develop/prompts/reviewer.md`, \"Decision\" section: when the capture renders inline and complete and the PASS report names its checks, judge from context; use tools only for spot-checks the capture can't answer (blob refs, untracked files, gate doubt).\n+**Expected effect:** −5–10 s and −$0.01–0.02 per review here; much more on larger seeds where re-verification tempts a cold gate re-run (the run history in PROJECT_FACTS cites a ~22 min bounce from exactly that class).\n+\n+## 4. Scope memory per stage — the reviewer carried the whole build handbook (graph/engine design)\n+**What happened:** `AGENTS.md` (23,967 bytes) was loaded as memory into all three agent stages — ~5.7–6.2k tokens each (context-window breakdowns, seq 30/95/…). The reviewer judging a 12-line docs diff needed none of the Rust/Docker/bun build instructions. Note this run's own seed just made AGENTS.md 12 lines longer, so the cost grows.\n+**Change:** Either per-node memory scoping on the reviewer/implementer nodes in `.fabro/workflows/develop/workflow.fabro` (aligns with open seed fabro-9588), or split `AGENTS.md` into a lean orientation core + `docs/`-resident extended guide.\n+**Expected effect:** ~6k tokens × 2–3 stages ≈ 12–18k tokens and a few seconds saved every run, and slower memory growth as the repo docs expand.\n+\n+## 5. Prescribe cheap stale-basis probes (prompting + tool usage)\n+**What happened:** Verifying the seed basis cost 3 shell calls; one of them (`head -40 AGENTS.md` + greps, seq 51–53) pulled 4,677 bytes into context to answer a question about *section headings*. Ironic grounding: this is precisely the orientation friction seed fabro-3d2d describes — the planner burned ~12 s proving layout facts the (now-merged) Dev-loop assets map settles.\n+**Change:** In `planner.md` step 3: \"Probe structure with `grep -n '^#' <file>` and `ls <dir>`, never `head -N` full files.\"\n+**Expected effect:** ~4 KB less context per basis check; fewer probe calls per run, compounding as the new AGENTS.md map makes most probes unnecessary.\n+\n+## 6. Downgrade the by-design absent-key WARN (error handling)\n+**What happened:** The run's **only** warn/error log line is `preamble_allow_keys entry absent from context node=implementer key=output.gate_known_bug_hits` (worker log; source `lib/components/fabro-workflow/src/lifecycle/fidelity.rs:221`). That key is absent *by design* on green first visits — it only exists after a gatebounce.\n+**Change:** In `fidelity.rs` (~line 221): emit this at info level when the stage is on a first visit / no gate-red history, keep warn only when the key should exist (matches open seed fabro-8275).\n+**Expected effect:** A clean warn channel — real degradation becomes visible instead of drowned by expected noise in every green run.\n+\n+## 7. Treat expected grep no-matches as non-errors in the implementer prompt (error handling)\n+**What happened:** The implementer's first shell call exited 1 and was flagged `is_error: true` (seq 97–98) — because `grep 'Dev-loop assets' AGENTS.md` found nothing *before the section existed*. Harmless here, but the flag trains the model to read exit 1 as failure.\n+**Change:** One line in `.fabro/workflows/develop/prompts/implementer.md` (verification section): \"grep exit 1 = no match; on pre-change verification that is the expected state, not an error.\"\n+**Expected effect:** Removes a recurring false-error signal; prevents misdiagnosis loops on future runs (the run history already records one \"sandbox rg unreliable\" misdiagnosis from a similar benign signal).\n+\n+## 8. Stop writing empty journal records (UX / loop hygiene)\n+**What happened:** 4 of 7 journal records this run are contentless `{}` (start, tester, evidence, closeout — see the final diff of `.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl`), and every checkpoint diff carries them.\n+**Change:** In `.fabro/workflows/develop/scripts/stage-journal.nu`: skip the write when the stage produced no journal data (open seed fabro-850f).\n+**Expected effect:** Leaner checkpoint diffs and cleaner improve-workflow scans; empty records stop diluting the painpoint/observation signal.\n+\n+## 9. Fix the pipeline-progress numerator/denominator (UX)\n+**What happened:** The implementer's prompt read \"Pipeline progress: 0 of 7 stages completed\" *after* the planner had completed (17:03:18 vs 17:03:11); the reviewer's read \"2 of 7\" with 4+ nodes done. Agents are told cycle state matters, then shown wrong counts (matches open seeds fabro-45bf/38f4, whose \"6 of 5\" symptom this run reproduces in milder form).\n+**Change:** Engine-side: compute progress from unique completed nodes over reachable non-terminal nodes (the seeds name the exact fix).\n+**Expected effect:** Trustworthy progress in stage prompts, run summary, and PR body — context stages stop being fed wrong cycle state.\n+\n+**Not recommended from this run:** a docs-only gate fast path (tester took only 4.2 s here), prompt-cache work (174k cache-read tokens already captured), or raising `preamble_budget_kb` (nothing blob-ref'd — the 24 KB budget and 16 KB reviewer inline cap worked exactly as designed this run).\ndiff --git a/.fabro/revisions/01M23HWFFSB9NK78PGSCZWE6MA.md b/.fabro/revisions/01M23HWFFSB9NK78PGSCZWE6MA.md\nnew file mode 100644\nindex 000000000..5e277aaf9\n--- /dev/null\n+++ b/.fabro/revisions/01M23HWFFSB9NK78PGSCZWE6MA.md\n@@ -0,0 +1,21 @@\n+# Revision — run 01M23HWFFSB9NK78PGSCZWE6MA\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M23HWFFSB9NK78PGSCZWE6MA.md\n+- seeds filed: fabro-6b58 (bound planner in-flight check with created_since + self-exclusion), fabro-8d4c (probe file structure with heading greps, never head -N), fabro-7808 (document grep exit 1 as expected no-match in implementer verification)\n+- basis: run 01M23HWFFSB9NK78PGSCZWE6MA, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 515758e102a81c1c35d8c41bb3fd96209f1f04e9\n+- revised_at_commit: 515758e102a81c1c35d8c41bb3fd96209f1f04e9 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Bound the planner in-flight check: created_since window plus explicit self-exclusion\n+- filed: fabro-6b58\n+- In `.fabro/workflows/develop/prompts/planner.md` step 4 (IN-FLIGHT PR CHECK): call `fabro_runs_list` with `created_since` ≈ 48 h and exclude this run's own id from the in-flight set. Expected effect: tool output drops ~14.5 KB to ≤2 KB per run; the self-run confusion class disappears. Regression of closed seed fabro-9967.\n+\n+### Planner prompt: probe file structure with heading greps, never head -N full files\n+- filed: fabro-8d4c\n+- In `.fabro/workflows/develop/prompts/planner.md` step 3 (stale-basis verification): probe structure with `grep -n \"^#\" <file>` and `ls <dir>`, never `head -N` full files. Expected effect: ~4 KB less context and fewer probe calls per run. Distinct from open fabro-9fa2 (different trigger condition).\n+\n+### Implementer prompt: state that grep exit 1 on pre-change verification is an expected no-match\n+- filed: fabro-7808\n+- In `.fabro/workflows/develop/prompts/implementer.md` verification section: add 'grep exit 1 = no match; on pre-change verification that is the expected state, not an error.' Expected effect: removes a recurring false-error signal; orthogonal to open fabro-a23f.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex b6804c7aa..b09c99547 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -322,3 +322,6 @@\n {\"id\":\"fabro-b769\",\"title\":\"Add a long-stage heartbeat notification for run visibility\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T15:30:01.376Z\",\"updatedAt\":\"2026-09-09T15:42:20.763Z\",\"description\":\"Slack notifications in `.fabro/workflows/develop/workflow.toml` are configured only for run.completed/run.failed; in run 01M23B02H3ZNND8AT2D3Y2S4SG the implementer ran 15 of the run's 19 minutes with no external signal and no operator hook to cancel (run settings, cost concentration). Change the notifications block to add a stage-level event or a \\\"stage exceeds N minutes\\\" heartbeat alongside the terminal events. Expected effect: mid-run visibility into single-stage cost concentration while intervention is still possible. Basis: run 01M23B02H3ZNND8AT2D3Y2S4SG, workflow version 3bd915204178a8e5fd6796670d1bbfae4248a4b01f5d0fb7201e53b394cfdda8, commit db6b8ca5b4f7c0fc7583e1d28df1fa9ba295958e\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-c4ce\",\"title\":\"Scope implementer nextest to test-file-touched crates only\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T16:50:01.120Z\",\"updatedAt\":\"2026-09-09T16:50:01.120Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, make test scoping mechanical: run nextest only for crates whose test files the seed touched; run fmt and clippy for every code-touched crate. Evidence: in run 01M23EDVNHPGD8QNBWZN8WNTDD the implementer ran the full suite on all five touched crates (3,370 tests) although tests were added only in lib/components/fabro-github and lib/apps/fabro-server, and the tester gate deterministically re-ran the identical five-crate commands (227 s) anyway. Refines closed seed fabro-fc1b, whose rule was over-applied here. Expected effect: large cut of implementer wall and cost on every multi-crate Rust seed with gate coverage unchanged. Basis: run 01M23EDVNHPGD8QNBWZN8WNTDD, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 1bd14a4d41278a40a3615a61ffe55368fe0959e2\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-0586\",\"title\":\"Add an available-binaries line to develop PROJECT_FACTS\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T16:50:01.248Z\",\"updatedAt\":\"2026-09-09T16:50:01.248Z\",\"description\":\"In .fabro/workflows/develop/prompts/project-facts.md, add one line stating which shell binaries the run toolchain provides (rg, sd, ml, just, nu — no fd). Evidence: in run 01M23EDVNHPGD8QNBWZN8WNTDD the planner lost a call to fd: command not found (event 46) and the implementer guessed a wrong crate directory before finding lib/components/ (event 99). The crate-to-path-map half of that finding is already open seed fabro-3d2d; this seed covers only the tool-availability line. Expected effect: removes binary-probing calls in planner and implementer on every run. Basis: run 01M23EDVNHPGD8QNBWZN8WNTDD, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 1bd14a4d41278a40a3615a61ffe55368fe0959e2\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-6b58\",\"title\":\"Bound the planner in-flight check: created_since window plus explicit self-exclusion\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T17:13:54.681Z\",\"updatedAt\":\"2026-09-09T17:13:54.681Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 4 (IN-FLIGHT PR CHECK): call fabro_runs_list with created_since ≈ 48 h, and add one line telling the planner to exclude this run's own id (from its preamble header) from the in-flight set. Grounded in run 01M23HWFFSB9NK78PGSCZWE6MA: the unbounded call (event seq 41) returned 16 runs / 14,492 bytes — 15 terminal with identical generic goal text — and the planner had to deduce 'the only non-terminal run is this run itself'. Verified regression: closed seed fabro-9967 mandated created_since but the current prompt text carries no such bound. Expected effect: tool output drops ~14.5 KB to ≤2 KB per run and the self-run confusion class disappears. Basis: run 01M23HWFFSB9NK78PGSCZWE6MA, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 515758e102a81c1c35d8c41bb3fd96209f1f04e9\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-8d4c\",\"title\":\"Planner prompt: probe file structure with heading greps, never head -N full files\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T17:13:59.032Z\",\"updatedAt\":\"2026-09-09T17:13:59.032Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 3 (stale-basis verification): add 'Probe structure with grep -n \\\"^#\\\" <file> and ls <dir>, never head -N full files.' Grounded in run 01M23HWFFSB9NK78PGSCZWE6MA: one basis probe (head -40 AGENTS.md plus greps, event seq 51–53) pulled 4,677 bytes into context to answer a question about section headings, burning ~12 s re-proving layout facts the just-merged Dev-loop assets map (seed fabro-3d2d) already settles. Expected effect: ~4 KB less context and fewer probe calls per run; distinct from open fabro-9fa2 (fast path for pinned line anchors), which triggers on a different condition. Basis: run 01M23HWFFSB9NK78PGSCZWE6MA, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 515758e102a81c1c35d8c41bb3fd96209f1f04e9\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-7808\",\"title\":\"Implementer prompt: state that grep exit 1 on pre-change verification is an expected no-match\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T17:14:04.379Z\",\"updatedAt\":\"2026-09-09T17:14:04.379Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md verification section, add one line: 'grep exit 1 = no match; on pre-change verification that is the expected state, not an error.' Grounded in run 01M23HWFFSB9NK78PGSCZWE6MA: the implementer's first shell call exited 1 and was flagged is_error: true (event seq 97–98) only because grep 'Dev-loop assets' AGENTS.md found nothing before the section existed — harmless here, but it trains the model to read exit 1 as failure, and run history records a prior 'sandbox rg unreliable' misdiagnosis from the same benign signal. Expected effect: removes a recurring false-error signal and prevents misdiagnosis loops; orthogonal to open fabro-a23f (journal reporting of errored calls). Basis: run 01M23HWFFSB9NK78PGSCZWE6MA, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 515758e102a81c1c35d8c41bb3fd96209f1f04e9\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 85,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2060,6 +2146,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 190,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T17:14:30.729163811Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T17:14:30.729012489Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
