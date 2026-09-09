@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl b/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl
+index a3ded86..78b57cb 100644
+--- a/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl
++++ b/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl
+@@ -3,3 +3,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M23HWFFSB9NK78PGSCZWE6MA","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-09T17:04:00Z","data":{"painpoints":[],"observations":["`CLAUDE.md` is a symlink to `AGENTS.md`; editing the real file at repo root via edit_file worked directly and the symlink picked the change up — no shell detour was needed despite the section living in repo-wiring territory the seed explicitly targeted."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M23HWFFSB9NK78PGSCZWE6MA","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-09T17:04:09Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M23HWFFSB9NK78PGSCZWE6MA","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-09T17:04:15Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M23HWFFSB9NK78PGSCZWE6MA","node":"reviewer","visit":1,"status":"succeeded","ts":"2026-09-09T17:04:38Z","data":{"painpoints":[],"observations":["Verified the loop-work diff (churn-only seed) against the in-progress seed spec: section placement, all five asset roots, fs_hide note, no 'gofib', and single-file scope all confirmed via grep on AGENTS.md and git diff against claim base c3d0107. Docs-only change; ADR-0019 capability axis clear."]}}
