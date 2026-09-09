@@ -42,6 +42,8 @@ The engine maintains `seed_cycles` deterministically: `{ node -> completed visit
    - `-n flag: default 100, rejects values < 1 with non-zero exit`
    - `tests: table-driven, cover flag combinations`
 
+   Order verification commands cheapest-first: parse-level checks (e.g. `python3` TOML parse) before build-level checks (`cargo build`/`cargo run`), so briefs stop listing the expensive option first.
+
    Journal-observation rule: any journal observation from a prior pass that names required consistency or scope work (e.g. 'keep line X consistent with rule Y') MUST be folded into the brief as an explicit bullet — or explicitly waived in the brief with a one-line reason. Reviewers and the implementer's PASS/FAIL report check bullets, not journals; a requirement that lives only in a journal entry does not exist (run 01M22PCGN4E3X1XGN630MDDH39: a journaled consistency note was skipped and contradictory prompt text shipped through an approving review).
 7. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). An unresolved journal observation naming consistency or scope work is itself such a contradiction: it MUST surface in the brief as an explicit bullet (or an explicit one-line waiver), never stay journal-only — see the journal-observation rule in step 6. Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong. When the spec names a heading, anchor, or file path, confirm it exists in the target file before forwarding the brief; when it does not, annotate the ACTUAL location (the real heading name or path) instead of transcribing the spec verbatim.
 
