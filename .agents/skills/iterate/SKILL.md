@@ -27,9 +27,11 @@ decision, not an accident - it needs the user plus an ADR.
   The product/lab branches are gone (archived as tags
   archive/denkhaus-lab-final, archive/meta-denkhaus-lab-final); there is
   nothing to switch between. Local machine = the dev/agent checkout;
-  runs execute on the fabro server deployment (`fabro ps`, container
-  fabro-fabro-1). NEVER git worktrees - branch switches happen in the
-  main checkout.
+  runs execute on the fabro server instance that owns the line - WHICH
+  machine that is is deployment-specific (verify with `fabro ps`, and
+  never hardcode container names or host facts here: this file is
+  repo-shared across machines). NEVER git worktrees - branch switches
+  happen in the main checkout.
 - Is a workflow cycle in flight? (`fabro ps`, or a `just run`/`just
   cycle` process). Serialization principle (ADR-0015): while the
   develop/revisor workflow works the tracker, this agent session does
@@ -202,6 +204,12 @@ decision, not an accident - it needs the user plus an ADR.
   assigning from a review rec, verify the cited seed's premise AND its
   implementation status against the tree; close stale seeds with the
   evidence, never implement them again.
+  CLOSED seeds are no exception (a0e3 lesson, 2026-09-09): a closed seed
+  whose demand is not visible in any diff may be an absorption/stale
+  closure whose reason lives ONLY in a revisor journal - grep
+  .fabro/journal + .fabro/revisions for the seed id BEFORE reporting it
+  as lost work; if the closure is undocumented anywhere, that itself is
+  a tracker-hygiene finding (the closure reason must be recoverable).
 - Clippy failures on UNTOUCHED files after mixing stable builds with the
   pinned nightly can be stale-cache artifacts (e804): snapshot the diff
   (including untracked files - stash ^3 parent carries them) BEFORE a
