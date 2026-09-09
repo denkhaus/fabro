@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T10:31:13.144732852Z",
-  "last_event_at": "2026-09-09T10:45:31.671255520Z",
+  "last_event_at": "2026-09-09T10:45:59.479536680Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1277,9 +1277,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 301,
       "checkpoint": {
-        "timestamp": "2026-09-09T10:45:31.899764953Z",
+        "timestamp": "2026-09-09T10:45:36.485892922Z",
         "current_node": "evidence",
         "completed_nodes": [
           "start",
@@ -1290,16 +1290,249 @@
         ],
         "node_retries": {},
         "context_values": {
-          "graph.rankdir": "LR",
+          "preferred_label": "Implemented",
+          "thread.planner.current_node": "implementer",
           "command.output": "blob://sha256/5f8cee37be95981b975bcb724af6d931314ce6f9608da97136c96e53ddea4428",
-          "failure_signature": "",
+          "thread.tester.current_node": "evidence",
+          "thread.implementer.current_node": "tester",
           "journal": {
             "painpoints": [],
             "observations": [
               "Two trivial compile iterations (str::to_string fn-pointer coercion on Iter<&str>, and clippy redundant_closure_for_method_calls demanding the fully-qualified std::string::ToString::to_string form) — the closure form that satisfies clippy is not the form rustc accepts as a plain fn path, so the only clippy-clean spelling is the verbose qualified-method one in `lib/components/fabro-workflow/src/context.rs:189`."
             ]
           },
-          "preferred_label": "Implemented",
+          "graph.max_node_visits": "40",
+          "last_response": "Implemented seed fabro-8bf4 — the stage-envelope completion lint.\n\n**What was built** (lesson captured as `mx-7eb5e7`):\n- `lib/foundation/fabro-types/src/run_event/infra.rs` — new `RunNoticeCode::",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.run_id": "01M22VHABGCNWT7DKJC9HP1XKC",
+          "lesson_capture": "mx-7eb5e7",
+          "failure_class": "",
+          "internal.retry_count.implementer": 0,
+          "last_stage": "implementer",
+          "internal.fidelity": "compact",
+          "internal.retry_count.evidence": 0,
+          "outcome": "succeeded",
+          "current_seed_id": "fabro-8bf4",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1
+          },
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2199,
+            "preview": "Claimed fabro-8bf4 — Engine: lint stage completion when a key declared in `context_allow_keys` was never emitted. Basis verified against the current tree (envelope code present in `lib/components/fa"
+          },
+          "internal.retry_count.tester": 0,
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 4266,
+            "preview": "Implemented seed fabro-8bf4 — the stage-envelope completion lint.\n\n**What was built** (lesson captured as `mx-7eb5e7`):\n- `lib/foundation/fabro-types/src/run_event/infra.rs` — new `RunNoticeCode::"
+          },
+          "current_seed_brief": "Add a completion lint in `lib/components/fabro-workflow` alongside the fabro-900e/e47c stage-envelope producer lints (`src/lifecycle/envelope.rs`, `src/context.rs`, applied from `src/lifecycle/mod.rs` around the envelope call). Acceptance criteria:\n- Completion check: a stage that completes while emitting NONE of the keys declared in its `context_allow_keys` is detected (a stage emitting at least one declared key is fine)\n- Enforcement: the miss produces a visible warning or consumes one `output_retries` nudge (implementer picks one mechanism, consistent with how existing envelope violations behave — inspect how fabro-900e drops are surfaced and match that observability style per `docs/internal/logging-strategy.md`)\n- Scope: this is the general allow-keys visibility lint only; journal-specific output-schema enforcement stays with fabro-017f (cross-reference it in a comment, do not implement it)\n- Tests: unit tests next to the existing envelope tests in `src/context.rs` / `src/lifecycle/envelope.rs` covering (a) missing-all-declared-keys triggers the lint, (b) emitting a subset of declared keys does NOT trigger it, (c) empty `context_allow_keys` (unset = all keys admitted) does not trigger it\n- Gate: `cargo nextest run -p fabro-workflow` green; follow `docs/internal/testing-strategy.md` for unit-vs-it placement",
+          "graph.preamble_budget_kb": "24",
+          "failure_signature": "",
+          "internal.retry_count.planner": 0,
+          "current_seed_title": "Engine: lint stage completion when a key declared in context_allow_keys was never emitted",
+          "implementation_summary": "Added the fabro-8bf4 completion lint: pure predicate `unemitted_allow_keys` in `lib/components/fabro-workflow/src/context.rs`, a new `ContextAllowKeysNeverEmitted` notice code in `lib/foundation/fabro-types/src/run_event/infra.rs`, and scoped Warn emission from `EnvelopeLifecycle::after_node` in `src/lifecycle/envelope.rs` for Succeeded outcomes emitting none of their declared `context_allow_keys` (fabro-017f cross-referenced, not implemented). Lesson captured as mx-7eb5e7. Verification: 2042/2042 tests pass across `fabro-workflow` + `fabro-types`, crate-scoped fmt and default-features clippy clean. Per-criterion: PASS completion check (unemitted_allow_keys + missing-all unit test); PASS visible warning enforcement (after_node notice + lifecycle test); PASS subset-emitted quiet (context.rs + envelope.rs tests); PASS unset/empty allowlist never triggers (envelope_lint_unset_or_empty_allow_keys_never_triggers); PASS fabro-017f cross-ref only; PASS full touched-crate suite green (2042 passed) with fmt/clippy clean.",
+          "internal.retry_count.start": 0,
+          "current_node": "evidence",
+          "internal.node_visit_count": 1,
+          "internal.seed_cycle_anchor": "fabro-8bf4",
+          "graph.inspects": "develop",
+          "graph.rankdir": "LR",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.thread_id": "tester",
+          "thread.start.current_node": "planner",
+          "internal.work_dir": "/workspace/fabro"
+        },
+        "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Two trivial compile iterations (str::to_string fn-pointer coercion on Iter<&str>, and clippy redundant_closure_for_method_calls demanding the fully-qualified std::string::ToString::to_string form) — the closure form that satisfies clippy is not the form rustc accepts as a plain fn path, so the only clippy-clean spelling is the verbose qualified-method one in `lib/components/fabro-workflow/src/context.rs:189`."
+                ]
+              },
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 4266,
+                "preview": "Implemented seed fabro-8bf4 — the stage-envelope completion lint.\n\n**What was built** (lesson captured as `mx-7eb5e7`):\n- `lib/foundation/fabro-types/src/run_event/infra.rs` — new `RunNoticeCode::"
+              },
+              "last_response": "Implemented seed fabro-8bf4 — the stage-envelope completion lint.\n\n**What was built** (lesson captured as `mx-7eb5e7`):\n- `lib/foundation/fabro-types/src/run_event/infra.rs` — new `RunNoticeCode::",
+              "last_stage": "implementer",
+              "implementation_summary": "Added the fabro-8bf4 completion lint: pure predicate `unemitted_allow_keys` in `lib/components/fabro-workflow/src/context.rs`, a new `ContextAllowKeysNeverEmitted` notice code in `lib/foundation/fabro-types/src/run_event/infra.rs`, and scoped Warn emission from `EnvelopeLifecycle::after_node` in `src/lifecycle/envelope.rs` for Succeeded outcomes emitting none of their declared `context_allow_keys` (fabro-017f cross-referenced, not implemented). Lesson captured as mx-7eb5e7. Verification: 2042/2042 tests pass across `fabro-workflow` + `fabro-types`, crate-scoped fmt and default-features clippy clean. Per-criterion: PASS completion check (unemitted_allow_keys + missing-all unit test); PASS visible warning enforcement (after_node notice + lifecycle test); PASS subset-emitted quiet (context.rs + envelope.rs tests); PASS unset/empty allowlist never triggers (envelope_lint_unset_or_empty_allow_keys_never_triggers); PASS fabro-017f cross-ref only; PASS full touched-crate suite green (2042 passed) with fmt/clippy clean.",
+              "lesson_capture": "mx-7eb5e7"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 43791,
+                    "output_tokens": 5730,
+                    "reasoning_tokens": 2792,
+                    "cache_read_tokens": 1144256,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 396269
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/components/fabro-workflow/src/context.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/lifecycle/envelope.rs",
+              "/workspace/fabro/lib/foundation/fabro-types/src/run_event/infra.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 272405,
+              "tool_time_ms": 516086,
+              "active_time_ms": 788491
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/5f8cee37be95981b975bcb724af6d931314ce6f9608da97136c96e53ddea4428"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 379,
+              "active_time_ms": 379
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2199,
+                "preview": "Claimed fabro-8bf4 — Engine: lint stage completion when a key declared in `context_allow_keys` was never emitted. Basis verified against the current tree (envelope code present in `lib/components/fa"
+              },
+              "current_seed_brief": "Add a completion lint in `lib/components/fabro-workflow` alongside the fabro-900e/e47c stage-envelope producer lints (`src/lifecycle/envelope.rs`, `src/context.rs`, applied from `src/lifecycle/mod.rs` around the envelope call). Acceptance criteria:\n- Completion check: a stage that completes while emitting NONE of the keys declared in its `context_allow_keys` is detected (a stage emitting at least one declared key is fine)\n- Enforcement: the miss produces a visible warning or consumes one `output_retries` nudge (implementer picks one mechanism, consistent with how existing envelope violations behave — inspect how fabro-900e drops are surfaced and match that observability style per `docs/internal/logging-strategy.md`)\n- Scope: this is the general allow-keys visibility lint only; journal-specific output-schema enforcement stays with fabro-017f (cross-reference it in a comment, do not implement it)\n- Tests: unit tests next to the existing envelope tests in `src/context.rs` / `src/lifecycle/envelope.rs` covering (a) missing-all-declared-keys triggers the lint, (b) emitting a subset of declared keys does NOT trigger it, (c) empty `context_allow_keys` (unset = all keys admitted) does not trigger it\n- Gate: `cargo nextest run -p fabro-workflow` green; follow `docs/internal/testing-strategy.md` for unit-vs-it placement",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-8bf4 basis verified: fabro-900e envelope code present at lib/components/fabro-workflow/src/lifecycle/envelope.rs and src/context.rs on current tree; no open develop PRs in flight (7 runs checked, all merged/running-self)"
+                ]
+              },
+              "current_seed_id": "fabro-8bf4",
+              "last_response": "Claimed fabro-8bf4 — Engine: lint stage completion when a key declared in `context_allow_keys` was never emitted. Basis verified against the current tree (envelope code present in `lib/components/fa",
+              "last_stage": "planner",
+              "current_seed_title": "Engine: lint stage completion when a key declared in context_allow_keys was never emitted"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 23239,
+                    "output_tokens": 738,
+                    "reasoning_tokens": 170,
+                    "cache_read_tokens": 78208,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 56857
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 34797,
+              "tool_time_ms": 2319,
+              "active_time_ms": 37116
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/fe745e7f97c839a7a66606f85ac5c1389030c84e943470df32945c18c5336403"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 24082,
+              "active_time_ms": 24082
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "reviewer",
+        "git_commit_sha": "cae16176f5b6c0fb306e1135e136fbbb4f943bfe",
+        "node_visits": {
+          "tester": 1,
+          "evidence": 1,
+          "implementer": 1,
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M22VHABGCNWT7DKJC9HP1XKC.jsonl b/.fabro/journal/01M22VHABGCNWT7DKJC9HP1XKC.jsonl\nindex c1a1735..06740eb 100644\n--- a/.fabro/journal/01M22VHABGCNWT7DKJC9HP1XKC.jsonl\n+++ b/.fabro/journal/01M22VHABGCNWT7DKJC9HP1XKC.jsonl\n@@ -2,3 +2,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22VHABGCNWT7DKJC9HP1XKC\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:31:53Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-8bf4 basis verified: fabro-900e envelope code present at lib/components/fabro-workflow/src/lifecycle/envelope.rs and src/context.rs on current tree; no open develop PRs in flight (7 runs checked, all merged/running-self)\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22VHABGCNWT7DKJC9HP1XKC\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:44:58Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Two trivial compile iterations (str::to_string fn-pointer coercion on Iter<&str>, and clippy redundant_closure_for_method_calls demanding the fully-qualified std::string::ToString::to_string form) — the closure form that satisfies clippy is not the form rustc accepts as a plain fn path, so the only clippy-clean spelling is the verbose qualified-method one in `lib/components/fabro-workflow/src/context.rs:189`.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22VHABGCNWT7DKJC9HP1XKC\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:45:27Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22VHABGCNWT7DKJC9HP1XKC\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:45:31Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 6,
+          "additions": 188,
+          "deletions": 10
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T10:45:59.722728034Z",
+        "current_node": "reviewer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.rankdir": "LR",
+          "command.output": "blob://sha256/5f8cee37be95981b975bcb724af6d931314ce6f9608da97136c96e53ddea4428",
+          "failure_signature": "",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Evidence blob was complete and self-consistent (3 seed-work files, +181/-9, full diff, clean worktree); all five acceptance criteria verified directly in the diff — predicate, Warn notice code in fabro-types, after_node emission matching the ContextUpdateDropped observability style, all three required test scenarios in context.rs plus lifecycle-level tests in envelope.rs, fabro-017f cross-referenced not implemented. No capability delta: no Dockerfile/env/credential/allowlist surfaces touched and no new GITHUB_TOKEN or git-bridge usage. Non-blocking: unemitted_allow_keys uses raw string keys while read_context_key tolerates 'context.'-prefixed forms — membership semantics are correct today, but key-normalization divergence is a future watch item."
+            ]
+          },
+          "preferred_label": "Approved",
           "internal.run_id": "01M22VHABGCNWT7DKJC9HP1XKC",
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -1309,9 +1542,15 @@
           },
           "outcome": "succeeded",
           "internal.retry_count.implementer": 0,
-          "internal.fidelity": "compact",
-          "internal.thread_id": "tester",
+          "internal.fidelity": "summary:high",
+          "internal.thread_id": "evidence",
           "thread.planner.current_node": "implementer",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 3450,
+            "preview": "The evidence blob was complete (header, 3 seed-work files, full diff, clean worktree, no truncation). Reviewing against the authoritative seed spec:\n\n**Spec compliance:**\n- ✅ **Completion check**: `"
+          },
           "graph.max_node_visits": "40",
           "implementation_summary": "Added the fabro-8bf4 completion lint: pure predicate `unemitted_allow_keys` in `lib/components/fabro-workflow/src/context.rs`, a new `ContextAllowKeysNeverEmitted` notice code in `lib/foundation/fabro-types/src/run_event/infra.rs`, and scoped Warn emission from `EnvelopeLifecycle::after_node` in `src/lifecycle/envelope.rs` for Succeeded outcomes emitting none of their declared `context_allow_keys` (fabro-017f cross-referenced, not implemented). Lesson captured as mx-7eb5e7. Verification: 2042/2042 tests pass across `fabro-workflow` + `fabro-types`, crate-scoped fmt and default-features clippy clean. Per-criterion: PASS completion check (unemitted_allow_keys + missing-all unit test); PASS visible warning enforcement (after_node notice + lifecycle test); PASS subset-emitted quiet (context.rs + envelope.rs tests); PASS unset/empty allowlist never triggers (envelope_lint_unset_or_empty_allow_keys_never_triggers); PASS fabro-017f cross-ref only; PASS full touched-crate suite green (2042 passed) with fmt/clippy clean.",
           "thread.tester.current_node": "evidence",
@@ -1327,11 +1566,13 @@
             "planner": 1,
             "implementer": 1,
             "tester": 1,
-            "evidence": 1
+            "evidence": 1,
+            "reviewer": 1
           },
+          "review_verdict": "approved",
           "internal.retry_count.evidence": 0,
           "graph.cycle_counter_reset_key": "current_seed_id",
-          "last_stage": "implementer",
+          "last_stage": "reviewer",
           "internal.retry_count.planner": 0,
           "failure_class": "",
           "graph.preamble_budget_kb": "24",
@@ -1339,14 +1580,16 @@
           "internal.seed_cycle_anchor": "fabro-8bf4",
           "internal.node_visit_count": 1,
           "current_seed_brief": "Add a completion lint in `lib/components/fabro-workflow` alongside the fabro-900e/e47c stage-envelope producer lints (`src/lifecycle/envelope.rs`, `src/context.rs`, applied from `src/lifecycle/mod.rs` around the envelope call). Acceptance criteria:\n- Completion check: a stage that completes while emitting NONE of the keys declared in its `context_allow_keys` is detected (a stage emitting at least one declared key is fine)\n- Enforcement: the miss produces a visible warning or consumes one `output_retries` nudge (implementer picks one mechanism, consistent with how existing envelope violations behave — inspect how fabro-900e drops are surfaced and match that observability style per `docs/internal/logging-strategy.md`)\n- Scope: this is the general allow-keys visibility lint only; journal-specific output-schema enforcement stays with fabro-017f (cross-reference it in a comment, do not implement it)\n- Tests: unit tests next to the existing envelope tests in `src/context.rs` / `src/lifecycle/envelope.rs` covering (a) missing-all-declared-keys triggers the lint, (b) emitting a subset of declared keys does NOT trigger it, (c) empty `context_allow_keys` (unset = all keys admitted) does not trigger it\n- Gate: `cargo nextest run -p fabro-workflow` green; follow `docs/internal/testing-strategy.md` for unit-vs-it placement",
-          "last_response": "Implemented seed fabro-8bf4 — the stage-envelope completion lint.\n\n**What was built** (lesson captured as `mx-7eb5e7`):\n- `lib/foundation/fabro-types/src/run_event/infra.rs` — new `RunNoticeCode::",
+          "last_response": "The evidence blob was complete (header, 3 seed-work files, full diff, clean worktree, no truncation). Reviewing against the authoritative seed spec:\n\n**Spec compliance:**\n- ✅ **Completion check**: `",
           "thread.start.current_node": "planner",
           "current_seed_title": "Engine: lint stage completion when a key declared in context_allow_keys was never emitted",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "lesson_capture": "mx-7eb5e7",
           "internal.retry_count.tester": 0,
           "internal.retry_count.start": 0,
-          "current_node": "evidence",
+          "thread.evidence.current_node": "reviewer",
+          "internal.retry_count.reviewer": 0,
+          "current_node": "reviewer",
           "internal.work_dir": "/workspace/fabro"
         },
         "node_outcomes": {
@@ -1487,10 +1730,60 @@
               "tool_time_ms": 516086,
               "active_time_ms": 788491
             }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "review_verdict": "approved",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Evidence blob was complete and self-consistent (3 seed-work files, +181/-9, full diff, clean worktree); all five acceptance criteria verified directly in the diff — predicate, Warn notice code in fabro-types, after_node emission matching the ContextUpdateDropped observability style, all three required test scenarios in context.rs plus lifecycle-level tests in envelope.rs, fabro-017f cross-referenced not implemented. No capability delta: no Dockerfile/env/credential/allowlist surfaces touched and no new GITHUB_TOKEN or git-bridge usage. Non-blocking: unemitted_allow_keys uses raw string keys while read_context_key tolerates 'context.'-prefixed forms — membership semantics are correct today, but key-normalization divergence is a future watch item."
+                ]
+              },
+              "last_stage": "reviewer",
+              "last_response": "The evidence blob was complete (header, 3 seed-work files, full diff, clean worktree, no truncation). Reviewing against the authoritative seed spec:\n\n**Spec compliance:**\n- ✅ **Completion check**: `",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 3450,
+                "preview": "The evidence blob was complete (header, 3 seed-work files, full diff, clean worktree, no truncation). Reviewing against the authoritative seed spec:\n\n**Spec compliance:**\n- ✅ **Completion check**: `"
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 15654,
+                    "output_tokens": 846,
+                    "reasoning_tokens": 58,
+                    "cache_read_tokens": 12160,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 29053
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 22001,
+              "tool_time_ms": 12,
+              "active_time_ms": 22013
+            }
           }
         },
-        "next_node_id": "reviewer",
+        "next_node_id": "closeout",
         "node_visits": {
+          "reviewer": 1,
           "implementer": 1,
           "start": 1,
           "planner": 1,
@@ -1527,6 +1820,243 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "reviewer@1": {
+      "first_event_seq": 304,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: reviewer",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T10:45:59.479536680Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T10:45:36.856086834Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 22603,
+        "inference_time_ms": 22001,
+        "tool_time_ms": 12,
+        "active_time_ms": 22013
+      },
+      "usage": {
+        "input_tokens": 15654,
+        "output_tokens": 846,
+        "total_tokens": 28718,
+        "reasoning_tokens": 58,
+        "cache_read_tokens": 12160,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 29053
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": false
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 15742,
+        "usage_percent": 1.5012741088867188,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-09T10:45:59.469459816Z",
+        "event_seq": 320,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1173,
+            "usage_percent": 0.11186599731445312
+          },
+          {
+            "category": "tools",
+            "tokens": 1667,
+            "usage_percent": 0.15897750854492188
+          },
+          {
+            "category": "skills",
+            "tokens": 226,
+            "usage_percent": 0.02155303955078125
+          },
+          {
+            "category": "memory",
+            "tokens": 5857,
+            "usage_percent": 0.5585670471191406
+          },
+          {
+            "category": "conversation",
+            "tokens": 6811,
+            "usage_percent": 0.6495475769042969
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "tester@1": {
       "first_event_seq": 284,
       "prompt": null,
