@@ -1,4 +1,4 @@
-//! Test-only credential sources.
+//! Test-only credential sources and catalogs.
 //!
 //! Feature-gated so they never link into production builds. Production code
 //! resolves credentials through [`VaultCredentialSource`] over a real vault;
@@ -8,10 +8,27 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use fabro_vault::Vault;
+use lithos_llm::catalog::Catalog;
 use tokio::sync::RwLock as AsyncRwLock;
 
 use crate::credential_source::CredentialSource;
 use crate::vault_source::VaultCredentialSource;
+
+/// Fabro's policy layer, checked in under `fabro-llm`. Tests in this crate
+/// need the built-in catalog with `metadata.fabro.credentials` attached.
+pub const FABRO_POLICY_TOML: &str =
+    include_str!("../../../components/fabro-llm/catalog/fabro-policy.toml");
+
+/// The lithos built-in catalog with Fabro's policy layer applied.
+#[must_use]
+pub fn test_catalog() -> Catalog {
+    Catalog::builder()
+        .with_builtin()
+        .toml_layer("fabro-policy.toml", FABRO_POLICY_TOML)
+        .expect("fabro policy layer should parse")
+        .build()
+        .expect("built-in catalog with fabro policy should build")
+}
 
 /// A detached in-memory vault holding no secrets.
 #[must_use]

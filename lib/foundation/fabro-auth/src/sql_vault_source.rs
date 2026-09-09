@@ -1,15 +1,21 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use fabro_model::{Catalog, ProviderId};
 use fabro_types::SecretType;
 use fabro_vault::{SecretSnapshot, SecretStore, SecretStoreError, Vault};
+use lithos_llm::catalog::{Catalog, CatalogProvider, ProviderId};
+use lithos_llm::credentials::Credentials;
 use tokio::sync::RwLock;
 use tracing::error;
 
-use crate::credential_source::{CredentialSource, ResolvedCredentials};
-use crate::{EnvLookup, VaultCredentialSource};
+use crate::credential_source::CredentialSource;
+use crate::{EnvLookup, ResolveError, VaultCredentialSource};
 
+/// Credentials backed by the SQL secret store.
+///
+/// Every lookup snapshots the store, resolves against the snapshot, and
+/// writes refreshed OAuth tokens back with a revision check so two concurrent
+/// refreshes cannot clobber each other.
 #[derive(Clone)]
 pub struct SqlVaultCredentialSource {
     store:      Arc<SecretStore>,
@@ -83,6 +89,13 @@ impl SqlVaultCredentialSource {
         }
         Ok(true)
     }
+
+    fn store_error(provider: &ProviderId, err: SecretStoreError) -> ResolveError {
+        ResolveError::RefreshFailed {
+            provider: provider.clone(),
+            source:   anyhow::Error::new(err),
+        }
+    }
 }
 
 impl std::fmt::Debug for SqlVaultCredentialSource {
@@ -94,9 +107,13 @@ impl std::fmt::Debug for SqlVaultCredentialSource {
 
 #[async_trait]
 impl CredentialSource for SqlVaultCredentialSource {
-    async fn resolve(&self, catalog: &Catalog) -> anyhow::Result<ResolvedCredentials> {
+    async fn credentials(&self, provider: &CatalogProvider) -> Result<Credentials, ResolveError> {
         for _ in 0..2 {
-            let before = self.store.snapshot().await?;
+            let before = self
+                .store
+                .snapshot()
+                .await
+                .map_err(|err| Self::store_error(provider.id(), err))?;
             let has_oauth = before
                 .entries()
                 .values()
@@ -104,16 +121,23 @@ impl CredentialSource for SqlVaultCredentialSource {
             if !has_oauth {
                 // Only OAuth resolution can write back (token refresh); with no
                 // OAuth secrets, skip the snapshot clones and CAS machinery.
-                return self.source_for_snapshot(before).resolve(catalog).await;
+                return self.source_for_snapshot(before).credentials(provider).await;
             }
             let source = self.source_for_snapshot(before.clone());
-            let resolved = source.resolve(catalog).await?;
+            let credentials = source.credentials(provider).await?;
             let after = source.snapshot().await;
-            if self.persist_oauth_refreshes(&before, &after).await? {
-                return Ok(resolved);
+            if self
+                .persist_oauth_refreshes(&before, &after)
+                .await
+                .map_err(|err| Self::store_error(provider.id(), err))?
+            {
+                return Ok(credentials);
             }
         }
-        anyhow::bail!("OAuth credential changed concurrently during refresh")
+        Err(ResolveError::RefreshFailed {
+            provider: provider.id().clone(),
+            source:   anyhow::anyhow!("OAuth credential changed concurrently during refresh"),
+        })
     }
 
     async fn configured_providers(&self, catalog: &Catalog) -> Vec<ProviderId> {

@@ -1,5 +1,7 @@
+mod api_key_source;
 mod context;
 mod credential;
+mod credential_ref;
 mod credential_source;
 mod env_source;
 mod extra_headers_source;
@@ -14,15 +16,17 @@ mod vault_source;
 
 pub mod strategies;
 
+pub use api_key_source::ApiKeyCredentialSource;
 pub use context::{AuthContextRequest, AuthContextResponse};
-pub use credential::{ApiKeyHeader, OAuthConfig, OAuthCredential, OAuthTokens};
-pub use credential_source::{CredentialSource, ResolvedCredentials};
+pub use credential::{OAuthConfig, OAuthCredential, OAuthTokens};
+pub use credential_ref::{CredentialRef, CredentialRefParseError};
+pub use credential_source::{CredentialSource, ResolvedCredentials, lithos_credentials};
 pub use env_source::EnvCredentialSource;
 pub use extra_headers_source::ExtraHeadersCredentialSource;
 pub use refresh::refresh_oauth_credential;
 pub use resolve::{
-    ApiCredential, CredentialResolver, CredentialUsage, EnvLookup, ResolveError,
-    ResolvedCredential, auth_issue_message, build_api_key_header,
+    CredentialResolver, EnvLookup, ResolveError, accepts_api_key, auth_issue_message,
+    credential_refs, credentials_for_api_key, env_var_names, expected_vault_secret_name,
 };
 pub use sql_vault_source::SqlVaultCredentialSource;
 pub use strategy::{

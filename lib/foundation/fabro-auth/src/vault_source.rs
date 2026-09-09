@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use fabro_model::{Catalog, ProviderId};
 use fabro_vault::Vault;
+use lithos_llm::catalog::{Catalog, CatalogProvider, ProviderId};
+use lithos_llm::credentials::Credentials;
 use tokio::sync::RwLock as AsyncRwLock;
 
-use crate::credential_source::{CredentialSource, ResolvedCredentials};
-use crate::{CredentialResolver, CredentialUsage, EnvLookup, ResolveError, ResolvedCredential};
+use crate::credential_source::CredentialSource;
+use crate::{CredentialResolver, EnvLookup, ResolveError};
 
+/// Credentials backed by an in-memory [`Vault`] plus an environment lookup.
 #[derive(Clone)]
 pub struct VaultCredentialSource {
     vault:    Arc<AsyncRwLock<Vault>>,
@@ -50,26 +52,8 @@ impl std::fmt::Debug for VaultCredentialSource {
 
 #[async_trait]
 impl CredentialSource for VaultCredentialSource {
-    async fn resolve(&self, catalog: &Catalog) -> anyhow::Result<ResolvedCredentials> {
-        let mut credentials = Vec::new();
-        let mut auth_issues = Vec::new();
-
-        for provider in catalog.providers() {
-            match self
-                .resolver
-                .resolve(provider.id.clone(), CredentialUsage::ApiRequest, catalog)
-                .await
-            {
-                Ok(ResolvedCredential::Api(credential)) => credentials.push(credential),
-                Err(ResolveError::NotConfigured(_)) if provider.auth.is_some() => {}
-                Err(err) => auth_issues.push((provider.id.clone(), err)),
-            }
-        }
-
-        Ok(ResolvedCredentials {
-            credentials,
-            auth_issues,
-        })
+    async fn credentials(&self, provider: &CatalogProvider) -> Result<Credentials, ResolveError> {
+        self.resolver.resolve(provider).await
     }
 
     async fn configured_providers(&self, catalog: &Catalog) -> Vec<ProviderId> {
@@ -80,15 +64,17 @@ impl CredentialSource for VaultCredentialSource {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::sync::Arc;
 
     use chrono::{Duration, Utc};
-    use fabro_model::{Catalog, ProviderId};
     use fabro_vault::Vault;
+    use lithos_llm::catalog::ProviderId;
     use tokio::sync::RwLock as AsyncRwLock;
 
     use super::VaultCredentialSource;
     use crate::credential::{OAuthConfig, OAuthCredential, OAuthTokens};
+    use crate::test_support::test_catalog;
     use crate::vault_ext::{vault_set_oauth, vault_set_token};
     use crate::{CredentialSource, ResolveError};
 
@@ -111,14 +97,9 @@ mod tests {
         }
     }
 
-    fn default_catalog() -> Catalog {
-        Catalog::from_builtin().unwrap()
-    }
-
     #[tokio::test]
-    async fn resolve_returns_credentials_and_auth_issues() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut vault = Vault::load(dir.path().join("secrets.json")).unwrap();
+    async fn resolve_all_separates_ready_providers_from_auth_issues() {
+        let mut vault = Vault::from_entries(HashMap::new());
         vault_set_oauth(
             &mut vault,
             crate::OPENAI_CODEX_VAULT_SECRET_NAME,
@@ -129,63 +110,50 @@ mod tests {
 
         let source =
             VaultCredentialSource::with_env_lookup(Arc::new(AsyncRwLock::new(vault)), |_| None);
-        let catalog = default_catalog();
+        let catalog = test_catalog();
 
-        let resolved = source.resolve(&catalog).await.unwrap();
+        let resolved = source.resolve_all(&catalog).await;
 
-        assert_eq!(resolved.credentials.len(), 1);
-        assert_eq!(resolved.credentials[0].provider, ProviderId::anthropic());
+        assert_eq!(resolved.ready, vec![ProviderId::new("anthropic")]);
         assert_eq!(resolved.auth_issues.len(), 1);
         assert!(matches!(
             &resolved.auth_issues[0].1,
-            ResolveError::RefreshFailed {
-                provider,
-                ..
-            } if provider == &ProviderId::openai()
+            ResolveError::RefreshFailed { provider, .. } if provider.as_str() == "openai-codex"
         ));
     }
 
     #[tokio::test]
     async fn configured_providers_reads_from_vault_without_refreshing() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut vault = Vault::load(dir.path().join("secrets.json")).unwrap();
+        let mut vault = Vault::from_entries(HashMap::new());
         vault_set_token(&mut vault, "OPENAI_API_KEY", "openai-key").unwrap();
         vault_set_token(&mut vault, "ANTHROPIC_API_KEY", "anthropic-key").unwrap();
         let source =
             VaultCredentialSource::with_env_lookup(Arc::new(AsyncRwLock::new(vault)), |_| None);
-        let catalog = default_catalog();
+        let catalog = test_catalog();
 
         assert_eq!(source.configured_providers(&catalog).await, vec![
-            ProviderId::anthropic(),
-            ProviderId::openai()
+            ProviderId::new("anthropic"),
+            ProviderId::new("openai")
         ]);
     }
 
     #[tokio::test]
     async fn vault_only_ignores_env_lookup_values() {
-        let env_dir = tempfile::tempdir().unwrap();
-        let vault_only_dir = tempfile::tempdir().unwrap();
-        let catalog = default_catalog();
+        let catalog = test_catalog();
         let env_backed = VaultCredentialSource::with_env_lookup(
-            Arc::new(AsyncRwLock::new(
-                Vault::load(env_dir.path().join("secrets.json")).unwrap(),
-            )),
+            Arc::new(AsyncRwLock::new(Vault::from_entries(HashMap::new()))),
             |name| (name == "OPENAI_API_KEY").then(|| "env-openai-key".to_string()),
         );
         assert_eq!(env_backed.configured_providers(&catalog).await, vec![
-            ProviderId::openai()
+            ProviderId::new("openai")
         ]);
 
         let vault_only = VaultCredentialSource::vault_only(Arc::new(AsyncRwLock::new(
-            Vault::load(vault_only_dir.path().join("secrets.json")).unwrap(),
+            Vault::from_entries(HashMap::new()),
         )));
-
-        assert!(
-            vault_only.configured_providers(&catalog).await.is_empty(),
-            "vault_only must not resolve env-backed provider keys"
-        );
-        let resolved = vault_only.resolve(&catalog).await.unwrap();
-        assert!(resolved.credentials.is_empty());
+        assert!(vault_only.configured_providers(&catalog).await.is_empty());
+        let resolved = vault_only.resolve_all(&catalog).await;
+        assert!(resolved.ready.is_empty());
         assert!(resolved.auth_issues.is_empty());
     }
 }
