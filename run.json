@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T09:01:13.178622347Z",
-  "last_event_at": "2026-09-09T09:03:15.383961009Z",
+  "last_event_at": "2026-09-09T09:03:45.090980420Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1271,9 +1271,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 147,
       "checkpoint": {
-        "timestamp": "2026-09-09T09:03:15.591832355Z",
+        "timestamp": "2026-09-09T09:03:20.097995842Z",
         "current_node": "evidence",
         "completed_nodes": [
           "start",
@@ -1284,39 +1284,278 @@
         ],
         "node_retries": {},
         "context_values": {
-          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/implementer.md` step 4 (line 25) via a single python replace through the shell (platform file, fs_hide carve-out): the 'Your check' clause now mandates `cargo nextest run -p <touched-crate>` (the FULL crate suite for every crate whose tests the seed touched) when the seed adds or edits tests, keeps the compile-check-or-ONE-focused-test rule when tests are untouched, explicitly forbids the workspace-wide suite in both cases, and adds a short parenthetical citing run 01M20T9S8JRXETASN64768TRRP (two pre-existing fabro-server Docker-socket failures missed; ~22 min / ~40% gate-red bounce). The fmt/clippy crate-scoped sentence and the mechanical-rewrite paragraph are verbatim-unchanged; `git diff --stat` = 1 file, 1 insertion, 1 deletion. No Rust code touched, so no fmt/clippy runs required. Lesson recorded as mx-e26272 (convention: full touched-crate suite pre-gate when tests are touched). Per-criterion: PASS full-crate-suite rule when tests touched (implementer.md:25); PASS unchanged rule when tests untouched (same clause); PASS workspace suite forbidden in both cases; PASS fmt/clippy + mechanical-rewrite rules intact (grep verified single 'mechanical shell pass' occurrence, surrounding sentence unchanged); PASS short evidence parenthetical citing run 01M20T9S8JRXETASN64768TRRP.",
-          "thread.tester.current_node": "evidence",
-          "internal.run_id": "01M22PCGN4E3X1XGN630MDDH39",
-          "graph.inspects": "develop",
-          "internal.retry_count.evidence": 0,
-          "last_response": "Implementation complete. Edited step 4 of `.fabro/workflows/develop/prompts/implementer.md` via shell (platform-targeting seed), replacing only the test-verification clause; the fmt/clippy sentence, m",
-          "internal.node_visit_count": 1,
+          "internal.seed_cycle_anchor": "fabro-fc1b",
+          "command.output": "blob://sha256/d72a8e284f20fb2b1eb5a6b30e2367b5cd50fb77efb5d7231fa844b2bfe23eb0",
           "internal.fidelity": "compact",
-          "failure_class": "",
+          "current_seed_brief": "Edit `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` step 4 (line 25) to change the pre-gate verification rule. Acceptance criteria: (bullet) when the seed adds or edits tests in a crate, the pre-gate check becomes `cargo nextest run -p <touched-crate>` (the FULL crate suite), replacing the 'ONE focused test' rule for that case; (bullet) when the seed does NOT touch tests, the existing rule (compile check or ONE focused test) stays unchanged; (bullet) the workspace-wide suite remains explicitly forbidden; (bullet) keep the existing fmt/clippy crate-scoped rules and the mechanical-rewrite rule intact — the edit is scoped to the test-verification clause only; (bullet) keep the parenthetical evidence rationale short, citing run 01M20T9S8JRXETASN64768TRRP (targeted-only tests missed two pre-existing fabro-server Docker-socket failures; gate-red bounce cost ~22 min / ~40% of the 55-min run). Note: the file is under `.fabro/` — read it via shell (sed/grep), read_file is blocked by fs_hide. Distinct from closed seeds fabro-0d56/fabro-2254 (lint scope, already merged).",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "current_seed_title": "Implementer prompt: require the full touched-crate test suite when the seed touches tests",
+          "failure_signature": "",
+          "preferred_label": "Implemented",
+          "internal.run_id": "01M22PCGN4E3X1XGN630MDDH39",
+          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/implementer.md` step 4 (line 25) via a single python replace through the shell (platform file, fs_hide carve-out): the 'Your check' clause now mandates `cargo nextest run -p <touched-crate>` (the FULL crate suite for every crate whose tests the seed touched) when the seed adds or edits tests, keeps the compile-check-or-ONE-focused-test rule when tests are untouched, explicitly forbids the workspace-wide suite in both cases, and adds a short parenthetical citing run 01M20T9S8JRXETASN64768TRRP (two pre-existing fabro-server Docker-socket failures missed; ~22 min / ~40% gate-red bounce). The fmt/clippy crate-scoped sentence and the mechanical-rewrite paragraph are verbatim-unchanged; `git diff --stat` = 1 file, 1 insertion, 1 deletion. No Rust code touched, so no fmt/clippy runs required. Lesson recorded as mx-e26272 (convention: full touched-crate suite pre-gate when tests are touched). Per-criterion: PASS full-crate-suite rule when tests touched (implementer.md:25); PASS unchanged rule when tests untouched (same clause); PASS workspace suite forbidden in both cases; PASS fmt/clippy + mechanical-rewrite rules intact (grep verified single 'mechanical shell pass' occurrence, surrounding sentence unchanged); PASS short evidence parenthetical citing run 01M20T9S8JRXETASN64768TRRP.",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 1963,
+            "preview": "Claimed `fabro-fc1b`. Basis verified against the current tree, no in-flight PR conflicts (all recent develop PRs are merged).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \""
+          },
+          "internal.retry_count.planner": 0,
+          "internal.thread_id": "tester",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2757,
+            "preview": "Implementation complete. Edited step 4 of `.fabro/workflows/develop/prompts/implementer.md` via shell (platform-targeting seed), replacing only the test-verification clause; the fmt/clippy sentence, m"
+          },
           "journal": {
             "painpoints": [],
             "observations": [
               "ml record for type convention requires --content in addition to --description; the first attempt failed with a copy-paste retry hint (this session, seed fabro-fc1b) — worth knowing for future lesson captures."
             ]
           },
-          "current_node": "evidence",
-          "internal.retry_count.planner": 0,
-          "internal.retry_count.tester": 0,
-          "thread.planner.current_node": "implementer",
-          "graph.max_node_visits": "40",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
             "tester": 1,
             "evidence": 1
           },
+          "thread.tester.current_node": "evidence",
+          "graph.rankdir": "LR",
+          "current_node": "evidence",
+          "graph.inspects": "develop",
+          "internal.retry_count.implementer": 0,
+          "last_response": "Implementation complete. Edited step 4 of `.fabro/workflows/develop/prompts/implementer.md` via shell (platform-targeting seed), replacing only the test-verification clause; the fmt/clippy sentence, m",
+          "failure_class": "",
+          "graph.max_node_visits": "40",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.tester": 0,
+          "last_stage": "implementer",
           "lesson_capture": "mx-e26272",
-          "internal.thread_id": "tester",
+          "outcome": "succeeded",
+          "thread.implementer.current_node": "tester",
+          "internal.node_visit_count": 1,
+          "current_seed_id": "fabro-fc1b",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.start.current_node": "planner",
+          "thread.planner.current_node": "implementer",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.evidence": 0
+        },
+        "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "lesson_capture": "mx-e26272",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2757,
+                "preview": "Implementation complete. Edited step 4 of `.fabro/workflows/develop/prompts/implementer.md` via shell (platform-targeting seed), replacing only the test-verification clause; the fmt/clippy sentence, m"
+              },
+              "implementation_summary": "Edited `.fabro/workflows/develop/prompts/implementer.md` step 4 (line 25) via a single python replace through the shell (platform file, fs_hide carve-out): the 'Your check' clause now mandates `cargo nextest run -p <touched-crate>` (the FULL crate suite for every crate whose tests the seed touched) when the seed adds or edits tests, keeps the compile-check-or-ONE-focused-test rule when tests are untouched, explicitly forbids the workspace-wide suite in both cases, and adds a short parenthetical citing run 01M20T9S8JRXETASN64768TRRP (two pre-existing fabro-server Docker-socket failures missed; ~22 min / ~40% gate-red bounce). The fmt/clippy crate-scoped sentence and the mechanical-rewrite paragraph are verbatim-unchanged; `git diff --stat` = 1 file, 1 insertion, 1 deletion. No Rust code touched, so no fmt/clippy runs required. Lesson recorded as mx-e26272 (convention: full touched-crate suite pre-gate when tests are touched). Per-criterion: PASS full-crate-suite rule when tests touched (implementer.md:25); PASS unchanged rule when tests untouched (same clause); PASS workspace suite forbidden in both cases; PASS fmt/clippy + mechanical-rewrite rules intact (grep verified single 'mechanical shell pass' occurrence, surrounding sentence unchanged); PASS short evidence parenthetical citing run 01M20T9S8JRXETASN64768TRRP.",
+              "last_response": "Implementation complete. Edited step 4 of `.fabro/workflows/develop/prompts/implementer.md` via shell (platform-targeting seed), replacing only the test-verification clause; the fmt/clippy sentence, m",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "ml record for type convention requires --content in addition to --description; the first attempt failed with a copy-paste retry hint (this session, seed fabro-fc1b) — worth knowing for future lesson captures."
+                ]
+              },
+              "last_stage": "implementer"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16829,
+                    "output_tokens": 1694,
+                    "reasoning_tokens": 553,
+                    "cache_read_tokens": 104768,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 60675
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 62872,
+              "tool_time_ms": 3118,
+              "active_time_ms": 65990
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "No open develop PRs existed, so the in-flight PR guard excluded nothing; all listed runs had merged or null PRs.",
+                  "fabro-fc1b basis resolved cleanly against the current tree: the 'ONE focused test' clause is at line 25 of .fabro/workflows/develop/prompts/implementer.md; note the same rule is referenced again at line 78 (cross-reference to step 4), which the implementer should keep consistent."
+                ]
+              },
+              "last_stage": "planner",
+              "current_seed_id": "fabro-fc1b",
+              "current_seed_brief": "Edit `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` step 4 (line 25) to change the pre-gate verification rule. Acceptance criteria: (bullet) when the seed adds or edits tests in a crate, the pre-gate check becomes `cargo nextest run -p <touched-crate>` (the FULL crate suite), replacing the 'ONE focused test' rule for that case; (bullet) when the seed does NOT touch tests, the existing rule (compile check or ONE focused test) stays unchanged; (bullet) the workspace-wide suite remains explicitly forbidden; (bullet) keep the existing fmt/clippy crate-scoped rules and the mechanical-rewrite rule intact — the edit is scoped to the test-verification clause only; (bullet) keep the parenthetical evidence rationale short, citing run 01M20T9S8JRXETASN64768TRRP (targeted-only tests missed two pre-existing fabro-server Docker-socket failures; gate-red bounce cost ~22 min / ~40% of the 55-min run). Note: the file is under `.fabro/` — read it via shell (sed/grep), read_file is blocked by fs_hide. Distinct from closed seeds fabro-0d56/fabro-2254 (lint scope, already merged).",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 1963,
+                "preview": "Claimed `fabro-fc1b`. Basis verified against the current tree, no in-flight PR conflicts (all recent develop PRs are merged).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \""
+              },
+              "last_response": "Claimed `fabro-fc1b`. Basis verified against the current tree, no in-flight PR conflicts (all recent develop PRs are merged).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"",
+              "current_seed_title": "Implementer prompt: require the full touched-crate test suite when the seed touches tests"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 21971,
+                    "output_tokens": 690,
+                    "reasoning_tokens": 104,
+                    "cache_read_tokens": 73152,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 53267
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 31611,
+              "tool_time_ms": 2246,
+              "active_time_ms": 33857
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5403,
+              "active_time_ms": 5403
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/d72a8e284f20fb2b1eb5a6b30e2367b5cd50fb77efb5d7231fa844b2bfe23eb0"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 406,
+              "active_time_ms": 406
+            }
+          }
+        },
+        "next_node_id": "reviewer",
+        "git_commit_sha": "8cc41e2c85047dbe70cb95cd889b2bef601df4b2",
+        "node_visits": {
+          "planner": 1,
+          "implementer": 1,
+          "start": 1,
+          "tester": 1,
+          "evidence": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M22PCGN4E3X1XGN630MDDH39.jsonl b/.fabro/journal/01M22PCGN4E3X1XGN630MDDH39.jsonl\nindex 06daf19..a042bc7 100644\n--- a/.fabro/journal/01M22PCGN4E3X1XGN630MDDH39.jsonl\n+++ b/.fabro/journal/01M22PCGN4E3X1XGN630MDDH39.jsonl\n@@ -2,3 +2,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22PCGN4E3X1XGN630MDDH39\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:01:49Z\",\"data\":{\"painpoints\":[],\"observations\":[\"No open develop PRs existed, so the in-flight PR guard excluded nothing; all listed runs had merged or null PRs.\",\"fabro-fc1b basis resolved cleanly against the current tree: the 'ONE focused test' clause is at line 25 of .fabro/workflows/develop/prompts/implementer.md; note the same rule is referenced again at line 78 (cross-reference to step 4), which the implementer should keep consistent.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22PCGN4E3X1XGN630MDDH39\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:03:00Z\",\"data\":{\"painpoints\":[],\"observations\":[\"ml record for type convention requires --content in addition to --description; the first attempt failed with a copy-paste retry hint (this session, seed fabro-fc1b) — worth knowing for future lesson captures.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22PCGN4E3X1XGN630MDDH39\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:03:10Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22PCGN4E3X1XGN630MDDH39\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T09:03:15Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 9,
+          "deletions": 2
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T09:03:45.324979866Z",
+        "current_node": "reviewer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/implementer.md` step 4 (line 25) via a single python replace through the shell (platform file, fs_hide carve-out): the 'Your check' clause now mandates `cargo nextest run -p <touched-crate>` (the FULL crate suite for every crate whose tests the seed touched) when the seed adds or edits tests, keeps the compile-check-or-ONE-focused-test rule when tests are untouched, explicitly forbids the workspace-wide suite in both cases, and adds a short parenthetical citing run 01M20T9S8JRXETASN64768TRRP (two pre-existing fabro-server Docker-socket failures missed; ~22 min / ~40% gate-red bounce). The fmt/clippy crate-scoped sentence and the mechanical-rewrite paragraph are verbatim-unchanged; `git diff --stat` = 1 file, 1 insertion, 1 deletion. No Rust code touched, so no fmt/clippy runs required. Lesson recorded as mx-e26272 (convention: full touched-crate suite pre-gate when tests are touched). Per-criterion: PASS full-crate-suite rule when tests touched (implementer.md:25); PASS unchanged rule when tests untouched (same clause); PASS workspace suite forbidden in both cases; PASS fmt/clippy + mechanical-rewrite rules intact (grep verified single 'mechanical shell pass' occurrence, surrounding sentence unchanged); PASS short evidence parenthetical citing run 01M20T9S8JRXETASN64768TRRP.",
+          "thread.tester.current_node": "evidence",
+          "internal.run_id": "01M22PCGN4E3X1XGN630MDDH39",
+          "graph.inspects": "develop",
+          "internal.retry_count.evidence": 0,
+          "review_verdict": "approved",
+          "last_response": "Verification complete. The file state at HEAD matches the diff exactly.\n\n**Requirement check (seed fabro-fc1b spec):**\n\n1. **Full crate suite when tests touched** — ✓ `cargo nextest run -p <touche",
+          "internal.node_visit_count": 1,
+          "internal.fidelity": "summary:high",
+          "failure_class": "",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Verified the loop-work diff line-by-line against all five acceptance criteria and re-read implementer.md:25 at HEAD via shell to confirm the diff matches the file (it does, byte-for-byte on the changed clause; fmt/clippy and mechanical-rewrite clauses intact). Capability-delta check clean: no env/credential/tool-surface changes in this churn-only seed."
+            ]
+          },
+          "current_node": "reviewer",
+          "internal.retry_count.planner": 0,
+          "internal.retry_count.tester": 0,
+          "thread.evidence.current_node": "reviewer",
+          "internal.retry_count.reviewer": 0,
+          "thread.planner.current_node": "implementer",
+          "graph.max_node_visits": "40",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1
+          },
+          "lesson_capture": "mx-e26272",
+          "internal.thread_id": "evidence",
           "thread.start.current_node": "planner",
           "internal.seed_cycle_anchor": "fabro-fc1b",
-          "preferred_label": "Implemented",
+          "preferred_label": "Approved",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 1945,
+            "preview": "Verification complete. The file state at HEAD matches the diff exactly.\n\n**Requirement check (seed fabro-fc1b spec):**\n\n1. **Full crate suite when tests touched** — ✓ `cargo nextest run -p <touche"
+          },
           "current_seed_brief": "Edit `/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md` step 4 (line 25) to change the pre-gate verification rule. Acceptance criteria: (bullet) when the seed adds or edits tests in a crate, the pre-gate check becomes `cargo nextest run -p <touched-crate>` (the FULL crate suite), replacing the 'ONE focused test' rule for that case; (bullet) when the seed does NOT touch tests, the existing rule (compile check or ONE focused test) stays unchanged; (bullet) the workspace-wide suite remains explicitly forbidden; (bullet) keep the existing fmt/clippy crate-scoped rules and the mechanical-rewrite rule intact — the edit is scoped to the test-verification clause only; (bullet) keep the parenthetical evidence rationale short, citing run 01M20T9S8JRXETASN64768TRRP (targeted-only tests missed two pre-existing fabro-server Docker-socket failures; gate-red bounce cost ~22 min / ~40% of the 55-min run). Note: the file is under `.fabro/` — read it via shell (sed/grep), read_file is blocked by fs_hide. Distinct from closed seeds fabro-0d56/fabro-2254 (lint scope, already merged).",
-          "last_stage": "implementer",
+          "last_stage": "reviewer",
           "current_seed_id": "fabro-fc1b",
           "current_seed_title": "Implementer prompt: require the full touched-crate test suite when the seed touches tests",
           "thread.implementer.current_node": "tester",
@@ -1356,6 +1595,55 @@
               "inference_time_ms": 0,
               "tool_time_ms": 5403,
               "active_time_ms": 5403
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 1945,
+                "preview": "Verification complete. The file state at HEAD matches the diff exactly.\n\n**Requirement check (seed fabro-fc1b spec):**\n\n1. **Full crate suite when tests touched** — ✓ `cargo nextest run -p <touche"
+              },
+              "review_verdict": "approved",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Verified the loop-work diff line-by-line against all five acceptance criteria and re-read implementer.md:25 at HEAD via shell to confirm the diff matches the file (it does, byte-for-byte on the changed clause; fmt/clippy and mechanical-rewrite clauses intact). Capability-delta check clean: no env/credential/tool-surface changes in this churn-only seed."
+                ]
+              },
+              "last_stage": "reviewer",
+              "last_response": "Verification complete. The file state at HEAD matches the diff exactly.\n\n**Requirement check (seed fabro-fc1b spec):**\n\n1. **Full crate suite when tests touched** — ✓ `cargo nextest run -p <touche"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 15168,
+                    "output_tokens": 606,
+                    "reasoning_tokens": 772,
+                    "cache_read_tokens": 13952,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 30924
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 24187,
+              "tool_time_ms": 208,
+              "active_time_ms": 24395
             }
           },
           "planner": {
@@ -1479,13 +1767,14 @@
             }
           }
         },
-        "next_node_id": "reviewer",
+        "next_node_id": "closeout",
         "node_visits": {
           "start": 1,
           "implementer": 1,
           "planner": 1,
           "tester": 1,
-          "evidence": 1
+          "evidence": 1,
+          "reviewer": 1
         }
       },
       "diff": {}
@@ -1838,6 +2127,243 @@
         "reasoning_tokens": 0,
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "reviewer@1": {
+      "first_event_seq": 150,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: reviewer",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T09:03:45.090980420Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T09:03:20.446267377Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 25106,
+        "inference_time_ms": 24187,
+        "tool_time_ms": 208,
+        "active_time_ms": 24395
+      },
+      "usage": {
+        "input_tokens": 15168,
+        "output_tokens": 606,
+        "total_tokens": 30498,
+        "reasoning_tokens": 772,
+        "cache_read_tokens": 13952,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 30924
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 15160,
+        "usage_percent": 1.445770263671875,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-09T09:03:45.079600851Z",
+        "event_seq": 167,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1156,
+            "usage_percent": 0.1102447509765625
+          },
+          {
+            "category": "tools",
+            "tokens": 1659,
+            "usage_percent": 0.15821456909179688
+          },
+          {
+            "category": "skills",
+            "tokens": 225,
+            "usage_percent": 0.021457672119140625
+          },
+          {
+            "category": "memory",
+            "tokens": 5828,
+            "usage_percent": 0.5558013916015625
+          },
+          {
+            "category": "conversation",
+            "tokens": 6285,
+            "usage_percent": 0.5993843078613281
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
       },
       "agent_control": "running",
       "state": "succeeded"
