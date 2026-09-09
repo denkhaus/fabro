@@ -90,6 +90,42 @@ def check-fmt [] {
     true
 }
 
+# Loop-asset tier (fabro-bfe1): deterministic machine verification of the
+# dev loop's own .nu scripts. Two parts: a side-effect-free parse check of
+# every develop-workflow script (`nu --ide-check` parses only — a bare
+# `source <file>` would auto-invoke the script's `def main` after import;
+# see the closeout-smoke.nu header), then the checked-in evidence-smoke
+# regression over evidence.nu's pure helpers. Runs in BOTH main paths —
+# crates touched or not — so a loop-asset-only diff is no longer a 4s
+# no-op gate (run 01M23TE61D4Y).
+def check-loop-assets [] {
+    print '== checking loop-asset scripts =='
+    let scripts = (ls .fabro/workflows/develop/scripts/*.nu | get name | sort)
+    mut green = true
+    for s in $scripts {
+        # --ide-check exits 0 even on parse errors: diagnostics are JSON
+        # lines on stdout; an Error-severity line is the failure signal.
+        let res = (do { ^nu --ide-check 10 $s } | complete)
+        let errors = ($res.stdout | lines | where {|l| $l | str contains '"severity":"Error"' })
+        if ($errors | is-not-empty) {
+            print $"loop-asset parse check FAILED: ($s)"
+            print ($errors | last 5)
+            $green = false
+        }
+    }
+    if not $green { return false }
+    let smoke = '.fabro/workflows/develop/scripts/evidence-smoke.nu'
+    let res = (do { ^nu $smoke } | complete)
+    if $res.exit_code != 0 {
+        print $"loop-asset smoke FAILED: ($smoke)"
+        print ($res.stdout | str trim -r -c "\n" | lines | last 20)
+        print ($res.stderr | str trim -r -c "\n")
+        return false
+    }
+    print "loop-asset scripts green"
+    true
+}
+
 def check-clippy [crates: list<string>] {
     if ($crates | is-empty) { return true }
     # '-p' and the crate name MUST be separate argv elements: a single
@@ -160,16 +196,19 @@ def main [] {
     }
     if ($crates | is-empty) {
         print "no crates touched"
-        if (check-fmt) { exit 0 } else { exit 1 }
+        let green = ((check-loop-assets) and (check-fmt))
+        if $green { print "GATE GREEN"; exit 0 }
+        print "GATE RED"
+        exit 1
     }
     if ($crates | any {|c| $c == '__workspace__' }) {
-        let green = ((check-fmt) and (check-workspace-compiles))
+        let green = ((check-loop-assets) and (check-fmt) and (check-workspace-compiles))
         if $green { print "GATE GREEN"; exit 0 }
         print "GATE RED"
         exit 1
     }
     print $"touched crates: ($crates | str join ', ')"
-    let green = ((check-fmt) and (check-clippy $crates) and (build-renderer-if-needed $crates) and (check-tests $crates))
+    let green = ((check-loop-assets) and (check-fmt) and (check-clippy $crates) and (build-renderer-if-needed $crates) and (check-tests $crates))
     if $green {
         print "GATE GREEN"
         exit 0
