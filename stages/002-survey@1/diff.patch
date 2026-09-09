@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M237FTD80QQB7B2QA56D56RS.jsonl b/.fabro/journal/01M237FTD80QQB7B2QA56D56RS.jsonl
+new file mode 100644
+index 000000000..8b1289848
+--- /dev/null
++++ b/.fabro/journal/01M237FTD80QQB7B2QA56D56RS.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M237FTD80QQB7B2QA56D56RS","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T14:00:18Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M237FTD80QQB7B2QA56D56RS","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-09T14:01:19Z","data":{"painpoints":[],"observations":["upstream count 0 (origin/denkhaus is even with upstream/main; newest upstream subject: 'Bump version to 0.348.0-nightly.0') — drift 0/5 toward MIN threshold","revisor backlog: none — every completed develop run has a revisor pass (newest develop 01M235V6FWMNBDKS9BH3T25G2D reviewed by revisor 01M2368YQANEKJ08M078T1QEX7, PR #95)","next surveyor: remote 'upstream' was added this pass; the freshest develop run's PR #94 is merged and its revisor seed run (PR #95) also merged, so the next Work pass should claim the newest revisor-filed seed"]}}
