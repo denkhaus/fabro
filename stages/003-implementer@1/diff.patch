@@ -1,0 +1,921 @@
+diff --git a/.fabro/journal/01M237JNJW4FNRRZ70EX7WZF6D.jsonl b/.fabro/journal/01M237JNJW4FNRRZ70EX7WZF6D.jsonl
+index 3befbec..db1ac1d 100644
+--- a/.fabro/journal/01M237JNJW4FNRRZ70EX7WZF6D.jsonl
++++ b/.fabro/journal/01M237JNJW4FNRRZ70EX7WZF6D.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M237JNJW4FNRRZ70EX7WZF6D","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T14:01:42Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M237JNJW4FNRRZ70EX7WZF6D","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-09T14:02:35Z","data":{"painpoints":[],"observations":["fabro-de4d basis verified live: routing schema still free-form at structured_output.rs:645, no edge-label validation exists in the tree — seed is current, not stale","in-flight check clean: 13 develop runs listed, no open PRs, only this run (01M237JN) non-terminal"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M237JNJW4FNRRZ70EX7WZF6D","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-09T14:26:00Z","data":{"painpoints":[],"observations":["Shell cwd resets to `/repos/denkhaus/fabro` between invocations while the declared workspace is `/workspace/fabro` — same tree, but relative-path commands silently fail; use absolute paths every time. Also caught myself running `rg -rn <pattern>` twice this pass (replace-flag discipline, run 01M22X87J1RKQ6A8FZB7RC2RN8): `-r n` rewrites matches to literal 'n' in displayed output, which misread file contents and a freshly recorded mulch entry as corrupted.","The structured-output repair loops live inside the LLM backend (`lib/components/fabro-workflow/src/handler/llm/api.rs` one_shot/run), not in the AgentHandler — so any output constraint that must trigger output_retries has to reach `parse_node_output_schema` inside the backend, which is why CodergenRunRequest/OneShotRequest now carry `&Graph` instead of a handler-layer-only check (a handler-only check would fail the outcome with zero repair turns)."]}}
+diff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl
+index 7c9b23d..eec4c81 100644
+--- a/.mulch/expertise/engine.jsonl
++++ b/.mulch/expertise/engine.jsonl
+@@ -48,3 +48,4 @@
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-08T19:44:10.382Z","evidence":{"seeds":"fabro-85a1","commit":"3e23ee57c98bd03e1556f32c4dc13e867c6e3893"},"name":"run-clone-depth-zero-for-range-math","description":"Workflows doing git range math against upstream (rev-list --count, merge-base) need [run.clone] depth = 0 in their .fabro/workflows/<name>/workflow.toml; default depth-100 shallow clone breaks the math. Conductor (a4850e681) and merge-upstream (fabro-85a1) both set it; audit any new clone-based workflow that compares upstream refs. Volume is ~neutral (~150 MB either way).","files":[".fabro/workflows/merge-upstream/workflow.toml"],"id":"mx-10bfb8"}
+ {"type":"decision","classification":"tactical","recorded_at":"2026-09-08T21:07:45.325Z","evidence":{"commit":"a2933be71de5b9a6d79dd055d500270dbab4d334"},"title":"FabroRunToolServices presence vs run_wide provenance","rationale":"The worker-token agent:run_tools scope is granted for both the run-wide flag and node-level fabro_tools opt-ins, so services presence alone can no longer decide whether attribute-less stages get the full tool set; provenance must travel with the services to keep per-stage least privilege (ADR-0019, user-approved Option A on fabro-c419).","id":"mx-dd2618"}
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-09T12:22:03.485Z","evidence":{"commit":"3e49d004d0ae22ef2dba3fd1557062a8bcdee933"},"name":"overlap-guard-live-children","description":"Overlap guard (on_overlap=skip) must treat non-terminal CHILD runs of an automation's runs as active, not only non-terminal automation runs: a conductor pass that parks at a boundary exit or soft-stops via a misjudged run_wait (fabro-ee5d) is terminal itself while its develop child still runs — that window admitted a second overlapping pass (fabro-91ff incident, PR #84 vs #86). active_run_for_automation in lib/components/fabro-store/src/run_summary_store.rs matches parent automation_id OR parent_id IN automation runs with status NOT IN (succeeded,failed,dead); also note the develop planner in-flight guard now needs run STATUS (running) not just open PRs, since claims precede PRs by ~15 min.","files":[".fabro/workflows/develop/prompts/planner.md",".fabro/workflows/revisor/prompts/analyze.md","lib/components/fabro-store/src/run_summary_store.rs"],"id":"mx-2400f9"}
++{"type":"pattern","classification":"tactical","recorded_at":"2026-09-09T14:25:27.166Z","evidence":{"commit":"da8ad92ccf61dc1f40915bf25ff78ac28a65d2f3"},"dir_anchors":["lib/components/fabro-workflow/src/handler","lib/components/fabro-workflow/src/handler/llm"],"name":"routing-schema-label-constraint","description":"Routing output_schema label constraint (fabro-de4d): OutputSchemaKind::Routing carries allowed_labels derived from the node's unconditional outgoing edge labels (routable_edge_labels in structured_output.rs); parse_node_output_schema takes (graph, node) and CodergenRunRequest/OneShotRequest carry &Graph so backend repair loops enforce the constraint. Unknown preferred_next_label fails the OUTPUT with SchemaValidation kind (verbose: names value + full allowed list, normalized via graph::routing::normalize_label for case/accelerator insensitivity). Empty edge set keeps free-form drop semantics. Graph lint routing_fallback_silent warns on unlabeled unconditional catchers.","files":["lib/components/fabro-validate/src/rules/mod.rs","lib/components/fabro-workflow/src/graph.rs","lib/components/fabro-workflow/src/graph/routing.rs","lib/components/fabro-workflow/src/handler/agent.rs","lib/components/fabro-workflow/src/handler/command.rs","lib/components/fabro-workflow/src/handler/llm/acp.rs","lib/components/fabro-workflow/src/handler/llm/api.rs","lib/components/fabro-workflow/src/handler/llm/router.rs","lib/components/fabro-workflow/src/handler/prompt.rs","lib/components/fabro-workflow/src/handler/structured_output.rs"],"id":"mx-a825f8"}
+diff --git a/lib/components/fabro-validate/src/rules/mod.rs b/lib/components/fabro-validate/src/rules/mod.rs
+index 42ff685..b510257 100644
+--- a/lib/components/fabro-validate/src/rules/mod.rs
++++ b/lib/components/fabro-validate/src/rules/mod.rs
+@@ -31,6 +31,7 @@ mod random_selection_no_conditions;
+ mod reachability;
+ mod reserved_keyword_node_id;
+ mod retry_target_exists;
++mod routing_fallback_silent;
+ mod script_absolute_cd;
+ mod selection_valid;
+ mod start_no_incoming;
+@@ -96,6 +97,7 @@ pub fn built_in_rules() -> Vec<Box<dyn LintRule>> {
+         random_selection_no_conditions::rule(),
+         inert_attribute::rule(),
+         parallel_branch_inert_attribute::rule(),
++        routing_fallback_silent::rule(),
+     ]
+ }
+ 
+diff --git a/lib/components/fabro-validate/src/rules/routing_fallback_silent.rs b/lib/components/fabro-validate/src/rules/routing_fallback_silent.rs
+new file mode 100644
+index 0000000..b953e19
+--- /dev/null
++++ b/lib/components/fabro-validate/src/rules/routing_fallback_silent.rs
+@@ -0,0 +1,143 @@
++use fabro_graphviz::graph::{AttrValue, Graph};
++
++use crate::{Diagnostic, LintRule, Severity};
++
++pub(super) fn rule() -> Box<dyn LintRule> {
++    Box::new(Rule)
++}
++
++struct Rule;
++
++impl LintRule for Rule {
++    fn name(&self) -> &'static str {
++        "routing_fallback_silent"
++    }
++
++    fn apply(&self, graph: &Graph) -> Vec<Diagnostic> {
++        let mut diagnostics = Vec::new();
++        for node in graph.nodes.values() {
++            let outgoing = graph.outgoing_edges(&node.id);
++            if outgoing.is_empty() {
++                continue;
++            }
++            let routes_by_label = outgoing
++                .iter()
++                .any(|e| e.label().is_some_and(|label| !label.trim().is_empty()));
++            if !routes_by_label {
++                continue;
++            }
++            // An unlabeled unconditional edge without a kind is the silent
++            // catcher for an unrecognized preferred_label: the label misses,
++            // no condition matches, and the run follows the fallback without
++            // any signal (fabro-de4d).
++            let silent_catchers: Vec<_> = outgoing
++                .iter()
++                .filter(|e| e.condition().is_none_or(str::is_empty))
++                .filter(|e| e.label().is_none_or(|label| label.trim().is_empty()))
++                .filter(|e| {
++                    e.attrs
++                        .get("kind")
++                        .and_then(AttrValue::as_str)
++                        .is_none_or(str::is_empty)
++                })
++                .collect();
++            for edge in silent_catchers {
++                diagnostics.push(Diagnostic {
++                    rule: self.name().to_string(),
++                    severity: Severity::Warning,
++                    message: format!(
++                        "Node '{}' routes by edge label, but an unrecognized preferred_label \
++                         will silently fall through its unconditional unlabeled edge to '{}'",
++                        node.id, edge.to
++                    ),
++                    node_id: Some(node.id.clone()),
++                    edge: Some((node.id.clone(), edge.to.clone())),
++                    fix: Some(
++                        "Give the fallback edge a label (so it is a deliberate route), a kind \
++                         (e.g. kind=\"deadlock\" for an explicit guard), or use \
++                         output_schema=\"routing\" so labels are validated"
++                            .to_string(),
++                    ),
++                    ..Diagnostic::default()
++                });
++            }
++        }
++        diagnostics
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use fabro_graphviz::graph::{AttrValue, Edge, Node};
++
++    use super::Rule;
++    use crate::rules::test_support::minimal_graph;
++    use crate::{LintRule, Severity};
++
++    fn labeled_edge(from: &str, to: &str, label: &str) -> Edge {
++        let mut edge = Edge::new(from, to);
++        edge.attrs
++            .insert("label".to_string(), AttrValue::String(label.to_string()));
++        edge
++    }
++
++    #[test]
++    fn warns_when_unlabeled_unconditional_edge_catches_unrouted_labels() {
++        let mut g = minimal_graph();
++        g.nodes.insert("review".to_string(), Node::new("review"));
++        g.edges.push(labeled_edge("review", "approve", "Approve"));
++        g.edges
++            .push(labeled_edge("review", "fix", "Changes requested"));
++        g.edges.push(Edge::new("review", "parked"));
++
++        let diagnostics = Rule.apply(&g);
++
++        assert_eq!(diagnostics.len(), 1, "diagnostics: {diagnostics:?}");
++        assert_eq!(diagnostics[0].severity, Severity::Warning);
++        assert_eq!(diagnostics[0].node_id.as_deref(), Some("review"));
++        assert!(diagnostics[0].message.contains("silently fall through"));
++        assert!(diagnostics[0].message.contains('\''));
++    }
++
++    #[test]
++    fn no_warning_when_fallback_edge_has_a_kind() {
++        let mut g = minimal_graph();
++        g.nodes.insert("review".to_string(), Node::new("review"));
++        g.edges.push(labeled_edge("review", "approve", "Approve"));
++        let mut guard = Edge::new("review", "exit");
++        guard
++            .attrs
++            .insert("kind".to_string(), AttrValue::String("deadlock".into()));
++        g.edges.push(guard);
++
++        let diagnostics = Rule.apply(&g);
++
++        assert!(
++            diagnostics.is_empty(),
++            "explicit kind guard should not warn: {diagnostics:?}"
++        );
++    }
++
++    #[test]
++    fn no_warning_when_fallback_edge_is_labeled() {
++        let mut g = minimal_graph();
++        g.nodes.insert("review".to_string(), Node::new("review"));
++        g.edges.push(labeled_edge("review", "approve", "Approve"));
++        g.edges.push(labeled_edge("review", "escalate", "Escalate"));
++
++        let diagnostics = Rule.apply(&g);
++
++        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
++    }
++
++    #[test]
++    fn no_warning_for_nodes_without_labeled_edges() {
++        let mut g = minimal_graph();
++        g.nodes.insert("work".to_string(), Node::new("work"));
++        g.edges.push(Edge::new("work", "exit"));
++
++        let diagnostics = Rule.apply(&g);
++
++        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
++    }
++}
+diff --git a/lib/components/fabro-workflow/src/graph.rs b/lib/components/fabro-workflow/src/graph.rs
+index c03631c..1e4c66c 100644
+--- a/lib/components/fabro-workflow/src/graph.rs
++++ b/lib/components/fabro-workflow/src/graph.rs
+@@ -1,4 +1,4 @@
+-mod routing;
++pub(crate) mod routing;
+ 
+ use std::collections::HashMap;
+ use std::sync::Arc;
+diff --git a/lib/components/fabro-workflow/src/graph/routing.rs b/lib/components/fabro-workflow/src/graph/routing.rs
+index e9f01f9..0ee4110 100644
+--- a/lib/components/fabro-workflow/src/graph/routing.rs
++++ b/lib/components/fabro-workflow/src/graph/routing.rs
+@@ -147,7 +147,7 @@ pub(crate) fn get_retry_target(failed_node_id: &str, graph: &GvGraph) -> Option<
+ 
+ /// Normalize a label for comparison: lowercase, trim, strip accelerator
+ /// prefixes. Patterns: "[Y] ", "Y) ", "Y - "
+-fn normalize_label(label: &str) -> String {
++pub(crate) fn normalize_label(label: &str) -> String {
+     let s = label.trim().to_lowercase();
+     if s.starts_with('[') {
+         if let Some(rest) = s
+diff --git a/lib/components/fabro-workflow/src/handler/agent.rs b/lib/components/fabro-workflow/src/handler/agent.rs
+index 0ea0e34..e8d0e29 100644
+--- a/lib/components/fabro-workflow/src/handler/agent.rs
++++ b/lib/components/fabro-workflow/src/handler/agent.rs
+@@ -42,6 +42,7 @@ pub enum CodergenResult {
+ 
+ pub struct CodergenRunRequest<'a> {
+     pub node:               &'a Node,
++    pub graph:              &'a Graph,
+     pub prompt:             &'a str,
+     pub context:            &'a Context,
+     /// Stage view served by the `context_read` tool (fabro-e804); built
+@@ -58,6 +59,7 @@ pub struct CodergenRunRequest<'a> {
+ 
+ pub struct OneShotRequest<'a> {
+     pub node:          &'a Node,
++    pub graph:         &'a Graph,
+     pub prompt:        &'a str,
+     pub system_prompt: Option<&'a str>,
+     pub emitter:       &'a Arc<Emitter>,
+@@ -154,7 +156,7 @@ pub(crate) async fn validate_agent_output_sources(
+     sandbox: &Arc<dyn Sandbox>,
+     last_file_touched: Option<&str>,
+ ) -> Result<ValidatedStructuredOutput, StructuredOutputError> {
+-    if !matches!(schema, OutputSchemaKind::Routing) {
++    if !matches!(schema, OutputSchemaKind::Routing { .. }) {
+         return structured_output::validate_response_text(schema, response_text);
+     }
+ 
+@@ -267,7 +269,7 @@ impl Handler for AgentHandler {
+         } else {
+             format!("{preamble}\n\n{raw_prompt}")
+         };
+-        let output_schema = structured_output::parse_node_output_schema(node)?;
++        let output_schema = structured_output::parse_node_output_schema(graph, node)?;
+         let prompt = match output_schema.as_ref() {
+             Some(schema) => schema.agent_prompt(&prompt),
+             None => prompt,
+@@ -318,6 +320,7 @@ impl Handler for AgentHandler {
+                 let result = backend
+                     .run(CodergenRunRequest {
+                         node,
++                        graph,
+                         prompt: &prompt,
+                         context,
+                         context_read,
+@@ -599,7 +602,9 @@ mod tests {
+         let (_sandbox_dir, sandbox) = sandbox_with_file(path, contents);
+ 
+         validate_agent_output_sources(
+-            &OutputSchemaKind::Routing,
++            &OutputSchemaKind::Routing {
++                allowed_labels: Vec::new(),
++            },
+             "Done writing results.",
+             &sandbox,
+             Some(path),
+@@ -956,6 +961,38 @@ All checks passed.
+         );
+     }
+ 
++    #[tokio::test]
++    async fn validated_routing_rejects_unknown_preferred_label_at_handler_boundary() {
++        // fabro-de4d: with the node's outgoing edge labels known, an
++        // out-of-vocabulary preferred_next_label must fail the OUTPUT (not
++        // the run) with a verbose error naming the value and the allowed
++        // list, so the backend repair loop gets a correction turn.
++        let (_sandbox_dir, sandbox) = sandbox_with_file("unused.txt", "");
++        let schema = OutputSchemaKind::Routing {
++            allowed_labels: vec!["review".to_string(), "approve".to_string()],
++        };
++
++        let error = validate_agent_output_sources(
++            &schema,
++            r#"{"outcome":"succeeded","preferred_next_label":"deploy"}"#,
++            &sandbox,
++            None,
++        )
++        .await
++        .unwrap_err();
++
++        assert!(!error.allows_routing_fallback());
++        let message = error.messages().join("\n");
++        assert!(
++            message.contains("\"deploy\""),
++            "error must name the offending value: {message}"
++        );
++        assert!(
++            message.contains("\"review\"") && message.contains("\"approve\""),
++            "error must list the allowed labels: {message}"
++        );
++    }
++
+     #[tokio::test]
+     async fn codergen_handler_output_schema_routing_rejects_malformed_response_before_status_json_fallback()
+      {
+diff --git a/lib/components/fabro-workflow/src/handler/command.rs b/lib/components/fabro-workflow/src/handler/command.rs
+index 0b58e52..3b3b870 100644
+--- a/lib/components/fabro-workflow/src/handler/command.rs
++++ b/lib/components/fabro-workflow/src/handler/command.rs
+@@ -55,7 +55,7 @@ impl Handler for CommandHandler {
+         &self,
+         node: &Node,
+         context: &Context,
+-        _graph: &Graph,
++        graph: &Graph,
+         run_dir: &Path,
+         services: &EngineServices,
+     ) -> Result<Outcome, Error> {
+@@ -79,7 +79,7 @@ impl Handler for CommandHandler {
+             Ok(stdin) => stdin,
+             Err(outcome) => return Ok(outcome),
+         };
+-        let output_schema = structured_output::parse_node_output_schema(node)?;
++        let output_schema = structured_output::parse_node_output_schema(graph, node)?;
+ 
+         let command = if language == "python" {
+             format!("python3 -c {}", shell_quote(script))
+diff --git a/lib/components/fabro-workflow/src/handler/llm/acp.rs b/lib/components/fabro-workflow/src/handler/llm/acp.rs
+index ae8f259..6c7252e 100644
+--- a/lib/components/fabro-workflow/src/handler/llm/acp.rs
++++ b/lib/components/fabro-workflow/src/handler/llm/acp.rs
+@@ -1046,6 +1046,7 @@ mod tests {
+         let context = Context::new();
+         let result = backend
+             .run(CodergenRunRequest {
++                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                 node:               &node,
+                 prompt:             "write hello",
+                 context:            &context,
+@@ -1095,6 +1096,7 @@ mod tests {
+         let context = Context::new();
+         let result = backend
+             .run(CodergenRunRequest {
++                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                 node:               &node,
+                 prompt:             "write hello",
+                 context:            &context,
+@@ -1166,6 +1168,7 @@ mod tests {
+         let context = Context::new();
+         let result = backend
+             .run(CodergenRunRequest {
++                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                 node:               &node,
+                 prompt:             "write hello",
+                 context:            &context,
+@@ -1215,6 +1218,7 @@ mod tests {
+         let context = Context::new();
+         let result = backend
+             .run(CodergenRunRequest {
++                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                 node:               &node,
+                 prompt:             "write hello",
+                 context:            &context,
+@@ -1255,6 +1259,7 @@ mod tests {
+         let context = Context::new();
+         let result = backend
+             .run(CodergenRunRequest {
++                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                 node:               &node,
+                 prompt:             "write hello",
+                 context:            &context,
+@@ -1306,6 +1311,7 @@ mod tests {
+         let context = Context::new();
+         let result = backend
+             .run(CodergenRunRequest {
++                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                 node:               &node,
+                 prompt:             "cancel",
+                 context:            &context,
+@@ -1361,6 +1367,7 @@ mod tests {
+         let context = Context::new();
+         backend
+             .run(CodergenRunRequest {
++                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                 node:               &node,
+                 prompt:             "write hello",
+                 context:            &context,
+@@ -1404,6 +1411,7 @@ mod tests {
+         let context = Context::new();
+         let result = backend
+             .run(CodergenRunRequest {
++                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                 node:               &node,
+                 prompt:             "write hello",
+                 context:            &context,
+@@ -1458,6 +1466,7 @@ mod tests {
+         let context = Context::new();
+         let result = backend
+             .run(CodergenRunRequest {
++                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                 node:               &node,
+                 prompt:             "write hello",
+                 context:            &context,
+diff --git a/lib/components/fabro-workflow/src/handler/llm/api.rs b/lib/components/fabro-workflow/src/handler/llm/api.rs
+index 331f0a5..609ef84 100644
+--- a/lib/components/fabro-workflow/src/handler/llm/api.rs
++++ b/lib/components/fabro-workflow/src/handler/llm/api.rs
+@@ -1700,6 +1700,7 @@ impl CodergenBackend for AgentApiBackend {
+ 
+     async fn one_shot(&self, request: OneShotRequest<'_>) -> Result<CodergenResult, Error> {
+         let node = request.node;
++        let graph = request.graph;
+         let prompt = request.prompt;
+         let system_prompt = request.system_prompt;
+         let emitter = request.emitter;
+@@ -1722,7 +1723,7 @@ impl CodergenBackend for AgentApiBackend {
+         }
+         messages.push(Message::user(prompt));
+ 
+-        let output_schema = structured_output::parse_node_output_schema(node)?;
++        let output_schema = structured_output::parse_node_output_schema(graph, node)?;
+         let response_format = output_schema
+             .as_ref()
+             .map(structured_output::prompt_response_format);
+@@ -1806,8 +1807,9 @@ impl CodergenBackend for AgentApiBackend {
+ 
+     async fn run(&self, request: CodergenRunRequest<'_>) -> Result<CodergenResult, Error> {
+         let node = request.node;
++        let graph = request.graph;
+         let emitter = request.emitter;
+-        let output_schema = structured_output::parse_node_output_schema(node)?;
++        let output_schema = structured_output::parse_node_output_schema(graph, node)?;
+ 
+         let fidelity = request.context.fidelity();
+         let reuse_key = if fidelity == Fidelity::Full {
+@@ -4487,6 +4489,7 @@ enabled = true
+ 
+         let result = backend
+             .one_shot(OneShotRequest {
++                graph:         &fabro_graphviz::graph::Graph::new("test"),
+                 node:          &node,
+                 prompt:        "Audit the result",
+                 system_prompt: None,
+@@ -4553,6 +4556,7 @@ enabled = true
+ 
+         let result = backend
+             .one_shot(OneShotRequest {
++                graph:         &fabro_graphviz::graph::Graph::new("test"),
+                 node:          &node,
+                 prompt:        "Audit the result",
+                 system_prompt: None,
+@@ -4614,6 +4618,7 @@ enabled = true
+ 
+         let result = backend
+             .run(CodergenRunRequest {
++                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                 node:               &node,
+                 prompt:             "Audit the result",
+                 context:            &context,
+@@ -4687,6 +4692,7 @@ enabled = true
+ 
+         let result = backend
+             .run(CodergenRunRequest {
++                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                 node:               &node,
+                 prompt:             "Audit the result",
+                 context:            &context,
+@@ -4759,6 +4765,7 @@ enabled = true
+ 
+         let result = backend
+             .run(CodergenRunRequest {
++                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                 node:               &node,
+                 prompt:             "Audit the result",
+                 context:            &context,
+@@ -4834,6 +4841,7 @@ enabled = true
+ 
+         let result = backend
+             .run(CodergenRunRequest {
++                graph:              &fabro_graphviz::graph::Graph::new("test"),
+                 node:               &node,
+                 prompt:             "Search the web",
+                 context:            &context,
+diff --git a/lib/components/fabro-workflow/src/handler/llm/router.rs b/lib/components/fabro-workflow/src/handler/llm/router.rs
+index 24dc97e..7fcb3ab 100644
+--- a/lib/components/fabro-workflow/src/handler/llm/router.rs
++++ b/lib/components/fabro-workflow/src/handler/llm/router.rs
+@@ -124,6 +124,7 @@ mod tests {
+ 
+         let result = router
+             .one_shot(OneShotRequest {
++                graph:         &fabro_graphviz::graph::Graph::new("test"),
+                 node:          &node,
+                 prompt:        "prompt",
+                 system_prompt: None,
+diff --git a/lib/components/fabro-workflow/src/handler/prompt.rs b/lib/components/fabro-workflow/src/handler/prompt.rs
+index b577ed6..924adab 100644
+--- a/lib/components/fabro-workflow/src/handler/prompt.rs
++++ b/lib/components/fabro-workflow/src/handler/prompt.rs
+@@ -51,7 +51,7 @@ impl Handler for PromptHandler {
+         &self,
+         node: &Node,
+         context: &Context,
+-        _graph: &Graph,
++        graph: &Graph,
+         _run_dir: &Path,
+         services: &EngineServices,
+     ) -> Result<Outcome, Error> {
+@@ -119,6 +119,7 @@ impl Handler for PromptHandler {
+                 let result = backend
+                     .one_shot(OneShotRequest {
+                         node,
++                        graph,
+                         prompt: &prompt,
+                         system_prompt: system_prompt.as_deref(),
+                         emitter: &services.run.emitter,
+@@ -190,7 +191,7 @@ impl Handler for PromptHandler {
+             serde_json::json!(&response_text),
+         );
+ 
+-        if let Some(schema) = structured_output::parse_node_output_schema(node)? {
++        if let Some(schema) = structured_output::parse_node_output_schema(graph, node)? {
+             if let Ok(validated) =
+                 structured_output::validate_response_text(&schema, &response_text)
+             {
+diff --git a/lib/components/fabro-workflow/src/handler/structured_output.rs b/lib/components/fabro-workflow/src/handler/structured_output.rs
+index 4658437..98e5374 100644
+--- a/lib/components/fabro-workflow/src/handler/structured_output.rs
++++ b/lib/components/fabro-workflow/src/handler/structured_output.rs
+@@ -1,7 +1,7 @@
+ use std::fmt::Write as _;
+ use std::sync::{Arc, LazyLock};
+ 
+-use fabro_graphviz::graph::Node;
++use fabro_graphviz::graph::{Graph, Node};
+ use fabro_llm::types::{ResponseFormat, ResponseFormatType};
+ use jsonschema::error::ValidationErrorKind;
+ use jsonschema::paths::Location;
+@@ -9,6 +9,7 @@ use jsonschema::{ValidationError, Validator};
+ use serde_json::Value;
+ 
+ use crate::error::Error;
++use crate::graph::routing::normalize_label;
+ use crate::outcome::{FailureCategory, FailureDetail, Outcome, StageOutcome};
+ 
+ pub(crate) const ROUTING_KEYWORD: &str = "routing";
+@@ -33,7 +34,12 @@ const QUOTED_ROUTING_STATUS_FIELDS: &[&str] = &[
+ /// repair turns don't recompile the schema on every iteration.
+ #[derive(Debug, Clone)]
+ pub(crate) enum OutputSchemaKind {
+-    Routing,
++    /// Labels of the node's unconditional outgoing edges — the values a
++    /// `preferred_label`/`preferred_next_label` may routing-match (mirrors the
++    /// preferred-label loop in `graph::routing::select_edge`). Empty when no
++    /// edge information is available, in which case the label stays free-form
++    /// (fabro-de4d).
++    Routing { allowed_labels: Vec<String> },
+     JsonSchema {
+         schema:    Value,
+         validator: Arc<Validator>,
+@@ -46,10 +52,21 @@ impl OutputSchemaKind {
+     /// drift.
+     fn expectation(&self) -> String {
+         match self {
+-            Self::Routing => format!(
+-                "Return a single JSON object with at least one routing field: {}.",
+-                ROUTING_STATUS_FIELDS.join(", ")
+-            ),
++            Self::Routing { allowed_labels } => {
++                let mut expectation = format!(
++                    "Return a single JSON object with at least one routing field: {}.",
++                    ROUTING_STATUS_FIELDS.join(", ")
++                );
++                if !allowed_labels.is_empty() {
++                    let _ = write!(
++                        expectation,
++                        "\npreferred_next_label must be one of this node's outgoing edge \
++                         labels: {}.",
++                        quote_join(allowed_labels),
++                    );
++                }
++                expectation
++            }
+             Self::JsonSchema { schema, .. } => format!(
+                 "Return a single JSON object that satisfies this JSON Schema:\n\
+                  <output_schema>\n\
+@@ -378,7 +395,10 @@ pub(crate) fn exhausted_failure_outcome(repair_attempts: i64) -> Outcome {
+     }
+ }
+ 
+-pub(crate) fn parse_node_output_schema(node: &Node) -> Result<Option<OutputSchemaKind>, Error> {
++pub(crate) fn parse_node_output_schema(
++    graph: &Graph,
++    node: &Node,
++) -> Result<Option<OutputSchemaKind>, Error> {
+     let Some(raw) = node.output_schema() else {
+         return Ok(None);
+     };
+@@ -390,7 +410,9 @@ pub(crate) fn parse_node_output_schema(node: &Node) -> Result<Option<OutputSchem
+         )));
+     }
+     if value == ROUTING_KEYWORD {
+-        return Ok(Some(OutputSchemaKind::Routing));
++        return Ok(Some(OutputSchemaKind::Routing {
++            allowed_labels: routable_edge_labels(graph, &node.id),
++        }));
+     }
+     if value.starts_with('@') {
+         return Err(Error::Validation(format!(
+@@ -420,7 +442,7 @@ pub(crate) fn parse_node_output_schema(node: &Node) -> Result<Option<OutputSchem
+ #[must_use]
+ pub(crate) fn prompt_response_format(schema: &OutputSchemaKind) -> ResponseFormat {
+     match schema {
+-        OutputSchemaKind::Routing => ResponseFormat {
++        OutputSchemaKind::Routing { .. } => ResponseFormat {
+             kind:        ResponseFormatType::JsonObject,
+             json_schema: None,
+             strict:      false,
+@@ -438,7 +460,9 @@ pub(crate) fn validate_response_text(
+     text: &str,
+ ) -> Result<ValidatedStructuredOutput, StructuredOutputError> {
+     match schema {
+-        OutputSchemaKind::Routing => validate_routing_response_text(text),
++        OutputSchemaKind::Routing { allowed_labels } => {
++            validate_routing_response_text(allowed_labels, text)
++        }
+         OutputSchemaKind::JsonSchema { schema, validator } => {
+             validate_custom_response_text(validator, schema, text)
+         }
+@@ -452,7 +476,7 @@ pub(crate) fn apply_validated_output(
+     outcome: &mut Outcome,
+ ) {
+     match schema {
+-        OutputSchemaKind::Routing => apply_routing_fields(&validated.value, outcome),
++        OutputSchemaKind::Routing { .. } => apply_routing_fields(&validated.value, outcome),
+         OutputSchemaKind::JsonSchema { .. } => {
+             outcome
+                 .context_updates
+@@ -534,6 +558,7 @@ pub(crate) fn extract_status_fields(text: &str, outcome: &mut Outcome) -> bool {
+ }
+ 
+ fn validate_routing_response_text(
++    allowed_labels: &[String],
+     text: &str,
+ ) -> Result<ValidatedStructuredOutput, StructuredOutputError> {
+     let candidates = find_json_objects(text);
+@@ -562,6 +587,7 @@ fn validate_routing_response_text(
+             continue;
+         }
+         validate_value_against_validator(routing_validator(), &parsed, None)?;
++        validate_preferred_label(allowed_labels, &parsed)?;
+         return Ok(ValidatedStructuredOutput { value: parsed });
+     }
+ 
+@@ -630,6 +656,68 @@ fn contains_routing_field(obj: &serde_json::Map<String, Value>) -> bool {
+         .any(|field| obj.contains_key(*field))
+ }
+ 
++/// Labels of the node's unconditional outgoing edges — the only edges a
++/// `preferred_label` can routing-match in `graph::routing::select_edge`.
++/// Conditional edges and unlabeled edges never match by label, so their
++/// labels are not part of the allowed vocabulary.
++#[must_use]
++pub(crate) fn routable_edge_labels(graph: &Graph, node_id: &str) -> Vec<String> {
++    graph
++        .outgoing_edges(node_id)
++        .into_iter()
++        .filter(|edge| edge.condition().is_none_or(str::is_empty))
++        .filter_map(|edge| edge.label().map(str::to_owned))
++        .filter(|label| !label.trim().is_empty())
++        .collect()
++}
++
++/// Fail the OUTPUT (not the run) when `preferred_next_label` is not one of the
++/// node's outgoing edge labels (fabro-de4d). Verbose validation: the error
++/// names the offending value AND the full allowed-label list so a repair turn
++/// can correct it without guessing. When no edge labels are available (no
++/// graph edges for the node), the field stays free-form — the label is simply
++/// dropped later because no edge matches it.
++fn validate_preferred_label(
++    allowed_labels: &[String],
++    value: &Value,
++) -> Result<(), StructuredOutputError> {
++    let Some(obj) = value.as_object() else {
++        return Ok(());
++    };
++    // Non-string values already fail the base routing schema's type check.
++    let Some(label) = obj.get("preferred_next_label").and_then(Value::as_str) else {
++        return Ok(());
++    };
++    if allowed_labels.is_empty() {
++        return Ok(());
++    }
++    let matched = allowed_labels
++        .iter()
++        .any(|allowed| normalize_label(allowed) == normalize_label(label));
++    if matched {
++        Ok(())
++    } else {
++        Err(StructuredOutputError::new(
++            StructuredOutputErrorKind::SchemaValidation,
++            format!(
++                "preferred_next_label {} is not one of this node's outgoing edge labels: {}. \
++                 Use exactly one of the listed labels (case-insensitive; accelerator prefixes \
++                 like \"[F] \" are ignored) or omit the field.",
++                Value::String(label.to_string()),
++                quote_join(allowed_labels),
++            ),
++        ))
++    }
++}
++
++fn quote_join(values: &[String]) -> String {
++    values
++        .iter()
++        .map(|value| Value::String(value.clone()).to_string())
++        .collect::<Vec<_>>()
++        .join(", ")
++}
++
+ fn raw_mentions_routing_field(candidate: &str) -> bool {
+     QUOTED_ROUTING_STATUS_FIELDS
+         .iter()
+@@ -709,7 +797,15 @@ mod tests {
+     use super::*;
+ 
+     fn routing() -> OutputSchemaKind {
+-        OutputSchemaKind::Routing
++        OutputSchemaKind::Routing {
++            allowed_labels: Vec::new(),
++        }
++    }
++
++    fn routing_with_labels(labels: &[&str]) -> OutputSchemaKind {
++        OutputSchemaKind::Routing {
++            allowed_labels: labels.iter().map(ToString::to_string).collect(),
++        }
+     }
+ 
+     fn schema(value: Value) -> OutputSchemaKind {
+@@ -817,6 +913,153 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn known_preferred_label_passes_validation() {
++        let schema = routing_with_labels(&["Approve", "[F] Fix"]);
++
++        let validated = validate_response_text(
++            &schema,
++            r#"{"outcome":"succeeded","preferred_next_label":"Approve"}"#,
++        );
++
++        assert_eq!(
++            validated.unwrap().value,
++            serde_json::json!({"outcome": "succeeded", "preferred_next_label": "Approve"}),
++        );
++    }
++
++    #[test]
++    fn known_preferred_label_matches_case_and_accelerator_insensitively() {
++        let schema = routing_with_labels(&["[F] Fix"]);
++
++        let validated = validate_response_text(&schema, r#"{"preferred_next_label":"fix"}"#);
++
++        assert_eq!(
++            validated.unwrap().value,
++            serde_json::json!({"preferred_next_label": "fix"}),
++        );
++    }
++
++    #[test]
++    fn unknown_preferred_label_fails_the_output_with_verbose_error() {
++        // fabro-de4d incident shape: reviewer emitted 'deploy', a label no
++        // outgoing edge knows. The output must fail (routing repair), not the
++        // run, and the error must name the offending value AND the full
++        // allowed-label list.
++        let schema = routing_with_labels(&["Approve", "Changes requested"]);
++
++        let error = validate_response_text(
++            &schema,
++            r#"{"outcome":"succeeded","preferred_next_label":"deploy"}"#,
++        )
++        .unwrap_err();
++
++        assert_eq!(error.kind(), StructuredOutputErrorKind::SchemaValidation);
++        assert!(!error.allows_routing_fallback());
++        let message = error.messages().join("\n");
++        assert!(
++            message.contains("\"deploy\""),
++            "error must name the offending value: {message}"
++        );
++        assert!(
++            message.contains("\"Approve\"") && message.contains("\"Changes requested\""),
++            "error must list every allowed label: {message}"
++        );
++    }
++
++    #[test]
++    fn routing_repair_message_for_unknown_label_carries_the_allowed_list() {
++        let schema = routing_with_labels(&["Approve", "Changes requested"]);
++
++        let error =
++            validate_response_text(&schema, r#"{"preferred_next_label":"deploy"}"#).unwrap_err();
++        let repair = error.repair_message(&schema, None);
++
++        assert!(
++            repair.contains("\"deploy\""),
++            "repair message must name the offending value: {repair}"
++        );
++        assert!(
++            repair.contains("\"Changes requested\""),
++            "repair message must carry the allowed-label list: {repair}"
++        );
++    }
++
++    #[test]
++    fn routing_without_edge_labels_keeps_free_form_drop_semantics() {
++        // No edge information available: the label is unconstrained at the
++        // output boundary and dropped later when no edge matches it.
++        let schema = routing();
++
++        let validated = validate_response_text(&schema, r#"{"preferred_next_label":"deploy"}"#);
++
++        assert_eq!(
++            validated.unwrap().value,
++            serde_json::json!({"preferred_next_label": "deploy"}),
++        );
++    }
++
++    #[test]
++    fn routing_agent_prompt_lists_the_allowed_labels() {
++        let prompt = routing_with_labels(&["Approve", "Changes requested"])
++            .agent_prompt("Pick the next step");
++
++        assert!(
++            prompt.contains(
++                "preferred_next_label must be one of this node's outgoing edge \
++                             labels: \"Approve\", \"Changes requested\"."
++            ),
++            "unexpected prompt: {prompt}"
++        );
++    }
++
++    #[test]
++    fn parse_node_output_schema_threads_outgoing_edge_labels_into_routing() {
++        let mut graph = fabro_graphviz::graph::Graph::new("test");
++        graph
++            .nodes
++            .insert("review".to_string(), Node::new("review"));
++        graph
++            .nodes
++            .insert("approve".to_string(), Node::new("approve"));
++        graph
++            .nodes
++            .insert("recover".to_string(), Node::new("recover"));
++        let mut labeled = fabro_graphviz::graph::Edge::new("review", "approve");
++        labeled.attrs.insert(
++            "label".to_string(),
++            AttrValue::String("Approve".to_string()),
++        );
++        graph.edges.push(labeled);
++        let mut conditional = fabro_graphviz::graph::Edge::new("review", "recover");
++        conditional.attrs.insert(
++            "condition".to_string(),
++            AttrValue::String("outcome=failed".to_string()),
++        );
++        conditional.attrs.insert(
++            "label".to_string(),
++            AttrValue::String("Recover".to_string()),
++        );
++        graph.edges.push(conditional);
++
++        let mut node = Node::new("review");
++        node.attrs.insert(
++            "output_schema".to_string(),
++            AttrValue::String("routing".to_string()),
++        );
++
++        let parsed = parse_node_output_schema(&graph, &node).unwrap();
++
++        // Only the unconditional edge's label is routable: select_edge never
++        // matches preferred_label against a conditional edge.
++        match parsed {
++            Some(OutputSchemaKind::Routing { allowed_labels }) => {
++                assert_eq!(allowed_labels, vec!["Approve".to_string()]);
++            }
++            other => panic!("expected routing schema, got {other:?}"),
++        }
++    }
++
+     #[test]
+     fn validates_custom_schema_against_last_json_object() {
+         let schema = schema(serde_json::json!({
+@@ -1074,7 +1317,7 @@ mod tests {
+             AttrValue::String(r#"{"type": 5}"#.to_string()),
+         );
+ 
+-        let error = parse_node_output_schema(&node).unwrap_err();
++        let error = parse_node_output_schema(&Graph::new("test"), &node).unwrap_err();
+ 
+         assert!(
+             error.to_string().contains("Invalid output_schema"),
+@@ -1108,14 +1351,14 @@ mod tests {
+             AttrValue::String("routing".to_string()),
+         );
+ 
+-        let parsed = parse_node_output_schema(&node).unwrap();
++        let parsed = parse_node_output_schema(&Graph::new("test"), &node).unwrap();
+ 
+-        assert!(matches!(parsed, Some(OutputSchemaKind::Routing)));
++        assert!(matches!(parsed, Some(OutputSchemaKind::Routing { .. })));
+     }
+ 
+     #[test]
+     fn routing_agent_prompt_lists_routing_fields_instead_of_a_schema() {
+-        let prompt = OutputSchemaKind::Routing.agent_prompt("Pick the next step");
++        let prompt = routing().agent_prompt("Pick the next step");
+ 
+         assert!(prompt.starts_with("Pick the next step\n\n"));
+         assert!(prompt.contains("Fabro final-output contract"));
