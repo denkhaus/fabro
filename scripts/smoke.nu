@@ -86,13 +86,17 @@ def main [port: string = "32276", cli: string = "~/.fabro/bin/fabro"]: nothing -
     # server => SKIPPED (gray), not red.
     let auth_path = ($env.HOME | path join ".fabro" "auth.json")
     let server_key = $"http://127.0.0.1:($port)"
+    # `get -o` (optional) needs nushell >= 0.105; deploy hosts still run
+    # 0.101 (weblab, 2026-09-09 fabro-afb8), where the flag is a parse
+    # error. `get -i` (ignore-errors) exists since well before 0.101 and
+    # yields the same null-on-missing shape chained with `default`.
     let token = (if ($auth_path | path exists) {
         open $auth_path
-        | get -o servers
+        | get -i servers
         | default {}
-        | get -o $server_key
+        | get -i $server_key
         | default {}
-        | get -o token
+        | get -i token
         | default ""
     } else {
         ""
