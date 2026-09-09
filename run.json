@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T15:01:25.176756657Z",
-  "last_event_at": "2026-09-09T15:17:54.438972931Z",
+  "last_event_at": "2026-09-09T15:17:59.991974118Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1075,9 +1075,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 475,
       "checkpoint": {
-        "timestamp": "2026-09-09T15:17:54.673903740Z",
+        "timestamp": "2026-09-09T15:17:59.609126231Z",
         "current_node": "tester",
         "completed_nodes": [
           "start",
@@ -1087,10 +1087,232 @@
         ],
         "node_retries": {},
         "context_values": {
+          "current_seed_brief": "Purge the retired two-worlds (product/platform world) framing from the develop workflow's stage assets and make them project-agnostic, per ADR-0013 (world merger) and user directive 2026-09-06. Scope: the three prompt files `/.fabro/workflows/develop/prompts/{planner,implementer,reviewer}.md`, plus any world/product/platform language in `/.fabro/workflows/develop/workflow.fabro` / `workflow.toml` node attributes and `scripts/*.nu`. Acceptance criteria: - implementer.md: '## Platform scope is off-limits' section (around line 41) and 'You build the PRODUCT — on this world that is the Rust workspace under lib/' (line ~43) replaced with a single capability-based scope description driven by the per-node fs/tool envelope (ADR-0009 family), not product/platform prose - planner.md and reviewer.md: platform/product carve-out language, fs_hide world bindings, and repo-specific path lists (.fabro/, .seeds/, .mulch/, .agents/, scripts/, justfile) rewritten generically - repo-specific facts (path lists, tracker commands, gate commands, pinned toolchains) externalized into workflow settings/context values or one PROJECT_FACTS block so prompts stay generic - stage contract unchanged: journal keys, PASS/FAIL reporting, seed workflow, routing outputs, tool-call JSON examples all behave identically (framing rework, not behavior change) - sweep: grep -iE 'world|platform scope|product scope|denkhaus|lab' over the develop workflow dir returns zero two-worlds phrasing (only innocuous hits like the word 'world' in unrelated context, if any, documented) - verification cheapest-first: (1) python3 TOML parse of workflow.toml after edits; (2) grep sweep zero hits; (3) any workflow validation the repo provides (e.g. fabro validate if available); behavior must be provably unchanged (no gate-required code changes — this is prompt/config-only). Contradiction resolution: seed names 'ADR-0013 (repo docs/lab/adr/0013*)' — locate the ADR under `docs/lab/adr/` and confirm its world-merger content before rewriting; if the path differs, use the actual location. Do not rename context keys or change prompt file names — downstream preamble_allow_keys reference them.",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "thread.planner.current_node": "implementer",
+          "current_seed_title": "Develop prompts: purge retired two-worlds framing, make project-agnostic for cross-project reuse",
+          "internal.retry_count.implementer": 0,
+          "graph.preamble_budget_kb": "24",
+          "implementation_summary": "Purged the retired two-worlds framing from the develop workflow assets and made the prompts project-agnostic: created `.fabro/workflows/develop/prompts/project-facts.md` (one PROJECT_FACTS block holding every repo-specific fact — code areas, fs_hide path list, repo wiring, sd tracker table, gate command, pinned toolchain commands, journal path, ADR-0019 engine credential surfaces) and spliced it into planner/implementer/reviewer via `{% include \"project-facts.md\" %}` (engine-supported: bundler discovers the static include closure, no Rust change); rewrote implementer.md's product/platform scope section into a single capability-based per-node envelope description (ADR-0009 family); genericized planner/reviewer carve-out language and repo-path lists; purged world/platform/product/lab comments from `workflow.fabro`, `workflow.toml`, `scripts/closeout.nu`, `scripts/evidence.nu`. Prompt file names, context keys, routing JSON, journal keys, and sd command forms unchanged. Lesson captured as mx-bf9c40. Per-criterion verification: - PASS implementer.md scope section replaced with single capability-based envelope description driven by per-node fs/tool envelope (ADR-0009 family), no product/platform prose: `prompts/implementer.md` '## Scope: your per-node capability envelope' — PASS planner.md and reviewer.md platform/product carve-outs, fs_hide world bindings, and repo-specific path lists rewritten generically (PROJECT_FACTS references): `prompts/planner.md` (stale-basis note, painpoints line, journal fallback, seed-id prefix), `prompts/reviewer.md` (gate command refs, engine credential surfaces) — PASS repo-specific facts externalized into one PROJECT_FACTS block (`prompts/project-facts.md`, included by all three prompts; sd command table, gate command, toolchain pins, path lists all live there) — PASS stage contract unchanged: routing JSON keys and prompt file names verified byte-identical via python contract check; journal/PASS-FAIL/seed-workflow text untouched; diff is prompt/config-only, no Rust changed — PASS sweep: `grep -rniE 'world|platform|product|denkhaus'` over the develop workflow dir returns zero hits; the brief's `lab` pattern matches only 'label'/'labelled' in graph attributes and routing JSON keys (innocuous, documented) — PASS verification cheapest-first: (1) python3 tomllib parse of `workflow.toml` OK, touched nu scripts source-parse OK; (2) grep sweep zero two-worlds hits; (3) `fabro validate` not available (no binary in sandbox; config-only cost tier forbids building one) — include mechanism covered by existing engine tests `workflow_bundler.rs` / `file_inlining.rs`; no gate-required code changes (prompt/config-only diff).",
+          "failure_signature": "",
+          "internal.work_dir": "/workspace/fabro",
+          "last_stage": "implementer",
+          "graph.rankdir": "LR",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
             "tester": 1
+          },
+          "graph.max_node_visits": "40",
+          "internal.node_visit_count": 1,
+          "journal": {
+            "painpoints": [
+              {
+                "text": "Seed fabro-4814 targets `.fabro/**` prompts, but fs_hide makes read_file/edit_file fail there, forcing every read/edit through shell heredocs (python3 replace scripts with exact-match asserts) — workable but slower and easier to mis-edit. Suggestion: give the implementer stage a documented shell-edit recipe in the prompt, or have the engine allow file tools for seeds whose brief explicitly targets the hidden paths (run 01M23B02H3ZNND8AT2D3Y2S4SG)."
+              }
+            ],
+            "observations": [
+              "The MiniJinja `{% include %}` mechanism inside @-inlined prompts is fully supported end to end (TemplateIncludeResolver resolves relative to the including prompt; workflow_bundler's collect_bundled_template_includes discovers the static include closure, so server-side run bundles carry the included file automatically) — recorded as mx-bf9c40; dynamic (non-literal) includes would NOT be bundled, so the PROJECT_FACTS include must stay a static string literal.",
+              "The reviewer prompt's ADR-0019 axis previously hardcoded engine source paths; they now live in PROJECT_FACTS 'engine credential surfaces' — a port to another project only needs that block edited, but reviewers should still verify the axis against the host project's actual engine."
+            ]
+          },
+          "internal.retry_count.start": 0,
+          "internal.fidelity": "compact",
+          "current_node": "tester",
+          "outcome": "succeeded",
+          "thread.start.current_node": "planner",
+          "failure_class": "",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3137,
+            "preview": "Basis resolved (implementer.md lines 41–43 still carry \"Platform scope\" / \"on this world\" framing), no in-flight conflicts, claimed.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed clai"
+          },
+          "internal.retry_count.planner": 0,
+          "graph.inspects": "develop",
+          "internal.run_id": "01M23B02H3ZNND8AT2D3Y2S4SG",
+          "current_seed_id": "fabro-4814",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 6454,
+            "preview": "Implementation complete. All verification checks pass:\n\n**Summary of changes** (all under `/workspace/fabro/.fabro/workflows/develop/`):\n- **New `prompts/project-facts.md`** — the single PROJECT_FAC"
+          },
+          "internal.seed_cycle_anchor": "fabro-4814",
+          "last_response": "Implementation complete. All verification checks pass:\n\n**Summary of changes** (all under `/workspace/fabro/.fabro/workflows/develop/`):\n- **New `prompts/project-facts.md`** — the single PROJECT_FAC",
+          "preferred_label": "Implemented",
+          "lesson_capture": "mx-bf9c40",
+          "thread.implementer.current_node": "tester",
+          "internal.thread_id": "implementer",
+          "internal.retry_count.tester": 0
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 6454,
+                "preview": "Implementation complete. All verification checks pass:\n\n**Summary of changes** (all under `/workspace/fabro/.fabro/workflows/develop/`):\n- **New `prompts/project-facts.md`** — the single PROJECT_FAC"
+              },
+              "last_response": "Implementation complete. All verification checks pass:\n\n**Summary of changes** (all under `/workspace/fabro/.fabro/workflows/develop/`):\n- **New `prompts/project-facts.md`** — the single PROJECT_FAC",
+              "lesson_capture": "mx-bf9c40",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Seed fabro-4814 targets `.fabro/**` prompts, but fs_hide makes read_file/edit_file fail there, forcing every read/edit through shell heredocs (python3 replace scripts with exact-match asserts) — workable but slower and easier to mis-edit. Suggestion: give the implementer stage a documented shell-edit recipe in the prompt, or have the engine allow file tools for seeds whose brief explicitly targets the hidden paths (run 01M23B02H3ZNND8AT2D3Y2S4SG)."
+                  }
+                ],
+                "observations": [
+                  "The MiniJinja `{% include %}` mechanism inside @-inlined prompts is fully supported end to end (TemplateIncludeResolver resolves relative to the including prompt; workflow_bundler's collect_bundled_template_includes discovers the static include closure, so server-side run bundles carry the included file automatically) — recorded as mx-bf9c40; dynamic (non-literal) includes would NOT be bundled, so the PROJECT_FACTS include must stay a static string literal.",
+                  "The reviewer prompt's ADR-0019 axis previously hardcoded engine source paths; they now live in PROJECT_FACTS 'engine credential surfaces' — a port to another project only needs that block edited, but reviewers should still verify the axis against the host project's actual engine."
+                ]
+              },
+              "implementation_summary": "Purged the retired two-worlds framing from the develop workflow assets and made the prompts project-agnostic: created `.fabro/workflows/develop/prompts/project-facts.md` (one PROJECT_FACTS block holding every repo-specific fact — code areas, fs_hide path list, repo wiring, sd tracker table, gate command, pinned toolchain commands, journal path, ADR-0019 engine credential surfaces) and spliced it into planner/implementer/reviewer via `{% include \"project-facts.md\" %}` (engine-supported: bundler discovers the static include closure, no Rust change); rewrote implementer.md's product/platform scope section into a single capability-based per-node envelope description (ADR-0009 family); genericized planner/reviewer carve-out language and repo-path lists; purged world/platform/product/lab comments from `workflow.fabro`, `workflow.toml`, `scripts/closeout.nu`, `scripts/evidence.nu`. Prompt file names, context keys, routing JSON, journal keys, and sd command forms unchanged. Lesson captured as mx-bf9c40. Per-criterion verification: - PASS implementer.md scope section replaced with single capability-based envelope description driven by per-node fs/tool envelope (ADR-0009 family), no product/platform prose: `prompts/implementer.md` '## Scope: your per-node capability envelope' — PASS planner.md and reviewer.md platform/product carve-outs, fs_hide world bindings, and repo-specific path lists rewritten generically (PROJECT_FACTS references): `prompts/planner.md` (stale-basis note, painpoints line, journal fallback, seed-id prefix), `prompts/reviewer.md` (gate command refs, engine credential surfaces) — PASS repo-specific facts externalized into one PROJECT_FACTS block (`prompts/project-facts.md`, included by all three prompts; sd command table, gate command, toolchain pins, path lists all live there) — PASS stage contract unchanged: routing JSON keys and prompt file names verified byte-identical via python contract check; journal/PASS-FAIL/seed-workflow text untouched; diff is prompt/config-only, no Rust changed — PASS sweep: `grep -rniE 'world|platform|product|denkhaus'` over the develop workflow dir returns zero hits; the brief's `lab` pattern matches only 'label'/'labelled' in graph attributes and routing JSON keys (innocuous, documented) — PASS verification cheapest-first: (1) python3 tomllib parse of `workflow.toml` OK, touched nu scripts source-parse OK; (2) grep sweep zero two-worlds hits; (3) `fabro validate` not available (no binary in sandbox; config-only cost tier forbids building one) — include mechanism covered by existing engine tests `workflow_bundler.rs` / `file_inlining.rs`; no gate-required code changes (prompt/config-only diff)."
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 78428,
+                    "output_tokens": 12312,
+                    "reasoning_tokens": 13895,
+                    "cache_read_tokens": 3113920,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 1034648
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 902733,
+              "tool_time_ms": 13190,
+              "active_time_ms": 915923
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 4765,
+              "active_time_ms": 4765
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_id": "fabro-4814",
+              "current_seed_brief": "Purge the retired two-worlds (product/platform world) framing from the develop workflow's stage assets and make them project-agnostic, per ADR-0013 (world merger) and user directive 2026-09-06. Scope: the three prompt files `/.fabro/workflows/develop/prompts/{planner,implementer,reviewer}.md`, plus any world/product/platform language in `/.fabro/workflows/develop/workflow.fabro` / `workflow.toml` node attributes and `scripts/*.nu`. Acceptance criteria: - implementer.md: '## Platform scope is off-limits' section (around line 41) and 'You build the PRODUCT — on this world that is the Rust workspace under lib/' (line ~43) replaced with a single capability-based scope description driven by the per-node fs/tool envelope (ADR-0009 family), not product/platform prose - planner.md and reviewer.md: platform/product carve-out language, fs_hide world bindings, and repo-specific path lists (.fabro/, .seeds/, .mulch/, .agents/, scripts/, justfile) rewritten generically - repo-specific facts (path lists, tracker commands, gate commands, pinned toolchains) externalized into workflow settings/context values or one PROJECT_FACTS block so prompts stay generic - stage contract unchanged: journal keys, PASS/FAIL reporting, seed workflow, routing outputs, tool-call JSON examples all behave identically (framing rework, not behavior change) - sweep: grep -iE 'world|platform scope|product scope|denkhaus|lab' over the develop workflow dir returns zero two-worlds phrasing (only innocuous hits like the word 'world' in unrelated context, if any, documented) - verification cheapest-first: (1) python3 TOML parse of workflow.toml after edits; (2) grep sweep zero hits; (3) any workflow validation the repo provides (e.g. fabro validate if available); behavior must be provably unchanged (no gate-required code changes — this is prompt/config-only). Contradiction resolution: seed names 'ADR-0013 (repo docs/lab/adr/0013*)' — locate the ADR under `docs/lab/adr/` and confirm its world-merger content before rewriting; if the path differs, use the actual location. Do not rename context keys or change prompt file names — downstream preamble_allow_keys reference them.",
+              "current_seed_title": "Develop prompts: purge retired two-worlds framing, make project-agnostic for cross-project reuse",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3137,
+                "preview": "Basis resolved (implementer.md lines 41–43 still carry \"Platform scope\" / \"on this world\" framing), no in-flight conflicts, claimed.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed clai"
+              },
+              "last_response": "Basis resolved (implementer.md lines 41–43 still carry \"Platform scope\" / \"on this world\" framing), no in-flight conflicts, claimed.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed clai",
+              "last_stage": "planner",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "In-flight check: only non-terminal develop run is this run itself (01M23B02H3...); all other runs have merged/closed PRs — no exclusions needed, journal fallback not required.",
+                  "Stale-basis check passed: two-worlds language still present at .fabro/workflows/develop/prompts/implementer.md lines 41-43; seed fabro-4814 basis resolves against current tree.",
+                  "Seed body cites ADR-0013 at docs/lab/adr/0013* — implementer must locate the actual ADR file; brief annotates this."
+                ]
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 25524,
+                    "output_tokens": 967,
+                    "reasoning_tokens": 200,
+                    "cache_read_tokens": 82688,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 62361
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 51143,
+              "tool_time_ms": 3030,
+              "active_time_ms": 54173
+            }
+          }
+        },
+        "next_node_id": "evidence",
+        "git_commit_sha": "0465be7521869470ea2d9ca0e1c8ec9622892bf6",
+        "node_visits": {
+          "implementer": 1,
+          "start": 1,
+          "tester": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M23B02H3ZNND8AT2D3Y2S4SG.jsonl b/.fabro/journal/01M23B02H3ZNND8AT2D3Y2S4SG.jsonl\nindex 6303fa7..8277246 100644\n--- a/.fabro/journal/01M23B02H3ZNND8AT2D3Y2S4SG.jsonl\n+++ b/.fabro/journal/01M23B02H3ZNND8AT2D3Y2S4SG.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23B02H3ZNND8AT2D3Y2S4SG\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T15:01:28Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23B02H3ZNND8AT2D3Y2S4SG\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T15:02:23Z\",\"data\":{\"painpoints\":[],\"observations\":[\"In-flight check: only non-terminal develop run is this run itself (01M23B02H3...); all other runs have merged/closed PRs — no exclusions needed, journal fallback not required.\",\"Stale-basis check passed: two-worlds language still present at .fabro/workflows/develop/prompts/implementer.md lines 41-43; seed fabro-4814 basis resolves against current tree.\",\"Seed body cites ADR-0013 at docs/lab/adr/0013* — implementer must locate the actual ADR file; brief annotates this.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23B02H3ZNND8AT2D3Y2S4SG\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T15:17:44Z\",\"data\":{\"painpoints\":[{\"text\":\"Seed fabro-4814 targets `.fabro/**` prompts, but fs_hide makes read_file/edit_file fail there, forcing every read/edit through shell heredocs (python3 replace scripts with exact-match asserts) — workable but slower and easier to mis-edit. Suggestion: give the implementer stage a documented shell-edit recipe in the prompt, or have the engine allow file tools for seeds whose brief explicitly targets the hidden paths (run 01M23B02H3ZNND8AT2D3Y2S4SG).\"}],\"observations\":[\"The MiniJinja `{% include %}` mechanism inside @-inlined prompts is fully supported end to end (TemplateIncludeResolver resolves relative to the including prompt; workflow_bundler's collect_bundled_template_includes discovers the static include closure, so server-side run bundles carry the included file automatically) — recorded as mx-bf9c40; dynamic (non-literal) includes would NOT be bundled, so the PROJECT_FACTS include must stay a static string literal.\",\"The reviewer prompt's ADR-0019 axis previously hardcoded engine source paths; they now live in PROJECT_FACTS 'engine credential surfaces' — a port to another project only needs that block edited, but reviewers should still verify the axis against the host project's actual engine.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23B02H3ZNND8AT2D3Y2S4SG\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T15:17:54Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 11,
+          "additions": 114,
+          "deletions": 53
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T15:18:00.246088598Z",
+        "current_node": "evidence",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1
           },
           "journal": {
             "painpoints": [
@@ -1106,10 +1328,10 @@
           "internal.retry_count.implementer": 0,
           "internal.run_id": "01M23B02H3ZNND8AT2D3Y2S4SG",
           "internal.retry_count.planner": 0,
-          "current_node": "tester",
+          "current_node": "evidence",
           "thread.implementer.current_node": "tester",
           "internal.retry_count.tester": 0,
-          "internal.thread_id": "implementer",
+          "internal.thread_id": "tester",
           "last_stage": "implementer",
           "graph.rankdir": "LR",
           "internal.retry_count.start": 0,
@@ -1130,10 +1352,12 @@
           "thread.planner.current_node": "implementer",
           "lesson_capture": "mx-bf9c40",
           "implementation_summary": "Purged the retired two-worlds framing from the develop workflow assets and made the prompts project-agnostic: created `.fabro/workflows/develop/prompts/project-facts.md` (one PROJECT_FACTS block holding every repo-specific fact — code areas, fs_hide path list, repo wiring, sd tracker table, gate command, pinned toolchain commands, journal path, ADR-0019 engine credential surfaces) and spliced it into planner/implementer/reviewer via `{% include \"project-facts.md\" %}` (engine-supported: bundler discovers the static include closure, no Rust change); rewrote implementer.md's product/platform scope section into a single capability-based per-node envelope description (ADR-0009 family); genericized planner/reviewer carve-out language and repo-path lists; purged world/platform/product/lab comments from `workflow.fabro`, `workflow.toml`, `scripts/closeout.nu`, `scripts/evidence.nu`. Prompt file names, context keys, routing JSON, journal keys, and sd command forms unchanged. Lesson captured as mx-bf9c40. Per-criterion verification: - PASS implementer.md scope section replaced with single capability-based envelope description driven by per-node fs/tool envelope (ADR-0009 family), no product/platform prose: `prompts/implementer.md` '## Scope: your per-node capability envelope' — PASS planner.md and reviewer.md platform/product carve-outs, fs_hide world bindings, and repo-specific path lists rewritten generically (PROJECT_FACTS references): `prompts/planner.md` (stale-basis note, painpoints line, journal fallback, seed-id prefix), `prompts/reviewer.md` (gate command refs, engine credential surfaces) — PASS repo-specific facts externalized into one PROJECT_FACTS block (`prompts/project-facts.md`, included by all three prompts; sd command table, gate command, toolchain pins, path lists all live there) — PASS stage contract unchanged: routing JSON keys and prompt file names verified byte-identical via python contract check; journal/PASS-FAIL/seed-workflow text untouched; diff is prompt/config-only, no Rust changed — PASS sweep: `grep -rniE 'world|platform|product|denkhaus'` over the develop workflow dir returns zero hits; the brief's `lab` pattern matches only 'label'/'labelled' in graph attributes and routing JSON keys (innocuous, documented) — PASS verification cheapest-first: (1) python3 tomllib parse of `workflow.toml` OK, touched nu scripts source-parse OK; (2) grep sweep zero two-worlds hits; (3) `fabro validate` not available (no binary in sandbox; config-only cost tier forbids building one) — include mechanism covered by existing engine tests `workflow_bundler.rs` / `file_inlining.rs`; no gate-required code changes (prompt/config-only diff).",
+          "thread.tester.current_node": "evidence",
           "internal.seed_cycle_anchor": "fabro-4814",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+          "command.output": "blob://sha256/cfe1169bf4e1a080d4a07b1bc500442df6212f32930b095f42e8f136b743237b",
           "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.evidence": 0,
           "graph.cycle_counter_reset_key": "current_seed_id",
           "internal.node_visit_count": 1,
           "thread.start.current_node": "planner",
@@ -1274,13 +1498,28 @@
               "tool_time_ms": 4765,
               "active_time_ms": 4765
             }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/cfe1169bf4e1a080d4a07b1bc500442df6212f32930b095f42e8f136b743237b"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 357,
+              "active_time_ms": 357
+            }
           }
         },
-        "next_node_id": "evidence",
+        "next_node_id": "reviewer",
         "node_visits": {
           "planner": 1,
           "tester": 1,
           "implementer": 1,
+          "evidence": 1,
           "start": 1
         }
       },
@@ -1746,6 +1985,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "evidence@1": {
+      "first_event_seq": 478,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T15:17:59.991974118Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/cfe1169bf4e1a080d4a07b1bc500442df6212f32930b095f42e8f136b743237b",
+        "exit_code": 0,
+        "duration_ms": 357,
+        "termination": "exited",
+        "output_bytes": 55353,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 55353,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T15:17:59.620945364Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 362,
+        "inference_time_ms": 0,
+        "tool_time_ms": 357,
+        "active_time_ms": 357
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
