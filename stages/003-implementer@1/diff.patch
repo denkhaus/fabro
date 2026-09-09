@@ -1,0 +1,201 @@
+diff --git a/.fabro/journal/01M23W4S7Q2GNEVPY779M4GMN6.jsonl b/.fabro/journal/01M23W4S7Q2GNEVPY779M4GMN6.jsonl
+index 271ebd3..7bcc331 100644
+--- a/.fabro/journal/01M23W4S7Q2GNEVPY779M4GMN6.jsonl
++++ b/.fabro/journal/01M23W4S7Q2GNEVPY779M4GMN6.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M23W4S7Q2GNEVPY779M4GMN6","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T20:01:07Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M23W4S7Q2GNEVPY779M4GMN6","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-09T20:02:12Z","data":{"painpoints":[],"observations":["fabro-bfe1 basis verified fresh: filed in PR #112 (commit 4c5822a) minutes before this run but not implemented — no in-flight conflict; `scripts/qualitygate.nu` main() 'no crates touched' path is still fmt-only (the exact no-op this seed fixes).","In-flight check clean: 22 develop runs listed, zero open PRs, one non-terminal run (this one, 01M23W4S7Q2GNEVPY779M4GMN6) — journal fallback for goal-less seed ids not needed this pass.","nu `source` auto-invokes `def main` after the top level (documented in closeout-smoke.nu header) — the brief pins a parse-only check (`nu --ide-check`) so the new tier has no side effects."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M23W4S7Q2GNEVPY779M4GMN6","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-09T20:06:05Z","data":{"painpoints":[],"observations":["`nu --ide-check` always exits 0 even on parse errors — failure only shows as JSON diagnostic lines with \"severity\":\"Error\" on stdout, so exit-code-based checks silently pass broken scripts; recorded as mx-f2ddfa and handled by grep in `scripts/qualitygate.nu` check-loop-assets."]}}
+diff --git a/.fabro/workflows/develop/scripts/evidence-smoke.nu b/.fabro/workflows/develop/scripts/evidence-smoke.nu
+new file mode 100644
+index 0000000..4001caf
+--- /dev/null
++++ b/.fabro/workflows/develop/scripts/evidence-smoke.nu
+@@ -0,0 +1,98 @@
++#!/usr/bin/env nu
++# Smoke test for evidence.nu's PURE helpers (fabro-bfe1): sanitize,
++# resolve-blobrefs, diff-sort-key, is-loop-path, total — exercised over
++# canned fixtures without git (helpers that shell out — numstat-rows,
++# run-base, worktree-state, in-progress-seed — are out of scope here;
++# their logic is covered by the parse check in scripts/qualitygate.nu
++# and manual invocation). The `source` const resolves against THIS
++# file's directory, so the script runs from any cwd (closeout-smoke
++# pattern):
++#   nu .fabro/workflows/develop/scripts/evidence-smoke.nu
++
++const EVIDENCE = "evidence.nu"
++source $EVIDENCE
++
++def fail [what: string]: nothing -> nothing {
++    print -e $"evidence-smoke: FAIL — ($what)"
++    exit 1
++}
++
++# sanitize: bare "/word" tokens get backticked (agent skill-reference
++# crash guard); uppercase-led tokens and token-free text pass through.
++if (sanitize "run in /tmp dir") != "run in `/tmp` dir" {
++    fail $"sanitize single token: (sanitize 'run in /tmp dir')"
++}
++# Two passes catch consecutive tokens — the trailing space of match one
++# is the leading space of match two.
++if (sanitize "a /b /c d") != "a `/b` `/c` d" {
++    fail $"sanitize consecutive tokens: (sanitize 'a /b /c d')"
++}
++if (sanitize "path /Workspace stays") != "path /Workspace stays" {
++    fail $"sanitize uppercase token must pass: (sanitize 'path /Workspace stays')"
++}
++if (sanitize "no tokens here") != "no tokens here" {
++    fail "sanitize token-free text must be unchanged"
++}
++
++# resolve-blobrefs: no refs -> unchanged; resolvable ref (blob file
++# materialized in cwd's .fabro/blobs/) -> inlined verbatim; unresolvable
++# ref -> passes through as the link, never dropped.
++if (resolve-blobrefs "plain text no refs") != "plain text no refs" {
++    fail "resolve-blobrefs no-refs text must be unchanged"
++}
++let tmp = (mktemp -d)
++let sha = "1111111111111111111111111111111111111111111111111111111111111111"
++mkdir $"($tmp)/.fabro/blobs"
++"BLOB-CONTENT-HERE" | save --force $"($tmp)/.fabro/blobs/($sha).json"
++cd $tmp
++let inlined = (resolve-blobrefs $"pre blob://sha256/($sha) post")
++cd /workspace/fabro
++rm -rf $tmp
++if $inlined != "pre BLOB-CONTENT-HERE post" {
++    fail $"resolve-blobrefs resolvable ref must inline: ($inlined)"
++}
++let missing = "2222222222222222222222222222222222222222222222222222222222222222"
++let passthrough = (resolve-blobrefs $"see blob://sha256/($missing) end")
++if $passthrough != $"see blob://sha256/($missing) end" {
++    fail $"resolve-blobrefs unresolvable ref must pass through: ($passthrough)"
++}
++
++# diff-sort-key: source files sort before docs (a:/z: prefixes) — the
++# reviewer sees the complete source diff first.
++if (diff-sort-key "lib/main.rs") != "a:lib/main.rs" {
++    fail $"diff-sort-key source prefix: (diff-sort-key 'lib/main.rs')"
++}
++if (diff-sort-key "docs/x.md") != "z:docs/x.md" {
++    fail $"diff-sort-key doc prefix: (diff-sort-key 'docs/x.md')"
++}
++if ((diff-sort-key "lib/main.rs") > (diff-sort-key "docs/x.md")) {
++    fail "diff-sort-key must order source before docs"
++}
++
++# is-loop-path: dev-loop machinery paths are loop paths; product code
++# and untracked roots are not.
++let loop_pos = [".fabro/x" ".seeds/issues.jsonl" "scripts/q.nu" ".mulch/y" "justfile" "AGENTS.md" "CLAUDE.md" ".gitignore"]
++for p in $loop_pos {
++    if not (is-loop-path $p) { fail $"is-loop-path positive: ($p)" }
++}
++let loop_neg = ["lib/main.rs" "apps/fabro-web/src/x.ts" "README.md" "justfile.md"]
++for p in $loop_neg {
++    if (is-loop-path $p) { fail $"is-loop-path negative: ($p)" }
++}
++
++# total over a canned numstat fixture (the shape numstat-rows returns):
++# binary "-" counts as 0, empty input degrades to 0.
++let fixture = [
++    {add: "10" del: "2" path: "lib/a.rs"}
++    {add: "-"  del: "5" path: "logo.png"}
++    {add: "3"  del: "1" path: "docs/b.md"}
++]
++if (total $fixture "add") != 13 { fail $"total add (binary as 0): (total $fixture 'add')" }
++if (total $fixture "del") != 8  { fail $"total del: (total $fixture 'del')" }
++if (total [] "add") != 0 { fail "total empty must be 0" }
++
++print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/total verified"
++
++# Sourcing evidence.nu imports its `def main`; nu auto-invokes it after
++# the top level runs — exit explicitly so the smoke never reaches it.
++exit 0
+diff --git a/.mulch/expertise/dev-loop.jsonl b/.mulch/expertise/dev-loop.jsonl
+new file mode 100644
+index 0000000..0c4c763
+--- /dev/null
++++ b/.mulch/expertise/dev-loop.jsonl
+@@ -0,0 +1 @@
++{"type":"pattern","classification":"tactical","recorded_at":"2026-09-09T20:05:33.382Z","evidence":{"commit":"47631073342615b50db487b11eb696a93df444ae"},"name":"nu-ide-check-parse-gate","description":"nu --ide-check always exits 0 — parse failures surface as JSON diagnostic lines with \"severity\":\"Error\" on stdout, so a parse-check tier must grep output, not exit code (fabro-bfe1, scripts/qualitygate.nu check-loop-assets). Bare 'source <file>' auto-invokes the script's def main; --ide-check is the side-effect-free alternative. Checked-in smoke pattern: const-relative source + fail helper + trailing exit 0 to dodge auto-invoked main (evidence-smoke.nu).","files":[".mulch/mulch.config.yaml","scripts/qualitygate.nu"],"id":"mx-f2ddfa"}
+diff --git a/.mulch/mulch.config.yaml b/.mulch/mulch.config.yaml
+index df7ebdc..8e4e7a5 100644
+--- a/.mulch/mulch.config.yaml
++++ b/.mulch/mulch.config.yaml
+@@ -17,6 +17,7 @@ domains:
+   lab: {}
+   workflow: {}
+   tooling: {}
++  dev-loop: {}
+ governance:
+   max_entries: 100
+   warn_entries: 150
+diff --git a/scripts/qualitygate.nu b/scripts/qualitygate.nu
+index 6d16114..1d91c80 100644
+--- a/scripts/qualitygate.nu
++++ b/scripts/qualitygate.nu
+@@ -90,6 +90,42 @@ def check-fmt [] {
+     true
+ }
+ 
++# Loop-asset tier (fabro-bfe1): deterministic machine verification of the
++# dev loop's own .nu scripts. Two parts: a side-effect-free parse check of
++# every develop-workflow script (`nu --ide-check` parses only — a bare
++# `source <file>` would auto-invoke the script's `def main` after import;
++# see the closeout-smoke.nu header), then the checked-in evidence-smoke
++# regression over evidence.nu's pure helpers. Runs in BOTH main paths —
++# crates touched or not — so a loop-asset-only diff is no longer a 4s
++# no-op gate (run 01M23TE61D4Y).
++def check-loop-assets [] {
++    print '== checking loop-asset scripts =='
++    let scripts = (ls .fabro/workflows/develop/scripts/*.nu | get name | sort)
++    mut green = true
++    for s in $scripts {
++        # --ide-check exits 0 even on parse errors: diagnostics are JSON
++        # lines on stdout; an Error-severity line is the failure signal.
++        let res = (do { ^nu --ide-check 10 $s } | complete)
++        let errors = ($res.stdout | lines | where {|l| $l | str contains '"severity":"Error"' })
++        if ($errors | is-not-empty) {
++            print $"loop-asset parse check FAILED: ($s)"
++            print ($errors | last 5)
++            $green = false
++        }
++    }
++    if not $green { return false }
++    let smoke = '.fabro/workflows/develop/scripts/evidence-smoke.nu'
++    let res = (do { ^nu $smoke } | complete)
++    if $res.exit_code != 0 {
++        print $"loop-asset smoke FAILED: ($smoke)"
++        print ($res.stdout | str trim -r -c "\n" | lines | last 20)
++        print ($res.stderr | str trim -r -c "\n")
++        return false
++    }
++    print "loop-asset scripts green"
++    true
++}
++
+ def check-clippy [crates: list<string>] {
+     if ($crates | is-empty) { return true }
+     # '-p' and the crate name MUST be separate argv elements: a single
+@@ -160,16 +196,19 @@ def main [] {
+     }
+     if ($crates | is-empty) {
+         print "no crates touched"
+-        if (check-fmt) { exit 0 } else { exit 1 }
++        let green = ((check-loop-assets) and (check-fmt))
++        if $green { print "GATE GREEN"; exit 0 }
++        print "GATE RED"
++        exit 1
+     }
+     if ($crates | any {|c| $c == '__workspace__' }) {
+-        let green = ((check-fmt) and (check-workspace-compiles))
++        let green = ((check-loop-assets) and (check-fmt) and (check-workspace-compiles))
+         if $green { print "GATE GREEN"; exit 0 }
+         print "GATE RED"
+         exit 1
+     }
+     print $"touched crates: ($crates | str join ', ')"
+-    let green = ((check-fmt) and (check-clippy $crates) and (build-renderer-if-needed $crates) and (check-tests $crates))
++    let green = ((check-loop-assets) and (check-fmt) and (check-clippy $crates) and (build-renderer-if-needed $crates) and (check-tests $crates))
+     if $green {
+         print "GATE GREEN"
+         exit 0

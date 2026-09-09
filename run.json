@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T20:01:05.609844651Z",
-  "last_event_at": "2026-09-09T20:06:05.423224184Z",
+  "last_event_at": "2026-09-09T20:06:14.582487909Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -875,14 +875,205 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 232,
       "checkpoint": {
-        "timestamp": "2026-09-09T20:06:05.631202195Z",
+        "timestamp": "2026-09-09T20:06:10.239182348Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
           "planner",
           "implementer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "`nu --ide-check` always exits 0 even on parse errors — failure only shows as JSON diagnostic lines with \"severity\":\"Error\" on stdout, so exit-code-based checks silently pass broken scripts; recorded as mx-f2ddfa and handled by grep in `scripts/qualitygate.nu` check-loop-assets."
+            ]
+          },
+          "graph.inspects": "develop",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 4416,
+            "preview": "Claimed fabro-bfe1. Brief drafted with bulleted acceptance criteria, verification cheapest-first.\n\nSeed fabro-bfe1 — \"Qualitygate: add a loop-asset tier with a checked-in evidence-smoke.nu regressio"
+          },
+          "current_seed_brief": "Add deterministic machine verification of loop-asset (.nu) changes to the quality gate, so LLM stages stop hand-building throwaway scratch exercises. Edit `scripts/qualitygate.nu` (invoked by the `justfile` qualitygate recipe at lines 126-128); the loop-asset scripts themselves live under `.fabro/workflows/develop/scripts/` (fs_hide: edit via shell, e.g. python3 heredoc or sed — file tools fail there). Acceptance criteria: (1) loop-asset tier: a new check in `scripts/qualitygate.nu` that parse-checks every `.fabro/workflows/develop/scripts/*.nu` file — but plain `source <file>` auto-invokes a script's `def main` (see the closeout-smoke.nu header comment), so the check must be side-effect-free: use `nu --ide-check` (or equivalent parse-only invocation) per file, not a bare `source`; (2) the tier MUST run in the 'no crates touched' path of `main` (currently lines ~165-170: fmt-only then exit 0 — that 4.15s no-op gate is exactly what this seed fixes) and also when crates are touched (a mixed Rust+loop-asset diff gates both); (3) checked-in regression: new file `.fabro/workflows/develop/scripts/evidence-smoke.nu` following the closeout-smoke.nu pattern exactly (const-relative `source`, `fail` helper, exit 0 at end to dodge auto-invoked main) — exercising evidence.nu's PURE helpers over a mixed-capture fixture: `sanitize` (redaction cases), `resolve-blobrefs` (text with and without blob refs), `diff-sort-key` (loop-path vs source-path ordering), `is-loop-path` (positives like `.fabro/x`, negatives like `lib/main.rs`), `numstat-rows`/`total` over a canned numstat fixture if reachable without git (skip helpers that shell out); (4) the loop-asset tier invokes the checked-in smoke (`nu .fabro/workflows/develop/scripts/evidence-smoke.nu`) so the regression runs deterministically in the gate, plus the parse check for the sibling scripts; (5) gate messages follow the existing tier style ('== checking loop-asset scripts ==' and a clear per-file failure line with the script name); (6) verification cheapest-first: `python3 -c 'import tomllib...'`-level parse where applicable, then `nu -c 'nu --ide-check ...'` per script, then `nu .fabro/workflows/develop/scripts/evidence-smoke.nu` exits 0, then a direct `nu scripts/qualitygate.nu` run reaching the new tier (expect GATE GREEN on a tree with no Rust changes after editing only loop assets); the implementer must NOT run `just qualitygate` itself — gate green comes via the deterministic tester step. Distinctness: do not implement fabro-50f8 (ad-hoc prompt exercises) or fabro-574d (crate derivation) here. Basis: run 01M23TE61D4Y33415BK5M7C70X, commit 592f64bd.",
+          "failure_signature": "",
+          "lesson_capture": "mx-f2ddfa",
+          "current_node": "implementer",
+          "failure_class": "",
+          "graph.preamble_budget_kb": "24",
+          "last_response": "All verification complete. Summary of the pass:\n\n**Files touched**\n- `scripts/qualitygate.nu` — new `check-loop-assets` tier: side-effect-free parse check (`nu --ide-check 10` per `.fabro/workflows/",
+          "current_seed_id": "fabro-bfe1",
+          "graph.rankdir": "LR",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "thread.planner.current_node": "implementer",
+          "thread.start.current_node": "planner",
+          "preferred_label": "Implemented",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.run_id": "01M23W4S7Q2GNEVPY779M4GMN6",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.implementer": 0,
+          "internal.retry_count.planner": 0,
+          "internal.node_visit_count": 1,
+          "internal.thread_id": "planner",
+          "graph.max_node_visits": "40",
+          "last_stage": "implementer",
+          "internal.seed_cycle_anchor": "fabro-bfe1",
+          "outcome": "succeeded",
+          "current_seed_title": "Qualitygate: add a loop-asset tier with a checked-in evidence-smoke.nu regression",
+          "internal.fidelity": "summary:high",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 4009,
+            "preview": "All verification complete. Summary of the pass:\n\n**Files touched**\n- `scripts/qualitygate.nu` — new `check-loop-assets` tier: side-effect-free parse check (`nu --ide-check 10` per `.fabro/workflows/"
+          },
+          "internal.retry_count.start": 0,
+          "implementation_summary": "Added a loop-asset tier to `scripts/qualitygate.nu` (`check-loop-assets`: per-script `nu --ide-check` parse check grepping Error-severity diagnostics, then the checked-in smoke) wired into all three main paths (no-crates, workspace, touched-crates), plus new `.fabro/workflows/develop/scripts/evidence-smoke.nu` exercising evidence.nu's pure helpers (`sanitize`, `resolve-blobrefs`, `diff-sort-key`, `is-loop-path`, `total`) over canned fixtures; lesson captured as mx-f2ddfa. Per-criterion report: - PASS parse-check every develop script side-effect-free via `nu --ide-check`: check-loop-assets in `scripts/qualitygate.nu` (verified: no Error diagnostics on all 6 scripts; bare `source` avoided). - PASS tier runs in the no-crates path AND when crates are touched: wired into the no-crates branch (verified live: GATE GREEN 4.4s), the `__workspace__` branch, and the touched-crates green chain. - PASS checked-in regression `evidence-smoke.nu` following closeout-smoke.nu pattern (const-relative source, `fail` helper, trailing exit 0): sanitize redaction cases, resolve-blobrefs with/without blob refs (resolvable inline + unresolvable pass-through), diff-sort-key ordering, is-loop-path positives/negatives, `total` over canned numstat fixture; `numstat-rows` skipped as git-shelling, documented in the file header. - PASS tier invokes the smoke plus sibling parse checks: both in `check-loop-assets`. - PASS gate message style: `== checking loop-asset scripts ==`, per-file `loop-asset parse check FAILED: <script>` (negative-test verified with GATE RED on an injected parse error, then restored green), `loop-asset scripts green`. - PASS verification cheapest-first, no `just qualitygate` run by implementer: parse checks → per-script ide-check → smoke exit 0 → direct `nu scripts/qualitygate.nu` GATE GREEN."
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "lesson_capture": "mx-f2ddfa",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "`nu --ide-check` always exits 0 even on parse errors — failure only shows as JSON diagnostic lines with \"severity\":\"Error\" on stdout, so exit-code-based checks silently pass broken scripts; recorded as mx-f2ddfa and handled by grep in `scripts/qualitygate.nu` check-loop-assets."
+                ]
+              },
+              "last_stage": "implementer",
+              "last_response": "All verification complete. Summary of the pass:\n\n**Files touched**\n- `scripts/qualitygate.nu` — new `check-loop-assets` tier: side-effect-free parse check (`nu --ide-check 10` per `.fabro/workflows/",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 4009,
+                "preview": "All verification complete. Summary of the pass:\n\n**Files touched**\n- `scripts/qualitygate.nu` — new `check-loop-assets` tier: side-effect-free parse check (`nu --ide-check 10` per `.fabro/workflows/"
+              },
+              "implementation_summary": "Added a loop-asset tier to `scripts/qualitygate.nu` (`check-loop-assets`: per-script `nu --ide-check` parse check grepping Error-severity diagnostics, then the checked-in smoke) wired into all three main paths (no-crates, workspace, touched-crates), plus new `.fabro/workflows/develop/scripts/evidence-smoke.nu` exercising evidence.nu's pure helpers (`sanitize`, `resolve-blobrefs`, `diff-sort-key`, `is-loop-path`, `total`) over canned fixtures; lesson captured as mx-f2ddfa. Per-criterion report: - PASS parse-check every develop script side-effect-free via `nu --ide-check`: check-loop-assets in `scripts/qualitygate.nu` (verified: no Error diagnostics on all 6 scripts; bare `source` avoided). - PASS tier runs in the no-crates path AND when crates are touched: wired into the no-crates branch (verified live: GATE GREEN 4.4s), the `__workspace__` branch, and the touched-crates green chain. - PASS checked-in regression `evidence-smoke.nu` following closeout-smoke.nu pattern (const-relative source, `fail` helper, trailing exit 0): sanitize redaction cases, resolve-blobrefs with/without blob refs (resolvable inline + unresolvable pass-through), diff-sort-key ordering, is-loop-path positives/negatives, `total` over canned numstat fixture; `numstat-rows` skipped as git-shelling, documented in the file header. - PASS tier invokes the smoke plus sibling parse checks: both in `check-loop-assets`. - PASS gate message style: `== checking loop-asset scripts ==`, per-file `loop-asset parse check FAILED: <script>` (negative-test verified with GATE RED on an injected parse error, then restored green), `loop-asset scripts green`. - PASS verification cheapest-first, no `just qualitygate` run by implementer: parse checks → per-script ide-check → smoke exit 0 → direct `nu scripts/qualitygate.nu` GATE GREEN."
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 32826,
+                    "output_tokens": 5636,
+                    "reasoning_tokens": 4461,
+                    "cache_read_tokens": 529728,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 228085
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 213463,
+              "tool_time_ms": 14113,
+              "active_time_ms": 227576
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Add deterministic machine verification of loop-asset (.nu) changes to the quality gate, so LLM stages stop hand-building throwaway scratch exercises. Edit `scripts/qualitygate.nu` (invoked by the `justfile` qualitygate recipe at lines 126-128); the loop-asset scripts themselves live under `.fabro/workflows/develop/scripts/` (fs_hide: edit via shell, e.g. python3 heredoc or sed — file tools fail there). Acceptance criteria: (1) loop-asset tier: a new check in `scripts/qualitygate.nu` that parse-checks every `.fabro/workflows/develop/scripts/*.nu` file — but plain `source <file>` auto-invokes a script's `def main` (see the closeout-smoke.nu header comment), so the check must be side-effect-free: use `nu --ide-check` (or equivalent parse-only invocation) per file, not a bare `source`; (2) the tier MUST run in the 'no crates touched' path of `main` (currently lines ~165-170: fmt-only then exit 0 — that 4.15s no-op gate is exactly what this seed fixes) and also when crates are touched (a mixed Rust+loop-asset diff gates both); (3) checked-in regression: new file `.fabro/workflows/develop/scripts/evidence-smoke.nu` following the closeout-smoke.nu pattern exactly (const-relative `source`, `fail` helper, exit 0 at end to dodge auto-invoked main) — exercising evidence.nu's PURE helpers over a mixed-capture fixture: `sanitize` (redaction cases), `resolve-blobrefs` (text with and without blob refs), `diff-sort-key` (loop-path vs source-path ordering), `is-loop-path` (positives like `.fabro/x`, negatives like `lib/main.rs`), `numstat-rows`/`total` over a canned numstat fixture if reachable without git (skip helpers that shell out); (4) the loop-asset tier invokes the checked-in smoke (`nu .fabro/workflows/develop/scripts/evidence-smoke.nu`) so the regression runs deterministically in the gate, plus the parse check for the sibling scripts; (5) gate messages follow the existing tier style ('== checking loop-asset scripts ==' and a clear per-file failure line with the script name); (6) verification cheapest-first: `python3 -c 'import tomllib...'`-level parse where applicable, then `nu -c 'nu --ide-check ...'` per script, then `nu .fabro/workflows/develop/scripts/evidence-smoke.nu` exits 0, then a direct `nu scripts/qualitygate.nu` run reaching the new tier (expect GATE GREEN on a tree with no Rust changes after editing only loop assets); the implementer must NOT run `just qualitygate` itself — gate green comes via the deterministic tester step. Distinctness: do not implement fabro-50f8 (ad-hoc prompt exercises) or fabro-574d (crate derivation) here. Basis: run 01M23TE61D4Y33415BK5M7C70X, commit 592f64bd.",
+              "last_response": "Claimed fabro-bfe1. Brief drafted with bulleted acceptance criteria, verification cheapest-first.\n\nSeed fabro-bfe1 — \"Qualitygate: add a loop-asset tier with a checked-in evidence-smoke.nu regressio",
+              "current_seed_title": "Qualitygate: add a loop-asset tier with a checked-in evidence-smoke.nu regression",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 4416,
+                "preview": "Claimed fabro-bfe1. Brief drafted with bulleted acceptance criteria, verification cheapest-first.\n\nSeed fabro-bfe1 — \"Qualitygate: add a loop-asset tier with a checked-in evidence-smoke.nu regressio"
+              },
+              "current_seed_id": "fabro-bfe1",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-bfe1 basis verified fresh: filed in PR #112 (commit 4c5822a) minutes before this run but not implemented — no in-flight conflict; `scripts/qualitygate.nu` main() 'no crates touched' path is still fmt-only (the exact no-op this seed fixes).",
+                  "In-flight check clean: 22 develop runs listed, zero open PRs, one non-terminal run (this one, 01M23W4S7Q2GNEVPY779M4GMN6) — journal fallback for goal-less seed ids not needed this pass.",
+                  "nu `source` auto-invokes `def main` after the top level (documented in closeout-smoke.nu header) — the brief pins a parse-only check (`nu --ide-check`) so the new tier has no side effects."
+                ]
+              },
+              "last_stage": "planner"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 31552,
+                    "output_tokens": 1655,
+                    "reasoning_tokens": 479,
+                    "cache_read_tokens": 184512,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 101527
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 59843,
+              "tool_time_ms": 3942,
+              "active_time_ms": 63785
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "4b1ee0dd124222fdce112a2df2ca84a39687d968",
+        "node_visits": {
+          "start": 1,
+          "implementer": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M23W4S7Q2GNEVPY779M4GMN6.jsonl b/.fabro/journal/01M23W4S7Q2GNEVPY779M4GMN6.jsonl\nindex 271ebd3..7bcc331 100644\n--- a/.fabro/journal/01M23W4S7Q2GNEVPY779M4GMN6.jsonl\n+++ b/.fabro/journal/01M23W4S7Q2GNEVPY779M4GMN6.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23W4S7Q2GNEVPY779M4GMN6\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T20:01:07Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23W4S7Q2GNEVPY779M4GMN6\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T20:02:12Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-bfe1 basis verified fresh: filed in PR #112 (commit 4c5822a) minutes before this run but not implemented — no in-flight conflict; `scripts/qualitygate.nu` main() 'no crates touched' path is still fmt-only (the exact no-op this seed fixes).\",\"In-flight check clean: 22 develop runs listed, zero open PRs, one non-terminal run (this one, 01M23W4S7Q2GNEVPY779M4GMN6) — journal fallback for goal-less seed ids not needed this pass.\",\"nu `source` auto-invokes `def main` after the top level (documented in closeout-smoke.nu header) — the brief pins a parse-only check (`nu --ide-check`) so the new tier has no side effects.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23W4S7Q2GNEVPY779M4GMN6\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T20:06:05Z\",\"data\":{\"painpoints\":[],\"observations\":[\"`nu --ide-check` always exits 0 even on parse errors — failure only shows as JSON diagnostic lines with \\\"severity\\\":\\\"Error\\\" on stdout, so exit-code-based checks silently pass broken scripts; recorded as mx-f2ddfa and handled by grep in `scripts/qualitygate.nu` check-loop-assets.\"]}}\ndiff --git a/.fabro/workflows/develop/scripts/evidence-smoke.nu b/.fabro/workflows/develop/scripts/evidence-smoke.nu\nnew file mode 100644\nindex 0000000..4001caf\n--- /dev/null\n+++ b/.fabro/workflows/develop/scripts/evidence-smoke.nu\n@@ -0,0 +1,98 @@\n+#!/usr/bin/env nu\n+# Smoke test for evidence.nu's PURE helpers (fabro-bfe1): sanitize,\n+# resolve-blobrefs, diff-sort-key, is-loop-path, total — exercised over\n+# canned fixtures without git (helpers that shell out — numstat-rows,\n+# run-base, worktree-state, in-progress-seed — are out of scope here;\n+# their logic is covered by the parse check in scripts/qualitygate.nu\n+# and manual invocation). The `source` const resolves against THIS\n+# file's directory, so the script runs from any cwd (closeout-smoke\n+# pattern):\n+#   nu .fabro/workflows/develop/scripts/evidence-smoke.nu\n+\n+const EVIDENCE = \"evidence.nu\"\n+source $EVIDENCE\n+\n+def fail [what: string]: nothing -> nothing {\n+    print -e $\"evidence-smoke: FAIL — ($what)\"\n+    exit 1\n+}\n+\n+# sanitize: bare \"/word\" tokens get backticked (agent skill-reference\n+# crash guard); uppercase-led tokens and token-free text pass through.\n+if (sanitize \"run in /tmp dir\") != \"run in `/tmp` dir\" {\n+    fail $\"sanitize single token: (sanitize 'run in /tmp dir')\"\n+}\n+# Two passes catch consecutive tokens — the trailing space of match one\n+# is the leading space of match two.\n+if (sanitize \"a /b /c d\") != \"a `/b` `/c` d\" {\n+    fail $\"sanitize consecutive tokens: (sanitize 'a /b /c d')\"\n+}\n+if (sanitize \"path /Workspace stays\") != \"path /Workspace stays\" {\n+    fail $\"sanitize uppercase token must pass: (sanitize 'path /Workspace stays')\"\n+}\n+if (sanitize \"no tokens here\") != \"no tokens here\" {\n+    fail \"sanitize token-free text must be unchanged\"\n+}\n+\n+# resolve-blobrefs: no refs -> unchanged; resolvable ref (blob file\n+# materialized in cwd's .fabro/blobs/) -> inlined verbatim; unresolvable\n+# ref -> passes through as the link, never dropped.\n+if (resolve-blobrefs \"plain text no refs\") != \"plain text no refs\" {\n+    fail \"resolve-blobrefs no-refs text must be unchanged\"\n+}\n+let tmp = (mktemp -d)\n+let sha = \"1111111111111111111111111111111111111111111111111111111111111111\"\n+mkdir $\"($tmp)/.fabro/blobs\"\n+\"BLOB-CONTENT-HERE\" | save --force $\"($tmp)/.fabro/blobs/($sha).json\"\n+cd $tmp\n+let inlined = (resolve-blobrefs $\"pre blob://sha256/($sha) post\")\n+cd /workspace/fabro\n+rm -rf $tmp\n+if $inlined != \"pre BLOB-CONTENT-HERE post\" {\n+    fail $\"resolve-blobrefs resolvable ref must inline: ($inlined)\"\n+}\n+let missing = \"2222222222222222222222222222222222222222222222222222222222222222\"\n+let passthrough = (resolve-blobrefs $\"see blob://sha256/($missing) end\")\n+if $passthrough != $\"see blob://sha256/($missing) end\" {\n+    fail $\"resolve-blobrefs unresolvable ref must pass through: ($passthrough)\"\n+}\n+\n+# diff-sort-key: source files sort before docs (a:/z: prefixes) — the\n+# reviewer sees the complete source diff first.\n+if (diff-sort-key \"lib/main.rs\") != \"a:lib/main.rs\" {\n+    fail $\"diff-sort-key source prefix: (diff-sort-key 'lib/main.rs')\"\n+}\n+if (diff-sort-key \"docs/x.md\") != \"z:docs/x.md\" {\n+    fail $\"diff-sort-key doc prefix: (diff-sort-key 'docs/x.md')\"\n+}\n+if ((diff-sort-key \"lib/main.rs\") > (diff-sort-key \"docs/x.md\")) {\n+    fail \"diff-sort-key must order source before docs\"\n+}\n+\n+# is-loop-path: dev-loop machinery paths are loop paths; product code\n+# and untracked roots are not.\n+let loop_pos = [\".fabro/x\" \".seeds/issues.jsonl\" \"scripts/q.nu\" \".mulch/y\" \"justfile\" \"AGENTS.md\" \"CLAUDE.md\" \".gitignore\"]\n+for p in $loop_pos {\n+    if not (is-loop-path $p) { fail $\"is-loop-path positive: ($p)\" }\n+}\n+let loop_neg = [\"lib/main.rs\" \"apps/fabro-web/src/x.ts\" \"README.md\" \"justfile.md\"]\n+for p in $loop_neg {\n+    if (is-loop-path $p) { fail $\"is-loop-path negative: ($p)\" }\n+}\n+\n+# total over a canned numstat fixture (the shape numstat-rows returns):\n+# binary \"-\" counts as 0, empty input degrades to 0.\n+let fixture = [\n+    {add: \"10\" del: \"2\" path: \"lib/a.rs\"}\n+    {add: \"-\"  del: \"5\" path: \"logo.png\"}\n+    {add: \"3\"  del: \"1\" path: \"docs/b.md\"}\n+]\n+if (total $fixture \"add\") != 13 { fail $\"total add (binary as 0): (total $fixture 'add')\" }\n+if (total $fixture \"del\") != 8  { fail $\"total del: (total $fixture 'del')\" }\n+if (total [] \"add\") != 0 { fail \"total empty must be 0\" }\n+\n+print \"evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/total verified\"\n+\n+# Sourcing evidence.nu imports its `def main`; nu auto-invokes it after\n+# the top level runs — exit explicitly so the smoke never reaches it.\n+exit 0\ndiff --git a/.mulch/expertise/dev-loop.jsonl b/.mulch/expertise/dev-loop.jsonl\nnew file mode 100644\nindex 0000000..0c4c763\n--- /dev/null\n+++ b/.mulch/expertise/dev-loop.jsonl\n@@ -0,0 +1 @@\n+{\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-09T20:05:33.382Z\",\"evidence\":{\"commit\":\"47631073342615b50db487b11eb696a93df444ae\"},\"name\":\"nu-ide-check-parse-gate\",\"description\":\"nu --ide-check always exits 0 — parse failures surface as JSON diagnostic lines with \\\"severity\\\":\\\"Error\\\" on stdout, so a parse-check tier must grep output, not exit code (fabro-bfe1, scripts/qualitygate.nu check-loop-assets). Bare 'source <file>' auto-invokes the script's def main; --ide-check is the side-effect-free alternative. Checked-in smoke pattern: const-relative source + fail helper + trailing exit 0 to dodge auto-invoked main (evidence-smoke.nu).\",\"files\":[\".mulch/mulch.config.yaml\",\"scripts/qualitygate.nu\"],\"id\":\"mx-f2ddfa\"}\ndiff --git a/.mulch/mulch.config.yaml b/.mulch/mulch.config.yaml\nindex df7ebdc..8e4e7a5 100644\n--- a/.mulch/mulch.config.yaml\n+++ b/.mulch/mulch.config.yaml\n@@ -17,6 +17,7 @@ domains:\n   lab: {}\n   workflow: {}\n   tooling: {}\n+  dev-loop: {}\n governance:\n   max_entries: 100\n   warn_entries: 150\ndiff --git a/scripts/qualitygate.nu b/scripts/qualitygate.nu\nindex 6d16114..1d91c80 100644\n--- a/scripts/qualitygate.nu\n+++ b/scripts/qualitygate.nu\n@@ -90,6 +90,42 @@ def check-fmt [] {\n     true\n }\n \n+# Loop-asset tier (fabro-bfe1): deterministic machine verification of the\n+# dev loop's own .nu scripts. Two parts: a side-effect-free parse check of\n+# every develop-workflow script (`nu --ide-check` parses only — a bare\n+# `source <file>` would auto-invoke the script's `def main` after import;\n+# see the closeout-smoke.nu header), then the checked-in evidence-smoke\n+# regression over evidence.nu's pure helpers. Runs in BOTH main paths —\n+# crates touched or not — so a loop-asset-only diff is no longer a 4s\n+# no-op gate (run 01M23TE61D4Y).\n+def check-loop-assets [] {\n+    print '== checking loop-asset scripts =='\n+    let scripts = (ls .fabro/workflows/develop/scripts/*.nu | get name | sort)\n+    mut green = true\n+    for s in $scripts {\n+        # --ide-check exits 0 even on parse errors: diagnostics are JSON\n+        # lines on stdout; an Error-severity line is the failure signal.\n+        let res = (do { ^nu --ide-check 10 $s } | complete)\n+        let errors = ($res.stdout | lines | where {|l| $l | str contains '\"severity\":\"Error\"' })\n+        if ($errors | is-not-empty) {\n+            print $\"loop-asset parse check FAILED: ($s)\"\n+            print ($errors | last 5)\n+            $green = false\n+        }\n+    }\n+    if not $green { return false }\n+    let smoke = '.fabro/workflows/develop/scripts/evidence-smoke.nu'\n+    let res = (do { ^nu $smoke } | complete)\n+    if $res.exit_code != 0 {\n+        print $\"loop-asset smoke FAILED: ($smoke)\"\n+        print ($res.stdout | str trim -r -c \"\\n\" | lines | last 20)\n+        print ($res.stderr | str trim -r -c \"\\n\")\n+        return false\n+    }\n+    print \"loop-asset scripts green\"\n+    true\n+}\n+\n def check-clippy [crates: list<string>] {\n     if ($crates | is-empty) { return true }\n     # '-p' and the crate name MUST be separate argv elements: a single\n@@ -160,16 +196,19 @@ def main [] {\n     }\n     if ($crates | is-empty) {\n         print \"no crates touched\"\n-        if (check-fmt) { exit 0 } else { exit 1 }\n+        let green = ((check-loop-assets) and (check-fmt))\n+        if $green { print \"GATE GREEN\"; exit 0 }\n+        print \"GATE RED\"\n+        exit 1\n     }\n     if ($crates | any {|c| $c == '__workspace__' }) {\n-        let green = ((check-fmt) and (check-workspace-compiles))\n+        let green = ((check-loop-assets) and (check-fmt) and (check-workspace-compiles))\n         if $green { print \"GATE GREEN\"; exit 0 }\n         print \"GATE RED\"\n         exit 1\n     }\n     print $\"touched crates: ($crates | str join ', ')\"\n-    let green = ((check-fmt) and (check-clippy $crates) and (build-renderer-if-needed $crates) and (check-tests $crates))\n+    let green = ((check-loop-assets) and (check-fmt) and (check-clippy $crates) and (build-renderer-if-needed $crates) and (check-tests $crates))\n     if $green {\n         print \"GATE GREEN\"\n         exit 0\n",
+        "summary": {
+          "files_changed": 6,
+          "additions": 146,
+          "deletions": 4
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T20:06:14.812396062Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
         ],
         "node_retries": {},
         "context_values": {
@@ -908,13 +1099,16 @@
             "chars": 4416,
             "preview": "Claimed fabro-bfe1. Brief drafted with bulleted acceptance criteria, verification cheapest-first.\n\nSeed fabro-bfe1 — \"Qualitygate: add a loop-asset tier with a checked-in evidence-smoke.nu regressio"
           },
+          "thread.implementer.current_node": "tester",
+          "command.output": "blob://sha256/6a6aa88e48376bd588e37c4a4ca50ef237d01806809b8c9a9775f1785909c11b",
           "thread.planner.current_node": "implementer",
           "graph.rankdir": "LR",
-          "internal.thread_id": "planner",
+          "internal.thread_id": "implementer",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
           "journal": {
             "painpoints": [],
@@ -922,10 +1116,11 @@
               "`nu --ide-check` always exits 0 even on parse errors — failure only shows as JSON diagnostic lines with \"severity\":\"Error\" on stdout, so exit-code-based checks silently pass broken scripts; recorded as mx-f2ddfa and handled by grep in `scripts/qualitygate.nu` check-loop-assets."
             ]
           },
-          "internal.fidelity": "summary:high",
+          "internal.fidelity": "compact",
           "internal.work_dir": "/workspace/fabro",
-          "current_node": "implementer",
+          "current_node": "tester",
           "internal.retry_count.planner": 0,
+          "internal.retry_count.tester": 0,
           "current_seed_title": "Qualitygate: add a loop-asset tier with a checked-in evidence-smoke.nu regression",
           "internal.retry_count.start": 0,
           "internal.seed_cycle_anchor": "fabro-bfe1",
@@ -939,6 +1134,20 @@
           "graph.cycle_counter_reset_key": "current_seed_id"
         },
         "node_outcomes": {
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/6a6aa88e48376bd588e37c4a4ca50ef237d01806809b8c9a9775f1785909c11b"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 4319,
+              "active_time_ms": 4319
+            }
+          },
           "planner": {
             "status": "succeeded",
             "preferred_label": "Seed claimed",
@@ -1047,9 +1256,10 @@
             "usage": null
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
           "start": 1,
+          "tester": 1,
           "implementer": 1,
           "planner": 1
         }
@@ -1306,30 +1516,45 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "start@1": {
-      "first_event_seq": 16,
+    "tester@1": {
+      "first_event_seq": 235,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": null,
+        "notes": "Script completed: just qualitygate",
         "failure_reason": null,
-        "timestamp": "2026-09-09T20:01:07.784276596Z"
+        "timestamp": "2026-09-09T20:06:14.582487909Z"
       },
       "provider_used": null,
       "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/6a6aa88e48376bd588e37c4a4ca50ef237d01806809b8c9a9775f1785909c11b",
+        "exit_code": 0,
+        "duration_ms": 4319,
+        "termination": "exited",
+        "output_bytes": 157,
+        "live_streaming": true
+      },
       "parallel_results": null,
       "output": null,
-      "started_at": "2026-09-09T20:01:07.776291672Z",
-      "handler": "start",
+      "output_bytes": 157,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T20:06:10.250695766Z",
+      "handler": "command",
       "graph_visit": 1,
       "timing": {
-        "wall_time_ms": 0,
+        "wall_time_ms": 4323,
         "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
+        "tool_time_ms": 4319,
+        "active_time_ms": 4319
       },
       "usage": {
         "input_tokens": 0,
@@ -1552,6 +1777,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T20:01:07.784276596Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T20:01:07.776291672Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
