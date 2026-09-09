@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M22X67GYXC65DXA3G33FQKG1.jsonl b/.fabro/journal/01M22X67GYXC65DXA3G33FQKG1.jsonl
+new file mode 100644
+index 000000000..b2da7782b
+--- /dev/null
++++ b/.fabro/journal/01M22X67GYXC65DXA3G33FQKG1.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M22X67GYXC65DXA3G33FQKG1","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T11:00:16Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M22X67GYXC65DXA3G33FQKG1","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-09T11:00:52Z","data":{"painpoints":[],"observations":["upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0' — drift below MIN threshold 5, accumulates toward it","revisor backlog: none — newest develop run 01M22VHABGCNWT7DKJC9HP1XKC was reviewed (commit 641227160, PR #84 still open), older runs 01M22STYHH and 01M22R3T also have revisor passes","next surveyor: PR #84 is open and awaiting merge; children are created only after the previous child merged, so the Work pass should verify #84 state before spawning"]}}
