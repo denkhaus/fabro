@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M23RN4J1ZCE4JY6295C45RDX.jsonl b/.fabro/journal/01M23RN4J1ZCE4JY6295C45RDX.jsonl
+new file mode 100644
+index 000000000..b6954d88b
+--- /dev/null
++++ b/.fabro/journal/01M23RN4J1ZCE4JY6295C45RDX.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M23RN4J1ZCE4JY6295C45RDX","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T19:00:17Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M23RN4J1ZCE4JY6295C45RDX","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-09T19:01:10Z","data":{"painpoints":[],"observations":["upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0'. Remote 'upstream' was absent and was added this pass (https://github.com/fabro-sh/fabro); future surveyors in fresh checkouts will hit the same git remote add step.","revisor backlog: none — all completed develop runs through 01M23Q0VM3YVECMSHDNX2HH3PJ have review records under `.fabro/reviews/develop/` (verified for 01M23KJM, 01M23N9, 01M23Q0); revisor PRs #102/#106/#108 also confirm the newest runs were revised.","Route 'Work': count 0 < 5 threshold; drift accumulates toward the merge threshold. Next surveyor: fetch may show new nightly tags (v0.347/v0.348 seen), tags do not count toward rev-list drift."]}}
