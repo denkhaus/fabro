@@ -689,14 +689,182 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M23Q0VM3YVECMSHDNX2HH3PJ",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-09-09T18:31:33.865703738Z",
+    "run_branch": "fabro/run/01M23Q0VM3YVECMSHDNX2HH3PJ",
+    "base_sha": "d9e19582cae897699a45bf1b27d1027f8ebe90f7"
   },
-  "status_updated_at": "2026-09-09T18:31:27.763496545Z",
-  "last_event_at": "2026-09-09T18:31:33.113464818Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-09-09T18:31:33.865773318Z",
+  "last_event_at": "2026-09-09T18:32:21.765272835Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 19,
+      "checkpoint": {
+        "timestamp": "2026-09-09T18:31:36.454345090Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "failure_class": "",
+          "internal.run_id": "01M23Q0VM3YVECMSHDNX2HH3PJ",
+          "graph.preamble_budget_kb": "24",
+          "graph.max_node_visits": "40",
+          "internal.fidelity": "compact",
+          "outcome": "succeeded",
+          "current_node": "start",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.thread_id": null,
+          "internal.node_visit_count": 1,
+          "graph.rankdir": "LR",
+          "failure_signature": "",
+          "internal.retry_count.start": 0,
+          "internal.seed_cycle_anchor": "",
+          "seed_cycles": {
+            "start": 1
+          },
+          "graph.inspects": "develop",
+          "internal.work_dir": "/workspace/fabro"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "planner",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T18:32:21.996642358Z",
+        "current_node": "planner",
+        "completed_nodes": [
+          "start",
+          "planner"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.max_node_visits": "40",
+          "failure_class": "",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.planner": 0,
+          "internal.run_id": "01M23Q0VM3YVECMSHDNX2HH3PJ",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3445,
+            "preview": "Seed fabro-6a5a claimed with a corrected path basis. Brief:\n\n**Seed fabro-6a5a — Fix PR postlude: disable auto-merge and stop the failing PR-body model call**\n\n- `auto_merge = false` in `.fabro/work"
+          },
+          "seed_cycles": {
+            "planner": 1
+          },
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.rankdir": "LR",
+          "internal.fidelity": "compact",
+          "last_response": "Seed fabro-6a5a claimed with a corrected path basis. Brief:\n\n**Seed fabro-6a5a — Fix PR postlude: disable auto-merge and stop the failing PR-body model call**\n\n- `auto_merge = false` in `.fabro/work",
+          "failure_signature": "",
+          "internal.retry_count.start": 0,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.node_visit_count": 1,
+          "thread.start.current_node": "planner",
+          "internal.seed_cycle_anchor": "fabro-6a5a",
+          "current_seed_brief": "Seed fabro-6a5a — disable auto-merge and fix the failing PR-body LLM call in the develop postlude. Acceptance criteria: (1) auto_merge = false in the [run.pull_request] block of .fabro/workflows/develop/workflow.toml (currently true at ~line 53; block lives in workflow.toml, NOT project.toml as the original seed said — correction recorded in the seed body). (2) Fix or disable the PR-body LLM call in lib/components/fabro-workflow/src/pipeline/pull_request.rs (failure path ~lines 488-512, FALLBACK_BODY_NOTICE ~line 55) which fails with 'No object generated: Failed to parse response as JSON' and burns ~53s falling back to a skeleton every run. (3) Reconcile the model mismatch: failure log named model=glm-5.3 while the spec configures zai:glm-4.7 — route through the configured model or document the default. (4) Deterministic fallback stays as the non-panicking, no-retry path if the LLM call is kept. (5) Verify cheapest-first: python3 TOML parse, then cargo +nightly-2026-04-14 clippy -p fabro-workflow --all-targets -- -D warnings, then cargo nextest run -p fabro-workflow. (6) Gate green via the deterministic tester step — do not run the full gate yourself. (7) Scope: real-diff runs only; fabro-9f97 (journal-only diff) is separate — do not implement that case.",
+          "internal.thread_id": "start",
+          "outcome": "succeeded",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Seed fabro-6a5a named .fabro/project.toml [run.pull_request] as the edit target but that block moved to .fabro/workflows/develop/workflow.toml — recorded the path correction into the seed body before claiming (sd update --description) per the stale-basis intermediate case.",
+              "No open develop PRs and no other non-terminal develop runs in fabro_runs_list; the in-flight check was clean (only this run itself is running)."
+            ]
+          },
+          "last_stage": "planner",
+          "current_node": "planner",
+          "current_seed_title": "Fix PR postlude: disable auto-merge and stop the failing PR-body model call",
+          "current_seed_id": "fabro-6a5a",
+          "preferred_label": "Seed claimed",
+          "graph.inspects": "develop"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Seed fabro-6a5a — disable auto-merge and fix the failing PR-body LLM call in the develop postlude. Acceptance criteria: (1) auto_merge = false in the [run.pull_request] block of .fabro/workflows/develop/workflow.toml (currently true at ~line 53; block lives in workflow.toml, NOT project.toml as the original seed said — correction recorded in the seed body). (2) Fix or disable the PR-body LLM call in lib/components/fabro-workflow/src/pipeline/pull_request.rs (failure path ~lines 488-512, FALLBACK_BODY_NOTICE ~line 55) which fails with 'No object generated: Failed to parse response as JSON' and burns ~53s falling back to a skeleton every run. (3) Reconcile the model mismatch: failure log named model=glm-5.3 while the spec configures zai:glm-4.7 — route through the configured model or document the default. (4) Deterministic fallback stays as the non-panicking, no-retry path if the LLM call is kept. (5) Verify cheapest-first: python3 TOML parse, then cargo +nightly-2026-04-14 clippy -p fabro-workflow --all-targets -- -D warnings, then cargo nextest run -p fabro-workflow. (6) Gate green via the deterministic tester step — do not run the full gate yourself. (7) Scope: real-diff runs only; fabro-9f97 (journal-only diff) is separate — do not implement that case.",
+              "last_stage": "planner",
+              "current_seed_title": "Fix PR postlude: disable auto-merge and stop the failing PR-body model call",
+              "last_response": "Seed fabro-6a5a claimed with a corrected path basis. Brief:\n\n**Seed fabro-6a5a — Fix PR postlude: disable auto-merge and stop the failing PR-body model call**\n\n- `auto_merge = false` in `.fabro/work",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3445,
+                "preview": "Seed fabro-6a5a claimed with a corrected path basis. Brief:\n\n**Seed fabro-6a5a — Fix PR postlude: disable auto-merge and stop the failing PR-body model call**\n\n- `auto_merge = false` in `.fabro/work"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Seed fabro-6a5a named .fabro/project.toml [run.pull_request] as the edit target but that block moved to .fabro/workflows/develop/workflow.toml — recorded the path correction into the seed body before claiming (sd update --description) per the stale-basis intermediate case.",
+                  "No open develop PRs and no other non-terminal develop runs in fabro_runs_list; the in-flight check was clean (only this run itself is running)."
+                ]
+              },
+              "current_seed_id": "fabro-6a5a"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 30189,
+                    "output_tokens": 1776,
+                    "reasoning_tokens": 493,
+                    "cache_read_tokens": 125888,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 84970
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 41217,
+              "tool_time_ms": 3605,
+              "active_time_ms": 44822
+            }
+          }
+        },
+        "next_node_id": "implementer",
+        "node_visits": {
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -722,5 +890,265 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T18:31:36.210485344Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T18:31:36.202599275Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "planner@1": {
+      "first_event_seq": 20,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T18:32:21.765272835Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T18:31:36.464450359Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 45363,
+        "inference_time_ms": 41217,
+        "tool_time_ms": 3605,
+        "active_time_ms": 44822
+      },
+      "usage": {
+        "input_tokens": 30189,
+        "output_tokens": 1776,
+        "total_tokens": 158346,
+        "reasoning_tokens": 493,
+        "cache_read_tokens": 125888,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 84970
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 30004,
+        "usage_percent": 2.8614044189453125,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-09T18:32:21.754933963Z",
+        "event_seq": 63,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1233,
+            "usage_percent": 0.11758804321289062
+          },
+          {
+            "category": "tools",
+            "tokens": 1888,
+            "usage_percent": 0.1800537109375
+          },
+          {
+            "category": "memory",
+            "tokens": 6276,
+            "usage_percent": 0.5985260009765625
+          },
+          {
+            "category": "conversation",
+            "tokens": 20600,
+            "usage_percent": 1.964569091796875
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
