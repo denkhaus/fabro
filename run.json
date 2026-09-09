@@ -483,7 +483,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T14:29:32.667548513Z",
-  "last_event_at": "2026-09-09T14:36:07.331487478Z",
+  "last_event_at": "2026-09-09T14:36:12.938869903Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -664,9 +664,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 78,
       "checkpoint": {
-        "timestamp": "2026-09-09T14:36:07.334465007Z",
+        "timestamp": "2026-09-09T14:36:12.938539825Z",
         "current_node": "analyze",
         "completed_nodes": [
           "start",
@@ -675,47 +675,18 @@
         ],
         "node_retries": {},
         "context_values": {
-          "response.select": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.select",
-            "chars": 1345,
-            "preview": "Run selected: 01M237JNJW4FNRRZ70EX7WZF6D — the newest develop run, terminal (succeeded), live sandbox, unrevised (no marker at `.fabro/revisions/01M237JNJW4FNRRZ70EX7WZF6D.md`), and its `workflow_ve"
-          },
-          "internal.seed_cycle_anchor": "01M237JNJW4FNRRZ70EX7WZF6D",
-          "revisor_target_status": "succeeded",
-          "response.analyze": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "chars": 2221,
-            "preview": "The single permitted `fabro_ask` call errored (transient LLM stream failure on the target analyst's side: \"malformed tool call stream from zai: delta for tool_calls[1] arrived before tool_calls[0] was"
-          },
-          "graph.preamble_budget_kb": "24",
-          "revisor_target_wall": "26.6 min",
           "last_response": "The single permitted `fabro_ask` call errored (transient LLM stream failure on the target analyst's side: \"malformed tool call stream from zai: delta for tool_calls[1] arrived before tool_calls[0] was",
-          "preferred_label": "Ask failed",
-          "internal.thread_id": "select",
-          "internal.retry_count.start": 0,
-          "internal.retry_count.select": 0,
-          "internal.exit_kind": "soft",
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "internal.retry_count.analyze": 0,
-          "graph.rankdir": "LR",
-          "seed_cycles": {
-            "select": 1,
-            "analyze": 1
-          },
+          "outcome": "failed",
           "failure_class": "deterministic",
-          "internal.node_visit_count": 1,
-          "graph.max_node_visits": "30",
-          "internal.fidelity": "compact",
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "current_node": "analyze",
-          "failure_signature": "analyze|deterministic|fabro_ask on run 01m237jnjw4fnrrz70ex7wzf6d errored: llm stream error 'malformed tool call stream from zai: delta for tool_calls[<n>] arrived before tool_calls[<n>] was started'. hard rule forbids a retry/re-ask within the same pass,so no r",
-          "thread.start.current_node": "select",
-          "revisor_target_workflow_version": "3bd915204178a8e5fd6796670d1bbfae4248a4b01f5d0fb7201e53b394cfdda8",
-          "internal.run_id": "01M2395PSPYDC1KZA45Q171BDE",
-          "internal.work_dir": "/workspace/fabro",
           "thread.select.current_node": "analyze",
+          "internal.seed_cycle_anchor": "01M237JNJW4FNRRZ70EX7WZF6D",
+          "preferred_label": "Ask failed",
+          "internal.fidelity": "compact",
+          "revisor_target_wall": "26.6 min",
+          "internal.thread_id": "select",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "revisor_target_status": "succeeded",
+          "internal.run_id": "01M2395PSPYDC1KZA45Q171BDE",
           "journal": {
             "painpoints": [
               {
@@ -728,12 +699,100 @@
             ]
           },
           "revisor_target_title": "Develop: claim next open seed, implement, gate, review, exit (PR #96)",
-          "graph.inspects": "develop,merge-upstream",
-          "outcome": "failed",
           "last_stage": "analyze",
-          "revisor_target_run_id": "01M237JNJW4FNRRZ70EX7WZF6D"
+          "thread.start.current_node": "select",
+          "graph.max_node_visits": "30",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.inspects": "develop,merge-upstream",
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 1345,
+            "preview": "Run selected: 01M237JNJW4FNRRZ70EX7WZF6D — the newest develop run, terminal (succeeded), live sandbox, unrevised (no marker at `.fabro/revisions/01M237JNJW4FNRRZ70EX7WZF6D.md`), and its `workflow_ve"
+          },
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1
+          },
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 2221,
+            "preview": "The single permitted `fabro_ask` call errored (transient LLM stream failure on the target analyst's side: \"malformed tool call stream from zai: delta for tool_calls[1] arrived before tool_calls[0] was"
+          },
+          "revisor_target_run_id": "01M237JNJW4FNRRZ70EX7WZF6D",
+          "revisor_target_workflow_version": "3bd915204178a8e5fd6796670d1bbfae4248a4b01f5d0fb7201e53b394cfdda8",
+          "current_node": "analyze",
+          "failure_signature": "analyze|deterministic|fabro_ask on run 01m237jnjw4fnrrz70ex7wzf6d errored: llm stream error 'malformed tool call stream from zai: delta for tool_calls[<n>] arrived before tool_calls[<n>] was started'. hard rule forbids a retry/re-ask within the same pass,so no r",
+          "internal.retry_count.analyze": 0,
+          "internal.exit_kind": "soft",
+          "internal.retry_count.select": 0,
+          "graph.rankdir": "LR",
+          "internal.retry_count.start": 0,
+          "graph.preamble_budget_kb": "24",
+          "internal.node_visit_count": 1
         },
         "node_outcomes": {
+          "select": {
+            "status": "succeeded",
+            "preferred_label": "Run selected",
+            "context_updates": {
+              "response.select": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.select",
+                "chars": 1345,
+                "preview": "Run selected: 01M237JNJW4FNRRZ70EX7WZF6D — the newest develop run, terminal (succeeded), live sandbox, unrevised (no marker at `.fabro/revisions/01M237JNJW4FNRRZ70EX7WZF6D.md`), and its `workflow_ve"
+              },
+              "revisor_target_workflow_version": "3bd915204178a8e5fd6796670d1bbfae4248a4b01f5d0fb7201e53b394cfdda8",
+              "last_response": "Run selected: 01M237JNJW4FNRRZ70EX7WZF6D — the newest develop run, terminal (succeeded), live sandbox, unrevised (no marker at `.fabro/revisions/01M237JNJW4FNRRZ70EX7WZF6D.md`), and its `workflow_ve",
+              "last_stage": "select",
+              "revisor_target_title": "Develop: claim next open seed, implement, gate, review, exit (PR #96)",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Selected run's PR #96 is closed but NOT merged while every earlier develop PR merged — inspect why this run's output was rejected",
+                  "2 merge-upstream runs (01M20N60ZY6DZDTX60WW0161KP, 01M20E43YS004DCEYPJ0GJQH4B) remain unrevised but on-current-version; eligible for future passes",
+                  "No stale-evidence or sandbox-less runs in this pass; all 13 develop runs terminal, 12 already revised"
+                ]
+              },
+              "revisor_target_wall": "26.6 min",
+              "revisor_target_run_id": "01M237JNJW4FNRRZ70EX7WZF6D",
+              "revisor_target_status": "succeeded"
+            },
+            "notes": "Stage completed: select",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16731,
+                    "output_tokens": 455,
+                    "reasoning_tokens": 307,
+                    "cache_read_tokens": 25664,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 33445
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 21250,
+              "tool_time_ms": 2527,
+              "active_time_ms": 23777
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "analyze": {
             "status": "failed",
             "preferred_label": "Ask failed",
@@ -790,78 +849,102 @@
               "tool_time_ms": 303928,
               "active_time_ms": 360996
             }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
-          "select": {
-            "status": "succeeded",
-            "preferred_label": "Run selected",
-            "context_updates": {
-              "response.select": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.select",
-                "chars": 1345,
-                "preview": "Run selected: 01M237JNJW4FNRRZ70EX7WZF6D — the newest develop run, terminal (succeeded), live sandbox, unrevised (no marker at `.fabro/revisions/01M237JNJW4FNRRZ70EX7WZF6D.md`), and its `workflow_ve"
-              },
-              "revisor_target_workflow_version": "3bd915204178a8e5fd6796670d1bbfae4248a4b01f5d0fb7201e53b394cfdda8",
-              "last_response": "Run selected: 01M237JNJW4FNRRZ70EX7WZF6D — the newest develop run, terminal (succeeded), live sandbox, unrevised (no marker at `.fabro/revisions/01M237JNJW4FNRRZ70EX7WZF6D.md`), and its `workflow_ve",
-              "last_stage": "select",
-              "revisor_target_title": "Develop: claim next open seed, implement, gate, review, exit (PR #96)",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "Selected run's PR #96 is closed but NOT merged while every earlier develop PR merged — inspect why this run's output was rejected",
-                  "2 merge-upstream runs (01M20N60ZY6DZDTX60WW0161KP, 01M20E43YS004DCEYPJ0GJQH4B) remain unrevised but on-current-version; eligible for future passes",
-                  "No stale-evidence or sandbox-less runs in this pass; all 13 develop runs terminal, 12 already revised"
-                ]
-              },
-              "revisor_target_wall": "26.6 min",
-              "revisor_target_run_id": "01M237JNJW4FNRRZ70EX7WZF6D",
-              "revisor_target_status": "succeeded"
-            },
-            "notes": "Stage completed: select",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 16731,
-                    "output_tokens": 455,
-                    "reasoning_tokens": 307,
-                    "cache_read_tokens": 25664,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 33445
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 21250,
-              "tool_time_ms": 2527,
-              "active_time_ms": 23777
-            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "d04cbab38355daaee62c72d670e396849929c247",
+        "loop_failure_signatures": {
+          "analyze|deterministic|fabro_ask on run 01m237jnjw4fnrrz70ex7wzf6d errored: llm stream error 'malformed tool call stream from zai: delta for tool_calls[<n>] arrived before tool_calls[<n>] was started'. hard rule forbids a retry/re-ask within the same pass,so no r": 1
+        },
         "node_visits": {
           "analyze": 1,
           "select": 1,
           "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 1,
+          "additions": 2,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-09T14:36:12.988074216Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 400728,
+      "inference_time_ms": 78318,
+      "tool_time_ms": 306455,
+      "active_time_ms": 384773
+    },
+    "failure": {
+      "reason": "soft_stop",
+      "detail": {
+        "message": "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; the next run re-enters autonomously",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "d04cbab38355daaee62c72d670e396849929c247",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 24373,
+          "inference_time_ms": 21250,
+          "tool_time_ms": 2527,
+          "active_time_ms": 23777
+        },
+        "billing_usd_micros": 33445,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 361532,
+          "inference_time_ms": 57068,
+          "tool_time_ms": 303928,
+          "active_time_ms": 360996
+        },
+        "billing_usd_micros": 33908,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 28473,
+      "output_tokens": 1261,
+      "total_tokens": 69107,
+      "reasoning_tokens": 2829,
+      "cache_read_tokens": 36544,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 67353
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M2395PSPYDC1KZA45Q171BDE.jsonl b/.fabro/journal/01M2395PSPYDC1KZA45Q171BDE.jsonl\nnew file mode 100644\nindex 0000000..911b731\n--- /dev/null\n+++ b/.fabro/journal/01M2395PSPYDC1KZA45Q171BDE.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2395PSPYDC1KZA45Q171BDE\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T14:29:35Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M2395PSPYDC1KZA45Q171BDE\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T14:29:59Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected run's PR #96 is closed but NOT merged while every earlier develop PR merged — inspect why this run's output was rejected\",\"2 merge-upstream runs (01M20N60ZY6DZDTX60WW0161KP, 01M20E43YS004DCEYPJ0GJQH4B) remain unrevised but on-current-version; eligible for future passes\",\"No stale-evidence or sandbox-less runs in this pass; all 13 develop runs terminal, 12 already revised\"]}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 2,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "soft"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -887,252 +970,6 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
-    "analyze@1": {
-      "first_event_seq": 53,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "failed",
-        "notes": null,
-        "failure_reason": "fabro_ask on run 01M237JNJW4FNRRZ70EX7WZF6D errored: LLM stream error 'malformed tool call stream from zai: delta for tool_calls[1] arrived before tool_calls[0] was started'. Hard rule forbids a retry/re-ask within the same pass, so no review file was written and no findings distilled. The run remains unrevised and should be re-selected next invocation.",
-        "timestamp": "2026-09-09T14:36:07.331487478Z"
-      },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "high"
-      },
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-09T14:30:06.196620575Z",
-      "handler": "agent",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 361532,
-        "inference_time_ms": 57068,
-        "tool_time_ms": 303928,
-        "active_time_ms": 360996
-      },
-      "usage": {
-        "input_tokens": 11742,
-        "output_tokens": 806,
-        "total_tokens": 25950,
-        "reasoning_tokens": 2522,
-        "cache_read_tokens": 10880,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 33908
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "skills": {
-        "available": [
-          {
-            "name": "rust-style-guide",
-            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
-          }
-        ],
-        "activated": []
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "fabro_ask",
-          "description": "Ask one question to the Ask-Fabro analyst of another run and wait for its final answer. Requires the target run's workflow to be declared in this graph's inspects attribute.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": true
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": true
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": false
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "use_skill",
-          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
-          "source": {
-            "kind": "skill"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 11711,
-        "usage_percent": 1.1168479919433594,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-09T14:36:07.319689429Z",
-        "event_seq": 71,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1133,
-            "usage_percent": 0.10805130004882812
-          },
-          {
-            "category": "tools",
-            "tokens": 1774,
-            "usage_percent": 0.16918182373046875
-          },
-          {
-            "category": "skills",
-            "tokens": 222,
-            "usage_percent": 0.02117156982421875
-          },
-          {
-            "category": "memory",
-            "tokens": 5752,
-            "usage_percent": 0.548553466796875
-          },
-          {
-            "category": "conversation",
-            "tokens": 2824,
-            "usage_percent": 0.269317626953125
-          },
-          {
-            "category": "other",
-            "tokens": 6,
-            "usage_percent": 0.00057220458984375
-          }
-        ],
-        "warnings": []
-      },
-      "agent_control": "running",
-      "state": "failed"
-    },
     "start@1": {
       "first_event_seq": 16,
       "prompt": null,
@@ -1414,6 +1251,288 @@
       },
       "agent_control": "running",
       "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 81,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T14:36:12.938869903Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T14:36:12.938841520Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "analyze@1": {
+      "first_event_seq": 53,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "failed",
+        "notes": null,
+        "failure_reason": "fabro_ask on run 01M237JNJW4FNRRZ70EX7WZF6D errored: LLM stream error 'malformed tool call stream from zai: delta for tool_calls[1] arrived before tool_calls[0] was started'. Hard rule forbids a retry/re-ask within the same pass, so no review file was written and no findings distilled. The run remains unrevised and should be re-selected next invocation.",
+        "timestamp": "2026-09-09T14:36:07.331487478Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "high"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T14:30:06.196620575Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 361532,
+        "inference_time_ms": 57068,
+        "tool_time_ms": 303928,
+        "active_time_ms": 360996
+      },
+      "usage": {
+        "input_tokens": 11742,
+        "output_tokens": 806,
+        "total_tokens": 25950,
+        "reasoning_tokens": 2522,
+        "cache_read_tokens": 10880,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 33908
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_ask",
+          "description": "Ask one question to the Ask-Fabro analyst of another run and wait for its final answer. Requires the target run's workflow to be declared in this graph's inspects attribute.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": false
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 11711,
+        "usage_percent": 1.1168479919433594,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-09T14:36:07.319689429Z",
+        "event_seq": 71,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1133,
+            "usage_percent": 0.10805130004882812
+          },
+          {
+            "category": "tools",
+            "tokens": 1774,
+            "usage_percent": 0.16918182373046875
+          },
+          {
+            "category": "skills",
+            "tokens": 222,
+            "usage_percent": 0.02117156982421875
+          },
+          {
+            "category": "memory",
+            "tokens": 5752,
+            "usage_percent": 0.548553466796875
+          },
+          {
+            "category": "conversation",
+            "tokens": 2824,
+            "usage_percent": 0.269317626953125
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "failed"
     }
   }
 }
