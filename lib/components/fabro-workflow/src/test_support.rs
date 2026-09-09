@@ -8,10 +8,13 @@ use fabro_agent::Sandbox;
 use fabro_auth::{CredentialSource, test_support as auth_test_support};
 use fabro_graphviz::graph::Graph as GvGraph;
 use fabro_interview::AutoApproveInterviewer;
-use fabro_model::Catalog;
-#[cfg(feature = "test-support")]
-use fabro_model::ProviderId;
+use fabro_llm::catalog;
+use fabro_llm::lithos_catalog::Catalog;
+use fabro_llm::test_support::test_catalog;
 use fabro_store::{ArtifactStore, RunProjection, test_support as store_test_support};
+#[cfg(feature = "test-support")]
+use fabro_types::ProviderId;
+use fabro_types::{ModelId, ModelRef, provider_ids};
 use object_store::local::LocalFileSystem;
 
 use crate::artifact_upload::ArtifactSink;
@@ -36,7 +39,7 @@ pub(crate) fn test_configured_provider_ids(
     assume_ready: bool,
 ) -> Vec<ProviderId> {
     if assume_ready {
-        catalog.all_provider_ids().into_iter().collect()
+        catalog::enabled_provider_ids(catalog).into_iter().collect()
     } else {
         configured_provider_ids
     }
@@ -82,26 +85,20 @@ async fn execute_and_emit_terminal(initialized: InitializedState) -> Executed {
 #[must_use]
 pub fn test_usage(
     model_id: &str,
-    input_tokens: i64,
-    output_tokens: i64,
+    input_tokens: u64,
+    output_tokens: u64,
 ) -> fabro_types::BilledModelUsage {
-    serde_json::from_value(serde_json::json!({
-        "input": {
-            "usage": {
-                "model": {
-                    "provider": "openai",
-                    "model_id": model_id
-                },
-                "tokens": {
-                    "input_tokens": input_tokens,
-                    "output_tokens": output_tokens
-                }
-            },
-            "facts": { "algorithm": "openai" }
+    let mut usage = fabro_types::BilledModelUsage::new(
+        ModelRef::new(provider_ids::openai(), ModelId::new(model_id)),
+        fabro_types::TokenCounts {
+            input: input_tokens,
+            output: output_tokens,
+            ..fabro_types::TokenCounts::default()
         },
-        "total_usd_micros": input_tokens + output_tokens
-    }))
-    .expect("test_usage JSON must deserialise")
+        None,
+    );
+    usage.total_usd_micros = Some(i64::try_from(input_tokens + output_tokens).unwrap_or(i64::MAX));
+    usage
 }
 
 /// Append the `RunStartRequested → RunRunnable → RunStarting → RunRunning`
@@ -272,12 +269,12 @@ async fn initialized(
                     options.hook_runner,
                     locations,
                     run_options.cancel_token.clone(),
-                    fabro_model::ProviderId::anthropic(),
+                    provider_ids::anthropic(),
                     "claude-sonnet-4-6".to_string(),
                     options
                         .llm_source
                         .unwrap_or_else(auth_test_support::vault_only_credential_source),
-                    Arc::new(Catalog::from_builtin().expect("default catalog should build")),
+                    Arc::new(test_catalog()),
                     Arc::new(SandboxGitRuntime::new()),
                     Arc::new(RunMetadataRuntime::new()),
                     None,

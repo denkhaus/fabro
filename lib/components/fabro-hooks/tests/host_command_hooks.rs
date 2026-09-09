@@ -7,7 +7,7 @@ use fabro_hooks::{
     HookContext, HookDecision, HookDefinition, HookEvent, HookExecutionContext, HookRunner,
     HookSettings, InterpString,
 };
-use fabro_model::Catalog;
+use fabro_llm::lithos_catalog::Catalog;
 use fabro_types::RunId;
 use tokio::fs;
 
@@ -16,7 +16,7 @@ fn test_llm_source() -> Arc<dyn CredentialSource> {
 }
 
 fn test_catalog() -> Arc<Catalog> {
-    Arc::new(Catalog::from_builtin().expect("default catalog should build"))
+    Arc::new(fabro_llm::default_catalog())
 }
 
 fn local_sandbox() -> Arc<dyn Sandbox> {

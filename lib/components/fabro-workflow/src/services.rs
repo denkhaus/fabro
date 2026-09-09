@@ -6,13 +6,11 @@ use std::time::Duration;
 
 use fabro_agent::{Sandbox, ToolEnvProvider};
 use fabro_auth::CredentialSource;
-#[cfg(test)]
-use fabro_auth::ResolvedCredentials;
 use fabro_github::token_source::InstallationTokenSource;
 use fabro_hooks::{HookContext, HookDecision, HookExecutionContext, HookRunner};
 use fabro_interview::Interviewer;
-use fabro_model::{Catalog, ProviderId};
-use fabro_types::{ManifestPath, RunId};
+use fabro_llm::lithos_catalog::Catalog;
+use fabro_types::{ManifestPath, ProviderId, RunId};
 use tokio_util::sync::CancellationToken;
 
 use crate::event::Emitter;
@@ -271,12 +269,13 @@ impl EngineServices {
 
         #[async_trait::async_trait]
         impl CredentialSource for StubCredentialSource {
-            async fn resolve(&self, catalog: &Catalog) -> anyhow::Result<ResolvedCredentials> {
-                let _ = catalog;
-                Ok(ResolvedCredentials {
-                    credentials: Vec::new(),
-                    auth_issues: Vec::new(),
-                })
+            async fn credentials(
+                &self,
+                provider: &fabro_llm::lithos_catalog::CatalogProvider,
+            ) -> Result<fabro_llm::credentials::Credentials, fabro_auth::ResolveError> {
+                Err(fabro_auth::ResolveError::NotConfigured(
+                    provider.id().clone(),
+                ))
             }
 
             async fn configured_providers(&self, catalog: &Catalog) -> Vec<ProviderId> {
@@ -318,10 +317,10 @@ impl EngineServices {
                 None,
                 locations,
                 CancellationToken::new(),
-                ProviderId::anthropic(),
-                "claude-sonnet-4-6".to_string(),
+                fabro_types::provider_ids::anthropic(),
+                "claude-sonnet-4.6".to_string(),
                 Arc::new(StubCredentialSource),
-                Arc::new(Catalog::from_builtin().expect("default catalog should build")),
+                Arc::new(fabro_llm::default_catalog()),
                 Arc::new(SandboxGitRuntime::new()),
                 Arc::new(RunMetadataRuntime::new()),
                 None,
