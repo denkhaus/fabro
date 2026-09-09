@@ -194,7 +194,9 @@ pub(in crate::server) use handler::graph::{
 };
 #[cfg(test)]
 pub(in crate::server) use handler::system::validate_github_slug;
-pub(crate) use pull_request_supervisor::spawn_pull_request_creation_supervisor;
+pub(crate) use pull_request_supervisor::{
+    spawn_pull_request_creation_supervisor, spawn_pull_request_staleness_supervisor,
+};
 use session_runtime::SessionRuntimeManager;
 
 pub(crate) type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;

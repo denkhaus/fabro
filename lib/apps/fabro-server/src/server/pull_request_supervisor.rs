@@ -21,6 +21,22 @@ use super::{AppState, pull_request, workflow_event};
 
 const PULL_REQUEST_CREATION_TIMEOUT: Duration = Duration::from_mins(10);
 const PULL_REQUEST_CREATION_SCAN_INTERVAL: Duration = Duration::from_secs(30);
+/// How often the staleness leg scans open run-linked pull requests whose base
+/// may have moved (fabro-94e8). Base drift is a minutes-to-hours scale
+/// problem; a 5-minute cadence keeps API budget bounded.
+const PULL_REQUEST_STALENESS_SCAN_INTERVAL: Duration = Duration::from_mins(5);
+/// Per-call timeout for GitHub API calls in the staleness leg. A hung request
+/// must not stall the whole scan loop.
+const PULL_REQUEST_GITHUB_CALL_TIMEOUT: Duration = Duration::from_secs(15);
+/// After this many conflicting update-branch attempts the supervisor gives up
+/// and closes the pull request as `stale_base` (fabro-94e8 Q4).
+const MAX_UPDATE_BRANCH_ATTEMPTS: u32 = 3;
+/// A run-linked pull request older than this is closed as `stale_base` even
+/// before the update-attempt cap is reached (fabro-94e8 Q4).
+const PULL_REQUEST_MAX_AGE: chrono::Duration = chrono::Duration::hours(24);
+/// Close reason recorded on the `pull_request.closed` event when the
+/// supervisor retires a pull request it could no longer converge.
+const CLOSE_REASON_STALE_BASE: &str = "stale_base";
 const MAX_CONCURRENT_PULL_REQUEST_CREATIONS: usize = 4;
 const PULL_REQUEST_CREATION_QUEUE_CAPACITY: usize = MAX_CONCURRENT_PULL_REQUEST_CREATIONS * 4;
 /// Stop retrying a run after this many worker attempts that could not even
@@ -238,6 +254,220 @@ pub(crate) fn spawn_pull_request_creation_supervisor(state: Arc<AppState>) -> Jo
         run_pull_request_creation_supervisor(state)
             .instrument(info_span!("pull_request_creation_supervisor")),
     )
+}
+
+// ---------------------------------------------------------------------------
+// Staleness leg (fabro-94e8): keep run-linked pull requests converging when
+// the base branch moves. Polls open PRs with mergeable=false, asks GitHub to
+// update-branch the dirty ones, and retires PRs that cannot converge (3
+// conflicting updates or 24h of age) with a `pull_request.closed` event
+// carrying close_reason `stale_base`.
+// ---------------------------------------------------------------------------
+
+pub(crate) fn spawn_pull_request_staleness_supervisor(state: Arc<AppState>) -> JoinHandle<()> {
+    tokio::spawn(
+        run_pull_request_staleness_supervisor(state)
+            .instrument(info_span!("pull_request_staleness_supervisor")),
+    )
+}
+
+async fn run_pull_request_staleness_supervisor(state: Arc<AppState>) {
+    let shutdown = state.shutdown_token();
+    let mut scan_interval = time::interval(PULL_REQUEST_STALENESS_SCAN_INTERVAL);
+    scan_interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
+    // In-memory failed-update counters: a server restart resets the 3-strike
+    // cap, which only delays retirement by at most three more polls.
+    let mut update_failures: HashMap<RunId, u32> = HashMap::new();
+
+    loop {
+        tokio::select! {
+            () = shutdown.cancelled() => break,
+            _ = scan_interval.tick() => {
+                if let Err(error) =
+                    process_stale_pull_requests(&state, &mut update_failures).await
+                {
+                    warn!(%error, "Failed to scan stale run pull requests");
+                }
+            }
+        }
+    }
+}
+
+/// One staleness pass over every run-linked pull request. Public to the crate
+/// so wire tests drive it deterministically instead of waiting for the
+/// interval.
+pub(super) async fn process_stale_pull_requests(
+    state: &AppState,
+    update_failures: &mut HashMap<RunId, u32>,
+) -> anyhow::Result<()> {
+    let candidates = state
+        .stores
+        .run_summaries
+        .list_linked_pull_request_run_ids()
+        .await?;
+    if candidates.is_empty() {
+        return Ok(());
+    }
+    let creds = match load_server_github_credentials(state).await {
+        Ok(creds) => creds,
+        Err(err) => {
+            warn!(error = %err.detail(), "Skipping stale pull request scan: GitHub integration unavailable");
+            return Ok(());
+        }
+    };
+    let github = server_github_context(state, &creds)
+        .map_err(|err| anyhow::anyhow!("GitHub integration unavailable: {}", err.detail()))?;
+
+    for run_id in candidates {
+        let projection = match state.stores.runs.load_run_projection(&run_id).await {
+            Ok(Some(projection)) => projection,
+            Ok(None) => continue,
+            Err(error) => {
+                warn!(%run_id, %error, "Failed to load stale pull request candidate");
+                continue;
+            }
+        };
+        let Some(record) = projection.pull_request.clone() else {
+            continue;
+        };
+
+        let fetch = time::timeout(
+            PULL_REQUEST_GITHUB_CALL_TIMEOUT,
+            fabro_github::get_pull_request(&github, &record.owner, &record.repo, record.number),
+        )
+        .await;
+        let detail = match fetch {
+            Ok(Ok(detail)) => detail,
+            Ok(Err(fabro_github::PullRequestApiError::NotFound { .. })) => continue,
+            Ok(Err(error)) => {
+                warn!(%run_id, %error, "Failed to fetch run-linked pull request");
+                continue;
+            }
+            Err(_) => {
+                warn!(%run_id, "Run-linked pull request fetch timed out");
+                continue;
+            }
+        };
+
+        if detail.merged || !detail.state.eq_ignore_ascii_case("open") {
+            update_failures.remove(&run_id);
+            continue;
+        }
+
+        // Age cap first: a run PR older than 24h is retired regardless of its
+        // current merge state (fabro-94e8 Q4).
+        let created_at = chrono::DateTime::parse_from_rfc3339(&detail.created_at)
+            .map(|parsed| parsed.with_timezone(&chrono::Utc))
+            .ok();
+        match created_at {
+            Some(created_at) if created_at < chrono::Utc::now() - PULL_REQUEST_MAX_AGE => {
+                close_stale_pull_request(state, &github, &run_id, &record).await?;
+                update_failures.remove(&run_id);
+                continue;
+            }
+            Some(_) => {}
+            None => {
+                warn!(%run_id, created_at = %detail.created_at, "Cannot parse pull request created_at");
+            }
+        }
+
+        // Poll set: mergeable=false. Update-branch is only for dirty PRs —
+        // `blocked` means required checks, not a moved base, and updating the
+        // branch would not clear it (fabro-94e8 Q2).
+        let dirty = detail.mergeable == Some(false)
+            && detail
+                .mergeable_state
+                .as_deref()
+                .is_some_and(|state| state.eq_ignore_ascii_case("dirty"));
+        if !dirty {
+            update_failures.remove(&run_id);
+            continue;
+        }
+
+        let failed = update_failures.get(&run_id).copied().unwrap_or(0);
+        if failed >= MAX_UPDATE_BRANCH_ATTEMPTS {
+            close_stale_pull_request(state, &github, &run_id, &record).await?;
+            update_failures.remove(&run_id);
+            continue;
+        }
+
+        let update = time::timeout(
+            PULL_REQUEST_GITHUB_CALL_TIMEOUT,
+            fabro_github::update_pull_request_branch(
+                &github,
+                &record.owner,
+                &record.repo,
+                record.number,
+            ),
+        )
+        .await;
+        match update {
+            Ok(Ok(())) => {
+                update_failures.remove(&run_id);
+                tracing::info!(%run_id, pr_number = record.number, "Update-branch requested for stale run pull request");
+            }
+            Ok(Err(fabro_github::PullRequestApiError::Conflict { status, .. })) => {
+                // Q3: the PR stays open; the run wait observes
+                // closed_unmerged/timeout and the conductor routes manual.
+                let attempts = update_failures.entry(run_id).or_default();
+                *attempts += 1;
+                warn!(
+                    %run_id,
+                    pr_number = record.number,
+                    status,
+                    attempts = *attempts,
+                    "Update-branch conflicted for run pull request"
+                );
+            }
+            Ok(Err(fabro_github::PullRequestApiError::NotFound { .. })) => {}
+            Ok(Err(error)) => {
+                warn!(%run_id, %error, "Update-branch failed for run pull request");
+            }
+            Err(_) => {
+                warn!(%run_id, "Update-branch timed out for run pull request");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Close `record` on GitHub and record the durable `pull_request.closed` run
+/// event with close reason `stale_base`.
+async fn close_stale_pull_request(
+    state: &AppState,
+    github: &fabro_github::GitHubContext<'_>,
+    run_id: &RunId,
+    record: &fabro_types::PullRequestLink,
+) -> anyhow::Result<()> {
+    let closed = time::timeout(
+        PULL_REQUEST_GITHUB_CALL_TIMEOUT,
+        fabro_github::close_pull_request(github, &record.owner, &record.repo, record.number),
+    )
+    .await;
+    match closed {
+        Ok(Ok(())) => {}
+        Ok(Err(fabro_github::PullRequestApiError::NotFound { .. })) => {
+            // The PR is already gone; nothing to retire.
+            return Ok(());
+        }
+        Ok(Err(error)) => {
+            warn!(%run_id, %error, "Failed to close stale run pull request");
+            return Ok(());
+        }
+        Err(_) => {
+            warn!(%run_id, "Closing stale run pull request timed out");
+            return Ok(());
+        }
+    }
+
+    let run_store = state.stores.runs.open_run(run_id).await?;
+    let event = workflow_event::Event::PullRequestClosed {
+        pull_request: record.clone(),
+        close_reason: CLOSE_REASON_STALE_BASE.to_string(),
+    };
+    workflow_event::append_event(&run_store, run_id, &event).await?;
+    tracing::info!(%run_id, pr_number = record.number, close_reason = CLOSE_REASON_STALE_BASE, "Closed stale run pull request");
+    Ok(())
 }
 
 pub(super) async fn recover_pending_pull_request_creations(

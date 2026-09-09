@@ -12814,6 +12814,282 @@ async fn close_run_pull_request_returns_bad_gateway_when_github_pr_is_missing() 
     github_mock.assert();
 }
 
+// ---------------------------------------------------------------------------
+// Staleness supervisor (fabro-94e8): update-branch on dirty run PRs, cap/age
+// close with a durable pull_request.closed event.
+// ---------------------------------------------------------------------------
+
+/// Wire fixtures for one staleness pass over a run-linked PR #42.
+fn dirty_run_pull_request_mock<'a>(
+    github: &'a MockServer,
+    pr_state: &str,
+    mergeable: bool,
+    mergeable_state: &str,
+    created_at: &str,
+) -> httpmock::Mock<'a> {
+    github.mock(|when, then| {
+        when.method("GET")
+            .path("/repos/acme/widgets/pulls/42")
+            .header("authorization", "Bearer ghu_test");
+        then.status(200).json_body(json!({
+            "number": 42,
+            "title": "Ship it",
+            "body": "",
+            "state": pr_state,
+            "draft": false,
+            "merged": false,
+            "mergeable": mergeable,
+            "mergeable_state": mergeable_state,
+            "additions": 1,
+            "deletions": 0,
+            "changed_files": 1,
+            "html_url": "https://github.com/acme/widgets/pull/42",
+            "user": { "login": "octocat" },
+            "head": { "ref": "fabro/run/42" },
+            "base": { "ref": "main" },
+            "created_at": created_at,
+            "updated_at": created_at
+        }));
+    })
+}
+
+fn update_branch_mock(github: &MockServer, status: u16) -> httpmock::Mock<'_> {
+    github.mock(move |when, then| {
+        when.method("PUT")
+            .path("/repos/acme/widgets/pulls/42/update-branch")
+            .header("authorization", "Bearer ghu_test");
+        then.status(status)
+            .json_body(json!({ "message": "Updating pull request branch." }));
+    })
+}
+
+fn close_branch_mock(github: &MockServer) -> httpmock::Mock<'_> {
+    github.mock(|when, then| {
+        when.method("PATCH")
+            .path("/repos/acme/widgets/pulls/42")
+            .header("authorization", "Bearer ghu_test")
+            .json_body(json!({ "state": "closed" }));
+        then.status(200).json_body(json!({
+            "number": 42,
+            "state": "closed",
+        }));
+    })
+}
+
+async fn staleness_test_run(state: &Arc<AppState>, run_id: RunId) {
+    create_run_with_linked_pull_request_record(state, run_id, PullRequestLink {
+        owner:  "acme".to_string(),
+        repo:   "widgets".to_string(),
+        number: 42,
+    })
+    .await;
+}
+
+async fn run_pull_request_closed_events(state: &AppState, run_id: &RunId) -> Vec<(String, String)> {
+    let run_store = state.stores.runs.open_run(run_id).await.unwrap();
+    let events = run_store.list_events().await.unwrap();
+    events
+        .iter()
+        .filter_map(|envelope| match &envelope.event.body {
+            fabro_types::run_event::EventBody::PullRequestClosed(props) => {
+                Some((props.close_reason.clone(), props.pull_request.html_url()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn staleness_supervisor_updates_dirty_run_pull_request_branch() {
+    let github = MockServer::start();
+    let created_at = Utc::now().to_rfc3339();
+    let _get_mock = dirty_run_pull_request_mock(&github, "open", false, "dirty", &created_at);
+    let update_mock = update_branch_mock(&github, 202);
+    let close_mock = close_branch_mock(&github);
+    let (state, _app, run_id) = pr_test_app(Some("ghu_test"), Some(github.base_url()));
+    staleness_test_run(&state, run_id).await;
+
+    let mut update_failures = HashMap::new();
+    super::pull_request_supervisor::process_stale_pull_requests(&state, &mut update_failures)
+        .await
+        .unwrap();
+
+    update_mock.assert();
+    assert_eq!(
+        close_mock.calls(),
+        0,
+        "a successful update must not close the PR"
+    );
+    assert!(
+        update_failures.is_empty(),
+        "a successful update resets the failure counter"
+    );
+    assert!(
+        run_pull_request_closed_events(&state, &run_id)
+            .await
+            .is_empty(),
+        "no close event may be emitted on a successful update"
+    );
+}
+
+#[tokio::test]
+async fn staleness_supervisor_keeps_pr_open_on_conflict_and_counts_the_failure() {
+    let github = MockServer::start();
+    let created_at = Utc::now().to_rfc3339();
+    let _get_mock = dirty_run_pull_request_mock(&github, "open", false, "dirty", &created_at);
+    let update_mock = update_branch_mock(&github, 422);
+    let close_mock = close_branch_mock(&github);
+    let (state, _app, run_id) = pr_test_app(Some("ghu_test"), Some(github.base_url()));
+    staleness_test_run(&state, run_id).await;
+
+    let mut update_failures = HashMap::new();
+    super::pull_request_supervisor::process_stale_pull_requests(&state, &mut update_failures)
+        .await
+        .unwrap();
+
+    update_mock.assert();
+    assert_eq!(
+        close_mock.calls(),
+        0,
+        "a 422 conflict must not close the PR"
+    );
+    assert_eq!(
+        update_failures.get(&run_id),
+        Some(&1),
+        "the conflict counts as one failed attempt"
+    );
+    assert!(
+        run_pull_request_closed_events(&state, &run_id)
+            .await
+            .is_empty(),
+        "no close event may be emitted on conflict"
+    );
+    // The stored link stays: the wait endpoint keeps observing the open PR and
+    // can only answer closed_unmerged/timeout, routing the conductor manual.
+    let projection = state
+        .stores
+        .runs
+        .load_run_projection(&run_id)
+        .await
+        .unwrap();
+    assert!(
+        projection
+            .expect("run projection should load")
+            .pull_request
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn staleness_supervisor_closes_pr_after_three_failed_updates() {
+    let github = MockServer::start();
+    let created_at = Utc::now().to_rfc3339();
+    let _get_mock = dirty_run_pull_request_mock(&github, "open", false, "dirty", &created_at);
+    let update_mock = update_branch_mock(&github, 422);
+    let close_mock = close_branch_mock(&github);
+    let (state, _app, run_id) = pr_test_app(Some("ghu_test"), Some(github.base_url()));
+    staleness_test_run(&state, run_id).await;
+
+    let mut update_failures = HashMap::new();
+    update_failures.insert(run_id, 3);
+    super::pull_request_supervisor::process_stale_pull_requests(&state, &mut update_failures)
+        .await
+        .unwrap();
+
+    close_mock.assert();
+    assert_eq!(
+        update_mock.calls(),
+        0,
+        "a capped PR is closed without another update attempt"
+    );
+    let closed = run_pull_request_closed_events(&state, &run_id).await;
+    assert_eq!(
+        closed,
+        vec![(
+            "stale_base".to_string(),
+            "https://github.com/acme/widgets/pull/42".to_string()
+        )],
+        "the close must be recorded as a stale_base run event"
+    );
+    assert!(
+        !update_failures.contains_key(&run_id),
+        "retiring the PR clears its counter"
+    );
+    let projection = state
+        .stores
+        .runs
+        .load_run_projection(&run_id)
+        .await
+        .unwrap();
+    assert!(
+        projection
+            .expect("run projection should load")
+            .pull_request
+            .is_none(),
+        "the closed PR must no longer be linked to the run"
+    );
+}
+
+#[tokio::test]
+async fn staleness_supervisor_closes_pr_older_than_24h() {
+    let github = MockServer::start();
+    let created_at = (Utc::now() - ChronoDuration::hours(25)).to_rfc3339();
+    let _get_mock = dirty_run_pull_request_mock(&github, "open", false, "dirty", &created_at);
+    let update_mock = update_branch_mock(&github, 202);
+    let close_mock = close_branch_mock(&github);
+    let (state, _app, run_id) = pr_test_app(Some("ghu_test"), Some(github.base_url()));
+    staleness_test_run(&state, run_id).await;
+
+    let mut update_failures = HashMap::new();
+    super::pull_request_supervisor::process_stale_pull_requests(&state, &mut update_failures)
+        .await
+        .unwrap();
+
+    close_mock.assert();
+    assert_eq!(
+        update_mock.calls(),
+        0,
+        "an over-age PR is closed without an update attempt"
+    );
+    let closed = run_pull_request_closed_events(&state, &run_id).await;
+    assert_eq!(
+        closed,
+        vec![(
+            "stale_base".to_string(),
+            "https://github.com/acme/widgets/pull/42".to_string()
+        )],
+        "the age close must be recorded as a stale_base run event"
+    );
+}
+
+#[tokio::test]
+async fn staleness_supervisor_skips_clean_and_blocked_run_pull_requests() {
+    let github = MockServer::start();
+    let created_at = Utc::now().to_rfc3339();
+    let _clean_mock = dirty_run_pull_request_mock(&github, "open", true, "clean", &created_at);
+    let update_mock = update_branch_mock(&github, 202);
+    let close_mock = close_branch_mock(&github);
+    let (state, _app, run_id) = pr_test_app(Some("ghu_test"), Some(github.base_url()));
+    staleness_test_run(&state, run_id).await;
+
+    let mut update_failures = HashMap::new();
+    update_failures.insert(run_id, 2);
+    super::pull_request_supervisor::process_stale_pull_requests(&state, &mut update_failures)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        update_mock.calls(),
+        0,
+        "a clean PR must not be update-branched"
+    );
+    assert_eq!(close_mock.calls(), 0, "a clean PR must not be closed");
+    assert!(
+        !update_failures.contains_key(&run_id),
+        "a clean PR resets its counter"
+    );
+}
+
 #[tokio::test]
 async fn get_run_state_exposes_pending_interviews() {
     let state = test_app_state();

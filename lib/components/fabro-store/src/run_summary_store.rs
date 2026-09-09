@@ -654,6 +654,35 @@ LIMIT 1
         .collect()
     }
 
+    /// Run ids whose event history still names a linked pull request: the
+    /// latest `pull_request.created`/`pull_request.linked` event has no later
+    /// event that would supersede or resolve it (a newer link, an unlink, or
+    /// a supervisor close, fabro-94e8). Callers still load each projection to
+    /// confirm the link and read live GitHub state, so this bounds the polled
+    /// set rather than deciding dirtiness.
+    pub async fn list_linked_pull_request_run_ids(&self) -> Result<Vec<RunId>> {
+        sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT linked.run_id FROM run_events AS linked \
+             WHERE linked.event_name IN ('pull_request.created', 'pull_request.linked') \
+               AND NOT EXISTS ( \
+                 SELECT 1 FROM run_events AS later \
+                 WHERE later.run_id = linked.run_id \
+                   AND later.seq > linked.seq \
+                   AND later.event_name IN ( \
+                     'pull_request.created', \
+                     'pull_request.linked', \
+                     'pull_request.unlinked', \
+                     'pull_request.closed' \
+                   ) \
+               )",
+        )
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .map(parse_stored_run_id)
+        .collect()
+    }
+
     /// Identity fields for every stored run, for selector resolution without
     /// decoding full summaries.
     pub async fn list_identities(&self) -> Result<Vec<RunSummaryIdentity>> {

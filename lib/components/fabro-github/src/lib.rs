@@ -156,7 +156,8 @@ impl CreatePullRequestError {
 }
 
 /// Errors returned by pull-request endpoints. Callers branch on `NotFound` to
-/// distinguish a missing PR from any other failure.
+/// distinguish a missing PR from any other failure, and on `Conflict` to
+/// distinguish an unresolvable update-branch conflict from generic errors.
 #[derive(Debug, thiserror::Error)]
 pub enum PullRequestApiError {
     #[error("Pull request #{number} not found in {owner}/{repo}")]
@@ -164,6 +165,16 @@ pub enum PullRequestApiError {
         owner:  String,
         repo:   String,
         number: u64,
+    },
+    /// The update-branch endpoint refused the update (HTTP 422, or 409):
+    /// head and base conflict in a way GitHub will not auto-resolve.
+    /// Deliberately distinct from `Other` so the supervisor can keep the PR
+    /// open and count failed attempts (fabro-94e8).
+    #[error("Pull request #{number} update-branch conflict (status {status}): {body}")]
+    Conflict {
+        number: u64,
+        status: u16,
+        body:   String,
     },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
@@ -1694,6 +1705,79 @@ pub async fn close_pull_request_with_client(
     }
 }
 
+/// Ask GitHub to update a pull request's branch with the latest base changes
+/// (the update-branch API, fabro-94e8).
+///
+/// HTTP 422 (and 409) surface as [`PullRequestApiError::Conflict`]: head and
+/// base conflict in a way GitHub will not auto-resolve, and callers must not
+/// treat that as a generic failure.
+pub async fn update_pull_request_branch(
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    number: u64,
+) -> Result<(), PullRequestApiError> {
+    let client = ctx.http_client()?;
+    update_pull_request_branch_with_client(&client, ctx, owner, repo, number).await
+}
+
+pub async fn update_pull_request_branch_with_client(
+    client: &impl HttpClient,
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    number: u64,
+) -> Result<(), PullRequestApiError> {
+    tracing::debug!(owner, repo, number, "Updating pull request branch");
+
+    let token = ctx
+        .creds
+        .resolve_bearer_token(
+            client,
+            owner,
+            repo,
+            ctx.base_url,
+            serde_json::json!({ "contents": "write", "pull_requests": "write" }),
+        )
+        .await?;
+
+    let url = format!(
+        "{}/repos/{owner}/{repo}/pulls/{number}/update-branch",
+        ctx.base_url
+    );
+    let auth = format!("Bearer {token}");
+
+    let resp = client
+        .request(HttpMethod::Put, &url, &github_headers(&auth), None)
+        .await
+        .context("Failed to update pull request branch")?;
+
+    match resp.status {
+        // GitHub answers 202 Accepted when the update is queued.
+        202 => Ok(()),
+        409 | 422 => Err(PullRequestApiError::Conflict {
+            number,
+            status: resp.status,
+            body: resp.text().to_string(),
+        }),
+        404 => Err(PullRequestApiError::NotFound {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number,
+        }),
+        401 | 403 => Err(anyhow!(
+            "Authentication failed updating pull request branch ({})",
+            resp.status
+        )
+        .into()),
+        status => Err(anyhow!(
+            "Unexpected status {status} updating pull request branch: {}",
+            resp.text()
+        )
+        .into()),
+    }
+}
+
 /// Request a scoped Installation Access Token with `issues: write`
 /// and `organization_projects: write`. Used for GitHub Projects V2.
 pub async fn create_installation_access_token_for_projects(
@@ -2178,6 +2262,70 @@ mod tests {
         assert!(hint.starts_with("403 Forbidden — token lacks the scope"));
         assert!(hint.contains("pull-requests permission"), "{hint}");
         assert!(!error.is_retryable());
+    }
+
+    // -----------------------------------------------------------------------
+    // update_pull_request_branch — success, conflict, not found
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn update_pull_request_branch_accepts_202() {
+        let mock = MockHttpClient::new().on(
+            HttpMethod::Put,
+            "/repos/owner/repo/pulls/42/update-branch",
+            202,
+            r#"{"message":"Updating pull request branch."}"#,
+        );
+        let creds = GitHubCredentials::Pat("pat-token".to_string());
+        let ctx = GitHubContext::new(&creds, "https://api.example.test");
+
+        update_pull_request_branch_with_client(&mock, &ctx, "owner", "repo", 42)
+            .await
+            .expect("202 must map to Ok");
+        assert_eq!(mock.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn update_pull_request_branch_maps_422_to_conflict() {
+        let mock = MockHttpClient::new().on(
+            HttpMethod::Put,
+            "/repos/owner/repo/pulls/42/update-branch",
+            422,
+            r#"{"message":"merge conflict between head and base"}"#,
+        );
+        let creds = GitHubCredentials::Pat("pat-token".to_string());
+        let ctx = GitHubContext::new(&creds, "https://api.example.test");
+
+        let error = update_pull_request_branch_with_client(&mock, &ctx, "owner", "repo", 42)
+            .await
+            .expect_err("422 must surface as a Conflict error");
+
+        assert!(
+            matches!(error, PullRequestApiError::Conflict {
+                number: 42,
+                status: 422,
+                ..
+            }),
+            "expected Conflict, got {error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn update_pull_request_branch_maps_404_to_not_found() {
+        let mock = MockHttpClient::new().on(
+            HttpMethod::Put,
+            "/repos/owner/repo/pulls/42/update-branch",
+            404,
+            r#"{"message":"Not Found"}"#,
+        );
+        let creds = GitHubCredentials::Pat("pat-token".to_string());
+        let ctx = GitHubContext::new(&creds, "https://api.example.test");
+
+        let error = update_pull_request_branch_with_client(&mock, &ctx, "owner", "repo", 42)
+            .await
+            .expect_err("404 must surface as NotFound");
+
+        assert!(matches!(error, PullRequestApiError::NotFound { .. }));
     }
 
     // -----------------------------------------------------------------------
