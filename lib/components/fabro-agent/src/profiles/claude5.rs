@@ -2,7 +2,8 @@
 
 use std::sync::Arc;
 
-use fabro_model::{AgentProfileKind, Catalog, ProviderId};
+use fabro_llm::lithos_catalog::Catalog;
+use fabro_types::{AgentProfileKind, ProviderId, provider_ids};
 
 use super::EnvContext;
 use crate::agent_profile::AgentProfile;
@@ -64,7 +65,7 @@ impl Claude5Profile {
         Self {
             base: BaseProfile {
                 profile_kind: AgentProfileKind::Claude5,
-                provider_id: ProviderId::anthropic(),
+                provider_id: provider_ids::anthropic(),
                 model: model.into(),
                 catalog: None,
                 registry,
@@ -165,7 +166,7 @@ mod tests {
     fn profile_identity() {
         let profile = Claude5Profile::new("claude-fable-5");
         assert_eq!(profile.profile_kind(), AgentProfileKind::Claude5);
-        assert_eq!(profile.provider_id(), ProviderId::anthropic());
+        assert_eq!(profile.provider_id(), provider_ids::anthropic());
         assert_eq!(profile.model(), "claude-fable-5");
     }
 

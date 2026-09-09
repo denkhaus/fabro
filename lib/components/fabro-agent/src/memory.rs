@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use fabro_model::AgentProfileKind;
+use fabro_types::AgentProfileKind;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 

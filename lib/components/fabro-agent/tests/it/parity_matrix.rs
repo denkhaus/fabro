@@ -3,7 +3,6 @@
     reason = "agent parity test harness: sync std::fs for staging fixture trees and reading captured outputs"
 )]
 
-use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::Path;
 use std::sync::Arc;
@@ -14,12 +13,12 @@ use fabro_agent::{
     SessionOptions, SubAgentSupervisor, ToolSecrets, WebFetchSummarizer,
 };
 use fabro_auth::EnvCredentialSource;
-use fabro_llm::client::Client;
-use fabro_llm::provider::ProviderAdapter;
-use fabro_llm::providers::{OpenAiAdapter, OpenAiCompatibleAdapter};
-use fabro_model::catalog::{LlmCatalogSettings, ProviderCatalogSettings};
-use fabro_model::{Catalog, ModelHandle, ProviderId};
+use fabro_config::LlmLayer;
+use fabro_llm::lithos_catalog::Catalog;
+use fabro_llm::test_support::client_from_env;
+use fabro_llm::{Client, ClientOptions, catalog};
 use fabro_test::{EnvVars, TwinScenario, TwinScenarios, TwinToolCall, twin_openai};
+use fabro_types::{ModelHandle, ModelId, ProviderId, provider_ids};
 
 type Provider = ProviderId;
 
@@ -30,21 +29,15 @@ struct OpenAiTwinOptions {
 }
 
 fn summarizer_model_id(provider: &Provider) -> ModelHandle {
-    match provider.as_str() {
-        ProviderId::OPENAI | "moonshot" | "zai" | "minimax" | "inception" => ModelHandle::ByName {
-            provider: ProviderId::openai(),
-            model:    "gpt-5.4-mini".to_string(),
-        },
-        ProviderId::GEMINI => ModelHandle::ByName {
-            provider: ProviderId::gemini(),
-            model:    "gemini-3-flash-preview".to_string(),
-        },
-        ProviderId::ANTHROPIC => ModelHandle::ByName {
-            provider: ProviderId::anthropic(),
-            model:    "claude-haiku-4-5".to_string(),
-        },
+    let (provider, model) = match provider.as_str() {
+        provider_ids::OPENAI | "moonshot" | "zai" | "minimax" | "inception" => {
+            (provider_ids::openai(), "gpt-5.4-mini")
+        }
+        provider_ids::GEMINI => (provider_ids::gemini(), "gemini-3-flash-preview"),
+        provider_ids::ANTHROPIC => (provider_ids::anthropic(), "claude-haiku-4.5"),
         other => panic!("unexpected provider {other}"),
-    }
+    };
+    ModelHandle::new(provider, ModelId::new(model))
 }
 
 fn build_summarizer(provider: &Provider, client: &Client) -> WebFetchSummarizer {
@@ -61,11 +54,10 @@ fn profile_builder(
     tool_secrets: ToolSecrets,
 ) -> AgentProfileBuilder {
     let summarizer = Some(build_summarizer(provider, client));
-    let catalog = Arc::new(Catalog::from_builtin().expect("default catalog should build"));
+    let catalog = Arc::new(live_catalog());
     // Ask the catalog rather than keeping a provider->profile list in the test,
     // so adding a provider to the catalog cannot silently skip this matrix.
-    let profile_kind = catalog
-        .effective_agent_profile(provider, Some(model))
+    let profile_kind = catalog::agent_profile(&catalog, provider.as_str(), Some(model))
         .unwrap_or_else(|| panic!("no agent profile for provider {provider:?} in catalog"));
     AgentProfileBuilder::new(profile_kind, provider.clone(), model, Arc::clone(&catalog))
         .with_web_fetch_summarizer(summarizer)
@@ -127,61 +119,81 @@ async fn make_session_with_config(
     Session::new(client, profile, env, config, None)
 }
 
+/// The catalog live tests run against: built-ins plus Fabro policy, with the
+/// `openai` provider repointed at `OPENAI_BASE_URL` when the environment sets
+/// it.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "live parity tests read provider endpoints from the process environment"
+)]
+fn live_catalog() -> Catalog {
+    fabro_llm::build_catalog(&LlmLayer::default(), &|name| std::env::var(name).ok())
+        .expect("default catalog should build")
+}
+
+/// A catalog whose `openai` provider is served by the twin at `base_url`.
+fn twin_catalog(base_url: &str, overlay: &str) -> Catalog {
+    let base_url = base_url.to_string();
+    let overlay = LlmLayer(toml::from_str(overlay).expect("overlay should parse"));
+    fabro_llm::build_catalog(&overlay, &move |name| {
+        (name == EnvVars::OPENAI_BASE_URL).then(|| base_url.clone())
+    })
+    .expect("twin catalog should build")
+}
+
 async fn make_client(provider: &Provider, twin: Option<&OpenAiTwinOptions>) -> Client {
-    if provider == &ProviderId::openai() && fabro_test::TestMode::from_env().is_twin() {
-        return make_twin_client(twin.expect("openai twin config should be provided"));
+    if provider == &provider_ids::openai() && fabro_test::TestMode::from_env().is_twin() {
+        return make_twin_client(twin.expect("openai twin config should be provided")).await;
     }
 
-    let source = EnvCredentialSource::new();
-    let catalog = Arc::new(Catalog::from_builtin().expect("default catalog should build"));
-    Client::from_source(&source, catalog)
+    let source = Arc::new(EnvCredentialSource::new());
+    fabro_llm::build_client(live_catalog(), source, ClientOptions::standard())
         .await
-        .expect("Client::from_source failed")
+        .expect("LLM client should build")
+        .client
 }
 
-fn make_twin_client(twin: &OpenAiTwinOptions) -> Client {
-    let adapter: Arc<dyn ProviderAdapter> =
-        Arc::new(OpenAiAdapter::new(twin.api_key.clone()).with_base_url(twin.base_url.clone()));
-    let mut providers: HashMap<String, Arc<dyn ProviderAdapter>> = HashMap::new();
-    providers.insert("openai".to_string(), adapter);
-    Client::new(providers, Some("openai".to_string()), Vec::new())
+async fn make_twin_client(twin: &OpenAiTwinOptions) -> Client {
+    let api_key = twin.api_key.clone();
+    client_from_env(
+        twin_catalog(&twin.base_url, ""),
+        move |name| (name == EnvVars::OPENAI_API_KEY).then(|| api_key.clone()),
+        ClientOptions::standard(),
+    )
+    .await
 }
 
-fn make_openai_compatible_twin_client(provider: &Provider, twin: &OpenAiTwinOptions) -> Client {
-    let provider_name = provider.to_string();
-    let adapter: Arc<dyn ProviderAdapter> = Arc::new(
-        OpenAiCompatibleAdapter::new(twin.api_key.clone(), twin.base_url.clone())
-            .with_name(provider_name.clone()),
-    );
-    let mut providers: HashMap<String, Arc<dyn ProviderAdapter>> = HashMap::new();
-    providers.insert(provider_name.clone(), adapter);
-    Client::new(providers, Some(provider_name), Vec::new())
+/// LiteLLM is opt-in in the built-in catalog and has no fixed endpoint. Enable
+/// it and point it at the twin's Chat Completions endpoint so the profile
+/// resolves the OpenAI-compatible codec the twin speaks.
+fn litellm_twin_overlay(base_url: &str) -> String {
+    format!(
+        "[providers.litellm]\nbase_url = {}\n\n[providers.litellm.metadata.fabro]\nenabled = true\n",
+        toml::Value::String(base_url.to_string())
+    )
 }
 
-fn make_openai_compatible_twin_session(
+async fn make_openai_compatible_twin_client(catalog: Catalog, twin: &OpenAiTwinOptions) -> Client {
+    let api_key = twin.api_key.clone();
+    client_from_env(
+        catalog,
+        move |name| (name == "LITELLM_API_KEY").then(|| api_key.clone()),
+        ClientOptions::standard(),
+    )
+    .await
+}
+
+async fn make_openai_compatible_twin_session(
     provider: Provider,
     model: &str,
     cwd: &Path,
     config: SessionOptions,
     twin: &OpenAiTwinOptions,
 ) -> Session {
-    let client = make_openai_compatible_twin_client(&provider, twin);
-    // LiteLLM is opt-in in the built-in catalog. Enable the provider in this
-    // twin fixture so the profile can resolve the same OpenAI-compatible
-    // codec that the manually registered adapter uses.
-    let mut settings = LlmCatalogSettings::default();
-    settings
-        .providers
-        .insert(provider.to_string(), ProviderCatalogSettings {
-            enabled: Some(true),
-            ..ProviderCatalogSettings::default()
-        });
-    let catalog = Arc::new(
-        Catalog::from_builtin_with_overrides(&settings)
-            .expect("OpenAI-compatible twin catalog should build"),
-    );
+    let catalog = twin_catalog(&twin.base_url, &litellm_twin_overlay(&twin.base_url));
+    let client = make_openai_compatible_twin_client(catalog.clone(), twin).await;
     let profile: Arc<dyn AgentProfile> =
-        Arc::new(OpenAiProfile::new(model).with_route(provider, catalog));
+        Arc::new(OpenAiProfile::new(model).with_route(provider, Arc::new(catalog)));
     let env = Arc::new(LocalSandbox::new(cwd.to_path_buf()));
     Session::new(client, profile, env, config, None)
 }
@@ -249,7 +261,7 @@ macro_rules! openai_twin_provider_test {
                         .await;
                 }
                 let mut session = make_session(
-                    ProviderId::openai(),
+                    provider_ids::openai(),
                     "gpt-5.4-mini",
                     tmp.path(),
                     ToolSecrets::default(),
@@ -266,14 +278,14 @@ macro_rules! provider_tests {
     ($scenario:ident) => {
         provider_test!(
             $scenario,
-            ProviderId::anthropic(),
-            "claude-haiku-4-5",
+            provider_ids::anthropic(),
+            "claude-haiku-4.5",
             anthropic,
             keys = ["ANTHROPIC_API_KEY"]
         );
         provider_test!(
             $scenario,
-            ProviderId::gemini(),
+            provider_ids::gemini(),
             "gemini-3-flash-preview",
             gemini,
             keys = ["GEMINI_API_KEY"]
@@ -342,7 +354,8 @@ async fn openai_compatible_twin_uses_json_edit_file_tool() {
         tmp.path(),
         SessionOptions::default(),
         &twin,
-    );
+    )
+    .await;
     session.initialize().await.unwrap();
     let mut rx = session.subscribe();
 
@@ -393,21 +406,21 @@ provider_tests!(subagent_spawn);
 
 provider_test!(
     web_fetch,
-    ProviderId::anthropic(),
+    provider_ids::anthropic(),
     "claude-haiku-4-5",
     anthropic,
     keys = ["ANTHROPIC_API_KEY"]
 );
 provider_test!(
     web_fetch,
-    ProviderId::openai(),
+    provider_ids::openai(),
     "gpt-5.4-mini",
     openai,
     keys = ["OPENAI_API_KEY"]
 );
 provider_test!(
     web_fetch,
-    ProviderId::gemini(),
+    provider_ids::gemini(),
     "gemini-3-flash-preview",
     gemini,
     keys = ["GEMINI_API_KEY"]
@@ -444,19 +457,19 @@ provider_test!(
 );
 
 web_search_provider_test!(
-    ProviderId::anthropic(),
+    provider_ids::anthropic(),
     "claude-haiku-4-5",
     anthropic,
     keys = ["ANTHROPIC_API_KEY", "BRAVE_SEARCH_API_KEY"]
 );
 web_search_provider_test!(
-    ProviderId::openai(),
+    provider_ids::openai(),
     "gpt-5.4-mini",
     openai,
     keys = ["OPENAI_API_KEY", "BRAVE_SEARCH_API_KEY"]
 );
 web_search_provider_test!(
-    ProviderId::gemini(),
+    provider_ids::gemini(),
     "gemini-3-flash-preview",
     gemini,
     keys = ["GEMINI_API_KEY", "BRAVE_SEARCH_API_KEY"]
@@ -505,14 +518,14 @@ macro_rules! non_openai_provider_tests {
     ($scenario:ident) => {
         provider_test!(
             $scenario,
-            ProviderId::anthropic(),
-            "claude-haiku-4-5",
+            provider_ids::anthropic(),
+            "claude-haiku-4.5",
             anthropic,
             keys = ["ANTHROPIC_API_KEY"]
         );
         provider_test!(
             $scenario,
-            ProviderId::gemini(),
+            provider_ids::gemini(),
             "gemini-3-flash-preview",
             gemini,
             keys = ["GEMINI_API_KEY"]
@@ -772,7 +785,7 @@ macro_rules! reasoning_effort_tests {
         async fn $test_name() {
             let tmp = tempfile::tempdir().expect("failed to create tempdir");
             let config = SessionOptions {
-                reasoning_effort: Some(fabro_llm::types::ReasoningEffort::Low),
+                reasoning_effort: Some(fabro_types::ReasoningEffort::Low),
                 ..SessionOptions::default()
             };
             let mut session =
@@ -787,15 +800,15 @@ macro_rules! reasoning_effort_tests {
 }
 
 reasoning_effort_tests!(
-    ProviderId::anthropic(),
-    "claude-haiku-4-5",
+    provider_ids::anthropic(),
+    "claude-haiku-4.5",
     anthropic_reasoning_effort,
     keys = ["ANTHROPIC_API_KEY"]
 );
 // gpt-5-mini does not support the reasoning.effort parameter, so no OpenAI
 // test.
 reasoning_effort_tests!(
-    ProviderId::gemini(),
+    provider_ids::gemini(),
     "gemini-3-flash-preview",
     gemini_reasoning_effort,
     keys = ["GEMINI_API_KEY"]
@@ -865,19 +878,19 @@ macro_rules! loop_detection_tests {
 }
 
 loop_detection_tests!(
-    ProviderId::anthropic(),
+    provider_ids::anthropic(),
     "claude-haiku-4-5",
     anthropic_loop_detection,
     keys = ["ANTHROPIC_API_KEY"]
 );
 loop_detection_tests!(
-    ProviderId::openai(),
+    provider_ids::openai(),
     "gpt-5.4-mini",
     openai_loop_detection,
     keys = ["OPENAI_API_KEY"]
 );
 loop_detection_tests!(
-    ProviderId::gemini(),
+    provider_ids::gemini(),
     "gemini-3-flash-preview",
     gemini_loop_detection,
     keys = ["GEMINI_API_KEY"]
