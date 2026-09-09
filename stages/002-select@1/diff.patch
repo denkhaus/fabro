@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M23TXPY6KC2QBCARSY2GY604.jsonl b/.fabro/journal/01M23TXPY6KC2QBCARSY2GY604.jsonl
+new file mode 100644
+index 0000000..e2d5da9
+--- /dev/null
++++ b/.fabro/journal/01M23TXPY6KC2QBCARSY2GY604.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M23TXPY6KC2QBCARSY2GY604","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T19:39:47Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M23TXPY6KC2QBCARSY2GY604","node":"select","visit":1,"status":"succeeded","ts":"2026-09-09T19:40:05Z","data":{"painpoints":[],"observations":["19 runs stale-evidence (version drift vs develop baseline c25ec241...), 0 no live sandbox; 2 unrevised merge-upstream runs exist but are older than the selected develop run"]}}
