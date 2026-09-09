@@ -23,11 +23,15 @@ skill reviews, reconciles, and integrates. Never implement seeds here
    --heads origin 'refs/heads/fabro/run/*'` newest branch, line state.
    A run branch head younger than the newest merged PR = run in flight.
 
-**JSONL discipline (PR #81 + 2026-09-09 lesson):** git can merge
+**JSONL discipline (PR #81 + 2026-09-09 lessons):** git can merge
 `.seeds/.mulch` "cleanly" and STILL duplicate lines. After every merge:
-count duplicate ids; resolve by keeping the later `updatedAt` line; NEVER
-drop an `assignee` state (assignments are user-ratified decisions); a
-clean merge is not a correct merge. Verify zero duplicate ids, then
+count duplicate ids; resolve by union with CLOSED-WINS (a closed line
+beats an open one regardless of updatedAt — closeout flips are terminal
+truth; a concurrent description-append can otherwise outrank them and
+resurrect an implemented seed), else later `updatedAt`; keep the richer
+description of the two; NEVER drop an `assignee` state (assignments are
+user-ratified decisions). Never edit a seed while its run is in flight.
+A clean merge is not a correct merge. Verify zero duplicate ids, then
 commit the dedupe explicitly.
 
 ## Phase 1 - Commit triage
