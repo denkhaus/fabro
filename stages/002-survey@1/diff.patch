@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M22SRBWTM6SHHEHNRDG6FT5M.jsonl b/.fabro/journal/01M22SRBWTM6SHHEHNRDG6FT5M.jsonl
+new file mode 100644
+index 000000000..7e6f45074
+--- /dev/null
++++ b/.fabro/journal/01M22SRBWTM6SHHEHNRDG6FT5M.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M22SRBWTM6SHHEHNRDG6FT5M","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T10:00:18Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M22SRBWTM6SHHEHNRDG6FT5M","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-09T10:01:12Z","data":{"painpoints":[{"text":"`git remote get-url upstream` errors to stderr before `git remote add` succeeds in the same compound command; harmless but noisy. Also `fabro_runs_list` rejects date-only `created_since` ('2026-09-02') with 'must be RFC 3339: premature end of input' — a clearer error or date acceptance would reduce friction."}],"observations":["upstream count: 0 commits ahead of origin/denkhaus (newest upstream/main subject: 'Bump version to 0.348.0-nightly.0'); threshold 5 not met, drift accumulates","revisor backlog: none — every completed develop run since 2026-09-08 (01M22R3T, 01M22PCG, 01M20T9S, 01M20RK7, 01M20PXP) has a paired succeeded revisor run","route: Work — proceed with a develop pass"]}}
