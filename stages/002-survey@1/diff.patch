@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M2341YTK6JWSHYPVXK9DE6YF.jsonl b/.fabro/journal/01M2341YTK6JWSHYPVXK9DE6YF.jsonl
+new file mode 100644
+index 000000000..bdc1dec36
+--- /dev/null
++++ b/.fabro/journal/01M2341YTK6JWSHYPVXK9DE6YF.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M2341YTK6JWSHYPVXK9DE6YF","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T13:00:18Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M2341YTK6JWSHYPVXK9DE6YF","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-09T13:00:54Z","data":{"painpoints":[],"observations":["upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0'; threshold >=5 not met, drift accumulates","revisor backlog: none — no develop runs completed after the newest revisor pass (revisor 01M2323WFBXXKVTCQMRSZP3NKY, created 2026-09-09T12:26Z, revised develop 01M230M352TRDS15S0DS7NZ43B); no unreviewed completed develop runs found","next surveyor: this pass routed to Work (develop+revisor cycle); check backlog again after the develop run completes"]}}
