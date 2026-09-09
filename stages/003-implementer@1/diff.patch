@@ -1,0 +1,39 @@
+diff --git a/.fabro/journal/01M235V6FWMNBDKS9BH3T25G2D.jsonl b/.fabro/journal/01M235V6FWMNBDKS9BH3T25G2D.jsonl
+index ba71cf2..aa7fcb2 100644
+--- a/.fabro/journal/01M235V6FWMNBDKS9BH3T25G2D.jsonl
++++ b/.fabro/journal/01M235V6FWMNBDKS9BH3T25G2D.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M235V6FWMNBDKS9BH3T25G2D","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T13:31:25Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M235V6FWMNBDKS9BH3T25G2D","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-09T13:32:38Z","data":{"painpoints":[],"observations":["fabro-2eb6 basis resolved against current tree: implementer.md (148 lines) contains no rg -r discipline line; the fs_hide shell-bypass paragraph at lines 48-55 is the natural anchor","in-flight check: only running develop run is this run itself (01M235V6FWMNBDKS9BH3T25G2D); its journal carries no claimed seed id; all other runs are succeeded with closed/merged PRs — no exclusions applied","sd ready returned 189 seeds; fabro-2eb6 is the top High-priority unblocked candidate"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M235V6FWMNBDKS9BH3T25G2D","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-09T13:35:04Z","data":{"painpoints":[],"observations":["Brief quoted the shell-capability paragraph at lines 48–55 but in the checked-out revision the anchor 'keep working through the shell.' sat at line 51 (line drift between brief authoring and checkout); insertion verified by grep at line 52, within tolerance — briefs citing absolute line numbers should be treated as approximate.","The fs_hide carve-out for platform-targeting seeds worked exactly as documented: shell reads (sed -n) and shell writes (python3 heredoc) to `.fabro/workflows/develop/prompts/implementer.md` both succeeded with no file-tool pressure."]}}
+diff --git a/.fabro/workflows/develop/prompts/implementer.md b/.fabro/workflows/develop/prompts/implementer.md
+index bf78a59..fc3ba26 100644
+--- a/.fabro/workflows/develop/prompts/implementer.md
++++ b/.fabro/workflows/develop/prompts/implementer.md
+@@ -49,6 +49,7 @@ tool writes are refused. The shell is unaffected — reads AND writes to
+ those paths all succeed through shell commands (grep, sed -n, sed -i,
+ cat, python3 heredocs). The `sd` and `just` commands
+ keep working through the shell.
++rg flag discipline: `rg -r <text>` REPLACES matches — never write `rg -rn`; `-n` alone is the line-number flag (run 01M22X87J1RKQ6A8FZB7RC2RN8: `rg -rn "is_engine_stamped_key"` parsed `-r n` as replace-with-literal-n, producing `pub fn n(key: &str...)`, then misdiagnosed as 'sandbox rg unreliable' — the sandbox rg was fine, the flag was wrong).
+ 
+ Carve-out for platform-targeting seeds: when the claimed seed's brief
+ explicitly targets platform files (e.g. prompts under `.fabro/**`),
+diff --git a/.mulch/expertise/tooling.jsonl b/.mulch/expertise/tooling.jsonl
+new file mode 100644
+index 0000000..b07217d
+--- /dev/null
++++ b/.mulch/expertise/tooling.jsonl
+@@ -0,0 +1 @@
++{"type":"failure","classification":"tactical","recorded_at":"2026-09-09T13:34:12.338Z","evidence":{"seeds":"fabro-2eb6","commit":"27e2313a5060a034020d3cf9bafbac8e2fe18f01"},"description":"rg -rn is never a valid flag combo: rg parses -r <text> as REPLACE-with-literal. Run 01M22X87J1RKQ6A8FZB7RC2RN8: 'rg -rn \"is_engine_stamped_key\"' replaced every match with literal 'n', producing 'pub fn n(key: &str...)', which was then misdiagnosed as 'sandbox rg unreliable' (false lore, cost 2 diagnostic rounds). Use -n alone for line numbers.","resolution":"Discipline line added to .fabro/workflows/develop/prompts/implementer.md retracting the 'sandbox rg unreliable' lore (seed fabro-2eb6).","id":"mx-9bad2f"}
+diff --git a/.mulch/mulch.config.yaml b/.mulch/mulch.config.yaml
+index 7c4468c..df7ebdc 100644
+--- a/.mulch/mulch.config.yaml
++++ b/.mulch/mulch.config.yaml
+@@ -16,6 +16,7 @@ domains:
+   store: {}
+   lab: {}
+   workflow: {}
++  tooling: {}
+ governance:
+   max_entries: 100
+   warn_entries: 150
