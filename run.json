@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T17:31:21.788935450Z",
-  "last_event_at": "2026-09-09T17:32:18.134586657Z",
+  "last_event_at": "2026-09-09T17:33:34.646113557Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -746,9 +746,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 70,
       "checkpoint": {
-        "timestamp": "2026-09-09T17:32:18.349086510Z",
+        "timestamp": "2026-09-09T17:32:24.175506517Z",
         "current_node": "planner",
         "completed_nodes": [
           "start",
@@ -756,49 +756,53 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.node_visit_count": 1,
-          "failure_class": "",
-          "graph.max_node_visits": "40",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.fidelity": "compact",
-          "internal.thread_id": "start",
-          "failure_signature": "",
-          "last_response": "Seed `fabro-c4ce` claimed. Brief distilled from the seed body with the current-tree wording verified against `implementer.md` step 4 (line 27). In-flight check: no open PRs; the only non-terminal run ",
-          "outcome": "succeeded",
+          "thread.start.current_node": "planner",
           "graph.preamble_budget_kb": "24",
-          "graph.rankdir": "LR",
-          "graph.inspects": "develop",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "current_seed_title": "Scope implementer nextest to test-file-touched crates only",
-          "internal.retry_count.planner": 0,
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "internal.run_id": "01M23KJM3SM70S2S6QSSEWSJPY",
           "preferred_label": "Seed claimed",
-          "last_stage": "planner",
-          "internal.retry_count.start": 0,
+          "internal.run_id": "01M23KJM3SM70S2S6QSSEWSJPY",
+          "last_response": "Seed `fabro-c4ce` claimed. Brief distilled from the seed body with the current-tree wording verified against `implementer.md` step 4 (line 27). In-flight check: no open PRs; the only non-terminal run ",
+          "graph.max_node_visits": "40",
+          "outcome": "succeeded",
           "current_node": "planner",
-          "current_seed_brief": "Reword step 4 of `.fabro/workflows/develop/prompts/implementer.md` (the numbered list item at ~line 27 beginning 'Do NOT run the quality gate') so test scoping is mechanical and unambiguous. Acceptance criteria:\n- nextest rule: run `cargo nextest run -p <crate>` ONLY for crates where the seed touched TEST files (tests added/edited); crates with only non-test code changes get NO nextest run from the implementer\n- fmt/clippy rule unchanged in effect: pinned-toolchain `cargo +<pin> fmt -p <crate>` and `cargo +<pin> clippy -p <crate> --all-targets -- -D warnings` (default features) on EVERY code-touched crate\n- keep the existing guards intact: workspace-wide suite stays forbidden, the default-features clippy mandate and the known-default-features-break FAIL rule stay verbatim, and all existing run-id citations in the item are preserved\n- state the distinction explicitly: 'test-file-touched crate' vs 'code-touched crate' — the current text's `-p <touched-crate>` phrasing is what run 01M23EDVNHPGD8QNBWZN8WNTDD over-applied (full suite on 5 crates when tests changed in only fabro-github and fabro-server, 3,370 tests)\n- note (may be one clause): the deterministic tester gate re-runs the full touched-crate set anyway, so gate coverage is unchanged\n- verification: `python3 -c \"import tomllib\"`-level not applicable; grep the edited item for both rule sentences, then `just qualitygate` per PROJECT_FACTS\nContradiction check: none — the current wording is ambiguous rather than wrong; this edit disambiguates it in the direction the seed specifies.",
           "current_seed_id": "fabro-c4ce",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.fidelity": "compact",
+          "internal.retry_count.start": 0,
+          "last_stage": "planner",
+          "internal.node_visit_count": 1,
+          "current_seed_title": "Scope implementer nextest to test-file-touched crates only",
+          "internal.work_dir": "/workspace/fabro",
+          "current_seed_brief": "Reword step 4 of `.fabro/workflows/develop/prompts/implementer.md` (the numbered list item at ~line 27 beginning 'Do NOT run the quality gate') so test scoping is mechanical and unambiguous. Acceptance criteria:\n- nextest rule: run `cargo nextest run -p <crate>` ONLY for crates where the seed touched TEST files (tests added/edited); crates with only non-test code changes get NO nextest run from the implementer\n- fmt/clippy rule unchanged in effect: pinned-toolchain `cargo +<pin> fmt -p <crate>` and `cargo +<pin> clippy -p <crate> --all-targets -- -D warnings` (default features) on EVERY code-touched crate\n- keep the existing guards intact: workspace-wide suite stays forbidden, the default-features clippy mandate and the known-default-features-break FAIL rule stay verbatim, and all existing run-id citations in the item are preserved\n- state the distinction explicitly: 'test-file-touched crate' vs 'code-touched crate' — the current text's `-p <touched-crate>` phrasing is what run 01M23EDVNHPGD8QNBWZN8WNTDD over-applied (full suite on 5 crates when tests changed in only fabro-github and fabro-server, 3,370 tests)\n- note (may be one clause): the deterministic tester gate re-runs the full touched-crate set anyway, so gate coverage is unchanged\n- verification: `python3 -c \"import tomllib\"`-level not applicable; grep the edited item for both rule sentences, then `just qualitygate` per PROJECT_FACTS\nContradiction check: none — the current wording is ambiguous rather than wrong; this edit disambiguates it in the direction the seed specifies.",
+          "failure_signature": "",
+          "internal.seed_cycle_anchor": "fabro-c4ce",
+          "graph.inspects": "develop",
+          "seed_cycles": {
+            "planner": 1
+          },
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
             "chars": 2653,
             "preview": "Seed `fabro-c4ce` claimed. Brief distilled from the seed body with the current-tree wording verified against `implementer.md` step 4 (line 27). In-flight check: no open PRs; the only non-terminal run "
           },
-          "seed_cycles": {
-            "planner": 1
-          },
-          "internal.seed_cycle_anchor": "fabro-c4ce",
+          "graph.rankdir": "LR",
+          "internal.retry_count.planner": 0,
+          "failure_class": "",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.thread_id": "start",
           "journal": {
             "painpoints": [],
             "observations": [
               "Seed fabro-c4ce basis verified: implementer.md step 4 (line 27) still carries the ambiguous '-p <touched-crate> — FULL crate suite, for every crate whose tests the seed touched' phrasing that the basis run over-applied; the edit is a disambiguation, not a behavior reversal of PR #78's rule.",
               "In-flight check clean: no open PRs among 17 develop runs; the only non-terminal run (01M23KJM3SM70S2S6QSSEWSJPY) is this run itself, and its goal names no seed id, so no journal fallback or exclusions were needed."
             ]
-          },
-          "thread.start.current_node": "planner"
+          }
         },
         "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "planner": {
             "status": "succeeded",
             "preferred_label": "Seed claimed",
@@ -850,16 +854,201 @@
               "tool_time_ms": 3055,
               "active_time_ms": 53422
             }
+          }
+        },
+        "next_node_id": "implementer",
+        "git_commit_sha": "f45c9179c951909950a66a900590ad0d3d7c8c3a",
+        "node_visits": {
+          "planner": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M23KJM3SM70S2S6QSSEWSJPY.jsonl b/.fabro/journal/01M23KJM3SM70S2S6QSSEWSJPY.jsonl\nnew file mode 100644\nindex 0000000..b5f2814\n--- /dev/null\n+++ b/.fabro/journal/01M23KJM3SM70S2S6QSSEWSJPY.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23KJM3SM70S2S6QSSEWSJPY\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:31:24Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23KJM3SM70S2S6QSSEWSJPY\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:32:18Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Seed fabro-c4ce basis verified: implementer.md step 4 (line 27) still carries the ambiguous '-p <touched-crate> — FULL crate suite, for every crate whose tests the seed touched' phrasing that the basis run over-applied; the edit is a disambiguation, not a behavior reversal of PR #78's rule.\",\"In-flight check clean: no open PRs among 17 develop runs; the only non-terminal run (01M23KJM3SM70S2S6QSSEWSJPY) is this run itself, and its goal names no seed id, so no journal fallback or exclusions were needed.\"]}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 503aafe..e892f25 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -320,7 +320,7 @@\n {\"id\":\"fabro-607a\",\"title\":\"Keep concrete literals at PROJECT_FACTS indirection sites\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T15:30:01.177Z\",\"updatedAt\":\"2026-09-09T15:42:20.679Z\",\"description\":\"After seed fabro-4814 externalized repo facts, planner.md step 4 now says \\\"shell grep for the seed id prefix (PROJECT_FACTS)\\\" where `fabro-` used to be inline — an LLM must resolve the indirection through the include to run the double-pick guard correctly (reviewer observation, non-blocking). Change `.fabro/workflows/develop/prompts/planner.md` step 4 and the corresponding use sites in `prompts/project-facts.md` to carry the concrete example at each site (\\\"the seed id prefix (e.g. `fabro-`)\\\") and keep the table as the source of truth. Expected effect: removes a misparse class from the exact mechanism that prevents fabro-22e4-style double-picks; near-zero cost. Basis: run 01M23B02H3ZNND8AT2D3Y2S4SG, workflow version 3bd915204178a8e5fd6796670d1bbfae4248a4b01f5d0fb7201e53b394cfdda8, commit db6b8ca5b4f7c0fc7583e1d28df1fa9ba295958e\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-9967\",\"title\":\"Planner prompt: cap sd ready to a top-N view and pass created_since to fabro_runs_list\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T15:30:01.314Z\",\"updatedAt\":\"2026-09-09T15:42:21.005Z\",\"description\":\"Run 01M23B02H3ZNND8AT2D3Y2S4SG seq 32: `sd ready --assignee fabro --limit 200` returned 189 issues / 25,613 bytes to pick one candidate; seq 41: `fabro_runs_list` returned 12,676 bytes / 14 runs where only status, PR state, and goal matter for the in-flight guard. Change the command table in `.fabro/workflows/develop/prompts/planner.md` to use `--limit 10` for `sd ready` and pass a recency filter to `fabro_runs_list` (in-flight runs are recent by definition). Expected effect: ~35KB less context in the planner's early turns, faster first output, less tie-break distraction. Basis: run 01M23B02H3ZNND8AT2D3Y2S4SG, workflow version 3bd915204178a8e5fd6796670d1bbfae4248a4b01f5d0fb7201e53b394cfdda8, commit db6b8ca5b4f7c0fc7583e1d28df1fa9ba295958e\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-09T15:42:21.005Z\",\"closeReason\":\"Duplicate of fabro-c3b4 (sd ready top-N firehose); the incremental created_since bit merged into fabro-c3b4's scope 2026-09-09.\"}\n {\"id\":\"fabro-b769\",\"title\":\"Add a long-stage heartbeat notification for run visibility\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T15:30:01.376Z\",\"updatedAt\":\"2026-09-09T15:42:20.763Z\",\"description\":\"Slack notifications in `.fabro/workflows/develop/workflow.toml` are configured only for run.completed/run.failed; in run 01M23B02H3ZNND8AT2D3Y2S4SG the implementer ran 15 of the run's 19 minutes with no external signal and no operator hook to cancel (run settings, cost concentration). Change the notifications block to add a stage-level event or a \\\"stage exceeds N minutes\\\" heartbeat alongside the terminal events. Expected effect: mid-run visibility into single-stage cost concentration while intervention is still possible. Basis: run 01M23B02H3ZNND8AT2D3Y2S4SG, workflow version 3bd915204178a8e5fd6796670d1bbfae4248a4b01f5d0fb7201e53b394cfdda8, commit db6b8ca5b4f7c0fc7583e1d28df1fa9ba295958e\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-c4ce\",\"title\":\"Scope implementer nextest to test-file-touched crates only\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T16:50:01.120Z\",\"updatedAt\":\"2026-09-09T17:02:33.272Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, make test scoping mechanical: run nextest only for crates whose test files the seed touched; run fmt and clippy for every code-touched crate. Evidence: in run 01M23EDVNHPGD8QNBWZN8WNTDD the implementer ran the full suite on all five touched crates (3,370 tests) although tests were added only in lib/components/fabro-github and lib/apps/fabro-server, and the tester gate deterministically re-ran the identical five-crate commands (227 s) anyway. Refines closed seed fabro-fc1b, whose rule was over-applied here. Expected effect: large cut of implementer wall and cost on every multi-crate Rust seed with gate coverage unchanged. Basis: run 01M23EDVNHPGD8QNBWZN8WNTDD, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 1bd14a4d41278a40a3615a61ffe55368fe0959e2\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-c4ce\",\"title\":\"Scope implementer nextest to test-file-touched crates only\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T16:50:01.120Z\",\"updatedAt\":\"2026-09-09T17:32:05.936Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 4, make test scoping mechanical: run nextest only for crates whose test files the seed touched; run fmt and clippy for every code-touched crate. Evidence: in run 01M23EDVNHPGD8QNBWZN8WNTDD the implementer ran the full suite on all five touched crates (3,370 tests) although tests were added only in lib/components/fabro-github and lib/apps/fabro-server, and the tester gate deterministically re-ran the identical five-crate commands (227 s) anyway. Refines closed seed fabro-fc1b, whose rule was over-applied here. Expected effect: large cut of implementer wall and cost on every multi-crate Rust seed with gate coverage unchanged. Basis: run 01M23EDVNHPGD8QNBWZN8WNTDD, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 1bd14a4d41278a40a3615a61ffe55368fe0959e2\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-0586\",\"title\":\"Add an available-binaries line to develop PROJECT_FACTS\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T16:50:01.248Z\",\"updatedAt\":\"2026-09-09T17:02:33.350Z\",\"description\":\"In .fabro/workflows/develop/prompts/project-facts.md, add one line stating which shell binaries the run toolchain provides (rg, sd, ml, just, nu — no fd). Evidence: in run 01M23EDVNHPGD8QNBWZN8WNTDD the planner lost a call to fd: command not found (event 46) and the implementer guessed a wrong crate directory before finding lib/components/ (event 99). The crate-to-path-map half of that finding is already open seed fabro-3d2d; this seed covers only the tool-availability line. Expected effect: removes binary-probing calls in planner and implementer on every run. Basis: run 01M23EDVNHPGD8QNBWZN8WNTDD, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 1bd14a4d41278a40a3615a61ffe55368fe0959e2\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-6b58\",\"title\":\"Bound the planner in-flight check: created_since window plus explicit self-exclusion\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T17:13:54.681Z\",\"updatedAt\":\"2026-09-09T17:13:54.681Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 4 (IN-FLIGHT PR CHECK): call fabro_runs_list with created_since ≈ 48 h, and add one line telling the planner to exclude this run's own id (from its preamble header) from the in-flight set. Grounded in run 01M23HWFFSB9NK78PGSCZWE6MA: the unbounded call (event seq 41) returned 16 runs / 14,492 bytes — 15 terminal with identical generic goal text — and the planner had to deduce 'the only non-terminal run is this run itself'. Verified regression: closed seed fabro-9967 mandated created_since but the current prompt text carries no such bound. Expected effect: tool output drops ~14.5 KB to ≤2 KB per run and the self-run confusion class disappears. Basis: run 01M23HWFFSB9NK78PGSCZWE6MA, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 515758e102a81c1c35d8c41bb3fd96209f1f04e9\",\"labels\":[\"revision\"]}\n {\"id\":\"fabro-8d4c\",\"title\":\"Planner prompt: probe file structure with heading greps, never head -N full files\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T17:13:59.032Z\",\"updatedAt\":\"2026-09-09T17:13:59.032Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 3 (stale-basis verification): add 'Probe structure with grep -n \\\"^#\\\" <file> and ls <dir>, never head -N full files.' Grounded in run 01M23HWFFSB9NK78PGSCZWE6MA: one basis probe (head -40 AGENTS.md plus greps, event seq 51–53) pulled 4,677 bytes into context to answer a question about section headings, burning ~12 s re-proving layout facts the just-merged Dev-loop assets map (seed fabro-3d2d) already settles. Expected effect: ~4 KB less context and fewer probe calls per run; distinct from open fabro-9fa2 (fast path for pinned line anchors), which triggers on a different condition. Basis: run 01M23HWFFSB9NK78PGSCZWE6MA, workflow version 70cee3b32d01c25022b0c84ba4b42f2e8c93d679f400542db4ca1cafafa1a6c1, commit 515758e102a81c1c35d8c41bb3fd96209f1f04e9\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 3,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T17:33:34.858591887Z",
+        "current_node": "implementer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.node_visit_count": 1,
+          "failure_class": "",
+          "implementation_summary": "Reworded step 4 of `.fabro/workflows/develop/prompts/implementer.md` (loop-asset path, edited via shell python heredoc): the item now defines the two crate classes explicitly — test-file-touched crate (seed added/edited TEST files) vs code-touched crate (any crate whose code the seed touched) — and scopes the implementer's `cargo nextest run -p <crate>` to test-file-touched crates ONLY, with code-touched-but-not-test-touched crates getting no nextest run, plus one clause noting the deterministic tester gate re-runs the full touched-crate set so gate coverage is unchanged. The fmt/clippy sentence now says EVERY code-touched crate (same effect, same pinned-toolchain commands). All guards, the default-features clippy mandate, the FAIL rule, and every run-id citation (01M20T9S8JRXETASN64768TRRP, 01M1YJ8R820R7ZMSN55GJGMZ4A, 01M1S6VRWQMD56M1X8HWAXDSNN/fabro-0d56, 01M11P68SHFS) are preserved verbatim. Lesson capture: nothing durable — skipped (the convention itself is what this seed codified into the prompt). Verification report: - PASS nextest only for test-file-touched crates: grep 'ONLY for test-file-touched crates' matches 1; item states code-touched-only crates get NO nextest run — `.fabro/workflows/develop/prompts/implementer.md` step 4. - PASS fmt/clippy unchanged in effect on every code-touched crate: grep 'EVERY code-touched crate' matches 1; pinned-toolchain commands verbatim — same file. - PASS guards intact: 'workspace-wide suite remains forbidden in both cases (run 01M20T9S8JRXETASN64768TRRP', 'DEFAULT features: run it on EVERY touched crate IN ADDITION', \"FAILS your 'gate passes' self-assessment\" all match 1; all five run-id/fabro-id citations present. - PASS explicit distinction 'test-file-touched crate' vs 'code-touched crate': both terms defined in the first new sentence — same file. - PASS tester-gate re-run note: 'The deterministic tester gate re-runs the full touched-crate set anyway, so gate coverage is unchanged' present — same file. - PASS verification: both rule sentences grepped (1 match each), then `just qualitygate` exited 0 ('no crates touched', 'format clean').",
+          "graph.max_node_visits": "40",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.fidelity": "summary:high",
+          "internal.thread_id": "planner",
+          "failure_signature": "",
+          "last_response": "Gate green (exit 0 — \"no crates touched\", markdown-only change correctly scoped). The edit is complete: step 4 of `.fabro/workflows/develop/prompts/implementer.md` now defines \"test-file-touched cra",
+          "outcome": "succeeded",
+          "graph.preamble_budget_kb": "24",
+          "graph.rankdir": "LR",
+          "lesson_capture": "nothing durable — skipped",
+          "graph.inspects": "develop",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "current_seed_title": "Scope implementer nextest to test-file-touched crates only",
+          "internal.retry_count.planner": 0,
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3196,
+            "preview": "Gate green (exit 0 — \"no crates touched\", markdown-only change correctly scoped). The edit is complete: step 4 of `.fabro/workflows/develop/prompts/implementer.md` now defines \"test-file-touched cra"
+          },
+          "internal.retry_count.implementer": 0,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.run_id": "01M23KJM3SM70S2S6QSSEWSJPY",
+          "preferred_label": "Implemented",
+          "last_stage": "implementer",
+          "thread.planner.current_node": "implementer",
+          "internal.retry_count.start": 0,
+          "current_node": "implementer",
+          "current_seed_brief": "Reword step 4 of `.fabro/workflows/develop/prompts/implementer.md` (the numbered list item at ~line 27 beginning 'Do NOT run the quality gate') so test scoping is mechanical and unambiguous. Acceptance criteria:\n- nextest rule: run `cargo nextest run -p <crate>` ONLY for crates where the seed touched TEST files (tests added/edited); crates with only non-test code changes get NO nextest run from the implementer\n- fmt/clippy rule unchanged in effect: pinned-toolchain `cargo +<pin> fmt -p <crate>` and `cargo +<pin> clippy -p <crate> --all-targets -- -D warnings` (default features) on EVERY code-touched crate\n- keep the existing guards intact: workspace-wide suite stays forbidden, the default-features clippy mandate and the known-default-features-break FAIL rule stay verbatim, and all existing run-id citations in the item are preserved\n- state the distinction explicitly: 'test-file-touched crate' vs 'code-touched crate' — the current text's `-p <touched-crate>` phrasing is what run 01M23EDVNHPGD8QNBWZN8WNTDD over-applied (full suite on 5 crates when tests changed in only fabro-github and fabro-server, 3,370 tests)\n- note (may be one clause): the deterministic tester gate re-runs the full touched-crate set anyway, so gate coverage is unchanged\n- verification: `python3 -c \"import tomllib\"`-level not applicable; grep the edited item for both rule sentences, then `just qualitygate` per PROJECT_FACTS\nContradiction check: none — the current wording is ambiguous rather than wrong; this edit disambiguates it in the direction the seed specifies.",
+          "current_seed_id": "fabro-c4ce",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2653,
+            "preview": "Seed `fabro-c4ce` claimed. Brief distilled from the seed body with the current-tree wording verified against `implementer.md` step 4 (line 27). In-flight check: no open PRs; the only non-terminal run "
+          },
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "internal.seed_cycle_anchor": "fabro-c4ce",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "The seed's verification criterion required the implementer to run `just qualitygate` even though step 4 of the very prompt being edited forbids the implementer from running the gate — a deliberate, seed-scoped exception this time, but worth noting the tension in case future seeds assume the prompt's rule rather than the seed's acceptance criteria."
+            ]
+          },
+          "thread.start.current_node": "planner"
+        },
+        "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "Reworded step 4 of `.fabro/workflows/develop/prompts/implementer.md` (loop-asset path, edited via shell python heredoc): the item now defines the two crate classes explicitly — test-file-touched crate (seed added/edited TEST files) vs code-touched crate (any crate whose code the seed touched) — and scopes the implementer's `cargo nextest run -p <crate>` to test-file-touched crates ONLY, with code-touched-but-not-test-touched crates getting no nextest run, plus one clause noting the deterministic tester gate re-runs the full touched-crate set so gate coverage is unchanged. The fmt/clippy sentence now says EVERY code-touched crate (same effect, same pinned-toolchain commands). All guards, the default-features clippy mandate, the FAIL rule, and every run-id citation (01M20T9S8JRXETASN64768TRRP, 01M1YJ8R820R7ZMSN55GJGMZ4A, 01M1S6VRWQMD56M1X8HWAXDSNN/fabro-0d56, 01M11P68SHFS) are preserved verbatim. Lesson capture: nothing durable — skipped (the convention itself is what this seed codified into the prompt). Verification report: - PASS nextest only for test-file-touched crates: grep 'ONLY for test-file-touched crates' matches 1; item states code-touched-only crates get NO nextest run — `.fabro/workflows/develop/prompts/implementer.md` step 4. - PASS fmt/clippy unchanged in effect on every code-touched crate: grep 'EVERY code-touched crate' matches 1; pinned-toolchain commands verbatim — same file. - PASS guards intact: 'workspace-wide suite remains forbidden in both cases (run 01M20T9S8JRXETASN64768TRRP', 'DEFAULT features: run it on EVERY touched crate IN ADDITION', \"FAILS your 'gate passes' self-assessment\" all match 1; all five run-id/fabro-id citations present. - PASS explicit distinction 'test-file-touched crate' vs 'code-touched crate': both terms defined in the first new sentence — same file. - PASS tester-gate re-run note: 'The deterministic tester gate re-runs the full touched-crate set anyway, so gate coverage is unchanged' present — same file. - PASS verification: both rule sentences grepped (1 match each), then `just qualitygate` exited 0 ('no crates touched', 'format clean').",
+              "lesson_capture": "nothing durable — skipped",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The seed's verification criterion required the implementer to run `just qualitygate` even though step 4 of the very prompt being edited forbids the implementer from running the gate — a deliberate, seed-scoped exception this time, but worth noting the tension in case future seeds assume the prompt's rule rather than the seed's acceptance criteria."
+                ]
+              },
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3196,
+                "preview": "Gate green (exit 0 — \"no crates touched\", markdown-only change correctly scoped). The edit is complete: step 4 of `.fabro/workflows/develop/prompts/implementer.md` now defines \"test-file-touched cra"
+              },
+              "last_stage": "implementer",
+              "last_response": "Gate green (exit 0 — \"no crates touched\", markdown-only change correctly scoped). The edit is complete: step 4 of `.fabro/workflows/develop/prompts/implementer.md` now defines \"test-file-touched cra"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19404,
+                    "output_tokens": 1760,
+                    "reasoning_tokens": 2246,
+                    "cache_read_tokens": 85568,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 67032
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 65094,
+              "tool_time_ms": 4960,
+              "active_time_ms": 70054
+            }
           },
           "start": {
             "status": "succeeded",
             "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_stage": "planner",
+              "current_seed_brief": "Reword step 4 of `.fabro/workflows/develop/prompts/implementer.md` (the numbered list item at ~line 27 beginning 'Do NOT run the quality gate') so test scoping is mechanical and unambiguous. Acceptance criteria:\n- nextest rule: run `cargo nextest run -p <crate>` ONLY for crates where the seed touched TEST files (tests added/edited); crates with only non-test code changes get NO nextest run from the implementer\n- fmt/clippy rule unchanged in effect: pinned-toolchain `cargo +<pin> fmt -p <crate>` and `cargo +<pin> clippy -p <crate> --all-targets -- -D warnings` (default features) on EVERY code-touched crate\n- keep the existing guards intact: workspace-wide suite stays forbidden, the default-features clippy mandate and the known-default-features-break FAIL rule stay verbatim, and all existing run-id citations in the item are preserved\n- state the distinction explicitly: 'test-file-touched crate' vs 'code-touched crate' — the current text's `-p <touched-crate>` phrasing is what run 01M23EDVNHPGD8QNBWZN8WNTDD over-applied (full suite on 5 crates when tests changed in only fabro-github and fabro-server, 3,370 tests)\n- note (may be one clause): the deterministic tester gate re-runs the full touched-crate set anyway, so gate coverage is unchanged\n- verification: `python3 -c \"import tomllib\"`-level not applicable; grep the edited item for both rule sentences, then `just qualitygate` per PROJECT_FACTS\nContradiction check: none — the current wording is ambiguous rather than wrong; this edit disambiguates it in the direction the seed specifies.",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2653,
+                "preview": "Seed `fabro-c4ce` claimed. Brief distilled from the seed body with the current-tree wording verified against `implementer.md` step 4 (line 27). In-flight check: no open PRs; the only non-terminal run "
+              },
+              "current_seed_id": "fabro-c4ce",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Seed fabro-c4ce basis verified: implementer.md step 4 (line 27) still carries the ambiguous '-p <touched-crate> — FULL crate suite, for every crate whose tests the seed touched' phrasing that the basis run over-applied; the edit is a disambiguation, not a behavior reversal of PR #78's rule.",
+                  "In-flight check clean: no open PRs among 17 develop runs; the only non-terminal run (01M23KJM3SM70S2S6QSSEWSJPY) is this run itself, and its goal names no seed id, so no journal fallback or exclusions were needed."
+                ]
+              },
+              "current_seed_title": "Scope implementer nextest to test-file-touched crates only",
+              "last_response": "Seed `fabro-c4ce` claimed. Brief distilled from the seed body with the current-tree wording verified against `implementer.md` step 4 (line 27). In-flight check: no open PRs; the only non-terminal run "
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 29222,
+                    "output_tokens": 1198,
+                    "reasoning_tokens": 1051,
+                    "cache_read_tokens": 123200,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 82832
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 50367,
+              "tool_time_ms": 3055,
+              "active_time_ms": 53422
+            }
           }
         },
-        "next_node_id": "implementer",
+        "next_node_id": "tester",
         "node_visits": {
           "start": 1,
-          "planner": 1
+          "planner": 1,
+          "implementer": 1
         }
       },
       "diff": {}
@@ -1146,6 +1335,220 @@
         "reasoning_tokens": 0,
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "implementer@1": {
+      "first_event_seq": 73,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T17:33:34.646113557Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T17:32:24.186416443Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 70633,
+        "inference_time_ms": 65094,
+        "tool_time_ms": 4960,
+        "active_time_ms": 70054
+      },
+      "usage": {
+        "input_tokens": 19404,
+        "output_tokens": 1760,
+        "total_tokens": 108978,
+        "reasoning_tokens": 2246,
+        "cache_read_tokens": 85568,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 67032
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 19306,
+        "usage_percent": 1.8411636352539062,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-09T17:33:34.636301915Z",
+        "event_seq": 117,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1120,
+            "usage_percent": 0.1068115234375
+          },
+          {
+            "category": "tools",
+            "tokens": 1592,
+            "usage_percent": 0.151824951171875
+          },
+          {
+            "category": "memory",
+            "tokens": 5740,
+            "usage_percent": 0.5474090576171875
+          },
+          {
+            "category": "conversation",
+            "tokens": 10847,
+            "usage_percent": 1.0344505310058594
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
       },
       "agent_control": "running",
       "state": "succeeded"
