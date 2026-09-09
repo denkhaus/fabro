@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T17:01:47.736547946Z",
-  "last_event_at": "2026-09-09T17:04:43.864174707Z",
+  "last_event_at": "2026-09-09T17:04:50.442990816Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1800,9 +1800,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 182,
       "checkpoint": {
-        "timestamp": "2026-09-09T17:04:44.093077343Z",
+        "timestamp": "2026-09-09T17:04:49.230899036Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -1815,59 +1815,12 @@
         ],
         "node_retries": {},
         "context_values": {
-          "last_stage": "reviewer",
-          "internal.run_id": "01M23HWFFSB9NK78PGSCZWE6MA",
-          "internal.retry_count.evidence": 0,
-          "failure_class": "",
-          "failure_signature": "",
-          "thread.evidence.current_node": "reviewer",
-          "internal.retry_count.tester": 0,
-          "outcome": "succeeded",
-          "internal.exit_kind": "natural",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 1922,
-            "preview": "Claimed `fabro-3d2d`. Brief written below; routing Seed claimed.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Seed claimed\", \"context_updates\": {\"current_seed_id\": \"fabro-3d2d\", \"current_seed_ti"
-          },
-          "internal.work_dir": "/workspace/fabro",
-          "current_seed_title": "Add a repo-layout map to the planner prompt or AGENTS.md",
-          "internal.retry_count.planner": 0,
-          "lesson_capture": "nothing durable — skipped",
-          "graph.rankdir": "LR",
-          "internal.retry_count.start": 0,
-          "thread.implementer.current_node": "tester",
-          "graph.preamble_budget_kb": "24",
-          "internal.node_visit_count": 1,
-          "last_response": "Review verified against the evidence and the live repo:\n\n- **Section exists**: `### Dev-loop assets` at AGENTS.md:154, at the end of `## Architecture` — exactly as the seed spec requires.\n- **All fi",
-          "thread.reviewer.current_node": "closeout",
-          "thread.tester.current_node": "evidence",
-          "command.output": "blob://sha256/2f5cf131efe14d66e87ff44f664815223a9c3a616ad2bbe10518a19d53e74996",
-          "response.implementer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 2805,
-            "preview": "Implementation complete. The `### Dev-loop assets` subsection now sits at the end of `## Architecture` in `AGENTS.md`, listing all five asset roots and the fs_hide/shell-escape-hatch note. Docs-only c"
-          },
-          "graph.max_node_visits": "40",
-          "internal.retry_count.reviewer": 0,
-          "thread.planner.current_node": "implementer",
-          "thread.start.current_node": "planner",
           "current_seed_brief": "Add a short dev-loop asset map to AGENTS.md so the planner stops burning ~10 exploratory calls locating loop assets. Target: AGENTS.md (the real file at repo root — CLAUDE.md is a symlink to it), as a new subsection (e.g. '### Dev-loop assets') placed at the end of the existing '## Architecture' section. Acceptance criteria:\n- New subsection exists in `AGENTS.md` under `## Architecture` and is ~5-10 lines\n- Lists at minimum: dev-loop workflow assets at `.fabro/workflows/develop/` (with prompts/, scripts/, schemas/, workflow.toml noted), reviews at `.fabro/reviews/`, stage journals at `.fabro/journal/<run_id>.jsonl`, seeds tracker at `.seeds/` (sd CLI), expertise at `.mulch/` (ml CLI)\n- States that these paths are fs_hide-bound for file tools — shell reads (grep/cat/sed) succeed\n- Does NOT name 'gofib' (stale repo name; this repo is fabro) and does not duplicate the existing lib/apps architecture content\n- Verification (cheapest first): `grep -n 'Dev-loop assets' AGENTS.md` shows the section; `grep -c 'fabro/workflows/develop' AGENTS.md` >= 1; `git diff --stat` touches only `AGENTS.md`\n- Gate: `just qualitygate` (docs-only change; expect it to pass without code changes)",
-          "internal.retry_count.implementer": 0,
-          "journal": {
-            "painpoints": [],
-            "observations": [
-              "Verified the loop-work diff (churn-only seed) against the in-progress seed spec: section placement, all five asset roots, fs_hide note, no 'gofib', and single-file scope all confirmed via grep on AGENTS.md and git diff against claim base c3d0107. Docs-only change; ADR-0019 capability axis clear."
-            ]
-          },
-          "review_verdict": "approved",
-          "implementation_summary": "Added a '### Dev-loop assets' subsection at the end of the '## Architecture' section in `AGENTS.md` (12 lines): it maps `.fabro/workflows/develop/` (workflow.toml, prompts/, scripts/, schemas/), `.fabro/reviews/`, `.fabro/journal/<run_id>.jsonl`, `.seeds/` (sd CLI), and `.mulch/` (ml CLI), and states these paths are fs_hide-bound for file tools while shell reads/writes succeed. Docs-only change verified via grep; only `AGENTS.md` differs in the worktree. Lesson capture: nothing durable — skipped. Verification: PASS subsection exists under Architecture at line 154 of `AGENTS.md`; PASS all five asset roots listed with develop subpaths; PASS fs_hide/shell escape-hatch stated; PASS no 'gofib' (grep count 0) and no lib/apps duplication; PASS grep checks (`Dev-loop assets` at :154, `fabro/workflows/develop` count 1, `git diff --stat` = AGENTS.md only); PASS gate deferred to tester per role contract (no Rust touched, no crate fmt/clippy applicable).",
-          "internal.thread_id": "reviewer",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "internal.seed_cycle_anchor": "fabro-3d2d",
-          "current_seed_id": "fabro-3d2d",
-          "current_node": "closeout",
+          "internal.fidelity": "compact",
+          "graph.preamble_budget_kb": "24",
+          "internal.exit_kind": "natural",
+          "internal.run_id": "01M23HWFFSB9NK78PGSCZWE6MA",
+          "internal.work_dir": "/workspace/fabro",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -1876,51 +1829,66 @@
             "reviewer": 1,
             "closeout": 1
           },
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.fidelity": "compact",
-          "preferred_label": "Approved",
+          "thread.evidence.current_node": "reviewer",
+          "thread.planner.current_node": "implementer",
+          "current_node": "closeout",
+          "thread.reviewer.current_node": "closeout",
+          "internal.retry_count.planner": 0,
+          "internal.thread_id": "reviewer",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Verified the loop-work diff (churn-only seed) against the in-progress seed spec: section placement, all five asset roots, fs_hide note, no 'gofib', and single-file scope all confirmed via grep on AGENTS.md and git diff against claim base c3d0107. Docs-only change; ADR-0019 capability axis clear."
+            ]
+          },
+          "last_response": "Review verified against the evidence and the live repo:\n\n- **Section exists**: `### Dev-loop assets` at AGENTS.md:154, at the end of `## Architecture` — exactly as the seed spec requires.\n- **All fi",
+          "command.output": "blob://sha256/2f5cf131efe14d66e87ff44f664815223a9c3a616ad2bbe10518a19d53e74996",
+          "graph.max_node_visits": "40",
+          "lesson_capture": "nothing durable — skipped",
+          "thread.tester.current_node": "evidence",
+          "internal.node_visit_count": 1,
+          "graph.rankdir": "LR",
           "response.reviewer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.reviewer",
             "chars": 1478,
             "preview": "Review verified against the evidence and the live repo:\n\n- **Section exists**: `### Dev-loop assets` at AGENTS.md:154, at the end of `## Architecture` — exactly as the seed spec requires.\n- **All fi"
           },
+          "thread.start.current_node": "planner",
+          "last_stage": "reviewer",
+          "internal.retry_count.implementer": 0,
+          "internal.retry_count.tester": 0,
+          "internal.seed_cycle_anchor": "fabro-3d2d",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 1922,
+            "preview": "Claimed `fabro-3d2d`. Brief written below; routing Seed claimed.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Seed claimed\", \"context_updates\": {\"current_seed_id\": \"fabro-3d2d\", \"current_seed_ti"
+          },
+          "internal.retry_count.evidence": 0,
+          "preferred_label": "Approved",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2805,
+            "preview": "Implementation complete. The `### Dev-loop assets` subsection now sits at the end of `## Architecture` in `AGENTS.md`, listing all five asset roots and the fs_hide/shell-escape-hatch note. Docs-only c"
+          },
+          "graph.inspects": "develop",
+          "outcome": "succeeded",
+          "thread.implementer.current_node": "tester",
+          "internal.retry_count.reviewer": 0,
+          "failure_class": "",
+          "current_seed_id": "fabro-3d2d",
+          "failure_signature": "",
+          "current_seed_title": "Add a repo-layout map to the planner prompt or AGENTS.md",
           "internal.retry_count.closeout": 0,
-          "graph.inspects": "develop"
+          "internal.retry_count.start": 0,
+          "implementation_summary": "Added a '### Dev-loop assets' subsection at the end of the '## Architecture' section in `AGENTS.md` (12 lines): it maps `.fabro/workflows/develop/` (workflow.toml, prompts/, scripts/, schemas/), `.fabro/reviews/`, `.fabro/journal/<run_id>.jsonl`, `.seeds/` (sd CLI), and `.mulch/` (ml CLI), and states these paths are fs_hide-bound for file tools while shell reads/writes succeed. Docs-only change verified via grep; only `AGENTS.md` differs in the worktree. Lesson capture: nothing durable — skipped. Verification: PASS subsection exists under Architecture at line 154 of `AGENTS.md`; PASS all five asset roots listed with develop subpaths; PASS fs_hide/shell escape-hatch stated; PASS no 'gofib' (grep count 0) and no lib/apps duplication; PASS grep checks (`Dev-loop assets` at :154, `fabro/workflows/develop` count 1, `git diff --stat` = AGENTS.md only); PASS gate deferred to tester per role contract (no Rust touched, no crate fmt/clippy applicable).",
+          "review_verdict": "approved",
+          "graph.cycle_counter_reset_key": "current_seed_id"
         },
         "node_outcomes": {
-          "closeout": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/2f5cf131efe14d66e87ff44f664815223a9c3a616ad2bbe10518a19d53e74996"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 301,
-              "active_time_ms": 301
-            }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
-          "tester": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
-            },
-            "notes": "Script completed: just qualitygate",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 4158,
-              "active_time_ms": 4158
-            }
-          },
           "evidence": {
             "status": "succeeded",
             "context_updates": {
@@ -1935,56 +1903,22 @@
               "active_time_ms": 398
             }
           },
-          "planner": {
+          "start": {
             "status": "succeeded",
-            "preferred_label": "Seed claimed",
+            "usage": null
+          },
+          "closeout": {
+            "status": "succeeded",
             "context_updates": {
-              "response.planner": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.planner",
-                "chars": 1922,
-                "preview": "Claimed `fabro-3d2d`. Brief written below; routing Seed claimed.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Seed claimed\", \"context_updates\": {\"current_seed_id\": \"fabro-3d2d\", \"current_seed_ti"
-              },
-              "current_seed_id": "fabro-3d2d",
-              "current_seed_title": "Add a repo-layout map to the planner prompt or AGENTS.md",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "Seed fabro-3d2d contained stale repo name 'gofib' (repo is fabro) and its AGENTS.md claim predates the existing '## Architecture' section; corrected the seed body via sd update before claiming — implementer should follow the corrected target, not the original text.",
-                  "In-flight check: the only non-terminal develop run was this run itself; no open PRs, so no skips were needed."
-                ]
-              },
-              "last_stage": "planner",
-              "last_response": "Claimed `fabro-3d2d`. Brief written below; routing Seed claimed.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Seed claimed\", \"context_updates\": {\"current_seed_id\": \"fabro-3d2d\", \"current_seed_ti",
-              "current_seed_brief": "Add a short dev-loop asset map to AGENTS.md so the planner stops burning ~10 exploratory calls locating loop assets. Target: AGENTS.md (the real file at repo root — CLAUDE.md is a symlink to it), as a new subsection (e.g. '### Dev-loop assets') placed at the end of the existing '## Architecture' section. Acceptance criteria:\n- New subsection exists in `AGENTS.md` under `## Architecture` and is ~5-10 lines\n- Lists at minimum: dev-loop workflow assets at `.fabro/workflows/develop/` (with prompts/, scripts/, schemas/, workflow.toml noted), reviews at `.fabro/reviews/`, stage journals at `.fabro/journal/<run_id>.jsonl`, seeds tracker at `.seeds/` (sd CLI), expertise at `.mulch/` (ml CLI)\n- States that these paths are fs_hide-bound for file tools — shell reads (grep/cat/sed) succeed\n- Does NOT name 'gofib' (stale repo name; this repo is fabro) and does not duplicate the existing lib/apps architecture content\n- Verification (cheapest first): `grep -n 'Dev-loop assets' AGENTS.md` shows the section; `grep -c 'fabro/workflows/develop' AGENTS.md` >= 1; `git diff --stat` touches only `AGENTS.md`\n- Gate: `just qualitygate` (docs-only change; expect it to pass without code changes)"
+              "command.output": "blob://sha256/2f5cf131efe14d66e87ff44f664815223a9c3a616ad2bbe10518a19d53e74996"
             },
-            "notes": "Stage completed: planner",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 30544,
-                    "output_tokens": 1570,
-                    "reasoning_tokens": 1713,
-                    "cache_read_tokens": 174720,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 102624
-            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 77466,
-              "tool_time_ms": 3504,
-              "active_time_ms": 80970
+              "inference_time_ms": 0,
+              "tool_time_ms": 301,
+              "active_time_ms": 301
             }
           },
           "implementer": {
@@ -2040,6 +1974,72 @@
               "active_time_ms": 41244
             }
           },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 4158,
+              "active_time_ms": 4158
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 1922,
+                "preview": "Claimed `fabro-3d2d`. Brief written below; routing Seed claimed.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Seed claimed\", \"context_updates\": {\"current_seed_id\": \"fabro-3d2d\", \"current_seed_ti"
+              },
+              "current_seed_id": "fabro-3d2d",
+              "current_seed_title": "Add a repo-layout map to the planner prompt or AGENTS.md",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Seed fabro-3d2d contained stale repo name 'gofib' (repo is fabro) and its AGENTS.md claim predates the existing '## Architecture' section; corrected the seed body via sd update before claiming — implementer should follow the corrected target, not the original text.",
+                  "In-flight check: the only non-terminal develop run was this run itself; no open PRs, so no skips were needed."
+                ]
+              },
+              "last_stage": "planner",
+              "last_response": "Claimed `fabro-3d2d`. Brief written below; routing Seed claimed.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Seed claimed\", \"context_updates\": {\"current_seed_id\": \"fabro-3d2d\", \"current_seed_ti",
+              "current_seed_brief": "Add a short dev-loop asset map to AGENTS.md so the planner stops burning ~10 exploratory calls locating loop assets. Target: AGENTS.md (the real file at repo root — CLAUDE.md is a symlink to it), as a new subsection (e.g. '### Dev-loop assets') placed at the end of the existing '## Architecture' section. Acceptance criteria:\n- New subsection exists in `AGENTS.md` under `## Architecture` and is ~5-10 lines\n- Lists at minimum: dev-loop workflow assets at `.fabro/workflows/develop/` (with prompts/, scripts/, schemas/, workflow.toml noted), reviews at `.fabro/reviews/`, stage journals at `.fabro/journal/<run_id>.jsonl`, seeds tracker at `.seeds/` (sd CLI), expertise at `.mulch/` (ml CLI)\n- States that these paths are fs_hide-bound for file tools — shell reads (grep/cat/sed) succeed\n- Does NOT name 'gofib' (stale repo name; this repo is fabro) and does not duplicate the existing lib/apps architecture content\n- Verification (cheapest first): `grep -n 'Dev-loop assets' AGENTS.md` shows the section; `grep -c 'fabro/workflows/develop' AGENTS.md` >= 1; `git diff --stat` touches only `AGENTS.md`\n- Gate: `just qualitygate` (docs-only change; expect it to pass without code changes)"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 30544,
+                    "output_tokens": 1570,
+                    "reasoning_tokens": 1713,
+                    "cache_read_tokens": 174720,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 102624
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 77466,
+              "tool_time_ms": 3504,
+              "active_time_ms": 80970
+            }
+          },
           "reviewer": {
             "status": "succeeded",
             "preferred_label": "Approved",
@@ -2091,20 +2091,139 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "143cef8b9103e6b262545d265335b05e09f61471",
         "node_visits": {
           "reviewer": 1,
-          "planner": 1,
-          "evidence": 1,
           "closeout": 1,
           "implementer": 1,
+          "evidence": 1,
+          "planner": 1,
           "start": 1,
           "tester": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl b/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl\nindex 78b57cb..93bcac0 100644\n--- a/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl\n+++ b/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl\n@@ -4,3 +4,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23HWFFSB9NK78PGSCZWE6MA\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:04:09Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23HWFFSB9NK78PGSCZWE6MA\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:04:15Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23HWFFSB9NK78PGSCZWE6MA\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:04:38Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified the loop-work diff (churn-only seed) against the in-progress seed spec: section placement, all five asset roots, fs_hide note, no 'gofib', and single-file scope all confirmed via grep on AGENTS.md and git diff against claim base c3d0107. Docs-only change; ADR-0019 capability axis clear.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23HWFFSB9NK78PGSCZWE6MA\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:04:44Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 81f06fb..b6804c7 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -154,7 +154,7 @@\n {\"id\":\"fabro-a0fe\",\"title\":\"Tell develop reviewer to read blob refs with read_file offset/limit\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-03T17:36:46.015Z\",\"updatedAt\":\"2026-09-07T13:23:37.630Z\",\"description\":\"In .fabro/workflows/develop/prompts/reviewer.md (Input section, blob-ref paragraph), state that blob files are read with read_file (offset/limit for large blobs). reviewer@3 in run 01M11P68SHFS165HP9ATK6094V found python3/node unavailable and improvised nu str substring chunking on a 58.1 KB evidence blob because the prompt never mentions the sanctioned path. Expected effect: removes improvised-read friction; pairs with open seeds fabro-8d2c/fabro-d97b.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-ee2c\",\"title\":\"Require ml record for implementer near-miss tool lessons\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-03T17:36:46.111Z\",\"updatedAt\":\"2026-09-07T13:23:37.738Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 6 (or the stage-journal hook), make ml record mandatory for near-miss tool lessons. implementer@1's edit_file old_string swallowed a whole test loop body in fib_test.go, was caught only by re-reading, and the lesson went into the run journal that no future session loads; implementer@2 then spent 284 s / 0.49 USD (42% of run agent cost) editing the same 1,100-line table-literal file without the guardrail. Expected effect: the next implementer inherits the scoped-old_string guardrail via ml prime --files.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-169b\",\"title\":\"Declare lesson_capture in the implementer node's context_allow_keys\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-03T17:46:38.461Z\",\"updatedAt\":\"2026-09-05T07:56:24.008Z\",\"description\":\"Seed fabro-f831 makes lesson_capture a required key of the Implemented JSON in .fabro/workflows/develop/prompts/implementer.md, but workflow.fabro's implementer node still declares context_allow_keys=implementation_summary,journal, so the undeclared key drops as drift on every future pass (per fabro-900e comment). Change: one line in workflow.fabro implementer node — context_allow_keys=implementation_summary,lesson_capture,journal; optionally also add it to the reviewer's preamble_allow_keys. Effect: the enforced record-or-skip answer lands durably instead of being discarded.\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-05T07:56:24.008Z\",\"closeReason\":\"Closed 2026-09-05 triage: lesson_capture already declared in implementer context_allow_keys (workflow.fabro line 106).\"}\n-{\"id\":\"fabro-3d2d\",\"title\":\"Add a repo-layout map to the planner prompt or AGENTS.md\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-03T17:46:38.588Z\",\"updatedAt\":\"2026-09-09T17:03:01.143Z\",\"description\":\"planner@1 burned 354.7 s / $0.219 of the $0.547 total (50,460 input tokens) on ~10 exploratory calls just to locate dev-loop assets that live at .fabro/workflows/develop/ in the same repo; planner@2 with the layout in context took 98 s / $0.064. Change: add a short Repo layout / dev-loop assets subsection to AGENTS.md. CORRECTION (planner run 01M23HWFFSB9NK78PGSCZWE6MA, 2026-09-09): the original text said 'gofib at repo root' — stale repo name, this repo is fabro. AGENTS.md (real file; CLAUDE.md is a symlink to it) already has an '## Architecture' section covering lib/ and apps/ layout; the actual gap is dev-loop asset subpaths. Target: new subsection (e.g. '### Dev-loop assets') at the end of '## Architecture' in AGENTS.md listing: dev-loop workflow assets at .fabro/workflows/develop/ (prompts/, scripts/, schemas/, workflow.toml); reviews at .fabro/reviews/; stage journals at .fabro/journal/<run_id>.jsonl; seeds tracker at .seeds/ (sd CLI); expertise at .mulch/ (ml CLI). Note in the section that these paths are fs_hide-bound for file tools — shell reads (grep/cat/sed) work. Effect: first planner pass drops from ~6 min toward ~100 s — roughly −4.5 min wall and −$0.15 per run. Distinct from the sd call-economy seeds (fabro-e4fa/f4cd/1399): those tune tracker calls, this removes filesystem orientation calls.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-3d2d\",\"title\":\"Add a repo-layout map to the planner prompt or AGENTS.md\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-03T17:46:38.588Z\",\"updatedAt\":\"2026-09-09T17:04:43.796Z\",\"description\":\"planner@1 burned 354.7 s / $0.219 of the $0.547 total (50,460 input tokens) on ~10 exploratory calls just to locate dev-loop assets that live at .fabro/workflows/develop/ in the same repo; planner@2 with the layout in context took 98 s / $0.064. Change: add a short Repo layout / dev-loop assets subsection to AGENTS.md. CORRECTION (planner run 01M23HWFFSB9NK78PGSCZWE6MA, 2026-09-09): the original text said 'gofib at repo root' — stale repo name, this repo is fabro. AGENTS.md (real file; CLAUDE.md is a symlink to it) already has an '## Architecture' section covering lib/ and apps/ layout; the actual gap is dev-loop asset subpaths. Target: new subsection (e.g. '### Dev-loop assets') at the end of '## Architecture' in AGENTS.md listing: dev-loop workflow assets at .fabro/workflows/develop/ (prompts/, scripts/, schemas/, workflow.toml); reviews at .fabro/reviews/; stage journals at .fabro/journal/<run_id>.jsonl; seeds tracker at .seeds/ (sd CLI); expertise at .mulch/ (ml CLI). Note in the section that these paths are fs_hide-bound for file tools — shell reads (grep/cat/sed) work. Effect: first planner pass drops from ~6 min toward ~100 s — roughly −4.5 min wall and −$0.15 per run. Distinct from the sd call-economy seeds (fabro-e4fa/f4cd/1399): those tune tracker calls, this removes filesystem orientation calls.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-09T17:04:43.796Z\"}\n {\"id\":\"fabro-4b57\",\"title\":\"Emit a loop-work diff in evidence.nu when only churn files changed\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-03T17:46:44.453Z\",\"updatedAt\":\"2026-09-05T16:28:39.799Z\",\"description\":\"Seeds targeting .fabro/ paths are classified as loop churn by .fabro/workflows/develop/scripts/evidence.nu, so captures read seed-work=0 files +0/-0 and reviewers must run their own git diff. Change: in evidence.nu, when seed_rows is empty but churn_rows is not, emit the per-seed (claim-base) diff of changed loop files under a loop-work diff section — the per-seed diff-base machinery from fabro-1e9f's theme already provides the base. Effect: reviews of dev-loop seeds verify from context, removing the per-review git detour. Cross-ref: fabro-1e9f (diff against last seed boundary) is the same machinery at run level.\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-05T16:28:39.799Z\"}\n {\"id\":\"fabro-a5de\",\"title\":\"Ban sd prime in develop planner and implementer prompts\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-03T17:46:44.627Z\",\"updatedAt\":\"2026-09-07T13:23:37.941Z\",\"description\":\"planner@1 executed sd prime because AGENTS.md memory instructs it, pulling a 4.7 KB banner whose Session Close Protocol mandates sd close + sd sync && git push — both reserved for the deterministic Closeout; the planner journaled that an LLM skimming the banner could comply. Change: one line in .fabro/workflows/develop/prompts/planner.md and prompts/implementer.md: never run sd prime in this loop — its close/push protocol contradicts the role rules and the context brief supersedes it. Effect: removes a directly contradicting instruction from every stage context and eliminates the mis-close/push risk. Complements the AGENTS.md boilerplate fix in fabro-cc23.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-3d04\",\"title\":\"Make the authorized-exception pattern standing in the implementer prompt\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-03T17:46:49.669Z\",\"updatedAt\":\"2026-09-07T13:23:38.038Z\",\"description\":\"Briefs carry manual override prose (fabro-f831's brief opened with CONTRADICTION RESOLVED authorizing exactly one .fabro/ file), and implementer@2 journaled that the pattern recurred across fabro-7e44 and fabro-f831 and deserves a platform-level convention. Change: in .fabro/workflows/develop/prompts/implementer.md's Platform scope section add: exception — a brief that names a specific platform file authorizes editing exactly that file. Effect: planner briefs shed roughly a third of their text and the implementer no longer reconciles a contradiction before starting.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 20,
+          "deletions": 1
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-09T17:04:49.274858599Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 181841,
+      "inference_time_ms": 135382,
+      "tool_time_ms": 9055,
+      "active_time_ms": 144437
+    },
+    "final_git_commit_sha": "143cef8b9103e6b262545d265335b05e09f61471",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 81560,
+          "inference_time_ms": 77466,
+          "tool_time_ms": 3504,
+          "active_time_ms": 80970
+        },
+        "billing_usd_micros": 102624,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 41818,
+          "inference_time_ms": 40735,
+          "tool_time_ms": 509,
+          "active_time_ms": 41244
+        },
+        "billing_usd_micros": 45130,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 4162,
+          "inference_time_ms": 0,
+          "tool_time_ms": 4158,
+          "active_time_ms": 4158
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 402,
+          "inference_time_ms": 0,
+          "tool_time_ms": 398,
+          "active_time_ms": 398
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 17972,
+          "inference_time_ms": 17181,
+          "tool_time_ms": 185,
+          "active_time_ms": 17366
+        },
+        "billing_usd_micros": 26350,
+        "retries": 0
+      },
+      {
+        "stage_id": "closeout",
+        "stage_label": "closeout",
+        "timing": {
+          "wall_time_ms": 305,
+          "inference_time_ms": 0,
+          "tool_time_ms": 301,
+          "active_time_ms": 301
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 61466,
+      "output_tokens": 3185,
+      "total_tokens": 315490,
+      "reasoning_tokens": 2135,
+      "cache_read_tokens": 248704,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 174104
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl b/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl\nnew file mode 100644\nindex 0000000..93bcac0\n--- /dev/null\n+++ b/.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl\n@@ -0,0 +1,7 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23HWFFSB9NK78PGSCZWE6MA\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:01:50Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23HWFFSB9NK78PGSCZWE6MA\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:03:11Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Seed fabro-3d2d contained stale repo name 'gofib' (repo is fabro) and its AGENTS.md claim predates the existing '## Architecture' section; corrected the seed body via sd update before claiming — implementer should follow the corrected target, not the original text.\",\"In-flight check: the only non-terminal develop run was this run itself; no open PRs, so no skips were needed.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23HWFFSB9NK78PGSCZWE6MA\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:04:00Z\",\"data\":{\"painpoints\":[],\"observations\":[\"`CLAUDE.md` is a symlink to `AGENTS.md`; editing the real file at repo root via edit_file worked directly and the symlink picked the change up — no shell detour was needed despite the section living in repo-wiring territory the seed explicitly targeted.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23HWFFSB9NK78PGSCZWE6MA\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:04:09Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23HWFFSB9NK78PGSCZWE6MA\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:04:15Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23HWFFSB9NK78PGSCZWE6MA\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:04:38Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified the loop-work diff (churn-only seed) against the in-progress seed spec: section placement, all five asset roots, fs_hide note, no 'gofib', and single-file scope all confirmed via grep on AGENTS.md and git diff against claim base c3d0107. Docs-only change; ADR-0019 capability axis clear.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23HWFFSB9NK78PGSCZWE6MA\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T17:04:44Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex e41828e..b6804c7 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -154,7 +154,7 @@\n {\"id\":\"fabro-a0fe\",\"title\":\"Tell develop reviewer to read blob refs with read_file offset/limit\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-03T17:36:46.015Z\",\"updatedAt\":\"2026-09-07T13:23:37.630Z\",\"description\":\"In .fabro/workflows/develop/prompts/reviewer.md (Input section, blob-ref paragraph), state that blob files are read with read_file (offset/limit for large blobs). reviewer@3 in run 01M11P68SHFS165HP9ATK6094V found python3/node unavailable and improvised nu str substring chunking on a 58.1 KB evidence blob because the prompt never mentions the sanctioned path. Expected effect: removes improvised-read friction; pairs with open seeds fabro-8d2c/fabro-d97b.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-ee2c\",\"title\":\"Require ml record for implementer near-miss tool lessons\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-03T17:36:46.111Z\",\"updatedAt\":\"2026-09-07T13:23:37.738Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md step 6 (or the stage-journal hook), make ml record mandatory for near-miss tool lessons. implementer@1's edit_file old_string swallowed a whole test loop body in fib_test.go, was caught only by re-reading, and the lesson went into the run journal that no future session loads; implementer@2 then spent 284 s / 0.49 USD (42% of run agent cost) editing the same 1,100-line table-literal file without the guardrail. Expected effect: the next implementer inherits the scoped-old_string guardrail via ml prime --files.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-169b\",\"title\":\"Declare lesson_capture in the implementer node's context_allow_keys\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-03T17:46:38.461Z\",\"updatedAt\":\"2026-09-05T07:56:24.008Z\",\"description\":\"Seed fabro-f831 makes lesson_capture a required key of the Implemented JSON in .fabro/workflows/develop/prompts/implementer.md, but workflow.fabro's implementer node still declares context_allow_keys=implementation_summary,journal, so the undeclared key drops as drift on every future pass (per fabro-900e comment). Change: one line in workflow.fabro implementer node — context_allow_keys=implementation_summary,lesson_capture,journal; optionally also add it to the reviewer's preamble_allow_keys. Effect: the enforced record-or-skip answer lands durably instead of being discarded.\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-05T07:56:24.008Z\",\"closeReason\":\"Closed 2026-09-05 triage: lesson_capture already declared in implementer context_allow_keys (workflow.fabro line 106).\"}\n-{\"id\":\"fabro-3d2d\",\"title\":\"Add a repo-layout map to the planner prompt or AGENTS.md\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-03T17:46:38.588Z\",\"updatedAt\":\"2026-09-07T13:23:37.849Z\",\"description\":\"planner@1 burned 354.7 s / $0.219 of the $0.547 total (50,460 input tokens) on ~10 exploratory calls just to locate dev-loop assets that live at .fabro/workflows/develop/ in the same repo; planner@2 with the layout in context took 98 s / $0.064. Change: add a 5-line Repo layout section to AGENTS.md (loaded as memory into every stage) or .fabro/workflows/develop/prompts/planner.md: gofib at repo root; dev-loop assets at .fabro/workflows/develop/; reviews at .fabro/reviews/; journals at .fabro/journal/. Effect: first planner pass drops from ~6 min toward ~100 s — roughly −4.5 min wall and −$0.15 per run. Distinct from the sd call-economy seeds (fabro-e4fa/f4cd/1399): those tune tracker calls, this removes filesystem orientation calls.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-3d2d\",\"title\":\"Add a repo-layout map to the planner prompt or AGENTS.md\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-03T17:46:38.588Z\",\"updatedAt\":\"2026-09-09T17:04:43.796Z\",\"description\":\"planner@1 burned 354.7 s / $0.219 of the $0.547 total (50,460 input tokens) on ~10 exploratory calls just to locate dev-loop assets that live at .fabro/workflows/develop/ in the same repo; planner@2 with the layout in context took 98 s / $0.064. Change: add a short Repo layout / dev-loop assets subsection to AGENTS.md. CORRECTION (planner run 01M23HWFFSB9NK78PGSCZWE6MA, 2026-09-09): the original text said 'gofib at repo root' — stale repo name, this repo is fabro. AGENTS.md (real file; CLAUDE.md is a symlink to it) already has an '## Architecture' section covering lib/ and apps/ layout; the actual gap is dev-loop asset subpaths. Target: new subsection (e.g. '### Dev-loop assets') at the end of '## Architecture' in AGENTS.md listing: dev-loop workflow assets at .fabro/workflows/develop/ (prompts/, scripts/, schemas/, workflow.toml); reviews at .fabro/reviews/; stage journals at .fabro/journal/<run_id>.jsonl; seeds tracker at .seeds/ (sd CLI); expertise at .mulch/ (ml CLI). Note in the section that these paths are fs_hide-bound for file tools — shell reads (grep/cat/sed) work. Effect: first planner pass drops from ~6 min toward ~100 s — roughly −4.5 min wall and −$0.15 per run. Distinct from the sd call-economy seeds (fabro-e4fa/f4cd/1399): those tune tracker calls, this removes filesystem orientation calls.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-09T17:04:43.796Z\"}\n {\"id\":\"fabro-4b57\",\"title\":\"Emit a loop-work diff in evidence.nu when only churn files changed\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-03T17:46:44.453Z\",\"updatedAt\":\"2026-09-05T16:28:39.799Z\",\"description\":\"Seeds targeting .fabro/ paths are classified as loop churn by .fabro/workflows/develop/scripts/evidence.nu, so captures read seed-work=0 files +0/-0 and reviewers must run their own git diff. Change: in evidence.nu, when seed_rows is empty but churn_rows is not, emit the per-seed (claim-base) diff of changed loop files under a loop-work diff section — the per-seed diff-base machinery from fabro-1e9f's theme already provides the base. Effect: reviews of dev-loop seeds verify from context, removing the per-review git detour. Cross-ref: fabro-1e9f (diff against last seed boundary) is the same machinery at run level.\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-05T16:28:39.799Z\"}\n {\"id\":\"fabro-a5de\",\"title\":\"Ban sd prime in develop planner and implementer prompts\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-09-03T17:46:44.627Z\",\"updatedAt\":\"2026-09-07T13:23:37.941Z\",\"description\":\"planner@1 executed sd prime because AGENTS.md memory instructs it, pulling a 4.7 KB banner whose Session Close Protocol mandates sd close + sd sync && git push — both reserved for the deterministic Closeout; the planner journaled that an LLM skimming the banner could comply. Change: one line in .fabro/workflows/develop/prompts/planner.md and prompts/implementer.md: never run sd prime in this loop — its close/push protocol contradicts the role rules and the context brief supersedes it. Effect: removes a directly contradicting instruction from every stage context and eliminates the mis-close/push risk. Complements the AGENTS.md boilerplate fix in fabro-cc23.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-3d04\",\"title\":\"Make the authorized-exception pattern standing in the implementer prompt\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-03T17:46:49.669Z\",\"updatedAt\":\"2026-09-07T13:23:38.038Z\",\"description\":\"Briefs carry manual override prose (fabro-f831's brief opened with CONTRADICTION RESOLVED authorizing exactly one .fabro/ file), and implementer@2 journaled that the pattern recurred across fabro-7e44 and fabro-f831 and deserves a platform-level convention. Change: in .fabro/workflows/develop/prompts/implementer.md's Platform scope section add: exception — a brief that names a specific platform file authorizes editing exactly that file. Effect: planner briefs shed roughly a third of their text and the implementer no longer reconciles a contradiction before starting.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\ndiff --git a/AGENTS.md b/AGENTS.md\nindex 501b1c1..19a6cbe 100644\n--- a/AGENTS.md\n+++ b/AGENTS.md\n@@ -151,6 +151,18 @@ Fabro is an AI-powered workflow orchestration platform. Workflows are defined as\n - **OpenAPI-first** — `fabro-api.yaml` drives Rust type + client generation (progenitor) and TypeScript client generation (openapi-generator)\n - **Checkpoint/resume** — Workflows can be paused, checkpointed, and resumed\n \n+### Dev-loop assets\n+\n+The dev loop's own machinery lives outside `lib/` and `apps/`:\n+\n+- `.fabro/workflows/develop/` — develop workflow assets: `workflow.toml`, `prompts/`, `scripts/`, `schemas/`\n+- `.fabro/reviews/` — per-run review records\n+- `.fabro/journal/<run_id>.jsonl` — one JSON record per completed stage\n+- `.seeds/` — Seeds issue tracker (the `sd` CLI)\n+- `.mulch/` — Mulch expertise records (the `ml` CLI)\n+\n+These paths are fs_hide-bound for file tools — `read_file`/`write_file`/`edit_file`/glob discovery fail on them; shell reads and writes (grep/cat/sed) succeed. The `sd`, `ml`, and `just` commands work normally.\n+\n ## Strategy docs\n \n When working in an area covered by a strategy doc, read the relevant document\n",
+      "summary": {
+        "files_changed": 3,
+        "additions": 20,
+        "deletions": 1
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2130,57 +2249,6 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
-    "closeout@1": {
-      "first_event_seq": 175,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
-        "failure_reason": null,
-        "timestamp": "2026-09-09T17:04:43.864174707Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
-        "language": "shell",
-        "timeout_ms": 60000
-      },
-      "script_timing": {
-        "output": "blob://sha256/2f5cf131efe14d66e87ff44f664815223a9c3a616ad2bbe10518a19d53e74996",
-        "exit_code": 0,
-        "duration_ms": 301,
-        "termination": "exited",
-        "output_bytes": 58,
-        "live_streaming": true
-      },
-      "parallel_results": null,
-      "output": null,
-      "output_bytes": 58,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-09T17:04:43.551167427Z",
-      "handler": "command",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 305,
-        "inference_time_ms": 0,
-        "tool_time_ms": 301,
-        "active_time_ms": 301
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "implementer@1": {
       "first_event_seq": 85,
       "prompt": null,
@@ -2391,57 +2459,6 @@
           }
         ],
         "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "tester@1": {
-      "first_event_seq": 128,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Script completed: just qualitygate",
-        "failure_reason": null,
-        "timestamp": "2026-09-09T17:04:09.360575451Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": {
-        "script": "just qualitygate",
-        "command": "exec 2>&1\njust qualitygate",
-        "language": "shell",
-        "timeout_ms": 1200000
-      },
-      "script_timing": {
-        "output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
-        "exit_code": 0,
-        "duration_ms": 4158,
-        "termination": "exited",
-        "output_bytes": 87,
-        "live_streaming": true
-      },
-      "parallel_results": null,
-      "output": null,
-      "output_bytes": 87,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-09T17:04:05.189990174Z",
-      "handler": "command",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 4162,
-        "inference_time_ms": 0,
-        "tool_time_ms": 4158,
-        "active_time_ms": 4158
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
@@ -2665,93 +2682,6 @@
           }
         ],
         "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "evidence@1": {
-      "first_event_seq": 138,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-        "failure_reason": null,
-        "timestamp": "2026-09-09T17:04:15.210645917Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
-        "language": "shell",
-        "timeout_ms": 120000
-      },
-      "script_timing": {
-        "output": "blob://sha256/3ea60913ef3483c77e0303590ea3c16563d7845997b82f03b9ce66543d77c16e",
-        "exit_code": 0,
-        "duration_ms": 398,
-        "termination": "exited",
-        "output_bytes": 3677,
-        "live_streaming": true
-      },
-      "parallel_results": null,
-      "output": null,
-      "output_bytes": 3677,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-09T17:04:14.799978482Z",
-      "handler": "command",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 402,
-        "inference_time_ms": 0,
-        "tool_time_ms": 398,
-        "active_time_ms": 398
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "start@1": {
-      "first_event_seq": 16,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": null,
-        "failure_reason": null,
-        "timestamp": "2026-09-09T17:01:50.021810115Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-09T17:01:50.013283385Z",
-      "handler": "start",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 0,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
@@ -2989,6 +2919,231 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T17:01:50.021810115Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T17:01:50.013283385Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "closeout@1": {
+      "first_event_seq": 175,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T17:04:43.864174707Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/2f5cf131efe14d66e87ff44f664815223a9c3a616ad2bbe10518a19d53e74996",
+        "exit_code": 0,
+        "duration_ms": 301,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T17:04:43.551167427Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 305,
+        "inference_time_ms": 0,
+        "tool_time_ms": 301,
+        "active_time_ms": 301
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 185,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T17:04:49.231190200Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T17:04:49.231139979Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@1": {
+      "first_event_seq": 128,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T17:04:09.360575451Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+        "exit_code": 0,
+        "duration_ms": 4158,
+        "termination": "exited",
+        "output_bytes": 87,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 87,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T17:04:05.189990174Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 4162,
+        "inference_time_ms": 0,
+        "tool_time_ms": 4158,
+        "active_time_ms": 4158
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "evidence@1": {
+      "first_event_seq": 138,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T17:04:15.210645917Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/3ea60913ef3483c77e0303590ea3c16563d7845997b82f03b9ce66543d77c16e",
+        "exit_code": 0,
+        "duration_ms": 398,
+        "termination": "exited",
+        "output_bytes": 3677,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 3677,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T17:04:14.799978482Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 402,
+        "inference_time_ms": 0,
+        "tool_time_ms": 398,
+        "active_time_ms": 398
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
