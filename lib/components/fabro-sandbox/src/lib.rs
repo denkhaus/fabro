@@ -20,6 +20,8 @@ pub mod redact;
 
 pub mod details;
 
+pub mod driver;
+
 pub mod reconnect;
 
 pub mod terminal;
