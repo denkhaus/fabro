@@ -1,0 +1,193 @@
+diff --git a/.fabro/journal/01M22R3TBFP86JPX0ZD8CA0QF5.jsonl b/.fabro/journal/01M22R3TBFP86JPX0ZD8CA0QF5.jsonl
+index e6b99f4..0df6545 100644
+--- a/.fabro/journal/01M22R3TBFP86JPX0ZD8CA0QF5.jsonl
++++ b/.fabro/journal/01M22R3TBFP86JPX0ZD8CA0QF5.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M22R3TBFP86JPX0ZD8CA0QF5","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T09:31:26Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M22R3TBFP86JPX0ZD8CA0QF5","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-09T09:32:57Z","data":{"painpoints":[],"observations":["closeout.nu is fs_hide-hidden to read_file — used shell cat per the documented bypass; basis of fabro-6f6e resolved against current tree (no Dockerfile warning exists in closeout.nu)","fabro_runs_list showed 5 develop runs, none with an open PR — no in-flight exclusions applied","brief annotates the fabro-5b0a dependency: run-summary/PR-body warning channel does not exist yet, so this seed lands the closeout-emitted warning only"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M22R3TBFP86JPX0ZD8CA0QF5","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-09T09:39:08Z","data":{"painpoints":[],"observations":["nu 0.115: `do { ... } | complete` errors ('Complete only works with external commands') when the block's final expression is a value, not an external call — the brief's literal 'wrap in do|complete' had to become per-git-call do|complete plus an outer `do -i` guard in closeout.nu; also, sourcing a script with `def main` auto-invokes that main after the sourcing script's top level, so closeout-smoke.nu ends with an explicit `exit 0`.","In nushell interpolated strings ($\"...\"), parenthesized prose is parsed as code — the first warning message hit a parse error from '(run sandboxes build the image; ...)' and was reworded; nu `source <const>` resolves relative to the sourcing script's directory, not the invocation cwd."]}}
+diff --git a/.fabro/workflows/develop/scripts/closeout-smoke.nu b/.fabro/workflows/develop/scripts/closeout-smoke.nu
+new file mode 100644
+index 0000000..d3fc058
+--- /dev/null
++++ b/.fabro/workflows/develop/scripts/closeout-smoke.nu
+@@ -0,0 +1,50 @@
++#!/usr/bin/env nu
++# Smoke test for closeout.nu's Dockerfile-touch warning (fabro-6f6e).
++# Exercises the pure glob/filter logic — dockerfile-hits over a path
++# list — without git; the full-script path is a manual invocation check
++# (documented on the seed). The `source` const resolves against THIS
++# file's directory, so the script runs from any cwd:
++#   nu .fabro/workflows/develop/scripts/closeout-smoke.nu
++
++const CLOSEOUT = "closeout.nu"
++source $CLOSEOUT
++
++def fail [what: string]: nothing -> nothing {
++    print -e $"closeout-smoke: FAIL — ($what)"
++    exit 1
++}
++
++# Positives: every Dockerfile* segment shape the warning must catch.
++let hits = (dockerfile-hits [
++    ".fabro/Dockerfile.toolchain"
++    ".fabro/Dockerfile"
++    "Dockerfile"
++    "apps/web/Dockerfile.dev"
++])
++if $hits != [".fabro/Dockerfile.toolchain" ".fabro/Dockerfile" "Dockerfile" "apps/web/Dockerfile.dev"] {
++    fail $"positives mismatch: ($hits | to json -r)"
++}
++
++# Negatives: lowercase, prefix-only, and unrelated paths stay silent.
++# (Note `Dockerfile-notes.md` WOULD match: its segment starts with
++# `Dockerfile`, which is exactly the glob `Dockerfile*` — a true
++# positive, not a false one.)
++let clean = (dockerfile-hits [
++    "dockerfile"
++    "lib/main.rs"
++    "apps/fabro-web/src/x.ts"
++    "a/Docker/keep.rs"
++    "docs/about-Dockerfile.md"
++])
++if ($clean | is-not-empty) {
++    fail $"negatives matched: ($clean | to json -r)"
++}
++
++# Empty input degrades to empty — no warning, byte-identical close.
++if (dockerfile-hits []) != [] { fail "empty input not empty" }
++
++print "closeout-smoke: ok — dockerfile-hits glob/filter logic verified"
++
++# Sourcing closeout.nu imports its `def main`; nu auto-invokes it after
++# the top level runs — exit explicitly so the smoke never reaches it.
++exit 0
+diff --git a/.fabro/workflows/develop/scripts/closeout.nu b/.fabro/workflows/develop/scripts/closeout.nu
+index c63285e..2bd53dd 100644
+--- a/.fabro/workflows/develop/scripts/closeout.nu
++++ b/.fabro/workflows/develop/scripts/closeout.nu
+@@ -18,6 +18,102 @@
+ # the next run re-enters the review cycle; an approved-but-unclosed seed is
+ # re-approvable harmlessly.
+ 
++# ---------------------------------------------------------------------------
++# Dockerfile-touch warning (fabro-6f6e)
++#
++# WHY: run 01M1YTVK73YEJXW4542MWDX4BJ (seed fabro-05d0) delivered only a
++# .fabro/Dockerfile.toolchain edit; Docker is absent from run sandboxes so
++# no image build ran, the review approved green — yet the fix stayed INERT
++# because fabro-toolchain:noble is BUILT, not mounted, and a Dockerfile*
++# edit takes effect only after that image rebuilds. Same class as the gh
++# breakage in .fabro/Dockerfile (since 98ed9f1) that still produced exit
++# 127 in run containers on Sep 7. This warning names the touched files at
++# the moment the close is decided. It must NEVER fail or block the close:
++# every git call below is wrapped in `do { ... } | complete` (git errors
++# degrade to silence) and the whole check runs under `do -i` — `complete`
++# only accepts external commands, so the outer guard is do-i rather than
++# do|complete, with the same degrade-to-silence semantics.
++#
++# SPEC SCOPE: run-summary/PR-body surfacing of this warning is exactly the
++# channel open seed fabro-5b0a proposes and does NOT exist yet — this seed
++# deliberately does NOT build it. The warning's captured stdout/stderr
++# lands in the stage journal and run output, which satisfies this seed;
++# fabro-5b0a remains the follow-up for PR-body surfacing.
++# ---------------------------------------------------------------------------
++
++# Pure filter over a path list: any path with a SEGMENT matching the glob
++# `Dockerfile*` (covers .fabro/Dockerfile.toolchain, .fabro/Dockerfile,
++# root Dockerfile, nested x/Dockerfile.dev). Pure over its input so the
++# smoke test (closeout-smoke.nu) exercises it without git.
++def dockerfile-hits [paths: list<string>]: nothing -> list<string> {
++    $paths | where {|p| ($p | split row "/" | any {|seg| $seg | str starts-with "Dockerfile"})}
++}
++
++# --- diff-anchor helpers: MIRRORED from evidence.nu (seed-claim-base
++# approach) — reuse that anchoring scheme, do not invent a new one.
++
++def current-branch []: nothing -> string {
++    git branch --show-current | str trim
++}
++
++def run-base []: nothing -> record<base: string, short: string, grounded: bool> {
++    let run_id = (
++        current-branch
++        | parse --regex 'fabro/run/(?P<id>[^/]+)$'
++        | get -o id.0
++        | default ''
++    )
++    let subject_mark = $"fabro\(($run_id)\):"
++    let checkpoints = (do { git log --format=%H --fixed-strings --grep $subject_mark } | complete | get stdout | lines | compact)
++    if ($checkpoints | is-empty) {
++        {base: "HEAD", short: (do { git rev-parse --short HEAD } | complete | get stdout | str trim), grounded: false}
++    } else {
++        let base = (do { git rev-parse $"($checkpoints | last)^" } | complete | get stdout | str trim)
++        {base: $base, short: (do { git rev-parse --short $base } | complete | get stdout | str trim), grounded: true}
++    }
++}
++
++def seed-status-at [commit: string, seed_id: string]: nothing -> any {
++    let res = (do { git show $"($commit):.seeds/issues.jsonl" } | complete)
++    if $res.exit_code != 0 { return null }
++    let rows = ($res.stdout | lines | compact | each {|l| do -i { $l | from json } })
++    let hit = ($rows | where {|r| $r != null and ($r | get -o id | default '') == $seed_id } | get -o 0 | default null)
++    if $hit == null { null } else { $hit | get -o status | default null }
++}
++
++# Newest commit where the seed TRANSITIONS to in_progress (in_progress at
++# C, not at C^); the claim commit itself is the base. Fallback: run base.
++# See evidence.nu seed-claim-base for the full rationale.
++def seed-claim-base [seed_id: string, run_base: record]: nothing -> record<base: string, short: string, grounded: bool, fallback: bool> {
++    for c in (do { git log --format=%H -- .seeds/issues.jsonl } | complete | get stdout | lines | compact) {
++        if ((seed-status-at $c $seed_id) == "in_progress") {
++            let parent = (do { git rev-parse $"($c)^" } | complete)
++            if $parent.exit_code == 0 {
++                let before = (seed-status-at ($parent.stdout | str trim) $seed_id)
++                if $before != "in_progress" {
++                    return {base: $c, short: (do { git rev-parse --short $c } | complete | get stdout | str trim), grounded: true, fallback: false}
++                }
++            }
++        }
++    }
++    {base: $run_base.base, short: $run_base.short, grounded: $run_base.grounded, fallback: true}
++}
++
++# Best-effort detection + warning: warn when the seed's diff (claim-base
++# anchored, fallback run base — flagged in the base itself) touches any
++# Dockerfile* path. Prints the warning to BOTH stderr and stdout (both are
++# captured into the stage journal / run output); never blocks the close.
++def warn-dockerfile-diff [seed_id: string]: nothing -> nothing {
++    let base = (seed-claim-base $seed_id (run-base))
++    let res = (do { git diff --name-only $base.base } | complete)
++    if $res.exit_code != 0 { return }
++    let hits = (dockerfile-hits ($res.stdout | lines | compact))
++    if ($hits | is-empty) { return }
++    let msg = $"closeout: WARNING — diff touches Dockerfile path\(s\): ($hits | str join ', '). This fix is INERT until the fabro-toolchain:noble image is rebuilt — run sandboxes build that image and never mount it live."
++    print -e $msg
++    print $msg
++}
++
+ def main []: nothing -> nothing {
+     # Non-tty stdin: nu 0.115's `input` only works on a tty and raises an
+     # I/O error on pipes (run 01M1PVMS7B6N39MG0041C5F7P6) — the engine pipes
+@@ -30,6 +126,12 @@ def main []: nothing -> nothing {
+         exit 1
+     }
+ 
++    # Dockerfile-touch warning (fabro-6f6e): advisory only — `do -i` plus
++    # the per-call complete wrappers above guarantee no failure here can
++    # reach the close below. No Dockerfile touched: byte-identical close
++    # semantics (stdin validation, sd close, exit codes).
++    do -i { warn-dockerfile-diff $seed_id } | ignore
++
+     let res = (do { sd close $seed_id } | complete)
+     if $res.exit_code != 0 {
+         print -e $"closeout: sd close ($seed_id) failed: ($res.stderr | str trim)"
+diff --git a/.mulch/expertise/workflows.jsonl b/.mulch/expertise/workflows.jsonl
+index 44980d6..512677d 100644
+--- a/.mulch/expertise/workflows.jsonl
++++ b/.mulch/expertise/workflows.jsonl
+@@ -34,3 +34,4 @@
+ {"type":"decision","classification":"tactical","recorded_at":"2026-09-08T15:03:48.999Z","evidence":{"seeds":"fabro-16ff","commit":"17938dd81bdadff1b599e4da4e982de53bbbd7e1"},"title":"Capability delta includes engine-provided credentials (ADR-0019)","rationale":"The engine injects GITHUB_TOKEN into every agent shell call via resolve_workflow_env and runs a git credential bridge, so container-env-only review misjudges write-capable tooling as harmless (PR #53). Reviewer and revisor prompts must treat credential USE on a new code path as a capability delta requiring recorded user approval.","id":"mx-0b3256"}
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-08T16:00:40.806Z","evidence":{"commit":"9eeab202a19fbda085b1e46ad5ca453318cf615f"},"dir_anchors":["lib/components/fabro-tool/src"],"description":"Adding ANY method to the async-trait FabroToolBackend (lib/components/fabro-tool/src/common.rs) can newly expose rustc 'implementation of Send is not general enough' (note names an unrelated &Path param) at dyn-object call sites in fabro-workflow (handler/llm/api.rs fabro_run_tool executor). Default method bodies do NOT cause it; the trigger was calling the new method inside a stream::iter(...).map(async move {...}) closure capturing Arc<dyn FabroToolBackend>.","resolution":"Build a Vec<futures::future::BoxFuture<'static, _>> with owned captures (cloned run_id String + Arc backend) via .boxed(), then stream::iter(lookups).buffer_unordered(8).collect() — 'static boxed futures skip the higher-ranked Send proof inside the closure (fabro-06e0).","id":"mx-af39fe"}
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-08T16:00:54.823Z","evidence":{"commit":"9eeab202a19fbda085b1e46ad5ca453318cf615f"},"dir_anchors":["lib/components/fabro-tool/src"],"name":"credential-less-agent-enrichment-via-management-target","description":"Cross-run read-only enrichment for agent tools (fabro-06e0): the worker holds NO credentials — enrichment flows worker -> fabro_client HTTP -> server route -> server GitHub client. Prerequisite: the target route must use the ADR-0011 RequireRunManagementTarget extractor (inspects/creator/ancestor scope), NOT RequireRunScoped (own-run only) — workers get 403 cross-run on the latter. GET /runs/{id}/pull_request was moved to RequireRunManagementTarget for exactly this; mutating sibling routes stay strict.","files":[".fabro/workflows/develop/prompts/planner.md",".fabro/workflows/develop/workflow.fabro",".mulch/expertise/workflows.jsonl","lib/apps/fabro-server/src/server/handler/pull_requests.rs","lib/apps/fabro-server/src/server/tests.rs","lib/components/fabro-tool/src/common.rs","lib/components/fabro-tool/src/create.rs","lib/components/fabro-tool/src/fabro_client.rs","lib/components/fabro-tool/src/interact.rs","lib/components/fabro-tool/src/lib.rs","lib/components/fabro-tool/src/runs_list.rs","lib/components/fabro-tool/src/search.rs","lib/components/fabro-workflow/src/handler/llm/api.rs"],"id":"mx-ed7cb2"}
++{"type":"reference","classification":"tactical","recorded_at":"2026-09-09T09:38:25.040Z","evidence":{"seeds":"fabro-6f6e","commit":"bc1f4e60daea033a43ff35a9098a1b6fc77b3732"},"name":"nushell-script-mechanics","description":"Nushell script mechanics learned implementing fabro-6f6e (closeout Dockerfile warning): (1) 'cmd | complete' only accepts external commands — a do-block ending in a pure value errors (nu::shell::error 'Complete only works with external commands'), so wrap each git call individually in 'do { git ... } | complete' and guard the orchestrating custom command with 'do -i' instead; (2) 'source <const>' paths resolve relative to the sourcing SCRIPT's directory, not the invocation cwd; (3) sourcing a script that defines 'def main' causes nu to auto-invoke that main after the sourcing script's top level runs — end smoke scripts with explicit 'exit 0'; (4) parenthesized prose inside interpolated double-quoted strings is parsed as code — keep prose parens out of $\"...\" or escape them.","files":[".fabro/workflows/develop/scripts/closeout.nu"],"id":"mx-84a287"}
