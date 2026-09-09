@@ -4,3 +4,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M23Q0VM3YVECMSHDNX2HH3PJ","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-09T18:42:47Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M23Q0VM3YVECMSHDNX2HH3PJ","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-09T18:42:52Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M23Q0VM3YVECMSHDNX2HH3PJ","node":"reviewer","visit":1,"status":"succeeded","ts":"2026-09-09T18:43:22Z","data":{"painpoints":[],"observations":["Verified directly in the repo (not just the summary): auto_merge=false at workflow.toml:56 with mismatch-documenting comment, and both resolve_pr_model regression tests present at operations/start.rs:1641/1658. Diff scope limited to those two files; no capability delta beyond the seed-directed auto-merge removal."]}}
+{"$schema":"fabro-journal-v1","run_id":"01M23Q0VM3YVECMSHDNX2HH3PJ","node":"closeout","visit":1,"status":"succeeded","ts":"2026-09-09T18:43:27Z","data":{}}
