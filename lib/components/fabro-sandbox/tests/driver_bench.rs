@@ -297,7 +297,7 @@ async fn unpack_driver(sandbox: &dyn DriverSandbox, repo: &Repository) {
         .exec()
         .run(
             &ExecSpec::bash("mkdir -p repo && tar -xf /tmp/repo.tar -C repo")
-                .timeout(Duration::from_secs(120)),
+                .timeout(Duration::from_mins(2)),
         )
         .await
         .expect("unpack exec");
