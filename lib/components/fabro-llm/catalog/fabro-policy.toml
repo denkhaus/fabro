@@ -1,0 +1,883 @@
+# Fabro's policy layer over the lithos-llm built-in catalog.
+#
+# Applied after the built-ins and before operator `[llm]` overlays. Everything
+# under `metadata.fabro` is Fabro policy that lithos carries verbatim:
+#
+# - `enabled`: whether Fabro offers the provider or model.
+# - `credentials`: ordered credential references (`env:NAME`, `vault:NAME`,
+#   `aws_sigv4`); the first that resolves wins.
+# - `extra_headers`: request headers, literal or `{{ secrets.NAME }}`.
+# - `agent_profile`, `family`, `small_default`, `probe`: agent and selection
+#   policy read by the Fabro model resolver.
+#
+# Modal's default model comes from a deployment template, not this layer.
+# GPT-OSS is excluded at user request. This layer cannot restore that family.
+schema_version = 1
+
+[providers."anthropic"]
+priority = 100
+default_model = "claude-sonnet-5"
+
+[providers."anthropic".metadata.fabro]
+api_key_url = "https://console.anthropic.com/settings/keys"
+credentials = ["env:ANTHROPIC_API_KEY", "vault:ANTHROPIC_API_KEY"]
+enabled = true
+
+[providers."anthropic".models."claude-fable-5".metadata.fabro]
+family = "claude-5"
+agent_profile = "claude-5"
+small_default = false
+probe = false
+
+[providers."anthropic".models."claude-opus-5".metadata.fabro]
+family = "claude-5"
+agent_profile = "claude-5"
+small_default = false
+probe = false
+
+[providers."anthropic".models."claude-sonnet-5".metadata.fabro]
+family = "claude-5"
+agent_profile = "claude-5"
+small_default = false
+probe = false
+
+[providers."anthropic".models."claude-opus-4.8".metadata.fabro]
+family = "claude-4"
+agent_profile = "anthropic"
+small_default = false
+probe = false
+
+[providers."anthropic".models."claude-opus-4.7".metadata.fabro]
+family = "claude-4"
+agent_profile = "anthropic"
+small_default = false
+probe = false
+
+[providers."anthropic".models."claude-opus-4.6".metadata.fabro]
+family = "claude-4"
+agent_profile = "anthropic"
+small_default = false
+probe = false
+
+[providers."anthropic".models."claude-sonnet-4.5".metadata.fabro]
+family = "claude-4"
+agent_profile = "anthropic"
+small_default = false
+probe = false
+
+[providers."anthropic".models."claude-sonnet-4.6".metadata.fabro]
+family = "claude-4"
+agent_profile = "anthropic"
+small_default = false
+probe = false
+
+[providers."anthropic".models."claude-haiku-4.5".metadata.fabro]
+family = "claude-4"
+agent_profile = "anthropic"
+small_default = true
+probe = true
+
+[providers."bedrock-openai"]
+priority = 19
+default_model = "gpt-5.5"
+
+[providers."bedrock-openai".metadata.fabro]
+api_key_url = "https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html"
+credentials = ["env:AWS_BEARER_TOKEN_BEDROCK", "env:BEDROCK_API_KEY", "vault:AWS_BEARER_TOKEN_BEDROCK", "vault:BEDROCK_API_KEY"]
+enabled = false
+
+[providers."bedrock-openai".models."gpt-5.5".metadata.fabro]
+family = "gpt-5"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."bedrock-openai".models."gpt-5.4".metadata.fabro]
+family = "gpt-5"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."bedrock"]
+priority = 20
+default_model = "claude-sonnet-5"
+
+[providers."bedrock".metadata.fabro]
+api_key_url = "https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html"
+credentials = ["env:AWS_BEARER_TOKEN_BEDROCK", "env:BEDROCK_API_KEY", "vault:AWS_BEARER_TOKEN_BEDROCK", "vault:BEDROCK_API_KEY", "aws_sigv4"]
+enabled = false
+
+[providers."bedrock".models."anthropic.claude-sonnet-4-6".metadata.fabro]
+family = "claude-4"
+agent_profile = "anthropic"
+small_default = false
+probe = false
+
+[providers."bedrock".models."claude-opus-4-8".metadata.fabro]
+family = "claude-4"
+agent_profile = "anthropic"
+small_default = false
+probe = false
+
+[providers."bedrock".models."claude-haiku-4-5".metadata.fabro]
+family = "claude-4"
+agent_profile = "anthropic"
+small_default = true
+probe = false
+
+[providers."bedrock".models."nova-2-lite".metadata.fabro]
+family = "nova-2"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."bedrock".models."llama-4-maverick".metadata.fabro]
+family = "llama-4"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."bedrock".models."mistral-large-3".metadata.fabro]
+family = "mistral-large"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."bedrock".models."devstral-2".metadata.fabro]
+family = "devstral"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."bedrock".models."deepseek-v3.2".metadata.fabro]
+family = "deepseek-v3"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."bedrock".models."kimi-k2.5".metadata.fabro]
+family = "kimi-k2"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."bedrock".models."glm-5".metadata.fabro]
+family = "glm"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."bedrock".models."minimax-m2.5".metadata.fabro]
+family = "minimax-m2"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."bedrock".models."nemotron-3-super".metadata.fabro]
+family = "nemotron-3"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."bedrock".models."claude-fable-5".metadata.fabro]
+family = "claude-5"
+agent_profile = "claude-5"
+small_default = false
+probe = false
+
+[providers."bedrock".models."claude-sonnet-5".metadata.fabro]
+family = "claude-5"
+agent_profile = "claude-5"
+small_default = false
+probe = false
+
+[providers."deepseek"]
+priority = 75
+default_model = "deepseek-v4-flash"
+
+[providers."deepseek".metadata.fabro]
+api_key_url = "https://platform.deepseek.com/api_keys"
+credentials = ["env:DEEPSEEK_API_KEY", "vault:DEEPSEEK_API_KEY"]
+enabled = true
+
+[providers."deepseek".models."deepseek-v4-flash".metadata.fabro]
+reasoning_by_default = true
+family = "deepseek-v4"
+agent_profile = "openai"
+small_default = true
+probe = true
+
+[providers."deepseek".models."deepseek-v4-pro".metadata.fabro]
+reasoning_by_default = true
+family = "deepseek-v4"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."fireworks"]
+priority = 30
+default_model = "kimi-k2.7-code"
+
+[providers."fireworks".metadata.fabro]
+api_key_url = "https://app.fireworks.ai/settings/users/api-keys"
+credentials = ["env:FIREWORKS_API_KEY", "vault:FIREWORKS_API_KEY"]
+enabled = false
+
+# Moonshot documents K3 as always reasoning with low, high, and max effort;
+# lithos leaves the levels unverified, so Fabro records them here.
+[providers."fireworks".models."kimi-k3"]
+capabilities = { reasoning_effort = { minimal = false, low = true, medium = false, high = true, xhigh = false, max = true } }
+
+[providers."fireworks".models."kimi-k3".metadata.fabro]
+family = "kimi-k3"
+agent_profile = "kimi"
+small_default = false
+probe = false
+
+[providers."fireworks".models."kimi-k3-fast".metadata.fabro]
+family = "kimi-k3"
+agent_profile = "kimi"
+small_default = false
+probe = false
+
+[providers."fireworks".models."kimi-k2.7-code".metadata.fabro]
+family = "kimi-k2"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."fireworks".models."kimi-k2.6".metadata.fabro]
+family = "kimi-k2"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."fireworks".models."deepseek-v4-pro".metadata.fabro]
+reasoning_by_default = true
+family = "deepseek-v4"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."fireworks".models."deepseek-v4-flash".metadata.fabro]
+reasoning_by_default = true
+family = "deepseek-v4"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."fireworks".models."glm-5.2".metadata.fabro]
+family = "glm-5"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."fireworks".models."minimax-m2.7".metadata.fabro]
+family = "minimax-m2"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."fireworks".models."qwen3.7-plus".metadata.fabro]
+family = "qwen3"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."gemini"]
+priority = 80
+default_model = "gemini-3.5-flash"
+
+[providers."gemini".metadata.fabro]
+api_key_url = "https://aistudio.google.com/apikey"
+credentials = ["env:GEMINI_API_KEY", "env:GOOGLE_API_KEY", "vault:GEMINI_API_KEY"]
+enabled = true
+
+[providers."gemini".models."gemini-3.1-pro-preview".metadata.fabro]
+family = "gemini-3"
+agent_profile = "gemini"
+small_default = false
+probe = false
+
+[providers."gemini".models."gemini-3.1-pro-preview-customtools".metadata.fabro]
+family = "gemini-3"
+agent_profile = "gemini"
+small_default = false
+probe = false
+
+[providers."gemini".models."gemini-3.5-flash".metadata.fabro]
+family = "gemini-3"
+agent_profile = "gemini"
+small_default = false
+probe = false
+
+[providers."gemini".models."gemini-3-flash-preview".metadata.fabro]
+family = "gemini-3"
+agent_profile = "gemini"
+small_default = false
+probe = false
+
+[providers."gemini".models."gemini-3.1-flash-lite".metadata.fabro]
+family = "gemini-3"
+agent_profile = "gemini"
+small_default = true
+probe = false
+
+[providers."inception"]
+priority = 40
+default_model = "mercury-2"
+
+[providers."inception".metadata.fabro]
+api_key_url = "https://console.inceptionlabs.ai/api-keys"
+credentials = ["env:INCEPTION_API_KEY", "vault:INCEPTION_API_KEY"]
+enabled = true
+
+[providers."inception".models."mercury-2".metadata.fabro]
+family = "mercury"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."litellm"]
+priority = 50
+
+[providers."litellm".metadata.fabro]
+credentials = ["env:LITELLM_API_KEY", "vault:LITELLM_API_KEY"]
+enabled = false
+
+[providers."minimax"]
+priority = 50
+default_model = "minimax-m2.5"
+
+[providers."minimax".metadata.fabro]
+api_key_url = "https://platform.minimaxi.com/user-center/basic-information/interface-key"
+credentials = ["env:MINIMAX_API_KEY", "vault:MINIMAX_API_KEY"]
+enabled = true
+
+[providers."minimax".models."minimax-m2.5".metadata.fabro]
+family = "minimax-m2"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."modal"]
+priority = 75
+
+[providers."modal".metadata.fabro]
+api_key_url = "https://modal.com/docs/guide/endpoints#proxy-tokens"
+enabled = false
+
+[providers."modal".metadata.fabro.extra_headers]
+"Modal-Key" = "{{ secrets.MODAL_TOKEN_ID }}"
+"Modal-Secret" = "{{ secrets.MODAL_TOKEN_SECRET }}"
+
+[providers."moonshot"]
+priority = 70
+default_model = "kimi-k3"
+
+[providers."moonshot".metadata.fabro]
+api_key_url = "https://platform.kimi.ai/console/api-keys"
+credentials = ["env:MOONSHOT_API_KEY", "env:KIMI_API_KEY", "vault:MOONSHOT_API_KEY", "vault:KIMI_API_KEY"]
+enabled = true
+
+[providers."moonshot".models."kimi-k2.5".metadata.fabro]
+family = "kimi-k2"
+agent_profile = "kimi"
+small_default = false
+probe = false
+
+# Moonshot documents K3 as always reasoning with low, high, and max effort;
+# lithos leaves the levels unverified, so Fabro records them here.
+[providers."moonshot".models."kimi-k3"]
+capabilities = { reasoning_effort = { minimal = false, low = true, medium = false, high = true, xhigh = false, max = true } }
+
+[providers."moonshot".models."kimi-k3".metadata.fabro]
+family = "kimi-k3"
+agent_profile = "kimi"
+small_default = false
+probe = false
+
+[providers."ollama"]
+priority = 30
+
+[providers."ollama".metadata.fabro]
+enabled = false
+
+[providers."openai"]
+priority = 90
+default_model = "gpt-5.6-sol"
+
+[providers."openai".metadata.fabro]
+api_key_url = "https://platform.openai.com/api-keys"
+credentials = ["env:OPENAI_API_KEY", "vault:OPENAI_API_KEY"]
+enabled = true
+
+[providers."openai".models."gpt-5.6-sol".metadata.fabro]
+family = "gpt-5"
+agent_profile = "gpt56"
+small_default = false
+probe = false
+
+[providers."openai".models."gpt-5.6-terra".metadata.fabro]
+family = "gpt-5"
+agent_profile = "gpt56"
+small_default = false
+probe = false
+
+[providers."openai".models."gpt-5.6-luna".metadata.fabro]
+family = "gpt-5"
+agent_profile = "gpt56"
+small_default = false
+probe = false
+
+[providers."openai".models."gpt-5.4".metadata.fabro]
+family = "gpt-5"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openai".models."gpt-5.5".metadata.fabro]
+family = "gpt-5"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openai".models."gpt-5.5-pro".metadata.fabro]
+family = "gpt-5"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openai".models."gpt-5.4-pro".metadata.fabro]
+family = "gpt-5"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openai".models."gpt-5.4-mini".metadata.fabro]
+family = "gpt-5"
+agent_profile = "openai"
+small_default = true
+probe = true
+
+[providers."openrouter"]
+priority = 25
+default_model = "claude-sonnet-5"
+
+[providers."openrouter".metadata.fabro]
+api_key_url = "https://openrouter.ai/keys"
+credentials = ["env:OPENROUTER_API_KEY", "vault:OPENROUTER_API_KEY"]
+enabled = false
+
+[providers."openrouter".models."claude-fable-5".metadata.fabro]
+family = "claude-5"
+agent_profile = "claude-5"
+small_default = false
+probe = false
+
+[providers."openrouter".models."claude-opus-5".metadata.fabro]
+training = "2026-05-01"
+knowledge_cutoff = "May 2026"
+family = "claude-5"
+agent_profile = "claude-5"
+small_default = false
+probe = false
+
+[providers."openrouter".models."claude-sonnet-5".metadata.fabro]
+training = "2026-01-01"
+knowledge_cutoff = "Jan 2026"
+family = "claude-5"
+agent_profile = "claude-5"
+small_default = false
+probe = false
+
+[providers."openrouter".models."claude-opus-4.8".metadata.fabro]
+training = "2026-01-01"
+knowledge_cutoff = "Jan 2026"
+family = "claude-4"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."claude-opus-4.7".metadata.fabro]
+family = "claude-4"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."claude-sonnet-4.6".metadata.fabro]
+family = "claude-4"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."claude-haiku-4.5".metadata.fabro]
+family = "claude-4"
+agent_profile = "openai"
+small_default = true
+probe = false
+
+[providers."openrouter".models."gpt-5.6-sol".metadata.fabro]
+training = "2026-02-16"
+knowledge_cutoff = "February 16, 2026"
+family = "gpt-5"
+agent_profile = "gpt56"
+small_default = false
+probe = false
+
+[providers."openrouter".models."gpt-5.6-terra".metadata.fabro]
+training = "2026-02-16"
+knowledge_cutoff = "February 16, 2026"
+family = "gpt-5"
+agent_profile = "gpt56"
+small_default = false
+probe = false
+
+[providers."openrouter".models."gpt-5.6-luna".metadata.fabro]
+training = "2026-02-16"
+knowledge_cutoff = "February 16, 2026"
+family = "gpt-5"
+agent_profile = "gpt56"
+small_default = false
+probe = false
+
+[providers."openrouter".models."gpt-5.4".metadata.fabro]
+family = "gpt-5"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."gpt-5.5".metadata.fabro]
+family = "gpt-5"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."gemini-3.1-pro-preview".metadata.fabro]
+family = "gemini-3"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."gemini-3.5-flash".metadata.fabro]
+family = "gemini-3"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."mimo-v2.5-pro".metadata.fabro]
+family = "mimo-v2"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."minimax-m2.7".metadata.fabro]
+family = "minimax-m2"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."deepseek-v4-pro".metadata.fabro]
+reasoning_by_default = true
+family = "deepseek-v4"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."deepseek-v4-flash".metadata.fabro]
+reasoning_by_default = true
+family = "deepseek-v4"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."kimi-k2.6".metadata.fabro]
+family = "kimi-k2"
+agent_profile = "kimi"
+small_default = false
+probe = false
+
+# Moonshot documents K3 as always reasoning with low, high, and max effort;
+# lithos leaves the levels unverified, so Fabro records them here.
+[providers."openrouter".models."kimi-k3"]
+capabilities = { reasoning_effort = { minimal = false, low = true, medium = false, high = true, xhigh = false, max = true } }
+
+[providers."openrouter".models."kimi-k3".metadata.fabro]
+family = "kimi-k3"
+agent_profile = "kimi"
+small_default = false
+probe = false
+
+[providers."openrouter".models."laguna-s-2.1".metadata.fabro]
+family = "laguna-2"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."laguna-xs-2.1".metadata.fabro]
+family = "laguna-2"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."qwen3-coder".metadata.fabro]
+family = "qwen3"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."qwen3.6-flash".metadata.fabro]
+family = "qwen3"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."qwen3.8-max".metadata.fabro]
+family = "qwen3"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."glm-5.2".metadata.fabro]
+family = "glm-5"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."glm-4.6".metadata.fabro]
+family = "glm-4"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."nemotron-3-super-120b-a12b".metadata.fabro]
+family = "nemotron-3"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."openrouter".models."devstral-2512".metadata.fabro]
+family = "devstral"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."poolside"]
+priority = 65
+default_model = "laguna-s-2.1"
+
+[providers."poolside".metadata.fabro]
+api_key_url = "https://platform.poolside.ai"
+credentials = ["env:POOLSIDE_API_KEY", "vault:POOLSIDE_API_KEY"]
+enabled = true
+
+[providers."poolside".models."laguna-s-2.1".metadata.fabro]
+family = "laguna-2"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."poolside".models."laguna-xs-2.1".metadata.fabro]
+family = "laguna-2"
+agent_profile = "openai"
+small_default = true
+probe = true
+
+[providers."venice"]
+priority = 35
+default_model = "deepseek-v4-flash"
+
+[providers."venice".metadata.fabro]
+credentials = ["env:VENICE_API_KEY", "vault:VENICE_API_KEY"]
+enabled = true
+
+[providers."venice".models."kimi-k3".metadata.fabro]
+reasoning_by_default = true
+family = "kimi-k3"
+agent_profile = "kimi"
+small_default = false
+probe = false
+
+[providers."venice".models."kimi-k3-fast".metadata.fabro]
+reasoning_by_default = true
+family = "kimi-k3"
+agent_profile = "kimi"
+small_default = false
+probe = false
+
+[providers."venice".models."grok-4.6".metadata.fabro]
+reasoning_by_default = true
+family = "grok-4"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."venice".models."glm-5.3".metadata.fabro]
+reasoning_by_default = true
+family = "glm-5"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."venice".models."deepseek-v4-flash".metadata.fabro]
+reasoning_by_default = true
+family = "deepseek-v4"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."venice".models."deepseek-v4-pro".metadata.fabro]
+reasoning_by_default = true
+family = "deepseek-v4"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."venice".models."qwen3.8-max".metadata.fabro]
+reasoning_by_default = true
+family = "qwen3"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."venice".models."qwen3.8-27b".metadata.fabro]
+reasoning_by_default = true
+family = "qwen3.8"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."zai"]
+priority = 60
+default_model = "glm-5.2"
+
+[providers."zai".metadata.fabro]
+api_key_url = "https://open.bigmodel.cn/usercenter/apikeys"
+credentials = ["env:ZAI_API_KEY", "vault:ZAI_API_KEY"]
+enabled = true
+
+[providers."zai".models."glm-5.2".metadata.fabro]
+family = "glm-5"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+[providers."zai".models."glm-4.7".metadata.fabro]
+family = "glm-4"
+agent_profile = "openai"
+small_default = false
+probe = false
+
+# ChatGPT OAuth (Codex) access to the OpenAI roster. lithos speaks the Codex
+# deployment through the `openai` adapter in codex mode; this provider exists
+# so a `fabro provider login --provider openai` device-flow credential routes
+# here while an API key keeps routing to `openai`. It is hidden from listings
+# and stands in for `openai` when `openai` itself has no credentials.
+[providers."openai-codex"]
+display_name = "OpenAI (ChatGPT)"
+adapter = "openai"
+codec = "openai-responses"
+base_url = "https://chatgpt.com/backend-api/codex"
+priority = 89
+allow_passthrough = true
+default_model = "gpt-5.6-sol"
+adapter_options = { mode = "codex" }
+default_headers = { originator = "fabro" }
+
+[providers."openai-codex".auth]
+type = "bearer"
+
+[providers."openai-codex".metadata.fabro]
+enabled = true
+stands_in_for = "openai"
+credentials = ["vault:OPENAI_CODEX"]
+
+[providers."openai-codex".models."gpt-5.6-sol"]
+display_name = "GPT-5.6 Sol"
+aliases = ["sol", "gpt-sol", "gpt56-sol", "gpt-56-sol", "gpt-5.6", "gpt56", "gpt-56"]
+api_model = "gpt-5.6-sol"
+limits = { context_tokens = 1050000, max_output_tokens = 128000 }
+capabilities = { text = true, images = true, documents = true, tools = true, response_format = { json_object = true, json_schema = true }, reasoning = true, caching = true, cache_routing = true, tool_choice = { required = true, named = true }, speed = { fast = true, economical = true } }
+protocol_options = { reasoning_effort_levels = true }
+pricing = { input_usd_micros_per_million = 4000000, output_usd_micros_per_million = 20000000, cached_input_usd_micros_per_million = 400000, cache_write_usd_micros_per_million = 5000000, long_context = { above_input_tokens = 272000, input_usd_micros_per_million = 8000000, output_usd_micros_per_million = 30000000, cached_input_usd_micros_per_million = 800000, cache_write_usd_micros_per_million = 10000000 }, speed = { fast = { input_usd_micros_per_million = 8000000, output_usd_micros_per_million = 40000000, cached_input_usd_micros_per_million = 800000, cache_write_usd_micros_per_million = 10000000 }, economical = { input_usd_micros_per_million = 2000000, output_usd_micros_per_million = 10000000, cached_input_usd_micros_per_million = 200000, cache_write_usd_micros_per_million = 2500000 } } }
+
+[providers."openai-codex".models."gpt-5.6-sol".metadata.fabro]
+agent_profile = "gpt56"
+family = "gpt-5"
+small_default = false
+probe = false
+
+[providers."openai-codex".models."gpt-5.6-terra"]
+display_name = "GPT-5.6 Terra"
+aliases = ["terra", "gpt-terra", "gpt56-terra", "gpt-56-terra"]
+api_model = "gpt-5.6-terra"
+limits = { context_tokens = 1050000, max_output_tokens = 128000 }
+capabilities = { text = true, images = true, documents = true, tools = true, response_format = { json_object = true, json_schema = true }, reasoning = true, caching = true, cache_routing = true, tool_choice = { required = true, named = true }, speed = { fast = true, economical = true } }
+protocol_options = { reasoning_effort_levels = true }
+pricing = { input_usd_micros_per_million = 2000000, output_usd_micros_per_million = 12000000, cached_input_usd_micros_per_million = 200000, cache_write_usd_micros_per_million = 2500000, long_context = { above_input_tokens = 272000, input_usd_micros_per_million = 4000000, output_usd_micros_per_million = 18000000, cached_input_usd_micros_per_million = 400000, cache_write_usd_micros_per_million = 5000000 }, speed = { fast = { input_usd_micros_per_million = 4000000, output_usd_micros_per_million = 24000000, cached_input_usd_micros_per_million = 400000, cache_write_usd_micros_per_million = 5000000 }, economical = { input_usd_micros_per_million = 1000000, output_usd_micros_per_million = 6000000, cached_input_usd_micros_per_million = 100000, cache_write_usd_micros_per_million = 1250000 } } }
+
+[providers."openai-codex".models."gpt-5.6-terra".metadata.fabro]
+agent_profile = "gpt56"
+family = "gpt-5"
+small_default = false
+probe = false
+
+[providers."openai-codex".models."gpt-5.6-luna"]
+display_name = "GPT-5.6 Luna"
+aliases = ["luna", "gpt-luna", "gpt56-luna", "gpt-56-luna"]
+api_model = "gpt-5.6-luna"
+limits = { context_tokens = 1050000, max_output_tokens = 128000 }
+capabilities = { text = true, images = true, documents = true, tools = true, response_format = { json_object = true, json_schema = true }, reasoning = true, caching = true, cache_routing = true, tool_choice = { required = true, named = true }, speed = { fast = true, economical = true } }
+protocol_options = { reasoning_effort_levels = true }
+pricing = { input_usd_micros_per_million = 200000, output_usd_micros_per_million = 1200000, cached_input_usd_micros_per_million = 20000, cache_write_usd_micros_per_million = 250000, long_context = { above_input_tokens = 272000, input_usd_micros_per_million = 400000, output_usd_micros_per_million = 1800000, cached_input_usd_micros_per_million = 40000, cache_write_usd_micros_per_million = 500000 }, speed = { fast = { input_usd_micros_per_million = 400000, output_usd_micros_per_million = 2400000, cached_input_usd_micros_per_million = 40000, cache_write_usd_micros_per_million = 500000 }, economical = { input_usd_micros_per_million = 100000, output_usd_micros_per_million = 600000, cached_input_usd_micros_per_million = 10000, cache_write_usd_micros_per_million = 125000 } } }
+
+[providers."openai-codex".models."gpt-5.6-luna".metadata.fabro]
+agent_profile = "gpt56"
+family = "gpt-5"
+small_default = false
+probe = false
+
+[providers."openai-codex".models."gpt-5.4"]
+display_name = "GPT-5.4"
+aliases = ["gpt54", "gpt-54", "gpt-5.2", "gpt5", "gpt-5.3-codex", "codex"]
+api_model = "gpt-5.4"
+limits = { context_tokens = 1050000, max_output_tokens = 128000 }
+capabilities = { text = true, images = true, documents = true, tools = true, response_format = { json_object = true, json_schema = true }, reasoning = true, caching = true, cache_routing = true, sampling = true, tool_choice = { required = true, named = true }, speed = { fast = true, economical = true } }
+protocol_options = { reasoning_effort_levels = true }
+pricing = { input_usd_micros_per_million = 2500000, output_usd_micros_per_million = 15000000, cached_input_usd_micros_per_million = 250000, long_context = { above_input_tokens = 272000, input_usd_micros_per_million = 5000000, output_usd_micros_per_million = 22500000, cached_input_usd_micros_per_million = 500000 }, speed = { fast = { input_usd_micros_per_million = 5000000, output_usd_micros_per_million = 30000000, cached_input_usd_micros_per_million = 500000 }, economical = { input_usd_micros_per_million = 1250000, output_usd_micros_per_million = 7500000, cached_input_usd_micros_per_million = 125000 } } }
+
+[providers."openai-codex".models."gpt-5.4".metadata.fabro]
+agent_profile = "openai"
+family = "gpt-5"
+small_default = false
+probe = false
+
+[providers."openai-codex".models."gpt-5.5"]
+display_name = "GPT-5.5"
+aliases = ["gpt55", "gpt-55"]
+api_model = "gpt-5.5"
+limits = { context_tokens = 1050000, max_output_tokens = 128000 }
+capabilities = { text = true, images = true, documents = true, tools = true, response_format = { json_object = true, json_schema = true }, reasoning = true, caching = true, cache_routing = true, tool_choice = { required = true, named = true }, speed = { fast = true, economical = true } }
+protocol_options = { reasoning_effort_levels = true }
+pricing = { input_usd_micros_per_million = 5000000, output_usd_micros_per_million = 30000000, cached_input_usd_micros_per_million = 500000, long_context = { above_input_tokens = 272000, input_usd_micros_per_million = 10000000, output_usd_micros_per_million = 45000000, cached_input_usd_micros_per_million = 1000000 }, speed = { fast = { input_usd_micros_per_million = 12500000, output_usd_micros_per_million = 75000000, cached_input_usd_micros_per_million = 1250000 }, economical = { input_usd_micros_per_million = 2500000, output_usd_micros_per_million = 15000000, cached_input_usd_micros_per_million = 250000 } } }
+
+[providers."openai-codex".models."gpt-5.5".metadata.fabro]
+agent_profile = "openai"
+family = "gpt-5"
+small_default = false
+probe = false
+
+[providers."openai-codex".models."gpt-5.4-mini"]
+display_name = "GPT-5.4 Mini"
+aliases = ["gpt54-mini", "gpt-54-mini", "gpt-5.3-codex-spark", "codex-spark"]
+api_model = "gpt-5.4-mini"
+limits = { context_tokens = 400000, max_output_tokens = 128000 }
+capabilities = { text = true, images = true, documents = true, tools = true, response_format = { json_object = true, json_schema = true }, reasoning = true, caching = true, cache_routing = true, sampling = true, tool_choice = { required = true, named = true }, speed = { fast = true, economical = true } }
+protocol_options = { reasoning_effort_levels = true }
+pricing = { input_usd_micros_per_million = 750000, output_usd_micros_per_million = 4500000, cached_input_usd_micros_per_million = 75000, speed = { fast = { input_usd_micros_per_million = 1500000, output_usd_micros_per_million = 9000000, cached_input_usd_micros_per_million = 150000 }, economical = { input_usd_micros_per_million = 375000, output_usd_micros_per_million = 2250000, cached_input_usd_micros_per_million = 37500 } } }
+
+[providers."openai-codex".models."gpt-5.4-mini".metadata.fabro]
+agent_profile = "openai"
+family = "gpt-5"
+small_default = true
+probe = true
