@@ -35,7 +35,7 @@ Files that omit `_version` are treated as version `1`. The legacy top-level `ver
 |---|---|
 | CLI-only | `[cli.target]`, `[cli.auth]`, `[cli.exec]`, `[cli.output]`, `[cli.updates]`, `[cli.logging]` |
 | Server-side run policy | `[run.model]`, `[run.environment]`, `[environments.<slug>]`, `[run.checkpoint]`, `[run.inputs]`, `[run.prepare]`, `[run.pull_request]`, `[run.integrations.github]`, `[run.hooks]`, `[run.agent.mcps]` |
-| Shared LLM catalog | `[llm.providers.<id>]`, provider-scoped `[llm.providers.<id>.models.<slug>]` offerings, limits, features, controls, and costs |
+| Shared LLM catalog | `[llm]`, a lithos-llm catalog overlay: `[llm.providers.<id>]`, `[llm.providers.<id>.models.<id>]`, and Fabro policy under `metadata.fabro` |
 | Server-only | `[server.listen]`, `[server.api]`, `[server.web]`, `[server.auth]`, `[server.storage]`, `[server.artifacts]`, `[server.slatedb]`, `[server.scheduler]`, `[server.logging]`, `[server.integrations]` |
 
 `[cli.*]` and `[server.*]` stanzas are owner-specific: they are only consumed from `~/.fabro/settings.toml` (plus process-local flags and env overrides). The same stanzas in `.fabro/project.toml` or `workflow.toml` remain schema-valid but runtime-inert.
@@ -89,36 +89,29 @@ level = "info"
 
 [llm.providers.proxy]
 display_name = "Acme Gateway"
-adapter = "openai_compatible"
+adapter = "openai-compatible"
+codec = "openai-chat"
 base_url = "https://llm-gateway.example.com/v1"
+auth = { type = "bearer" }
 aliases = ["gateway"]
+default_model = "team-code-large"
 
-[llm.providers.proxy.auth]
+[llm.providers.proxy.metadata.fabro]
+agent_profile = "anthropic"
 credentials = ["env:ACME_GATEWAY_API_KEY", "vault:ACME_GATEWAY_API_KEY"]
 
-[llm.providers.proxy.extra_headers]
+[llm.providers.proxy.metadata.fabro.extra_headers]
 x-portkey-api-key = "{{ secrets.PORTKEY_API_KEY }}"
 x-portkey-config = "@bedrock-prod"
 
 [llm.providers.proxy.models."team-code-large"]
-api_id = "provider-wire-model-name"
-agent_profile = "anthropic"
 display_name = "Team Code Large"
-default = true
 aliases = ["team-code"]
-
-[llm.providers.proxy.models."team-code-large".controls]
-reasoning_effort = ["low", "medium", "high"]
-speed = ["fast"]
-
-[llm.providers.proxy.models."team-code-large".costs]
-input_cost_per_mtok = 1.50
-output_cost_per_mtok = 8.00
-
-[llm.providers.proxy.models."team-code-large".costs.speed.fast]
-input_cost_per_mtok = 3.00
-output_cost_per_mtok = 16.00
-
+api_model = "provider-wire-model-name"
+limits = { context_tokens = 200000, max_output_tokens = 32000 }
+capabilities = { text = true, tools = true, reasoning = true, reasoning_effort = { low = true, medium = true, high = true } }
+protocol_options = { reasoning_effort_levels = true }
+pricing = { input_usd_micros_per_million = 1500000, output_usd_micros_per_million = 8000000 }
 ```
 
 All fields are optional. Include only the sections and keys you want to override. A single file can still include both CLI and server sections when you run both processes on one machine, but explicit remote targets do not read remote server state from the local machine.
@@ -147,146 +140,114 @@ url = "https://fabro.example.com/api/v1"
 | `url` | string | None | Required for `type = "http"`; the API base URL. |
 | `path` | string | None | Required for `type = "unix"`; the absolute Unix socket path. |
 
-## `[llm.providers.<id>]`
+## `[llm]`
 
-Define or override an LLM provider. Provider IDs are strings, so custom
-providers can be added when they use an adapter Fabro already supports.
+The `[llm]` table is a [lithos-llm](https://docs.rs/lithos-llm) catalog
+overlay. Fabro builds its model catalog from three layers: the lithos built-in
+providers and models, Fabro's policy layer, and this table. Later layers win;
+tables merge key by key and every other value replaces. Fabro does not
+interpret the table itself. lithos validates it when the catalog is built, and
+rejects unknown provider or model fields.
+
+Fabro-specific policy lives under `metadata.fabro` on a provider or model.
+lithos carries that namespace verbatim.
 
 ```toml title="settings.toml"
 [llm.providers.proxy]
 display_name = "Acme Gateway"
-adapter = "openai_compatible"
+adapter = "openai-compatible"
+codec = "openai-chat"
 base_url = "https://llm-gateway.example.com/v1"
+auth = { type = "bearer" }
 priority = 50
-enabled = true
 aliases = ["gateway"]
+default_model = "team-code-large"
 
-[llm.providers.proxy.auth]
+[llm.providers.proxy.metadata.fabro]
+enabled = true
+agent_profile = "anthropic"
 credentials = ["env:ACME_GATEWAY_API_KEY", "vault:ACME_GATEWAY_API_KEY"]
 
-[llm.providers.proxy.extra_headers]
-x-portkey-api-key = "{{ secrets.portkey_api_key }}"
+[llm.providers.proxy.metadata.fabro.extra_headers]
+x-portkey-api-key = "{{ secrets.PORTKEY_API_KEY }}"
 x-portkey-config = "@bedrock-prod"
-x-team-secret = "{{ secrets.gateway_team_secret }}"
+
+[llm.providers.proxy.models."team-code-large"]
+display_name = "Team Code Large"
+aliases = ["team-code"]
+api_model = "provider-wire-model-name"
+limits = { context_tokens = 200000, max_output_tokens = 32000 }
+capabilities = { text = true, tools = true, reasoning = true, caching = true, reasoning_effort = { low = true, medium = true, high = true } }
+protocol_options = { reasoning_effort_levels = true }
+pricing = { input_usd_micros_per_million = 1500000, output_usd_micros_per_million = 8000000, cached_input_usd_micros_per_million = 300000 }
+
+[llm.providers.proxy.models."team-code-large".metadata.fabro]
+family = "team-code"
+small_default = true
+estimated_output_tps = 80
 ```
+
+## `[llm.providers.<id>]`
+
+Define or override an LLM provider. The keys are the lithos provider record.
 
 | Key | Type / values | Default | Description |
 |---|---|---|---|
-| `display_name` | string | provider ID | Human-readable provider name. |
-| `adapter` | string | built-in value | Adapter registry key, such as `"anthropic"`, `"openai"`, `"gemini"`, or `"openai_compatible"`. Required for new providers. |
-| `agent_profile` | `"anthropic"` \| `"openai"` \| `"gemini"` | derived from `adapter` | Agent profile used for project memory, CLI/ACP command selection, and native session routing. Override only when a provider needs profile behavior different from its adapter. |
-| `billing_policy` | `"openai"` \| `"anthropic"` \| `"gemini"` \| `"none"` | derived from `adapter` | Provider-owned billing algorithm for usage estimates. Override for exceptional providers such as local no-billing runtimes. |
-| `base_url` | string | built-in value or adapter runtime default | Provider API base URL. Required for most custom OpenAI-compatible providers. |
-| `auth` | table | omitted | API-key auth config. Omit the table entirely for providers that need no API key; any `extra_headers` are still attached. |
-| `auth.credentials` | array<string> | required when `auth` present | Ordered credential refs. Accepted forms are `vault:<NAME>`, `env:<NAME>`, and `aws_sigv4` (sign requests from the AWS default credential chain — Bedrock). Literal secret strings are rejected. |
-| `auth.header` | `"bearer"` or `{ custom = "Header-Name" }` | `"bearer"` | Primary API-key header policy. Omit when the provider uses a standard bearer token. |
-| `extra_headers` | table | `{}` | Additional headers attached to provider requests. Values are literal text or `{{ secrets.NAME }}` interpolation strings. Put credentials in a secret and reference them with a token, not a bare literal. |
-| `priority` | integer | `0` | Higher-priority ready providers win unqualified model and default selection; ties use canonical provider ID. |
-| `enabled` | boolean | `true` | Set `false` to disable a provider after lower-precedence layers define it. |
+| `display_name` | string | required for new providers | Human-readable provider name. |
+| `adapter` | string | required for new providers | lithos adapter id: `anthropic`, `openai`, `gemini`, `openai-compatible`, or `bedrock`. |
+| `codec` | string | required for new providers | Wire codec: `anthropic-messages`, `openai-responses`, `openai-chat`, `gemini-generate`, or `bedrock-converse`. |
+| `base_url` | string | required for new providers | Provider API base URL. The `openai-compatible` adapter appends `/v1/chat/completions` unless the URL already ends in a version segment. |
+| `auth` | table | required for new providers | Auth scheme: `{ type = "bearer" }`, `{ type = "header", name = "x-api-key" }`, `{ type = "headers" }`, `{ type = "none" }`, or `{ type = "aws" }`. |
+| `priority` | integer | `0` | Higher-priority ready providers win unqualified model and default selection. |
 | `aliases` | array<string> | `[]` | Additional provider names accepted by model routing and fallback config. |
+| `default_model` | string | None | The provider's default model id. |
+| `allow_passthrough` | boolean | `false` | Whether `provider/model` selectors may name models the catalog does not list. |
+| `default_headers` | table | `{}` | Literal headers attached to every request. Secret-bearing headers belong in `metadata.fabro.extra_headers`. |
 
-## `[llm.providers.<provider>.models.<model-slug>]`
+## `[llm.providers.<id>.metadata.fabro]`
+
+Fabro's provider policy. Every key is optional.
+
+| Key | Type / values | Default | Description |
+|---|---|---|---|
+| `enabled` | boolean | `true` | Set `false` to hide a provider from Fabro. Several built-in providers ship disabled. |
+| `agent_profile` | `"anthropic"` \| `"openai"` \| `"gemini"` \| `"kimi"` \| `"gpt56"` | derived from `adapter` | Agent profile for models on this provider. |
+| `api_key_url` | string | None | Where an operator obtains an API key. |
+| `credentials` | array<string> | `[]` | Ordered credential refs: `vault:<NAME>`, `env:<NAME>`, or `aws_sigv4`. The first that resolves wins. |
+| `extra_headers` | table | `{}` | Extra request headers. Values are literal text or `{{ secrets.NAME }}` interpolation strings resolved against the vault. |
+
+## `[llm.providers.<provider>.models.<model-id>]`
 
 Define or override one provider's offering of a model. The table key is the
-canonical model slug Fabro users reference. An offering's identity is the
-pair `(provider, model slug)`, so different providers may use the same slug
-and aliases. `api_id` is the opaque model string sent to this provider's API
-and defaults to the exact model slug.
-
-```toml title="settings.toml"
-[llm.providers.proxy.models."team-code-large"]
-api_id = "provider-wire-model-name"
-agent_profile = "anthropic"
-display_name = "Team Code Large"
-family = "team-code"
-default = true
-probe = true
-enabled = true
-aliases = ["team-code"]
-estimated_output_tps = 80
-
-[llm.providers.proxy.models."team-code-large".limits]
-context_window = 200000
-max_output = 32000
-
-[llm.providers.proxy.models."team-code-large".features]
-tools = true
-vision = false
-reasoning = true
-reasoning_effort = "levels"
-prompt_cache = true
-
-[llm.providers.proxy.models."team-code-large".controls]
-reasoning_effort = ["low", "medium", "high"]
-speed = ["fast"]
-
-[llm.providers.proxy.models."team-code-large".costs]
-input_cost_per_mtok = 1.50
-output_cost_per_mtok = 8.00
-cache_input_cost_per_mtok = 0.30
-
-[llm.providers.proxy.models."team-code-large".costs.speed.fast]
-input_cost_per_mtok = 3.00
-output_cost_per_mtok = 16.00
-cache_input_cost_per_mtok = 0.60
-```
+model id Fabro users reference. An offering's identity is the pair
+`(provider, model id)`, so different providers may use the same id and
+aliases. `api_model` is the string sent to the provider and defaults to the id.
 
 | Key | Type / values | Default | Description |
 |---|---|---|---|
-| `api_id` | string | model slug | Opaque identifier sent to this provider's API. An explicitly empty value is invalid. |
-| `agent_profile` | `"anthropic"` \| `"openai"` \| `"gemini"` | provider profile | Agent profile override for this model. Model overrides take precedence over provider overrides. |
-| `billing_policy` | `"openai"` \| `"anthropic"` \| `"gemini"` \| `"none"` | provider policy | Billing algorithm override for this model — for models whose billing family differs from their provider's (e.g. Claude served through OpenRouter bills Anthropic-style cache reads/writes). |
-| `display_name` | string | model ID | Human-readable model name. |
-| `family` | string | model ID | Family label used for catalog display and matching. |
+| `display_name` | string | required for new models | Human-readable model name. |
+| `aliases` | array<string> | `[]` | Additional selectors. Aliases may repeat across providers. |
+| `api_model` | string | model id | Wire model identifier sent to this provider. |
+| `limits` | `{ context_tokens, max_output_tokens }` | None | Token limits. |
+| `capabilities` | table | unknown | Per-capability `true`, `false`, or `"unknown"`: `text`, `images`, `audio`, `documents`, `tools`, `reasoning`, `caching`, `cache_routing`, `sampling`, plus `tool_choice = { required, named }`, `response_format = { json_object, json_schema }`, `reasoning_effort = { minimal, low, medium, high, xhigh, max }`, and `speed = { fast, balanced, economical }`. |
+| `protocol_options` | table | `{}` | Encoding flags: `reasoning_effort_levels`, `cache_breakpoints`, `system_turns`. |
+| `pricing` | table | None | USD micros per million tokens: `input_usd_micros_per_million`, `output_usd_micros_per_million`, `cached_input_usd_micros_per_million`, `cache_write_usd_micros_per_million`, plus optional `long_context` and `speed` tiers. |
+
+## `[llm.providers.<provider>.models.<model-id>.metadata.fabro]`
+
+Fabro's model policy. Every key is optional.
+
+| Key | Type / values | Default | Description |
+|---|---|---|---|
+| `enabled` | boolean | `true` | Set `false` to hide a model from Fabro. |
+| `agent_profile` | profile name | provider profile | Agent profile override for this model. |
+| `family` | string | model id | Family label for display and grouping. |
 | `training` | string | None | Training data cutoff label. |
-| `knowledge_cutoff` | string or TOML date | None | Public knowledge cutoff label; TOML dates normalize to `YYYY-MM-DD`. |
-| `default` | boolean | `false` | Whether this is the provider default model. |
-| `probe` | boolean | `false` | Whether this model should be preferred for provider connectivity probes. Set `false` in a higher-precedence layer to clear an inherited probe marker. |
-| `enabled` | boolean | `true` | Set `false` to disable a model after lower-precedence layers define it. |
-| `aliases` | array<string> | `[]` | Additional model selectors accepted by routing and fallback config. Aliases may repeat across providers, but one selector cannot identify two models within the same provider. |
-| `estimated_output_tps` | number | None | Estimated output tokens per second for catalog display and planning. |
-
-## `[llm.providers.<provider>.models.<model-slug>.limits]`
-
-| Key | Type / values | Default | Description |
-|---|---|---|---|
-| `context_window` | integer | None | Maximum context window size in tokens. |
-| `max_output` | integer | None | Maximum output tokens, if known. |
-
-## `[llm.providers.<provider>.models.<model-slug>.features]`
-
-| Key | Type / values | Default | Description |
-|---|---|---|---|
-| `tools` | boolean | `false` | Whether the model supports tool calls. |
-| `vision` | boolean | `false` | Whether the model accepts image inputs. |
-| `reasoning` | boolean | `false` | Whether the model has reasoning behavior. |
-| `reasoning_by_default` | boolean | effort-capable models: `true`; other models: `false` | Whether requests reason when no `reasoning_effort` is supplied. Set this explicitly for always-reasoning routes that do not expose an effort control, or for effort-capable routes whose provider defaults reasoning off. |
-| `reasoning_effort` | `"levels"` \| `"always_adaptive"` \| `"none"` | `"none"` | Whether the model endpoint supports a native reasoning-effort parameter. `levels` accepts discrete effort levels; `always_adaptive` accepts effort levels with natively always-on adaptive thinking; `none` has no native effort parameter. |
-| `prompt_cache` | boolean | `false` | Whether prompt cache pricing/usage applies. |
-| `sampling_params` | boolean | `true` | Whether the model accepts classic sampling parameters (`temperature`, `top_p`). |
-
-## `[llm.providers.<provider>.models.<model-slug>.controls]`
-
-| Key | Type / values | Default | Description |
-|---|---|---|---|
-| `reasoning_effort` | array<string> | all standard levels when feature is `"levels"` or `"always_adaptive"` | User-facing reasoning effort values Fabro may send for this model. Can be set explicitly for reasoning models whose provider adapter maps effort to a non-native API shape. |
-| `speed` | array<string> | `[]` | Additional speeds beyond implicit `standard`; do not list `standard`. |
-
-## `[llm.providers.<provider>.models.<model-slug>.costs]`
-
-| Key | Type / values | Default | Description |
-|---|---|---|---|
-| `input_cost_per_mtok` | number | None | Input cost in USD per million tokens. |
-| `output_cost_per_mtok` | number | None | Output cost in USD per million tokens. |
-| `cache_input_cost_per_mtok` | number | None | Cached input/read cost in USD per million tokens. |
-
-## `[llm.providers.<provider>.models.<model-slug>.costs.speed.<speed>]`
-
-Per-speed cost overrides use the same keys as
-`[llm.providers.<provider>.models.<model-slug>.costs]`. Each `<speed>` key
-must be declared in
-`[llm.providers.<provider>.models.<model-slug>.controls].speed`.
-The `standard` speed is implicit and always uses the base cost table.
+| `knowledge_cutoff` | string | None | Public knowledge cutoff label. |
+| `estimated_output_tps` | number | None | Estimated output tokens per second. |
+| `small_default` | boolean | `false` | Preferred for small utility calls such as generated run titles. |
+| `probe` | boolean | `false` | Preferred for provider connectivity probes. |
+| `reasoning_by_default` | boolean | reasoning models with effort levels: `true` | Whether requests reason when no `reasoning_effort` is supplied. |
 
 ## `[cli.updates]`
 
