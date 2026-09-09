@@ -20,6 +20,13 @@ doctest = false
 workspace = true
 
 [dependencies]
+sandbox-driver.workspace = true
+sandbox-driver-protocol.workspace = true
+sandbox-driver-host.workspace = true
+sandbox-driver-docker.workspace = true
+sandbox-driver-docker-config.workspace = true
+sandbox-driver-daytona.workspace = true
+sandbox-driver-daytona-config.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true

@@ -97,8 +97,18 @@ twin-openai = { path = "test/twin/openai" }
 twin-github = { path = "test/twin/github" }
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
-daytona-sdk = { git = "https://github.com/brynary/daytona-sdk-rust", rev = "a3d267e18025151d9e61840ac7a5e6b6b63799ce", package = "daytona-sdk" }
-daytona-api-client = { git = "https://github.com/brynary/daytona-sdk-rust", rev = "a3d267e18025151d9e61840ac7a5e6b6b63799ce", package = "daytona-api-client" }
+daytona-sdk = { git = "https://github.com/brynary/daytona-sdk-rust", rev = "5e86990418e21f4288ce537c9852dfdf78768abc", package = "daytona-sdk" }
+daytona-api-client = { git = "https://github.com/brynary/daytona-sdk-rust", rev = "5e86990418e21f4288ce537c9852dfdf78768abc", package = "daytona-api-client" }
+# sandbox-driver: the sandbox provider layer. Bundled Host, Docker, and
+# Daytona providers link in-process; third-party providers run as stdio
+# plugins through sandbox-driver-protocol. Pinned by rev like the Daytona SDK.
+sandbox-driver = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "b9d07cf3ef1861173f8134498e2115b041f00b7d" }
+sandbox-driver-protocol = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "b9d07cf3ef1861173f8134498e2115b041f00b7d" }
+sandbox-driver-host = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "b9d07cf3ef1861173f8134498e2115b041f00b7d" }
+sandbox-driver-docker = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "b9d07cf3ef1861173f8134498e2115b041f00b7d" }
+sandbox-driver-docker-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "b9d07cf3ef1861173f8134498e2115b041f00b7d" }
+sandbox-driver-daytona = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "b9d07cf3ef1861173f8134498e2115b041f00b7d" }
+sandbox-driver-daytona-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "b9d07cf3ef1861173f8134498e2115b041f00b7d" }
 sentry = { version = "0.35", default-features = false, features = ["backtrace", "contexts", "ureq", "rustls"] }
 fork = "0.2"
 exec = "0.3"
