@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use fabro_core::NodeSpec;
 use fabro_core::error::Result as CoreResult;
 use fabro_core::lifecycle::RunLifecycle;
-use fabro_core::outcome::NodeResult;
+use fabro_core::outcome::{NodeResult, StageOutcome};
 use fabro_core::state::ExecutionState;
 use fabro_types::{RunNoticeCode, RunNoticeLevel};
 
@@ -55,15 +55,34 @@ impl RunLifecycle<WorkflowGraph> for EnvelopeLifecycle {
             &state.context,
             &mut result.outcome.context_updates,
         );
-        if dropped.is_empty() {
-            return Ok(());
+        if !dropped.is_empty() {
+            self.emitter.notice_scoped(
+                RunNoticeLevel::Warn,
+                RunNoticeCode::ContextUpdateDropped,
+                format!("context_allow_keys dropped: {}", dropped.join(", ")),
+                &stage_scope_for(&self.stage_executions, state, node.id()),
+            );
         }
-        self.emitter.notice_scoped(
-            RunNoticeLevel::Warn,
-            RunNoticeCode::ContextUpdateDropped,
-            format!("context_allow_keys dropped: {}", dropped.join(", ")),
-            &stage_scope_for(&self.stage_executions, state, node.id()),
-        );
+
+        // Completion lint (fabro-8bf4): a stage that succeeded while
+        // emitting none of its declared allow keys gets a visible warning,
+        // matching the drop notice's observability style. Journal-specific
+        // output-schema enforcement stays with fabro-017f.
+        if result.outcome.status == StageOutcome::Succeeded {
+            let missing =
+                context::unemitted_allow_keys(node.inner(), &result.outcome.context_updates);
+            if !missing.is_empty() {
+                self.emitter.notice_scoped(
+                    RunNoticeLevel::Warn,
+                    RunNoticeCode::ContextAllowKeysNeverEmitted,
+                    format!(
+                        "context_allow_keys declared but never emitted: {}",
+                        missing.join(", ")
+                    ),
+                    &stage_scope_for(&self.stage_executions, state, node.id()),
+                );
+            }
+        }
         Ok(())
     }
 }
@@ -187,5 +206,81 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.outcome.context_updates.len(), 1);
+    }
+
+    async fn collected_notices(
+        lifecycle: &EnvelopeLifecycle,
+        node: &WorkflowNode,
+        result: &mut WfNodeResult,
+    ) -> Vec<RunEvent> {
+        let notices = Arc::new(std::sync::Mutex::new(Vec::<RunEvent>::new()));
+        let capture = Arc::clone(&notices);
+        lifecycle.emitter.on_event(move |event| {
+            if matches!(event.body, EventBody::RunNotice(_)) {
+                capture.lock().expect("test mutex").push(event.clone());
+            }
+        });
+        lifecycle
+            .after_node(node, result, &run_state())
+            .await
+            .unwrap();
+        let drained = notices.lock().expect("test mutex").clone();
+        drained
+    }
+
+    #[tokio::test]
+    async fn completion_lint_warns_when_no_declared_key_was_emitted() {
+        let emitter = Arc::new(Emitter::new(RunId::new()));
+        let lifecycle = EnvelopeLifecycle::new(&emitter, StageExecutionTracker::default());
+
+        // The fabro-8bf4 basis: the node declares `journal` (and a second
+        // key) and completes without emitting any of them.
+        let node = envelope_node(&[("context_allow_keys", "journal, painpoints")]);
+        let mut result = node_result(&[]);
+        let notices = Box::pin(collected_notices(&lifecycle, &node, &mut result)).await;
+
+        assert_eq!(notices.len(), 1, "exactly one completion-lint notice");
+        match &notices[0].body {
+            EventBody::RunNotice(props) => {
+                assert_eq!(props.level, RunNoticeLevel::Warn);
+                assert_eq!(props.code, "context_allow_keys_never_emitted");
+                assert_eq!(notices[0].node_id.as_deref(), Some("planner"));
+                assert!(
+                    props.message.contains("journal"),
+                    "message names a missing key: {}",
+                    props.message
+                );
+            }
+            other => panic!("expected RunNotice, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn completion_lint_subset_of_declared_keys_emitted_is_quiet() {
+        let emitter = Arc::new(Emitter::new(RunId::new()));
+        let lifecycle = EnvelopeLifecycle::new(&emitter, StageExecutionTracker::default());
+
+        let node = envelope_node(&[("context_allow_keys", "journal, painpoints")]);
+        let mut result = node_result(&[("journal", serde_json::json!({"painpoints": []}))]);
+        let notices = Box::pin(collected_notices(&lifecycle, &node, &mut result)).await;
+
+        assert!(notices.is_empty(), "no lint when any declared key emitted");
+    }
+
+    #[tokio::test]
+    async fn completion_lint_skips_unsuccessful_outcomes() {
+        let emitter = Arc::new(Emitter::new(RunId::new()));
+        let lifecycle = EnvelopeLifecycle::new(&emitter, StageExecutionTracker::default());
+
+        // A failed stage already surfaces through failure events; the
+        // lint targets silent successes only.
+        let node = envelope_node(&[("context_allow_keys", "journal")]);
+        let mut result = node_result(&[]);
+        result.outcome.status = fabro_core::outcome::StageOutcome::Failed {
+            retry_requested: false,
+        };
+        let notices = Box::pin(collected_notices(&lifecycle, &node, &mut result)).await;
+
+        assert!(notices.is_empty(), "failed outcomes are not linted");
     }
 }

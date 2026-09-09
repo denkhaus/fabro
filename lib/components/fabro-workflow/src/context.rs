@@ -160,6 +160,37 @@ pub(crate) fn enforce_stage_envelope(
     dropped
 }
 
+/// Completion visibility lint (fabro-8bf4, ADR-0009 envelope family):
+/// the declared `context_allow_keys` a completing stage emitted none of.
+///
+/// A stage that succeeds while emitting NONE of the keys declared in its
+/// `context_allow_keys` almost certainly dropped a required report (the
+/// fabro-8bf4 basis: a planner declared `journal` and never emitted it).
+/// Emitting any subset is fine — the allowlist is an upper bound, not a
+/// per-key requirement. Unset (default-open) and explicitly empty lists
+/// declare nothing, so they never trigger.
+///
+/// This is the general allow-keys visibility lint only. Journal-specific
+/// output-schema enforcement lives with fabro-017f — cross-referenced,
+/// not implemented here.
+///
+/// Returns the sorted declared keys when none were emitted (the caller
+/// emits a `ContextAllowKeysNeverEmitted` warning notice), else empty.
+pub(crate) fn unemitted_allow_keys(
+    node: &Node,
+    updates: &HashMap<String, serde_json::Value>,
+) -> Vec<String> {
+    let Some(allow) = node.context_allow_keys() else {
+        return Vec::new();
+    };
+    if allow.is_empty() || allow.iter().any(|key| updates.contains_key(*key)) {
+        return Vec::new();
+    }
+    let mut missing: Vec<String> = allow.iter().map(std::string::ToString::to_string).collect();
+    missing.sort();
+    missing
+}
+
 /// Read a context key the way workflow authors write one: the declared key
 /// first, then the same key with a leading `context.` stripped.
 ///
@@ -654,6 +685,47 @@ mod tests {
         assert!(enforce_stage_envelope(&node, &ctx, &mut updates).is_empty());
         // Replace semantics preserved: no array wrap on engine keys.
         assert_eq!(updates[keys::LAST_STAGE], serde_json::json!("review"));
+    }
+
+    #[test]
+    fn envelope_lint_missing_all_declared_keys_reports_sorted() {
+        let node = envelope_node(&[("context_allow_keys", "journal, current_seed_id")]);
+        let updates = HashMap::new();
+        assert_eq!(unemitted_allow_keys(&node, &updates), vec![
+            "current_seed_id".to_string(),
+            "journal".to_string()
+        ]);
+        // Engine-stamped keys in the updates are not declared keys: they
+        // do not satisfy the declaration.
+        let mut stamped = HashMap::new();
+        stamped.insert(keys::LAST_STAGE.to_string(), serde_json::json!("plan"));
+        assert_eq!(unemitted_allow_keys(&node, &stamped), vec![
+            "current_seed_id".to_string(),
+            "journal".to_string()
+        ]);
+    }
+
+    #[test]
+    fn envelope_lint_subset_of_declared_keys_emitted_is_quiet() {
+        let node = envelope_node(&[("context_allow_keys", "journal, current_seed_id")]);
+        let mut updates = HashMap::new();
+        updates.insert(
+            "current_seed_id".to_string(),
+            serde_json::json!("fabro-8bf4"),
+        );
+        assert!(unemitted_allow_keys(&node, &updates).is_empty());
+    }
+
+    #[test]
+    fn envelope_lint_unset_or_empty_allow_keys_never_triggers() {
+        // Unset = default-open: every key admitted, nothing declared.
+        let unset = envelope_node(&[]);
+        let mut updates = HashMap::new();
+        updates.insert("anything".to_string(), serde_json::json!(1));
+        assert!(unemitted_allow_keys(&unset, &HashMap::new()).is_empty());
+        // Explicitly empty list admits no key but declares none either.
+        let empty = envelope_node(&[("context_allow_keys", "")]);
+        assert!(unemitted_allow_keys(&empty, &HashMap::new()).is_empty());
     }
 
     #[test]
