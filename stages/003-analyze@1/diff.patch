@@ -1,0 +1,72 @@
+diff --git a/.fabro/journal/01M23TXPY6KC2QBCARSY2GY604.jsonl b/.fabro/journal/01M23TXPY6KC2QBCARSY2GY604.jsonl
+index e2d5da9..53d0e1d 100644
+--- a/.fabro/journal/01M23TXPY6KC2QBCARSY2GY604.jsonl
++++ b/.fabro/journal/01M23TXPY6KC2QBCARSY2GY604.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M23TXPY6KC2QBCARSY2GY604","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T19:39:47Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M23TXPY6KC2QBCARSY2GY604","node":"select","visit":1,"status":"succeeded","ts":"2026-09-09T19:40:05Z","data":{"painpoints":[],"observations":["19 runs stale-evidence (version drift vs develop baseline c25ec241...), 0 no live sandbox; 2 unrevised merge-upstream runs exist but are older than the selected develop run"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M23TXPY6KC2QBCARSY2GY604","node":"analyze","visit":1,"status":"succeeded","ts":"2026-09-09T19:47:12Z","data":{"painpoints":[{"text":"Step 3.5 journal read failed: `.fabro/journal/01M23TE61D4Y33415BK5M7C70X.jsonl` is absent on the revisor branch, so the claimed seed id had to be recovered from the analyst answer and run title; fix idea: selector injects the claimed seed id into revisor context."},{"text":"Base-branch discovery via `git remote -v` printed the origin URL with an embedded GitHub PAT into revisor shell output — the token-exposure class fabro-0f22 already tracks for sandbox remotes; revisor guidance should name the base branch (fabro-1128) instead of probing remotes."}],"observations":["Not a duplicate run: claimed seed fabro-c0e5 is open, absent from the last 50 commits on `origin/denkhaus`, and PR #111 is unmerged — the review stands as a healthy first-try pass ($0.371, 6m23s, all stages green).","Dropped as duplicates of existing seeds: reviewer allow-key/budget fix (duplicate_of fabro-c1bb, fabro-8d2c), conditional `sd show` re-fetch (duplicate_of fabro-4881), top-N `sd ready` view (duplicate_of fabro-c3b4; fabro-9967 closed), `ml record` flag table (duplicate_of fabro-96bd), unique-node progress denominator (duplicate_of fabro-45bf; fabro-a0e3 closed), checkpoint push batching and snapshot skip (duplicate_of fabro-652d, fabro-c2ca).","Base branch for the duplicate-run check is `denkhaus`; qualitygate loop-asset finding is the highest-impact survivor per the run's cost profile (LLM reasoning substituting for missing deterministic checks)."]}}
+diff --git a/.fabro/reviews/develop/01M23TE61D4Y33415BK5M7C70X.md b/.fabro/reviews/develop/01M23TE61D4Y33415BK5M7C70X.md
+new file mode 100644
+index 0000000..fd05108
+--- /dev/null
++++ b/.fabro/reviews/develop/01M23TE61D4Y33415BK5M7C70X.md
+@@ -0,0 +1,58 @@
++# Improve review — run 01M23TE61D4Y33415BK5M7C70X
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: succeeded (6.8 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-09 19:44+0000 by revisor `fabro_ask`
++
++---
++
++All six non-meta stages in this run (01M23TE61D4Y33415BK5M7C70X, seed `fabro-c0e5`, PR #111) passed first-try — 6m23s wall, $0.371 total (planner $0.104 / implementer $0.213 / reviewer $0.054, from the run projection's stage billing). The recommendations below are the friction that actually showed up, ordered by expected impact.
++
++---
++
++**1. Keep the evidence capture inline — drop `current_seed_brief` from the reviewer's `preamble_allow_keys`** *(graph design / context engineering)*
++- **What happened:** The evidence capture was 13,998 bytes — under the reviewer node's `preamble_inline_max_kb=16` — yet it was still demoted to a blob ref because the aggregate 24 KB `preamble_budget_kb` was exceeded (capture + ~2.4 KB seed brief + ~2.5 KB `implementation_summary` + tester section, visible in the reviewer@1 prompt). The reviewer's very first action was a `read_file` of the blob at 14,295 bytes (worker log 19:36:37), and it then re-read parts via shell — while reporting *empty* `painpoints` even though its own prompt says "a workaround you performed is a painpoint" (reviewer journal, seq 288).
++- **Change:** In `.fabro/workflows/develop/workflow.fabro` (reviewer node), remove `current_seed_brief` from `preamble_allow_keys` — the capture already embeds the authoritative seed spec — and/or raise `preamble_budget_kb` 24→32 (open seeds fabro-c1bb / fabro-8d2c). 
++- **Expected effect:** The capture renders inline; saves one tool round-trip + re-read on every review and removes the "unread blob ref" → `Verification blocked` failure class entirely.
++
++**2. The quality gate doesn't check the files this loop actually changes — add a loop-asset smoke tier** *(gate design / graph)*
++- **What happened:** The tester ran `just qualitygate` in 4.15s with output "no crates touched / format clean" (tester@1 output blob) — **zero machine verification** of the real changes (`evidence.nu`, `reviewer.md`). Verification fell entirely to LLM stages: the implementer hand-built a scratch-git exercise across many small turns (19:34–19:36), and the reviewer re-ran the exercise again (seq 288 journal: "re-ran the scratch-git exercise"). Those are the run's two costliest stages (216s + 58s inference).
++- **Change:** Add to the `qualitygate` recipe (justfile / `scripts/qualitygate.nu`): a `nu -c 'source ...'` parse check for `.fabro/workflows/develop/scripts/*.nu`, and check in the mixed-capture scratch exercise as `evidence-smoke.nu` following the existing `closeout-smoke.nu` pattern (the pattern exists in the same scripts dir — planner ls, seq 46). Note the regression test was **deleted** ("temp repo removed after run") because the brief mandated a cleaned-up scratch exercise.
++- **Expected effect:** Deterministic verification of loop-asset changes, durable regression coverage for the anomaly section, and fewer manual-verification LLM turns in the two most expensive stages.
++
++**3. A run that edits its own prompts reviews under the stale snapshot** *(engine / error handling)*
++- **What happened:** This seed's deliverable included a new adjudication line in `reviewer.md`, but the reviewer's injected prompt was the pre-change snapshot materialized at run creation. The reviewer noticed and verified the on-disk file instead (journal observation 3, seq 288) — benign here, but only because the reviewer happened to cross-check.
++- **Change:** Engine run-spec resolution: re-resolve prompt files (or at minimum append a "this run modified your prompt — judge the on-disk version, diff in evidence" notice) from the run branch tip at stage start — same mechanism open seed fabro-dc81 requests for `[run.pull_request]` in `lib/components/fabro-workflow/src/pipeline/publish.rs`.
++- **Expected effect:** Self-referential loop seeds (common in this repo — half the backlog targets prompts) can never silently review against superseded instructions.
++
++**4. Implementer re-fetches the seed it already has in full** *(prompting)*
++- **What happened:** The implementer prompt is internally contradictory: "## Input" says the brief "is authoritative — read it there FIRST; if the brief is thin, fetch the full seed", while step 1 mandates "Re-read the seed requirements from `sd show`". The implementer did both — `sd show fabro-c0e5` at seq 96 duplicated a 1.7 KB payload already fully present in its context.
++- **Change:** `.fabro/workflows/develop/prompts/implementer.md` step 1 → make the re-fetch conditional on brief quality (this is exactly open seed fabro-4881).
++- **Expected effect:** One fewer tool call + LLM turn per implementer pass (~5–10s and tokens on the stage that is 57% of run cost).
++
++**5. `sd ready --limit 200` is a firehose the planner doesn't need** *(tool usage)*
++- **What happened:** The planner's first call returned **200 seeds / 27,357 bytes** with `stdout_truncated: true` (seq 32); it only needed the top High-priority candidates (it picked #1). The tracker had ~22 High bugs and 160+ Medium/Low rows it paid to scan.
++- **Change:** PROJECT_FACTS sd table in `prompts/planner.md` (and planner.md step 1): use a top-N view (`--limit 10`) with fallback to the full list only when the top-N is exhausted — open seed fabro-c3b4.
++- **Expected effect:** Smaller first-turn context and less scan reasoning in every planner pass; eliminates the truncated-stdout ambiguity.
++
++**6. `ml record` flag contract cost a retry turn** *(error handling)*
++- **What happened:** The implementer's `ml record engine --type decision` failed with exit 1 — "decision records are missing required flag(s): --title, --rationale" (seq 182–186) — then retried successfully. The prompt's lesson-capture section demands the record but documents no per-type flag table (open seed fabro-96bd).
++- **Change:** Add the per-record-type flag table (`decision → --title --rationale`, etc.) to the implementer prompt's Lesson-capture section or PROJECT_FACTS.
++- **Expected effect:** Zero-retry lesson capture; also stops near-miss lessons from being silently skipped after a failed first attempt.
++
++**7. Stage progress denominator is wrong in every preamble** *(UX)*
++- **What happened:** The implementer's prompt said "Pipeline progress: 0 of 7 stages completed" (planner had completed); the reviewer's said "2 of 7" (four non-meta stages had completed). From the stage prompts at seq 86 and 250. Open seeds fabro-45bf / fabro-38f4.
++- **Change:** Engine preamble renderer — compute progress from unique completed nodes, not stage-section count.
++- **Expected effect:** Correct situational awareness in every downstream stage prompt and in the UI; removes a recurring "wrong data in context" wart.
++
++**8. Checkpoint snapshot+push on every boundary, including 300ms command nodes** *(engine efficiency)*
++- **What happened:** Each of the 6 stage boundaries ran a metadata snapshot (~1.7–2.3s) plus a git push (worker logs 19:36:13→15, 19:36:22→24, 19:36:26→29, 19:37:30→32, 19:37:35→38) — ~10–14s of a 6.4-minute run spent checkpointing stages that changed nothing but a journal line. Open seeds fabro-652d / fabro-c2ca.
++- **Change:** Batch checkpoint pushes at terminal/soft-exit boundaries; skip snapshots on non-agent command stages.
++- **Expected effect:** ~3–5% wall-time saving per run and fewer pushes; compounding across the ~30 runs/day this loop is doing.
++
++---
++
++One structural note tying #1 and #2 together: the run's cost profile (implementer 216s inference vs 3.7s tool time; reviewer 57s vs 0.4s) says this loop spends its budget on *LLM reasoning standing in for missing deterministic checks and detoured context* — the two highest-impact fixes are exactly the ones that move verification into the gate (#2) and deliver evidence without a detour (#1).
++
++Sources: stage prompts/responses, tool calls, and timing from run events (seq 21–320); stage billing and node config from the run projection; worker log lines from the persisted run log; seed backlog cross-references (fabro-c1bb, -8d2c, -4881, -c3b4, -96bd, -45bf, -652d, -dc81) from the planner's `sd ready` output at seq 33.
