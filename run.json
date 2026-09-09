@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T16:01:22.758111293Z",
-  "last_event_at": "2026-09-09T16:37:21.502960264Z",
+  "last_event_at": "2026-09-09T16:37:27.496964261Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1547,9 +1547,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 741,
       "checkpoint": {
-        "timestamp": "2026-09-09T16:37:21.747967957Z",
+        "timestamp": "2026-09-09T16:37:26.929969961Z",
         "current_node": "reviewer",
         "completed_nodes": [
           "start",
@@ -1561,32 +1561,10 @@
         ],
         "node_retries": {},
         "context_values": {
-          "command.output": "blob://sha256/6a86853cea24a4739b5284c6b3f1b8e8e7a1f83d57be499b043054a97d3f2b2c",
-          "current_node": "reviewer",
-          "internal.seed_cycle_anchor": "fabro-94e8",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 2502,
-            "preview": "Claimed fabro-94e8 (top High seed, basis verified against the current tree: the supervisor seam exists at `lib/apps/fabro-server/src/server/pull_request_supervisor.rs`; the GitHub update-branch API is"
-          },
           "internal.retry_count.implementer": 0,
-          "thread.implementer.current_node": "tester",
-          "thread.planner.current_node": "implementer",
-          "internal.retry_count.evidence": 0,
-          "internal.retry_count.reviewer": 0,
-          "response.implementer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 3746,
-            "preview": "All green. Implementation complete with the verification report below.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_sum"
-          },
-          "internal.retry_count.tester": 0,
-          "internal.work_dir": "/workspace/fabro",
-          "graph.rankdir": "LR",
-          "failure_signature": "",
-          "internal.run_id": "01M23EDVNHPGD8QNBWZN8WNTDD",
+          "internal.retry_count.planner": 0,
           "internal.thread_id": "evidence",
+          "graph.cycle_counter_reset_key": "current_seed_id",
           "journal": {
             "painpoints": [
               {
@@ -1599,31 +1577,22 @@
               "Non-blocking: staleness_supervisor_skips_clean_and_blocked_run_pull_requests only tests the clean fixture, not blocked; dirty-only gating is enforced in code."
             ]
           },
-          "current_seed_title": "engine: run-branch PRs go stale when the base moves (auto-rebase or merge-queue needed for autonomous loops)",
-          "graph.max_node_visits": "40",
-          "last_stage": "reviewer",
-          "preferred_label": "Approved",
-          "internal.node_visit_count": 1,
-          "thread.tester.current_node": "evidence",
-          "thread.evidence.current_node": "reviewer",
-          "response.reviewer": {
+          "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.reviewer",
-            "chars": 5043,
-            "preview": "The evidence blob is complete and readable. I verified the full diff (12 files, +784/-3) against the in-progress seed spec (Q1–Q5 acceptance criteria):\n\n**Requirement-by-requirement check:**\n\n1. **`"
+            "output_key": "output.implementer",
+            "chars": 3746,
+            "preview": "All green. Implementation complete with the verification report below.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_sum"
           },
-          "thread.start.current_node": "planner",
-          "last_response": "The evidence blob is complete and readable. I verified the full diff (12 files, +784/-3) against the in-progress seed spec (Q1–Q5 acceptance criteria):\n\n**Requirement-by-requirement check:**\n\n1. **`",
-          "internal.retry_count.start": 0,
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "current_seed_id": "fabro-94e8",
-          "lesson_capture": "mx-3c1785",
-          "internal.retry_count.planner": 0,
-          "graph.preamble_budget_kb": "24",
-          "review_verdict": "approved",
+          "thread.implementer.current_node": "tester",
           "failure_class": "",
-          "outcome": "succeeded",
+          "implementation_summary": "Auto-rebase for stale run-branch PRs (fabro-94e8): `lib/components/fabro-github/src/lib.rs` gains `update_pull_request_branch(_with_client)` calling PUT `/repos/{o}/{r}/pulls/{n}/update-branch` (202→Ok, 409/422→new `PullRequestApiError::Conflict` variant, 404→NotFound); a new staleness leg in `lib/apps/fabro-server/src/server/pull_request_supervisor.rs` (`spawn_pull_request_staleness_supervisor`, spawned and aborted with the creation supervisor in `serve.rs`) polls every 5 min over `list_linked_pull_request_run_ids` (new store query in `run_summary_store.rs`), fetches live PR state, update-branches only open+`mergeable=false`+`mergeable_state=dirty` PRs, counts 422 conflicts in-memory (PR stays open), and closes with reason `stale_base` after 3 failed updates or 24h of age, emitting the new `pull_request.closed` run event (plumbed through fabro-types `EventBody`/props, fabro-workflow `Event`/names/convert/trace, and a fabro-store reducer arm that clears the link like an unlink). Lesson captured as mx-3c1785. Per-criterion verification: - PASS fabro_github gains update_pull_request_branch with 422 as distinct conflict signal: `lib/components/fabro-github/src/lib.rs` + `PullRequestApiError::Conflict` + tests `update_pull_request_branch_accepts_202`/`_maps_422_to_conflict`/`_maps_404_to_not_found` — PASS supervisor polls 5min over open run-linked PRs mergeable=false, update-branch dirty ONLY: `pull_request_supervisor.rs` `run_pull_request_staleness_supervisor`/`process_stale_pull_requests` (5-min interval const, dirty gate) + test `staleness_supervisor_skips_clean_and_blocked_run_pull_requests` — PASS 422/conflict keeps PR open, wait observes closed_unmerged/timeout, no forced close: test `staleness_supervisor_keeps_pr_open_on_conflict_and_counts_the_failure` (asserts zero close calls + link retained); `handler/wait.rs` verified by inspection — it returns `ClosedUnmerged` on closed state, `Timeout` on deadline, and never closes the PR itself — PASS cap 3 failed updates OR >24h → close with `stale_base` + run event: `close_stale_pull_request` emits `Event::PullRequestClosed`; tests `staleness_supervisor_closes_pr_after_three_failed_updates` and `staleness_supervisor_closes_pr_older_than_24h` assert the PATCH close, the `pull_request.closed` stale_base event, and the unlinked projection — PASS httpmock wire tests (success, 422, cap close, age close): 5 httpmock tests in `lib/apps/fabro-server/src/server/tests.rs` — PASS fmt+clippy clean on both crates: `cargo +nightly-2026-04-14 fmt`/`clippy --all-targets -- -D warnings` exit 0 on all five touched crates (github, types, workflow, store, server) — PASS nextest green: 3370 passed across the five touched crates (includes full fabro-github and fabro-server suites).",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.evidence": 0,
+          "internal.retry_count.tester": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "lesson_capture": "mx-3c1785",
+          "internal.run_id": "01M23EDVNHPGD8QNBWZN8WNTDD",
+          "thread.tester.current_node": "evidence",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -1631,10 +1600,41 @@
             "evidence": 1,
             "reviewer": 1
           },
+          "thread.start.current_node": "planner",
+          "current_seed_id": "fabro-94e8",
+          "graph.rankdir": "LR",
+          "command.output": "blob://sha256/6a86853cea24a4739b5284c6b3f1b8e8e7a1f83d57be499b043054a97d3f2b2c",
+          "last_stage": "reviewer",
+          "internal.retry_count.reviewer": 0,
+          "failure_signature": "",
+          "graph.max_node_visits": "40",
+          "review_verdict": "approved",
+          "current_seed_title": "engine: run-branch PRs go stale when the base moves (auto-rebase or merge-queue needed for autonomous loops)",
+          "thread.evidence.current_node": "reviewer",
+          "internal.retry_count.start": 0,
+          "internal.seed_cycle_anchor": "fabro-94e8",
+          "last_response": "The evidence blob is complete and readable. I verified the full diff (12 files, +784/-3) against the in-progress seed spec (Q1–Q5 acceptance criteria):\n\n**Requirement-by-requirement check:**\n\n1. **`",
+          "outcome": "succeeded",
+          "thread.planner.current_node": "implementer",
+          "graph.inspects": "develop",
           "current_seed_brief": "Implement auto-rebase for stale run-branch PRs per the settled design (Q1-Q5). Acceptance criteria:\n- `fabro_github` gains `update_pull_request_branch` calling the GitHub update-branch API; HTTP 422 is surfaced as a distinct conflict signal (not a generic error)\n- PR supervisor (existing seam: `lib/apps/fabro-server/src/server/pull_request_supervisor.rs`) polls every 5 minutes over open run-linked PRs with mergeable=false and calls update-branch on dirty run-linked PRs ONLY\n- On 422/conflict: the PR stays open; `fabro_run_wait` until=merged observes closed_unmerged/timeout and the conductor routes manual (verify wait handler at `lib/apps/fabro-server/src/server/handler/wait.rs` interacts correctly; no forced close on conflict)\n- Cap: 3 failed update attempts OR PR older than 24h -> supervisor closes the PR with close reason `stale_base` and emits a run event\n- httpmock wire tests covering: successful update-branch call, 422 conflict path, cap-exceeded close, age-exceeded close\n- `cargo +nightly-2026-04-14 fmt -p fabro-github -p fabro-server` and clippy on both crates with `--all-targets -- -D warnings` clean\n- `cargo nextest run -p fabro-github -p fabro-server` green\nCheapest-first verification: read-level checks (rg for the new fn + event variant) before cargo build, then targeted nextest, then fmt/clippy.",
-          "implementation_summary": "Auto-rebase for stale run-branch PRs (fabro-94e8): `lib/components/fabro-github/src/lib.rs` gains `update_pull_request_branch(_with_client)` calling PUT `/repos/{o}/{r}/pulls/{n}/update-branch` (202→Ok, 409/422→new `PullRequestApiError::Conflict` variant, 404→NotFound); a new staleness leg in `lib/apps/fabro-server/src/server/pull_request_supervisor.rs` (`spawn_pull_request_staleness_supervisor`, spawned and aborted with the creation supervisor in `serve.rs`) polls every 5 min over `list_linked_pull_request_run_ids` (new store query in `run_summary_store.rs`), fetches live PR state, update-branches only open+`mergeable=false`+`mergeable_state=dirty` PRs, counts 422 conflicts in-memory (PR stays open), and closes with reason `stale_base` after 3 failed updates or 24h of age, emitting the new `pull_request.closed` run event (plumbed through fabro-types `EventBody`/props, fabro-workflow `Event`/names/convert/trace, and a fabro-store reducer arm that clears the link like an unlink). Lesson captured as mx-3c1785. Per-criterion verification: - PASS fabro_github gains update_pull_request_branch with 422 as distinct conflict signal: `lib/components/fabro-github/src/lib.rs` + `PullRequestApiError::Conflict` + tests `update_pull_request_branch_accepts_202`/`_maps_422_to_conflict`/`_maps_404_to_not_found` — PASS supervisor polls 5min over open run-linked PRs mergeable=false, update-branch dirty ONLY: `pull_request_supervisor.rs` `run_pull_request_staleness_supervisor`/`process_stale_pull_requests` (5-min interval const, dirty gate) + test `staleness_supervisor_skips_clean_and_blocked_run_pull_requests` — PASS 422/conflict keeps PR open, wait observes closed_unmerged/timeout, no forced close: test `staleness_supervisor_keeps_pr_open_on_conflict_and_counts_the_failure` (asserts zero close calls + link retained); `handler/wait.rs` verified by inspection — it returns `ClosedUnmerged` on closed state, `Timeout` on deadline, and never closes the PR itself — PASS cap 3 failed updates OR >24h → close with `stale_base` + run event: `close_stale_pull_request` emits `Event::PullRequestClosed`; tests `staleness_supervisor_closes_pr_after_three_failed_updates` and `staleness_supervisor_closes_pr_older_than_24h` assert the PATCH close, the `pull_request.closed` stale_base event, and the unlinked projection — PASS httpmock wire tests (success, 422, cap close, age close): 5 httpmock tests in `lib/apps/fabro-server/src/server/tests.rs` — PASS fmt+clippy clean on both crates: `cargo +nightly-2026-04-14 fmt`/`clippy --all-targets -- -D warnings` exit 0 on all five touched crates (github, types, workflow, store, server) — PASS nextest green: 3370 passed across the five touched crates (includes full fabro-github and fabro-server suites).",
+          "preferred_label": "Approved",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2502,
+            "preview": "Claimed fabro-94e8 (top High seed, basis verified against the current tree: the supervisor seam exists at `lib/apps/fabro-server/src/server/pull_request_supervisor.rs`; the GitHub update-branch API is"
+          },
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 5043,
+            "preview": "The evidence blob is complete and readable. I verified the full diff (12 files, +784/-3) against the in-progress seed spec (Q1–Q5 acceptance criteria):\n\n**Requirement-by-requirement check:**\n\n1. **`"
+          },
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.preamble_budget_kb": "24",
           "internal.fidelity": "summary:high",
-          "graph.inspects": "develop"
+          "current_node": "reviewer"
         },
         "node_outcomes": {
           "implementer": {
@@ -1702,20 +1702,6 @@
               "active_time_ms": 1805413
             }
           },
-          "tester": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/45fc0308930b90423631f156a7f6ee56acf88d408f4e46a829f3bd5f8ba8a129"
-            },
-            "notes": "Script completed: just qualitygate",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 227181,
-              "active_time_ms": 227181
-            }
-          },
           "evidence": {
             "status": "succeeded",
             "context_updates": {
@@ -1733,6 +1719,258 @@
           "start": {
             "status": "succeeded",
             "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_id": "fabro-94e8",
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2502,
+                "preview": "Claimed fabro-94e8 (top High seed, basis verified against the current tree: the supervisor seam exists at `lib/apps/fabro-server/src/server/pull_request_supervisor.rs`; the GitHub update-branch API is"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-94e8's Basis names 'pull_request_supervisor.rs seam' — file exists at lib/apps/fabro-server/src/server/pull_request_supervisor.rs; fabro_github::update_pull_request_branch does NOT exist yet (it is the deliverable, not an existing seam) — no correction needed since the seed phrases it as the design choice",
+                  "sd ready returned 191 ready seeds; fabro-94e8 was top High with no blockers; no open-PR or mid-flight develop runs (only this run 01M23EDVNHPGD8QNBWZN8WNTDD itself was non-terminal)"
+                ]
+              },
+              "last_response": "Claimed fabro-94e8 (top High seed, basis verified against the current tree: the supervisor seam exists at `lib/apps/fabro-server/src/server/pull_request_supervisor.rs`; the GitHub update-branch API is",
+              "current_seed_title": "engine: run-branch PRs go stale when the base moves (auto-rebase or merge-queue needed for autonomous loops)",
+              "current_seed_brief": "Implement auto-rebase for stale run-branch PRs per the settled design (Q1-Q5). Acceptance criteria:\n- `fabro_github` gains `update_pull_request_branch` calling the GitHub update-branch API; HTTP 422 is surfaced as a distinct conflict signal (not a generic error)\n- PR supervisor (existing seam: `lib/apps/fabro-server/src/server/pull_request_supervisor.rs`) polls every 5 minutes over open run-linked PRs with mergeable=false and calls update-branch on dirty run-linked PRs ONLY\n- On 422/conflict: the PR stays open; `fabro_run_wait` until=merged observes closed_unmerged/timeout and the conductor routes manual (verify wait handler at `lib/apps/fabro-server/src/server/handler/wait.rs` interacts correctly; no forced close on conflict)\n- Cap: 3 failed update attempts OR PR older than 24h -> supervisor closes the PR with close reason `stale_base` and emits a run event\n- httpmock wire tests covering: successful update-branch call, 422 conflict path, cap-exceeded close, age-exceeded close\n- `cargo +nightly-2026-04-14 fmt -p fabro-github -p fabro-server` and clippy on both crates with `--all-targets -- -D warnings` clean\n- `cargo nextest run -p fabro-github -p fabro-server` green\nCheapest-first verification: read-level checks (rg for the new fn + event variant) before cargo build, then targeted nextest, then fmt/clippy."
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 54779,
+                    "output_tokens": 1118,
+                    "reasoning_tokens": 551,
+                    "cache_read_tokens": 113920,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 113647
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 61850,
+              "tool_time_ms": 3331,
+              "active_time_ms": 65181
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/45fc0308930b90423631f156a7f6ee56acf88d408f4e46a829f3bd5f8ba8a129"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 227181,
+              "active_time_ms": 227181
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Evidence capture arrived as a 43 KB blob ref (run 01M23EDVNHPGD8QNBWZN8WNTDD, seed fabro-94e8); had to page /tmp/fabro/runtime/blobs/6a86853c...json manually. Worked fine, but the preview alone would have been insufficient — consider having the engine inline captures under ~50 KB or always materialize+preview the blob path as it did here."
+                  }
+                ],
+                "observations": [
+                  "Verified all six acceptance criteria against the complete 12-file diff; httpmock tests cover success/422/cap/age paths and the reducer clears the link on pull_request.closed.",
+                  "Capability delta checked: only reuses existing server-side GitHub credential loading; no agent-surface or credential-provisioning changes, so no ADR-0019 decision needed.",
+                  "Non-blocking: staleness_supervisor_skips_clean_and_blocked_run_pull_requests only tests the clean fixture, not blocked; dirty-only gating is enforced in code."
+                ]
+              },
+              "last_response": "The evidence blob is complete and readable. I verified the full diff (12 files, +784/-3) against the in-progress seed spec (Q1–Q5 acceptance criteria):\n\n**Requirement-by-requirement check:**\n\n1. **`",
+              "review_verdict": "approved",
+              "last_stage": "reviewer",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 5043,
+                "preview": "The evidence blob is complete and readable. I verified the full diff (12 files, +784/-3) against the in-progress seed spec (Q1–Q5 acceptance criteria):\n\n**Requirement-by-requirement check:**\n\n1. **`"
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 26108,
+                    "output_tokens": 1320,
+                    "reasoning_tokens": 922,
+                    "cache_read_tokens": 13760,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 49991
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 35731,
+              "tool_time_ms": 13,
+              "active_time_ms": 35744
+            }
+          }
+        },
+        "next_node_id": "closeout",
+        "git_commit_sha": "f5c0eb7d428a4d7958bd05565e26c26ae4894e59",
+        "node_visits": {
+          "implementer": 1,
+          "start": 1,
+          "tester": 1,
+          "evidence": 1,
+          "reviewer": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M23EDVNHPGD8QNBWZN8WNTDD.jsonl b/.fabro/journal/01M23EDVNHPGD8QNBWZN8WNTDD.jsonl\nindex ecc219b..10093ed 100644\n--- a/.fabro/journal/01M23EDVNHPGD8QNBWZN8WNTDD.jsonl\n+++ b/.fabro/journal/01M23EDVNHPGD8QNBWZN8WNTDD.jsonl\n@@ -3,3 +3,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23EDVNHPGD8QNBWZN8WNTDD\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T16:32:40Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The 3-strike update-failure cap is in-memory (HashMap in the supervisor task): a server restart resets the counter, delaying retirement by at most three more 5-minute polls — acceptable for a convergence cap, but worth knowing if someone expects crash-persistent accounting (lib/apps/fabro-server/src/server/pull_request_supervisor.rs).\",\"The seed's brief said 'httpmock wire tests', but fabro-github's own harness is a scripted MockHttpClient; the update-branch fn got crate-level mock-client tests and the supervisor got true httpmock wire tests in fabro-server, which is where httpmock is already a dev-dependency.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23EDVNHPGD8QNBWZN8WNTDD\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T16:36:34Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23EDVNHPGD8QNBWZN8WNTDD\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T16:36:40Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23EDVNHPGD8QNBWZN8WNTDD\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T16:37:21Z\",\"data\":{\"painpoints\":[{\"text\":\"Evidence capture arrived as a 43 KB blob ref (run 01M23EDVNHPGD8QNBWZN8WNTDD, seed fabro-94e8); had to page /tmp/fabro/runtime/blobs/6a86853c...json manually. Worked fine, but the preview alone would have been insufficient — consider having the engine inline captures under ~50 KB or always materialize+preview the blob path as it did here.\"}],\"observations\":[\"Verified all six acceptance criteria against the complete 12-file diff; httpmock tests cover success/422/cap/age paths and the reducer clears the link on pull_request.closed.\",\"Capability delta checked: only reuses existing server-side GitHub credential loading; no agent-surface or credential-provisioning changes, so no ADR-0019 decision needed.\",\"Non-blocking: staleness_supervisor_skips_clean_and_blocked_run_pull_requests only tests the clean fixture, not blocked; dirty-only gating is enforced in code.\"]}}\n",
+        "summary": {
+          "files_changed": 15,
+          "additions": 792,
+          "deletions": 4
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T16:37:27.731730774Z",
+        "current_node": "closeout",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "command.output": "blob://sha256/d3a76983862043804c1ba67576398e9f536aae64f3f59e203d11083710b774b5",
+          "current_node": "closeout",
+          "internal.seed_cycle_anchor": "fabro-94e8",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2502,
+            "preview": "Claimed fabro-94e8 (top High seed, basis verified against the current tree: the supervisor seam exists at `lib/apps/fabro-server/src/server/pull_request_supervisor.rs`; the GitHub update-branch API is"
+          },
+          "internal.retry_count.implementer": 0,
+          "thread.implementer.current_node": "tester",
+          "thread.planner.current_node": "implementer",
+          "internal.retry_count.evidence": 0,
+          "internal.retry_count.closeout": 0,
+          "internal.retry_count.reviewer": 0,
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3746,
+            "preview": "All green. Implementation complete with the verification report below.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_sum"
+          },
+          "internal.retry_count.tester": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "graph.rankdir": "LR",
+          "failure_signature": "",
+          "internal.run_id": "01M23EDVNHPGD8QNBWZN8WNTDD",
+          "internal.thread_id": "reviewer",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "Evidence capture arrived as a 43 KB blob ref (run 01M23EDVNHPGD8QNBWZN8WNTDD, seed fabro-94e8); had to page /tmp/fabro/runtime/blobs/6a86853c...json manually. Worked fine, but the preview alone would have been insufficient — consider having the engine inline captures under ~50 KB or always materialize+preview the blob path as it did here."
+              }
+            ],
+            "observations": [
+              "Verified all six acceptance criteria against the complete 12-file diff; httpmock tests cover success/422/cap/age paths and the reducer clears the link on pull_request.closed.",
+              "Capability delta checked: only reuses existing server-side GitHub credential loading; no agent-surface or credential-provisioning changes, so no ADR-0019 decision needed.",
+              "Non-blocking: staleness_supervisor_skips_clean_and_blocked_run_pull_requests only tests the clean fixture, not blocked; dirty-only gating is enforced in code."
+            ]
+          },
+          "current_seed_title": "engine: run-branch PRs go stale when the base moves (auto-rebase or merge-queue needed for autonomous loops)",
+          "graph.max_node_visits": "40",
+          "last_stage": "reviewer",
+          "preferred_label": "Approved",
+          "internal.node_visit_count": 1,
+          "thread.tester.current_node": "evidence",
+          "thread.evidence.current_node": "reviewer",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 5043,
+            "preview": "The evidence blob is complete and readable. I verified the full diff (12 files, +784/-3) against the in-progress seed spec (Q1–Q5 acceptance criteria):\n\n**Requirement-by-requirement check:**\n\n1. **`"
+          },
+          "thread.reviewer.current_node": "closeout",
+          "thread.start.current_node": "planner",
+          "last_response": "The evidence blob is complete and readable. I verified the full diff (12 files, +784/-3) against the in-progress seed spec (Q1–Q5 acceptance criteria):\n\n**Requirement-by-requirement check:**\n\n1. **`",
+          "internal.retry_count.start": 0,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "current_seed_id": "fabro-94e8",
+          "lesson_capture": "mx-3c1785",
+          "internal.retry_count.planner": 0,
+          "graph.preamble_budget_kb": "24",
+          "review_verdict": "approved",
+          "failure_class": "",
+          "outcome": "succeeded",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1,
+            "closeout": 1
+          },
+          "current_seed_brief": "Implement auto-rebase for stale run-branch PRs per the settled design (Q1-Q5). Acceptance criteria:\n- `fabro_github` gains `update_pull_request_branch` calling the GitHub update-branch API; HTTP 422 is surfaced as a distinct conflict signal (not a generic error)\n- PR supervisor (existing seam: `lib/apps/fabro-server/src/server/pull_request_supervisor.rs`) polls every 5 minutes over open run-linked PRs with mergeable=false and calls update-branch on dirty run-linked PRs ONLY\n- On 422/conflict: the PR stays open; `fabro_run_wait` until=merged observes closed_unmerged/timeout and the conductor routes manual (verify wait handler at `lib/apps/fabro-server/src/server/handler/wait.rs` interacts correctly; no forced close on conflict)\n- Cap: 3 failed update attempts OR PR older than 24h -> supervisor closes the PR with close reason `stale_base` and emits a run event\n- httpmock wire tests covering: successful update-branch call, 422 conflict path, cap-exceeded close, age-exceeded close\n- `cargo +nightly-2026-04-14 fmt -p fabro-github -p fabro-server` and clippy on both crates with `--all-targets -- -D warnings` clean\n- `cargo nextest run -p fabro-github -p fabro-server` green\nCheapest-first verification: read-level checks (rg for the new fn + event variant) before cargo build, then targeted nextest, then fmt/clippy.",
+          "internal.exit_kind": "natural",
+          "implementation_summary": "Auto-rebase for stale run-branch PRs (fabro-94e8): `lib/components/fabro-github/src/lib.rs` gains `update_pull_request_branch(_with_client)` calling PUT `/repos/{o}/{r}/pulls/{n}/update-branch` (202→Ok, 409/422→new `PullRequestApiError::Conflict` variant, 404→NotFound); a new staleness leg in `lib/apps/fabro-server/src/server/pull_request_supervisor.rs` (`spawn_pull_request_staleness_supervisor`, spawned and aborted with the creation supervisor in `serve.rs`) polls every 5 min over `list_linked_pull_request_run_ids` (new store query in `run_summary_store.rs`), fetches live PR state, update-branches only open+`mergeable=false`+`mergeable_state=dirty` PRs, counts 422 conflicts in-memory (PR stays open), and closes with reason `stale_base` after 3 failed updates or 24h of age, emitting the new `pull_request.closed` run event (plumbed through fabro-types `EventBody`/props, fabro-workflow `Event`/names/convert/trace, and a fabro-store reducer arm that clears the link like an unlink). Lesson captured as mx-3c1785. Per-criterion verification: - PASS fabro_github gains update_pull_request_branch with 422 as distinct conflict signal: `lib/components/fabro-github/src/lib.rs` + `PullRequestApiError::Conflict` + tests `update_pull_request_branch_accepts_202`/`_maps_422_to_conflict`/`_maps_404_to_not_found` — PASS supervisor polls 5min over open run-linked PRs mergeable=false, update-branch dirty ONLY: `pull_request_supervisor.rs` `run_pull_request_staleness_supervisor`/`process_stale_pull_requests` (5-min interval const, dirty gate) + test `staleness_supervisor_skips_clean_and_blocked_run_pull_requests` — PASS 422/conflict keeps PR open, wait observes closed_unmerged/timeout, no forced close: test `staleness_supervisor_keeps_pr_open_on_conflict_and_counts_the_failure` (asserts zero close calls + link retained); `handler/wait.rs` verified by inspection — it returns `ClosedUnmerged` on closed state, `Timeout` on deadline, and never closes the PR itself — PASS cap 3 failed updates OR >24h → close with `stale_base` + run event: `close_stale_pull_request` emits `Event::PullRequestClosed`; tests `staleness_supervisor_closes_pr_after_three_failed_updates` and `staleness_supervisor_closes_pr_older_than_24h` assert the PATCH close, the `pull_request.closed` stale_base event, and the unlinked projection — PASS httpmock wire tests (success, 422, cap close, age close): 5 httpmock tests in `lib/apps/fabro-server/src/server/tests.rs` — PASS fmt+clippy clean on both crates: `cargo +nightly-2026-04-14 fmt`/`clippy --all-targets -- -D warnings` exit 0 on all five touched crates (github, types, workflow, store, server) — PASS nextest green: 3370 passed across the five touched crates (includes full fabro-github and fabro-server suites).",
+          "internal.fidelity": "compact",
+          "graph.inspects": "develop"
+        },
+        "node_outcomes": {
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/6a86853cea24a4739b5284c6b3f1b8e8e7a1f83d57be499b043054a97d3f2b2c"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 588,
+              "active_time_ms": 588
+            }
           },
           "reviewer": {
             "status": "succeeded",
@@ -1840,15 +2078,113 @@
               "tool_time_ms": 3331,
               "active_time_ms": 65181
             }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/45fc0308930b90423631f156a7f6ee56acf88d408f4e46a829f3bd5f8ba8a129"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 227181,
+              "active_time_ms": 227181
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/d3a76983862043804c1ba67576398e9f536aae64f3f59e203d11083710b774b5"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 282,
+              "active_time_ms": 282
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The 3-strike update-failure cap is in-memory (HashMap in the supervisor task): a server restart resets the counter, delaying retirement by at most three more 5-minute polls — acceptable for a convergence cap, but worth knowing if someone expects crash-persistent accounting (lib/apps/fabro-server/src/server/pull_request_supervisor.rs).",
+                  "The seed's brief said 'httpmock wire tests', but fabro-github's own harness is a scripted MockHttpClient; the update-branch fn got crate-level mock-client tests and the supervisor got true httpmock wire tests in fabro-server, which is where httpmock is already a dev-dependency."
+                ]
+              },
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3746,
+                "preview": "All green. Implementation complete with the verification report below.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_sum"
+              },
+              "last_response": "All green. Implementation complete with the verification report below.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_sum",
+              "lesson_capture": "mx-3c1785",
+              "last_stage": "implementer",
+              "implementation_summary": "Auto-rebase for stale run-branch PRs (fabro-94e8): `lib/components/fabro-github/src/lib.rs` gains `update_pull_request_branch(_with_client)` calling PUT `/repos/{o}/{r}/pulls/{n}/update-branch` (202→Ok, 409/422→new `PullRequestApiError::Conflict` variant, 404→NotFound); a new staleness leg in `lib/apps/fabro-server/src/server/pull_request_supervisor.rs` (`spawn_pull_request_staleness_supervisor`, spawned and aborted with the creation supervisor in `serve.rs`) polls every 5 min over `list_linked_pull_request_run_ids` (new store query in `run_summary_store.rs`), fetches live PR state, update-branches only open+`mergeable=false`+`mergeable_state=dirty` PRs, counts 422 conflicts in-memory (PR stays open), and closes with reason `stale_base` after 3 failed updates or 24h of age, emitting the new `pull_request.closed` run event (plumbed through fabro-types `EventBody`/props, fabro-workflow `Event`/names/convert/trace, and a fabro-store reducer arm that clears the link like an unlink). Lesson captured as mx-3c1785. Per-criterion verification: - PASS fabro_github gains update_pull_request_branch with 422 as distinct conflict signal: `lib/components/fabro-github/src/lib.rs` + `PullRequestApiError::Conflict` + tests `update_pull_request_branch_accepts_202`/`_maps_422_to_conflict`/`_maps_404_to_not_found` — PASS supervisor polls 5min over open run-linked PRs mergeable=false, update-branch dirty ONLY: `pull_request_supervisor.rs` `run_pull_request_staleness_supervisor`/`process_stale_pull_requests` (5-min interval const, dirty gate) + test `staleness_supervisor_skips_clean_and_blocked_run_pull_requests` — PASS 422/conflict keeps PR open, wait observes closed_unmerged/timeout, no forced close: test `staleness_supervisor_keeps_pr_open_on_conflict_and_counts_the_failure` (asserts zero close calls + link retained); `handler/wait.rs` verified by inspection — it returns `ClosedUnmerged` on closed state, `Timeout` on deadline, and never closes the PR itself — PASS cap 3 failed updates OR >24h → close with `stale_base` + run event: `close_stale_pull_request` emits `Event::PullRequestClosed`; tests `staleness_supervisor_closes_pr_after_three_failed_updates` and `staleness_supervisor_closes_pr_older_than_24h` assert the PATCH close, the `pull_request.closed` stale_base event, and the unlinked projection — PASS httpmock wire tests (success, 422, cap close, age close): 5 httpmock tests in `lib/apps/fabro-server/src/server/tests.rs` — PASS fmt+clippy clean on both crates: `cargo +nightly-2026-04-14 fmt`/`clippy --all-targets -- -D warnings` exit 0 on all five touched crates (github, types, workflow, store, server) — PASS nextest green: 3370 passed across the five touched crates (includes full fabro-github and fabro-server suites)."
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 105932,
+                    "output_tokens": 17553,
+                    "reasoning_tokens": 10068,
+                    "cache_read_tokens": 6799040,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 2037459
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/apps/fabro-server/src/serve.rs",
+              "/workspace/fabro/lib/apps/fabro-server/src/server.rs",
+              "/workspace/fabro/lib/apps/fabro-server/src/server/pull_request_supervisor.rs",
+              "/workspace/fabro/lib/apps/fabro-server/src/server/tests.rs",
+              "/workspace/fabro/lib/components/fabro-github/src/lib.rs",
+              "/workspace/fabro/lib/components/fabro-store/src/run_state.rs",
+              "/workspace/fabro/lib/components/fabro-store/src/run_summary_store.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/event/convert.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/event/events.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/event/names.rs",
+              "/workspace/fabro/lib/foundation/fabro-types/src/run_event/misc.rs",
+              "/workspace/fabro/lib/foundation/fabro-types/src/run_event/mod.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 712817,
+              "tool_time_ms": 1092596,
+              "active_time_ms": 1805413
+            }
           }
         },
-        "next_node_id": "closeout",
+        "next_node_id": "exit",
         "node_visits": {
           "start": 1,
           "planner": 1,
           "evidence": 1,
           "reviewer": 1,
           "implementer": 1,
+          "closeout": 1,
           "tester": 1
         }
       },
@@ -1881,6 +2217,57 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "closeout@1": {
+      "first_event_seq": 744,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T16:37:27.496964261Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/d3a76983862043804c1ba67576398e9f536aae64f3f59e203d11083710b774b5",
+        "exit_code": 0,
+        "duration_ms": 282,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T16:37:27.195285786Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 293,
+        "inference_time_ms": 0,
+        "tool_time_ms": 282,
+        "active_time_ms": 282
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 16,
       "prompt": null,
