@@ -151,6 +151,18 @@ Fabro is an AI-powered workflow orchestration platform. Workflows are defined as
 - **OpenAPI-first** — `fabro-api.yaml` drives Rust type + client generation (progenitor) and TypeScript client generation (openapi-generator)
 - **Checkpoint/resume** — Workflows can be paused, checkpointed, and resumed
 
+### Dev-loop assets
+
+The dev loop's own machinery lives outside `lib/` and `apps/`:
+
+- `.fabro/workflows/develop/` — develop workflow assets: `workflow.toml`, `prompts/`, `scripts/`, `schemas/`
+- `.fabro/reviews/` — per-run review records
+- `.fabro/journal/<run_id>.jsonl` — one JSON record per completed stage
+- `.seeds/` — Seeds issue tracker (the `sd` CLI)
+- `.mulch/` — Mulch expertise records (the `ml` CLI)
+
+These paths are fs_hide-bound for file tools — `read_file`/`write_file`/`edit_file`/glob discovery fail on them; shell reads and writes (grep/cat/sed) succeed. The `sd`, `ml`, and `just` commands work normally.
+
 ## Strategy docs
 
 When working in an area covered by a strategy doc, read the relevant document
