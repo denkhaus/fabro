@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T19:31:16.577010927Z",
-  "last_event_at": "2026-09-09T19:36:24.834862052Z",
+  "last_event_at": "2026-09-09T19:37:28.325991960Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1275,9 +1275,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 247,
       "checkpoint": {
-        "timestamp": "2026-09-09T19:36:25.055206037Z",
+        "timestamp": "2026-09-09T19:36:29.725026752Z",
         "current_node": "evidence",
         "completed_nodes": [
           "start",
@@ -1288,6 +1288,243 @@
         ],
         "node_retries": {},
         "context_values": {
+          "failure_class": "",
+          "graph.inspects": "develop",
+          "last_response": "All work is complete. The seed touched only loop-asset files (explicitly targeted by the brief, edited via the shell per the carve-out): `evidence.nu` gained a 31-line additive `anomaly-section` + `ma",
+          "last_stage": "implementer",
+          "internal.work_dir": "/workspace/fabro",
+          "lesson_capture": "mx-b6e12b",
+          "thread.start.current_node": "planner",
+          "current_node": "evidence",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.fidelity": "compact",
+          "internal.retry_count.evidence": 0,
+          "graph.max_node_visits": "40",
+          "internal.seed_cycle_anchor": "fabro-c0e5",
+          "internal.retry_count.tester": 0,
+          "internal.node_visit_count": 1,
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 4388,
+            "preview": "All work is complete. The seed touched only loop-asset files (explicitly targeted by the brief, edited via the shell per the carve-out): `evidence.nu` gained a 31-line additive `anomaly-section` + `ma"
+          },
+          "graph.rankdir": "LR",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "The claim commit's own `.seeds/issues.jsonl` status transition lands in churn_rows (numstat is run-base scoped) but carries zero post-claim hunks, so diff-walk skips it silently — the anomaly section stays clean with no special-case; verified in the scratch exercise (evidence.nu diff-walk skip-if-empty behavior)."
+            ]
+          },
+          "preferred_label": "Implemented",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1
+          },
+          "thread.planner.current_node": "implementer",
+          "current_seed_id": "fabro-c0e5",
+          "internal.retry_count.implementer": 0,
+          "internal.thread_id": "tester",
+          "thread.implementer.current_node": "tester",
+          "internal.run_id": "01M23TE61D4Y33415BK5M7C70X",
+          "outcome": "succeeded",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.start": 0,
+          "current_seed_title": "Evidence capture must flag out-of-spec seed-work files (residue detection), not just demote loop files to counts-only",
+          "failure_signature": "",
+          "current_seed_brief": "In `.fabro/workflows/develop/scripts/evidence.nu`, loop-path changes are demoted to a counts-only churn section whenever seed work exists (gate at the `loop-diff-section` emission in `main`, ~line 409), so PR #109's out-of-spec `auto_merge=false` flip across three `workflow.toml` files was invisible to the reviewer. NOTE: `.fabro/**` is fs_hide-bound for file tools — read/edit `evidence.nu` and the prompts through the shell (sed/cat/python3 heredoc); write_file/edit_file will fail. Acceptance criteria (bulleted):\n- Anomaly section: when `seed_rows` is non-empty AND `churn_rows` is non-empty (the mixed case), `evidence.nu` emits a NEW named+diffed section (reuse `diff-walk` against the per-seed claim base) headed like `== anomaly: changed files NOT named by the seed spec (loop paths changed alongside seed work — reviewer must adjudicate: residue vs adjacent repair vs scope creep) ==`, listing each file with its full diff, NOT counts-only.\n- Churn-only seeds (seed_rows empty) keep the existing `loop-diff-section` behavior unchanged — the anomaly section is additive for the mixed case; integrity counts line stays as-is.\n- Reviewer adjudication: `.fabro/workflows/develop/prompts/reviewer.md` gains a line telling the reviewer to explicitly adjudicate every file in the anomaly section (residue / adjacent repair / scope creep) and reject on unexplained residue.\n- Verification test: a scratch-git exercise (temp repo or temp claim-base ref in the worktree, cleaned up after) with one in-spec source file plus one out-of-spec `.fabro/workflows/*/workflow.toml` change, proving the output names the workflow.toml and shows its diff in the anomaly section — cheapest checks first: `nu -c 'source ...'` parse/compile check, then the scratch run, then prompt-text grep for the adjudication line.\n- Scope guard: do NOT implement spec-named path promotion (fabro-93a7, still open) or worktree-diff quarantine (fabro-9d2f) — this seed is detection-only; the anomaly fires for ANY loop-path change alongside seed work.",
+          "implementation_summary": "Added detection-only residue flagging to the develop workflow's evidence pipe: `.fabro/workflows/develop/scripts/evidence.nu` gains an `anomaly-section` printer (reusing `diff-walk` against the per-seed claim base, hard-cap disclosure identical to the other diff sections) plus `main` wiring that emits it ONLY when `seed_rows` and `churn_rows` are both non-empty — loop files changed alongside seed work now appear named and fully diffed under '== anomaly: changed files NOT named the seed spec ... ==' instead of counts-only churn; `.fabro/workflows/develop/prompts/reviewer.md` input section now mandates explicit adjudication of every anomaly file (residue / adjacent repair / scope creep) with rejection on unexplained residue. Churn-only captures, the integrity counts line, and spec-named promotion/quarantine scopes are untouched. Verified cheapest-first: `nu -c 'source ...'` parse check, a cleaned-up scratch-git repo (run branch, tracker claim transition, sd shim) proving the mixed case names+diffs an out-of-spec `workflow.toml` `auto_merge` flip while the churn-only regression stays on `loop-diff-section`, and a prompt grep. Lesson captured as mx-b6e12b. Per-criterion report: PASS mixed-case anomaly section named+diffed (evidence.nu `anomaly-section`, scratch Scenario A lines 29–37); PASS churn-only behavior + integrity line unchanged (Scenario B, `loop-diff-section` still emitted, no anomaly); PASS reviewer adjudication line (reviewer.md input section); PASS scratch-git verification test (temp repo removed after run); PASS scope guard — no fabro-93a7 promotion, no fabro-9d2f quarantine, anomaly fires for any loop-path change alongside seed work.",
+          "command.output": "blob://sha256/4b06e84a3bd77a170843165926a5c2db6a0aa01f99a84331e0da49dd7dfaa086",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3165,
+            "preview": "Claimed `fabro-c0e5`. The evidence script's per-seed churn demotion (counts-only when seed work exists, gated at `evidence.nu` ~line 409) is confirmed present, so the seed's basis resolves against the"
+          },
+          "internal.retry_count.planner": 0,
+          "thread.tester.current_node": "evidence"
+        },
+        "node_outcomes": {
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/4b06e84a3bd77a170843165926a5c2db6a0aa01f99a84331e0da49dd7dfaa086"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 392,
+              "active_time_ms": 392
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Claimed `fabro-c0e5`. The evidence script's per-seed churn demotion (counts-only when seed work exists, gated at `evidence.nu` ~line 409) is confirmed present, so the seed's basis resolves against the",
+              "current_seed_brief": "In `.fabro/workflows/develop/scripts/evidence.nu`, loop-path changes are demoted to a counts-only churn section whenever seed work exists (gate at the `loop-diff-section` emission in `main`, ~line 409), so PR #109's out-of-spec `auto_merge=false` flip across three `workflow.toml` files was invisible to the reviewer. NOTE: `.fabro/**` is fs_hide-bound for file tools — read/edit `evidence.nu` and the prompts through the shell (sed/cat/python3 heredoc); write_file/edit_file will fail. Acceptance criteria (bulleted):\n- Anomaly section: when `seed_rows` is non-empty AND `churn_rows` is non-empty (the mixed case), `evidence.nu` emits a NEW named+diffed section (reuse `diff-walk` against the per-seed claim base) headed like `== anomaly: changed files NOT named by the seed spec (loop paths changed alongside seed work — reviewer must adjudicate: residue vs adjacent repair vs scope creep) ==`, listing each file with its full diff, NOT counts-only.\n- Churn-only seeds (seed_rows empty) keep the existing `loop-diff-section` behavior unchanged — the anomaly section is additive for the mixed case; integrity counts line stays as-is.\n- Reviewer adjudication: `.fabro/workflows/develop/prompts/reviewer.md` gains a line telling the reviewer to explicitly adjudicate every file in the anomaly section (residue / adjacent repair / scope creep) and reject on unexplained residue.\n- Verification test: a scratch-git exercise (temp repo or temp claim-base ref in the worktree, cleaned up after) with one in-spec source file plus one out-of-spec `.fabro/workflows/*/workflow.toml` change, proving the output names the workflow.toml and shows its diff in the anomaly section — cheapest checks first: `nu -c 'source ...'` parse/compile check, then the scratch run, then prompt-text grep for the adjudication line.\n- Scope guard: do NOT implement spec-named path promotion (fabro-93a7, still open) or worktree-diff quarantine (fabro-9d2f) — this seed is detection-only; the anomaly fires for ANY loop-path change alongside seed work.",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-c0e5 basis verified against current tree: evidence.nu still demotes mixed-case loop churn to counts-only (gate at ~line 409); loop-diff-section exists only for churn-only seeds (fabro-4b57)",
+                  "Kept fabro-93a7 (spec-named path promotion) and fabro-9d2f (residue quarantine) explicitly out of scope — both remain open and overlap this seed's territory",
+                  "No dedicated test harness exists for evidence.nu; acceptance test must be a scratch-git exercise, not a checked-in nushell test file unless the implementer finds an existing pattern"
+                ]
+              },
+              "current_seed_id": "fabro-c0e5",
+              "current_seed_title": "Evidence capture must flag out-of-spec seed-work files (residue detection), not just demote loop files to counts-only",
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3165,
+                "preview": "Claimed `fabro-c0e5`. The evidence script's per-seed churn demotion (counts-only when seed work exists, gated at `evidence.nu` ~line 409) is confirmed present, so the seed's basis resolves against the"
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 32340,
+                    "output_tokens": 1348,
+                    "reasoning_tokens": 931,
+                    "cache_read_tokens": 187520,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 104049
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 66797,
+              "tool_time_ms": 4081,
+              "active_time_ms": 70878
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 4152,
+              "active_time_ms": 4152
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 4388,
+                "preview": "All work is complete. The seed touched only loop-asset files (explicitly targeted by the brief, edited via the shell per the carve-out): `evidence.nu` gained a 31-line additive `anomaly-section` + `ma"
+              },
+              "implementation_summary": "Added detection-only residue flagging to the develop workflow's evidence pipe: `.fabro/workflows/develop/scripts/evidence.nu` gains an `anomaly-section` printer (reusing `diff-walk` against the per-seed claim base, hard-cap disclosure identical to the other diff sections) plus `main` wiring that emits it ONLY when `seed_rows` and `churn_rows` are both non-empty — loop files changed alongside seed work now appear named and fully diffed under '== anomaly: changed files NOT named the seed spec ... ==' instead of counts-only churn; `.fabro/workflows/develop/prompts/reviewer.md` input section now mandates explicit adjudication of every anomaly file (residue / adjacent repair / scope creep) with rejection on unexplained residue. Churn-only captures, the integrity counts line, and spec-named promotion/quarantine scopes are untouched. Verified cheapest-first: `nu -c 'source ...'` parse check, a cleaned-up scratch-git repo (run branch, tracker claim transition, sd shim) proving the mixed case names+diffs an out-of-spec `workflow.toml` `auto_merge` flip while the churn-only regression stays on `loop-diff-section`, and a prompt grep. Lesson captured as mx-b6e12b. Per-criterion report: PASS mixed-case anomaly section named+diffed (evidence.nu `anomaly-section`, scratch Scenario A lines 29–37); PASS churn-only behavior + integrity line unchanged (Scenario B, `loop-diff-section` still emitted, no anomaly); PASS reviewer adjudication line (reviewer.md input section); PASS scratch-git verification test (temp repo removed after run); PASS scope guard — no fabro-93a7 promotion, no fabro-9d2f quarantine, anomaly fires for any loop-path change alongside seed work.",
+              "last_response": "All work is complete. The seed touched only loop-asset files (explicitly targeted by the brief, edited via the shell per the carve-out): `evidence.nu` gained a 31-line additive `anomaly-section` + `ma",
+              "last_stage": "implementer",
+              "lesson_capture": "mx-b6e12b",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The claim commit's own `.seeds/issues.jsonl` status transition lands in churn_rows (numstat is run-base scoped) but carries zero post-claim hunks, so diff-walk skips it silently — the anomaly section stays clean with no special-case; verified in the scratch exercise (evidence.nu diff-walk skip-if-empty behavior)."
+                ]
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 33974,
+                    "output_tokens": 4884,
+                    "reasoning_tokens": 5687,
+                    "cache_read_tokens": 457024,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 212877
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 211727,
+              "tool_time_ms": 3667,
+              "active_time_ms": 215394
+            }
+          }
+        },
+        "next_node_id": "reviewer",
+        "git_commit_sha": "ab5ec30162370359e1c1d8583075b76a34211e14",
+        "node_visits": {
+          "start": 1,
+          "planner": 1,
+          "evidence": 1,
+          "implementer": 1,
+          "tester": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M23TE61D4Y33415BK5M7C70X.jsonl b/.fabro/journal/01M23TE61D4Y33415BK5M7C70X.jsonl\nindex 5861539..c22451c 100644\n--- a/.fabro/journal/01M23TE61D4Y33415BK5M7C70X.jsonl\n+++ b/.fabro/journal/01M23TE61D4Y33415BK5M7C70X.jsonl\n@@ -2,3 +2,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23TE61D4Y33415BK5M7C70X\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:32:30Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-c0e5 basis verified against current tree: evidence.nu still demotes mixed-case loop churn to counts-only (gate at ~line 409); loop-diff-section exists only for churn-only seeds (fabro-4b57)\",\"Kept fabro-93a7 (spec-named path promotion) and fabro-9d2f (residue quarantine) explicitly out of scope — both remain open and overlap this seed's territory\",\"No dedicated test harness exists for evidence.nu; acceptance test must be a scratch-git exercise, not a checked-in nushell test file unless the implementer finds an existing pattern\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23TE61D4Y33415BK5M7C70X\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:36:11Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The claim commit's own `.seeds/issues.jsonl` status transition lands in churn_rows (numstat is run-base scoped) but carries zero post-claim hunks, so diff-walk skips it silently — the anomaly section stays clean with no special-case; verified in the scratch exercise (evidence.nu diff-walk skip-if-empty behavior).\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23TE61D4Y33415BK5M7C70X\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:36:20Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23TE61D4Y33415BK5M7C70X\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:36:25Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 39,
+          "deletions": 2
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T19:37:28.548711113Z",
+        "current_node": "reviewer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2373,
+            "preview": "All acceptance criteria verified:\n\n1. **Mixed-case anomaly section** — `anomaly-section` in `evidence.nu` emits the exact required heading with full diffs via `diff-walk` against the per-seed claim "
+          },
+          "internal.retry_count.reviewer": 0,
           "thread.tester.current_node": "evidence",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "lesson_capture": "mx-b6e12b",
@@ -1300,16 +1537,19 @@
             "planner": 1,
             "implementer": 1,
             "tester": 1,
-            "evidence": 1
+            "evidence": 1,
+            "reviewer": 1
           },
-          "last_response": "All work is complete. The seed touched only loop-asset files (explicitly targeted by the brief, edited via the shell per the carve-out): `evidence.nu` gained a 31-line additive `anomaly-section` + `ma",
-          "last_stage": "implementer",
+          "review_verdict": "approved",
+          "last_response": "All acceptance criteria verified:\n\n1. **Mixed-case anomaly section** — `anomaly-section` in `evidence.nu` emits the exact required heading with full diffs via `diff-walk` against the per-seed claim ",
+          "last_stage": "reviewer",
           "graph.max_node_visits": "40",
           "internal.run_id": "01M23TE61D4Y33415BK5M7C70X",
           "graph.rankdir": "LR",
           "internal.retry_count.implementer": 0,
           "internal.retry_count.evidence": 0,
           "current_seed_id": "fabro-c0e5",
+          "thread.evidence.current_node": "reviewer",
           "graph.preamble_budget_kb": "24",
           "failure_class": "",
           "internal.work_dir": "/workspace/fabro",
@@ -1317,10 +1557,10 @@
           "current_seed_title": "Evidence capture must flag out-of-spec seed-work files (residue detection), not just demote loop files to counts-only",
           "current_seed_brief": "In `.fabro/workflows/develop/scripts/evidence.nu`, loop-path changes are demoted to a counts-only churn section whenever seed work exists (gate at the `loop-diff-section` emission in `main`, ~line 409), so PR #109's out-of-spec `auto_merge=false` flip across three `workflow.toml` files was invisible to the reviewer. NOTE: `.fabro/**` is fs_hide-bound for file tools — read/edit `evidence.nu` and the prompts through the shell (sed/cat/python3 heredoc); write_file/edit_file will fail. Acceptance criteria (bulleted):\n- Anomaly section: when `seed_rows` is non-empty AND `churn_rows` is non-empty (the mixed case), `evidence.nu` emits a NEW named+diffed section (reuse `diff-walk` against the per-seed claim base) headed like `== anomaly: changed files NOT named by the seed spec (loop paths changed alongside seed work — reviewer must adjudicate: residue vs adjacent repair vs scope creep) ==`, listing each file with its full diff, NOT counts-only.\n- Churn-only seeds (seed_rows empty) keep the existing `loop-diff-section` behavior unchanged — the anomaly section is additive for the mixed case; integrity counts line stays as-is.\n- Reviewer adjudication: `.fabro/workflows/develop/prompts/reviewer.md` gains a line telling the reviewer to explicitly adjudicate every file in the anomaly section (residue / adjacent repair / scope creep) and reject on unexplained residue.\n- Verification test: a scratch-git exercise (temp repo or temp claim-base ref in the worktree, cleaned up after) with one in-spec source file plus one out-of-spec `.fabro/workflows/*/workflow.toml` change, proving the output names the workflow.toml and shows its diff in the anomaly section — cheapest checks first: `nu -c 'source ...'` parse/compile check, then the scratch run, then prompt-text grep for the adjudication line.\n- Scope guard: do NOT implement spec-named path promotion (fabro-93a7, still open) or worktree-diff quarantine (fabro-9d2f) — this seed is detection-only; the anomaly fires for ANY loop-path change alongside seed work.",
           "thread.start.current_node": "planner",
-          "internal.thread_id": "tester",
+          "internal.thread_id": "evidence",
           "graph.inspects": "develop",
-          "internal.fidelity": "compact",
-          "current_node": "evidence",
+          "internal.fidelity": "summary:high",
+          "current_node": "reviewer",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
@@ -1328,7 +1568,7 @@
             "preview": "Claimed `fabro-c0e5`. The evidence script's per-seed churn demotion (counts-only when seed work exists, gated at `evidence.nu` ~line 409) is confirmed present, so the seed's basis resolves against the"
           },
           "internal.retry_count.planner": 0,
-          "preferred_label": "Implemented",
+          "preferred_label": "Approved",
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.implementer",
@@ -1339,7 +1579,9 @@
           "journal": {
             "painpoints": [],
             "observations": [
-              "The claim commit's own `.seeds/issues.jsonl` status transition lands in churn_rows (numstat is run-base scoped) but carries zero post-claim hunks, so diff-walk skips it silently — the anomaly section stays clean with no special-case; verified in the scratch exercise (evidence.nu diff-walk skip-if-empty behavior)."
+              "Verified independently: read the full blob ref, diff-matched evidence.nu and reviewer.md on disk against cbaec07, ran the nu parse check, and re-ran the scratch-git exercise (temp repo with an out-of-spec auto_merge flip in a workflow.toml, cleaned up after) proving the anomaly section names and full-diffs the file.",
+              "This run itself is a churn-only seed, so the new anomaly section correctly did not fire in its own capture; the mixed-case path was verified only via the scratch repo and code inspection of the main() gate, not against a live mixed capture.",
+              "The reviewer prompt injected into this session was the pre-change snapshot (materialized before the implementer commit); the anomaly-adjudication sentence was confirmed present in the on-disk reviewer.md instead — benign, but reviewers in the same situation will rely on the evidence diff."
             ]
           },
           "outcome": "succeeded",
@@ -1348,6 +1590,57 @@
           "command.output": "blob://sha256/4b06e84a3bd77a170843165926a5c2db6a0aa01f99a84331e0da49dd7dfaa086"
         },
         "node_outcomes": {
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Verified independently: read the full blob ref, diff-matched evidence.nu and reviewer.md on disk against cbaec07, ran the nu parse check, and re-ran the scratch-git exercise (temp repo with an out-of-spec auto_merge flip in a workflow.toml, cleaned up after) proving the anomaly section names and full-diffs the file.",
+                  "This run itself is a churn-only seed, so the new anomaly section correctly did not fire in its own capture; the mixed-case path was verified only via the scratch repo and code inspection of the main() gate, not against a live mixed capture.",
+                  "The reviewer prompt injected into this session was the pre-change snapshot (materialized before the implementer commit); the anomaly-adjudication sentence was confirmed present in the on-disk reviewer.md instead — benign, but reviewers in the same situation will rely on the evidence diff."
+                ]
+              },
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 2373,
+                "preview": "All acceptance criteria verified:\n\n1. **Mixed-case anomaly section** — `anomaly-section` in `evidence.nu` emits the exact required heading with full diffs via `diff-walk` against the per-seed claim "
+              },
+              "last_response": "All acceptance criteria verified:\n\n1. **Mixed-case anomaly section** — `anomaly-section` in `evidence.nu` emits the exact required heading with full diffs via `diff-walk` against the per-seed claim ",
+              "last_stage": "reviewer",
+              "review_verdict": "approved"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 20741,
+                    "output_tokens": 1124,
+                    "reasoning_tokens": 1549,
+                    "cache_read_tokens": 50880,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 54021
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 57337,
+              "tool_time_ms": 393,
+              "active_time_ms": 57730
+            }
+          },
           "implementer": {
             "status": "succeeded",
             "preferred_label": "Implemented",
@@ -1484,10 +1777,11 @@
             }
           }
         },
-        "next_node_id": "reviewer",
+        "next_node_id": "closeout",
         "node_visits": {
           "tester": 1,
           "evidence": 1,
+          "reviewer": 1,
           "start": 1,
           "planner": 1,
           "implementer": 1
@@ -2058,6 +2352,243 @@
             "category": "conversation",
             "tokens": 25565,
             "usage_percent": 2.438068389892578
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "reviewer@1": {
+      "first_event_seq": 250,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: reviewer",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T19:37:28.325991960Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T19:36:30.096261069Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 58362,
+        "inference_time_ms": 57337,
+        "tool_time_ms": 393,
+        "active_time_ms": 57730
+      },
+      "usage": {
+        "input_tokens": 20741,
+        "output_tokens": 1124,
+        "total_tokens": 74294,
+        "reasoning_tokens": 1549,
+        "cache_read_tokens": 50880,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 54021
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 20759,
+        "usage_percent": 1.9797325134277344,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-09T19:37:28.315648890Z",
+        "event_seq": 281,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1109,
+            "usage_percent": 0.10576248168945312
+          },
+          {
+            "category": "tools",
+            "tokens": 1626,
+            "usage_percent": 0.15506744384765625
+          },
+          {
+            "category": "skills",
+            "tokens": 220,
+            "usage_percent": 0.0209808349609375
+          },
+          {
+            "category": "memory",
+            "tokens": 5862,
+            "usage_percent": 0.5590438842773438
+          },
+          {
+            "category": "conversation",
+            "tokens": 11935,
+            "usage_percent": 1.1382102966308594
           },
           {
             "category": "other",
