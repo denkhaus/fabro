@@ -29,7 +29,7 @@ sandbox = true
 provider = "zai"
 name = "glm-5.3"
 
-# NO prepare steps on the merged world: the toolchain environment bakes
+# NO prepare steps: the toolchain environment bakes
 # everything (rust nightly pin, clippy/rustfmt, nextest, just, nu, rg, bun,
 # sd/ml, pytest — .fabro/Dockerfile.toolchain). Runs start instantly; a
 # prepare no-op check would only burn tester time.
@@ -58,7 +58,7 @@ merge_strategy = "squash"
 model = "zai:glm-4.7"
 
 # NO [run.integrations.github.permissions] (ADR-0019, user directive 2026-09-08):
-# the lab-era write token is vestigial - the ENGINE performs all forge
+# the legacy write token is vestigial - the ENGINE performs all forge
 # operations (branch push, PR create, auto-merge, waits) with its own
 # credentials; agent shells get NO GITHUB_TOKEN (empty permissions =
 # no_token path in initialize.rs). Forge reads go through engine-mediated

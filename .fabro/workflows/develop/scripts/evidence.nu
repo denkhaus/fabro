@@ -379,7 +379,7 @@ def main []: nothing -> nothing {
     # Journal files (.fabro/journal/<run-id>.jsonl, one line per stage
     # completion, plus legacy <node>@<visit>.json) are meta context:
     # run-machinery stage records about the workflow itself, consumed later
-    # by the platform-side improve workflow. They are NO review input —
+    # by the improve workflow. They are NO review input —
     # dropped here, so they appear in NO section and NO count.
     let rows = (numstat-rows $base.base | where {|r| not ($r.path | str starts-with ".fabro/journal/")})
     let seed_rows = ($rows | where {|r| not (is-loop-path $r.path)} | sort-by path)
