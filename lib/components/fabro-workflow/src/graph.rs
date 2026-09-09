@@ -1,4 +1,4 @@
-mod routing;
+pub(crate) mod routing;
 
 use std::collections::HashMap;
 use std::sync::Arc;

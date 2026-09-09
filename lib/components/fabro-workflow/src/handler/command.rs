@@ -55,7 +55,7 @@ impl Handler for CommandHandler {
         &self,
         node: &Node,
         context: &Context,
-        _graph: &Graph,
+        graph: &Graph,
         run_dir: &Path,
         services: &EngineServices,
     ) -> Result<Outcome, Error> {
@@ -79,7 +79,7 @@ impl Handler for CommandHandler {
             Ok(stdin) => stdin,
             Err(outcome) => return Ok(outcome),
         };
-        let output_schema = structured_output::parse_node_output_schema(node)?;
+        let output_schema = structured_output::parse_node_output_schema(graph, node)?;
 
         let command = if language == "python" {
             format!("python3 -c {}", shell_quote(script))

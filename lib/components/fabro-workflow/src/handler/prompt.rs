@@ -51,7 +51,7 @@ impl Handler for PromptHandler {
         &self,
         node: &Node,
         context: &Context,
-        _graph: &Graph,
+        graph: &Graph,
         _run_dir: &Path,
         services: &EngineServices,
     ) -> Result<Outcome, Error> {
@@ -119,6 +119,7 @@ impl Handler for PromptHandler {
                 let result = backend
                     .one_shot(OneShotRequest {
                         node,
+                        graph,
                         prompt: &prompt,
                         system_prompt: system_prompt.as_deref(),
                         emitter: &services.run.emitter,
@@ -190,7 +191,7 @@ impl Handler for PromptHandler {
             serde_json::json!(&response_text),
         );
 
-        if let Some(schema) = structured_output::parse_node_output_schema(node)? {
+        if let Some(schema) = structured_output::parse_node_output_schema(graph, node)? {
             if let Ok(validated) =
                 structured_output::validate_response_text(&schema, &response_text)
             {

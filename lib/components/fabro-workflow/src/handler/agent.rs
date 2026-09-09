@@ -42,6 +42,7 @@ pub enum CodergenResult {
 
 pub struct CodergenRunRequest<'a> {
     pub node:               &'a Node,
+    pub graph:              &'a Graph,
     pub prompt:             &'a str,
     pub context:            &'a Context,
     /// Stage view served by the `context_read` tool (fabro-e804); built
@@ -58,6 +59,7 @@ pub struct CodergenRunRequest<'a> {
 
 pub struct OneShotRequest<'a> {
     pub node:          &'a Node,
+    pub graph:         &'a Graph,
     pub prompt:        &'a str,
     pub system_prompt: Option<&'a str>,
     pub emitter:       &'a Arc<Emitter>,
@@ -154,7 +156,7 @@ pub(crate) async fn validate_agent_output_sources(
     sandbox: &Arc<dyn Sandbox>,
     last_file_touched: Option<&str>,
 ) -> Result<ValidatedStructuredOutput, StructuredOutputError> {
-    if !matches!(schema, OutputSchemaKind::Routing) {
+    if !matches!(schema, OutputSchemaKind::Routing { .. }) {
         return structured_output::validate_response_text(schema, response_text);
     }
 
@@ -267,7 +269,7 @@ impl Handler for AgentHandler {
         } else {
             format!("{preamble}\n\n{raw_prompt}")
         };
-        let output_schema = structured_output::parse_node_output_schema(node)?;
+        let output_schema = structured_output::parse_node_output_schema(graph, node)?;
         let prompt = match output_schema.as_ref() {
             Some(schema) => schema.agent_prompt(&prompt),
             None => prompt,
@@ -318,6 +320,7 @@ impl Handler for AgentHandler {
                 let result = backend
                     .run(CodergenRunRequest {
                         node,
+                        graph,
                         prompt: &prompt,
                         context,
                         context_read,
@@ -599,7 +602,9 @@ mod tests {
         let (_sandbox_dir, sandbox) = sandbox_with_file(path, contents);
 
         validate_agent_output_sources(
-            &OutputSchemaKind::Routing,
+            &OutputSchemaKind::Routing {
+                allowed_labels: Vec::new(),
+            },
             "Done writing results.",
             &sandbox,
             Some(path),
@@ -953,6 +958,38 @@ All checks passed.
         assert_eq!(
             error.kind(),
             structured_output::StructuredOutputErrorKind::NoJsonObject,
+        );
+    }
+
+    #[tokio::test]
+    async fn validated_routing_rejects_unknown_preferred_label_at_handler_boundary() {
+        // fabro-de4d: with the node's outgoing edge labels known, an
+        // out-of-vocabulary preferred_next_label must fail the OUTPUT (not
+        // the run) with a verbose error naming the value and the allowed
+        // list, so the backend repair loop gets a correction turn.
+        let (_sandbox_dir, sandbox) = sandbox_with_file("unused.txt", "");
+        let schema = OutputSchemaKind::Routing {
+            allowed_labels: vec!["review".to_string(), "approve".to_string()],
+        };
+
+        let error = validate_agent_output_sources(
+            &schema,
+            r#"{"outcome":"succeeded","preferred_next_label":"deploy"}"#,
+            &sandbox,
+            None,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(!error.allows_routing_fallback());
+        let message = error.messages().join("\n");
+        assert!(
+            message.contains("\"deploy\""),
+            "error must name the offending value: {message}"
+        );
+        assert!(
+            message.contains("\"review\"") && message.contains("\"approve\""),
+            "error must list the allowed labels: {message}"
         );
     }
 

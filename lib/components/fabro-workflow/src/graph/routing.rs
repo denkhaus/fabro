@@ -147,7 +147,7 @@ pub(crate) fn get_retry_target(failed_node_id: &str, graph: &GvGraph) -> Option<
 
 /// Normalize a label for comparison: lowercase, trim, strip accelerator
 /// prefixes. Patterns: "[Y] ", "Y) ", "Y - "
-fn normalize_label(label: &str) -> String {
+pub(crate) fn normalize_label(label: &str) -> String {
     let s = label.trim().to_lowercase();
     if s.starts_with('[') {
         if let Some(rest) = s
