@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T13:31:22.963494153Z",
-  "last_event_at": "2026-09-09T13:35:13.936151801Z",
+  "last_event_at": "2026-09-09T13:35:19.503201643Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1067,9 +1067,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 164,
       "checkpoint": {
-        "timestamp": "2026-09-09T13:35:14.177500667Z",
+        "timestamp": "2026-09-09T13:35:19.132986735Z",
         "current_node": "tester",
         "completed_nodes": [
           "start",
@@ -1079,9 +1079,223 @@
         ],
         "node_retries": {},
         "context_values": {
+          "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+          "graph.max_node_visits": "40",
+          "current_node": "tester",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1
+          },
+          "failure_class": "",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.implementer": 0,
+          "internal.retry_count.tester": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "preferred_label": "Implemented",
+          "internal.retry_count.start": 0,
+          "thread.implementer.current_node": "tester",
+          "internal.run_id": "01M235V6FWMNBDKS9BH3T25G2D",
+          "graph.preamble_budget_kb": "24",
+          "lesson_capture": "mx-9bad2f",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3084,
+            "preview": "All verification complete. The record is `mx-9bad2f`. Summary of the pass:\n\n- **Change**: One line inserted at line 52 of `.fabro/workflows/develop/prompts/implementer.md`, directly after the shell-ca"
+          },
+          "current_seed_title": "Implementer prompt: rg replace-flag discipline line; retract the false 'sandbox rg unreliable' journal lore",
+          "last_stage": "implementer",
+          "thread.planner.current_node": "implementer",
+          "last_response": "All verification complete. The record is `mx-9bad2f`. Summary of the pass:\n\n- **Change**: One line inserted at line 52 of `.fabro/workflows/develop/prompts/implementer.md`, directly after the shell-ca",
+          "outcome": "succeeded",
+          "implementation_summary": "Added one rg flag-discipline line at line 52 of `.fabro/workflows/develop/prompts/implementer.md`, immediately after the shell-capability paragraph's closing line ('keep working through the shell.'), edited via python3 heredoc through the shell per the fs_hide carve-out; lesson captured as mx-9bad2f. Per-criterion report: - PASS - One line added near the shell-capability paragraph (48–55 region) with the exact rule 'rg -r <text> REPLACES matches — never write `rg -rn`; `-n` alone is the line-number flag': implementer.md line 52, verified by grep -n. - PASS - Failure mode noted and false lore retracted in the same line: run 01M22X87J1RKQ6A8FZB7RC2RN8, `rg -rn \"is_engine_stamped_key\"` parsed `-r n` as replace-with-literal-n producing `pub fn n(key: &str...)`, misdiagnosed as 'sandbox rg unreliable' — line ends 'the sandbox rg was fine, the flag was wrong'. - PASS - No other content changed: git diff --stat shows exactly 1 file, 1 insertion(+), 0 deletions. - PASS - Verification per brief: grep -n 'rg -r' shows the new line; python3 open().read() parses OK; git diff --stat shows exactly one file touched. - PASS - No tests required and no gate rerun (prompt-text-only change).",
+          "internal.retry_count.planner": 0,
+          "graph.inspects": "develop",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2301,
+            "preview": "Claimed fabro-2eb6. Brief below; note the target file lives under `.fabro/**` (fs_hide), so the implementer must apply the edit through shell (e.g. a python3 heredoc or sed), not write tools.\n\n{\n  \"ou"
+          },
+          "internal.seed_cycle_anchor": "fabro-2eb6",
+          "graph.rankdir": "LR",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "failure_signature": "",
+          "internal.thread_id": "implementer",
+          "internal.fidelity": "compact",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Brief quoted the shell-capability paragraph at lines 48–55 but in the checked-out revision the anchor 'keep working through the shell.' sat at line 51 (line drift between brief authoring and checkout); insertion verified by grep at line 52, within tolerance — briefs citing absolute line numbers should be treated as approximate.",
+              "The fs_hide carve-out for platform-targeting seeds worked exactly as documented: shell reads (sed -n) and shell writes (python3 heredoc) to `.fabro/workflows/develop/prompts/implementer.md` both succeeded with no file-tool pressure."
+            ]
+          },
+          "thread.start.current_node": "planner",
+          "current_seed_id": "fabro-2eb6",
+          "internal.node_visit_count": 1,
+          "current_seed_brief": "Add an rg flag-discipline line to the develop implementer prompt so future implementers stop writing `rg -rn` and stop blaming the sandbox for the resulting mangled output. Target file: `.fabro/workflows/develop/prompts/implementer.md` (148 lines; fs_hide-bound — edit via shell, e.g. python3 heredoc or sed, NOT write tools). Acceptance criteria:\n- One line added near the shell-capability paragraph (lines 48–55, the one describing shell reads/writes around fs_hide) or in the step-4 verification guidance: `rg -r <text>` REPLACES matches — never write `rg -rn`; `-n` alone is the line-number flag\n- The line briefly notes the failure mode (run 01M22X87J1RKQ6A8FZB7RC2RN8: `rg -rn \"is_engine_stamped_key\"` parsed `-r n` as replace-with-literal-n, producing `pub fn n(key: &str...)`, then misdiagnosed as 'sandbox rg unreliable') so the false lore is explicitly retracted\n- No other content in the prompt file is changed\n- Verification (cheapest first): `grep -n 'rg -r' .fabro/workflows/develop/prompts/implementer.md` shows the new line; `python3 -c \"open('.fabro/workflows/develop/prompts/implementer.md').read()\"` parses; `git diff --stat` shows exactly one file touched\n- No tests required (prompt-text-only change); no gate rerun of the full suite"
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_id": "fabro-2eb6",
+              "last_response": "Claimed fabro-2eb6. Brief below; note the target file lives under `.fabro/**` (fs_hide), so the implementer must apply the edit through shell (e.g. a python3 heredoc or sed), not write tools.\n\n{\n  \"ou",
+              "last_stage": "planner",
+              "current_seed_title": "Implementer prompt: rg replace-flag discipline line; retract the false 'sandbox rg unreliable' journal lore",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-2eb6 basis resolved against current tree: implementer.md (148 lines) contains no rg -r discipline line; the fs_hide shell-bypass paragraph at lines 48-55 is the natural anchor",
+                  "in-flight check: only running develop run is this run itself (01M235V6FWMNBDKS9BH3T25G2D); its journal carries no claimed seed id; all other runs are succeeded with closed/merged PRs — no exclusions applied",
+                  "sd ready returned 189 seeds; fabro-2eb6 is the top High-priority unblocked candidate"
+                ]
+              },
+              "current_seed_brief": "Add an rg flag-discipline line to the develop implementer prompt so future implementers stop writing `rg -rn` and stop blaming the sandbox for the resulting mangled output. Target file: `.fabro/workflows/develop/prompts/implementer.md` (148 lines; fs_hide-bound — edit via shell, e.g. python3 heredoc or sed, NOT write tools). Acceptance criteria:\n- One line added near the shell-capability paragraph (lines 48–55, the one describing shell reads/writes around fs_hide) or in the step-4 verification guidance: `rg -r <text>` REPLACES matches — never write `rg -rn`; `-n` alone is the line-number flag\n- The line briefly notes the failure mode (run 01M22X87J1RKQ6A8FZB7RC2RN8: `rg -rn \"is_engine_stamped_key\"` parsed `-r n` as replace-with-literal-n, producing `pub fn n(key: &str...)`, then misdiagnosed as 'sandbox rg unreliable') so the false lore is explicitly retracted\n- No other content in the prompt file is changed\n- Verification (cheapest first): `grep -n 'rg -r' .fabro/workflows/develop/prompts/implementer.md` shows the new line; `python3 -c \"open('.fabro/workflows/develop/prompts/implementer.md').read()\"` parses; `git diff --stat` shows exactly one file touched\n- No tests required (prompt-text-only change); no gate rerun of the full suite",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2301,
+                "preview": "Claimed fabro-2eb6. Brief below; note the target file lives under `.fabro/**` (fs_hide), so the implementer must apply the edit through shell (e.g. a python3 heredoc or sed), not write tools.\n\n{\n  \"ou"
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 25861,
+                    "output_tokens": 1001,
+                    "reasoning_tokens": 316,
+                    "cache_read_tokens": 131136,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 76085
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 68862,
+              "tool_time_ms": 3527,
+              "active_time_ms": 72389
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Brief quoted the shell-capability paragraph at lines 48–55 but in the checked-out revision the anchor 'keep working through the shell.' sat at line 51 (line drift between brief authoring and checkout); insertion verified by grep at line 52, within tolerance — briefs citing absolute line numbers should be treated as approximate.",
+                  "The fs_hide carve-out for platform-targeting seeds worked exactly as documented: shell reads (sed -n) and shell writes (python3 heredoc) to `.fabro/workflows/develop/prompts/implementer.md` both succeeded with no file-tool pressure."
+                ]
+              },
+              "implementation_summary": "Added one rg flag-discipline line at line 52 of `.fabro/workflows/develop/prompts/implementer.md`, immediately after the shell-capability paragraph's closing line ('keep working through the shell.'), edited via python3 heredoc through the shell per the fs_hide carve-out; lesson captured as mx-9bad2f. Per-criterion report: - PASS - One line added near the shell-capability paragraph (48–55 region) with the exact rule 'rg -r <text> REPLACES matches — never write `rg -rn`; `-n` alone is the line-number flag': implementer.md line 52, verified by grep -n. - PASS - Failure mode noted and false lore retracted in the same line: run 01M22X87J1RKQ6A8FZB7RC2RN8, `rg -rn \"is_engine_stamped_key\"` parsed `-r n` as replace-with-literal-n producing `pub fn n(key: &str...)`, misdiagnosed as 'sandbox rg unreliable' — line ends 'the sandbox rg was fine, the flag was wrong'. - PASS - No other content changed: git diff --stat shows exactly 1 file, 1 insertion(+), 0 deletions. - PASS - Verification per brief: grep -n 'rg -r' shows the new line; python3 open().read() parses OK; git diff --stat shows exactly one file touched. - PASS - No tests required and no gate rerun (prompt-text-only change).",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3084,
+                "preview": "All verification complete. The record is `mx-9bad2f`. Summary of the pass:\n\n- **Change**: One line inserted at line 52 of `.fabro/workflows/develop/prompts/implementer.md`, directly after the shell-ca"
+              },
+              "last_response": "All verification complete. The record is `mx-9bad2f`. Summary of the pass:\n\n- **Change**: One line inserted at line 52 of `.fabro/workflows/develop/prompts/implementer.md`, directly after the shell-ca",
+              "last_stage": "implementer",
+              "lesson_capture": "mx-9bad2f"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 17078,
+                    "output_tokens": 1901,
+                    "reasoning_tokens": 1940,
+                    "cache_read_tokens": 132864,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 75340
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 135506,
+              "tool_time_ms": 3027,
+              "active_time_ms": 138533
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 4940,
+              "active_time_ms": 4940
+            }
+          }
+        },
+        "next_node_id": "evidence",
+        "git_commit_sha": "51aab5ec02dacd876cda52b6c0327309d6d3496f",
+        "node_visits": {
+          "planner": 1,
+          "implementer": 1,
+          "start": 1,
+          "tester": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M235V6FWMNBDKS9BH3T25G2D.jsonl b/.fabro/journal/01M235V6FWMNBDKS9BH3T25G2D.jsonl\nindex aa7fcb2..3eeb52b 100644\n--- a/.fabro/journal/01M235V6FWMNBDKS9BH3T25G2D.jsonl\n+++ b/.fabro/journal/01M235V6FWMNBDKS9BH3T25G2D.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M235V6FWMNBDKS9BH3T25G2D\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:31:25Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M235V6FWMNBDKS9BH3T25G2D\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:32:38Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-2eb6 basis resolved against current tree: implementer.md (148 lines) contains no rg -r discipline line; the fs_hide shell-bypass paragraph at lines 48-55 is the natural anchor\",\"in-flight check: only running develop run is this run itself (01M235V6FWMNBDKS9BH3T25G2D); its journal carries no claimed seed id; all other runs are succeeded with closed/merged PRs — no exclusions applied\",\"sd ready returned 189 seeds; fabro-2eb6 is the top High-priority unblocked candidate\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M235V6FWMNBDKS9BH3T25G2D\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:35:04Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Brief quoted the shell-capability paragraph at lines 48–55 but in the checked-out revision the anchor 'keep working through the shell.' sat at line 51 (line drift between brief authoring and checkout); insertion verified by grep at line 52, within tolerance — briefs citing absolute line numbers should be treated as approximate.\",\"The fs_hide carve-out for platform-targeting seeds worked exactly as documented: shell reads (sed -n) and shell writes (python3 heredoc) to `.fabro/workflows/develop/prompts/implementer.md` both succeeded with no file-tool pressure.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M235V6FWMNBDKS9BH3T25G2D\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:35:14Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 8,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T13:35:19.746393420Z",
+        "current_node": "evidence",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence"
+        ],
+        "node_retries": {},
+        "context_values": {
           "preferred_label": "Implemented",
           "internal.retry_count.planner": 0,
           "internal.run_id": "01M235V6FWMNBDKS9BH3T25G2D",
+          "internal.retry_count.evidence": 0,
           "graph.preamble_budget_kb": "24",
           "failure_class": "",
           "graph.rankdir": "LR",
@@ -1092,20 +1306,22 @@
           "internal.retry_count.start": 0,
           "internal.retry_count.implementer": 0,
           "internal.retry_count.tester": 0,
+          "thread.tester.current_node": "evidence",
           "graph.max_node_visits": "40",
-          "internal.thread_id": "implementer",
+          "internal.thread_id": "tester",
           "graph.cycle_counter_reset_key": "current_seed_id",
           "internal.node_visit_count": 1,
           "thread.implementer.current_node": "tester",
-          "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+          "command.output": "blob://sha256/cbe8e4f9c1d28415871b1784a4ba5a6679529cc213902f5b902ef163a6f181f5",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "internal.fidelity": "compact",
           "thread.planner.current_node": "implementer",
-          "current_node": "tester",
+          "current_node": "evidence",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
-            "tester": 1
+            "tester": 1,
+            "evidence": 1
           },
           "internal.work_dir": "/workspace/fabro",
           "current_seed_id": "fabro-2eb6",
@@ -1208,6 +1424,20 @@
               "active_time_ms": 4940
             }
           },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/cbe8e4f9c1d28415871b1784a4ba5a6679529cc213902f5b902ef163a6f181f5"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 385,
+              "active_time_ms": 385
+            }
+          },
           "implementer": {
             "status": "succeeded",
             "preferred_label": "Implemented",
@@ -1260,8 +1490,9 @@
             }
           }
         },
-        "next_node_id": "evidence",
+        "next_node_id": "reviewer",
         "node_visits": {
+          "evidence": 1,
           "tester": 1,
           "implementer": 1,
           "start": 1,
@@ -1567,6 +1798,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "evidence@1": {
+      "first_event_seq": 167,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T13:35:19.503201643Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/cbe8e4f9c1d28415871b1784a4ba5a6679529cc213902f5b902ef163a6f181f5",
+        "exit_code": 0,
+        "duration_ms": 385,
+        "termination": "exited",
+        "output_bytes": 4435,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 4435,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T13:35:19.144480894Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 389,
+        "inference_time_ms": 0,
+        "tool_time_ms": 385,
+        "active_time_ms": 385
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
