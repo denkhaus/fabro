@@ -1,0 +1,57 @@
+# Improve review — run 01M23HWFFSB9NK78PGSCZWE6MA
+
+- workflow: develop
+- branch integrated: this revisor pass (unmerged until approved)
+- status: succeeded (3.2 min, revisor pass — reason and cost in run detail)
+- generated: 2026-09-09 17:10+0000 by revisor `fabro_ask`
+
+---
+
+All evidence below is from this run's events, checkpoints, and worker log (run 01M23HWFFSB9NK78PGSCZWE6MA: 181.8 s wall, $0.174 total, 0 retries, first-pass approval of seed fabro-3d2d). Ordered by expected impact.
+
+## 1. Bound the `sd ready` firehose the planner reads (prompting + tool usage)
+**What happened:** `sd ready --assignee fabro --limit 200` returned 190 issues / 25,666 bytes (event seq 32–33); the claimed seed was the **first line**. That mass sat in the planner's conversation for all 8 of its LLM turns (13.6k input tokens on turn 1 alone; planner = 81.6 s / $0.103, 59% of run cost).
+**Change:** In `.fabro/workflows/develop/prompts/planner.md`, command-table row 1: keep `--limit 200` (server-side correctness, fabro-c16d) but pipe `| head -20` client-side and instruct: expand the view only when the top-20 yields nothing claimable. `sd ready` is priority-sorted, so the claim is virtually always in the top rows.
+**Expected effect:** ~6–7k fewer tokens on the planner's opening turns, one less reasoning pass over 190 titles — est. −15–25 s wall and −$0.02–0.04 per run; the single biggest recurring save.
+
+## 2. Bound `fabro_runs_list` and make self-exclusion explicit (prompting + tool usage)
+**What happened:** The in-flight check (seq 41) returned 16 runs / 14,492 bytes — 15 of them terminal, all with the identical generic goal text. The planner had to *deduce* "the only non-terminal run is this run itself" (its reasoning trace says exactly that); the prompt never says to skip its own run id, and doesn't use the tool's existing `created_since` bound.
+**Change:** In `planner.md` step 4: call `fabro_runs_list` with `created_since` ≈ 48 h (covers the claim→PR→merge window; stale PRs are auto-retired by the repo's automation), and add one line: "exclude this run's own id (in your preamble header) from the in-flight set."
+**Expected effect:** Tool output drops ~14.5 KB → ≤2 KB; eliminates the self-run confusion class (a mis-skip would dead-end a legitimate claim) and removes per-sibling journal-grep fallback calls when parallel runs exist.
+
+## 3. Make review capture-first, tools-on-mismatch (prompting)
+**What happened:** The evidence capture (3.7 KB, fully inline under the 16 KB `preamble_inline_max_kb`) already contained the complete 12-line diff, and the implementer's summary carried a per-criterion PASS report verified by `grep -n 'Dev-loop assets'; grep -c …; git diff --stat` (seq 112). The reviewer then re-ran **the same grep battery** as its only tool call (seq 159).
+**Change:** In `.fabro/workflows/develop/prompts/reviewer.md`, "Decision" section: when the capture renders inline and complete and the PASS report names its checks, judge from context; use tools only for spot-checks the capture can't answer (blob refs, untracked files, gate doubt).
+**Expected effect:** −5–10 s and −$0.01–0.02 per review here; much more on larger seeds where re-verification tempts a cold gate re-run (the run history in PROJECT_FACTS cites a ~22 min bounce from exactly that class).
+
+## 4. Scope memory per stage — the reviewer carried the whole build handbook (graph/engine design)
+**What happened:** `AGENTS.md` (23,967 bytes) was loaded as memory into all three agent stages — ~5.7–6.2k tokens each (context-window breakdowns, seq 30/95/…). The reviewer judging a 12-line docs diff needed none of the Rust/Docker/bun build instructions. Note this run's own seed just made AGENTS.md 12 lines longer, so the cost grows.
+**Change:** Either per-node memory scoping on the reviewer/implementer nodes in `.fabro/workflows/develop/workflow.fabro` (aligns with open seed fabro-9588), or split `AGENTS.md` into a lean orientation core + `docs/`-resident extended guide.
+**Expected effect:** ~6k tokens × 2–3 stages ≈ 12–18k tokens and a few seconds saved every run, and slower memory growth as the repo docs expand.
+
+## 5. Prescribe cheap stale-basis probes (prompting + tool usage)
+**What happened:** Verifying the seed basis cost 3 shell calls; one of them (`head -40 AGENTS.md` + greps, seq 51–53) pulled 4,677 bytes into context to answer a question about *section headings*. Ironic grounding: this is precisely the orientation friction seed fabro-3d2d describes — the planner burned ~12 s proving layout facts the (now-merged) Dev-loop assets map settles.
+**Change:** In `planner.md` step 3: "Probe structure with `grep -n '^#' <file>` and `ls <dir>`, never `head -N` full files."
+**Expected effect:** ~4 KB less context per basis check; fewer probe calls per run, compounding as the new AGENTS.md map makes most probes unnecessary.
+
+## 6. Downgrade the by-design absent-key WARN (error handling)
+**What happened:** The run's **only** warn/error log line is `preamble_allow_keys entry absent from context node=implementer key=output.gate_known_bug_hits` (worker log; source `lib/components/fabro-workflow/src/lifecycle/fidelity.rs:221`). That key is absent *by design* on green first visits — it only exists after a gatebounce.
+**Change:** In `fidelity.rs` (~line 221): emit this at info level when the stage is on a first visit / no gate-red history, keep warn only when the key should exist (matches open seed fabro-8275).
+**Expected effect:** A clean warn channel — real degradation becomes visible instead of drowned by expected noise in every green run.
+
+## 7. Treat expected grep no-matches as non-errors in the implementer prompt (error handling)
+**What happened:** The implementer's first shell call exited 1 and was flagged `is_error: true` (seq 97–98) — because `grep 'Dev-loop assets' AGENTS.md` found nothing *before the section existed*. Harmless here, but the flag trains the model to read exit 1 as failure.
+**Change:** One line in `.fabro/workflows/develop/prompts/implementer.md` (verification section): "grep exit 1 = no match; on pre-change verification that is the expected state, not an error."
+**Expected effect:** Removes a recurring false-error signal; prevents misdiagnosis loops on future runs (the run history already records one "sandbox rg unreliable" misdiagnosis from a similar benign signal).
+
+## 8. Stop writing empty journal records (UX / loop hygiene)
+**What happened:** 4 of 7 journal records this run are contentless `{}` (start, tester, evidence, closeout — see the final diff of `.fabro/journal/01M23HWFFSB9NK78PGSCZWE6MA.jsonl`), and every checkpoint diff carries them.
+**Change:** In `.fabro/workflows/develop/scripts/stage-journal.nu`: skip the write when the stage produced no journal data (open seed fabro-850f).
+**Expected effect:** Leaner checkpoint diffs and cleaner improve-workflow scans; empty records stop diluting the painpoint/observation signal.
+
+## 9. Fix the pipeline-progress numerator/denominator (UX)
+**What happened:** The implementer's prompt read "Pipeline progress: 0 of 7 stages completed" *after* the planner had completed (17:03:18 vs 17:03:11); the reviewer's read "2 of 7" with 4+ nodes done. Agents are told cycle state matters, then shown wrong counts (matches open seeds fabro-45bf/38f4, whose "6 of 5" symptom this run reproduces in milder form).
+**Change:** Engine-side: compute progress from unique completed nodes over reachable non-terminal nodes (the seeds name the exact fix).
+**Expected effect:** Trustworthy progress in stage prompts, run summary, and PR body — context stages stop being fed wrong cycle state.
+
+**Not recommended from this run:** a docs-only gate fast path (tester took only 4.2 s here), prompt-cache work (174k cache-read tokens already captured), or raising `preamble_budget_kb` (nothing blob-ref'd — the 24 KB budget and 16 KB reviewer inline cap worked exactly as designed this run).
