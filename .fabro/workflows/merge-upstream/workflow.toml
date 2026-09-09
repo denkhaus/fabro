@@ -47,7 +47,7 @@ push = true
 [run.pull_request]
 enabled = true
 draft = false
-auto_merge = true
+auto_merge = false  # GraphQL call deterministically fails here (fabro-6a5a); aligned with develop
 merge_strategy = "squash"
 model = "zai:glm-4.7"
 

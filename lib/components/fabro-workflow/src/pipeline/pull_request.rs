@@ -403,7 +403,11 @@ async fn generate_pr_content(params: GenerateParams) -> Result<PrContent, String
     match structured {
         Ok(content) => Ok(content),
         Err(first_error) => {
-            warn!(
+            // Expected degradation, not an unexpected failure (fabro-6a5a):
+            // reasoning models periodically answer prose to JSON-schema
+            // requests, so the retry below is part of the normal path. Log at
+            // info so a recurring non-JSON first attempt does not spam warn.
+            info!(
                 error = %first_error,
                 "PR content structured generation failed; retrying once without strict JSON output"
             );
@@ -417,7 +421,7 @@ async fn generate_pr_content(params: GenerateParams) -> Result<PrContent, String
             }
             let prose = text.trim();
             if prose.len() >= 40 {
-                warn!(
+                info!(
                     "PR content retry was not JSON; salvaging prose body with deterministic title"
                 );
                 return Ok(PrContent {
@@ -504,7 +508,11 @@ async fn build_pr_content_with_client(
             (title, llm_body)
         }
         Err(error) => {
-            warn!(
+            // Expected degradation (fabro-6a5a): both generation attempts
+            // failing is handled by the deterministic fallback — the run's
+            // work is already pushed. Info, not warn: a recurring
+            // non-JSON model answer must not log as a failure every run.
+            info!(
                 model = %model,
                 error = %error,
                 "PR content generation failed; using deterministic fallback title and skeleton body"
@@ -606,6 +614,12 @@ async fn reconcile_existing_pull_request(
     }))
 }
 
+/// Enable auto-merge on the created pull request when the run configuration
+/// requested it. When auto-merge was NOT requested (`options` is `None`) this
+/// is a silent no-op: no GitHub call, no log line (fabro-6a5a — the GraphQL
+/// mutation deterministically fails with "Auto merge is not allowed for this
+/// repository" on repos without the setting, so configs now default to leaving
+/// auto-merge off and must not pay a warn per run).
 async fn enable_auto_merge_if_requested(
     github: &github_app::GitHubContext<'_>,
     owner: &str,
@@ -2475,6 +2489,47 @@ mod tests {
         assert_eq!(calls, 2);
         assert!(error.contains("attempt 1"), "{error}");
         assert!(error.contains("attempt 2"), "{error}");
+    }
+
+    /// Auto-merge not requested (`options = None`): the enable call must
+    /// short-circuit with no GitHub request at all — a silent no-op, so a
+    /// config with `auto_merge = false` never pays the "Auto merge is not
+    /// allowed" GraphQL round-trip or its warn (fabro-6a5a).
+    #[tokio::test]
+    async fn enable_auto_merge_is_silent_noop_when_not_requested() {
+        let server = MockServer::start_async().await;
+        // Catch-alls: any GET or POST reaching the mock GitHub server counts
+        // against the short-circuit claim.
+        let any_get = server
+            .mock_async(|when, then| {
+                when.method(GET);
+                then.status(500);
+            })
+            .await;
+        let any_post = server
+            .mock_async(|when, then| {
+                when.method(POST);
+                then.status(500);
+            })
+            .await;
+        let creds = fabro_github::GitHubCredentials::Pat("test-token".to_string());
+        let github_base_url = server.url("");
+        let github = github_app::GitHubContext::new(&creds, &github_base_url);
+
+        enable_auto_merge_if_requested(&github, "owner", "repo", "PR_kwTest1", 7, None).await;
+
+        assert_eq!(
+            httpmock::Mock::new(any_get.id, &server).calls_async().await,
+            0,
+            "auto-merge must short-circuit without any GitHub GET when not requested"
+        );
+        assert_eq!(
+            httpmock::Mock::new(any_post.id, &server)
+                .calls_async()
+                .await,
+            0,
+            "auto-merge must short-circuit without any GitHub POST when not requested"
+        );
     }
 
     /// An open pull request already exists for the head branch at the

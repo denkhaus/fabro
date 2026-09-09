@@ -42,15 +42,22 @@ push = true
 [run.meta_branch]
 push = true
 
-# Autonomous merge-back (run -> PR -> base branch): every successful run
-# with a non-empty diff opens a PR against the base branch; auto-merge
-# lands it once required checks pass. Without this, scheduled runs would
-# re-implement the same seed every run (observed: three parallel
-# -pretty implementations on orphaned run branches).
+# Merge-back (run -> PR -> base branch): every successful run with a
+# non-empty diff opens a PR against the base branch. Auto-merge is OFF:
+# the enablePullRequestAutoMerge GraphQL call deterministically fails on
+# this repository ("Auto merge is not allowed for this repository",
+# fabro-6a5a) and only burned ~1 round-trip + a recurring warn per run.
+# Double-pick risk (a scheduled run re-implementing a seed that already
+# has a landed/landing PR — observed: three parallel -pretty
+# implementations on orphaned run branches) is now covered by the
+# planner-side in-flight PR/run check (fabro-06e0/fabro-91ff), which
+# skips seeds whose run already has an open PR or in-flight run before
+# the implementer is ever dispatched. PRs land via manual/scheduled
+# merge-back instead of GitHub auto-merge.
 [run.pull_request]
 enabled = true
 draft = false
-auto_merge = true
+auto_merge = false
 merge_strategy = "squash"
 # glm-4.7: non-reasoning (catalog features.reasoning = false) — cheap,
 # clean JSON for PR titling; no reasoning_effort needed (and "off" is not
