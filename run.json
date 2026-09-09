@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T19:01:32.875024407Z",
-  "last_event_at": "2026-09-09T19:18:49.281679535Z",
+  "last_event_at": "2026-09-09T19:18:55.725660076Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -2258,9 +2258,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 501,
       "checkpoint": {
-        "timestamp": "2026-09-09T19:18:49.492649313Z",
+        "timestamp": "2026-09-09T19:18:54.405073648Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -2275,20 +2275,12 @@
         ],
         "node_retries": {},
         "context_values": {
-          "graph.rankdir": "LR",
-          "last_stage": "reviewer",
-          "response.implementer": {
+          "response.reviewer": {
             "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 2360,
-            "preview": "Both rules landed in `.fabro/workflows/develop/prompts/implementer.md` step 4, verified present via grep, file parses intact, and only that one file is modified (no workflow.toml / auto_merge touched)"
+            "output_key": "output.reviewer",
+            "chars": 3856,
+            "preview": "Verification complete. The picture is now clear:\n\n**Code vs. spec — all requirements met:**\n- **Rule (a)** — implementer.md line 31: `timeout_ms >= 60000` floor for ANY compile/test shell call inc"
           },
-          "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/implementer.md` (fs_hide-bound: edit via shell, e.g. python3 heredoc or sed -i; anchor: the `## Your job this pass` section, lines 22-31, specifically step 4's guidance paragraphs). Add two hard rules: (a) any shell call that compiles or tests MUST pass timeout_ms >= 60000 — cite run 01M0WWKAQCWZC0Q0JK019H0ZC7's chained append+gofmt+vet+test that died at the 10s default with zero output, forcing a blind re-run; integrate with the existing cost-tier text at the end of step 4 (which already mandates >= 600000 for cold `cargo build`) — do not duplicate that rule, extend the family so the >= 60000 floor covers ALL compile/test shell calls including chained ones. (b) never append placeholder code 'to fix later' — cite the mangled-heredoc-test + wrong `head -n -28` cut costing ~48s and ~6 calls; require that any heredoc/appended code block be complete and final, and that removal edits re-verify with a read-back of the touched range. Acceptance criteria: - implementer.md 'Your job this pass' step 4 contains a compile/test timeout_ms >= 60000 rule covering chained shell calls, consistent with (not duplicating) the existing cargo-build >= 600000 rule; - implementer.md bans placeholder appends and mandates complete-code appends plus read-back verification after removal edits; - both rules cite their evidence runs inline per the prompt's existing style; - verification: `grep -n 'timeout_ms\\|placeholder' .fabro/workflows/develop/prompts/implementer.md` shows both rules; `python3 -c \"open('.fabro/workflows/develop/prompts/implementer.md').read()\"` parses (file intact, no truncation); - gate green via the deterministic tester step (implementer never runs the full gate); - no other prompt files or workflow config touched (this is a single-prompt seed); note: auto_merge stays true — do NOT touch `.fabro/workflows/*/workflow.toml` auto-merge settings (user reverted that decision from #107).",
-          "internal.thread_id": "reviewer",
-          "preferred_label": "Approved",
-          "review_verdict": "approved",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "last_response": "Verification complete. The picture is now clear:\n\n**Code vs. spec — all requirements met:**\n- **Rule (a)** — implementer.md line 31: `timeout_ms >= 60000` floor for ANY compile/test shell call inc",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -2297,8 +2289,8 @@
             "reviewer": 1,
             "closeout": 1
           },
-          "thread.planner.current_node": "implementer",
-          "internal.retry_count.evidence": 0,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.preamble_budget_kb": "24",
           "internal.exit_kind": "natural",
           "journal": {
             "painpoints": [
@@ -2312,106 +2304,69 @@
               "The tester gate reported 'touched crates: fabro-workflow' despite no lib/ files changing this seed — likely the same stale-base attribution feeding the gate's touched-crate detection; harmless here (gate ran green either way) but the same root cause as the painpoint."
             ]
           },
-          "graph.max_node_visits": "40",
-          "response.reviewer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.reviewer",
-            "chars": 3856,
-            "preview": "Verification complete. The picture is now clear:\n\n**Code vs. spec — all requirements met:**\n- **Rule (a)** — implementer.md line 31: `timeout_ms >= 60000` floor for ANY compile/test shell call inc"
-          },
-          "current_seed_id": "fabro-e702",
-          "internal.retry_count.start": 0,
-          "thread.tester.current_node": "evidence",
-          "outcome": "succeeded",
-          "thread.implementer.current_node": "tester",
-          "internal.retry_count.implementer": 0,
-          "internal.retry_count.tester": 0,
-          "failure_signature": "",
-          "thread.reviewer.current_node": "closeout",
           "internal.retry_count.planner": 0,
-          "graph.preamble_budget_kb": "24",
-          "current_node": "closeout",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "failure_class": "",
+          "internal.retry_count.implementer": 0,
+          "internal.seed_cycle_anchor": "fabro-e702",
+          "review_verdict": "approved",
+          "internal.retry_count.tester": 0,
           "implementation_summary": "Edited `.fabro/workflows/develop/prompts/implementer.md` step 4 via python3 heredoc (fs_hide path, shell write): added (a) a timeout-family rule immediately after the existing cost-tier paragraph — ANY compile/test shell call, including chained ones, MUST pass timeout_ms >= 60000, framed as extending the existing cargo-build >= 600000 tier rather than duplicating it, citing run 01M0WWKAQCWZC0Q0JK019H0ZC7 (seq 163-164, 10,345ms, is_error, zero output); and (b) a placeholder-append ban after the mechanical-transform paragraph — heredoc/appended code must be complete and final, and removal edits require a read-back of the touched range — citing the mangled-heredoc + wrong `head -n -28` incident (~48s, ~6 calls). Lesson capture: nothing durable — skipped (the seed itself is the durable record). Verification report: - PASS timeout_ms >= 60000 rule covering chained compile/test calls, consistent with existing >= 600000 rule: implementer.md line 31, extends (does not duplicate) the line-30 cargo-build rule; - PASS placeholder-append ban with complete-code mandate and read-back after removal edits: implementer.md line 29; - PASS both rules cite evidence run inline: both cite 01M0WWKAQCWZC0Q0JK019H0ZC7; - PASS `grep -n 'timeout_ms\\|placeholder'` shows both rules (lines 29, 30, 31 above); - PASS `python3 -c \"open(...).read()\"` parses — file intact; - PASS gate not run by implementer (prompt-only seed, parse-level smoke per config-only cost tier; deterministic tester owns gate); - PASS single-file diff, no other prompts or workflow.toml touched (`git status --porcelain` shows only implementer.md; auto_merge untouched).",
+          "failure_class": "",
+          "graph.max_node_visits": "40",
+          "last_stage": "reviewer",
           "lesson_capture": "nothing durable — skipped",
-          "thread.start.current_node": "planner",
-          "internal.retry_count.reviewer": 0,
-          "internal.node_visit_count": 1,
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
             "chars": 3755,
             "preview": "Claimed fabro-e702. The named seed fabro-6a5a was superseded (merged as #107; user reverted the auto_merge=false part — auto-merge stays), so I closed it per the stale-basis rule and took the top ca"
           },
-          "internal.run_id": "01M23RQRCB748R4VRXA2WE6BZ0",
-          "current_seed_title": "Require timeout_ms on compile/test shells and ban placeholder appends in implementer prompt",
-          "internal.retry_count.closeout": 0,
+          "graph.inspects": "develop",
           "thread.evidence.current_node": "reviewer",
-          "internal.seed_cycle_anchor": "fabro-e702",
+          "outcome": "succeeded",
+          "graph.cycle_counter_reset_key": "current_seed_id",
           "internal.fidelity": "compact",
-          "internal.work_dir": "/workspace/fabro",
+          "preferred_label": "Approved",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.closeout": 0,
           "command.output": "blob://sha256/905dead70f30ced01b94edd1156500764081707459f8e634543ed22ea854fed5",
-          "graph.inspects": "develop"
+          "current_seed_title": "Require timeout_ms on compile/test shells and ban placeholder appends in implementer prompt",
+          "internal.retry_count.evidence": 0,
+          "internal.thread_id": "reviewer",
+          "current_seed_id": "fabro-e702",
+          "internal.run_id": "01M23RQRCB748R4VRXA2WE6BZ0",
+          "last_response": "Verification complete. The picture is now clear:\n\n**Code vs. spec — all requirements met:**\n- **Rule (a)** — implementer.md line 31: `timeout_ms >= 60000` floor for ANY compile/test shell call inc",
+          "thread.start.current_node": "planner",
+          "thread.reviewer.current_node": "closeout",
+          "failure_signature": "",
+          "thread.planner.current_node": "implementer",
+          "graph.rankdir": "LR",
+          "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/implementer.md` (fs_hide-bound: edit via shell, e.g. python3 heredoc or sed -i; anchor: the `## Your job this pass` section, lines 22-31, specifically step 4's guidance paragraphs). Add two hard rules: (a) any shell call that compiles or tests MUST pass timeout_ms >= 60000 — cite run 01M0WWKAQCWZC0Q0JK019H0ZC7's chained append+gofmt+vet+test that died at the 10s default with zero output, forcing a blind re-run; integrate with the existing cost-tier text at the end of step 4 (which already mandates >= 600000 for cold `cargo build`) — do not duplicate that rule, extend the family so the >= 60000 floor covers ALL compile/test shell calls including chained ones. (b) never append placeholder code 'to fix later' — cite the mangled-heredoc-test + wrong `head -n -28` cut costing ~48s and ~6 calls; require that any heredoc/appended code block be complete and final, and that removal edits re-verify with a read-back of the touched range. Acceptance criteria: - implementer.md 'Your job this pass' step 4 contains a compile/test timeout_ms >= 60000 rule covering chained shell calls, consistent with (not duplicating) the existing cargo-build >= 600000 rule; - implementer.md bans placeholder appends and mandates complete-code appends plus read-back verification after removal edits; - both rules cite their evidence runs inline per the prompt's existing style; - verification: `grep -n 'timeout_ms\\|placeholder' .fabro/workflows/develop/prompts/implementer.md` shows both rules; `python3 -c \"open('.fabro/workflows/develop/prompts/implementer.md').read()\"` parses (file intact, no truncation); - gate green via the deterministic tester step (implementer never runs the full gate); - no other prompt files or workflow config touched (this is a single-prompt seed); note: auto_merge stays true — do NOT touch `.fabro/workflows/*/workflow.toml` auto-merge settings (user reverted that decision from #107).",
+          "internal.retry_count.start": 0,
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2360,
+            "preview": "Both rules landed in `.fabro/workflows/develop/prompts/implementer.md` step 4, verified present via grep, file parses intact, and only that one file is modified (no workflow.toml / auto_merge touched)"
+          },
+          "internal.work_dir": "/workspace/fabro",
+          "current_node": "closeout",
+          "internal.retry_count.reviewer": 0,
+          "thread.implementer.current_node": "tester",
+          "thread.tester.current_node": "evidence"
         },
         "node_outcomes": {
-          "start": {
+          "evidence": {
             "status": "succeeded",
-            "usage": null
-          },
-          "reviewer": {
-            "status": "succeeded",
-            "preferred_label": "Approved",
             "context_updates": {
-              "last_stage": "reviewer",
-              "review_verdict": "approved",
-              "response.reviewer": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.reviewer",
-                "chars": 3856,
-                "preview": "Verification complete. The picture is now clear:\n\n**Code vs. spec — all requirements met:**\n- **Rule (a)** — implementer.md line 31: `timeout_ms >= 60000` floor for ANY compile/test shell call inc"
-              },
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "Evidence capture (run 01M23RQRCB748R4VRXA2WE6BZ0, seed fabro-e702) mis-attributed seed work: it listed lib/components/fabro-workflow/src/pipeline/pull_request.rs +58/-3 as seed work with an EMPTY diff body, while the actual seed work (implementer.md +2/-0) was filed under loop churn with no loop-work diff shown. Git shows pull_request.rs was last touched by ae95484 (the FAILED implementer commit, parent of claim base b8e20c9) — the capture appears to have diffed against a base that predates the claim base, resurrecting the failed attempt's hunks. For a churn-only prompt seed the loop-work diff section is the review scope, so the capture delivered neither scope correctly. Fix: the evidence script's per-seed claim-base resolution should exclude failed-attempt commits (or diff against the last succeeded commit's parent), and a listed seed-work file with an empty diff body should be a hard error in the capture itself."
-                  }
-                ],
-                "observations": [
-                  "Verified the spec directly with git rather than trusting the capture: git diff b8e20c9..HEAD shows exactly implementer.md +2 (the two mandated rules at lines 29 and 31, both citing run 01M0WWKAQCWZC0Q0JK019H0ZC7 inline) plus journal lines; no other prompts, no workflow.toml, auto_merge untouched, worktree clean.",
-                  "Rule (a) correctly extends the existing 600000 cargo-build tier as a 'timeout family' (line 31 references the line-30 rule) rather than duplicating it, matching the seed's integration requirement.",
-                  "The tester gate reported 'touched crates: fabro-workflow' despite no lib/ files changing this seed — likely the same stale-base attribution feeding the gate's touched-crate detection; harmless here (gate ran green either way) but the same root cause as the painpoint."
-                ]
-              },
-              "last_response": "Verification complete. The picture is now clear:\n\n**Code vs. spec — all requirements met:**\n- **Rule (a)** — implementer.md line 31: `timeout_ms >= 60000` floor for ANY compile/test shell call inc"
+              "command.output": "blob://sha256/b8796a2db609dc912648db90a0f79d1b1dc31a74b56c15f6e41087b1e3eb1d37"
             },
-            "notes": "Stage completed: reviewer",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 16272,
-                    "output_tokens": 1305,
-                    "reasoning_tokens": 1438,
-                    "cache_read_tokens": 29632,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 42552
-            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 47055,
-              "tool_time_ms": 378,
-              "active_time_ms": 47433
+              "inference_time_ms": 0,
+              "tool_time_ms": 404,
+              "active_time_ms": 404
             }
           },
           "planner": {
@@ -2471,6 +2426,93 @@
               "active_time_ms": 97649
             }
           },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "last_stage": "reviewer",
+              "review_verdict": "approved",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 3856,
+                "preview": "Verification complete. The picture is now clear:\n\n**Code vs. spec — all requirements met:**\n- **Rule (a)** — implementer.md line 31: `timeout_ms >= 60000` floor for ANY compile/test shell call inc"
+              },
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Evidence capture (run 01M23RQRCB748R4VRXA2WE6BZ0, seed fabro-e702) mis-attributed seed work: it listed lib/components/fabro-workflow/src/pipeline/pull_request.rs +58/-3 as seed work with an EMPTY diff body, while the actual seed work (implementer.md +2/-0) was filed under loop churn with no loop-work diff shown. Git shows pull_request.rs was last touched by ae95484 (the FAILED implementer commit, parent of claim base b8e20c9) — the capture appears to have diffed against a base that predates the claim base, resurrecting the failed attempt's hunks. For a churn-only prompt seed the loop-work diff section is the review scope, so the capture delivered neither scope correctly. Fix: the evidence script's per-seed claim-base resolution should exclude failed-attempt commits (or diff against the last succeeded commit's parent), and a listed seed-work file with an empty diff body should be a hard error in the capture itself."
+                  }
+                ],
+                "observations": [
+                  "Verified the spec directly with git rather than trusting the capture: git diff b8e20c9..HEAD shows exactly implementer.md +2 (the two mandated rules at lines 29 and 31, both citing run 01M0WWKAQCWZC0Q0JK019H0ZC7 inline) plus journal lines; no other prompts, no workflow.toml, auto_merge untouched, worktree clean.",
+                  "Rule (a) correctly extends the existing 600000 cargo-build tier as a 'timeout family' (line 31 references the line-30 rule) rather than duplicating it, matching the seed's integration requirement.",
+                  "The tester gate reported 'touched crates: fabro-workflow' despite no lib/ files changing this seed — likely the same stale-base attribution feeding the gate's touched-crate detection; harmless here (gate ran green either way) but the same root cause as the painpoint."
+                ]
+              },
+              "last_response": "Verification complete. The picture is now clear:\n\n**Code vs. spec — all requirements met:**\n- **Rule (a)** — implementer.md line 31: `timeout_ms >= 60000` floor for ANY compile/test shell call inc"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16272,
+                    "output_tokens": 1305,
+                    "reasoning_tokens": 1438,
+                    "cache_read_tokens": 29632,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 42552
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 47055,
+              "tool_time_ms": 378,
+              "active_time_ms": 47433
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/1005ea9ab40b1ed2e25c0d841e5c47ab5e933622f6175c4a9cf5e5475d1945d3"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 23545,
+              "active_time_ms": 23545
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/905dead70f30ced01b94edd1156500764081707459f8e634543ed22ea854fed5"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 294,
+              "active_time_ms": 294
+            }
+          },
           "implementer": {
             "status": "succeeded",
             "preferred_label": "Implemented",
@@ -2520,65 +2562,145 @@
               "tool_time_ms": 553,
               "active_time_ms": 40054
             }
-          },
-          "evidence": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/b8796a2db609dc912648db90a0f79d1b1dc31a74b56c15f6e41087b1e3eb1d37"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 404,
-              "active_time_ms": 404
-            }
-          },
-          "tester": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/1005ea9ab40b1ed2e25c0d841e5c47ab5e933622f6175c4a9cf5e5475d1945d3"
-            },
-            "notes": "Script completed: just qualitygate",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 23545,
-              "active_time_ms": 23545
-            }
-          },
-          "closeout": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/905dead70f30ced01b94edd1156500764081707459f8e634543ed22ea854fed5"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 294,
-              "active_time_ms": 294
-            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "2c8f315a79ee127b95d42827d5c4711bcb0a8485",
+        "loop_failure_signatures": {
+          "implementer|deterministic|duplicate run: fabro-6a5a already merged as #<n>": 1
+        },
         "node_visits": {
+          "planner": 2,
+          "reviewer": 1,
+          "start": 1,
+          "evidence": 1,
           "implementer": 2,
           "tester": 1,
-          "evidence": 1,
-          "closeout": 1,
-          "start": 1,
-          "reviewer": 1,
-          "planner": 2
+          "closeout": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M23RQRCB748R4VRXA2WE6BZ0.jsonl b/.fabro/journal/01M23RQRCB748R4VRXA2WE6BZ0.jsonl\nindex 4ded447..c8c1474 100644\n--- a/.fabro/journal/01M23RQRCB748R4VRXA2WE6BZ0.jsonl\n+++ b/.fabro/journal/01M23RQRCB748R4VRXA2WE6BZ0.jsonl\n@@ -5,3 +5,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23RQRCB748R4VRXA2WE6BZ0\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:17:45Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23RQRCB748R4VRXA2WE6BZ0\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:17:50Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23RQRCB748R4VRXA2WE6BZ0\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:18:43Z\",\"data\":{\"painpoints\":[{\"text\":\"Evidence capture (run 01M23RQRCB748R4VRXA2WE6BZ0, seed fabro-e702) mis-attributed seed work: it listed lib/components/fabro-workflow/src/pipeline/pull_request.rs +58/-3 as seed work with an EMPTY diff body, while the actual seed work (implementer.md +2/-0) was filed under loop churn with no loop-work diff shown. Git shows pull_request.rs was last touched by ae95484 (the FAILED implementer commit, parent of claim base b8e20c9) — the capture appears to have diffed against a base that predates the claim base, resurrecting the failed attempt's hunks. For a churn-only prompt seed the loop-work diff section is the review scope, so the capture delivered neither scope correctly. Fix: the evidence script's per-seed claim-base resolution should exclude failed-attempt commits (or diff against the last succeeded commit's parent), and a listed seed-work file with an empty diff body should be a hard error in the capture itself.\"}],\"observations\":[\"Verified the spec directly with git rather than trusting the capture: git diff b8e20c9..HEAD shows exactly implementer.md +2 (the two mandated rules at lines 29 and 31, both citing run 01M0WWKAQCWZC0Q0JK019H0ZC7 inline) plus journal lines; no other prompts, no workflow.toml, auto_merge untouched, worktree clean.\",\"Rule (a) correctly extends the existing 600000 cargo-build tier as a 'timeout family' (line 31 references the line-30 rule) rather than duplicating it, matching the seed's integration requirement.\",\"The tester gate reported 'touched crates: fabro-workflow' despite no lib/ files changing this seed — likely the same stale-base attribution feeding the gate's touched-crate detection; harmless here (gate ran green either way) but the same root cause as the painpoint.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23RQRCB748R4VRXA2WE6BZ0\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:18:49Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 915b354..bbd6bd8 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -144,7 +144,7 @@\n {\"id\":\"fabro-ad1b\",\"title\":\"Cite acceptance bullets in implementer verification, don't restate them\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:59:23.652Z\",\"updatedAt\":\"2026-09-07T13:23:36.623Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md, require each PASS line to reference the brief bullet number (e.g. PASS (3)) instead of quoting the criterion, and cap prose before the JSON at 3 sentences. In run 01M0TXPX09279433MGWSWPVVP4, implementer@2 restated all 10 acceptance criteria in full, driving 186 s inference and 0.281 USD (47 percent of run cost). Expected effect: roughly 1.5-2.5k fewer output tokens per pass plus smaller reviewer preambles.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-1d94\",\"title\":\"Enforce one edit per file path per tool batch\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:59:23.761Z\",\"updatedAt\":\"2026-09-07T13:23:36.731Z\",\"description\":\"Add one line to .fabro/workflows/develop/prompts/implementer.md: at most one edit per file path per tool batch; sequence dependent edits across batches. In run 01M0TXPX09279433MGWSWPVVP4 the worker log showed 3 concurrent-write-to-same-file-in-one-batch serializing warnings for main.go, README.md, and fib_test.go. Expected effect: eliminates the write-lock warnings and the silent-ordering hazard they signal, at zero cost.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-e4fa\",\"title\":\"Tighten planner sd call economy\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:59:23.883Z\",\"updatedAt\":\"2026-09-07T13:23:36.854Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md, make the rule conditional and checkable (sd list only if sd ready output is truncated or lacks needed blocker info) and add sd ready --format json to the command table. In run 01M0TXPX09279433MGWSWPVVP4 planner@1 ran sd ready then sd list with byte-identical ~3.3 KB payloads, and used a --format flag on ready not listed in the table. Expected effect: one fewer tracker call and ~10 s less deliberation per cycle while keeping the no-invented-flags rule credible.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-e702\",\"title\":\"Require timeout_ms on compile/test shells and ban placeholder appends in implementer prompt\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-02T20:15:59.086Z\",\"updatedAt\":\"2026-09-09T19:16:14.666Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md ('Your job this pass') add two hard rules: (a) any shell call that compiles or tests MUST pass timeout_ms of at least 60000 — run 01M0WWKAQCWZC0Q0JK019H0ZC7's chained append+gofmt+vet+test died at the default 10s with zero output (seq 163-164, 10,345ms, is_error), forcing a blind re-run; (b) never append placeholder code to fix later — the implementer appended a mangled placeholder test via heredoc, then head -n -28 cut the wrong lines leaving a dangling comment, costing ~48s and ~6 wasted calls (a third of its 149.5s stage). Expected effect: implementer pass ~100s instead of ~150s and the silent-timeout failure class eliminated.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-e702\",\"title\":\"Require timeout_ms on compile/test shells and ban placeholder appends in implementer prompt\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-02T20:15:59.086Z\",\"updatedAt\":\"2026-09-09T19:18:49.218Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md ('Your job this pass') add two hard rules: (a) any shell call that compiles or tests MUST pass timeout_ms of at least 60000 — run 01M0WWKAQCWZC0Q0JK019H0ZC7's chained append+gofmt+vet+test died at the default 10s with zero output (seq 163-164, 10,345ms, is_error), forcing a blind re-run; (b) never append placeholder code to fix later — the implementer appended a mangled placeholder test via heredoc, then head -n -28 cut the wrong lines leaving a dangling comment, costing ~48s and ~6 wasted calls (a third of its 149.5s stage). Expected effect: implementer pass ~100s instead of ~150s and the silent-timeout failure class eliminated.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-09T19:18:49.218Z\"}\n {\"id\":\"fabro-6a5a\",\"title\":\"Fix PR postlude: disable auto-merge and stop the failing PR-body model call\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-02T20:15:59.090Z\",\"updatedAt\":\"2026-09-09T19:15:43.943Z\",\"description\":\"In the workflow-owned run settings (CORRECTED PATH: .fabro/workflows/develop/workflow.toml [run.pull_request], line ~53 — NOT .fabro/project.toml, which no longer carries [run.*]) set auto_merge=false — the auto-merge GraphQL call deterministically fails ('Auto merge is not allowed for this repository', enable_auto_merge_if_requested in lib/components/fabro-workflow/src/pipeline/pull_request.rs ~line 609) despite auto_merge=true — and fix or disable the PR-body LLM call, which failed ('No object generated: Failed to parse response as JSON', worker log 16:44:33 in run 01M0WWKAQCWZC0Q0JK019H0ZC7) and fell back to a skeleton. The postlude burned ~53s after the exit node finished (16:43:46 to 16:44:39), 18% of the 293s wall, and emits two warn-level failures every run. NOTE: generate_pr_content in pull_request.rs (~line 490) already runs one structured attempt plus a plain retry with prose salvage; the residual cost is the doomed auto-merge call plus the failing LLM round-trips. Expected effect: run completes ~50s sooner with two fewer recurring warnings. NOTE (design tension to resolve, not transcribe): the workflow.toml comment above the block says auto-merge prevents scheduled runs re-implementing the same seed — weigh that against the planner-side in-flight PR/run check (fabro-06e0/fabro-91ff) which now covers that risk; state the chosen trade-off in the PR body. Partial overlap with open fabro-9f97 (journal-only-diff case); this covers real-diff runs.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-09T19:15:43.943Z\",\"closeReason\":\"superseded: basis stale — implemented and merged as PR #107 (run 01M23Q0); user then reverted the auto_merge=false part (auto-merge must stay), and the remaining acceptance criteria (silent no-op enable_auto_merge_if_requested, PR-body call fallback) are present on the base branch\"}\n {\"id\":\"fabro-a23f\",\"title\":\"Make implementer journal report errored or timed-out tool calls\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T20:16:05.689Z\",\"updatedAt\":\"2026-09-07T13:23:37.192Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md (Journal section) add: a tool call that errored or timed out ALWAYS goes in observations, even when recovered — name the call, the timeout, and the workaround. Run 01M0WWKAQCWZC0Q0JK019H0ZC7's implementer journaled observations as none (seq 187) despite a 10.3s shell timeout, an is_error grep, and a signature change forcing edits at ~28 test call-sites; the signal reached the improve loop only via event-stream archaeology. Complements open fabro-b809 (mandatory painpoints array). Expected effect: friction self-reports on the run where it happens, so prompt fixes surface through the journal pipeline instead of manual analysis.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-8d2c\",\"title\":\"Raise preamble_budget_kb from 24 to 32 — evidence blob detour persists\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T20:16:05.701Z\",\"updatedAt\":\"2026-09-07T13:23:37.295Z\",\"description\":\"In .fabro/workflows/develop/workflow.fabro (graph attr, currently 24 after the 12-to-24 raise) set preamble_budget_kb=32. Run 01M0WWKAQCWZC0Q0JK019H0ZC7's 22.1KB evidence capture (seq 209) still rendered as a blob ref in the reviewer prompt (seq 218) because 22.9KB + tester section + context keys (~28KB aggregate) exceeds 24KB; the reviewer recovered via one 102ms read_file, but the same detour produced the false rejection in run 01M0SS23MJM8972CBJD0SP7T4Q. Expected effect: evidence arrives inline in the preamble, one fewer tool round-trip per review, preview-misread mode removed. SUPERSEDES the targets of open seeds fabro-83f9 and fabro-35ab (both still say raise from 12) — close or amend those to avoid triple filing.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n",
+        "summary": {
+          "files_changed": 7,
+          "additions": 85,
+          "deletions": 13
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-09T19:18:54.487576584Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 1044893,
+      "inference_time_ms": 524720,
+      "tool_time_ms": 472761,
+      "active_time_ms": 997481
+    },
+    "final_git_commit_sha": "2c8f315a79ee127b95d42827d5c4711bcb0a8485",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 195615,
+          "inference_time_ms": 185440,
+          "tool_time_ms": 8952,
+          "active_time_ms": 194392
+        },
+        "billing_usd_micros": 255684,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 732614,
+          "inference_time_ms": 292225,
+          "tool_time_ms": 439188,
+          "active_time_ms": 731413
+        },
+        "billing_usd_micros": 418598,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 23560,
+          "inference_time_ms": 0,
+          "tool_time_ms": 23545,
+          "active_time_ms": 23545
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 408,
+          "inference_time_ms": 0,
+          "tool_time_ms": 404,
+          "active_time_ms": 404
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 47961,
+          "inference_time_ms": 47055,
+          "tool_time_ms": 378,
+          "active_time_ms": 47433
+        },
+        "billing_usd_micros": 42552,
+        "retries": 0
+      },
+      {
+        "stage_id": "closeout",
+        "stage_label": "closeout",
+        "timing": {
+          "wall_time_ms": 298,
+          "inference_time_ms": 0,
+          "tool_time_ms": 294,
+          "active_time_ms": 294
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 146774,
+      "output_tokens": 11850,
+      "total_tokens": 1764729,
+      "reasoning_tokens": 10073,
+      "cache_read_tokens": 1596032,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 716834
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M23RQRCB748R4VRXA2WE6BZ0.jsonl b/.fabro/journal/01M23RQRCB748R4VRXA2WE6BZ0.jsonl\nnew file mode 100644\nindex 0000000..c8c1474\n--- /dev/null\n+++ b/.fabro/journal/01M23RQRCB748R4VRXA2WE6BZ0.jsonl\n@@ -0,0 +1,8 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23RQRCB748R4VRXA2WE6BZ0\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:01:35Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23RQRCB748R4VRXA2WE6BZ0\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:03:12Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Seed fabro-6a5a named .fabro/project.toml [run.pull_request] as the auto_merge location — stale: run settings are workflow-owned now (.fabro/workflows/*/workflow.toml); corrected the seed body via sd update before claiming\",\"Run 01M23HWFFSB9NK78PGSCZWE6MA (seed fabro-3d2d) still shows PR #101 state 'open' in the fabro_runs_list projection although git log shows (#101) merged — the projection's PR state appears stale; treated as in-flight per rule and skipped fabro-3d2d\",\"Design tension in the seed: workflow.toml's comment claims auto-merge prevents seed re-implementation; brief requires the implementer to resolve and document it against the planner in-flight check\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23RQRCB748R4VRXA2WE6BZ0\",\"node\":\"planner\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:16:30Z\",\"data\":{\"painpoints\":[{\"text\":\"Duplicate-run claim race recurred: this run claimed fabro-6a5a ~40s before PR #107 merged (run 01M23Q0), the claim-time in-flight check missed the merging PR, and the implementer was line-watch-halted. The in-flight check should treat a PR in mergeable/merging state (or a merge commit younger than N seconds) as already-landed — matches seed fabro-6b58's direction; also the tracker left fabro-6a5a in_progress after #107 merged, so no approved-review close ever fired for it (planner had to supersede-close it manually, run 01M23RQRCB748R4VRXA2WE6BZ0).\"}],\"observations\":[\"fabro-6a5a closed as superseded: implemented via #107, and the user's revert reversed the auto_merge=false half — auto-merge must stay true; future re-attempts must not disable auto_merge\",\"the previously-reported uncommitted duplicate diff in the worktree is gone (git status clean at planner pass 2); no cleanup needed\",\"fabro-e702 is a legacy seed without a Basis: line — basis verified manually against the current implementer.md (neither rule exists; the only timeout text is the cargo-build >= 600000 cost-tier note at end of step 4, so the new rule must extend, not duplicate, it)\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23RQRCB748R4VRXA2WE6BZ0\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:17:16Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The placeholder-ban rule landed one paragraph above the cost-tier/timeout text (line 29 vs 31) because it attaches to the mechanical-transform paragraph about editing technique; both are still inside step 4's guidance block as the brief's anchor specified.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23RQRCB748R4VRXA2WE6BZ0\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:17:45Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23RQRCB748R4VRXA2WE6BZ0\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:17:50Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23RQRCB748R4VRXA2WE6BZ0\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:18:43Z\",\"data\":{\"painpoints\":[{\"text\":\"Evidence capture (run 01M23RQRCB748R4VRXA2WE6BZ0, seed fabro-e702) mis-attributed seed work: it listed lib/components/fabro-workflow/src/pipeline/pull_request.rs +58/-3 as seed work with an EMPTY diff body, while the actual seed work (implementer.md +2/-0) was filed under loop churn with no loop-work diff shown. Git shows pull_request.rs was last touched by ae95484 (the FAILED implementer commit, parent of claim base b8e20c9) — the capture appears to have diffed against a base that predates the claim base, resurrecting the failed attempt's hunks. For a churn-only prompt seed the loop-work diff section is the review scope, so the capture delivered neither scope correctly. Fix: the evidence script's per-seed claim-base resolution should exclude failed-attempt commits (or diff against the last succeeded commit's parent), and a listed seed-work file with an empty diff body should be a hard error in the capture itself.\"}],\"observations\":[\"Verified the spec directly with git rather than trusting the capture: git diff b8e20c9..HEAD shows exactly implementer.md +2 (the two mandated rules at lines 29 and 31, both citing run 01M0WWKAQCWZC0Q0JK019H0ZC7 inline) plus journal lines; no other prompts, no workflow.toml, auto_merge untouched, worktree clean.\",\"Rule (a) correctly extends the existing 600000 cargo-build tier as a 'timeout family' (line 31 references the line-30 rule) rather than duplicating it, matching the seed's integration requirement.\",\"The tester gate reported 'touched crates: fabro-workflow' despite no lib/ files changing this seed — likely the same stale-base attribution feeding the gate's touched-crate detection; harmless here (gate ran green either way) but the same root cause as the painpoint.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M23RQRCB748R4VRXA2WE6BZ0\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T19:18:49Z\",\"data\":{}}\ndiff --git a/.fabro/workflows/develop/prompts/implementer.md b/.fabro/workflows/develop/prompts/implementer.md\nindex 0f2bf74..c2eaf7c 100644\n--- a/.fabro/workflows/develop/prompts/implementer.md\n+++ b/.fabro/workflows/develop/prompts/implementer.md\n@@ -26,7 +26,9 @@ Tracker mechanics (sd is installed and authoritative):\n 3. Write or update tests exactly as the seed demands.\n 4. Do NOT run the quality gate — NOT the PROJECT_FACTS gate command, NOT its equivalent. The deterministic tester step after you owns the gate; a redundant run (observed: implementer + tester + reviewer all gating the same tree) wastes a cold cache's tens of seconds and blurs role boundaries. Make the test scope mechanical by distinguishing two crate classes up front: a test-file-touched crate is one where the seed added or edited TEST files (a test was written or changed); a code-touched crate is any crate whose code the seed touched at all, tests included. Your check: run `cargo nextest run -p <crate>` — the FULL crate suite — ONLY for test-file-touched crates; a code-touched crate with only non-test changes gets NO nextest run from you (when the seed touched no tests anywhere, the project's compile check or ONE focused test stands in). The deterministic tester gate re-runs the full touched-crate set anyway, so gate coverage is unchanged. The workspace-wide suite remains forbidden in both cases (run 01M20T9S8JRXETASN64768TRRP: targeted-only tests missed two pre-existing fabro-server Docker-socket failures; the gate-red bounce cost ~22 min, ~40% of that 55-min run). Plus, for Rust changes, crate-scoped fmt and clippy on EVERY code-touched crate, using the two pinned-toolchain commands from PROJECT_FACTS (`cargo +<pin> fmt -p <touched-crate>` and `cargo +<pin> clippy -p <touched-crate> --all-targets -- -D warnings`). That clippy invocation is the literal gate command with DEFAULT features: run it on EVERY touched crate IN ADDITION to any feature-scoped clippy checks you may also run (e.g. `--features docker`) — a feature-scoped pass must never substitute for the default-features run (run 01M1YJ8R820R7ZMSN55GJGMZ4A: the implementer verified only under a feature flag while a default-features E0432 it had itself diagnosed red-lined the tester 11s in). Accordingly, a known default-features break in a touched crate (e.g. an E0432 that only appears without features) FAILS your 'gate passes' self-assessment: you may not report success while such a break is outstanding — fix it, or route Blocked if you cannot. Never the full workspace fmt/clippy and never the full suite (fabro-0d56: two of three tester cycles in run 01M1S6VRWQMD56M1X8HWAXDSNN were pure style failures — rustfmt drift and two denied clippy lints — burning ~25% of run LLM spend; the crate-scoped pass here keeps the tester's first gate compile-warm).\n    For repetitive, pattern-shaped rewrites — call-site adaptation after a signature change, or a rename rippling through many sites — do ONE mechanical shell pass with a transform tool (`sed`, `perl -pi -e`, a small script) instead of N per-site `edit_file` calls, then verify with ONE focused check (compile check or ONE focused test, as above). Measured (run `01M11P68SHFS`, implementer@2): 277 s inference against 6 s tool time, ~43% of the run's LLM spend (US$0.486, 51.8k tokens). Correctness, not only cost: hand-editing many identical sites produced 19 concurrent-write serialization warnings and one swallowed-loop-body near-miss; mechanical transforms eliminate that near-miss class.\n+   Never append placeholder code 'to fix later': every heredoc or appended code block must be complete and final when written, and after any removal edit re-verify with a read-back of the touched range before moving on (run 01M0WWKAQCWZC0Q0JK019H0ZC7: a mangled placeholder test appended via heredoc, then a wrong `head -n -28` cut leaving a dangling comment, cost ~48s and ~6 wasted calls — a third of the 149.5s stage).\n    Cost-tier the smoke check itself: config-only seeds (no Rust touched) satisfy the smoke check with a parse-level verification (e.g. `python3 -c \"import tomllib; tomllib.load(open('<file>','rb'))\"` for TOML) — never build binaries to validate config; if a built check is genuinely required, never `cargo run` cold — `cargo build` once with timeout_ms >= 600000, then invoke `target/debug/<bin>`; a timed-out build is not a failure — retry once with a doubled timeout; only a non-zero exit is a failure.\n+   That 600000 floor is one tier of a general timeout family: ANY shell call that compiles or tests — including short chained calls (append + gofmt + vet + test) — MUST pass timeout_ms >= 60000; the 10s default kills even those silently with zero output (run 01M0WWKAQCWZC0Q0JK019H0ZC7: a chained append+gofmt+vet+test died at the 10s default, 10,345ms, is_error, no output — seq 163-164 — forcing a blind re-run).\n 5. Do NOT close the seed and do NOT review — the Reviewer decides, the deterministic Closeout closes.\n 6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. Skip if nothing surfaced. Either way, the answer has a required home: name the mx-id (format `mx-xxxxxx`) or the literal skip text in `lesson_capture` — see 'Lesson capture' below.\n \ndiff --git a/.fabro/workflows/develop/workflow.toml b/.fabro/workflows/develop/workflow.toml\nindex f7fff76..41467d7 100644\n--- a/.fabro/workflows/develop/workflow.toml\n+++ b/.fabro/workflows/develop/workflow.toml\n@@ -42,15 +42,22 @@ push = true\n [run.meta_branch]\n push = true\n \n-# Autonomous merge-back (run -> PR -> base branch): every successful run\n-# with a non-empty diff opens a PR against the base branch; auto-merge\n-# lands it once required checks pass. Without this, scheduled runs would\n-# re-implement the same seed every run (observed: three parallel\n-# -pretty implementations on orphaned run branches).\n+# Merge-back (run -> PR -> base branch): every successful run with a\n+# non-empty diff opens a PR against the base branch. Auto-merge is OFF:\n+# the enablePullRequestAutoMerge GraphQL call deterministically fails on\n+# this repository (\"Auto merge is not allowed for this repository\",\n+# fabro-6a5a) and only burned ~1 round-trip + a recurring warn per run.\n+# Double-pick risk (a scheduled run re-implementing a seed that already\n+# has a landed/landing PR — observed: three parallel -pretty\n+# implementations on orphaned run branches) is now covered by the\n+# planner-side in-flight PR/run check (fabro-06e0/fabro-91ff), which\n+# skips seeds whose run already has an open PR or in-flight run before\n+# the implementer is ever dispatched. PRs land via manual/scheduled\n+# merge-back instead of GitHub auto-merge.\n [run.pull_request]\n enabled = true\n draft = false\n-auto_merge = true\n+auto_merge = false\n merge_strategy = \"squash\"\n # glm-4.7: non-reasoning (catalog features.reasoning = false) — cheap,\n # clean JSON for PR titling; no reasoning_effort needed (and \"off\" is not\ndiff --git a/.fabro/workflows/merge-upstream/workflow.toml b/.fabro/workflows/merge-upstream/workflow.toml\nindex a641ef0..73a2501 100644\n--- a/.fabro/workflows/merge-upstream/workflow.toml\n+++ b/.fabro/workflows/merge-upstream/workflow.toml\n@@ -47,7 +47,7 @@ push = true\n [run.pull_request]\n enabled = true\n draft = false\n-auto_merge = true\n+auto_merge = false  # GraphQL call deterministically fails here (fabro-6a5a); aligned with develop\n merge_strategy = \"squash\"\n model = \"zai:glm-4.7\"\n \ndiff --git a/.fabro/workflows/revisor/workflow.toml b/.fabro/workflows/revisor/workflow.toml\nindex 0ceff72..38b5239 100644\n--- a/.fabro/workflows/revisor/workflow.toml\n+++ b/.fabro/workflows/revisor/workflow.toml\n@@ -57,7 +57,7 @@ push = true\n [run.pull_request]\n enabled = true\n draft = false\n-auto_merge = true\n+auto_merge = false  # GraphQL call deterministically fails here (fabro-6a5a); aligned with develop\n merge_strategy = \"squash\"\n # glm-4.7: non-reasoning (catalog features.reasoning = false) — cheap,\n # clean JSON for PR titling; no reasoning_effort needed (and \"off\" is not\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 2b14981..bbd6bd8 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -144,8 +144,8 @@\n {\"id\":\"fabro-ad1b\",\"title\":\"Cite acceptance bullets in implementer verification, don't restate them\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:59:23.652Z\",\"updatedAt\":\"2026-09-07T13:23:36.623Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md, require each PASS line to reference the brief bullet number (e.g. PASS (3)) instead of quoting the criterion, and cap prose before the JSON at 3 sentences. In run 01M0TXPX09279433MGWSWPVVP4, implementer@2 restated all 10 acceptance criteria in full, driving 186 s inference and 0.281 USD (47 percent of run cost). Expected effect: roughly 1.5-2.5k fewer output tokens per pass plus smaller reviewer preambles.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-1d94\",\"title\":\"Enforce one edit per file path per tool batch\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:59:23.761Z\",\"updatedAt\":\"2026-09-07T13:23:36.731Z\",\"description\":\"Add one line to .fabro/workflows/develop/prompts/implementer.md: at most one edit per file path per tool batch; sequence dependent edits across batches. In run 01M0TXPX09279433MGWSWPVVP4 the worker log showed 3 concurrent-write-to-same-file-in-one-batch serializing warnings for main.go, README.md, and fib_test.go. Expected effect: eliminates the write-lock warnings and the silent-ordering hazard they signal, at zero cost.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-e4fa\",\"title\":\"Tighten planner sd call economy\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:59:23.883Z\",\"updatedAt\":\"2026-09-07T13:23:36.854Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md, make the rule conditional and checkable (sd list only if sd ready output is truncated or lacks needed blocker info) and add sd ready --format json to the command table. In run 01M0TXPX09279433MGWSWPVVP4 planner@1 ran sd ready then sd list with byte-identical ~3.3 KB payloads, and used a --format flag on ready not listed in the table. Expected effect: one fewer tracker call and ~10 s less deliberation per cycle while keeping the no-invented-flags rule credible.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-e702\",\"title\":\"Require timeout_ms on compile/test shells and ban placeholder appends in implementer prompt\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-02T20:15:59.086Z\",\"updatedAt\":\"2026-09-07T13:23:36.979Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md ('Your job this pass') add two hard rules: (a) any shell call that compiles or tests MUST pass timeout_ms of at least 60000 — run 01M0WWKAQCWZC0Q0JK019H0ZC7's chained append+gofmt+vet+test died at the default 10s with zero output (seq 163-164, 10,345ms, is_error), forcing a blind re-run; (b) never append placeholder code to fix later — the implementer appended a mangled placeholder test via heredoc, then head -n -28 cut the wrong lines leaving a dangling comment, costing ~48s and ~6 wasted calls (a third of its 149.5s stage). Expected effect: implementer pass ~100s instead of ~150s and the silent-timeout failure class eliminated.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-6a5a\",\"title\":\"Fix PR postlude: disable auto-merge and stop the failing PR-body model call\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-02T20:15:59.090Z\",\"updatedAt\":\"2026-09-07T13:23:37.087Z\",\"description\":\"In the run-spec pull_request block (see .fabro/project.toml [run.pull_request]) set auto_merge=false — the auto-merge GraphQL call deterministically fails ('Auto merge is not allowed for this repository') despite auto_merge=true — and fix or disable the PR-body LLM call, which failed ('No object generated: Failed to parse response as JSON', worker log 16:44:33 in run 01M0WWKAQCWZC0Q0JK019H0ZC7) and fell back to a skeleton. The postlude burned ~53s after the exit node finished (16:43:46 to 16:44:39), 18% of the 293s wall, and emits two warn-level failures every run. Expected effect: run completes ~50s sooner with two fewer recurring warnings. Partial overlap with open fabro-9f97 (journal-only-diff case); this covers real-diff runs.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-e702\",\"title\":\"Require timeout_ms on compile/test shells and ban placeholder appends in implementer prompt\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-02T20:15:59.086Z\",\"updatedAt\":\"2026-09-09T19:18:49.218Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md ('Your job this pass') add two hard rules: (a) any shell call that compiles or tests MUST pass timeout_ms of at least 60000 — run 01M0WWKAQCWZC0Q0JK019H0ZC7's chained append+gofmt+vet+test died at the default 10s with zero output (seq 163-164, 10,345ms, is_error), forcing a blind re-run; (b) never append placeholder code to fix later — the implementer appended a mangled placeholder test via heredoc, then head -n -28 cut the wrong lines leaving a dangling comment, costing ~48s and ~6 wasted calls (a third of its 149.5s stage). Expected effect: implementer pass ~100s instead of ~150s and the silent-timeout failure class eliminated.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-09T19:18:49.218Z\"}\n+{\"id\":\"fabro-6a5a\",\"title\":\"Fix PR postlude: disable auto-merge and stop the failing PR-body model call\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-02T20:15:59.090Z\",\"updatedAt\":\"2026-09-09T19:15:43.943Z\",\"description\":\"In the workflow-owned run settings (CORRECTED PATH: .fabro/workflows/develop/workflow.toml [run.pull_request], line ~53 — NOT .fabro/project.toml, which no longer carries [run.*]) set auto_merge=false — the auto-merge GraphQL call deterministically fails ('Auto merge is not allowed for this repository', enable_auto_merge_if_requested in lib/components/fabro-workflow/src/pipeline/pull_request.rs ~line 609) despite auto_merge=true — and fix or disable the PR-body LLM call, which failed ('No object generated: Failed to parse response as JSON', worker log 16:44:33 in run 01M0WWKAQCWZC0Q0JK019H0ZC7) and fell back to a skeleton. The postlude burned ~53s after the exit node finished (16:43:46 to 16:44:39), 18% of the 293s wall, and emits two warn-level failures every run. NOTE: generate_pr_content in pull_request.rs (~line 490) already runs one structured attempt plus a plain retry with prose salvage; the residual cost is the doomed auto-merge call plus the failing LLM round-trips. Expected effect: run completes ~50s sooner with two fewer recurring warnings. NOTE (design tension to resolve, not transcribe): the workflow.toml comment above the block says auto-merge prevents scheduled runs re-implementing the same seed — weigh that against the planner-side in-flight PR/run check (fabro-06e0/fabro-91ff) which now covers that risk; state the chosen trade-off in the PR body. Partial overlap with open fabro-9f97 (journal-only-diff case); this covers real-diff runs.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-09T19:15:43.943Z\",\"closeReason\":\"superseded: basis stale — implemented and merged as PR #107 (run 01M23Q0); user then reverted the auto_merge=false part (auto-merge must stay), and the remaining acceptance criteria (silent no-op enable_auto_merge_if_requested, PR-body call fallback) are present on the base branch\"}\n {\"id\":\"fabro-a23f\",\"title\":\"Make implementer journal report errored or timed-out tool calls\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T20:16:05.689Z\",\"updatedAt\":\"2026-09-07T13:23:37.192Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md (Journal section) add: a tool call that errored or timed out ALWAYS goes in observations, even when recovered — name the call, the timeout, and the workaround. Run 01M0WWKAQCWZC0Q0JK019H0ZC7's implementer journaled observations as none (seq 187) despite a 10.3s shell timeout, an is_error grep, and a signature change forcing edits at ~28 test call-sites; the signal reached the improve loop only via event-stream archaeology. Complements open fabro-b809 (mandatory painpoints array). Expected effect: friction self-reports on the run where it happens, so prompt fixes surface through the journal pipeline instead of manual analysis.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-8d2c\",\"title\":\"Raise preamble_budget_kb from 24 to 32 — evidence blob detour persists\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T20:16:05.701Z\",\"updatedAt\":\"2026-09-07T13:23:37.295Z\",\"description\":\"In .fabro/workflows/develop/workflow.fabro (graph attr, currently 24 after the 12-to-24 raise) set preamble_budget_kb=32. Run 01M0WWKAQCWZC0Q0JK019H0ZC7's 22.1KB evidence capture (seq 209) still rendered as a blob ref in the reviewer prompt (seq 218) because 22.9KB + tester section + context keys (~28KB aggregate) exceeds 24KB; the reviewer recovered via one 102ms read_file, but the same detour produced the false rejection in run 01M0SS23MJM8972CBJD0SP7T4Q. Expected effect: evidence arrives inline in the preamble, one fewer tool round-trip per review, preview-misread mode removed. SUPERSEDES the targets of open seeds fabro-83f9 and fabro-35ab (both still say raise from 12) — close or amend those to avoid triple filing.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-f4cd\",\"title\":\"Fast-path planner to sd show when the goal names a seed id\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T20:16:14.678Z\",\"updatedAt\":\"2026-09-05T11:00:10.279Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 1 add: if the goal names a seed id, run sd show <id> directly; run sd ready only when it doesn't, and never run sd list to re-confirm a count sd ready already printed. Run 01M0WWKAQCWZC0Q0JK019H0ZC7's goal named fabro-f74b; sd ready returned exactly that one seed (seq 39), yet the planner still ran sd list --format json purely to double-check the count (reasoning at seq 67), after sd show + sd update + two globs + a full 10.4KB read of main.go — 7 tool calls and 76.6s inference for a single-candidate claim. Expected effect: two fewer shell calls and one LLM turn on named-seed runs, the common case for this workflow's goals. Overlaps the tracker-empty case in open fabro-b382 and fabro-e4fa; this covers the named-seed case.\",\"labels\":[\"revision\"],\"closedAt\":\"2026-09-05T11:00:10.279Z\",\"closeReason\":\"Superseded by fabro-7e88 (implemented in cycle 3, PR #25, e5f82da6c): same change — fast-path sd show when the goal names a seed id. Revisor journal of run 01M1RJVKW9 flagged the dangling duplicate; closed by the revisor-revisor pass (iterate skill, 2026-09-05).\"}\ndiff --git a/lib/components/fabro-workflow/src/pipeline/pull_request.rs b/lib/components/fabro-workflow/src/pipeline/pull_request.rs\nindex 5e600d3..6d20ffa 100644\n--- a/lib/components/fabro-workflow/src/pipeline/pull_request.rs\n+++ b/lib/components/fabro-workflow/src/pipeline/pull_request.rs\n@@ -403,7 +403,11 @@ async fn generate_pr_content(params: GenerateParams) -> Result<PrContent, String\n     match structured {\n         Ok(content) => Ok(content),\n         Err(first_error) => {\n-            warn!(\n+            // Expected degradation, not an unexpected failure (fabro-6a5a):\n+            // reasoning models periodically answer prose to JSON-schema\n+            // requests, so the retry below is part of the normal path. Log at\n+            // info so a recurring non-JSON first attempt does not spam warn.\n+            info!(\n                 error = %first_error,\n                 \"PR content structured generation failed; retrying once without strict JSON output\"\n             );\n@@ -417,7 +421,7 @@ async fn generate_pr_content(params: GenerateParams) -> Result<PrContent, String\n             }\n             let prose = text.trim();\n             if prose.len() >= 40 {\n-                warn!(\n+                info!(\n                     \"PR content retry was not JSON; salvaging prose body with deterministic title\"\n                 );\n                 return Ok(PrContent {\n@@ -504,7 +508,11 @@ async fn build_pr_content_with_client(\n             (title, llm_body)\n         }\n         Err(error) => {\n-            warn!(\n+            // Expected degradation (fabro-6a5a): both generation attempts\n+            // failing is handled by the deterministic fallback — the run's\n+            // work is already pushed. Info, not warn: a recurring\n+            // non-JSON model answer must not log as a failure every run.\n+            info!(\n                 model = %model,\n                 error = %error,\n                 \"PR content generation failed; using deterministic fallback title and skeleton body\"\n@@ -606,6 +614,12 @@ async fn reconcile_existing_pull_request(\n     }))\n }\n \n+/// Enable auto-merge on the created pull request when the run configuration\n+/// requested it. When auto-merge was NOT requested (`options` is `None`) this\n+/// is a silent no-op: no GitHub call, no log line (fabro-6a5a — the GraphQL\n+/// mutation deterministically fails with \"Auto merge is not allowed for this\n+/// repository\" on repos without the setting, so configs now default to leaving\n+/// auto-merge off and must not pay a warn per run).\n async fn enable_auto_merge_if_requested(\n     github: &github_app::GitHubContext<'_>,\n     owner: &str,\n@@ -2477,6 +2491,47 @@ mod tests {\n         assert!(error.contains(\"attempt 2\"), \"{error}\");\n     }\n \n+    /// Auto-merge not requested (`options = None`): the enable call must\n+    /// short-circuit with no GitHub request at all — a silent no-op, so a\n+    /// config with `auto_merge = false` never pays the \"Auto merge is not\n+    /// allowed\" GraphQL round-trip or its warn (fabro-6a5a).\n+    #[tokio::test]\n+    async fn enable_auto_merge_is_silent_noop_when_not_requested() {\n+        let server = MockServer::start_async().await;\n+        // Catch-alls: any GET or POST reaching the mock GitHub server counts\n+        // against the short-circuit claim.\n+        let any_get = server\n+            .mock_async(|when, then| {\n+                when.method(GET);\n+                then.status(500);\n+            })\n+            .await;\n+        let any_post = server\n+            .mock_async(|when, then| {\n+                when.method(POST);\n+                then.status(500);\n+            })\n+            .await;\n+        let creds = fabro_github::GitHubCredentials::Pat(\"test-token\".to_string());\n+        let github_base_url = server.url(\"\");\n+        let github = github_app::GitHubContext::new(&creds, &github_base_url);\n+\n+        enable_auto_merge_if_requested(&github, \"owner\", \"repo\", \"PR_kwTest1\", 7, None).await;\n+\n+        assert_eq!(\n+            httpmock::Mock::new(any_get.id, &server).calls_async().await,\n+            0,\n+            \"auto-merge must short-circuit without any GitHub GET when not requested\"\n+        );\n+        assert_eq!(\n+            httpmock::Mock::new(any_post.id, &server)\n+                .calls_async()\n+                .await,\n+            0,\n+            \"auto-merge must short-circuit without any GitHub POST when not requested\"\n+        );\n+    }\n+\n     /// An open pull request already exists for the head branch at the\n     /// expected commit — for example after a crash between GitHub creating\n     /// the pull request and the caller persisting it. `open_pull_request`\n",
+      "summary": {
+        "files_changed": 7,
+        "additions": 85,
+        "deletions": 13
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -3849,6 +3971,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 504,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T19:18:54.405718713Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T19:18:54.405606073Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
