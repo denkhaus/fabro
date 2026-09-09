@@ -37,7 +37,8 @@ use crate::server::{
     self, AppState, AppStateConfig, ResolvedAppStateSettings, RouterOptions, build_app_state,
     build_router_with_options, reconcile_incomplete_runs_on_startup, shutdown_active_workers,
     spawn_approval_expiry_supervisor, spawn_automation_scheduler,
-    spawn_pull_request_creation_supervisor, spawn_scheduler,
+    spawn_pull_request_creation_supervisor, spawn_pull_request_staleness_supervisor,
+    spawn_scheduler,
 };
 use crate::server_secrets::{ServerSecrets, process_env_snapshot};
 use crate::startup::{resolve_startup, validate_startup_configuration};
@@ -822,6 +823,8 @@ where
     spawn_automation_scheduler(Arc::clone(&state));
     let pull_request_creation_supervisor =
         spawn_pull_request_creation_supervisor(Arc::clone(&state));
+    let pull_request_staleness_supervisor =
+        spawn_pull_request_staleness_supervisor(Arc::clone(&state));
     let approval_expiry_supervisor = spawn_approval_expiry_supervisor(Arc::clone(&state));
     let router = build_router_with_options(Arc::clone(&state), &auth_mode, RouterOptions {
         web_enabled,
@@ -993,11 +996,17 @@ where
     } else {
         cleanup_handle.abort();
         pull_request_creation_supervisor.abort();
+        pull_request_staleness_supervisor.abort();
         approval_expiry_supervisor.abort();
     }
     if let Err(join_err) = pull_request_creation_supervisor.await {
         if !join_err.is_cancelled() {
             warn!(error = %join_err, "Pull request creation supervisor task panicked");
+        }
+    }
+    if let Err(join_err) = pull_request_staleness_supervisor.await {
+        if !join_err.is_cancelled() {
+            warn!(error = %join_err, "Pull request staleness supervisor task panicked");
         }
     }
     if let Err(join_err) = approval_expiry_supervisor.await {

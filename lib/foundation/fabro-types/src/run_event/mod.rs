@@ -368,6 +368,8 @@ pub enum EventBody {
     PullRequestLinked(PullRequestLinkedProps),
     #[serde(rename = "pull_request.unlinked")]
     PullRequestUnlinked(PullRequestUnlinkedProps),
+    #[serde(rename = "pull_request.closed")]
+    PullRequestClosed(PullRequestClosedProps),
     #[serde(rename = "pull_request.failed")]
     PullRequestFailed(PullRequestFailedProps),
     Unknown {
@@ -581,6 +583,7 @@ impl EventBody {
             Self::PullRequestCreated(_) => "pull_request.created",
             Self::PullRequestLinked(_) => "pull_request.linked",
             Self::PullRequestUnlinked(_) => "pull_request.unlinked",
+            Self::PullRequestClosed(_) => "pull_request.closed",
             Self::PullRequestFailed(_) => "pull_request.failed",
             Self::Unknown { name, .. } => name.as_str(),
         }
@@ -2277,6 +2280,45 @@ mod tests {
 
         let value = event.to_value().unwrap();
         assert_eq!(value["event"], "pull_request.unlinked");
+        assert_eq!(
+            value["properties"]["pull_request"]["number"],
+            serde_json::json!(42)
+        );
+
+        let parsed = RunEvent::from_value(value).unwrap();
+        assert_eq!(parsed, event);
+    }
+
+    #[test]
+    fn pull_request_closed_round_trips_json() {
+        let event = RunEvent {
+            id:                 "evt_pr_closed".to_string(),
+            ts:                 DateTime::parse_from_rfc3339("2026-05-15T12:10:00.000Z")
+                .unwrap()
+                .with_timezone(&Utc),
+            run_id:             fixtures::RUN_1,
+            node_id:            None,
+            node_label:         None,
+            stage_id:           None,
+            parallel_group_id:  None,
+            parallel_branch_id: None,
+            session_id:         None,
+            parent_session_id:  None,
+            tool_call_id:       None,
+            actor:              None,
+            body:               EventBody::PullRequestClosed(PullRequestClosedProps {
+                pull_request: crate::PullRequestLink {
+                    owner:  "acme".to_string(),
+                    repo:   "widgets".to_string(),
+                    number: 42,
+                },
+                close_reason: "stale_base".to_string(),
+            }),
+        };
+
+        let value = event.to_value().unwrap();
+        assert_eq!(value["event"], "pull_request.closed");
+        assert_eq!(value["properties"]["close_reason"], "stale_base");
         assert_eq!(
             value["properties"]["pull_request"]["number"],
             serde_json::json!(42)

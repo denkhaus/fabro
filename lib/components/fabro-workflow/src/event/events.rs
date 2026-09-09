@@ -756,6 +756,12 @@ pub enum Event {
     PullRequestUnlinked {
         pull_request: PullRequestLink,
     },
+    /// The supervisor closed a linked pull request without merging it
+    /// (fabro-94e8). `close_reason` names why (e.g. `stale_base`).
+    PullRequestClosed {
+        pull_request: PullRequestLink,
+        close_reason: String,
+    },
     PullRequestFailed {
         /// Set when the failure resolves an explicitly requested creation;
         /// `None` for pull request failures in the workflow publish stage.
@@ -1577,6 +1583,17 @@ impl Event {
                     pr_url = %pull_request.html_url(),
                     pr_number = pull_request.number,
                     "Pull request unlinked"
+                );
+            }
+            Self::PullRequestClosed {
+                pull_request,
+                close_reason,
+            } => {
+                warn!(
+                    pr_url = %pull_request.html_url(),
+                    pr_number = pull_request.number,
+                    close_reason,
+                    "Pull request closed without merging"
                 );
             }
             Self::PullRequestFailed { error, .. } => {

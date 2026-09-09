@@ -1420,6 +1420,13 @@ fn event_body_from_event(event: &Event) -> EventBody {
                 pull_request: pull_request.clone(),
             })
         }
+        Event::PullRequestClosed {
+            pull_request,
+            close_reason,
+        } => EventBody::PullRequestClosed(fabro_types::PullRequestClosedProps {
+            pull_request: pull_request.clone(),
+            close_reason: close_reason.clone(),
+        }),
         Event::PullRequestFailed { creation_id, error } => {
             EventBody::PullRequestFailed(fabro_types::PullRequestFailedProps {
                 creation_id: *creation_id,

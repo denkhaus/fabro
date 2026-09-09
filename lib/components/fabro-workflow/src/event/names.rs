@@ -155,6 +155,7 @@ pub fn event_name(event: &Event) -> &'static str {
         Event::PullRequestCreated { .. } => "pull_request.created",
         Event::PullRequestLinked { .. } => "pull_request.linked",
         Event::PullRequestUnlinked { .. } => "pull_request.unlinked",
+        Event::PullRequestClosed { .. } => "pull_request.closed",
         Event::PullRequestFailed { .. } => "pull_request.failed",
     }
 }

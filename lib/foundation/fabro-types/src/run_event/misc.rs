@@ -385,6 +385,14 @@ pub struct PullRequestUnlinkedProps {
     pub pull_request: PullRequestLink,
 }
 
+/// The supervisor closed a linked pull request without merging it
+/// (fabro-94e8). `close_reason` names why (e.g. `stale_base`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PullRequestClosedProps {
+    pub pull_request: PullRequestLink,
+    pub close_reason: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PullRequestFailedProps {
     /// Set when the failure resolves an explicitly requested creation; absent

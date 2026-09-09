@@ -415,6 +415,18 @@ impl RunProjectionReducer for RunProjection {
                 // linked, and it would block a later explicit creation.
                 self.pull_request_creation = None;
             }
+            EventBody::PullRequestClosed(props)
+                // The supervisor closed this PR without merging (fabro-94e8):
+                // like an unlink, the link no longer names an open PR and must
+                // not block a later explicit creation.
+                if self
+                    .pull_request
+                    .as_ref()
+                    .is_some_and(|current| *current == props.pull_request) =>
+            {
+                self.pull_request = None;
+                self.pull_request_creation = None;
+            }
             EventBody::PullRequestFailed(props) => {
                 // Only a failure that names the pending creation resolves it;
                 // publish-stage failures carry no creation id and must not
