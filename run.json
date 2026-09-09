@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T10:01:32.094192565Z",
-  "last_event_at": "2026-09-09T10:03:46.222822382Z",
+  "last_event_at": "2026-09-09T10:03:51.844089566Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1788,9 +1788,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 175,
       "checkpoint": {
-        "timestamp": "2026-09-09T10:03:46.435482189Z",
+        "timestamp": "2026-09-09T10:03:50.908937164Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -1803,30 +1803,20 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.retry_count.planner": 0,
-          "thread.planner.current_node": "implementer",
-          "internal.retry_count.tester": 0,
-          "internal.fidelity": "compact",
-          "thread.tester.current_node": "evidence",
-          "last_stage": "reviewer",
-          "preferred_label": "Approved",
-          "response.reviewer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.reviewer",
-            "chars": 2091,
-            "preview": "I verified the seed work against the in-progress seed spec. This is a churn-only dev-loop seed, so the loop-work diff is the review scope.\n\n**Requirement check (all five criteria):**\n1. Step 6 explici"
-          },
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "review_verdict": "approved",
+          "internal.work_dir": "/workspace/fabro",
+          "current_seed_title": "Planner: observations naming consistency work must become current_seed_brief bullets",
           "internal.retry_count.closeout": 0,
-          "internal.retry_count.evidence": 0,
-          "thread.start.current_node": "planner",
-          "journal": {
-            "painpoints": [],
-            "observations": [
-              "Churn-only seed: judged the loop-work diff as review scope; read the live planner.md section (lines 30-55) to confirm the file matches the captured diff byte-for-byte — all five acceptance criteria verified against the seed spec, not just the summary. No capability delta: no Dockerfile/env/credential surfaces touched."
-            ]
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2117,
+            "preview": "Claimed fabro-a18d: the planner prompt's steps 6/7 currently have no rule forcing journal observations that name consistency work into `current_seed_brief` bullets, so such work is invisible to implem"
           },
+          "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/planner.md` (steps 6 and 7 of the 'Plan the next seed' section, currently at lines ~42-46) so consistency/scope work named in journal observations cannot stay journal-only. Acceptance criteria: (1) step 6 gains an explicit rule: any journal observation from a prior pass that names required consistency or scope work (e.g. 'keep line X consistent with rule Y') MUST be folded into `current_seed_brief` as an explicit bullet, or explicitly waived in the brief with a one-line reason; (2) step 7's contradiction-check text cross-references the same obligation (an unresolved consistency finding is a contradiction that must surface in the brief, not only in the journal); (3) wording stays consistent with the existing rationale that reviewers and implementer PASS/FAIL check bullets, not journals (basis: run 01M22PCGN4E3X1XGN630MDDH39 where a journaled consistency note was skipped and contradictory prompt text shipped through an approving review); (4) prompt-only change: no Rust/TS code touched, no snapshot or gate impact beyond the workflow prompt file itself; (5) the edit is minimal — extend steps 6/7, do not restructure the section or renumber subsequent steps.",
+          "internal.retry_count.evidence": 0,
+          "implementation_summary": "Extended steps 6 and 7 of the 'Plan the next seed' section in `.fabro/workflows/develop/prompts/planner.md` (prompt-only change, +3/−1): step 6 now carries an explicit journal-observation rule requiring any prior-pass journal observation naming consistency or scope work to be folded into `current_seed_brief` as an explicit bullet or explicitly waived there with a one-line reason, grounded in the reviewers/implementers-check-bullets-not-journals rationale and run `01M22PCGN4E3X1XGN630MDDH39`; step 7's contradiction-check text cross-references that rule, making an unresolved consistency finding a contradiction that must surface in the brief rather than staying journal-only. No section restructuring, no step renumbering. Lesson capture: nothing durable — skipped (one-off prompt edit fully specified by the seed). Verification report: - PASS step 6 gains explicit journal-observation rule (bullet-or-waiver): `.fabro/workflows/develop/prompts/planner.md` step 6 'Journal-observation rule' paragraph — PASS step 7 contradiction-check cross-references the obligation: `.fabro/workflows/develop/prompts/planner.md` step 7 opening sentences — PASS wording consistent with existing bullets-not-journals rationale (cites run `01M22PCGN4E3X1XGN630MDDH39`): same paragraph — PASS prompt-only change, no Rust/TS code, no snapshot/gate impact beyond the prompt file: `git diff --stat` shows only `.fabro/workflows/develop/prompts/planner.md` — PASS minimal edit, steps extended not restructured, no renumbering: diff adds one paragraph inside step 6 and sentences inside step 7.",
+          "last_stage": "reviewer",
+          "command.output": "blob://sha256/c2b512080795028297253f2587356f497098537f78f6635d5fb97bce5841760e",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -1835,94 +1825,58 @@
             "reviewer": 1,
             "closeout": 1
           },
-          "current_seed_title": "Planner: observations naming consistency work must become current_seed_brief bullets",
-          "current_seed_brief": "Edit `.fabro/workflows/develop/prompts/planner.md` (steps 6 and 7 of the 'Plan the next seed' section, currently at lines ~42-46) so consistency/scope work named in journal observations cannot stay journal-only. Acceptance criteria: (1) step 6 gains an explicit rule: any journal observation from a prior pass that names required consistency or scope work (e.g. 'keep line X consistent with rule Y') MUST be folded into `current_seed_brief` as an explicit bullet, or explicitly waived in the brief with a one-line reason; (2) step 7's contradiction-check text cross-references the same obligation (an unresolved consistency finding is a contradiction that must surface in the brief, not only in the journal); (3) wording stays consistent with the existing rationale that reviewers and implementer PASS/FAIL check bullets, not journals (basis: run 01M22PCGN4E3X1XGN630MDDH39 where a journaled consistency note was skipped and contradictory prompt text shipped through an approving review); (4) prompt-only change: no Rust/TS code touched, no snapshot or gate impact beyond the workflow prompt file itself; (5) the edit is minimal — extend steps 6/7, do not restructure the section or renumber subsequent steps.",
-          "internal.retry_count.start": 0,
           "thread.implementer.current_node": "tester",
-          "current_node": "closeout",
-          "failure_class": "",
-          "thread.reviewer.current_node": "closeout",
-          "internal.retry_count.reviewer": 0,
-          "thread.evidence.current_node": "reviewer",
-          "internal.retry_count.implementer": 0,
-          "internal.exit_kind": "natural",
-          "graph.preamble_budget_kb": "24",
-          "internal.node_visit_count": 1,
-          "internal.work_dir": "/workspace/fabro",
-          "current_seed_id": "fabro-a18d",
+          "thread.start.current_node": "planner",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.planner": 0,
+          "internal.retry_count.tester": 0,
           "graph.inspects": "develop",
-          "graph.rankdir": "LR",
-          "failure_signature": "",
-          "implementation_summary": "Extended steps 6 and 7 of the 'Plan the next seed' section in `.fabro/workflows/develop/prompts/planner.md` (prompt-only change, +3/−1): step 6 now carries an explicit journal-observation rule requiring any prior-pass journal observation naming consistency or scope work to be folded into `current_seed_brief` as an explicit bullet or explicitly waived there with a one-line reason, grounded in the reviewers/implementers-check-bullets-not-journals rationale and run `01M22PCGN4E3X1XGN630MDDH39`; step 7's contradiction-check text cross-references that rule, making an unresolved consistency finding a contradiction that must surface in the brief rather than staying journal-only. No section restructuring, no step renumbering. Lesson capture: nothing durable — skipped (one-off prompt edit fully specified by the seed). Verification report: - PASS step 6 gains explicit journal-observation rule (bullet-or-waiver): `.fabro/workflows/develop/prompts/planner.md` step 6 'Journal-observation rule' paragraph — PASS step 7 contradiction-check cross-references the obligation: `.fabro/workflows/develop/prompts/planner.md` step 7 opening sentences — PASS wording consistent with existing bullets-not-journals rationale (cites run `01M22PCGN4E3X1XGN630MDDH39`): same paragraph — PASS prompt-only change, no Rust/TS code, no snapshot/gate impact beyond the prompt file: `git diff --stat` shows only `.fabro/workflows/develop/prompts/planner.md` — PASS minimal edit, steps extended not restructured, no renumbering: diff adds one paragraph inside step 6 and sentences inside step 7.",
-          "graph.max_node_visits": "40",
-          "command.output": "blob://sha256/c2b512080795028297253f2587356f497098537f78f6635d5fb97bce5841760e",
+          "internal.node_visit_count": 1,
           "internal.run_id": "01M22STYHHYV9J9B7NTE03PH4G",
-          "outcome": "succeeded",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 2117,
-            "preview": "Claimed fabro-a18d: the planner prompt's steps 6/7 currently have no rule forcing journal observations that name consistency work into `current_seed_brief` bullets, so such work is invisible to implem"
-          },
+          "internal.fidelity": "compact",
           "last_response": "I verified the seed work against the in-progress seed spec. This is a churn-only dev-loop seed, so the loop-work diff is the review scope.\n\n**Requirement check (all five criteria):**\n1. Step 6 explici",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "lesson_capture": "nothing durable — skipped",
+          "current_node": "closeout",
+          "outcome": "succeeded",
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.implementer",
             "chars": 2372,
             "preview": "The edit is in place: step 6 gains the journal-observation rule (fold consistency/scope work into `current_seed_brief` bullets or waive with a one-line reason), and step 7's contradiction check now tr"
           },
+          "thread.reviewer.current_node": "closeout",
+          "failure_class": "",
+          "current_seed_id": "fabro-a18d",
+          "graph.max_node_visits": "40",
+          "preferred_label": "Approved",
+          "internal.retry_count.implementer": 0,
           "internal.thread_id": "reviewer",
-          "internal.seed_cycle_anchor": "fabro-a18d"
+          "review_verdict": "approved",
+          "internal.exit_kind": "natural",
+          "thread.tester.current_node": "evidence",
+          "failure_signature": "",
+          "graph.rankdir": "LR",
+          "thread.evidence.current_node": "reviewer",
+          "thread.planner.current_node": "implementer",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.preamble_budget_kb": "24",
+          "internal.seed_cycle_anchor": "fabro-a18d",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Churn-only seed: judged the loop-work diff as review scope; read the live planner.md section (lines 30-55) to confirm the file matches the captured diff byte-for-byte — all five acceptance criteria verified against the seed spec, not just the summary. No capability delta: no Dockerfile/env/credential surfaces touched."
+            ]
+          },
+          "lesson_capture": "nothing durable — skipped",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2091,
+            "preview": "I verified the seed work against the in-progress seed spec. This is a churn-only dev-loop seed, so the loop-work diff is the review scope.\n\n**Requirement check (all five criteria):**\n1. Step 6 explici"
+          },
+          "internal.retry_count.reviewer": 0
         },
         "node_outcomes": {
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
-          "evidence": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/6272262997a9a6300bab75fa7fe4ec488c5075a4421d2db885cbada2a71ce18c"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 380,
-              "active_time_ms": 380
-            }
-          },
-          "tester": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
-            },
-            "notes": "Script completed: just qualitygate",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 4437,
-              "active_time_ms": 4437
-            }
-          },
-          "closeout": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/c2b512080795028297253f2587356f497098537f78f6635d5fb97bce5841760e"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 286,
-              "active_time_ms": 286
-            }
-          },
           "implementer": {
             "status": "succeeded",
             "preferred_label": "Implemented",
@@ -2025,6 +1979,20 @@
               "active_time_ms": 38630
             }
           },
+          "closeout": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/c2b512080795028297253f2587356f497098537f78f6635d5fb97bce5841760e"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 286,
+              "active_time_ms": 286
+            }
+          },
           "reviewer": {
             "status": "succeeded",
             "preferred_label": "Approved",
@@ -2073,23 +2041,174 @@
               "tool_time_ms": 170,
               "active_time_ms": 22379
             }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 4437,
+              "active_time_ms": 4437
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/6272262997a9a6300bab75fa7fe4ec488c5075a4421d2db885cbada2a71ce18c"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 380,
+              "active_time_ms": 380
+            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "4a4b2d4874b1acd3497d4c51392369281d9f3f21",
         "node_visits": {
-          "reviewer": 1,
           "closeout": 1,
-          "planner": 1,
           "implementer": 1,
-          "evidence": 1,
+          "planner": 1,
+          "reviewer": 1,
           "start": 1,
-          "tester": 1
+          "tester": 1,
+          "evidence": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl b/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl\nindex f85f504..a1db057 100644\n--- a/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl\n+++ b/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl\n@@ -4,3 +4,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22STYHHYV9J9B7NTE03PH4G\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:03:10Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22STYHHYV9J9B7NTE03PH4G\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:03:14Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22STYHHYV9J9B7NTE03PH4G\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:03:41Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Churn-only seed: judged the loop-work diff as review scope; read the live planner.md section (lines 30-55) to confirm the file matches the captured diff byte-for-byte — all five acceptance criteria verified against the seed spec, not just the summary. No capability delta: no Dockerfile/env/credential surfaces touched.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22STYHHYV9J9B7NTE03PH4G\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:03:46Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex cece630..2a47e80 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -297,6 +297,6 @@\n {\"id\":\"fabro-8bf4\",\"title\":\"Engine: lint stage completion when a key declared in context_allow_keys was never emitted\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T21:24:48.800Z\",\"updatedAt\":\"2026-09-09T09:40:28.549Z\",\"description\":\"Run 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419, PR #76): develop planner@1 emitted context_updates with no journal key at all despite the node declaring context_allow_keys=...,journal and the prompt calling silence a violation; that same pass ran the in-flight-PR guard degraded to a no-op and nothing recorded either miss. Add a completion lint to the stage-envelope validation in lib/components/fabro-workflow (alongside the fabro-900e/e47c producer lints): a stage completing without emitting any key declared in its context_allow_keys emits a visible warning or consumes one output_retries nudge. Scoped as the general allow-keys visibility lint; journal-specific output-schema enforcement is already tracked by fabro-017f (cross-ref, not superseded). Expected effect: missing journal reports and fail-open guards become auditable instead of silently lost. Basis: run 01M21BG1TG9SNM4QAS2A33W6GF, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit eed7be36252face1b5316bcd9264627fb3da7fde\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-9fa2\",\"title\":\"Develop planner prompt: stale-basis fast path when the seed pins line anchors in its USER DECISION\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T21:24:53.260Z\",\"updatedAt\":\"2026-09-09T09:40:28.922Z\",\"description\":\"planner@1 in run 01M21BG1TG9SNM4QAS2A33W6GF spent ~13 sequential read probes and 98.3s inference / $0.123 re-deriving exact line numbers (api.rs:1345-1357, server.rs:4514) the seed's USER DECISION note already pinned, and its reasoning trace nearly misjudged the seed as already-implemented ('Stale basis?'). In .fabro/workflows/develop/prompts/planner.md step 3, add: when the seed body carries a line-pinned USER DECISION or verified basis, one spot-check grep suffices instead of full re-derivation. Complementary to fabro-645d (implementer-side scoped reads; cross-ref, not superseded). Expected effect: planner drops from ~13 calls/98s toward ~5 calls/40s (~$0.05 + ~1 min per run) and lowers the risk of wrongly closing a valid seed as superseded. Basis: run 01M21BG1TG9SNM4QAS2A33W6GF, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit eed7be36252face1b5316bcd9264627fb3da7fde\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-1409\",\"title\":\"PR postlude: append per-stage cost/time table and journal painpoint digest to the PR body\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T21:25:00.145Z\",\"updatedAt\":\"2026-09-09T09:40:28.847Z\",\"description\":\"In run 01M21BG1TG9SNM4QAS2A33W6GF, 82% of spend ($0.775) and 60% of wall sat in the implementer stage, visible only in the run conclusion, not on PR #76 that the user merges. Where the engine composes the PR postlude (same area open seed fabro-6a5a targets for auto-merge/PR-body model-call fixes; cross-ref, not superseded), append the per-stage timing/cost table plus a digest of journal painpoints. Degraded-guard notices in the PR body are intentionally excluded — already tracked by fabro-5b0a. Expected effect: at merge time the user sees that builds dominate (the case for toolchain warming, fabro-fe15) without opening the run dashboard. Basis: run 01M21BG1TG9SNM4QAS2A33W6GF, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit eed7be36252face1b5316bcd9264627fb3da7fde\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-a18d\",\"title\":\"Planner: observations naming consistency work must become current_seed_brief bullets\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T09:12:29.966Z\",\"updatedAt\":\"2026-09-09T10:02:01.660Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md steps 6/7, require that any journal observation naming required consistency or scope work be folded into current_seed_brief as an explicit bullet (or explicitly waived there). Basis: run 01M22PCGN4E3X1XGN630MDDH39 — the planner journaled 'the same rule is referenced again at line 78 … which the implementer should keep consistent' but added no brief bullet, so the implementer kept the mechanical-rewrite paragraph verbatim, leaving prompt text ('verify with ONE focused check') contradictory with the new tests-touched rule this seed introduced; the latent inconsistency shipped through an approving review because the reviewer checks bullets, not journals. Effect: prevents self-contradictory prompt text surviving the loop; zero-cost correctness win. Basis: run 01M22PCGN4E3X1XGN630MDDH39, workflow version e6202c3d2f79d43966a4f1fc60620f8b3f3d8c36f6facf82a41cd18b0c9c1b4e, commit 6d05194d18b7f1085cbac66a27b5cee0defacce9\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-a18d\",\"title\":\"Planner: observations naming consistency work must become current_seed_brief bullets\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T09:12:29.966Z\",\"updatedAt\":\"2026-09-09T10:03:46.161Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md steps 6/7, require that any journal observation naming required consistency or scope work be folded into current_seed_brief as an explicit bullet (or explicitly waived there). Basis: run 01M22PCGN4E3X1XGN630MDDH39 — the planner journaled 'the same rule is referenced again at line 78 … which the implementer should keep consistent' but added no brief bullet, so the implementer kept the mechanical-rewrite paragraph verbatim, leaving prompt text ('verify with ONE focused check') contradictory with the new tests-touched rule this seed introduced; the latent inconsistency shipped through an approving review because the reviewer checks bullets, not journals. Effect: prevents self-contradictory prompt text surviving the loop; zero-cost correctness win. Basis: run 01M22PCGN4E3X1XGN630MDDH39, workflow version e6202c3d2f79d43966a4f1fc60620f8b3f3d8c36f6facf82a41cd18b0c9c1b4e, commit 6d05194d18b7f1085cbac66a27b5cee0defacce9\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-09T10:03:46.161Z\"}\n {\"id\":\"fabro-7b2a\",\"title\":\"Implementer prompt: cap step 4 operative rule, move run citations to footnotes\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T09:12:30.062Z\",\"updatedAt\":\"2026-09-09T09:40:28.774Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md, keep the step-4 operative rule to 3-4 sentences and move the four historical run citations (fabro-0d56, 01M1YJ8R, 01M11P68SHF, 01M20T9S8J) to a footnotes section or the ml expertise store (mx-e26272 already holds this run's rationale); add one line for platform-targeting seeds: 'you edit the source file; your own instructions this pass are already rendered — no recursion.' Basis: run 01M22PCGN4E3X1XGN630MDDH39 — step 4 is a single ~2.3k-char line re-read every pass, and the implementer burned a reasoning round on meta-confusion ('Wait — I AM the implementer running this prompt', seq 83) while being the largest stage (66.6s, 42% of run cost for a 1-line diff). Effect: smaller, faster implementer prompts every run; removes the self-reference confusion round. Basis: run 01M22PCGN4E3X1XGN630MDDH39, workflow version e6202c3d2f79d43966a4f1fc60620f8b3f3d8c36f6facf82a41cd18b0c9c1b4e, commit 6d05194d18b7f1085cbac66a27b5cee0defacce9 REQUIRED FIX 2026-09-09 (verified live in implementer.md after PR #78): the step-4 mechanical-rewrite paragraph still ends 'verify with ONE focused check (compile check or ONE focused test, as above)' — this contradicts the new tests-touched rule the same step now carries (full crate suite when the seed touches tests). The rewrite MUST resolve this contradiction (align the mechanical-rewrite clause with the conditional rule), not just shrink the paragraph. Basis: review 01M22PCGN4 rec 3/6.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-b94d\",\"title\":\"Develop: stop ml record from mutating .mulch/mulch.config.yaml mid-run\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T09:12:30.174Z\",\"updatedAt\":\"2026-09-09T09:40:28.701Z\",\"description\":\"Pre-create the ml workflow domain (toolchain image or implementer prompt lesson-capture step) so ml record stops auto-creating it and writing '+ workflow: {}' to tracked .mulch/mulch.config.yaml mid-run; until then, classify that file as expected churn in evidence.nu (sibling pattern of fabro-6db3, distinct from fabro-43ba's no-net-diff transients). Basis: run 01M22PCGN4E3X1XGN630MDDH39 — the implementer's failed lesson-capture call (seq 96-97) still auto-created the domain, producing surprise churn the reviewer had to classify. Effect: no surprise tracked-config churn per lesson capture. Orthogonal to fabro-96bd (flag-contract docs), which covers only the failed-call retry. Basis: run 01M22PCGN4E3X1XGN630MDDH39, workflow version e6202c3d2f79d43966a4f1fc60620f8b3f3d8c36f6facf82a41cd18b0c9c1b4e, commit 6d05194d18b7f1085cbac66a27b5cee0defacce9\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 11,
+          "deletions": 2
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-09T10:03:50.955435145Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 144163,
+      "inference_time_ms": 102529,
+      "tool_time_ms": 8233,
+      "active_time_ms": 110762
+    },
+    "final_git_commit_sha": "4a4b2d4874b1acd3497d4c51392369281d9f3f21",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 39336,
+          "inference_time_ms": 36437,
+          "tool_time_ms": 2193,
+          "active_time_ms": 38630
+        },
+        "billing_usd_micros": 61115,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 45242,
+          "inference_time_ms": 43883,
+          "tool_time_ms": 767,
+          "active_time_ms": 44650
+        },
+        "billing_usd_micros": 45502,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 4441,
+          "inference_time_ms": 0,
+          "tool_time_ms": 4437,
+          "active_time_ms": 4437
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 384,
+          "inference_time_ms": 0,
+          "tool_time_ms": 380,
+          "active_time_ms": 380
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 22941,
+          "inference_time_ms": 22209,
+          "tool_time_ms": 170,
+          "active_time_ms": 22379
+        },
+        "billing_usd_micros": 29795,
+        "retries": 0
+      },
+      {
+        "stage_id": "closeout",
+        "stage_label": "closeout",
+        "timing": {
+          "wall_time_ms": 292,
+          "inference_time_ms": 0,
+          "tool_time_ms": 286,
+          "active_time_ms": 286
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 56200,
+      "output_tokens": 2387,
+      "total_tokens": 228301,
+      "reasoning_tokens": 754,
+      "cache_read_tokens": 168960,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 136412
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl b/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl\nnew file mode 100644\nindex 0000000..a1db057\n--- /dev/null\n+++ b/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl\n@@ -0,0 +1,7 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22STYHHYV9J9B7NTE03PH4G\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:01:34Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22STYHHYV9J9B7NTE03PH4G\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:02:13Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-a18d basis verified against current tree: planner.md steps 6/7 at lines ~42-46 contain no journal-observation-to-brief rule; basis resolves cleanly\",\"In-flight PR check: 6 develop runs listed, only open-PR states count and none were open (all merged or the current running run) — no exclusions applied\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22STYHHYV9J9B7NTE03PH4G\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:03:01Z\",\"data\":{\"painpoints\":[],\"observations\":[\"none\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22STYHHYV9J9B7NTE03PH4G\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:03:10Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22STYHHYV9J9B7NTE03PH4G\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:03:14Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22STYHHYV9J9B7NTE03PH4G\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:03:41Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Churn-only seed: judged the loop-work diff as review scope; read the live planner.md section (lines 30-55) to confirm the file matches the captured diff byte-for-byte — all five acceptance criteria verified against the seed spec, not just the summary. No capability delta: no Dockerfile/env/credential surfaces touched.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22STYHHYV9J9B7NTE03PH4G\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:03:46Z\",\"data\":{}}\ndiff --git a/.fabro/workflows/develop/prompts/planner.md b/.fabro/workflows/develop/prompts/planner.md\nindex 4a30469..7b64a47 100644\n--- a/.fabro/workflows/develop/prompts/planner.md\n+++ b/.fabro/workflows/develop/prompts/planner.md\n@@ -41,7 +41,9 @@ The engine maintains `seed_cycles` deterministically: `{ node -> completed visit\n    - `-pretty flag: aligned column output, combines with -json`\n    - `-n flag: default 100, rejects values < 1 with non-zero exit`\n    - `tests: table-driven, cover flag combinations`\n-7. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong. When the spec names a heading, anchor, or file path, confirm it exists in the target file before forwarding the brief; when it does not, annotate the ACTUAL location (the real heading name or path) instead of transcribing the spec verbatim.\n+\n+   Journal-observation rule: any journal observation from a prior pass that names required consistency or scope work (e.g. 'keep line X consistent with rule Y') MUST be folded into the brief as an explicit bullet — or explicitly waived in the brief with a one-line reason. Reviewers and the implementer's PASS/FAIL report check bullets, not journals; a requirement that lives only in a journal entry does not exist (run 01M22PCGN4E3X1XGN630MDDH39: a journaled consistency note was skipped and contradictory prompt text shipped through an approving review).\n+7. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). An unresolved journal observation naming consistency or scope work is itself such a contradiction: it MUST surface in the brief as an explicit bullet (or an explicit one-line waiver), never stay journal-only — see the journal-observation rule in step 6. Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong. When the spec names a heading, anchor, or file path, confirm it exists in the target file before forwarding the brief; when it does not, annotate the ACTUAL location (the real heading name or path) instead of transcribing the spec verbatim.\n \n If the top candidate looks already implemented (its acceptance criteria appear satisfied in the worktree — often a stale tracker from an earlier run), do NOT close it yourself and do NOT skip it. Claim it normally and mark the brief as verification-only (see below). The normal cycle then proves it: implementer verifies, gate runs, reviewer approves. Only an approved review closes a seed.\n \ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 074d492..2a47e80 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -297,6 +297,6 @@\n {\"id\":\"fabro-8bf4\",\"title\":\"Engine: lint stage completion when a key declared in context_allow_keys was never emitted\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-08T21:24:48.800Z\",\"updatedAt\":\"2026-09-09T09:40:28.549Z\",\"description\":\"Run 01M21BG1TG9SNM4QAS2A33W6GF (seed fabro-c419, PR #76): develop planner@1 emitted context_updates with no journal key at all despite the node declaring context_allow_keys=...,journal and the prompt calling silence a violation; that same pass ran the in-flight-PR guard degraded to a no-op and nothing recorded either miss. Add a completion lint to the stage-envelope validation in lib/components/fabro-workflow (alongside the fabro-900e/e47c producer lints): a stage completing without emitting any key declared in its context_allow_keys emits a visible warning or consumes one output_retries nudge. Scoped as the general allow-keys visibility lint; journal-specific output-schema enforcement is already tracked by fabro-017f (cross-ref, not superseded). Expected effect: missing journal reports and fail-open guards become auditable instead of silently lost. Basis: run 01M21BG1TG9SNM4QAS2A33W6GF, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit eed7be36252face1b5316bcd9264627fb3da7fde\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-9fa2\",\"title\":\"Develop planner prompt: stale-basis fast path when the seed pins line anchors in its USER DECISION\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T21:24:53.260Z\",\"updatedAt\":\"2026-09-09T09:40:28.922Z\",\"description\":\"planner@1 in run 01M21BG1TG9SNM4QAS2A33W6GF spent ~13 sequential read probes and 98.3s inference / $0.123 re-deriving exact line numbers (api.rs:1345-1357, server.rs:4514) the seed's USER DECISION note already pinned, and its reasoning trace nearly misjudged the seed as already-implemented ('Stale basis?'). In .fabro/workflows/develop/prompts/planner.md step 3, add: when the seed body carries a line-pinned USER DECISION or verified basis, one spot-check grep suffices instead of full re-derivation. Complementary to fabro-645d (implementer-side scoped reads; cross-ref, not superseded). Expected effect: planner drops from ~13 calls/98s toward ~5 calls/40s (~$0.05 + ~1 min per run) and lowers the risk of wrongly closing a valid seed as superseded. Basis: run 01M21BG1TG9SNM4QAS2A33W6GF, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit eed7be36252face1b5316bcd9264627fb3da7fde\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-1409\",\"title\":\"PR postlude: append per-stage cost/time table and journal painpoint digest to the PR body\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-08T21:25:00.145Z\",\"updatedAt\":\"2026-09-09T09:40:28.847Z\",\"description\":\"In run 01M21BG1TG9SNM4QAS2A33W6GF, 82% of spend ($0.775) and 60% of wall sat in the implementer stage, visible only in the run conclusion, not on PR #76 that the user merges. Where the engine composes the PR postlude (same area open seed fabro-6a5a targets for auto-merge/PR-body model-call fixes; cross-ref, not superseded), append the per-stage timing/cost table plus a digest of journal painpoints. Degraded-guard notices in the PR body are intentionally excluded — already tracked by fabro-5b0a. Expected effect: at merge time the user sees that builds dominate (the case for toolchain warming, fabro-fe15) without opening the run dashboard. Basis: run 01M21BG1TG9SNM4QAS2A33W6GF, workflow version 84429d0a3253eaa52e2406a04a3b97b4365d0ff68b0cdc2f46c296e8c05ec7a6, commit eed7be36252face1b5316bcd9264627fb3da7fde\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n-{\"id\":\"fabro-a18d\",\"title\":\"Planner: observations naming consistency work must become current_seed_brief bullets\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T09:12:29.966Z\",\"updatedAt\":\"2026-09-09T09:40:28.475Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md steps 6/7, require that any journal observation naming required consistency or scope work be folded into current_seed_brief as an explicit bullet (or explicitly waived there). Basis: run 01M22PCGN4E3X1XGN630MDDH39 — the planner journaled 'the same rule is referenced again at line 78 … which the implementer should keep consistent' but added no brief bullet, so the implementer kept the mechanical-rewrite paragraph verbatim, leaving prompt text ('verify with ONE focused check') contradictory with the new tests-touched rule this seed introduced; the latent inconsistency shipped through an approving review because the reviewer checks bullets, not journals. Effect: prevents self-contradictory prompt text surviving the loop; zero-cost correctness win. Basis: run 01M22PCGN4E3X1XGN630MDDH39, workflow version e6202c3d2f79d43966a4f1fc60620f8b3f3d8c36f6facf82a41cd18b0c9c1b4e, commit 6d05194d18b7f1085cbac66a27b5cee0defacce9\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-a18d\",\"title\":\"Planner: observations naming consistency work must become current_seed_brief bullets\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T09:12:29.966Z\",\"updatedAt\":\"2026-09-09T10:03:46.161Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md steps 6/7, require that any journal observation naming required consistency or scope work be folded into current_seed_brief as an explicit bullet (or explicitly waived there). Basis: run 01M22PCGN4E3X1XGN630MDDH39 — the planner journaled 'the same rule is referenced again at line 78 … which the implementer should keep consistent' but added no brief bullet, so the implementer kept the mechanical-rewrite paragraph verbatim, leaving prompt text ('verify with ONE focused check') contradictory with the new tests-touched rule this seed introduced; the latent inconsistency shipped through an approving review because the reviewer checks bullets, not journals. Effect: prevents self-contradictory prompt text surviving the loop; zero-cost correctness win. Basis: run 01M22PCGN4E3X1XGN630MDDH39, workflow version e6202c3d2f79d43966a4f1fc60620f8b3f3d8c36f6facf82a41cd18b0c9c1b4e, commit 6d05194d18b7f1085cbac66a27b5cee0defacce9\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-09T10:03:46.161Z\"}\n {\"id\":\"fabro-7b2a\",\"title\":\"Implementer prompt: cap step 4 operative rule, move run citations to footnotes\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T09:12:30.062Z\",\"updatedAt\":\"2026-09-09T09:40:28.774Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md, keep the step-4 operative rule to 3-4 sentences and move the four historical run citations (fabro-0d56, 01M1YJ8R, 01M11P68SHF, 01M20T9S8J) to a footnotes section or the ml expertise store (mx-e26272 already holds this run's rationale); add one line for platform-targeting seeds: 'you edit the source file; your own instructions this pass are already rendered — no recursion.' Basis: run 01M22PCGN4E3X1XGN630MDDH39 — step 4 is a single ~2.3k-char line re-read every pass, and the implementer burned a reasoning round on meta-confusion ('Wait — I AM the implementer running this prompt', seq 83) while being the largest stage (66.6s, 42% of run cost for a 1-line diff). Effect: smaller, faster implementer prompts every run; removes the self-reference confusion round. Basis: run 01M22PCGN4E3X1XGN630MDDH39, workflow version e6202c3d2f79d43966a4f1fc60620f8b3f3d8c36f6facf82a41cd18b0c9c1b4e, commit 6d05194d18b7f1085cbac66a27b5cee0defacce9 REQUIRED FIX 2026-09-09 (verified live in implementer.md after PR #78): the step-4 mechanical-rewrite paragraph still ends 'verify with ONE focused check (compile check or ONE focused test, as above)' — this contradicts the new tests-touched rule the same step now carries (full crate suite when the seed touches tests). The rewrite MUST resolve this contradiction (align the mechanical-rewrite clause with the conditional rule), not just shrink the paragraph. Basis: review 01M22PCGN4 rec 3/6.\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-b94d\",\"title\":\"Develop: stop ml record from mutating .mulch/mulch.config.yaml mid-run\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T09:12:30.174Z\",\"updatedAt\":\"2026-09-09T09:40:28.701Z\",\"description\":\"Pre-create the ml workflow domain (toolchain image or implementer prompt lesson-capture step) so ml record stops auto-creating it and writing '+ workflow: {}' to tracked .mulch/mulch.config.yaml mid-run; until then, classify that file as expected churn in evidence.nu (sibling pattern of fabro-6db3, distinct from fabro-43ba's no-net-diff transients). Basis: run 01M22PCGN4E3X1XGN630MDDH39 — the implementer's failed lesson-capture call (seq 96-97) still auto-created the domain, producing surprise churn the reviewer had to classify. Effect: no surprise tracked-config churn per lesson capture. Orthogonal to fabro-96bd (flag-contract docs), which covers only the failed-call retry. Basis: run 01M22PCGN4E3X1XGN630MDDH39, workflow version e6202c3d2f79d43966a4f1fc60620f8b3f3d8c36f6facf82a41cd18b0c9c1b4e, commit 6d05194d18b7f1085cbac66a27b5cee0defacce9\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n",
+      "summary": {
+        "files_changed": 3,
+        "additions": 11,
+        "deletions": 2
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2115,42 +2234,6 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
-    "start@1": {
-      "first_event_seq": 16,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": null,
-        "failure_reason": null,
-        "timestamp": "2026-09-09T10:01:34.360974196Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-09T10:01:34.352787124Z",
-      "handler": "start",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 0,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "planner@1": {
       "first_event_seq": 20,
       "prompt": null,
@@ -2611,6 +2694,231 @@
       "agent_control": "running",
       "state": "succeeded"
     },
+    "closeout@1": {
+      "first_event_seq": 168,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T10:03:46.222822382Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/c2b512080795028297253f2587356f497098537f78f6635d5fb97bce5841760e",
+        "exit_code": 0,
+        "duration_ms": 286,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T10:03:45.922008860Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 292,
+        "inference_time_ms": 0,
+        "tool_time_ms": 286,
+        "active_time_ms": 286
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@1": {
+      "first_event_seq": 121,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T10:03:10.418521281Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
+        "exit_code": 0,
+        "duration_ms": 4437,
+        "termination": "exited",
+        "output_bytes": 87,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 87,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T10:03:05.968030877Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 4441,
+        "inference_time_ms": 0,
+        "tool_time_ms": 4437,
+        "active_time_ms": 4437
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "evidence@1": {
+      "first_event_seq": 131,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T10:03:14.478109905Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/6272262997a9a6300bab75fa7fe4ec488c5075a4421d2db885cbada2a71ce18c",
+        "exit_code": 0,
+        "duration_ms": 380,
+        "termination": "exited",
+        "output_bytes": 5078,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 5078,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T10:03:14.085396870Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 384,
+        "inference_time_ms": 0,
+        "tool_time_ms": 380,
+        "active_time_ms": 380
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 178,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T10:03:50.909269206Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T10:03:50.909203449Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T10:01:34.360974196Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T10:01:34.352787124Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "implementer@1": {
       "first_event_seq": 73,
       "prompt": null,
@@ -2821,159 +3129,6 @@
           }
         ],
         "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "tester@1": {
-      "first_event_seq": 121,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Script completed: just qualitygate",
-        "failure_reason": null,
-        "timestamp": "2026-09-09T10:03:10.418521281Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": {
-        "script": "just qualitygate",
-        "command": "exec 2>&1\njust qualitygate",
-        "language": "shell",
-        "timeout_ms": 1200000
-      },
-      "script_timing": {
-        "output": "blob://sha256/586bfa02e996fd1f5468f2565bb14138cb1706b1c2c6dd1808972e238baad436",
-        "exit_code": 0,
-        "duration_ms": 4437,
-        "termination": "exited",
-        "output_bytes": 87,
-        "live_streaming": true
-      },
-      "parallel_results": null,
-      "output": null,
-      "output_bytes": 87,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-09T10:03:05.968030877Z",
-      "handler": "command",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 4441,
-        "inference_time_ms": 0,
-        "tool_time_ms": 4437,
-        "active_time_ms": 4437
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "evidence@1": {
-      "first_event_seq": 131,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-        "failure_reason": null,
-        "timestamp": "2026-09-09T10:03:14.478109905Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
-        "language": "shell",
-        "timeout_ms": 120000
-      },
-      "script_timing": {
-        "output": "blob://sha256/6272262997a9a6300bab75fa7fe4ec488c5075a4421d2db885cbada2a71ce18c",
-        "exit_code": 0,
-        "duration_ms": 380,
-        "termination": "exited",
-        "output_bytes": 5078,
-        "live_streaming": true
-      },
-      "parallel_results": null,
-      "output": null,
-      "output_bytes": 5078,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-09T10:03:14.085396870Z",
-      "handler": "command",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 384,
-        "inference_time_ms": 0,
-        "tool_time_ms": 380,
-        "active_time_ms": 380
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "closeout@1": {
-      "first_event_seq": 168,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
-        "failure_reason": null,
-        "timestamp": "2026-09-09T10:03:46.222822382Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
-        "language": "shell",
-        "timeout_ms": 60000
-      },
-      "script_timing": {
-        "output": "blob://sha256/c2b512080795028297253f2587356f497098537f78f6635d5fb97bce5841760e",
-        "exit_code": 0,
-        "duration_ms": 286,
-        "termination": "exited",
-        "output_bytes": 58,
-        "live_streaming": true
-      },
-      "parallel_results": null,
-      "output": null,
-      "output_bytes": 58,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-09T10:03:45.922008860Z",
-      "handler": "command",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 292,
-        "inference_time_ms": 0,
-        "tool_time_ms": 286,
-        "active_time_ms": 286
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
