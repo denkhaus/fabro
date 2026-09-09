@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T14:01:40.044891657Z",
-  "last_event_at": "2026-09-09T14:27:43.910084443Z",
+  "last_event_at": "2026-09-09T14:27:50.023942052Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1532,9 +1532,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 632,
       "checkpoint": {
-        "timestamp": "2026-09-09T14:27:44.144053758Z",
+        "timestamp": "2026-09-09T14:27:49.218459368Z",
         "current_node": "reviewer",
         "completed_nodes": [
           "start",
@@ -1546,68 +1546,11 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.run_id": "01M237JNJW4FNRRZ70EX7WZF6D",
-          "current_node": "reviewer",
-          "graph.max_node_visits": "40",
-          "internal.retry_count.tester": 0,
-          "command.output": "blob://sha256/89c00918f4b71ed9a8eceadebe2fc54f9c171647f7fe4aa6ea0e007a37286246",
-          "internal.retry_count.implementer": 0,
-          "response.reviewer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.reviewer",
-            "chars": 3831,
-            "preview": "All checks complete. Verification summary:\n\n**Spec compliance (judged against the in-progress seed spec in the evidence capture):**\n1. **Routing schema constrains labels** — `OutputSchemaKind::Routi"
-          },
-          "seed_cycles": {
-            "planner": 1,
-            "implementer": 1,
-            "tester": 1,
-            "evidence": 1,
-            "reviewer": 1
-          },
-          "preferred_label": "Approved",
-          "graph.inspects": "develop",
-          "thread.implementer.current_node": "tester",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.seed_cycle_anchor": "fabro-de4d",
-          "internal.retry_count.evidence": 0,
           "internal.retry_count.reviewer": 0,
-          "implementation_summary": "fabro-de4d implemented (lesson captured as mx-a825f8). `OutputSchemaKind::Routing` now carries `allowed_labels` derived from the node's unconditional outgoing edge labels via `routable_edge_labels()` in `lib/components/fabro-workflow/src/handler/structured_output.rs`; `parse_node_output_schema(graph, node)` threads the graph in, and `CodergenRunRequest`/`OneShotRequest` gained a `graph` field so the api.rs backend repair loops (one_shot + run) enforce the constraint where output_retries live; agent/command/prompt handlers and 17 test request literals were updated mechanically. An unknown `preferred_next_label` fails the OUTPUT with a `SchemaValidation`-kind error naming the offending value and the full allowed list (normalized via now-`pub(crate)` `graph::routing::normalize_label` for case/accelerator insensitivity); the routing agent prompt also lists the allowed labels. New graph lint `routing_fallback_silent` in `lib/components/fabro-validate/src/rules/routing_fallback_silent.rs` warns when a label-routing node's only unrouted-label catcher is an unconditional unlabeled, kindless edge. review.md prompt stopgap untouched. Per-criterion verification: - PASS - routing schema constrains labels to outgoing edge labels: `structured_output.rs` `routable_edge_labels` + `validate_preferred_label` (schema at the former free-form site, parse at `parse_node_output_schema`), tests `parse_node_output_schema_threads_outgoing_edge_labels_into_routing`, `known_preferred_label_passes_validation` — PASS - unknown label fails the OUTPUT with verbose error (value + full allowed list) and triggers the repair path: `validate_preferred_label` returns SchemaValidation kind (not fallback-allowed) so api.rs output_retries loops repair; tests `unknown_preferred_label_fails_the_output_with_verbose_error`, `routing_repair_message_for_unknown_label_carries_the_allowed_list` in `structured_output.rs` and `validated_routing_rejects_unknown_preferred_label_at_handler_boundary` in `agent.rs` — PASS - handler accesses outgoing edge labels (human.rs precedent) without breaking agent.rs tests: graph threaded through `parse_node_output_schema` and both request structs; `should_not_use` test kept unchanged under the chosen reading — empty edge set keeps free-form drop semantics (asserted by `routing_without_edge_labels_keeps_free_form_drop_semantics`) — PASS - graph validation warning for unconditional kindless unrouted-label catchers, warning-only: `routing_fallback_silent.rs` + 4 unit tests, registered in `rules/mod.rs`; no existing rule became an error — PASS - tests (a) valid label passes, (b) unknown label verbose retry error, (c) routing.rs suite unchanged: all present; full `cargo nextest run -p fabro-workflow -p fabro-validate` = 1814 passed, routing.rs tests untouched except making `normalize_label` pub(crate) — PASS - verification order: nextest touched crates then `cargo build --workspace`, plus crate-scoped nightly fmt+clippy (default features) on both touched crates — all green — PASS",
-          "thread.tester.current_node": "evidence",
           "last_stage": "reviewer",
-          "internal.node_visit_count": 1,
-          "graph.preamble_budget_kb": "24",
-          "internal.retry_count.start": 0,
           "thread.evidence.current_node": "reviewer",
-          "failure_signature": "",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 3172,
-            "preview": "Claimed fabro-de4d (High, bug, engine). Basis verified against the current tree: the routing output schema at `lib/components/fabro-workflow/src/handler/structured_output.rs:645` still types `preferre"
-          },
-          "outcome": "succeeded",
-          "current_seed_title": "engine: routing output_schema must constrain preferred_label to the node's outgoing edge labels",
-          "internal.thread_id": "evidence",
-          "graph.cycle_counter_reset_key": "current_seed_id",
           "graph.rankdir": "LR",
-          "thread.start.current_node": "planner",
-          "failure_class": "",
-          "current_seed_id": "fabro-de4d",
-          "last_response": "All checks complete. Verification summary:\n\n**Spec compliance (judged against the in-progress seed spec in the evidence capture):**\n1. **Routing schema constrains labels** — `OutputSchemaKind::Routi",
-          "internal.retry_count.planner": 0,
-          "response.implementer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.implementer",
-            "chars": 4856,
-            "preview": "The `name:\"n\"` in that output was my own `rg -rn` display-replace artifact again — the file itself is intact; the record id is `mx-a825f8`. Everything is verified:\n\n- `cargo nextest run -p fabro-wor"
-          },
-          "lesson_capture": "mx-a825f8",
-          "review_verdict": "approved",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "thread.planner.current_node": "implementer",
-          "current_seed_brief": "Incident 2026-09-06 (merge-upstream run 01M1V7XSV75BE92JZ0135SHQXK): reviewer emitted preferred_label='deploy', no edge matched, run soft-parked with ~50 min of work stranded. Implement the durable engine fix — validation, not prompt material. Acceptance criteria:\n- routing schema constrains labels: for nodes using output_schema='routing', the emitted JSON schema and/or output validation restricts preferred_label (and any label-carrying field, e.g. preferred_next_label) to the current node's outgoing edge labels — the free-form string today lives in `lib/components/fabro-workflow/src/handler/structured_output.rs:645` (schema) and `:672` (parse)\n- unknown label fails the OUTPUT, not the run: an out-of-vocabulary label triggers output_retries with an error naming the offending value AND the full allowed-label list (verbose validation, fabro-e4ac class)\n- the agent handler can access the node's outgoing edge labels when building/validating the schema — precedent exists in `lib/components/fabro-workflow/src/handler/human.rs:19` (choices derived from outgoing edges); thread the labels into the structured-output path without breaking handler/agent.rs existing tests (e.g. 'should_not_use' at agent.rs:980 currently asserts the label is dropped — align that test with the new fail-the-output behavior or keep drop semantics where no edge info is available, and state which reading you chose)\n- graph validation: emitting a warning when a node's only unrouted-label catcher is an unconditional edge without kind (silent soft park is the costliest routing failure) — warning only, no hard error\n- tests: unit tests in structured_output.rs/agent.rs covering (a) valid label passes, (b) unknown label retries with verbose error naming value + allowed list, (c) existing routing tests in `lib/components/fabro-workflow/src/graph/routing.rs` still pass unchanged\n- verification order (cheapest first): `cargo nextest run -p fabro-workflow` then `cargo build --workspace`\n- do NOT touch the review.md prompt stopgap (it stays as defense-in-depth)",
-          "internal.fidelity": "summary:high",
+          "internal.thread_id": "evidence",
           "journal": {
             "painpoints": [
               {
@@ -1619,23 +1562,66 @@
               "Cross-checked routable_edge_labels against select_edge's preferred-label loop (routing.rs:51-65) in the live tree: filters and normalization match exactly, so the allowed-label vocabulary cannot accept a label routing would drop or reject one routing would match.",
               "Capability delta audit clean: diff touches no env/credential/tool-allowlist/hook surface and uses no engine-provided credential on a new path."
             ]
-          }
+          },
+          "failure_signature": "",
+          "implementation_summary": "fabro-de4d implemented (lesson captured as mx-a825f8). `OutputSchemaKind::Routing` now carries `allowed_labels` derived from the node's unconditional outgoing edge labels via `routable_edge_labels()` in `lib/components/fabro-workflow/src/handler/structured_output.rs`; `parse_node_output_schema(graph, node)` threads the graph in, and `CodergenRunRequest`/`OneShotRequest` gained a `graph` field so the api.rs backend repair loops (one_shot + run) enforce the constraint where output_retries live; agent/command/prompt handlers and 17 test request literals were updated mechanically. An unknown `preferred_next_label` fails the OUTPUT with a `SchemaValidation`-kind error naming the offending value and the full allowed list (normalized via now-`pub(crate)` `graph::routing::normalize_label` for case/accelerator insensitivity); the routing agent prompt also lists the allowed labels. New graph lint `routing_fallback_silent` in `lib/components/fabro-validate/src/rules/routing_fallback_silent.rs` warns when a label-routing node's only unrouted-label catcher is an unconditional unlabeled, kindless edge. review.md prompt stopgap untouched. Per-criterion verification: - PASS - routing schema constrains labels to outgoing edge labels: `structured_output.rs` `routable_edge_labels` + `validate_preferred_label` (schema at the former free-form site, parse at `parse_node_output_schema`), tests `parse_node_output_schema_threads_outgoing_edge_labels_into_routing`, `known_preferred_label_passes_validation` — PASS - unknown label fails the OUTPUT with verbose error (value + full allowed list) and triggers the repair path: `validate_preferred_label` returns SchemaValidation kind (not fallback-allowed) so api.rs output_retries loops repair; tests `unknown_preferred_label_fails_the_output_with_verbose_error`, `routing_repair_message_for_unknown_label_carries_the_allowed_list` in `structured_output.rs` and `validated_routing_rejects_unknown_preferred_label_at_handler_boundary` in `agent.rs` — PASS - handler accesses outgoing edge labels (human.rs precedent) without breaking agent.rs tests: graph threaded through `parse_node_output_schema` and both request structs; `should_not_use` test kept unchanged under the chosen reading — empty edge set keeps free-form drop semantics (asserted by `routing_without_edge_labels_keeps_free_form_drop_semantics`) — PASS - graph validation warning for unconditional kindless unrouted-label catchers, warning-only: `routing_fallback_silent.rs` + 4 unit tests, registered in `rules/mod.rs`; no existing rule became an error — PASS - tests (a) valid label passes, (b) unknown label verbose retry error, (c) routing.rs suite unchanged: all present; full `cargo nextest run -p fabro-workflow -p fabro-validate` = 1814 passed, routing.rs tests untouched except making `normalize_label` pub(crate) — PASS - verification order: nextest touched crates then `cargo build --workspace`, plus crate-scoped nightly fmt+clippy (default features) on both touched crates — all green — PASS",
+          "current_node": "reviewer",
+          "internal.work_dir": "/workspace/fabro",
+          "review_verdict": "approved",
+          "current_seed_id": "fabro-de4d",
+          "internal.retry_count.evidence": 0,
+          "internal.run_id": "01M237JNJW4FNRRZ70EX7WZF6D",
+          "current_seed_brief": "Incident 2026-09-06 (merge-upstream run 01M1V7XSV75BE92JZ0135SHQXK): reviewer emitted preferred_label='deploy', no edge matched, run soft-parked with ~50 min of work stranded. Implement the durable engine fix — validation, not prompt material. Acceptance criteria:\n- routing schema constrains labels: for nodes using output_schema='routing', the emitted JSON schema and/or output validation restricts preferred_label (and any label-carrying field, e.g. preferred_next_label) to the current node's outgoing edge labels — the free-form string today lives in `lib/components/fabro-workflow/src/handler/structured_output.rs:645` (schema) and `:672` (parse)\n- unknown label fails the OUTPUT, not the run: an out-of-vocabulary label triggers output_retries with an error naming the offending value AND the full allowed-label list (verbose validation, fabro-e4ac class)\n- the agent handler can access the node's outgoing edge labels when building/validating the schema — precedent exists in `lib/components/fabro-workflow/src/handler/human.rs:19` (choices derived from outgoing edges); thread the labels into the structured-output path without breaking handler/agent.rs existing tests (e.g. 'should_not_use' at agent.rs:980 currently asserts the label is dropped — align that test with the new fail-the-output behavior or keep drop semantics where no edge info is available, and state which reading you chose)\n- graph validation: emitting a warning when a node's only unrouted-label catcher is an unconditional edge without kind (silent soft park is the costliest routing failure) — warning only, no hard error\n- tests: unit tests in structured_output.rs/agent.rs covering (a) valid label passes, (b) unknown label retries with verbose error naming value + allowed list, (c) existing routing tests in `lib/components/fabro-workflow/src/graph/routing.rs` still pass unchanged\n- verification order (cheapest first): `cargo nextest run -p fabro-workflow` then `cargo build --workspace`\n- do NOT touch the review.md prompt stopgap (it stays as defense-in-depth)",
+          "thread.start.current_node": "planner",
+          "last_response": "All checks complete. Verification summary:\n\n**Spec compliance (judged against the in-progress seed spec in the evidence capture):**\n1. **Routing schema constrains labels** — `OutputSchemaKind::Routi",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1
+          },
+          "failure_class": "",
+          "thread.implementer.current_node": "tester",
+          "internal.retry_count.implementer": 0,
+          "internal.retry_count.start": 0,
+          "graph.max_node_visits": "40",
+          "graph.inspects": "develop",
+          "preferred_label": "Approved",
+          "current_seed_title": "engine: routing output_schema must constrain preferred_label to the node's outgoing edge labels",
+          "internal.node_visit_count": 1,
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 4856,
+            "preview": "The `name:\"n\"` in that output was my own `rg -rn` display-replace artifact again — the file itself is intact; the record id is `mx-a825f8`. Everything is verified:\n\n- `cargo nextest run -p fabro-wor"
+          },
+          "internal.retry_count.planner": 0,
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3172,
+            "preview": "Claimed fabro-de4d (High, bug, engine). Basis verified against the current tree: the routing output schema at `lib/components/fabro-workflow/src/handler/structured_output.rs:645` still types `preferre"
+          },
+          "thread.planner.current_node": "implementer",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.tester": 0,
+          "internal.seed_cycle_anchor": "fabro-de4d",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 3831,
+            "preview": "All checks complete. Verification summary:\n\n**Spec compliance (judged against the in-progress seed spec in the evidence capture):**\n1. **Routing schema constrains labels** — `OutputSchemaKind::Routi"
+          },
+          "internal.fidelity": "summary:high",
+          "outcome": "succeeded",
+          "lesson_capture": "mx-a825f8",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "command.output": "blob://sha256/89c00918f4b71ed9a8eceadebe2fc54f9c171647f7fe4aa6ea0e007a37286246",
+          "graph.preamble_budget_kb": "24",
+          "thread.tester.current_node": "evidence"
         },
         "node_outcomes": {
-          "evidence": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/89c00918f4b71ed9a8eceadebe2fc54f9c171647f7fe4aa6ea0e007a37286246"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 404,
-              "active_time_ms": 404
-            }
-          },
           "implementer": {
             "status": "succeeded",
             "preferred_label": "Implemented",
@@ -1696,23 +1682,19 @@
               "active_time_ms": 1400493
             }
           },
-          "tester": {
+          "evidence": {
             "status": "succeeded",
             "context_updates": {
-              "command.output": "blob://sha256/a356e5ac796ecfe5aac74f0c78114c65539e2cd97009be53feedcf8f045fa991"
+              "command.output": "blob://sha256/89c00918f4b71ed9a8eceadebe2fc54f9c171647f7fe4aa6ea0e007a37286246"
             },
-            "notes": "Script completed: just qualitygate",
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
             "usage": null,
             "timing": {
               "wall_time_ms": 0,
               "inference_time_ms": 0,
-              "tool_time_ms": 24993,
-              "active_time_ms": 24993
+              "tool_time_ms": 404,
+              "active_time_ms": 404
             }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
           },
           "planner": {
             "status": "succeeded",
@@ -1820,14 +1802,363 @@
               "tool_time_ms": 357,
               "active_time_ms": 60531
             }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/a356e5ac796ecfe5aac74f0c78114c65539e2cd97009be53feedcf8f045fa991"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 24993,
+              "active_time_ms": 24993
+            }
           }
         },
         "next_node_id": "closeout",
+        "git_commit_sha": "30bbdf30b623e4ab08e642476ec550754640886e",
+        "node_visits": {
+          "planner": 1,
+          "tester": 1,
+          "reviewer": 1,
+          "start": 1,
+          "implementer": 1,
+          "evidence": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M237JNJW4FNRRZ70EX7WZF6D.jsonl b/.fabro/journal/01M237JNJW4FNRRZ70EX7WZF6D.jsonl\nindex 1ecc536..7f6a57f 100644\n--- a/.fabro/journal/01M237JNJW4FNRRZ70EX7WZF6D.jsonl\n+++ b/.fabro/journal/01M237JNJW4FNRRZ70EX7WZF6D.jsonl\n@@ -3,3 +3,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M237JNJW4FNRRZ70EX7WZF6D\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T14:26:00Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Shell cwd resets to `/repos/denkhaus/fabro` between invocations while the declared workspace is `/workspace/fabro` — same tree, but relative-path commands silently fail; use absolute paths every time. Also caught myself running `rg -rn <pattern>` twice this pass (replace-flag discipline, run 01M22X87J1RKQ6A8FZB7RC2RN8): `-r n` rewrites matches to literal 'n' in displayed output, which misread file contents and a freshly recorded mulch entry as corrupted.\",\"The structured-output repair loops live inside the LLM backend (`lib/components/fabro-workflow/src/handler/llm/api.rs` one_shot/run), not in the AgentHandler — so any output constraint that must trigger output_retries has to reach `parse_node_output_schema` inside the backend, which is why CodergenRunRequest/OneShotRequest now carry `&Graph` instead of a handler-layer-only check (a handler-only check would fail the outcome with zero repair turns).\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M237JNJW4FNRRZ70EX7WZF6D\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T14:26:30Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M237JNJW4FNRRZ70EX7WZF6D\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T14:26:35Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M237JNJW4FNRRZ70EX7WZF6D\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T14:27:44Z\",\"data\":{\"painpoints\":[{\"text\":\"The 40 KB evidence capture arrived as a blob ref with only a ~300-word preview (run 01M237JNJW4FNRRZ70EX7WZF6D). Paging through it with read_file worked fine, but the preview contained none of the diff, so nothing about the code could be judged from the preamble alone. Suggestion: include the integrity header plus the changed-file list (not the diff) in the preview so a reviewer can scope-check before paging.\"}],\"observations\":[\"Verified the full seed-work diff from the materialized blob against the authoritative in-progress seed spec: all six acceptance criteria visible and satisfied, including the explicitly-stated reading that keeps the agent.rs 'should_not_use' drop semantics for empty edge sets.\",\"Cross-checked routable_edge_labels against select_edge's preferred-label loop (routing.rs:51-65) in the live tree: filters and normalization match exactly, so the allowed-label vocabulary cannot accept a label routing would drop or reject one routing would match.\",\"Capability delta audit clean: diff touches no env/credential/tool-allowlist/hook surface and uses no engine-provided credential on a new path.\"]}}\n",
+        "summary": {
+          "files_changed": 14,
+          "additions": 479,
+          "deletions": 28
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T14:27:50.242567444Z",
+        "current_node": "closeout",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.run_id": "01M237JNJW4FNRRZ70EX7WZF6D",
+          "current_node": "closeout",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.tester": 0,
+          "command.output": "blob://sha256/0c840b5250f38ad6b13a037ab7211d3a746192f38a457487548eeaba0a5ea591",
+          "internal.retry_count.implementer": 0,
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 3831,
+            "preview": "All checks complete. Verification summary:\n\n**Spec compliance (judged against the in-progress seed spec in the evidence capture):**\n1. **Routing schema constrains labels** — `OutputSchemaKind::Routi"
+          },
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1,
+            "closeout": 1
+          },
+          "preferred_label": "Approved",
+          "graph.inspects": "develop",
+          "thread.implementer.current_node": "tester",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.seed_cycle_anchor": "fabro-de4d",
+          "internal.retry_count.evidence": 0,
+          "internal.retry_count.reviewer": 0,
+          "implementation_summary": "fabro-de4d implemented (lesson captured as mx-a825f8). `OutputSchemaKind::Routing` now carries `allowed_labels` derived from the node's unconditional outgoing edge labels via `routable_edge_labels()` in `lib/components/fabro-workflow/src/handler/structured_output.rs`; `parse_node_output_schema(graph, node)` threads the graph in, and `CodergenRunRequest`/`OneShotRequest` gained a `graph` field so the api.rs backend repair loops (one_shot + run) enforce the constraint where output_retries live; agent/command/prompt handlers and 17 test request literals were updated mechanically. An unknown `preferred_next_label` fails the OUTPUT with a `SchemaValidation`-kind error naming the offending value and the full allowed list (normalized via now-`pub(crate)` `graph::routing::normalize_label` for case/accelerator insensitivity); the routing agent prompt also lists the allowed labels. New graph lint `routing_fallback_silent` in `lib/components/fabro-validate/src/rules/routing_fallback_silent.rs` warns when a label-routing node's only unrouted-label catcher is an unconditional unlabeled, kindless edge. review.md prompt stopgap untouched. Per-criterion verification: - PASS - routing schema constrains labels to outgoing edge labels: `structured_output.rs` `routable_edge_labels` + `validate_preferred_label` (schema at the former free-form site, parse at `parse_node_output_schema`), tests `parse_node_output_schema_threads_outgoing_edge_labels_into_routing`, `known_preferred_label_passes_validation` — PASS - unknown label fails the OUTPUT with verbose error (value + full allowed list) and triggers the repair path: `validate_preferred_label` returns SchemaValidation kind (not fallback-allowed) so api.rs output_retries loops repair; tests `unknown_preferred_label_fails_the_output_with_verbose_error`, `routing_repair_message_for_unknown_label_carries_the_allowed_list` in `structured_output.rs` and `validated_routing_rejects_unknown_preferred_label_at_handler_boundary` in `agent.rs` — PASS - handler accesses outgoing edge labels (human.rs precedent) without breaking agent.rs tests: graph threaded through `parse_node_output_schema` and both request structs; `should_not_use` test kept unchanged under the chosen reading — empty edge set keeps free-form drop semantics (asserted by `routing_without_edge_labels_keeps_free_form_drop_semantics`) — PASS - graph validation warning for unconditional kindless unrouted-label catchers, warning-only: `routing_fallback_silent.rs` + 4 unit tests, registered in `rules/mod.rs`; no existing rule became an error — PASS - tests (a) valid label passes, (b) unknown label verbose retry error, (c) routing.rs suite unchanged: all present; full `cargo nextest run -p fabro-workflow -p fabro-validate` = 1814 passed, routing.rs tests untouched except making `normalize_label` pub(crate) — PASS - verification order: nextest touched crates then `cargo build --workspace`, plus crate-scoped nightly fmt+clippy (default features) on both touched crates — all green — PASS",
+          "thread.tester.current_node": "evidence",
+          "last_stage": "reviewer",
+          "internal.node_visit_count": 1,
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.start": 0,
+          "thread.evidence.current_node": "reviewer",
+          "failure_signature": "",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3172,
+            "preview": "Claimed fabro-de4d (High, bug, engine). Basis verified against the current tree: the routing output schema at `lib/components/fabro-workflow/src/handler/structured_output.rs:645` still types `preferre"
+          },
+          "outcome": "succeeded",
+          "current_seed_title": "engine: routing output_schema must constrain preferred_label to the node's outgoing edge labels",
+          "internal.thread_id": "reviewer",
+          "internal.exit_kind": "natural",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.rankdir": "LR",
+          "thread.start.current_node": "planner",
+          "failure_class": "",
+          "current_seed_id": "fabro-de4d",
+          "last_response": "All checks complete. Verification summary:\n\n**Spec compliance (judged against the in-progress seed spec in the evidence capture):**\n1. **Routing schema constrains labels** — `OutputSchemaKind::Routi",
+          "internal.retry_count.planner": 0,
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 4856,
+            "preview": "The `name:\"n\"` in that output was my own `rg -rn` display-replace artifact again — the file itself is intact; the record id is `mx-a825f8`. Everything is verified:\n\n- `cargo nextest run -p fabro-wor"
+          },
+          "lesson_capture": "mx-a825f8",
+          "review_verdict": "approved",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "thread.planner.current_node": "implementer",
+          "thread.reviewer.current_node": "closeout",
+          "current_seed_brief": "Incident 2026-09-06 (merge-upstream run 01M1V7XSV75BE92JZ0135SHQXK): reviewer emitted preferred_label='deploy', no edge matched, run soft-parked with ~50 min of work stranded. Implement the durable engine fix — validation, not prompt material. Acceptance criteria:\n- routing schema constrains labels: for nodes using output_schema='routing', the emitted JSON schema and/or output validation restricts preferred_label (and any label-carrying field, e.g. preferred_next_label) to the current node's outgoing edge labels — the free-form string today lives in `lib/components/fabro-workflow/src/handler/structured_output.rs:645` (schema) and `:672` (parse)\n- unknown label fails the OUTPUT, not the run: an out-of-vocabulary label triggers output_retries with an error naming the offending value AND the full allowed-label list (verbose validation, fabro-e4ac class)\n- the agent handler can access the node's outgoing edge labels when building/validating the schema — precedent exists in `lib/components/fabro-workflow/src/handler/human.rs:19` (choices derived from outgoing edges); thread the labels into the structured-output path without breaking handler/agent.rs existing tests (e.g. 'should_not_use' at agent.rs:980 currently asserts the label is dropped — align that test with the new fail-the-output behavior or keep drop semantics where no edge info is available, and state which reading you chose)\n- graph validation: emitting a warning when a node's only unrouted-label catcher is an unconditional edge without kind (silent soft park is the costliest routing failure) — warning only, no hard error\n- tests: unit tests in structured_output.rs/agent.rs covering (a) valid label passes, (b) unknown label retries with verbose error naming value + allowed list, (c) existing routing tests in `lib/components/fabro-workflow/src/graph/routing.rs` still pass unchanged\n- verification order (cheapest first): `cargo nextest run -p fabro-workflow` then `cargo build --workspace`\n- do NOT touch the review.md prompt stopgap (it stays as defense-in-depth)",
+          "internal.fidelity": "compact",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "The 40 KB evidence capture arrived as a blob ref with only a ~300-word preview (run 01M237JNJW4FNRRZ70EX7WZF6D). Paging through it with read_file worked fine, but the preview contained none of the diff, so nothing about the code could be judged from the preamble alone. Suggestion: include the integrity header plus the changed-file list (not the diff) in the preview so a reviewer can scope-check before paging."
+              }
+            ],
+            "observations": [
+              "Verified the full seed-work diff from the materialized blob against the authoritative in-progress seed spec: all six acceptance criteria visible and satisfied, including the explicitly-stated reading that keeps the agent.rs 'should_not_use' drop semantics for empty edge sets.",
+              "Cross-checked routable_edge_labels against select_edge's preferred-label loop (routing.rs:51-65) in the live tree: filters and normalization match exactly, so the allowed-label vocabulary cannot accept a label routing would drop or reject one routing would match.",
+              "Capability delta audit clean: diff touches no env/credential/tool-allowlist/hook surface and uses no engine-provided credential on a new path."
+            ]
+          },
+          "internal.retry_count.closeout": 0
+        },
+        "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_response": "The `name:\"n\"` in that output was my own `rg -rn` display-replace artifact again — the file itself is intact; the record id is `mx-a825f8`. Everything is verified:\n\n- `cargo nextest run -p fabro-wor",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Shell cwd resets to `/repos/denkhaus/fabro` between invocations while the declared workspace is `/workspace/fabro` — same tree, but relative-path commands silently fail; use absolute paths every time. Also caught myself running `rg -rn <pattern>` twice this pass (replace-flag discipline, run 01M22X87J1RKQ6A8FZB7RC2RN8): `-r n` rewrites matches to literal 'n' in displayed output, which misread file contents and a freshly recorded mulch entry as corrupted.",
+                  "The structured-output repair loops live inside the LLM backend (`lib/components/fabro-workflow/src/handler/llm/api.rs` one_shot/run), not in the AgentHandler — so any output constraint that must trigger output_retries has to reach `parse_node_output_schema` inside the backend, which is why CodergenRunRequest/OneShotRequest now carry `&Graph` instead of a handler-layer-only check (a handler-only check would fail the outcome with zero repair turns)."
+                ]
+              },
+              "lesson_capture": "mx-a825f8",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 4856,
+                "preview": "The `name:\"n\"` in that output was my own `rg -rn` display-replace artifact again — the file itself is intact; the record id is `mx-a825f8`. Everything is verified:\n\n- `cargo nextest run -p fabro-wor"
+              },
+              "implementation_summary": "fabro-de4d implemented (lesson captured as mx-a825f8). `OutputSchemaKind::Routing` now carries `allowed_labels` derived from the node's unconditional outgoing edge labels via `routable_edge_labels()` in `lib/components/fabro-workflow/src/handler/structured_output.rs`; `parse_node_output_schema(graph, node)` threads the graph in, and `CodergenRunRequest`/`OneShotRequest` gained a `graph` field so the api.rs backend repair loops (one_shot + run) enforce the constraint where output_retries live; agent/command/prompt handlers and 17 test request literals were updated mechanically. An unknown `preferred_next_label` fails the OUTPUT with a `SchemaValidation`-kind error naming the offending value and the full allowed list (normalized via now-`pub(crate)` `graph::routing::normalize_label` for case/accelerator insensitivity); the routing agent prompt also lists the allowed labels. New graph lint `routing_fallback_silent` in `lib/components/fabro-validate/src/rules/routing_fallback_silent.rs` warns when a label-routing node's only unrouted-label catcher is an unconditional unlabeled, kindless edge. review.md prompt stopgap untouched. Per-criterion verification: - PASS - routing schema constrains labels to outgoing edge labels: `structured_output.rs` `routable_edge_labels` + `validate_preferred_label` (schema at the former free-form site, parse at `parse_node_output_schema`), tests `parse_node_output_schema_threads_outgoing_edge_labels_into_routing`, `known_preferred_label_passes_validation` — PASS - unknown label fails the OUTPUT with verbose error (value + full allowed list) and triggers the repair path: `validate_preferred_label` returns SchemaValidation kind (not fallback-allowed) so api.rs output_retries loops repair; tests `unknown_preferred_label_fails_the_output_with_verbose_error`, `routing_repair_message_for_unknown_label_carries_the_allowed_list` in `structured_output.rs` and `validated_routing_rejects_unknown_preferred_label_at_handler_boundary` in `agent.rs` — PASS - handler accesses outgoing edge labels (human.rs precedent) without breaking agent.rs tests: graph threaded through `parse_node_output_schema` and both request structs; `should_not_use` test kept unchanged under the chosen reading — empty edge set keeps free-form drop semantics (asserted by `routing_without_edge_labels_keeps_free_form_drop_semantics`) — PASS - graph validation warning for unconditional kindless unrouted-label catchers, warning-only: `routing_fallback_silent.rs` + 4 unit tests, registered in `rules/mod.rs`; no existing rule became an error — PASS - tests (a) valid label passes, (b) unknown label verbose retry error, (c) routing.rs suite unchanged: all present; full `cargo nextest run -p fabro-workflow -p fabro-validate` = 1814 passed, routing.rs tests untouched except making `normalize_label` pub(crate) — PASS - verification order: nextest touched crates then `cargo build --workspace`, plus crate-scoped nightly fmt+clippy (default features) on both touched crates — all green — PASS"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 86803,
+                    "output_tokens": 13679,
+                    "reasoning_tokens": 8456,
+                    "cache_read_tokens": 4672448,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 1433661
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/components/fabro-validate/src/rules/mod.rs",
+              "/workspace/fabro/lib/components/fabro-validate/src/rules/routing_fallback_silent.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/handler/agent.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/handler/command.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/handler/llm/api.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/handler/prompt.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/handler/structured_output.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 550441,
+              "tool_time_ms": 850052,
+              "active_time_ms": 1400493
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_title": "engine: routing output_schema must constrain preferred_label to the node's outgoing edge labels",
+              "current_seed_brief": "Incident 2026-09-06 (merge-upstream run 01M1V7XSV75BE92JZ0135SHQXK): reviewer emitted preferred_label='deploy', no edge matched, run soft-parked with ~50 min of work stranded. Implement the durable engine fix — validation, not prompt material. Acceptance criteria:\n- routing schema constrains labels: for nodes using output_schema='routing', the emitted JSON schema and/or output validation restricts preferred_label (and any label-carrying field, e.g. preferred_next_label) to the current node's outgoing edge labels — the free-form string today lives in `lib/components/fabro-workflow/src/handler/structured_output.rs:645` (schema) and `:672` (parse)\n- unknown label fails the OUTPUT, not the run: an out-of-vocabulary label triggers output_retries with an error naming the offending value AND the full allowed-label list (verbose validation, fabro-e4ac class)\n- the agent handler can access the node's outgoing edge labels when building/validating the schema — precedent exists in `lib/components/fabro-workflow/src/handler/human.rs:19` (choices derived from outgoing edges); thread the labels into the structured-output path without breaking handler/agent.rs existing tests (e.g. 'should_not_use' at agent.rs:980 currently asserts the label is dropped — align that test with the new fail-the-output behavior or keep drop semantics where no edge info is available, and state which reading you chose)\n- graph validation: emitting a warning when a node's only unrouted-label catcher is an unconditional edge without kind (silent soft park is the costliest routing failure) — warning only, no hard error\n- tests: unit tests in structured_output.rs/agent.rs covering (a) valid label passes, (b) unknown label retries with verbose error naming value + allowed list, (c) existing routing tests in `lib/components/fabro-workflow/src/graph/routing.rs` still pass unchanged\n- verification order (cheapest first): `cargo nextest run -p fabro-workflow` then `cargo build --workspace`\n- do NOT touch the review.md prompt stopgap (it stays as defense-in-depth)",
+              "current_seed_id": "fabro-de4d",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3172,
+                "preview": "Claimed fabro-de4d (High, bug, engine). Basis verified against the current tree: the routing output schema at `lib/components/fabro-workflow/src/handler/structured_output.rs:645` still types `preferre"
+              },
+              "last_stage": "planner",
+              "last_response": "Claimed fabro-de4d (High, bug, engine). Basis verified against the current tree: the routing output schema at `lib/components/fabro-workflow/src/handler/structured_output.rs:645` still types `preferre",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-de4d basis verified live: routing schema still free-form at structured_output.rs:645, no edge-label validation exists in the tree — seed is current, not stale",
+                  "in-flight check clean: 13 develop runs listed, no open PRs, only this run (01M237JN) non-terminal"
+                ]
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 28675,
+                    "output_tokens": 962,
+                    "reasoning_tokens": 392,
+                    "cache_read_tokens": 113216,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 75534
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 48146,
+              "tool_time_ms": 3353,
+              "active_time_ms": 51499
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/89c00918f4b71ed9a8eceadebe2fc54f9c171647f7fe4aa6ea0e007a37286246"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 404,
+              "active_time_ms": 404
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/a356e5ac796ecfe5aac74f0c78114c65539e2cd97009be53feedcf8f045fa991"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 24993,
+              "active_time_ms": 24993
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "last_stage": "reviewer",
+              "review_verdict": "approved",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "The 40 KB evidence capture arrived as a blob ref with only a ~300-word preview (run 01M237JNJW4FNRRZ70EX7WZF6D). Paging through it with read_file worked fine, but the preview contained none of the diff, so nothing about the code could be judged from the preamble alone. Suggestion: include the integrity header plus the changed-file list (not the diff) in the preview so a reviewer can scope-check before paging."
+                  }
+                ],
+                "observations": [
+                  "Verified the full seed-work diff from the materialized blob against the authoritative in-progress seed spec: all six acceptance criteria visible and satisfied, including the explicitly-stated reading that keeps the agent.rs 'should_not_use' drop semantics for empty edge sets.",
+                  "Cross-checked routable_edge_labels against select_edge's preferred-label loop (routing.rs:51-65) in the live tree: filters and normalization match exactly, so the allowed-label vocabulary cannot accept a label routing would drop or reject one routing would match.",
+                  "Capability delta audit clean: diff touches no env/credential/tool-allowlist/hook surface and uses no engine-provided credential on a new path."
+                ]
+              },
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 3831,
+                "preview": "All checks complete. Verification summary:\n\n**Spec compliance (judged against the in-progress seed spec in the evidence capture):**\n1. **Routing schema constrains labels** — `OutputSchemaKind::Routi"
+              },
+              "last_response": "All checks complete. Verification summary:\n\n**Spec compliance (judged against the in-progress seed spec in the evidence capture):**\n1. **Routing schema constrains labels** — `OutputSchemaKind::Routi"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 29299,
+                    "output_tokens": 1309,
+                    "reasoning_tokens": 1236,
+                    "cache_read_tokens": 105792,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 79717
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 60174,
+              "tool_time_ms": 357,
+              "active_time_ms": 60531
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/0c840b5250f38ad6b13a037ab7211d3a746192f38a457487548eeaba0a5ea591"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 299,
+              "active_time_ms": 299
+            }
+          }
+        },
+        "next_node_id": "exit",
         "node_visits": {
           "planner": 1,
           "start": 1,
           "evidence": 1,
           "reviewer": 1,
+          "closeout": 1,
           "tester": 1,
           "implementer": 1
         }
@@ -2395,6 +2726,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "closeout@1": {
+      "first_event_seq": 635,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T14:27:50.023942052Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/0c840b5250f38ad6b13a037ab7211d3a746192f38a457487548eeaba0a5ea591",
+        "exit_code": 0,
+        "duration_ms": 299,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-09T14:27:49.708342117Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 306,
+        "inference_time_ms": 0,
+        "tool_time_ms": 299,
+        "active_time_ms": 299
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
