@@ -483,7 +483,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T13:06:25.915489226Z",
-  "last_event_at": "2026-09-09T13:14:37.206351865Z",
+  "last_event_at": "2026-09-09T13:14:43.839137241Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -888,9 +888,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 191,
       "checkpoint": {
-        "timestamp": "2026-09-09T13:14:37.451559284Z",
+        "timestamp": "2026-09-09T13:14:42.346173283Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -900,19 +900,51 @@
         ],
         "node_retries": {},
         "context_values": {
-          "graph.inspects": "develop,merge-upstream",
+          "thread.start.current_node": "select",
+          "graph.max_node_visits": "30",
+          "revisor_target_title": "Develop one seed per run: claim, implement, gate, review, exit (PR #92)",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.file": 0,
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 1357,
+            "preview": "Selection complete. Pool: 13 terminal runs (11 develop, 2 merge-upstream). Ten develop runs have markers in `.fabro/revisions/` and are already revised; the 2 merge-upstream runs (`01M20N60ZY6DZDTX60W"
+          },
+          "outcome": "succeeded",
+          "internal.thread_id": "analyze",
+          "revisor_target_run_id": "01M23443Z65RK83WTF4Z7D7PGD",
+          "revisor_target_workflow_version": "6417aaf5473539a3e260007c8872e2b6ab6c63fbfe6f243acb03e4fcdd92424d",
+          "filed_seed_ids": [
+            "fabro-d20f"
+          ],
+          "current_node": "file",
+          "internal.retry_count.select": 0,
           "journal": {
             "painpoints": [],
             "observations": [
               "Commit included only the marker and seed file (2 files) — the review file already existed; verify the host-side integrate step picks up cb76bf2c1"
             ]
           },
-          "internal.thread_id": "analyze",
-          "failure_class": "",
-          "internal.retry_count.file": 0,
-          "failure_signature": "",
-          "revisor_target_wall": "3.7 min",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "internal.retry_count.start": 0,
           "graph.rankdir": "LR",
+          "revisor_target_wall": "3.7 min",
+          "internal.exit_kind": "natural",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "preferred_label": "Staged",
+          "thread.select.current_node": "analyze",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 3844,
+            "preview": "Pass complete: asked once (succeeded), persisted the verbatim answer to `/workspace/fabro/.fabro/reviews/develop/01M23443Z65RK83WTF4Z7D7PGD.md`, confirmed via `origin/denkhaus` that the run is healthy"
+          },
           "revision_findings": [
             {
               "title": "Planner briefs must quote the actual heading when correcting a seed's path citation",
@@ -920,113 +952,27 @@
               "priority": 2
             }
           ],
-          "revisor_target_workflow_version": "6417aaf5473539a3e260007c8872e2b6ab6c63fbfe6f243acb03e4fcdd92424d",
-          "graph.preamble_budget_kb": "24",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.node_visit_count": 1,
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "revisor_target_run_id": "01M23443Z65RK83WTF4Z7D7PGD",
-          "thread.start.current_node": "select",
-          "revisor_target_title": "Develop one seed per run: claim, implement, gate, review, exit (PR #92)",
-          "internal.retry_count.select": 0,
-          "response.analyze": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "chars": 3844,
-            "preview": "Pass complete: asked once (succeeded), persisted the verbatim answer to `/workspace/fabro/.fabro/reviews/develop/01M23443Z65RK83WTF4Z7D7PGD.md`, confirmed via `origin/denkhaus` that the run is healthy"
-          },
-          "graph.max_node_visits": "30",
-          "filed_seed_ids": [
-            "fabro-d20f"
-          ],
-          "internal.retry_count.start": 0,
-          "last_response": "Bookkeeping complete: duplicate search found no match, seed fabro-d20f filed with mandatory basis line, revision marker written to `.fabro/revisions/01M23443Z65RK83WTF4Z7D7PGD.md`, and exactly the all",
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "preferred_label": "Staged",
-          "internal.fidelity": "compact",
           "internal.seed_cycle_anchor": "01M23443Z65RK83WTF4Z7D7PGD",
-          "seed_cycles": {
-            "select": 1,
-            "analyze": 1,
-            "file": 1
-          },
-          "internal.retry_count.analyze": 0,
-          "outcome": "succeeded",
-          "thread.analyze.current_node": "file",
-          "internal.run_id": "01M234DGZ14D6TZ486WZKJ407Z",
-          "last_stage": "file",
-          "current_node": "file",
-          "response.select": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.select",
-            "chars": 1357,
-            "preview": "Selection complete. Pool: 13 terminal runs (11 develop, 2 merge-upstream). Ten develop runs have markers in `.fabro/revisions/` and are already revised; the 2 merge-upstream runs (`01M20N60ZY6DZDTX60W"
-          },
           "revisor_target_status": "succeeded",
-          "thread.select.current_node": "analyze",
-          "internal.exit_kind": "natural",
+          "internal.run_id": "01M234DGZ14D6TZ486WZKJ407Z",
+          "internal.retry_count.analyze": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "graph.preamble_budget_kb": "24",
+          "failure_class": "",
+          "graph.inspects": "develop,merge-upstream",
+          "last_response": "Bookkeeping complete: duplicate search found no match, seed fabro-d20f filed with mandatory basis line, revision marker written to `.fabro/revisions/01M23443Z65RK83WTF4Z7D7PGD.md`, and exactly the all",
           "response.file": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.file",
             "chars": 630,
             "preview": "Bookkeeping complete: duplicate search found no match, seed fabro-d20f filed with mandatory basis line, revision marker written to `.fabro/revisions/01M23443Z65RK83WTF4Z7D7PGD.md`, and exactly the all"
-          }
+          },
+          "thread.analyze.current_node": "file",
+          "last_stage": "file",
+          "failure_signature": "",
+          "internal.fidelity": "compact"
         },
         "node_outcomes": {
-          "select": {
-            "status": "succeeded",
-            "preferred_label": "Run selected",
-            "context_updates": {
-              "revisor_target_wall": "3.7 min",
-              "last_response": "Selection complete. Pool: 13 terminal runs (11 develop, 2 merge-upstream). Ten develop runs have markers in `.fabro/revisions/` and are already revised; the 2 merge-upstream runs (`01M20N60ZY6DZDTX60W",
-              "response.select": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.select",
-                "chars": 1357,
-                "preview": "Selection complete. Pool: 13 terminal runs (11 develop, 2 merge-upstream). Ten develop runs have markers in `.fabro/revisions/` and are already revised; the 2 merge-upstream runs (`01M20N60ZY6DZDTX60W"
-              },
-              "revisor_target_status": "succeeded",
-              "revisor_target_run_id": "01M23443Z65RK83WTF4Z7D7PGD",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "13 runs listed (11 develop, 2 merge-upstream); 10 develop revised, 0 unrevised blocked (0 stale-evidence, 0 no live sandbox)",
-                  "2 unrevised merge-upstream runs (01M20N60ZY6DZDTX60WW0161KP newest, 01M20E43YS004DCEYPJ0GJQH4B) remain eligible for future passes"
-                ]
-              },
-              "last_stage": "select",
-              "revisor_target_title": "Develop one seed per run: claim, implement, gate, review, exit (PR #92)",
-              "revisor_target_workflow_version": "6417aaf5473539a3e260007c8872e2b6ab6c63fbfe6f243acb03e4fcdd92424d"
-            },
-            "notes": "Stage completed: select",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 16001,
-                    "output_tokens": 508,
-                    "reasoning_tokens": 741,
-                    "cache_read_tokens": 10368,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 30590
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 25811,
-              "tool_time_ms": 2438,
-              "active_time_ms": 28249
-            }
-          },
           "start": {
             "status": "succeeded",
             "usage": null
@@ -1152,20 +1098,160 @@
               "tool_time_ms": 768,
               "active_time_ms": 37608
             }
+          },
+          "select": {
+            "status": "succeeded",
+            "preferred_label": "Run selected",
+            "context_updates": {
+              "revisor_target_wall": "3.7 min",
+              "last_response": "Selection complete. Pool: 13 terminal runs (11 develop, 2 merge-upstream). Ten develop runs have markers in `.fabro/revisions/` and are already revised; the 2 merge-upstream runs (`01M20N60ZY6DZDTX60W",
+              "response.select": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.select",
+                "chars": 1357,
+                "preview": "Selection complete. Pool: 13 terminal runs (11 develop, 2 merge-upstream). Ten develop runs have markers in `.fabro/revisions/` and are already revised; the 2 merge-upstream runs (`01M20N60ZY6DZDTX60W"
+              },
+              "revisor_target_status": "succeeded",
+              "revisor_target_run_id": "01M23443Z65RK83WTF4Z7D7PGD",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "13 runs listed (11 develop, 2 merge-upstream); 10 develop revised, 0 unrevised blocked (0 stale-evidence, 0 no live sandbox)",
+                  "2 unrevised merge-upstream runs (01M20N60ZY6DZDTX60WW0161KP newest, 01M20E43YS004DCEYPJ0GJQH4B) remain eligible for future passes"
+                ]
+              },
+              "last_stage": "select",
+              "revisor_target_title": "Develop one seed per run: claim, implement, gate, review, exit (PR #92)",
+              "revisor_target_workflow_version": "6417aaf5473539a3e260007c8872e2b6ab6c63fbfe6f243acb03e4fcdd92424d"
+            },
+            "notes": "Stage completed: select",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16001,
+                    "output_tokens": 508,
+                    "reasoning_tokens": 741,
+                    "cache_read_tokens": 10368,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 30590
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 25811,
+              "tool_time_ms": 2438,
+              "active_time_ms": 28249
+            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "c5fe93baae4e135b1f9307bfabdebb5dcace1b33",
         "node_visits": {
-          "file": 1,
-          "start": 1,
           "analyze": 1,
-          "select": 1
+          "select": 1,
+          "file": 1,
+          "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M234DGZ14D6TZ486WZKJ407Z.jsonl b/.fabro/journal/01M234DGZ14D6TZ486WZKJ407Z.jsonl\nindex 0cb4c7540..bcb78b932 100644\n--- a/.fabro/journal/01M234DGZ14D6TZ486WZKJ407Z.jsonl\n+++ b/.fabro/journal/01M234DGZ14D6TZ486WZKJ407Z.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M234DGZ14D6TZ486WZKJ407Z\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:06:28Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M234DGZ14D6TZ486WZKJ407Z\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:06:57Z\",\"data\":{\"painpoints\":[],\"observations\":[\"13 runs listed (11 develop, 2 merge-upstream); 10 develop revised, 0 unrevised blocked (0 stale-evidence, 0 no live sandbox)\",\"2 unrevised merge-upstream runs (01M20N60ZY6DZDTX60WW0161KP newest, 01M20E43YS004DCEYPJ0GJQH4B) remain eligible for future passes\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M234DGZ14D6TZ486WZKJ407Z\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:13:54Z\",\"data\":{\"painpoints\":[{\"text\":\"Step 3.5 duplicate-run check names no base branch: `origin/main` is the upstream fabro-sh lineage (PRs #8xx) while the seed loop integrates on `denkhaus`; finding the right branch required `git branch --contains` archaeology and the first `git fetch` hit the 10s shell timeout. Fix idea: name the base branch (denkhaus) explicitly in the revisor prompt and allow a longer fetch timeout.\"},{\"text\":\"`sd list --format compact` caps at 50 lines, so 8 of the 10 analyst-cited seed ids were invisible in the tracker picture and needed one `sd show` call each; fold the cap into open fabro-5ff7's sd-show-every-cited-id rule or raise the list cap for the revisor pass.\"}],\"observations\":[\"Not a duplicate run: seed fabro-eb3f is closed on `origin/denkhaus` only by the target run's own PR #92 (commit 391e226); no sibling merge of fabro-eb3f appears in the last 50 base commits — run presents as a healthy first-pass green/approve (209s, $0.190).\",\"Dropped as duplicates of OPEN seeds: rec1 (blob demote) → fabro-8d2c + fabro-cf3e; rec1 corollary (blob-read lint) → fabro-7613; rec2 (checkpoint push batching) → fabro-652d; rec4 (sd ready top-N) → fabro-c3b4; rec5 (sd show re-fetch gate) → fabro-4881 + fabro-a67f; rec6 (sed scoped reads) → fabro-645d; rec7 (per-node skills) → fabro-9588 + fabro-2c81. Rec6's heading-context nuance belongs in fabro-645d's implementation, not a new seed.\",\"Reviewer self-report failed again: it journaled the Step 3.5 divergence painpoint but not the blob workaround (seq 196 vs blob read at seq 175) despite reviewer.md's workaround-is-a-painpoint rule — fresh live evidence for open fabro-7613.\",\"Review file written to `.fabro/reviews/develop/01M23443Z65RK83WTF4Z7D7PGD.md` with the verbatim `fabro_ask` answer; analyst could not inspect the engine's demote-pass arithmetic (why an 11.5 KB value under a 16 KB node ceiling was demoted) — only the prompt symptom is visible.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M234DGZ14D6TZ486WZKJ407Z\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:14:37Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Commit included only the marker and seed file (2 files) — the review file already existed; verify the host-side integrate step picks up cb76bf2c1\"]}}\ndiff --git a/.fabro/revisions/01M23443Z65RK83WTF4Z7D7PGD.md b/.fabro/revisions/01M23443Z65RK83WTF4Z7D7PGD.md\nnew file mode 100644\nindex 000000000..fd438ce12\n--- /dev/null\n+++ b/.fabro/revisions/01M23443Z65RK83WTF4Z7D7PGD.md\n@@ -0,0 +1,16 @@\n+# Revision — run 01M23443Z65RK83WTF4Z7D7PGD\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M23443Z65RK83WTF4Z7D7PGD.md\n+- seeds filed: fabro-d20f — Planner briefs must quote the actual heading when correcting a seed's path citation\n+- basis: run 01M23443Z65RK83WTF4Z7D7PGD, workflow version 6417aaf5473539a3e260007c8872e2b6ab6c63fbfe6f243acb03e4fcdd92424d, commit afcf8f157051d57ca8630f469a361d224679c4f9\n+- revised_at_commit: afcf8f157051d57ca8630f469a361d224679c4f9 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Planner briefs must quote the actual heading when correcting a seed's path citation\n+\n+- filed: fabro-d20f (priority 2)\n+- change: in `.fabro/workflows/develop/prompts/planner.md` step 7, require that a brief correcting a seed's path/heading citation quote the actual heading text read from the target file (reading the section, not grepping the line)\n+- expected effect: eliminates the false-correction class (planner grepped `journal/<run_id>` in `analyze.md`, found the fallback at line 48, wrongly asserted the seed's 'Step 3.5' wording incorrect — the section IS headed 'Step 3.5' at line 44); saves 1-2 LLM rounds per affected run; stops contradictory briefs reaching review\n+- not covered by closed fabro-cf76 (existence check) or fabro-c0a8 (stale paths)\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex bc443cd83..71db585de 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -312,3 +312,4 @@\n {\"id\":\"fabro-f5d7\",\"title\":\"Engine: persist a read-only run/automation state snapshot reachable from the run workspace\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T12:33:28.569Z\",\"updatedAt\":\"2026-09-09T12:42:40.863Z\",\"description\":\"Run 01M230P8RGN6HWTR6PZ966Q3B1's implementer journal (stage implementer@1, seed fabro-91ff) reports the runs/automation DB state from runs 01M22X67GYXC/01M22VF9PWJH is not reachable from the product repo, so an incident-citing seed forced a superset fix whose regression test asserts guard semantics rather than the incident path — and the alternative cause (open fabro-ee5d) may remain unfixed. Change: engine-side (fabro-store / fabro_runs_list), persist per run a read-only fabro ps -a --json-style state dump, or extend the run projection with a status timeline, that the implementer can read. Complementary to fabro-5a25 (stage records into worktree) and fabro-313c (repo-snapshot context key) — different target (runs/automation state vs stage records/repo snapshot), cross-referenced not superseded. Effect: incident-citing seeds become verifiable and fixes target the actual cause instead of the union of hypotheses. Basis: run 01M230P8RGN6HWTR6PZ966Q3B1, workflow version fdcab06ec2d4960a3fe766ddfcda5b5639105f463e9e6cb414f4c8e48485976f, commit 11017eb56dd3a2bc74357d3f7cc3a0bbcf13cdcf\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-6997\",\"title\":\"Develop planner prompt: two footgun one-liners — fs_hide glob returns empty, never rg -rn\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T12:33:43.081Z\",\"updatedAt\":\"2026-09-09T12:42:40.781Z\",\"description\":\"Run 01M230P8RGN6HWTR6PZ966Q3B1's planner globbed .fabro/workflows/develop/** under fs_hide and got a silently empty result (events seq 46-47), then burned a shell ls/rg round to locate prompts (seq 52-54); that same call ran rg -rn \\\"fabro_runs_list\\\" .fabro -l — harmless only because -l discards -r replacements. The existing fs_hide note in .fabro/workflows/develop/prompts/planner.md step 3 covers read_file denial only. Add two one-liners to planner.md: (a) glob on fs_hide paths returns EMPTY, not an error — go straight to shell for .fabro/**; (b) never rg -rn, -r replaces — use -n. This extends open fabro-2eb6's implementer-side rg discipline to the planner (different file, complementary); engine-side glob notice is open fabro-8296. Effect: −2 tool calls and −1 LLM round per planner pass touching platform paths. Basis: run 01M230P8RGN6HWTR6PZ966Q3B1, workflow version fdcab06ec2d4960a3fe766ddfcda5b5639105f463e9e6cb414f4c8e48485976f, commit 11017eb56dd3a2bc74357d3f7cc3a0bbcf13cdcf\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-154c\",\"title\":\"Develop reviewer prompt: state whether a seed-spec mandate satisfies ADR-0019\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T12:33:55.205Z\",\"updatedAt\":\"2026-09-09T12:42:40.684Z\",\"description\":\"Run 01M230P8RGN6HWTR6PZ966Q3B1's reviewer (observation 2) had to adjudicate whether revisor Step 3.5's git fetch origin <base-branch> — a new code path on the engine credential bridge, mandated by the seed spec — counts as a recorded user decision under ADR-0019, and ratified it as spec-mandated by judgment call. Add one line to .fabro/workflows/develop/prompts/reviewer.md pinning the rule (a seed-spec mandate is or is not a recorded user decision for capability-delta verdicts). Effect: identical capability-delta verdicts across reviewers instead of adjudications that can flip between false blocks and silent ratification. Basis: run 01M230P8RGN6HWTR6PZ966Q3B1, workflow version fdcab06ec2d4960a3fe766ddfcda5b5639105f463e9e6cb414f4c8e48485976f, commit 11017eb56dd3a2bc74357d3f7cc3a0bbcf13cdcf\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-d20f\",\"title\":\"Planner briefs must quote the actual heading when correcting a seed's path citation\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T13:14:18.366Z\",\"updatedAt\":\"2026-09-09T13:14:18.366Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 7, add: when a brief corrects a seed's path/heading citation, it must quote the actual heading text read from the target file (reading the section, not grepping the line). Expected effect: eliminates the false-correction class, saves 1-2 LLM rounds per affected run, stops contradictory briefs reaching review. Evidence: planner grepped journal/<run_id> in analyze.md, found fallback at line 48, asserted the seed's 'Step 3.5' wording wrong (seq 51-53, 66); the section IS headed 'Step 3.5' (line 44); reviewer proved it (seq 181-183). Closed fabro-cf76 (existence check) cannot catch this; closed fabro-c0a8 covers genuinely stale paths. Basis: run 01M23443Z65RK83WTF4Z7D7PGD, workflow version 6417aaf5473539a3e260007c8872e2b6ab6c63fbfe6f243acb03e4fcdd92424d, commit afcf8f157051d57ca8630f469a361d224679c4f9\",\"labels\":[\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 69,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-09T13:14:42.385324296Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 497114,
+      "inference_time_ms": 262443,
+      "tool_time_ms": 214550,
+      "active_time_ms": 476993
+    },
+    "final_git_commit_sha": "c5fe93baae4e135b1f9307bfabdebb5dcace1b33",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 28866,
+          "inference_time_ms": 25811,
+          "tool_time_ms": 2438,
+          "active_time_ms": 28249
+        },
+        "billing_usd_micros": 30590,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 411791,
+          "inference_time_ms": 199792,
+          "tool_time_ms": 211344,
+          "active_time_ms": 411136
+        },
+        "billing_usd_micros": 167043,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 38222,
+          "inference_time_ms": 36840,
+          "tool_time_ms": 768,
+          "active_time_ms": 37608
+        },
+        "billing_usd_micros": 42997,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 64657,
+      "output_tokens": 6532,
+      "total_tokens": 406855,
+      "reasoning_tokens": 8242,
+      "cache_read_tokens": 327424,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 240630
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M234DGZ14D6TZ486WZKJ407Z.jsonl b/.fabro/journal/01M234DGZ14D6TZ486WZKJ407Z.jsonl\nnew file mode 100644\nindex 000000000..bcb78b932\n--- /dev/null\n+++ b/.fabro/journal/01M234DGZ14D6TZ486WZKJ407Z.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M234DGZ14D6TZ486WZKJ407Z\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:06:28Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M234DGZ14D6TZ486WZKJ407Z\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:06:57Z\",\"data\":{\"painpoints\":[],\"observations\":[\"13 runs listed (11 develop, 2 merge-upstream); 10 develop revised, 0 unrevised blocked (0 stale-evidence, 0 no live sandbox)\",\"2 unrevised merge-upstream runs (01M20N60ZY6DZDTX60WW0161KP newest, 01M20E43YS004DCEYPJ0GJQH4B) remain eligible for future passes\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M234DGZ14D6TZ486WZKJ407Z\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:13:54Z\",\"data\":{\"painpoints\":[{\"text\":\"Step 3.5 duplicate-run check names no base branch: `origin/main` is the upstream fabro-sh lineage (PRs #8xx) while the seed loop integrates on `denkhaus`; finding the right branch required `git branch --contains` archaeology and the first `git fetch` hit the 10s shell timeout. Fix idea: name the base branch (denkhaus) explicitly in the revisor prompt and allow a longer fetch timeout.\"},{\"text\":\"`sd list --format compact` caps at 50 lines, so 8 of the 10 analyst-cited seed ids were invisible in the tracker picture and needed one `sd show` call each; fold the cap into open fabro-5ff7's sd-show-every-cited-id rule or raise the list cap for the revisor pass.\"}],\"observations\":[\"Not a duplicate run: seed fabro-eb3f is closed on `origin/denkhaus` only by the target run's own PR #92 (commit 391e226); no sibling merge of fabro-eb3f appears in the last 50 base commits — run presents as a healthy first-pass green/approve (209s, $0.190).\",\"Dropped as duplicates of OPEN seeds: rec1 (blob demote) → fabro-8d2c + fabro-cf3e; rec1 corollary (blob-read lint) → fabro-7613; rec2 (checkpoint push batching) → fabro-652d; rec4 (sd ready top-N) → fabro-c3b4; rec5 (sd show re-fetch gate) → fabro-4881 + fabro-a67f; rec6 (sed scoped reads) → fabro-645d; rec7 (per-node skills) → fabro-9588 + fabro-2c81. Rec6's heading-context nuance belongs in fabro-645d's implementation, not a new seed.\",\"Reviewer self-report failed again: it journaled the Step 3.5 divergence painpoint but not the blob workaround (seq 196 vs blob read at seq 175) despite reviewer.md's workaround-is-a-painpoint rule — fresh live evidence for open fabro-7613.\",\"Review file written to `.fabro/reviews/develop/01M23443Z65RK83WTF4Z7D7PGD.md` with the verbatim `fabro_ask` answer; analyst could not inspect the engine's demote-pass arithmetic (why an 11.5 KB value under a 16 KB node ceiling was demoted) — only the prompt symptom is visible.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M234DGZ14D6TZ486WZKJ407Z\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T13:14:37Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Commit included only the marker and seed file (2 files) — the review file already existed; verify the host-side integrate step picks up cb76bf2c1\"]}}\ndiff --git a/.fabro/reviews/develop/01M23443Z65RK83WTF4Z7D7PGD.md b/.fabro/reviews/develop/01M23443Z65RK83WTF4Z7D7PGD.md\nnew file mode 100644\nindex 000000000..aac71cfdb\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M23443Z65RK83WTF4Z7D7PGD.md\n@@ -0,0 +1,48 @@\n+# Improve review — run 01M23443Z65RK83WTF4Z7D7PGD\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (3.7 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-09 13:10+0000 by revisor `fabro_ask`\n+\n+---\n+\n+I have the full picture now: every stage transcript, tool call, journal, timing, and cost for this run (seed `fabro-eb3f`, a one-line prompt edit; 209s wall, $0.190, zero retries, first-pass green/approve). Recommendations, ordered by expected impact:\n+\n+## 1. Stop blob-ref'ing the evidence capture to the reviewer — raise `preamble_budget_kb` (graph) and honor the node's own inline ceiling\n+**What happened (run events, seq 163/169):** the 11.5 KB evidence capture was demoted to `Output (11.5 KB; full value: /tmp/fabro/runtime/blobs/9f946…json)` in the reviewer's prompt — even though the reviewer node's `preamble_inline_max_kb=16` (its own ceiling) and its context window sat at **1.16–1.69% of 1M tokens** (12,185–17,856 tokens). The reviewer then burned a full LLM round + `read_file` on the blob (seq 173/175, 11.8 KB re-read) before judging.\n+**Change:** in `workflow.fabro` (develop graph attrs) raise `preamble_budget_kb` 24→32, or make the aggregate demote pass respect `preamble_inline_max_kb` per node (open seeds fabro-8d2c / fabro-cf3e already propose exactly this).\n+**Expected effect:** one fewer LLM round + tool call per review; removes the \"Verification blocked on unread blob\" failure class entirely for captures ≤16 KB.\n+**Corollary (evidence for open seed fabro-7613):** the reviewer journaled only the divergence painpoint and **not** the blob workaround despite reviewer.md's workaround-is-a-painpoint rule — self-report failed again, this time at seq 196 vs the blob read at seq 175. The engine-side blob-read lint is warranted.\n+\n+## 2. Batch checkpoint pushes at terminal boundaries (~13% of this run's wall)\n+**What happened (run events, timestamps):** five stage boundaries each cost ~4.7–5.5s (planner done 13:02:15.8 → implementer start 13:02:21.3; implementer 13:03:29.5 → tester 13:03:34.2; tester → evidence 4.8s; evidence → reviewer 5.1s incl. push; reviewer → closeout 5.3s): ~25s snapshot+commit+push overhead on a 209s run, plus a 2.1s init meta-snapshot.\n+**Change:** engine checkpoint pipeline (open seed fabro-652d): keep per-stage commits, push only at terminal/soft-exit boundaries.\n+**Expected effect:** ~20–25s (~10–13%) off **every** develop run, independent of seed size — the largest single wall-time lever visible in this run.\n+\n+## 3. Planner path-corrections must quote the actual heading — the false \"Step 3.5 → step 1\" correction cost two stages re-litigation\n+**What happened (run events):** the planner's brief asserted the revisor fallback \"actually lives in `analyze.md` step 1 (line 48)\" and warned *not* to transcribe \"Step 3.5\" (seq 66). The seed was right: the section **is** headed \"Step 3.5\" (line 44) with the fallback at item 1/line 48 — the reviewer proved it (seq 181–183) and journaled precisely this painpoint with the fix idea. Root cause is visible at seq 51–53: the planner grepped for `journal/<run_id>`, found line 48, and never read the section heading. Downstream: the implementer re-read `analyze.md` lines 40–60 to check (seq 93–95) and then wrote a self-contradictory summary (\"`analyze.md` Step 3.5, not the seed's 'Step 3.5' wording\"); the reviewer spent 2 tool rounds + ~13s adjudicating.\n+**Change:** `.fabro/workflows/develop/prompts/planner.md` step 7: when a brief corrects a seed's path/heading citation, it must **quote the actual heading text read from the target file** (which forces reading it, not just grepping the line).\n+**Expected effect:** eliminates this false-correction class; saves 1–2 LLM rounds per affected run and stops contradictory briefs from reaching review.\n+\n+## 4. Cap the `sd ready` firehose — 189 issues, 25.6 KB, into a claim that needed one candidate\n+**What happened (run events, seq 31–33):** the planner's mandated `sd ready --assignee fabro --limit 200` returned **189 ready issues / 25,625 bytes, stdout truncated** — ~6–7k tokens of irrelevant backlog — for a claim where only the top High candidate mattered. The planner stage cost $0.069 / 55.6s (94% of it inference), 36% of the run's LLM spend for the cheapest role's job.\n+**Change:** `.fabro/workflows/develop/prompts/planner.md` sd-command table (open seed fabro-c3b4): use a top-N view (e.g. first 15 lines) and fall back to the full listing only when the top candidate is skipped.\n+**Expected effect:** −5k+ tokens and several seconds off every planner pass; cheaper first LLM round (this run's first round billed 12,570 input tokens).\n+\n+## 5. Gate the implementer's `sd show` re-fetch on brief quality\n+**What happened (run events, seq 84–87):** the implementer re-ran `sd show fabro-eb3f` although the brief in its context already carried the full spec distilled from that same seed minutes earlier (planner's identical `sd show` at seq 39). Pure duplication: +1 tool call, +1 LLM round, +1.5 KB context.\n+**Change:** `.fabro/workflows/develop/prompts/implementer.md` step 1 (open seeds fabro-4881 / fabro-a67f): re-fetch only when the brief is thin or carries review feedback.\n+**Expected effect:** −1 tool call and −1 LLM round per implementer pass.\n+\n+## 6. Scoped reads when the brief pins anchors — but read the *heading*, not just the line\n+**What happened (run events, seq 85–89):** the implementer inspected `planner.md` via `grep -n \"\" | head -120` — 15.7 KB pulled to edit one paragraph whose location the brief pinned. (Note the double edge: recommendation 3 shows the planner's opposite error — too narrow a read. The rule should be \"read the pinned section *plus its heading context*,\" e.g. `sed -n '30,40p'`.)\n+**Change:** `.fabro/workflows/develop/prompts/implementer.md` (open seed fabro-645d): prescribe `sed -n '<range>p'` around pinned anchors instead of whole-file dumps.\n+**Expected effect:** ~13 KB less context per platform-file seed; fewer mis-read sections like the one in rec 3.\n+\n+## 7. Scope skill discovery per node\n+**What happened (run events, seq 166/172):** the reviewer loaded `rust-style-guide` metadata (223 tokens in context) to review a Markdown prompt edit; planner and implementer discovered zero skills. Harmless here, but it's per-review waste and invites irrelevant skill activation.\n+**Change:** per-node skills scoping (open seeds fabro-9588 / fabro-2c81) — the reviewer on churn-only prompt seeds needs no Rust skill.\n+**Expected effect:** small token savings; eliminates wrong-skill activation risk on non-Rust seeds.\n+\n+**What I could not inspect:** the engine's internal demote-pass arithmetic (why an 11.5 KB value under a 16 KB node ceiling was still demoted — only the symptom is visible in the prompt), and the PR-creation segment's internals (PR #92 body/model call happen after `run.completed`). The $0.190/209s figures and all seq citations are from run events and the run conclusion; the graph/prompt attribute names are from the run projection.\ndiff --git a/.fabro/revisions/01M23443Z65RK83WTF4Z7D7PGD.md b/.fabro/revisions/01M23443Z65RK83WTF4Z7D7PGD.md\nnew file mode 100644\nindex 000000000..fd438ce12\n--- /dev/null\n+++ b/.fabro/revisions/01M23443Z65RK83WTF4Z7D7PGD.md\n@@ -0,0 +1,16 @@\n+# Revision — run 01M23443Z65RK83WTF4Z7D7PGD\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M23443Z65RK83WTF4Z7D7PGD.md\n+- seeds filed: fabro-d20f — Planner briefs must quote the actual heading when correcting a seed's path citation\n+- basis: run 01M23443Z65RK83WTF4Z7D7PGD, workflow version 6417aaf5473539a3e260007c8872e2b6ab6c63fbfe6f243acb03e4fcdd92424d, commit afcf8f157051d57ca8630f469a361d224679c4f9\n+- revised_at_commit: afcf8f157051d57ca8630f469a361d224679c4f9 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Planner briefs must quote the actual heading when correcting a seed's path citation\n+\n+- filed: fabro-d20f (priority 2)\n+- change: in `.fabro/workflows/develop/prompts/planner.md` step 7, require that a brief correcting a seed's path/heading citation quote the actual heading text read from the target file (reading the section, not grepping the line)\n+- expected effect: eliminates the false-correction class (planner grepped `journal/<run_id>` in `analyze.md`, found the fallback at line 48, wrongly asserted the seed's 'Step 3.5' wording incorrect — the section IS headed 'Step 3.5' at line 44); saves 1-2 LLM rounds per affected run; stops contradictory briefs reaching review\n+- not covered by closed fabro-cf76 (existence check) or fabro-c0a8 (stale paths)\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex bc443cd83..71db585de 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -312,3 +312,4 @@\n {\"id\":\"fabro-f5d7\",\"title\":\"Engine: persist a read-only run/automation state snapshot reachable from the run workspace\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T12:33:28.569Z\",\"updatedAt\":\"2026-09-09T12:42:40.863Z\",\"description\":\"Run 01M230P8RGN6HWTR6PZ966Q3B1's implementer journal (stage implementer@1, seed fabro-91ff) reports the runs/automation DB state from runs 01M22X67GYXC/01M22VF9PWJH is not reachable from the product repo, so an incident-citing seed forced a superset fix whose regression test asserts guard semantics rather than the incident path — and the alternative cause (open fabro-ee5d) may remain unfixed. Change: engine-side (fabro-store / fabro_runs_list), persist per run a read-only fabro ps -a --json-style state dump, or extend the run projection with a status timeline, that the implementer can read. Complementary to fabro-5a25 (stage records into worktree) and fabro-313c (repo-snapshot context key) — different target (runs/automation state vs stage records/repo snapshot), cross-referenced not superseded. Effect: incident-citing seeds become verifiable and fixes target the actual cause instead of the union of hypotheses. Basis: run 01M230P8RGN6HWTR6PZ966Q3B1, workflow version fdcab06ec2d4960a3fe766ddfcda5b5639105f463e9e6cb414f4c8e48485976f, commit 11017eb56dd3a2bc74357d3f7cc3a0bbcf13cdcf\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-6997\",\"title\":\"Develop planner prompt: two footgun one-liners — fs_hide glob returns empty, never rg -rn\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T12:33:43.081Z\",\"updatedAt\":\"2026-09-09T12:42:40.781Z\",\"description\":\"Run 01M230P8RGN6HWTR6PZ966Q3B1's planner globbed .fabro/workflows/develop/** under fs_hide and got a silently empty result (events seq 46-47), then burned a shell ls/rg round to locate prompts (seq 52-54); that same call ran rg -rn \\\"fabro_runs_list\\\" .fabro -l — harmless only because -l discards -r replacements. The existing fs_hide note in .fabro/workflows/develop/prompts/planner.md step 3 covers read_file denial only. Add two one-liners to planner.md: (a) glob on fs_hide paths returns EMPTY, not an error — go straight to shell for .fabro/**; (b) never rg -rn, -r replaces — use -n. This extends open fabro-2eb6's implementer-side rg discipline to the planner (different file, complementary); engine-side glob notice is open fabro-8296. Effect: −2 tool calls and −1 LLM round per planner pass touching platform paths. Basis: run 01M230P8RGN6HWTR6PZ966Q3B1, workflow version fdcab06ec2d4960a3fe766ddfcda5b5639105f463e9e6cb414f4c8e48485976f, commit 11017eb56dd3a2bc74357d3f7cc3a0bbcf13cdcf\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-154c\",\"title\":\"Develop reviewer prompt: state whether a seed-spec mandate satisfies ADR-0019\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T12:33:55.205Z\",\"updatedAt\":\"2026-09-09T12:42:40.684Z\",\"description\":\"Run 01M230P8RGN6HWTR6PZ966Q3B1's reviewer (observation 2) had to adjudicate whether revisor Step 3.5's git fetch origin <base-branch> — a new code path on the engine credential bridge, mandated by the seed spec — counts as a recorded user decision under ADR-0019, and ratified it as spec-mandated by judgment call. Add one line to .fabro/workflows/develop/prompts/reviewer.md pinning the rule (a seed-spec mandate is or is not a recorded user decision for capability-delta verdicts). Effect: identical capability-delta verdicts across reviewers instead of adjudications that can flip between false blocks and silent ratification. Basis: run 01M230P8RGN6HWTR6PZ966Q3B1, workflow version fdcab06ec2d4960a3fe766ddfcda5b5639105f463e9e6cb414f4c8e48485976f, commit 11017eb56dd3a2bc74357d3f7cc3a0bbcf13cdcf\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-d20f\",\"title\":\"Planner briefs must quote the actual heading when correcting a seed's path citation\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T13:14:18.366Z\",\"updatedAt\":\"2026-09-09T13:14:18.366Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 7, add: when a brief corrects a seed's path/heading citation, it must quote the actual heading text read from the target file (reading the section, not grepping the line). Expected effect: eliminates the false-correction class, saves 1-2 LLM rounds per affected run, stops contradictory briefs reaching review. Evidence: planner grepped journal/<run_id> in analyze.md, found fallback at line 48, asserted the seed's 'Step 3.5' wording wrong (seq 51-53, 66); the section IS headed 'Step 3.5' (line 44); reviewer proved it (seq 181-183). Closed fabro-cf76 (existence check) cannot catch this; closed fabro-c0a8 covers genuinely stale paths. Basis: run 01M23443Z65RK83WTF4Z7D7PGD, workflow version 6417aaf5473539a3e260007c8872e2b6ab6c63fbfe6f243acb03e4fcdd92424d, commit afcf8f157051d57ca8630f469a361d224679c4f9\",\"labels\":[\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 69,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1191,6 +1277,42 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 194,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T13:14:42.346690790Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T13:14:42.346561110Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "analyze@1": {
       "first_event_seq": 50,
       "prompt": null,
