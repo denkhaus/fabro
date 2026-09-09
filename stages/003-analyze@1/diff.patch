@@ -1,0 +1,62 @@
+diff --git a/.fabro/journal/01M23C7C5M4725XZRCQWR1V925.jsonl b/.fabro/journal/01M23C7C5M4725XZRCQWR1V925.jsonl
+index da29e7025..239f35199 100644
+--- a/.fabro/journal/01M23C7C5M4725XZRCQWR1V925.jsonl
++++ b/.fabro/journal/01M23C7C5M4725XZRCQWR1V925.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M23C7C5M4725XZRCQWR1V925","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T15:22:56Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M23C7C5M4725XZRCQWR1V925","node":"select","visit":1,"status":"succeeded","ts":"2026-09-09T15:23:13Z","data":{"painpoints":[],"observations":["16 runs listed; 12 develop runs stale-evidence (version drift vs baseline 3bd91520), 0 sandbox-less; 2 merge-upstream runs fresh/unrevised but older than selected develop run","No active develop run at selection time (manual-start phase, ADR-0011)"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M23C7C5M4725XZRCQWR1V925","node":"analyze","visit":1,"status":"succeeded","ts":"2026-09-09T15:29:02Z","data":{"painpoints":[{"text":"Duplicate-check base branch is ambiguous: Step 3.5 says fetch origin/<base-branch>, but `origin` (denkhaus/fabro) has `origin/main` carrying upstream-product PR numbering (#8xx), while the develop loop's actual base is the local `denkhaus` branch (tip 3887e10, PR #97) with no counterpart in `git branch -r`. Also `git fetch` exceeds the 10s default shell timeout. Fix idea: pin the base-branch ref in the revisor prompt/workflow config and raise the fetch timeout."},{"text":"The Ask-Fabro analyst cites seed ids that are not verifiable in the tracker: fabro-8d2c, fabro-cf3e, and fabro-c3b4 appeared in neither `sd list` nor any `sd search` pass — stale or hallucinated ids, so every dedupe claim had to be re-derived by theme search. Fix idea: the analyst prompt should require quoting seed titles verbatim alongside ids."}],"observations":["Not a duplicate run: seed fabro-4814 was closed by the target run's own PR #97 (commit 3887e10, authored by the run, tip of the local `denkhaus` base); zero fabro-4814 mentions in the last 50 commits of `origin/main` or in `git log --all` — no sibling merge. Review file written to `.fabro/reviews/develop/01M23B02H3ZNND8AT2D3Y2S4SG.md`.","Dropped as duplicates: implementer step-4 Rust-gate scoping duplicate_of fabro-7b2a (open); preamble/inline budget raise duplicate_of fabro-35ab and fabro-3c9d (open); fs_hide denial-message interim already covered by fabro-d02d (open); fabro-56c2 (closed) already put the shell bypass in develop prompts.","Tracker check filtered 3 of 6 analyst recommendations; the 5 surviving findings are grounded in this run's event seqs, journal painpoints, and cost profile ($1.207 total, implementer $1.035)."]}}
+diff --git a/.fabro/reviews/develop/01M23B02H3ZNND8AT2D3Y2S4SG.md b/.fabro/reviews/develop/01M23B02H3ZNND8AT2D3Y2S4SG.md
+new file mode 100644
+index 000000000..f54c9f5ef
+--- /dev/null
++++ b/.fabro/reviews/develop/01M23B02H3ZNND8AT2D3Y2S4SG.md
+@@ -0,0 +1,48 @@
++# Improve review — run 01M23B02H3ZNND8AT2D3Y2S4SG
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: succeeded (19.3 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-09 15:25+0000 by revisor `fabro_ask`
++
++---
++
++# Recommendations for run 01M23B02H3ZNND8AT2D3Y2S4SG (seed fabro-4814, "purge two-worlds framing")
++
++**Run profile (from run events / conclusion):** 19m18s wall, $1.207 total, zero retries, all 7 stages first-pass green, PR #97. Implementer: 902.7s inference / $1.035 (**86% of run cost, 84% of wall**), 13.2s tool time. Planner $0.062, Reviewer $0.110, tester 4.8s, evidence 0.36s, closeout 0.30s.
++
++---
++
++**1. Fix the fs_hide collision for loop-asset-targeting seeds — the run's dominant friction.**
++*Evidence:* event seq 95 — implementer's first `read_file` on `.fabro/workflows/develop/prompts/implementer.md` returned "hidden… behaves as if it did not exist"; it then did **every** read/edit of the seed's 10 target files through shell heredocs (python3 replace scripts with exact-match asserts), and journaled exactly this as its painpoint. The seed's entire scope was `.fabro/**`, so the "carve-out" (shell workaround) was the *main* path, not an exception, and contributed to the 15-minute implementer.
++*Change:* engine-side, a per-seed fs_hide exception when the claimed brief's paths are all inside the fs_hide list (new seed; the stage-envelope code is the `fs_hide` resolution in `lib/components/fabro-workflow`). Cheap interim: land open seed fabro-d02d — make the read_file denial message name the shell bypass (today it reads like a bug, costing one wasted call + reasoning turn per agent, every loop-asset seed).
++*Effect:* eliminates the discovery turn and the error-prone heredoc-edit mode for every workflow-asset seed; directly attacks the 86%-of-cost stage.
++
++**2. Kill the reviewer evidence-blob detour — either raise the budget or cap the loop-diff.**
++*Evidence:* evidence capture was **55,353 bytes** (script_timing, evidence@1) vs. the reviewer's `preamble_inline_max_kb=16`; the reviewer had to page it with `nu str substring` **in three calls** before judging (reviewer journal painpoint + response "paged in 3 chunks"), inside a context window at **3.1% of 1M** — the 24KB budget, not the window, forced the detour. This is a loop-work seed, where the loop-churn diff *is* the review scope, so the capture ballooned past what the 16KB inline cap was sized for ("captures reach ~14KB").
++*Change:* in `workflow.fabro` — graph `preamble_budget_kb` 24→32 and reviewer `preamble_inline_max_kb` 16→32 (open seeds fabro-8d2c / fabro-cf3e already propose this; this run is fresh proof), **or** add a per-file hunk budget for the loop-work diff section in `scripts/evidence.nu`.
++*Effect:* one read instead of three per review; removes substring-paging misparse risk and ~60–90s of reviewer latency on every asset-heavy seed.
++
++**3. Conditionally scope the implementer's Rust-gate rules — they were dead weight on this config-only seed.**
++*Evidence:* implementer consumed 78.4k input tokens / 13.9k reasoning tokens; step 4 of `implementer.md` carries ~1.5KB of clippy/nextest/default-features rules plus five run-id citations, none of which applied (no Rust touched; the gate printed "no crates touched … format clean"). Open seed fabro-7b2a already names this.
++*Change:* in `.fabro/workflows/develop/prompts/implementer.md`, keep step 4 to the cost-tier rule ("config-only → parse-level check") and move the crate-scoped clippy/nextest block under an explicit "only when the seed touches Rust" sub-heading (or into `project-facts.md`).
++*Effect:* smaller, sharper prompts for every config-only seed; less rule-dilution for the Rust case that actually needs them.
++
++**4. Trim the planner's firehose inputs.**
++*Evidence:* seq 32 — `sd ready --assignee fabro --limit 200` returned **189 issues / 25,613 bytes** to pick one candidate; seq 41 — `fabro_runs_list` returned **12,676 bytes / 14 runs** where only `status` + `pull_request.state` + `goal` matter for the in-flight guard.
++*Change:* planner.md command table — switch to a top-N view (`--limit 10`, open seed fabro-c3b4); pass `created_since` to `fabro_runs_list` (in-flight runs are recent by definition).
++*Effect:* ~35KB less context in the planner's early turns; modest dollar impact (planner is cheap) but faster first-output and less distraction for the tie-break.
++
++**5. Keep concrete literals at the new PROJECT_FACTS indirection sites.**
++*Evidence:* reviewer observation (non-blocking): planner.md step 4 now says "shell grep for the seed id prefix (PROJECT_FACTS)" where `fabro-` used to be inline — an LLM must now resolve the indirection through the include to run the double-pick guard correctly.
++*Change:* in `prompts/planner.md` (step 4) and `prompts/project-facts.md`, put the concrete example at each use site ("the seed id prefix (e.g. `fabro-`)").
++*Effect:* removes a mis-parse class from the exact mechanism that prevents fabro-22e4-style double-picks — near-zero cost insurance.
++
++**6. Add a long-stage heartbeat notification.**
++*Evidence:* Slack notifications are configured only for `run.completed`/`run.failed` (run settings); the implementer ran **15 of the run's 19 minutes** with no external signal — an operator had no mid-run cue that a single stage dominated, or a hook to cancel.
++*Change:* in `workflow.toml` notifications block, add a stage-level event (or a "stage exceeds N minutes" heartbeat) alongside the terminal events.
++*Effect:* visibility into exactly the pattern this run exhibited (single-stage cost concentration) while intervention is still possible.
++
++---
++
++**What worked — don't touch:** the deterministic gatebounce/closeout pattern (closeout: 0.30s, closed exactly fabro-4814), the mandatory journal contract (all three agent stages emitted both keys, first run-visible painpoints landed within minutes of the friction), the gate's cheap path for config-only seeds (4.8s), and the MiniJinja `{% include %}` PROJECT_FACTS mechanism (mx-bf9c40) — the run proved it end-to-end by rendering its own new prompts through the include at the reviewer stage.
