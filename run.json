@@ -483,7 +483,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-09T10:04:54.351961212Z",
-  "last_event_at": "2026-09-09T10:10:37.737020044Z",
+  "last_event_at": "2026-09-09T10:10:43.626203418Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -868,9 +868,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 158,
       "checkpoint": {
-        "timestamp": "2026-09-09T10:10:37.954789291Z",
+        "timestamp": "2026-09-09T10:10:42.566034232Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -880,71 +880,133 @@
         ],
         "node_retries": {},
         "context_values": {
-          "seed_cycles": {
-            "select": 1,
-            "analyze": 1,
-            "file": 1
-          },
-          "graph.rankdir": "LR",
-          "last_response": "Marker-only revision: zero findings, `.fabro/revisions/01M22STYHHYV9J9B7NTE03PH4G.md` written and committed (0ecf9e8) with exactly the allowed paths.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": ",
+          "internal.node_visit_count": 1,
+          "preferred_label": "Staged",
+          "revisor_target_run_id": "01M22STYHHYV9J9B7NTE03PH4G",
+          "thread.start.current_node": "select",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
           "response.file": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.file",
             "chars": 309,
             "preview": "Marker-only revision: zero findings, `.fabro/revisions/01M22STYHHYV9J9B7NTE03PH4G.md` written and committed (0ecf9e8) with exactly the allowed paths.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": "
           },
-          "revisor_target_title": "Develop one seed per run: claim, implement, gate, review, exit (PR #82)",
-          "graph.max_node_visits": "30",
+          "internal.seed_cycle_anchor": "01M22STYHHYV9J9B7NTE03PH4G",
           "current_node": "file",
-          "internal.node_visit_count": 1,
-          "journal": {
-            "painpoints": [],
-            "observations": [
-              "none"
-            ]
-          },
+          "internal.fidelity": "compact",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "outcome": "succeeded",
+          "revisor_target_wall": "2.5 min",
+          "internal.retry_count.select": 0,
           "revision_findings": [],
+          "filed_seed_ids": [],
+          "internal.exit_kind": "natural",
+          "internal.retry_count.analyze": 0,
+          "revisor_target_title": "Develop one seed per run: claim, implement, gate, review, exit (PR #82)",
+          "thread.analyze.current_node": "file",
+          "graph.preamble_budget_kb": "24",
           "response.analyze": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.analyze",
             "chars": 2657,
             "preview": "Tracker check complete: all six analyst recommendations name the same concrete changes as existing open seeds — `fabro-c3b4` (sd-ready top-N), `fabro-645d`/`fabro-4881`/`fabro-a67f`/`fabro-9a43` (sc"
           },
-          "internal.retry_count.file": 0,
+          "revisor_target_workflow_version": "57bfc82454a2182c84939466acec9710916f642ceb8b5d804d46e80c2a30150a",
+          "graph.rankdir": "LR",
           "last_stage": "file",
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "thread.start.current_node": "select",
+          "last_response": "Marker-only revision: zero findings, `.fabro/revisions/01M22STYHHYV9J9B7NTE03PH4G.md` written and committed (0ecf9e8) with exactly the allowed paths.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": ",
           "internal.thread_id": "analyze",
+          "graph.inspects": "develop,merge-upstream",
+          "graph.max_node_visits": "30",
+          "revisor_target_status": "succeeded",
+          "internal.retry_count.file": 0,
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "failure_class": "",
+          "failure_signature": "",
+          "internal.run_id": "01M22T14PWSRB6QSB5G51TJCW1",
           "response.select": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.select",
             "chars": 1420,
             "preview": "Selected `develop` run `01M22STYHHYV9J9B7NTE03PH4G`: newest by creation, terminal (`succeeded`), `sandbox_available: true`, version `57bfc824…` matches the develop baseline, and no marker at `.fabro"
           },
-          "failure_class": "",
-          "internal.exit_kind": "natural",
-          "revisor_target_wall": "2.5 min",
-          "internal.fidelity": "compact",
-          "internal.retry_count.start": 0,
-          "internal.run_id": "01M22T14PWSRB6QSB5G51TJCW1",
-          "outcome": "succeeded",
-          "internal.work_dir": "/workspace/fabro",
-          "failure_signature": "",
-          "graph.preamble_budget_kb": "24",
-          "internal.seed_cycle_anchor": "01M22STYHHYV9J9B7NTE03PH4G",
-          "revisor_target_status": "succeeded",
-          "preferred_label": "Staged",
-          "filed_seed_ids": [],
-          "graph.inspects": "develop,merge-upstream",
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
           "thread.select.current_node": "analyze",
-          "internal.retry_count.analyze": 0,
-          "revisor_target_workflow_version": "57bfc82454a2182c84939466acec9710916f642ceb8b5d804d46e80c2a30150a",
-          "revisor_target_run_id": "01M22STYHHYV9J9B7NTE03PH4G",
-          "internal.retry_count.select": 0,
-          "thread.analyze.current_node": "file"
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "none"
+            ]
+          },
+          "internal.retry_count.start": 0
         },
         "node_outcomes": {
+          "analyze": {
+            "status": "succeeded",
+            "preferred_label": "Findings ready",
+            "context_updates": {
+              "response.analyze": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.analyze",
+                "chars": 2657,
+                "preview": "Tracker check complete: all six analyst recommendations name the same concrete changes as existing open seeds — `fabro-c3b4` (sd-ready top-N), `fabro-645d`/`fabro-4881`/`fabro-a67f`/`fabro-9a43` (sc"
+              },
+              "last_response": "Tracker check complete: all six analyst recommendations name the same concrete changes as existing open seeds — `fabro-c3b4` (sd-ready top-N), `fabro-645d`/`fabro-4881`/`fabro-a67f`/`fabro-9a43` (sc",
+              "revision_findings": [],
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "sd list --format compact caps at ~50 entries, so verifying the analyst-cited seed ids required per-theme sd search plus sd show for each candidate duplicate; fix already tracked by open seed fabro-5ff7 (sd show every analyst-cited id, sd list cap)"
+                  }
+                ],
+                "observations": [
+                  "All 6 recommendations from the analyst answer were withheld as duplicates of existing OPEN seeds; none survived: rec1 sd-ready firehose -> duplicate_of fabro-c3b4; rec2 scoped reads/conditional sd show -> duplicate_of fabro-645d, fabro-4881, fabro-a67f, fabro-9a43; rec3 shared prompt-cache prefix -> duplicate_of fabro-944d; rec4 fs_hide detour journal clause -> duplicate_of fabro-21c0 (same implementer.md journal-section change; CLOSED fabro-56c2 already states the fs_hide shell bypass in develop prompts); rec5 preamble_allow_keys warn downgrade -> duplicate_of fabro-8275 (same first-visit by-design mechanism); rec6 PR postlude cost/time table -> duplicate_of fabro-1409 (auto-merge caveat the analyst deferred to is fabro-6a5a)",
+                  "Run 01M22STYHHYV9J9B7NTE03PH4G is clean confirming evidence for those seeds, not new work: 24,314-byte sd ready listing with planner at 45% of run cost (fabro-c3b4), cache_write_tokens=0 on every stage call costing ~$0.055 of $0.136 (fabro-944d), implementer journaled observations [\"none\"] over a real fs_hide shell detour (fabro-21c0), and the sole worker-log warn was the by-design gate_known_bug_hits absence on an all-green run (fabro-8275)",
+                  "Marker-only revision: healthy single-pass all-green run, 2m24s wall, $0.136 total; review persisted verbatim at .fabro/reviews/develop/01M22STYHHYV9J9B7NTE03PH4G.md; no merge event for PR #82 in the stored event stream, so no auto-merge finding was drawn (already fabro-6a5a)"
+                ]
+              },
+              "last_stage": "analyze"
+            },
+            "notes": "Stage completed: analyze",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 24062,
+                    "output_tokens": 3418,
+                    "reasoning_tokens": 5454,
+                    "cache_read_tokens": 97280,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 98009
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reviews/develop/01M22STYHHYV9J9B7NTE03PH4G.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 144789,
+              "tool_time_ms": 149624,
+              "active_time_ms": 294413
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "file": {
             "status": "succeeded",
             "preferred_label": "Staged",
@@ -1050,82 +1112,106 @@
               "tool_time_ms": 1477,
               "active_time_ms": 22000
             }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
-          "analyze": {
-            "status": "succeeded",
-            "preferred_label": "Findings ready",
-            "context_updates": {
-              "response.analyze": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.analyze",
-                "chars": 2657,
-                "preview": "Tracker check complete: all six analyst recommendations name the same concrete changes as existing open seeds — `fabro-c3b4` (sd-ready top-N), `fabro-645d`/`fabro-4881`/`fabro-a67f`/`fabro-9a43` (sc"
-              },
-              "last_response": "Tracker check complete: all six analyst recommendations name the same concrete changes as existing open seeds — `fabro-c3b4` (sd-ready top-N), `fabro-645d`/`fabro-4881`/`fabro-a67f`/`fabro-9a43` (sc",
-              "revision_findings": [],
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "sd list --format compact caps at ~50 entries, so verifying the analyst-cited seed ids required per-theme sd search plus sd show for each candidate duplicate; fix already tracked by open seed fabro-5ff7 (sd show every analyst-cited id, sd list cap)"
-                  }
-                ],
-                "observations": [
-                  "All 6 recommendations from the analyst answer were withheld as duplicates of existing OPEN seeds; none survived: rec1 sd-ready firehose -> duplicate_of fabro-c3b4; rec2 scoped reads/conditional sd show -> duplicate_of fabro-645d, fabro-4881, fabro-a67f, fabro-9a43; rec3 shared prompt-cache prefix -> duplicate_of fabro-944d; rec4 fs_hide detour journal clause -> duplicate_of fabro-21c0 (same implementer.md journal-section change; CLOSED fabro-56c2 already states the fs_hide shell bypass in develop prompts); rec5 preamble_allow_keys warn downgrade -> duplicate_of fabro-8275 (same first-visit by-design mechanism); rec6 PR postlude cost/time table -> duplicate_of fabro-1409 (auto-merge caveat the analyst deferred to is fabro-6a5a)",
-                  "Run 01M22STYHHYV9J9B7NTE03PH4G is clean confirming evidence for those seeds, not new work: 24,314-byte sd ready listing with planner at 45% of run cost (fabro-c3b4), cache_write_tokens=0 on every stage call costing ~$0.055 of $0.136 (fabro-944d), implementer journaled observations [\"none\"] over a real fs_hide shell detour (fabro-21c0), and the sole worker-log warn was the by-design gate_known_bug_hits absence on an all-green run (fabro-8275)",
-                  "Marker-only revision: healthy single-pass all-green run, 2m24s wall, $0.136 total; review persisted verbatim at .fabro/reviews/develop/01M22STYHHYV9J9B7NTE03PH4G.md; no merge event for PR #82 in the stored event stream, so no auto-merge finding was drawn (already fabro-6a5a)"
-                ]
-              },
-              "last_stage": "analyze"
-            },
-            "notes": "Stage completed: analyze",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 24062,
-                    "output_tokens": 3418,
-                    "reasoning_tokens": 5454,
-                    "cache_read_tokens": 97280,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 98009
-            },
-            "files_touched": [
-              "/workspace/fabro/.fabro/reviews/develop/01M22STYHHYV9J9B7NTE03PH4G.md"
-            ],
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 144789,
-              "tool_time_ms": 149624,
-              "active_time_ms": 294413
-            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "0d5bfd0936fc8f4b42e71ab529465e6a116a6851",
         "node_visits": {
           "start": 1,
-          "file": 1,
           "analyze": 1,
+          "file": 1,
           "select": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M22T14PWSRB6QSB5G51TJCW1.jsonl b/.fabro/journal/01M22T14PWSRB6QSB5G51TJCW1.jsonl\nindex afdd158..276d1b2 100644\n--- a/.fabro/journal/01M22T14PWSRB6QSB5G51TJCW1.jsonl\n+++ b/.fabro/journal/01M22T14PWSRB6QSB5G51TJCW1.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22T14PWSRB6QSB5G51TJCW1\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:04:56Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22T14PWSRB6QSB5G51TJCW1\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:05:18Z\",\"data\":{\"painpoints\":[],\"observations\":[\"8 runs listed; 5 unrevised but only 2 develop runs selectable. 4 develop runs blocked (4 stale-evidence, version drift vs baseline 57bfc824…); 0 no live sandbox; 2 merge-upstream runs (01M20N60ZY6DZDTX60WW0161KP, 01M20E43YS004DCEYPJ0GJQH4B) remain unrevised, fresh-version but older than the selected develop run\",\"No active develop run at listing time (ramp discipline, ADR-0011)\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22T14PWSRB6QSB5G51TJCW1\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:10:08Z\",\"data\":{\"painpoints\":[{\"text\":\"sd list --format compact caps at ~50 entries, so verifying the analyst-cited seed ids required per-theme sd search plus sd show for each candidate duplicate; fix already tracked by open seed fabro-5ff7 (sd show every analyst-cited id, sd list cap)\"}],\"observations\":[\"All 6 recommendations from the analyst answer were withheld as duplicates of existing OPEN seeds; none survived: rec1 sd-ready firehose -> duplicate_of fabro-c3b4; rec2 scoped reads/conditional sd show -> duplicate_of fabro-645d, fabro-4881, fabro-a67f, fabro-9a43; rec3 shared prompt-cache prefix -> duplicate_of fabro-944d; rec4 fs_hide detour journal clause -> duplicate_of fabro-21c0 (same implementer.md journal-section change; CLOSED fabro-56c2 already states the fs_hide shell bypass in develop prompts); rec5 preamble_allow_keys warn downgrade -> duplicate_of fabro-8275 (same first-visit by-design mechanism); rec6 PR postlude cost/time table -> duplicate_of fabro-1409 (auto-merge caveat the analyst deferred to is fabro-6a5a)\",\"Run 01M22STYHHYV9J9B7NTE03PH4G is clean confirming evidence for those seeds, not new work: 24,314-byte sd ready listing with planner at 45% of run cost (fabro-c3b4), cache_write_tokens=0 on every stage call costing ~$0.055 of $0.136 (fabro-944d), implementer journaled observations [\\\"none\\\"] over a real fs_hide shell detour (fabro-21c0), and the sole worker-log warn was the by-design gate_known_bug_hits absence on an all-green run (fabro-8275)\",\"Marker-only revision: healthy single-pass all-green run, 2m24s wall, $0.136 total; review persisted verbatim at .fabro/reviews/develop/01M22STYHHYV9J9B7NTE03PH4G.md; no merge event for PR #82 in the stored event stream, so no auto-merge finding was drawn (already fabro-6a5a)\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22T14PWSRB6QSB5G51TJCW1\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:10:37Z\",\"data\":{\"painpoints\":[],\"observations\":[\"none\"]}}\ndiff --git a/.fabro/revisions/01M22STYHHYV9J9B7NTE03PH4G.md b/.fabro/revisions/01M22STYHHYV9J9B7NTE03PH4G.md\nnew file mode 100644\nindex 0000000..63ab4e3\n--- /dev/null\n+++ b/.fabro/revisions/01M22STYHHYV9J9B7NTE03PH4G.md\n@@ -0,0 +1,11 @@\n+# Revision — run 01M22STYHHYV9J9B7NTE03PH4G\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M22STYHHYV9J9B7NTE03PH4G.md\n+- seeds filed: none — healthy run\n+- basis: run 01M22STYHHYV9J9B7NTE03PH4G, workflow version 57bfc82454a2182c84939466acec9710916f642ceb8b5d804d46e80c2a30150a, commit 9c31dd5517a0bc78961874af1b933a27fcc65b96\n+- revised_at_commit: 9c31dd5517a0bc78961874af1b933a27fcc65b96 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+none — healthy run\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 59,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-09T10:10:42.602054906Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 360588,
+      "inference_time_ms": 189170,
+      "tool_time_ms": 151571,
+      "active_time_ms": 340741
+    },
+    "final_git_commit_sha": "0d5bfd0936fc8f4b42e71ab529465e6a116a6851",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 22634,
+          "inference_time_ms": 20523,
+          "tool_time_ms": 1477,
+          "active_time_ms": 22000
+        },
+        "billing_usd_micros": 25636,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 295017,
+          "inference_time_ms": 144789,
+          "tool_time_ms": 149624,
+          "active_time_ms": 294413
+        },
+        "billing_usd_micros": 98009,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 24934,
+          "inference_time_ms": 23858,
+          "tool_time_ms": 470,
+          "active_time_ms": 24328
+        },
+        "billing_usd_micros": 35367,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 53615,
+      "output_tokens": 4460,
+      "total_tokens": 215475,
+      "reasoning_tokens": 5656,
+      "cache_read_tokens": 151744,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 159012
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M22T14PWSRB6QSB5G51TJCW1.jsonl b/.fabro/journal/01M22T14PWSRB6QSB5G51TJCW1.jsonl\nnew file mode 100644\nindex 0000000..276d1b2\n--- /dev/null\n+++ b/.fabro/journal/01M22T14PWSRB6QSB5G51TJCW1.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22T14PWSRB6QSB5G51TJCW1\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:04:56Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22T14PWSRB6QSB5G51TJCW1\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:05:18Z\",\"data\":{\"painpoints\":[],\"observations\":[\"8 runs listed; 5 unrevised but only 2 develop runs selectable. 4 develop runs blocked (4 stale-evidence, version drift vs baseline 57bfc824…); 0 no live sandbox; 2 merge-upstream runs (01M20N60ZY6DZDTX60WW0161KP, 01M20E43YS004DCEYPJ0GJQH4B) remain unrevised, fresh-version but older than the selected develop run\",\"No active develop run at listing time (ramp discipline, ADR-0011)\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22T14PWSRB6QSB5G51TJCW1\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:10:08Z\",\"data\":{\"painpoints\":[{\"text\":\"sd list --format compact caps at ~50 entries, so verifying the analyst-cited seed ids required per-theme sd search plus sd show for each candidate duplicate; fix already tracked by open seed fabro-5ff7 (sd show every analyst-cited id, sd list cap)\"}],\"observations\":[\"All 6 recommendations from the analyst answer were withheld as duplicates of existing OPEN seeds; none survived: rec1 sd-ready firehose -> duplicate_of fabro-c3b4; rec2 scoped reads/conditional sd show -> duplicate_of fabro-645d, fabro-4881, fabro-a67f, fabro-9a43; rec3 shared prompt-cache prefix -> duplicate_of fabro-944d; rec4 fs_hide detour journal clause -> duplicate_of fabro-21c0 (same implementer.md journal-section change; CLOSED fabro-56c2 already states the fs_hide shell bypass in develop prompts); rec5 preamble_allow_keys warn downgrade -> duplicate_of fabro-8275 (same first-visit by-design mechanism); rec6 PR postlude cost/time table -> duplicate_of fabro-1409 (auto-merge caveat the analyst deferred to is fabro-6a5a)\",\"Run 01M22STYHHYV9J9B7NTE03PH4G is clean confirming evidence for those seeds, not new work: 24,314-byte sd ready listing with planner at 45% of run cost (fabro-c3b4), cache_write_tokens=0 on every stage call costing ~$0.055 of $0.136 (fabro-944d), implementer journaled observations [\\\"none\\\"] over a real fs_hide shell detour (fabro-21c0), and the sole worker-log warn was the by-design gate_known_bug_hits absence on an all-green run (fabro-8275)\",\"Marker-only revision: healthy single-pass all-green run, 2m24s wall, $0.136 total; review persisted verbatim at .fabro/reviews/develop/01M22STYHHYV9J9B7NTE03PH4G.md; no merge event for PR #82 in the stored event stream, so no auto-merge finding was drawn (already fabro-6a5a)\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M22T14PWSRB6QSB5G51TJCW1\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-09T10:10:37Z\",\"data\":{\"painpoints\":[],\"observations\":[\"none\"]}}\ndiff --git a/.fabro/reviews/develop/01M22STYHHYV9J9B7NTE03PH4G.md b/.fabro/reviews/develop/01M22STYHHYV9J9B7NTE03PH4G.md\nnew file mode 100644\nindex 0000000..35b073f\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M22STYHHYV9J9B7NTE03PH4G.md\n@@ -0,0 +1,44 @@\n+# Improve review — run 01M22STYHHYV9J9B7NTE03PH4G\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (2.5 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-09 10:08+0000 by revisor `fabro_ask`\n+\n+---\n+\n+All evidence below is from this run's event stream (planner@1, implementer@1, reviewer@1 transcripts, gate/script timings, conclusion billing), the worker log, and the run conclusion — run `01M22STYHHYV9J9B7NTE03PH4G`, seed `fabro-a18d`, all-green single-pass, 2m24s wall, $0.136 total (planner $0.061 / implementer $0.046 / reviewer $0.030).\n+\n+## Recommendations, by expected impact\n+\n+**1. Kill the `sd ready` firehose — planner context was dominated by a 24 KB seed listing it never needed past line 1.**\n+- What happened: planner's first call (event seq 31–33) ran `sd ready --assignee fabro --limit 200`, which returned **180 issues / 24,314 bytes** (`stdout_truncated: true`). It then picked candidate #1 (`fabro-a18d`) and never used the remaining ~175 lines — but they sat in context for all 7 planner LLM turns (conversation tokens grew 3.5k → 13.7k). The planner ended up the **most expensive stage: 45% of run cost, 36.4s inference**.\n+- Change: `.fabro/workflows/develop/prompts/planner.md`, step 1/2 of \"Plan the next seed\" (the sd command table): make the first call `sd ready --assignee fabro --limit 10` and widen to `--limit 200` only when the top slice is unusable (all in-flight / stale). This is exactly open seed fabro-c3b4; this run is its evidence.\n+- Expected effect: ~22 KB less planner context per run → roughly 30–40% off planner input tokens and several seconds of latency on every develop run.\n+\n+**2. Scoped reads + conditional spec re-fetch for implementer/reviewer when the brief pins anchors.**\n+- What happened: the brief pinned \"steps 6 and 7 … lines ~42-46\", yet implementer@1 opened `sed -n 1,80p` of `planner.md` (12.6 KB, seq 85–87), then a separate `grep -n` to re-locate line 43 (seq 93), and re-ran `sd show fabro-a18d` (seq 84) although the brief already contained the seed body verbatim. The reviewer repeated the pattern: `sed -n 30,55p` (8.2 KB, `stdout_truncated: true`, seq 152–154) to verify a 3-line hunk at 41–47.\n+- Change: `.fabro/workflows/develop/prompts/implementer.md` step 1 (\"Re-read the seed requirements\") — make `sd show` conditional on the brief being thin (open seeds fabro-a67f/fabro-4881), and add \"when the brief pins line anchors, read exactly `sed -n '<anchor>±5p'`\" (open seed fabro-645d). Mirror one line in `reviewer.md` (open seed fabro-9a43).\n+- Expected effect: 2–3 fewer tool turns and ~20 KB less context per pass; on this run that's ~10–15s and ~15% off the implementer+reviewer stages.\n+\n+**3. Share a prompt-cache prefix across stages — every stage's first LLM call paid full input price.**\n+- What happened: `cache_write_tokens = 0` on every call in the run; planner's first call (seq 30) had `cache_read_tokens: 0` on 12.3k input, same for implementer (seq 83) and reviewer (seq 151). The system prompt + AGENTS.md memory (~7k tokens) is byte-identical across all three agent stages yet was re-paid each time — the three \"first calls\" alone cost ~$0.055 of the $0.136 total.\n+- Change: engine-side, open seed fabro-944d (\"shared prompt-cache prefix across stages\", `lib/components/fabro-workflow`); stage sessions should reuse the cached prefix from the previous agent stage's session since the preamble head is stable.\n+- Expected effect: ~25–35% input-token cost cut per develop run; zero behavioral risk (pure billing path).\n+\n+**4. Make the \"workaround you performed is an observation\" rule apply to the fs_hide shell detour — the implementer journaled \"none\" over a real workaround.**\n+- What happened: implementer@1's reasoning trace (seq 83) says \"it's under `.fabro/`, so file tools are blocked; use shell\" and it edited via a python3 heredoc — a textbook workaround on a platform-targeting seed — yet its journal `observations` answer was `[\"none\"]` (seq 111). The journal is the loop's only feedback pipe to the improve workflow; this run contributed zero implementer signal.\n+- Change: `.fabro/workflows/develop/prompts/implementer.md`, journal section: add one sentence — \"on platform-targeting seeds, the fs_hide shell detour you performed (including which tool you substituted) is an observation; 'none' is wrong when you worked around a denial.\"\n+- Expected effect: the improve loop stops losing the one recurring friction fact every platform-targeting seed re-discovers.\n+\n+**5. Downgrade the by-design `preamble_allow_keys` absence WARN — it fired on a run where the key can never exist.**\n+- What happened: the run's only worker-log warning (10:02:17) is `preamble_allow_keys entry absent from context node=implementer key=output.gate_known_bug_hits`. That key is produced solely by the `gatebounce` node, which only runs on gate-red; this was an all-green run, so the warning is structural noise on every happy path.\n+- Change: engine lifecycle/fidelity logging (`lib/components/fabro-workflow`, alongside open seed fabro-8275): emit info, not warn, when the absent key's producing node was never visited this run.\n+- Expected effect: warn-level logs become trustworthy again — a real envelope violation won't sit in a sea of by-design warnings.\n+\n+**6. Put the per-stage cost/time table and journal digest on the PR — the user merging PR #82 currently sees none of this run's facts.**\n+- What happened: PR #82 was created 12s after closeout (seq 181) with a title-only postlude; the run summary still shows `pull_request.state: null` (no live state relayed back), and the interesting facts — planner 45% of cost, gate green in 4.4s with \"no crates touched\", reviewer byte-for-byte verification — live only in the run dashboard. Open seed fabro-1409 tracks exactly this; this run is a clean instance.\n+- Change: PR postlude composition in the engine (same area fabro-6a5a/fabro-1409 target): append the conclusion's per-stage timing/cost table plus a one-line digest of journal observations.\n+- Expected effect: at merge time the user sees cost distribution and what review actually verified without opening the dashboard.\n+\n+One caveat on what I could not verify: no merge/auto-merge event for PR #82 appears in the stored event stream (it ends at `run.completed`, 10:04:04, two seconds after PR creation), so I made no recommendation about auto-merge behavior from this run — the known auto-merge concerns are already captured in open seed fabro-6a5a.\ndiff --git a/.fabro/revisions/01M22STYHHYV9J9B7NTE03PH4G.md b/.fabro/revisions/01M22STYHHYV9J9B7NTE03PH4G.md\nnew file mode 100644\nindex 0000000..63ab4e3\n--- /dev/null\n+++ b/.fabro/revisions/01M22STYHHYV9J9B7NTE03PH4G.md\n@@ -0,0 +1,11 @@\n+# Revision — run 01M22STYHHYV9J9B7NTE03PH4G\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M22STYHHYV9J9B7NTE03PH4G.md\n+- seeds filed: none — healthy run\n+- basis: run 01M22STYHHYV9J9B7NTE03PH4G, workflow version 57bfc82454a2182c84939466acec9710916f642ceb8b5d804d46e80c2a30150a, commit 9c31dd5517a0bc78961874af1b933a27fcc65b96\n+- revised_at_commit: 9c31dd5517a0bc78961874af1b933a27fcc65b96 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+none — healthy run\n",
+      "summary": {
+        "files_changed": 3,
+        "additions": 59,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1483,6 +1569,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 161,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T10:10:42.566273686Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T10:10:42.566239151Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
