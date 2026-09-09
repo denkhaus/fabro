@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl b/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl
+index 5760202..f85f504 100644
+--- a/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl
++++ b/.fabro/journal/01M22STYHHYV9J9B7NTE03PH4G.jsonl
+@@ -3,3 +3,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M22STYHHYV9J9B7NTE03PH4G","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-09T10:03:01Z","data":{"painpoints":[],"observations":["none"]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M22STYHHYV9J9B7NTE03PH4G","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-09T10:03:10Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M22STYHHYV9J9B7NTE03PH4G","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-09T10:03:14Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M22STYHHYV9J9B7NTE03PH4G","node":"reviewer","visit":1,"status":"succeeded","ts":"2026-09-09T10:03:41Z","data":{"painpoints":[],"observations":["Churn-only seed: judged the loop-work diff as review scope; read the live planner.md section (lines 30-55) to confirm the file matches the captured diff byte-for-byte — all five acceptance criteria verified against the seed spec, not just the summary. No capability delta: no Dockerfile/env/credential surfaces touched."]}}
