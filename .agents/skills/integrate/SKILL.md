@@ -31,8 +31,15 @@ truth; a concurrent description-append can otherwise outrank them and
 resurrect an implemented seed), else later `updatedAt`; keep the richer
 description of the two; NEVER drop an `assignee` state (assignments are
 user-ratified decisions). Never edit a seed while its run is in flight.
-A clean merge is not a correct merge. Verify zero duplicate ids, then
-commit the dedupe explicitly.
+A clean merge is not a correct merge.
+Operational rules (2026-09-09, PRs #110-#112): (a) squash-merges carry
+the run branch's tracker state WHOLESALE - duplicates on a repaired run
+branch land on base, so dedupe during every branch repair too; (b) the
+line can merge a new PR between your pull, dedupe, and push - re-count
+duplicates immediately before pushing and restart the sequence when a
+new commit appeared mid-flight; (c) verify zero duplicate ids, commit
+the dedupe explicitly, and never push a state you have not just
+re-counted.
 
 ## Phase 1 - Commit triage
 
@@ -64,6 +71,14 @@ commit, line).
   invisible forks are the most expensive drift class (iterate: fabro-7461).
 - Distinguish "implemented per spec" / "partial with acknowledged gap"
   / "implemented something else".
+- MIXED-CYCLE TRAP (2026-09-09, PR #109): a run with a mid-run failure
+  (steered abort, failed stage) may have claimed a SECOND seed in the
+  same run - and the abandoned worktree residue of the failed cycle can
+  ride into the PR committed by the later cycle. Any PR from a run with
+  more than one claim or a failed stage gets out-of-spec-content
+  scrutiny: diff every file against the claimed seed's spec; residue
+  from earlier cycles is a close-unmerged condition, not a review
+  note.
 
 ### Axis 2 - Gaps: what is missing or fragile
 
@@ -189,13 +204,21 @@ line work. Rules:
    branch whose head is younger than the newest merged PR, or any
    non-terminal develop/conductor run). The claim-to-PR window is the
    whole run duration: a run started before your push opens its PR on
-   a stale base.
+   a stale base. The BEST window is the moment right after a run PR
+   merged (the line is between children); batch ALL pending seed writes
+   and tracker updates into that one window sync instead of pushing
+   per-edit.
 2. A push outside the window dirties run PRs: auto-merge stalls, the
    staleness supervisor update-branches them, and JSONL conflicts turn
    into 3-strike `stale_base` retirement of work that was converging.
-   Until the 409-strike fix lands, treat every dirty run PR as urgent:
-   update its branch manually (merge base into the run branch, JSONL
-   union-resolve) BEFORE three 5-minute strikes pass.
+   Until the 409-strike fix lands, treat every dirty run PR as urgent.
+   Manual branch-update protocol (proven twice 2026-09-09, PRs #110/#111,
+   each ~2 minutes vs. 15-minute strike clock): checkout the run branch
+   detached -> merge origin/denkhaus -> JSONL dedupe (closed-wins) ->
+   push the run branch -> switch back. The gate re-runs on the new head
+   and the armed auto-merge then lands the PR. Squash-merge caveat: the
+   branch you push must be duplicate-free or the merge imports the dups
+   into the base tracker.
 3. Window sequence: let/merge pending run PRs (gate green) -> pull +
    JSONL discipline -> push -> verify origin state (the config you
    intended is what origin serves).
