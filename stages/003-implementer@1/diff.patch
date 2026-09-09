@@ -1,0 +1,235 @@
+diff --git a/.fabro/journal/01M22X87J1RKQ6A8FZB7RC2RN8.jsonl b/.fabro/journal/01M22X87J1RKQ6A8FZB7RC2RN8.jsonl
+index 30e157c..48c9232 100644
+--- a/.fabro/journal/01M22X87J1RKQ6A8FZB7RC2RN8.jsonl
++++ b/.fabro/journal/01M22X87J1RKQ6A8FZB7RC2RN8.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M22X87J1RKQ6A8FZB7RC2RN8","node":"start","visit":1,"status":"succeeded","ts":"2026-09-09T11:01:14Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M22X87J1RKQ6A8FZB7RC2RN8","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-09T11:02:37Z","data":{"painpoints":[],"observations":["In-flight PR #78 maps to seed fabro-fc1b (found via `.fabro/journal/01M22PCGN4E3X1XGN630MDDH39.jsonl` planner observation), not the top candidate — no skip needed.","fabro-8bf4 basis verified: envelope producer lints live in `lib/components/fabro-workflow/src/lifecycle/envelope.rs`; no missing-emission lint exists yet, so the seed is not stale.","fabro-017f tracks the journal-specific output-schema enforcement; brief scopes this seed to the general allow-keys visibility lint to avoid overlap."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M22X87J1RKQ6A8FZB7RC2RN8","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-09T11:14:26Z","data":{"painpoints":[],"observations":["rg in this sandbox mangled matching output (replaced identifiers like is_engine_stamped_key with 'n' and paths with lib/foundation/fabro-types/... vs lib/components/...) when a replace flag was implicitly active — grep/rg output here cannot be trusted verbatim; sed -n on the file was needed to confirm the real definition (lib/foundation/fabro-types/src/context_keys.rs)."]}}
+diff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl
+index 4015885..5f14cdc 100644
+--- a/.mulch/expertise/engine.jsonl
++++ b/.mulch/expertise/engine.jsonl
+@@ -47,3 +47,4 @@
+ {"type":"convention","classification":"tactical","recorded_at":"2026-09-08T18:20:29.952Z","evidence":{"commit":"a4850e681"},"content":"Set [run.clone] depth = 0 in workflow.toml for any workflow whose stages run git rev-list --count or git merge-base across origin and upstream remotes; verify with git rev-parse --is-shallow-repository in the sandbox when counts look inflated.","id":"mx-588afd"}
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-08T19:44:10.382Z","evidence":{"seeds":"fabro-85a1","commit":"3e23ee57c98bd03e1556f32c4dc13e867c6e3893"},"name":"run-clone-depth-zero-for-range-math","description":"Workflows doing git range math against upstream (rev-list --count, merge-base) need [run.clone] depth = 0 in their .fabro/workflows/<name>/workflow.toml; default depth-100 shallow clone breaks the math. Conductor (a4850e681) and merge-upstream (fabro-85a1) both set it; audit any new clone-based workflow that compares upstream refs. Volume is ~neutral (~150 MB either way).","files":[".fabro/workflows/merge-upstream/workflow.toml"],"id":"mx-10bfb8"}
+ {"type":"decision","classification":"tactical","recorded_at":"2026-09-08T21:07:45.325Z","evidence":{"commit":"a2933be71de5b9a6d79dd055d500270dbab4d334"},"title":"FabroRunToolServices presence vs run_wide provenance","rationale":"The worker-token agent:run_tools scope is granted for both the run-wide flag and node-level fabro_tools opt-ins, so services presence alone can no longer decide whether attribute-less stages get the full tool set; provenance must travel with the services to keep per-stage least privilege (ADR-0019, user-approved Option A on fabro-c419).","id":"mx-dd2618"}
++{"type":"pattern","classification":"tactical","recorded_at":"2026-09-09T11:13:46.017Z","evidence":{"commit":"3f376e25149425c4e46f2b919e1595dfd8cad64c"},"name":"envelope-completion-lint-guards","description":"Stage-envelope completion lints (context_allow_keys) must (a) gate on result.outcome.status.is_successful() so failed/retried attempts are exempt, and (b) exclude engine-stamped keys via keys::is_engine_stamped_key — those keys are often stamped after EnvelopeLifecycle::after_node, so their absence in the updates map is never an agent omission (fabro-8bf4, lib/components/fabro-workflow/src/lifecycle/envelope.rs)","files":["lib/components/fabro-workflow/src/context.rs","lib/components/fabro-workflow/src/lifecycle/envelope.rs","lib/foundation/fabro-types/src/run_event/infra.rs"],"id":"mx-c944ae"}
+diff --git a/lib/components/fabro-workflow/src/context.rs b/lib/components/fabro-workflow/src/context.rs
+index e7af365..3185585 100644
+--- a/lib/components/fabro-workflow/src/context.rs
++++ b/lib/components/fabro-workflow/src/context.rs
+@@ -160,6 +160,28 @@ pub(crate) fn enforce_stage_envelope(
+     dropped
+ }
+ 
++/// Keys declared in the node's `context_allow_keys` that the completed
++/// stage never emitted into its `context_updates` (fabro-8bf4): a
++/// completion lint, not a drop. Engine-stamped keys are excluded — the
++/// engine owns their presence, so their absence in the updates map is
++/// never an agent omission. Returns the keys sorted for a deterministic
++/// notice message.
++pub(crate) fn missing_allow_keys(
++    node: &Node,
++    updates: &HashMap<String, serde_json::Value>,
++) -> Vec<String> {
++    let Some(allow) = node.context_allow_keys() else {
++        return Vec::new();
++    };
++    let mut missing: Vec<String> = allow
++        .into_iter()
++        .filter(|key| !updates.contains_key(*key) && !keys::is_engine_stamped_key(key, &node.id))
++        .map(str::to_string)
++        .collect();
++    missing.sort();
++    missing
++}
++
+ /// Read a context key the way workflow authors write one: the declared key
+ /// first, then the same key with a leading `context.` stripped.
+ ///
+diff --git a/lib/components/fabro-workflow/src/lifecycle/envelope.rs b/lib/components/fabro-workflow/src/lifecycle/envelope.rs
+index 467c45a..5a17c53 100644
+--- a/lib/components/fabro-workflow/src/lifecycle/envelope.rs
++++ b/lib/components/fabro-workflow/src/lifecycle/envelope.rs
+@@ -28,6 +28,11 @@ type WfNodeResult = NodeResult<Option<BilledModelUsage>>;
+ /// updates only. Dropped keys are reported with a `ContextUpdateDropped`
+ /// warning notice — drops are drift protection, never silent and never a
+ /// stage failure.
++///
++/// On successful completions it also runs the fabro-8bf4 lint: a key
++/// declared in `context_allow_keys` that the stage never emitted is
++/// reported with a `ContextKeyOmitted` warning. Warning-only — the stage
++/// still completes; the lint makes silent output omissions auditable.
+ pub(crate) struct EnvelopeLifecycle {
+     emitter:          Arc<Emitter>,
+     stage_executions: StageExecutionTracker,
+@@ -55,13 +60,31 @@ impl RunLifecycle<WorkflowGraph> for EnvelopeLifecycle {
+             &state.context,
+             &mut result.outcome.context_updates,
+         );
+-        if dropped.is_empty() {
++        if !dropped.is_empty() {
++            self.emitter.notice_scoped(
++                RunNoticeLevel::Warn,
++                RunNoticeCode::ContextUpdateDropped,
++                format!("context_allow_keys dropped: {}", dropped.join(", ")),
++                &stage_scope_for(&self.stage_executions, state, node.id()),
++            );
++        }
++
++        // Completion lint (fabro-8bf4): a successful stage that never
++        // emitted a key it declared in `context_allow_keys` warns — the
++        // omission is auditable, never a stage failure. Failed/retried
++        // attempts are exempt: their updates are not a completion.
++        let missing = if result.outcome.status.is_successful() {
++            context::missing_allow_keys(node.inner(), &result.outcome.context_updates)
++        } else {
++            Vec::new()
++        };
++        if missing.is_empty() {
+             return Ok(());
+         }
+         self.emitter.notice_scoped(
+             RunNoticeLevel::Warn,
+-            RunNoticeCode::ContextUpdateDropped,
+-            format!("context_allow_keys dropped: {}", dropped.join(", ")),
++            RunNoticeCode::ContextKeyOmitted,
++            format!("context_allow_keys never emitted: {}", missing.join(", ")),
+             &stage_scope_for(&self.stage_executions, state, node.id()),
+         );
+         Ok(())
+@@ -175,6 +198,13 @@ mod tests {
+     #[tokio::test]
+     async fn after_node_without_envelope_attrs_is_a_noop() {
+         let emitter = Arc::new(Emitter::new(RunId::new()));
++        let notices = Arc::new(std::sync::Mutex::new(Vec::<RunEvent>::new()));
++        let capture = Arc::clone(&notices);
++        emitter.on_event(move |event| {
++            if matches!(event.body, EventBody::RunNotice(_)) {
++                capture.lock().expect("test mutex").push(event.clone());
++            }
++        });
+         let lifecycle = EnvelopeLifecycle::new(&emitter, StageExecutionTracker::default());
+ 
+         let node = envelope_node(&[]);
+@@ -187,5 +217,103 @@ mod tests {
+             .unwrap();
+ 
+         assert_eq!(result.outcome.context_updates.len(), 1);
++        assert!(
++            notices.lock().expect("test mutex").is_empty(),
++            "no allowlist declared: no drop and no omission notice"
++        );
++    }
++
++    fn notice_recorder(emitter: &Arc<Emitter>) -> Arc<std::sync::Mutex<Vec<RunEvent>>> {
++        let notices = Arc::new(std::sync::Mutex::new(Vec::<RunEvent>::new()));
++        let capture = Arc::clone(&notices);
++        emitter.on_event(move |event| {
++            if matches!(event.body, EventBody::RunNotice(_)) {
++                capture.lock().expect("test mutex").push(event.clone());
++            }
++        });
++        notices
++    }
++
++    #[tokio::test]
++    async fn after_node_warns_when_allow_key_never_emitted() {
++        let emitter = Arc::new(Emitter::new(RunId::new()));
++        let notices = notice_recorder(&emitter);
++        let lifecycle = EnvelopeLifecycle::new(&emitter, StageExecutionTracker::default());
++
++        let node = envelope_node(&[("context_allow_keys", "current_seed_id,journal")]);
++        let mut result = node_result(&[("current_seed_id", serde_json::json!("fabro-8bf4"))]);
++        let state = run_state();
++
++        lifecycle
++            .after_node(&node, &mut result, &state)
++            .await
++            .unwrap();
++
++        // Warning-only: the omitted key does not fail the stage or
++        // mutate the emitted updates (fabro-8bf4).
++        assert_eq!(result.outcome.context_updates.len(), 1);
++        let notices = notices.lock().expect("test mutex");
++        assert_eq!(notices.len(), 1, "exactly one omission notice");
++        match &notices[0].body {
++            EventBody::RunNotice(props) => {
++                assert_eq!(props.level, RunNoticeLevel::Warn);
++                assert_eq!(props.code, "context_key_omitted");
++                assert_eq!(notices[0].node_id.as_deref(), Some("planner"));
++                assert!(
++                    props.message.contains("journal"),
++                    "message names the omitted key: {}",
++                    props.message
++                );
++            }
++            other => panic!("expected RunNotice, got {other:?}"),
++        }
++    }
++
++    #[tokio::test]
++    async fn after_node_all_allow_keys_emitted_is_silent() {
++        let emitter = Arc::new(Emitter::new(RunId::new()));
++        let notices = notice_recorder(&emitter);
++        let lifecycle = EnvelopeLifecycle::new(&emitter, StageExecutionTracker::default());
++
++        let node = envelope_node(&[("context_allow_keys", "current_seed_id,journal")]);
++        let mut result = node_result(&[
++            ("current_seed_id", serde_json::json!("fabro-8bf4")),
++            ("journal", serde_json::json!({"painpoints": []})),
++        ]);
++        let state = run_state();
++
++        lifecycle
++            .after_node(&node, &mut result, &state)
++            .await
++            .unwrap();
++
++        assert_eq!(result.outcome.context_updates.len(), 2);
++        assert!(
++            notices.lock().expect("test mutex").is_empty(),
++            "all declared keys emitted: no notice"
++        );
++    }
++
++    #[tokio::test]
++    async fn after_node_ignores_engine_stamped_allow_keys() {
++        let emitter = Arc::new(Emitter::new(RunId::new()));
++        let notices = notice_recorder(&emitter);
++        let lifecycle = EnvelopeLifecycle::new(&emitter, StageExecutionTracker::default());
++
++        // `current.preamble` is engine-stamped: its absence from the
++        // agent's updates is not an omission.
++        let node = envelope_node(&[("context_allow_keys", "current_seed_id,current.preamble")]);
++        let mut result = node_result(&[("current_seed_id", serde_json::json!("fabro-8bf4"))]);
++        let state = run_state();
++
++        lifecycle
++            .after_node(&node, &mut result, &state)
++            .await
++            .unwrap();
++
++        assert!(
++            notices.lock().expect("test mutex").is_empty(),
++            "engine-stamped keys are never omissions"
++        );
+     }
+ }
+diff --git a/lib/foundation/fabro-types/src/run_event/infra.rs b/lib/foundation/fabro-types/src/run_event/infra.rs
+index a518896..7d2aea1 100644
+--- a/lib/foundation/fabro-types/src/run_event/infra.rs
++++ b/lib/foundation/fabro-types/src/run_event/infra.rs
+@@ -28,6 +28,11 @@ pub enum RunNoticeCode {
+     /// A node's `context_allow_keys` dropped agent-authored context
+     /// updates (seed fabro-900e). The message names the node and keys.
+     ContextUpdateDropped,
++    /// A node completed successfully without emitting one or more keys
++    /// declared in its `context_allow_keys` (seed fabro-8bf4). The
++    /// message names the node and keys; warning-only — the stage still
++    /// completes, this is auditability, not a failure.
++    ContextKeyOmitted,
+     DirtyWorktree,
+     GitDiffFailed,
+     GitPushFailed,
