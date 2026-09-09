@@ -15,13 +15,15 @@
 
 
 /**
- * Where a cost came from: `catalog` (estimated from catalog prices), `provider` (the provider\'s own billing data), or `application`.
+ * A resolved provider and model identity.
  */
-
-export const CostSource = {
-    CATALOG: 'catalog',
-    PROVIDER: 'provider',
-    APPLICATION: 'application'
-} as const;
-
-export type CostSource = typeof CostSource[keyof typeof CostSource];
+export interface ModelHandle {
+    /**
+     * LLM provider identifier.
+     */
+    'provider': string;
+    /**
+     * Canonical model id within the provider.
+     */
+    'model': string;
+}

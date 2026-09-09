@@ -13,15 +13,14 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { CostSource } from './cost-source';
 
 /**
- * Where a cost came from: `catalog` (estimated from catalog prices), `provider` (the provider\'s own billing data), or `application`.
+ * lithos `Cost`: a USD amount in micros and where it came from.
  */
-
-export const CostSource = {
-    CATALOG: 'catalog',
-    PROVIDER: 'provider',
-    APPLICATION: 'application'
-} as const;
-
-export type CostSource = typeof CostSource[keyof typeof CostSource];
+export interface CompletionCost {
+    'usd_micros': number;
+    'source': CostSource;
+}

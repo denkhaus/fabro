@@ -14,14 +14,7 @@
 
 
 
-/**
- * Where a cost came from: `catalog` (estimated from catalog prices), `provider` (the provider\'s own billing data), or `application`.
- */
-
-export const CostSource = {
-    CATALOG: 'catalog',
-    PROVIDER: 'provider',
-    APPLICATION: 'application'
-} as const;
-
-export type CostSource = typeof CostSource[keyof typeof CostSource];
+export interface CompletionResponseWarningsInner {
+    'code': string;
+    'message': string;
+}

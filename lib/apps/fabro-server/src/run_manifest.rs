@@ -15,8 +15,9 @@ use fabro_config::{
 use fabro_github::token_source::{InstallationTokenSource, ResolvedToken, TokenSnapshot};
 use fabro_graphviz::graph::{Graph, is_llm_handler_type};
 use fabro_graphviz::render::apply_direction;
-use fabro_llm::model_test::{ModelTestStatus, run_basic_model_probe};
-use fabro_model::{Catalog, ProviderId};
+use fabro_llm::lithos_catalog::Catalog;
+use fabro_llm::probe::{self, ModelTestStatus};
+use fabro_llm::{FabroClient, catalog};
 use fabro_sandbox::daytona::DaytonaConfig;
 use fabro_sandbox::from_environment::{
     daytona_config_from_environment, docker_config_from_environment,
@@ -30,7 +31,8 @@ use fabro_types::settings::cli::OutputVerbosity;
 use fabro_types::settings::interp::InterpString;
 use fabro_types::settings::run::{EnvironmentProvider, McpServerSettings, RunGoal, RunNamespace};
 use fabro_types::{
-    ManifestPath, RunId, RunNoticeLevel, SandboxProviderKind, ServerSettings, WorkflowSettings,
+    ManifestPath, ProviderId, RunId, RunNoticeLevel, SandboxProviderKind, ServerSettings,
+    WorkflowSettings,
 };
 use fabro_util::check_report::{CheckDetail, CheckReport, CheckResult, CheckSection, CheckStatus};
 use fabro_validate::Severity;
@@ -48,7 +50,6 @@ use tokio::time;
 
 use crate::run_compiler;
 use crate::server::AppState;
-use crate::server_secrets::LlmClientResult;
 
 #[derive(Clone)]
 pub(crate) struct PreparedManifest {
@@ -227,7 +228,7 @@ pub(crate) async fn run_preflight(
     state: &AppState,
     prepared: &PreparedManifest,
     validated: &Validated,
-    llm_result: Result<LlmClientResult>,
+    llm_result: Result<FabroClient>,
 ) -> Result<(types::PreflightResponse, bool)> {
     let (report, checks_ok) =
         build_preflight_report(state, prepared, validated, llm_result).await?;
@@ -401,7 +402,7 @@ async fn build_preflight_report(
     state: &AppState,
     prepared: &PreparedManifest,
     validated: &Validated,
-    llm_result: Result<LlmClientResult>,
+    llm_result: Result<FabroClient>,
 ) -> Result<(CheckReport, bool)> {
     let graph = validated.graph();
     let mut checks = base_preflight_checks(prepared, graph);
@@ -421,7 +422,7 @@ async fn build_preflight_report(
     let catalog = state.catalog();
     let ready_providers = llm_result
         .as_ref()
-        .map(LlmClientResult::provider_ids)
+        .map(FabroClient::provider_ids)
         .unwrap_or_default();
     let materialized = materialize_run_with_ready_providers(
         prepared.settings.clone(),
@@ -1071,7 +1072,7 @@ async fn run_llm_check(
     model: &str,
     default_provider: &str,
     catalog: &Catalog,
-    llm_result: Result<LlmClientResult>,
+    llm_result: Result<FabroClient>,
 ) -> bool {
     let mut model_providers = std::collections::BTreeSet::new();
     let mut has_llm_nodes = false;
@@ -1093,7 +1094,7 @@ async fn run_llm_check(
     match llm_result {
         Ok(result) => {
             let auth_issues = result.auth_issues;
-            let registration_issues = result.registration_issues;
+            let registration_issues = result.build_issues;
             let client = Arc::new(result.client);
 
             let mut all_ok = true;
@@ -1123,9 +1124,9 @@ async fn run_llm_check(
                         status:      CheckStatus::Warning,
                         summary:     model_id.clone(),
                         details:     vec![CheckDetail::new(format!("Provider: {provider_name}"))],
-                        remediation: Some(issue.error.to_string()),
+                        remediation: Some(issue.cause.to_string()),
                     }));
-                } else if !client.has_provider(provider_name) {
+                } else if !client.available_providers().contains(&provider_id) {
                     all_ok = false;
                     completed_checks.push((index, CheckResult {
                         name:        "LLM".into(),
@@ -1149,9 +1150,12 @@ async fn run_llm_check(
                 .map(|probe| {
                     let client = Arc::clone(&client);
                     async move {
-                        let outcome =
-                            run_basic_model_probe(&probe.model_id, &probe.provider_name, client)
-                                .await;
+                        let outcome = probe::run_basic_probe(
+                            &client,
+                            &format!("{}/{}", probe.provider_name, probe.model_id),
+                            Duration::from_secs(fabro_types::ModelTestMode::Basic.timeout_secs()),
+                        )
+                        .await;
                         let (status, remediation) = if outcome.status == ModelTestStatus::Ok {
                             (CheckStatus::Pass, None)
                         } else {
@@ -1206,10 +1210,8 @@ async fn run_llm_check(
 }
 
 fn canonical_provider_id(catalog: &Catalog, provider_name: &str) -> ProviderId {
-    let provider_id = ProviderId::from(provider_name);
-    catalog
-        .provider(&provider_id)
-        .map_or(provider_id, |provider| provider.id.clone())
+    catalog::canonical_provider_id(catalog, provider_name)
+        .unwrap_or_else(|| ProviderId::new(provider_name))
 }
 
 async fn run_github_token_check(
@@ -1664,8 +1666,7 @@ fn report_to_api(report: &CheckReport) -> types::PreflightCheckReport {
 
 #[cfg(test)]
 mod tests {
-    use fabro_model::ProviderId;
-    use fabro_model::catalog::LlmCatalogSettings;
+    use fabro_types::ProviderId;
     use fabro_workflow::run_materialization::materialize_run;
 
     use super::*;
@@ -1757,18 +1758,13 @@ mod tests {
     }
 
     fn test_catalog() -> Arc<Catalog> {
-        Arc::new(Catalog::from_builtin().unwrap())
+        Arc::new(fabro_llm::test_support::test_catalog())
     }
 
     fn openrouter_catalog() -> Catalog {
-        let overrides = toml::from_str(
-            r"
-[providers.openrouter]
-enabled = true
-",
+        fabro_llm::test_support::test_catalog_with_overlay(
+            "[providers.openrouter.metadata.fabro]\nenabled = true\n",
         )
-        .expect("catalog override should parse");
-        Catalog::from_builtin_with_overrides(&overrides).expect("catalog should build")
     }
 
     fn model_refs(values: &[&str]) -> Vec<fabro_types::settings::ModelRef> {
@@ -1879,20 +1875,19 @@ enabled = true
     ) -> Arc<crate::server::AppState> {
         let moonshot_url = server.url("/moonshot/v1");
         let openrouter_url = server.url("/openrouter/v1");
-        let llm_catalog_settings: LlmCatalogSettings = toml::from_str(&format!(
-            r#"
+        crate::test_support::TestAppStateBuilder::new()
+            .llm_overlay_toml(&format!(
+                r#"
 [providers.moonshot]
 base_url = "{moonshot_url}"
 
 [providers.openrouter]
 base_url = "{openrouter_url}"
+
+[providers.openrouter.metadata.fabro]
 enabled = true
 "#
-        ))
-        .expect("catalog overrides should parse");
-
-        crate::test_support::TestAppStateBuilder::new()
-            .llm_catalog_settings(llm_catalog_settings)
+            ))
             .vault_entries([
                 (EnvVars::KIMI_API_KEY, "test-moonshot-key"),
                 (EnvVars::OPENROUTER_API_KEY, "test-openrouter-key"),
@@ -1907,7 +1902,7 @@ enabled = true
         let llm_result = state.resolve_llm_client().await;
         let mut ready_providers = llm_result
             .as_ref()
-            .map(LlmClientResult::provider_ids)
+            .map(FabroClient::provider_ids)
             .unwrap_or_default();
         ready_providers.sort();
         assert_eq!(ready_providers, vec![
@@ -2021,8 +2016,8 @@ enabled = {clone_enabled}
         let resolved = materialize_run(
             prepared.settings.clone(),
             validated.graph(),
-            Catalog::builtin(),
-            &[ProviderId::anthropic()],
+            test_catalog().as_ref(),
+            &[fabro_types::provider_ids::anthropic()],
         )
         .unwrap()
         .run;
@@ -2913,7 +2908,7 @@ digraph Demo {
                 .remediation
                 .as_deref()
                 .unwrap_or_default()
-                .contains("Rate limited by openai: quota limited")
+                .contains("quota limited")
         );
         assert!(response_mock.calls_async().await >= 1);
     }
@@ -3015,7 +3010,7 @@ digraph Demo {
 
         assert!(matches!(
             error,
-            WorkflowError::ModelSelection(fabro_model::ModelSelectionError::UnknownProvider {
+            WorkflowError::ModelSelection(fabro_llm::ModelSelectionError::UnknownProvider {
                 provider
             }) if provider.as_str() == "missing-provider"
         ));
@@ -3023,35 +3018,29 @@ digraph Demo {
 
     #[tokio::test]
     async fn preflight_resolves_model_aliases_from_app_state_catalog() {
-        let llm_catalog_settings: LlmCatalogSettings = toml::from_str(
-            r#"
+        let state = crate::test_support::TestAppStateBuilder::new()
+            .llm_overlay_toml(
+                r#"
 [providers.acme]
 display_name = "Acme"
-adapter = "openai_compatible"
-agent_profile = "openai"
+adapter = "openai-compatible"
+codec = "openai-chat"
 base_url = "https://api.acme.test/v1"
+auth = { type = "bearer" }
+default_model = "acme-large"
 
-[providers.acme.auth]
+[providers.acme.metadata.fabro]
+agent_profile = "openai"
 credentials = ["env:ACME_API_KEY"]
 
 [providers.acme.models."acme-large"]
 display_name = "Acme Large"
-family = "acme"
-default = true
 aliases = ["vl"]
-
-[providers.acme.models."acme-large".limits]
-context_window = 128000
-
-[providers.acme.models."acme-large".features]
-tools = true
-vision = false
-reasoning = false
+api_model = "acme-large"
+limits = { context_tokens = 128000, max_output_tokens = 8192 }
+capabilities = { text = true, tools = true }
 "#,
-        )
-        .expect("catalog fixture should parse");
-        let state = crate::test_support::TestAppStateBuilder::new()
-            .llm_catalog_settings(llm_catalog_settings)
+            )
             .build();
         let mut manifest = minimal_manifest();
         manifest.workflows.get_mut("workflow.fabro").unwrap().source = r#"
@@ -3071,7 +3060,7 @@ digraph Demo {
         let llm_result = state.resolve_llm_client().await;
         let ready_providers = llm_result
             .as_ref()
-            .map(LlmClientResult::provider_ids)
+            .map(FabroClient::provider_ids)
             .unwrap_or_default();
         assert!(ready_providers.is_empty());
         let validated = validate_prepared_manifest_for_preflight(

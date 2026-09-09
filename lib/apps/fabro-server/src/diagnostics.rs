@@ -6,12 +6,13 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use fabro_auth::auth_issue_message;
 use fabro_http::Response;
-use fabro_llm::client::Client as LlmClient;
-use fabro_llm::model_test::{ModelTestStatus, run_basic_model_probe_with_timeout};
-use fabro_model::{Catalog, ProviderId};
+use fabro_llm::lithos_catalog::Catalog;
+use fabro_llm::probe::{self, ModelTestStatus};
+use fabro_llm::{Client, catalog};
 use fabro_redact::redact_string;
 use fabro_sandbox::{DockerSandboxProvider, daytona};
 use fabro_static::EnvVars;
+use fabro_types::ProviderId;
 use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::server::GithubIntegrationStrategy;
 use fabro_util::check_report::{CheckDetail, CheckResult, CheckSection, CheckStatus};
@@ -220,10 +221,10 @@ pub(crate) async fn test_llm_providers(state: &AppState) -> anyhow::Result<Provi
             .find(|(issue_provider, _)| issue_provider == &provider)
             .map(|(_, issue)| redact_string(&auth_issue_message(&provider, issue)));
         let registration_issue = result
-            .registration_issues
+            .build_issues
             .iter()
             .find(|issue| issue.provider == provider)
-            .map(|issue| redact_string(&issue.error.to_string()));
+            .map(|issue| redact_string(&issue.cause.to_string()));
         async move {
             probe_single_provider(client, &catalog, provider, auth_issue, registration_issue).await
         }
@@ -234,7 +235,7 @@ pub(crate) async fn test_llm_providers(state: &AppState) -> anyhow::Result<Provi
 }
 
 async fn probe_single_provider(
-    client: Arc<LlmClient>,
+    client: Arc<Client>,
     catalog: &Catalog,
     provider: ProviderId,
     auth_issue: Option<String>,
@@ -249,7 +250,7 @@ async fn probe_single_provider(
         return provider_probe_error(provider, None, message, None);
     }
 
-    let Some(model) = catalog.probe_for_provider(&provider) else {
+    let Some(model) = catalog::probe_model(catalog, provider.as_str()) else {
         return provider_probe_error(
             provider,
             None,
@@ -257,12 +258,11 @@ async fn probe_single_provider(
             None,
         );
     };
-    let model_id = model.id.to_string();
+    let model_id = model.model.id().to_string();
 
-    let outcome = run_basic_model_probe_with_timeout(
-        &model_id,
-        &provider,
-        client,
+    let outcome = probe::run_basic_probe(
+        &client,
+        &format!("{provider}/{model_id}"),
         EXTERNAL_SERVICE_PROBE_TIMEOUT,
     )
     .await;
@@ -1030,8 +1030,8 @@ mod tests {
             "expected remediation to start with provider name, got: {remediation}"
         );
         assert!(
-            remediation.contains("Authentication"),
-            "expected typed Display 'Authentication' in remediation, got: {remediation}"
+            remediation.contains("invalid api key"),
+            "expected the provider's message in remediation, got: {remediation}"
         );
         assert!(!result.details.is_empty(), "details should be populated");
         assert!(

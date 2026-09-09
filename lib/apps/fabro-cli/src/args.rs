@@ -5,11 +5,11 @@ use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use fabro_agent::cli::AgentArgs;
 use fabro_config::{CliLayer, CliLoggingLayer, CliOutputLayer, CliUpdatesLayer};
-use fabro_model::ReasoningEffort;
 use fabro_server::serve::DEFAULT_TCP_PORT;
 use fabro_static::EnvVars;
 use fabro_types::settings::cli::{OutputFormat, OutputVerbosity};
 use fabro_types::settings::run::MergeStrategy;
+use fabro_types::{ReasoningEffort, controls};
 use fabro_util::printer::Printer;
 
 pub(crate) const LONG_VERSION: &str = concat!(
@@ -836,7 +836,7 @@ pub(crate) struct ProviderLoginArgs {
 
     /// LLM provider to authenticate with
     #[arg(long)]
-    pub(crate) provider: fabro_model::ProviderId,
+    pub(crate) provider: fabro_types::ProviderId,
 
     /// Read an API key from stdin instead of prompting
     #[arg(long)]
@@ -1101,8 +1101,9 @@ pub(crate) struct ModelTestArgs {
     #[arg(long, alias = "deep")]
     pub(crate) tools: bool,
 
-    /// Request a reasoning-effort level
-    #[arg(long, value_enum)]
+    /// Request a reasoning-effort level (minimal, low, medium, high, xhigh,
+    /// max)
+    #[arg(long, value_parser = parse_reasoning_effort_arg)]
     pub(crate) reasoning_effort: Option<ReasoningEffort>,
 }
 
@@ -1727,7 +1728,7 @@ pub(crate) struct InstallGithubArgs {
 #[derive(Args, Debug, Clone, Default)]
 pub(crate) struct InstallNonInteractiveArgs {
     #[arg(long, hide = true)]
-    pub(crate) llm_provider: Option<fabro_model::ProviderId>,
+    pub(crate) llm_provider: Option<fabro_types::ProviderId>,
 
     #[arg(long, hide = true)]
     pub(crate) llm_api_key_stdin: bool,
@@ -1853,4 +1854,18 @@ pub(crate) enum ProviderCommand {
 pub(crate) struct CompletionArgs {
     /// Shell to generate completions for
     pub shell: clap_complete::Shell,
+}
+
+fn parse_reasoning_effort_arg(value: &str) -> Result<ReasoningEffort, String> {
+    controls::parse_reasoning_effort(value).ok_or_else(|| {
+        format!(
+            "unknown reasoning effort '{value}'; expected one of: {}",
+            controls::REASONING_EFFORTS
+                .iter()
+                .copied()
+                .map(controls::reasoning_effort_name)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    })
 }
