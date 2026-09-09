@@ -689,14 +689,184 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M23W4S7Q2GNEVPY779M4GMN6",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-09-09T20:01:05.609779411Z",
+    "run_branch": "fabro/run/01M23W4S7Q2GNEVPY779M4GMN6",
+    "base_sha": "c28d015696ef9be79ee9909b3e641e09a658de7b"
   },
-  "status_updated_at": "2026-09-09T20:00:59.257719049Z",
-  "last_event_at": "2026-09-09T20:01:04.833387781Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-09-09T20:01:05.609844651Z",
+  "last_event_at": "2026-09-09T20:02:12.315107303Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 19,
+      "checkpoint": {
+        "timestamp": "2026-09-09T20:01:08.016221911Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.fidelity": "compact",
+          "internal.retry_count.start": 0,
+          "failure_class": "",
+          "internal.run_id": "01M23W4S7Q2GNEVPY779M4GMN6",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "outcome": "succeeded",
+          "seed_cycles": {
+            "start": 1
+          },
+          "failure_signature": "",
+          "current_node": "start",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.thread_id": null,
+          "graph.preamble_budget_kb": "24",
+          "graph.inspects": "develop",
+          "graph.max_node_visits": "40",
+          "graph.rankdir": "LR",
+          "internal.seed_cycle_anchor": "",
+          "internal.node_visit_count": 1
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "planner",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-09T20:02:12.547503389Z",
+        "current_node": "planner",
+        "completed_nodes": [
+          "start",
+          "planner"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.preamble_budget_kb": "24",
+          "graph.max_node_visits": "40",
+          "current_seed_brief": "Add deterministic machine verification of loop-asset (.nu) changes to the quality gate, so LLM stages stop hand-building throwaway scratch exercises. Edit `scripts/qualitygate.nu` (invoked by the `justfile` qualitygate recipe at lines 126-128); the loop-asset scripts themselves live under `.fabro/workflows/develop/scripts/` (fs_hide: edit via shell, e.g. python3 heredoc or sed — file tools fail there). Acceptance criteria: (1) loop-asset tier: a new check in `scripts/qualitygate.nu` that parse-checks every `.fabro/workflows/develop/scripts/*.nu` file — but plain `source <file>` auto-invokes a script's `def main` (see the closeout-smoke.nu header comment), so the check must be side-effect-free: use `nu --ide-check` (or equivalent parse-only invocation) per file, not a bare `source`; (2) the tier MUST run in the 'no crates touched' path of `main` (currently lines ~165-170: fmt-only then exit 0 — that 4.15s no-op gate is exactly what this seed fixes) and also when crates are touched (a mixed Rust+loop-asset diff gates both); (3) checked-in regression: new file `.fabro/workflows/develop/scripts/evidence-smoke.nu` following the closeout-smoke.nu pattern exactly (const-relative `source`, `fail` helper, exit 0 at end to dodge auto-invoked main) — exercising evidence.nu's PURE helpers over a mixed-capture fixture: `sanitize` (redaction cases), `resolve-blobrefs` (text with and without blob refs), `diff-sort-key` (loop-path vs source-path ordering), `is-loop-path` (positives like `.fabro/x`, negatives like `lib/main.rs`), `numstat-rows`/`total` over a canned numstat fixture if reachable without git (skip helpers that shell out); (4) the loop-asset tier invokes the checked-in smoke (`nu .fabro/workflows/develop/scripts/evidence-smoke.nu`) so the regression runs deterministically in the gate, plus the parse check for the sibling scripts; (5) gate messages follow the existing tier style ('== checking loop-asset scripts ==' and a clear per-file failure line with the script name); (6) verification cheapest-first: `python3 -c 'import tomllib...'`-level parse where applicable, then `nu -c 'nu --ide-check ...'` per script, then `nu .fabro/workflows/develop/scripts/evidence-smoke.nu` exits 0, then a direct `nu scripts/qualitygate.nu` run reaching the new tier (expect GATE GREEN on a tree with no Rust changes after editing only loop assets); the implementer must NOT run `just qualitygate` itself — gate green comes via the deterministic tester step. Distinctness: do not implement fabro-50f8 (ad-hoc prompt exercises) or fabro-574d (crate derivation) here. Basis: run 01M23TE61D4Y33415BK5M7C70X, commit 592f64bd.",
+          "current_seed_id": "fabro-bfe1",
+          "preferred_label": "Seed claimed",
+          "last_stage": "planner",
+          "failure_signature": "",
+          "internal.node_visit_count": 1,
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 4416,
+            "preview": "Claimed fabro-bfe1. Brief drafted with bulleted acceptance criteria, verification cheapest-first.\n\nSeed fabro-bfe1 — \"Qualitygate: add a loop-asset tier with a checked-in evidence-smoke.nu regressio"
+          },
+          "graph.rankdir": "LR",
+          "internal.thread_id": "start",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "seed_cycles": {
+            "planner": 1
+          },
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "fabro-bfe1 basis verified fresh: filed in PR #112 (commit 4c5822a) minutes before this run but not implemented — no in-flight conflict; `scripts/qualitygate.nu` main() 'no crates touched' path is still fmt-only (the exact no-op this seed fixes).",
+              "In-flight check clean: 22 develop runs listed, zero open PRs, one non-terminal run (this one, 01M23W4S7Q2GNEVPY779M4GMN6) — journal fallback for goal-less seed ids not needed this pass.",
+              "nu `source` auto-invokes `def main` after the top level (documented in closeout-smoke.nu header) — the brief pins a parse-only check (`nu --ide-check`) so the new tier has no side effects."
+            ]
+          },
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/workspace/fabro",
+          "current_node": "planner",
+          "internal.retry_count.planner": 0,
+          "current_seed_title": "Qualitygate: add a loop-asset tier with a checked-in evidence-smoke.nu regression",
+          "internal.retry_count.start": 0,
+          "internal.seed_cycle_anchor": "fabro-bfe1",
+          "thread.start.current_node": "planner",
+          "last_response": "Claimed fabro-bfe1. Brief drafted with bulleted acceptance criteria, verification cheapest-first.\n\nSeed fabro-bfe1 — \"Qualitygate: add a loop-asset tier with a checked-in evidence-smoke.nu regressio",
+          "outcome": "succeeded",
+          "failure_class": "",
+          "internal.run_id": "01M23W4S7Q2GNEVPY779M4GMN6",
+          "graph.inspects": "develop",
+          "graph.cycle_counter_reset_key": "current_seed_id"
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Add deterministic machine verification of loop-asset (.nu) changes to the quality gate, so LLM stages stop hand-building throwaway scratch exercises. Edit `scripts/qualitygate.nu` (invoked by the `justfile` qualitygate recipe at lines 126-128); the loop-asset scripts themselves live under `.fabro/workflows/develop/scripts/` (fs_hide: edit via shell, e.g. python3 heredoc or sed — file tools fail there). Acceptance criteria: (1) loop-asset tier: a new check in `scripts/qualitygate.nu` that parse-checks every `.fabro/workflows/develop/scripts/*.nu` file — but plain `source <file>` auto-invokes a script's `def main` (see the closeout-smoke.nu header comment), so the check must be side-effect-free: use `nu --ide-check` (or equivalent parse-only invocation) per file, not a bare `source`; (2) the tier MUST run in the 'no crates touched' path of `main` (currently lines ~165-170: fmt-only then exit 0 — that 4.15s no-op gate is exactly what this seed fixes) and also when crates are touched (a mixed Rust+loop-asset diff gates both); (3) checked-in regression: new file `.fabro/workflows/develop/scripts/evidence-smoke.nu` following the closeout-smoke.nu pattern exactly (const-relative `source`, `fail` helper, exit 0 at end to dodge auto-invoked main) — exercising evidence.nu's PURE helpers over a mixed-capture fixture: `sanitize` (redaction cases), `resolve-blobrefs` (text with and without blob refs), `diff-sort-key` (loop-path vs source-path ordering), `is-loop-path` (positives like `.fabro/x`, negatives like `lib/main.rs`), `numstat-rows`/`total` over a canned numstat fixture if reachable without git (skip helpers that shell out); (4) the loop-asset tier invokes the checked-in smoke (`nu .fabro/workflows/develop/scripts/evidence-smoke.nu`) so the regression runs deterministically in the gate, plus the parse check for the sibling scripts; (5) gate messages follow the existing tier style ('== checking loop-asset scripts ==' and a clear per-file failure line with the script name); (6) verification cheapest-first: `python3 -c 'import tomllib...'`-level parse where applicable, then `nu -c 'nu --ide-check ...'` per script, then `nu .fabro/workflows/develop/scripts/evidence-smoke.nu` exits 0, then a direct `nu scripts/qualitygate.nu` run reaching the new tier (expect GATE GREEN on a tree with no Rust changes after editing only loop assets); the implementer must NOT run `just qualitygate` itself — gate green comes via the deterministic tester step. Distinctness: do not implement fabro-50f8 (ad-hoc prompt exercises) or fabro-574d (crate derivation) here. Basis: run 01M23TE61D4Y33415BK5M7C70X, commit 592f64bd.",
+              "last_response": "Claimed fabro-bfe1. Brief drafted with bulleted acceptance criteria, verification cheapest-first.\n\nSeed fabro-bfe1 — \"Qualitygate: add a loop-asset tier with a checked-in evidence-smoke.nu regressio",
+              "current_seed_title": "Qualitygate: add a loop-asset tier with a checked-in evidence-smoke.nu regression",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 4416,
+                "preview": "Claimed fabro-bfe1. Brief drafted with bulleted acceptance criteria, verification cheapest-first.\n\nSeed fabro-bfe1 — \"Qualitygate: add a loop-asset tier with a checked-in evidence-smoke.nu regressio"
+              },
+              "current_seed_id": "fabro-bfe1",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-bfe1 basis verified fresh: filed in PR #112 (commit 4c5822a) minutes before this run but not implemented — no in-flight conflict; `scripts/qualitygate.nu` main() 'no crates touched' path is still fmt-only (the exact no-op this seed fixes).",
+                  "In-flight check clean: 22 develop runs listed, zero open PRs, one non-terminal run (this one, 01M23W4S7Q2GNEVPY779M4GMN6) — journal fallback for goal-less seed ids not needed this pass.",
+                  "nu `source` auto-invokes `def main` after the top level (documented in closeout-smoke.nu header) — the brief pins a parse-only check (`nu --ide-check`) so the new tier has no side effects."
+                ]
+              },
+              "last_stage": "planner"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 31552,
+                    "output_tokens": 1655,
+                    "reasoning_tokens": 479,
+                    "cache_read_tokens": 184512,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 101527
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 59843,
+              "tool_time_ms": 3942,
+              "active_time_ms": 63785
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "implementer",
+        "node_visits": {
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -722,5 +892,265 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "planner@1": {
+      "first_event_seq": 20,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-09T20:02:12.315107303Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T20:01:08.026138422Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 64425,
+        "inference_time_ms": 59843,
+        "tool_time_ms": 3942,
+        "active_time_ms": 63785
+      },
+      "usage": {
+        "input_tokens": 31552,
+        "output_tokens": 1655,
+        "total_tokens": 218198,
+        "reasoning_tokens": 479,
+        "cache_read_tokens": 184512,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 101527
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 31359,
+        "usage_percent": 2.9906272888183594,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-09T20:02:12.304484236Z",
+        "event_seq": 75,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1271,
+            "usage_percent": 0.12121200561523438
+          },
+          {
+            "category": "tools",
+            "tokens": 1922,
+            "usage_percent": 0.18329620361328125
+          },
+          {
+            "category": "memory",
+            "tokens": 6389,
+            "usage_percent": 0.6093025207519531
+          },
+          {
+            "category": "conversation",
+            "tokens": 21769,
+            "usage_percent": 2.0760536193847656
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-09T20:01:07.784276596Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-09T20:01:07.776291672Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
