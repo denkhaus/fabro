@@ -17,6 +17,7 @@ domains:
   lab: {}
   workflow: {}
   tooling: {}
+  dev-loop: {}
 governance:
   max_entries: 100
   warn_entries: 150
