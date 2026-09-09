@@ -259,10 +259,16 @@ decision, not an accident - it needs the user plus an ADR.
   any lib/ path (even a small crate like fabro-validate) changes the
   server/CLI image and needs the next just up.
 - PUSH/PR COORDINATION: pushing to denkhaus while a run PR is open can
-  turn it DIRTY and stall auto-merge. Check open run PRs before
-  pushing; if one goes dirty with a green gate, update its branch
-  (union-resolve .seeds/.mulch JSONL conflicts, keep both sides, no
-  duplicate ids). reached=blocked (PR #34) surfaces stuck gates in the
+  turn it DIRTY and stall auto-merge. Check open run PRs in a step
+  SEPARATE from the push cell - if one is open, DEFER the push until it
+  merges (2026-09-09: the check ran in the same cell as the push, PR
+  #81 went CONFLICTING anyway). If one goes dirty with a green gate,
+  update its branch (merge denkhaus into the run branch). JSONL repair
+  discipline: git may auto-merge .seeds/.mulch "cleanly" and STILL
+  duplicate lines (PR #81 repair: 7 seeds present in old AND new
+  versions) - a clean merge is not a correct merge. Dedupe by id with
+  the later updatedAt winning, verify zero duplicate ids, only then
+  push the repair. reached=blocked (PR #34) surfaces stuck gates in the
   wait, but the branch update itself stays manual until fabro-94e8.
 - Close or update seeds (`sd close` / `sd update`), write an ADR when a
   decision crystallized, `sd sync` + push.
