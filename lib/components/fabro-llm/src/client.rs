@@ -15,7 +15,6 @@ use lithos_llm::types::Error;
 
 use crate::attachments::InlineLocalAttachments;
 use crate::error::LlmError;
-use crate::resolver::FabroResolver;
 
 /// Default same-provider retry policy applied before visible output.
 ///
@@ -206,7 +205,6 @@ pub async fn build_client(
     }
     let builder = Client::builder()
         .catalog(catalog)
-        .resolver(FabroResolver)
         .credentials_arc(lithos_credentials(source))
         .enabled_providers(ready.iter().cloned());
     let build = options.apply(builder).build()?;
@@ -228,7 +226,6 @@ pub fn build_offline_client(
     let ready: Vec<ProviderId> = options.adapter_providers().cloned().collect();
     let builder = Client::builder()
         .catalog(catalog)
-        .resolver(FabroResolver)
         .enabled_providers(ready.iter().cloned());
     let build = options.apply(builder).build()?;
     Ok(FabroClient {

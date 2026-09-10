@@ -5,9 +5,9 @@
 //!
 //! - building the catalog from lithos built-ins, Fabro's policy layer, and the
 //!   operator `[llm]` overlay ([`catalog`]);
-//! - enforcing Fabro policy (`enabled`, `small_default`, `probe`) at model
-//!   selection ([`resolver`]), and the same passthrough policy for selections
-//!   made before a request exists ([`selection`]);
+//! - Fabro's passthrough policy for selections made before a request exists
+//!   ([`selection`]); at request time the lithos resolver enforces `enabled`
+//!   and `stands_in_for` itself;
 //! - constructing a client from a Fabro credential source ([`client`]);
 //! - inlining local file attachments ([`attachments`]);
 //! - normalizing readable reasoning into [`fabro_types::ReasoningOutput`]
@@ -28,7 +28,6 @@ pub mod error;
 pub mod gateway;
 pub mod probe;
 pub mod reasoning;
-pub mod resolver;
 pub mod selection;
 pub mod structured;
 #[cfg(any(test, feature = "test-support"))]
@@ -50,5 +49,4 @@ pub use lithos_llm::types::{
 pub use lithos_llm::{
     adapter, catalog as lithos_catalog, credentials, estimate, middleware, types,
 };
-pub use resolver::FabroResolver;
 pub use selection::{FallbackTarget, ModelSelectionError, SelectedModel};
