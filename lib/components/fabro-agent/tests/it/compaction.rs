@@ -1,12 +1,9 @@
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
 use fabro_agent::{AgentProfile, OpenAiProfile, Session, SessionOptions, local_sandbox};
-use fabro_llm::client::Client;
-use fabro_llm::provider::ProviderAdapter;
-use fabro_llm::providers::OpenAiAdapter;
-use fabro_model::ProviderId;
+use fabro_llm::test_support::client_from_env;
+use fabro_llm::{Client, ClientOptions};
 use fabro_test::{TwinScenario, TwinScenarios, TwinToolCall, twin_openai};
 use tokio::fs::read_to_string;
 
@@ -45,11 +42,7 @@ async fn openai_twin_compaction_preserves_tool_call_pairs() {
 }
 
 async fn make_openai_session(cwd: &Path, base_url: String, api_key: String) -> Session {
-    let adapter: Arc<dyn ProviderAdapter> =
-        Arc::new(OpenAiAdapter::new(api_key).with_base_url(base_url));
-    let mut providers = HashMap::new();
-    providers.insert(ProviderId::OPENAI.to_string(), adapter);
-    let client = Client::new(providers, Some(ProviderId::OPENAI.to_string()), Vec::new());
+    let client = openai_client(base_url, api_key).await;
     let profile: Arc<dyn AgentProfile> = Arc::new(OpenAiProfile::new(MODEL));
     let sandbox = Arc::new(
         local_sandbox(cwd.to_path_buf())
@@ -99,4 +92,19 @@ async fn load_compaction_scenarios(namespace: &str) {
         .scenario(TwinScenario::responses(MODEL).stream(true).text("Done."))
         .load(twin_openai().await)
         .await;
+}
+
+/// A client whose `openai` provider points at `base_url` and authenticates
+/// with `api_key`, the way the twin expects.
+async fn openai_client(base_url: String, api_key: String) -> Client {
+    let catalog = fabro_llm::build_catalog(&fabro_config::LlmLayer::default(), &move |name| {
+        (name == fabro_static::EnvVars::OPENAI_BASE_URL).then(|| base_url.clone())
+    })
+    .expect("catalog should build");
+    client_from_env(
+        catalog,
+        move |name| (name == fabro_static::EnvVars::OPENAI_API_KEY).then(|| api_key.clone()),
+        ClientOptions::standard(),
+    )
+    .await
 }

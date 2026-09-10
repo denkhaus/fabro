@@ -15,11 +15,10 @@ use axum::response::Response;
 use axum::{Router, middleware};
 use chrono::Duration as ChronoDuration;
 use fabro_config::user::default_storage_dir;
-use fabro_config::{RunLayer, ServerSettingsBuilder, Storage, envfile};
+use fabro_config::{LlmLayer, RunLayer, ServerSettingsBuilder, Storage, envfile};
 use fabro_db::DbPool;
 use fabro_interview::Interviewer;
-use fabro_model::catalog::{LlmCatalogSettings, ProviderCatalogSettings};
-use fabro_model::{Catalog, ProviderId};
+use fabro_llm::lithos_catalog::Catalog;
 use fabro_sandbox::SandboxProviderRegistry;
 use fabro_static::EnvVars;
 use fabro_store::{ArtifactStore, Database, test_support as store_test_support};
@@ -27,6 +26,7 @@ use fabro_types::settings::ServerAuthMethod;
 use fabro_types::{AuthMethod, IdpIdentity, SandboxProviderKind, ServerSettings};
 use fabro_vault::{SecretType, Vault};
 use fabro_workflow::handler::HandlerRegistry;
+use lithos_llm::catalog::ProviderId;
 use object_store::memory::InMemory as MemoryObjectStore;
 use tokio::runtime::Builder as TokioRuntimeBuilder;
 use tokio_util::sync::CancellationToken;
@@ -66,7 +66,7 @@ pub(crate) fn test_run_materialization_provider_ids(
     let assume_ready = process_env_var(FABRO_TEST_ASSUME_LLM_READY)
         .is_some_and(|value| !matches!(value.as_str(), "" | "0" | "false" | "no"));
     if assume_ready {
-        catalog.all_provider_ids().into_iter().collect()
+        catalog.enabled_provider_ids().into_iter().collect()
     } else {
         ready_provider_ids.to_vec()
     }
@@ -99,7 +99,7 @@ pub struct TestAppStateBuilder {
     server_secret_env:            HashMap<String, String>,
     default_environment_provider: Option<SandboxProviderKind>,
     env_lookup:                   EnvLookup,
-    llm_catalog_settings:         LlmCatalogSettings,
+    llm_overlay:                  LlmLayer,
     automation_materializer:      Option<TestAutomationRunMaterializer>,
     #[cfg(test)]
     worker_runtime:               Option<Arc<dyn WorkerRuntime>>,
@@ -121,7 +121,7 @@ impl Default for TestAppStateBuilder {
             server_secret_env:            HashMap::new(),
             default_environment_provider: Some(SandboxProviderKind::DOCKER),
             env_lookup:                   default_env_lookup(),
-            llm_catalog_settings:         LlmCatalogSettings::default(),
+            llm_overlay:                  LlmLayer::default(),
             automation_materializer:      None,
             #[cfg(test)]
             worker_runtime:               None,
@@ -176,9 +176,16 @@ impl TestAppStateBuilder {
         self
     }
 
-    pub fn llm_catalog_settings(mut self, settings: LlmCatalogSettings) -> Self {
-        self.llm_catalog_settings = settings;
+    /// Replaces the operator `[llm]` overlay applied above the built-in and
+    /// policy layers.
+    pub fn llm_overlay(mut self, overlay: LlmLayer) -> Self {
+        self.llm_overlay = overlay;
         self
+    }
+
+    /// Parses `toml` as the operator `[llm]` overlay.
+    pub fn llm_overlay_toml(self, toml: &str) -> Self {
+        self.llm_overlay(llm_overlay_from_toml(toml))
     }
 
     pub fn automation_materializer(mut self, materializer: TestAutomationRunMaterializer) -> Self {
@@ -197,12 +204,13 @@ impl TestAppStateBuilder {
         provider: impl Into<String>,
         base_url: impl Into<String>,
     ) -> Self {
-        self.llm_catalog_settings
-            .providers
-            .insert(provider.into(), ProviderCatalogSettings {
-                base_url: Some(base_url.into()),
-                ..ProviderCatalogSettings::default()
-            });
+        let overlay = llm_overlay_with_provider_base_url(provider, base_url);
+        let mut merged = toml::Value::Table(std::mem::take(&mut self.llm_overlay).0);
+        merge_toml(&mut merged, toml::Value::Table(overlay.0));
+        let toml::Value::Table(table) = merged else {
+            unreachable!("merging two tables yields a table");
+        };
+        self.llm_overlay = LlmLayer(table);
         self
     }
 
@@ -289,7 +297,7 @@ impl TestAppStateBuilder {
             resolved_settings: resolved_runtime_settings_for_tests(
                 self.server_settings,
                 self.manifest_run_defaults,
-                self.llm_catalog_settings,
+                self.llm_overlay,
             ),
             registry_factory_override: self.registry_factory_override,
             max_concurrent_runs: self.max_concurrent_runs,
@@ -333,18 +341,45 @@ pub(crate) fn test_secret_snapshot(pool: DbPool) -> anyhow::Result<Vault> {
     .expect("test secret snapshot thread should not panic")
 }
 
-pub fn llm_catalog_settings_with_provider_base_url(
+/// Merges `overlay` into `base` the way lithos layers merge: tables merge
+/// key by key and every other value replaces.
+fn merge_toml(base: &mut toml::Value, overlay: toml::Value) {
+    match (base, overlay) {
+        (toml::Value::Table(base), toml::Value::Table(overlay)) => {
+            for (key, value) in overlay {
+                if let Some(existing) = base.get_mut(&key) {
+                    merge_toml(existing, value);
+                } else {
+                    base.insert(key, value);
+                }
+            }
+        }
+        (base, overlay) => *base = overlay,
+    }
+}
+
+/// Parses `toml` as an operator `[llm]` overlay.
+pub fn llm_overlay_from_toml(toml: &str) -> LlmLayer {
+    LlmLayer(toml::from_str(toml).expect("test llm overlay should parse"))
+}
+
+/// An overlay that points one provider at `base_url`, the way an operator
+/// repoints a provider at a proxy or a test double.
+pub fn llm_overlay_with_provider_base_url(
     provider: impl Into<String>,
     base_url: impl Into<String>,
-) -> LlmCatalogSettings {
-    let mut settings = LlmCatalogSettings::default();
-    settings
-        .providers
-        .insert(provider.into(), ProviderCatalogSettings {
-            base_url: Some(base_url.into()),
-            ..ProviderCatalogSettings::default()
-        });
-    settings
+) -> LlmLayer {
+    let provider = provider.into();
+    llm_overlay_from_toml(&format!(
+        "[providers.{}]\nbase_url = {}\n",
+        toml::Value::String(provider),
+        toml::Value::String(base_url.into())
+    ))
+}
+
+/// The catalog a test app state builds from `overlay`.
+pub fn test_catalog_with_overlay(overlay: &LlmLayer) -> Catalog {
+    fabro_llm::build_catalog(overlay, &|_| None).expect("test catalog should build")
 }
 
 pub fn test_app_state() -> Arc<AppState> {
@@ -401,12 +436,12 @@ fn ready_test_app_state_builder() -> TestAppStateBuilder {
 pub(crate) fn resolved_runtime_settings_for_tests(
     server_settings: ServerSettings,
     manifest_run_defaults: RunLayer,
-    llm_catalog_settings: LlmCatalogSettings,
+    llm_overlay: LlmLayer,
 ) -> ResolvedAppStateSettings {
     ResolvedAppStateSettings {
         server_settings,
         manifest_run_defaults,
-        llm_catalog_settings,
+        llm_overlay,
     }
 }
 

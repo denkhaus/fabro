@@ -454,17 +454,17 @@ mod tests {
 
     use chrono::{DateTime, Utc};
     use fabro_agent::AgentEvent;
-    use fabro_llm::types::TokenCounts;
-    use fabro_model::{Catalog, ModelRef, ProviderId};
     use fabro_types::run_event::CliEnsureCompletedProps;
     use fabro_types::{
-        MetadataSnapshotFailureKind, MetadataSnapshotPhase, ParallelBranchId, SandboxProviderKind,
-        StageId, fixtures,
+        MetadataSnapshotFailureKind, MetadataSnapshotPhase, ModelRef, ParallelBranchId,
+        SandboxProviderKind, StageId, fixtures,
     };
     use fabro_workflow::event::{
         Event, RunNoticeLevel, SandboxLifecycle, to_run_event, to_run_event_at,
     };
     use fabro_workflow::outcome::billed_model_usage_from_llm;
+    use lithos_llm::catalog::{ModelId, builtin};
+    use lithos_llm::types::TokenCounts;
 
     use super::*;
     use crate::commands::run::run_progress::stage_display::ToolCallStatus;
@@ -570,14 +570,9 @@ mod tests {
     fn assistant_event(model: &str, text: &str) -> AgentEvent {
         AgentEvent::AssistantMessage {
             text:            text.into(),
-            model:           ModelRef {
-                provider: ProviderId::openai(),
-                model_id: model.into(),
-                speed:    None,
-            },
+            model:           ModelRef::new(builtin::openai(), ModelId::new(model)),
             usage:           TokenCounts::default(),
-            cost_usd:        None,
-            cost_source:     None,
+            cost:            None,
             tool_call_count: 0,
             context_window:  None,
             reasoning:       None,
@@ -594,11 +589,7 @@ mod tests {
 
     fn llm_request_started(stage: &str, model: &str) -> Event {
         agent_event(stage, AgentEvent::LlmRequestStarted {
-            requested_model: ModelRef {
-                provider: ProviderId::anthropic(),
-                model_id: model.into(),
-                speed:    None,
-            },
+            requested_model: ModelRef::new(builtin::anthropic(), ModelId::new(model)),
         })
     }
 
@@ -613,15 +604,11 @@ mod tests {
             suggested_next_ids: Vec::new(),
             billing: Some(
                 billed_model_usage_from_llm(
-                    Catalog::builtin(),
-                    &ModelRef {
-                        provider: ProviderId::openai(),
-                        model_id: "gpt-5-mini".into(),
-                        speed:    None,
-                    },
-                    &TokenCounts {
-                        input_tokens: 1200,
-                        output_tokens: 300,
+                    &fabro_llm::test_support::test_catalog(),
+                    &ModelRef::new(builtin::openai(), ModelId::new("gpt-5.4")),
+                    TokenCounts {
+                        input: 1200,
+                        output: 300,
                         ..TokenCounts::default()
                     },
                 )
@@ -849,10 +836,10 @@ mod tests {
                 attempt:    1,
                 delay_secs: 0.1,
                 phase:      fabro_types::LlmRetryPhase::Consume,
-                error:      fabro_llm::Error::Configuration {
-                    message: "retry".into(),
-                    source:  None,
-                },
+                error:      fabro_llm::ErrorData::from(fabro_llm::Error::new(
+                    fabro_llm::ErrorKind::Configuration,
+                    "retry",
+                )),
             }),
         );
 
@@ -968,10 +955,10 @@ mod tests {
                 attempt:    2,
                 delay_secs: 1.5,
                 phase:      fabro_types::LlmRetryPhase::Open,
-                error:      fabro_llm::Error::Configuration {
-                    message: "busy".into(),
-                    source:  None,
-                },
+                error:      fabro_llm::ErrorData::from(fabro_llm::Error::new(
+                    fabro_llm::ErrorKind::Configuration,
+                    "busy",
+                )),
             }),
             agent_event("code", AgentEvent::SubAgentSpawned {
                 agent_id:   "a1".into(),
@@ -1038,7 +1025,7 @@ mod tests {
         );
         emit(&mut ui, stage_completed("plan", "Plan"));
 
-        insta::assert_snapshot!(rendered(&buffer), @"    ✓ Plan  5s");
+        insta::assert_snapshot!(rendered(&buffer), @"    ✓ Plan  $0.01   5s");
     }
 
     #[test]
@@ -1322,10 +1309,10 @@ mod tests {
                 attempt:    2,
                 delay_secs: 1.5,
                 phase:      fabro_types::LlmRetryPhase::Open,
-                error:      fabro_llm::Error::Configuration {
-                    message: "busy".into(),
-                    source:  None,
-                },
+                error:      fabro_llm::ErrorData::from(fabro_llm::Error::new(
+                    fabro_llm::ErrorKind::Configuration,
+                    "busy",
+                )),
             }),
         );
         emit(
@@ -1387,7 +1374,7 @@ mod tests {
             ✓ subagent[a1] (2 turns)
           ✓ [1/1] bun install  2s
         Setup: 1 command (2s)
-        ✓ Code  5s  (1 turns, 0 tools, 1.5k toks)
+        ✓ Code  $0.01   5s  (1 turns, 0 tools, 1.5k toks)
         "#);
     }
 

@@ -3,7 +3,6 @@ members = [
     "lib/apps/*",
     "lib/components/*",
     "lib/foundation/*",
-    "test/twin/openai",
     "test/twin/github",
 ]
 default-members = ["lib/apps/fabro-cli"]
@@ -91,7 +90,12 @@ sha2 = "0.10"
 hex = "0.4"
 insta = "1"
 fabro-test = { path = "lib/foundation/fabro-test" }
-twin-openai = { path = "test/twin/openai" }
+# Provider-neutral LLM catalog and client. Pinned to a revision until 0.x is
+# published to crates.io.
+lithos-llm = { git = "https://github.com/lithoscomputer/lithos-llm", rev = "a1e3fd37b7153870411701327ac117606753fe90", default-features = false }
+# Deterministic OpenAI twin used by twin-mode E2E tests; the same revision
+# lithos-llm verifies its codecs against.
+twin-openai = { git = "https://github.com/lithoscomputer/twins", rev = "ca45f0e50a6716d716aa2f638ca3cf767e88f613" }
 twin-github = { path = "test/twin/github" }
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"

@@ -661,7 +661,7 @@ where
     let resolved_app_settings = ResolvedAppStateSettings {
         server_settings:       runtime_settings.server_settings,
         manifest_run_defaults: runtime_settings.manifest_run_defaults,
-        llm_catalog_settings:  runtime_settings.llm_catalog_settings,
+        llm_overlay:           runtime_settings.llm_overlay,
     };
     let resolved_server_settings = resolved_app_settings.server_settings.server.clone();
     validate_startup_configuration(&resolved_server_settings)?;
@@ -880,7 +880,7 @@ where
                             ResolvedAppStateSettings {
                                 server_settings:       resolved.server_settings,
                                 manifest_run_defaults: resolved.manifest_run_defaults,
-                                llm_catalog_settings:  resolved.llm_catalog_settings,
+                                llm_overlay:           resolved.llm_overlay,
                             }
                         });
                         match resolved {
@@ -1263,7 +1263,7 @@ mod tests {
         ResolvedAppStateSettings {
             manifest_run_defaults: manifest_run_defaults(source),
             server_settings:       server_settings(source),
-            llm_catalog_settings:  fabro_model::catalog::LlmCatalogSettings::default(),
+            llm_overlay:           fabro_config::LlmLayer::default(),
         }
     }
 

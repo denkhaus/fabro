@@ -81,7 +81,7 @@ fn build_conclusion_from_projection(
     final_git_commit_sha: Option<String>,
 ) -> Conclusion {
     let billing = projection
-        .map(|projection| billing_rollup::billing_rollup_from_projection(projection, None))
+        .map(billing_rollup::billing_rollup_from_projection)
         .unwrap_or_default();
     let (stages, total_retries) = projection
         .map(|projection| billing.conclusion_stages(projection))
@@ -343,7 +343,7 @@ async fn compute_final_patch(
 
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) fn billing_from_projection(projection: &RunProjection) -> Option<BilledTokenCounts> {
-    billing_rollup::billing_rollup_from_projection(projection, None).billing_if_present()
+    billing_rollup::billing_rollup_from_projection(projection).billing_if_present()
 }
 
 pub(crate) fn build_terminal_event(
@@ -580,7 +580,6 @@ mod tests {
     use bytes::Bytes;
     use fabro_auth::test_support as auth_test_support;
     use fabro_graphviz::graph::Graph;
-    use fabro_model::Catalog;
     use fabro_sandbox::test_support::MockSandbox;
     use fabro_store::{Database, EventEnvelope, RunDatabase, RunProjection};
     use fabro_types::run_event::{MetadataSnapshotFailureKind, MetadataSnapshotPhase};
@@ -997,10 +996,10 @@ mod tests {
             None,
             locations,
             tokio_util::sync::CancellationToken::new(),
-            fabro_model::ProviderId::anthropic(),
+            lithos_llm::catalog::builtin::anthropic(),
             "claude-sonnet-4-6".to_string(),
             auth_test_support::vault_only_credential_source(),
-            Arc::new(Catalog::from_builtin().expect("default catalog should build")),
+            Arc::new(fabro_llm::test_support::test_catalog()),
             Arc::new(SandboxGitRuntime::new()),
             metadata_runtime,
             metadata_writer,
@@ -1032,10 +1031,10 @@ mod tests {
             None,
             locations,
             tokio_util::sync::CancellationToken::new(),
-            fabro_model::ProviderId::anthropic(),
+            lithos_llm::catalog::builtin::anthropic(),
             "claude-sonnet-4-6".to_string(),
             auth_test_support::vault_only_credential_source(),
-            Arc::new(Catalog::from_builtin().expect("default catalog should build")),
+            Arc::new(fabro_llm::test_support::test_catalog()),
             Arc::new(SandboxGitRuntime::new()),
             Arc::new(RunMetadataRuntime::new()),
             None,

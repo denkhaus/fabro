@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use fabro_llm::types::ToolDefinition;
+use lithos_llm::types::ToolDefinition;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::{Error, InterruptReason};
@@ -226,13 +226,12 @@ pub fn make_use_skill_tool_for_vocabulary(
         ),
     };
     RegisteredTool {
-        definition: ToolDefinition {
-            name: NativeTool::UseSkill.canonical_name().into(),
-            description: "Load a skill's instructions by name. Call this when the user's \
-                          request matches an available skill."
-                .into(),
+        definition: ToolDefinition::function(
+            NativeTool::UseSkill.canonical_name(),
+            "Load a skill's instructions by name. Call this when the user's \
+                          request matches an available skill.",
             parameters,
-        },
+        ),
         executor:   Arc::new(move |args, ctx| {
             let skills = skills.clone();
             Box::pin(async move {
@@ -350,7 +349,7 @@ mod tests {
 
     use super::*;
     use crate::test_support::MockSandbox;
-    use crate::tool_registry::ToolContext;
+    use crate::tool_registry::{ToolContext, ToolDefinitionExt};
 
     // --- parse_skill tests ---
 
@@ -726,17 +725,17 @@ name: trimmed
 
         assert!(result.contains("only staged files"), "{result}");
         assert!(
-            tool.definition.parameters["properties"]
+            tool.definition.parameters()["properties"]
                 .get("skill")
                 .is_some()
         );
         assert!(
-            tool.definition.parameters["properties"]
+            tool.definition.parameters()["properties"]
                 .get("args")
                 .is_some()
         );
         assert!(
-            tool.definition.parameters["properties"]
+            tool.definition.parameters()["properties"]
                 .get("skill_name")
                 .is_none()
         );
@@ -763,22 +762,22 @@ name: trimmed
 
         assert!(result.contains("only staged files"), "{result}");
         assert_eq!(
-            tool.definition.parameters["required"],
+            tool.definition.parameters()["required"],
             serde_json::json!(["skill"])
         );
-        assert_eq!(tool.definition.parameters["additionalProperties"], false);
+        assert_eq!(tool.definition.parameters()["additionalProperties"], false);
         assert!(
-            tool.definition.parameters["properties"]
+            tool.definition.parameters()["properties"]
                 .get("skill")
                 .is_some()
         );
         assert!(
-            tool.definition.parameters["properties"]
+            tool.definition.parameters()["properties"]
                 .get("args")
                 .is_some()
         );
         assert!(
-            tool.definition.parameters["properties"]
+            tool.definition.parameters()["properties"]
                 .get("skill_name")
                 .is_none()
         );

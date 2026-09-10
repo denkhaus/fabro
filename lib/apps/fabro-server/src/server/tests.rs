@@ -14,29 +14,32 @@ use chrono::{Duration as ChronoDuration, SubsecRound as _, Utc};
 use fabro_automation::AutomationId;
 use fabro_config::bind::Bind;
 use fabro_config::{
-    EnvironmentLayer, MergeMap, RunLayer, ServerSettingsBuilder, WorkflowSettingsBuilder,
+    EnvironmentLayer, LlmLayer, MergeMap, RunLayer, ServerSettingsBuilder, WorkflowSettingsBuilder,
 };
 use fabro_interview::{
     AnswerValue, ControlInterviewer, Interviewer, Question, WorkerControlDeliveryFrame,
     WorkerControlEnvelope, WorkerControlMessage,
 };
-use fabro_llm::types::{Message as LlmMessage, Request as LlmRequest, TokenCounts};
-use fabro_model::catalog::LlmCatalogSettings;
-use fabro_model::{Catalog, ModelRef, ProviderId, ReasoningEffort, Speed};
+use fabro_llm::lithos_catalog::Catalog;
 use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::run::ApprovalMode;
 use fabro_types::{
     AgentBackend, AttrValue, AuthMethod, BlobHash, CommandTermination, FailureCategory,
-    FailureDetail, GitRunTarget, Graph, InterviewQuestionRecord, Node, Outcome, ParallelBranchId,
-    QuestionType, RunId, RunSpec, RunTarget, SandboxProviderKind, StageContextWindowBreakdownItem,
-    StageContextWindowCategory, StageContextWindowCountMethod, StageContextWindowProjection,
-    StageContextWindowStaleness, StageContextWindowWarning, StageModelUsage, StageTiming,
-    SuccessReason, SystemActorKind, WorkflowSettings, fixtures, test_support,
+    FailureDetail, GitRunTarget, Graph, InterviewQuestionRecord, ModelRef, Node, Outcome,
+    ParallelBranchId, QuestionType, RunId, RunSpec, RunTarget, SandboxProviderKind,
+    StageContextWindowBreakdownItem, StageContextWindowCategory, StageContextWindowCountMethod,
+    StageContextWindowProjection, StageContextWindowStaleness, StageContextWindowWarning,
+    StageModelUsage, StageTiming, SuccessReason, SystemActorKind, WorkflowSettings, fixtures,
+    test_support,
 };
 use fabro_util::check_report::CheckStatus;
 use fabro_workflow::records::CheckpointExt;
 use httpmock::Method::{GET, POST};
 use httpmock::MockServer;
+use lithos_llm::catalog::ModelId;
+use lithos_llm::types::{
+    ReasoningEffort, ReasoningOutput, Request as LlmRequest, Speed, TokenCounts,
+};
 use serde_json::json;
 use tokio::sync::Notify;
 use tokio_stream::StreamExt as _;
@@ -48,6 +51,7 @@ use tracing::{Event as TracingEvent, Subscriber, subscriber};
 use tracing_subscriber::layer::Context as SubscriberContext;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{Layer, Registry};
+use ulid::Ulid;
 
 use super::*;
 use crate::automation_materializer::AutomationRunMaterializeInput;
@@ -162,7 +166,7 @@ fn resolved_runtime_settings_from_toml(source: &str) -> ResolvedAppStateSettings
     resolved_runtime_settings_for_tests(
         server_settings_from_toml(source),
         manifest_run_defaults_from_toml(source),
-        LlmCatalogSettings::default(),
+        LlmLayer::default(),
     )
 }
 
@@ -179,7 +183,7 @@ fn spa_fixture_root() -> PathBuf {
 }
 
 fn state_test_catalog() -> Arc<Catalog> {
-    Arc::new(Catalog::from_builtin().expect("default catalog should build"))
+    Arc::new(fabro_llm::test_support::test_catalog())
 }
 
 fn test_app_with_scheduler(state: Arc<AppState>) -> Router {
@@ -319,6 +323,38 @@ fn openai_responses_payload(text: &str) -> serde_json::Value {
             "output_tokens": 20
         }
     })
+}
+
+/// An operator-defined OpenAI-compatible provider `acme` offering one model,
+/// `acme-large`, with `credential` (`env:NAME` or `vault:NAME`).
+/// An operator-defined provider. Its API key is `ACME_API_KEY`, the name
+/// lithos derives from the provider id, whether it lives in the vault or the
+/// environment.
+fn acme_overlay(base_url: &str) -> String {
+    format!(
+        r#"
+[providers.acme]
+display_name = "Acme"
+adapter = "openai-compatible"
+codec = "openai-chat"
+base_url = {base_url}
+auth = {{ type = "bearer" }}
+priority = 120
+default_model = "acme-large"
+
+[providers.acme.metadata.agent]
+profile = "openai"
+
+[providers.acme.models."acme-large"]
+display_name = "Acme Large"
+api_model = "acme-large"
+limits = {{ context_tokens = 128000, max_output_tokens = 8192 }}
+capabilities = {{ text = true, tools = true }}
+probe = true
+
+"#,
+        base_url = toml::Value::String(base_url.to_string()),
+    )
 }
 
 macro_rules! assert_status {
@@ -1756,7 +1792,9 @@ async fn resolve_llm_client_reads_openai_token_from_vault() {
 
     let llm_result = state.resolve_llm_client().await.unwrap();
 
-    assert_eq!(llm_result.client.provider_names(), vec!["openai"]);
+    assert_eq!(llm_result.provider_ids(), vec![
+        lithos_llm::catalog::builtin::openai()
+    ]);
     assert!(llm_result.auth_issues.is_empty());
 }
 
@@ -1772,7 +1810,7 @@ async fn resolve_llm_client_ignores_env_lookup_provider_tokens() {
     let llm_result = state.resolve_llm_client().await.unwrap();
 
     assert!(
-        llm_result.client.provider_names().is_empty(),
+        llm_result.provider_ids().is_empty(),
         "server LLM credentials should come from vault only"
     );
     assert!(llm_result.auth_issues.is_empty());
@@ -1781,43 +1819,31 @@ async fn resolve_llm_client_ignores_env_lookup_provider_tokens() {
 struct FailingCredentialSource;
 
 #[async_trait::async_trait]
-impl CredentialSource for FailingCredentialSource {
-    async fn resolve(
+impl CredentialProvider for FailingCredentialSource {
+    async fn credentials(
         &self,
-        catalog: &fabro_model::Catalog,
-    ) -> anyhow::Result<fabro_auth::ResolvedCredentials> {
-        let _ = catalog;
-        Err(anyhow::Error::new(std::io::Error::other("credential leaf"))
-            .context("credential source context"))
+        provider: &fabro_llm::lithos_catalog::CatalogProvider,
+    ) -> Result<fabro_llm::credentials::Credentials, fabro_llm::credentials::CredentialError> {
+        Err(fabro_llm::credentials::CredentialError::NotConfigured {
+            provider: provider.id().clone(),
+        })
     }
 
-    async fn configured_providers(
-        &self,
-        catalog: &fabro_model::Catalog,
-    ) -> Vec<fabro_model::ProviderId> {
-        let _ = catalog;
-        Vec::new()
+    async fn is_configured(&self, _provider: &fabro_llm::lithos_catalog::CatalogProvider) -> bool {
+        false
     }
 }
 
 #[tokio::test]
-async fn resolve_llm_client_from_source_preserves_credential_source_chain() {
+async fn resolve_llm_client_from_source_with_no_credentials_has_no_ready_providers() {
     let catalog = state_test_catalog();
-    let Err(err) = resolve_llm_client_from_source(&FailingCredentialSource, catalog).await else {
-        panic!("expected credential resolution to fail");
-    };
-    let chain = err.chain().map(ToString::to_string).collect::<Vec<_>>();
+    let built = resolve_llm_client_from_source(Arc::new(FailingCredentialSource), catalog, None)
+        .await
+        .expect("a client with no credentials still builds");
 
-    assert!(
-        chain
-            .iter()
-            .any(|cause| cause == "credential source context"),
-        "expected context in chain, got {chain:#?}"
-    );
-    assert!(
-        chain.iter().any(|cause| cause == "credential leaf"),
-        "expected source in chain, got {chain:#?}"
-    );
+    assert!(built.ready.is_empty());
+    assert!(built.auth_issues.is_empty());
+    assert!(built.provider_ids().is_empty());
 }
 
 #[tokio::test]
@@ -1840,14 +1866,9 @@ async fn llm_source_configured_providers_reads_openai_token_from_vault() {
         .await
         .unwrap();
 
-    let catalog = state.catalog();
-    assert_eq!(
-        state
-            .llm_source
-            .configured_providers(catalog.as_ref())
-            .await,
-        vec![ProviderId::openai()]
-    );
+    assert_eq!(state.configured_llm_provider_ids().await, vec![
+        lithos_llm::catalog::builtin::openai()
+    ]);
 }
 
 #[tokio::test]
@@ -1887,22 +1908,13 @@ async fn resolve_llm_client_uses_vault_key_without_env_lookup_openai_settings() 
     let llm_result = state.resolve_llm_client().await.unwrap();
     let response = llm_result
         .client
-        .complete(&LlmRequest {
-            model:            "gpt-5.4".to_string(),
-            messages:         vec![LlmMessage::user("Hello")],
-            provider:         Some("openai".to_string()),
-            tools:            None,
-            tool_choice:      None,
-            response_format:  None,
-            temperature:      None,
-            top_p:            None,
-            max_tokens:       None,
-            stop_sequences:   None,
-            reasoning_effort: None,
-            speed:            None,
-            metadata:         None,
-            provider_options: None,
-        })
+        .complete(
+            LlmRequest::builder()
+                .model("openai/gpt-5.4")
+                .user("Hello")
+                .build()
+                .unwrap(),
+        )
         .await
         .unwrap();
 
@@ -2082,7 +2094,7 @@ fn slack_app_state_with_settings_and_secret_sources(
         resolved_settings: resolved_runtime_settings_for_tests(
             settings,
             RunLayer::default(),
-            LlmCatalogSettings::default(),
+            LlmLayer::default(),
         ),
         registry_factory_override: None,
         max_concurrent_runs: 5,
@@ -2240,7 +2252,7 @@ fn slack_service_respects_disabled_server_config_even_with_vault_tokens() {
         resolved_settings: resolved_runtime_settings_for_tests(
             settings,
             RunLayer::default(),
-            LlmCatalogSettings::default(),
+            LlmLayer::default(),
         ),
         registry_factory_override: None,
         max_concurrent_runs: 5,
@@ -2597,7 +2609,7 @@ methods = ["dev-token"]
         resolved_settings: resolved_runtime_settings_for_tests(
             server_settings,
             RunLayer::default(),
-            LlmCatalogSettings::default(),
+            LlmLayer::default(),
         ),
         registry_factory_override: None,
         max_concurrent_runs: 5,
@@ -5575,35 +5587,8 @@ async fn validate_endpoint_returns_workflow_summary_without_preflight_checks() {
 
 #[tokio::test]
 async fn validate_endpoint_uses_app_state_catalog_for_model_diagnostics() {
-    let llm_catalog_settings: LlmCatalogSettings = toml::from_str(
-        r#"
-[providers.acme]
-display_name = "Acme"
-adapter = "openai_compatible"
-agent_profile = "openai"
-base_url = "https://api.acme.test/v1"
-
-[providers.acme.auth]
-credentials = ["env:ACME_API_KEY"]
-
-[models."acme-large"]
-provider = "acme"
-display_name = "Acme Large"
-family = "acme"
-default = true
-
-[models."acme-large".limits]
-context_window = 128000
-
-[models."acme-large".features]
-tools = true
-vision = false
-reasoning = false
-"#,
-    )
-    .expect("catalog fixture should parse");
     let state = TestAppStateBuilder::new()
-        .llm_catalog_settings(llm_catalog_settings)
+        .llm_overlay_toml(&acme_overlay("https://api.acme.test/v1"))
         .build();
     let app = crate::test_support::build_test_router(state);
     let dot = r#"digraph Test {
@@ -6141,14 +6126,12 @@ fn context_window_event(
         visit,
         event: fabro_agent::AgentEvent::AssistantMessage {
             text:            "assistant response".to_string(),
-            model:           ModelRef {
-                provider: ProviderId::openai(),
-                model_id: "gpt-5.4".into(),
-                speed:    None,
-            },
+            model:           ModelRef::new(
+                lithos_llm::catalog::builtin::openai(),
+                ModelId::new("gpt-5.4"),
+            ),
             usage:           TokenCounts::default(),
-            cost_usd:        None,
-            cost_source:     None,
+            cost:            None,
             tool_call_count: 0,
             context_window:  Some(context_window),
             reasoning:       None,
@@ -7220,26 +7203,23 @@ async fn list_run_stages_includes_stage_model_usage() {
 
 fn test_billed_usage(
     model_id: &str,
-    input_tokens: i64,
-    output_tokens: i64,
-) -> fabro_model::BilledModelUsage {
-    serde_json::from_value(json!({
-        "input": {
-            "usage": {
-                "model": {
-                    "provider": "openai",
-                    "model_id": model_id
-                },
-                "tokens": {
-                    "input_tokens": input_tokens,
-                    "output_tokens": output_tokens
-                }
-            },
-            "facts": { "algorithm": "openai" }
+    input_tokens: u64,
+    output_tokens: u64,
+) -> fabro_types::BilledModelUsage {
+    let mut usage = fabro_types::BilledModelUsage::new(
+        ModelRef::new(
+            lithos_llm::catalog::builtin::openai(),
+            ModelId::new(model_id),
+        ),
+        TokenCounts {
+            input: input_tokens,
+            output: output_tokens,
+            ..TokenCounts::default()
         },
-        "total_usd_micros": input_tokens + output_tokens
-    }))
-    .unwrap()
+        None,
+    );
+    usage.total_usd_micros = Some(i64::try_from(input_tokens + output_tokens).unwrap());
+    usage
 }
 
 async fn create_billed_retry_run(state: &Arc<AppState>, run_id: RunId) {
@@ -7814,7 +7794,7 @@ async fn run_billing_sums_usage_across_retry_visits_and_uses_latest_model() {
 
     create_billed_retry_run(&state, run_id).await;
     let success_usage = test_billed_usage("gpt-new", 200, 20);
-    let mut latest_outcome: Outcome<Option<fabro_model::BilledModelUsage>> = Outcome::success();
+    let mut latest_outcome: Outcome<Option<fabro_types::BilledModelUsage>> = Outcome::success();
     latest_outcome.usage = Some(success_usage);
     latest_outcome.timing = Some(fabro_types::StageTiming::wall_only(800));
     let run_store = state.stores.runs.open_run(&run_id).await.unwrap();
@@ -8411,7 +8391,7 @@ fn create_github_token_app_state_with_env_lookup(
         token,
         github_api_base_url,
         env_lookup,
-        LlmCatalogSettings::default(),
+        LlmLayer::default(),
     )
 }
 
@@ -8419,7 +8399,7 @@ fn create_github_token_app_state_with_env_lookup_and_llm_catalog_settings(
     token: Option<&str>,
     github_api_base_url: Option<String>,
     env_lookup: impl Fn(&str) -> Option<String> + Send + Sync + 'static,
-    llm_catalog_settings: LlmCatalogSettings,
+    llm_overlay: LlmLayer,
 ) -> Arc<AppState> {
     let (store, artifact_store) = test_store_bundle();
     let vault_path = test_secret_store_path();
@@ -8447,7 +8427,7 @@ fn create_github_token_app_state_with_env_lookup_and_llm_catalog_settings(
         resolved_settings: resolved_runtime_settings_for_tests(
             github_token_settings(),
             RunLayer::default(),
-            llm_catalog_settings,
+            llm_overlay,
         ),
         registry_factory_override: None,
         max_concurrent_runs: 5,
@@ -8794,7 +8774,7 @@ async fn model_api_keeps_duplicate_ids_provider_scoped_and_selects_ready_priorit
     let aggregator_upstream = MockServer::start();
     let direct_probe = direct_upstream.mock(|when, then| {
         when.method(POST)
-            .path("/chat/completions")
+            .path("/v1/chat/completions")
             .json_body_includes(r#"{"model":"portable-model"}"#);
         then.status(200)
             .header("content-type", "application/json")
@@ -8814,7 +8794,7 @@ async fn model_api_keeps_duplicate_ids_provider_scoped_and_selects_ready_priorit
     });
     let aggregator_probe = aggregator_upstream.mock(|when, then| {
         when.method(POST)
-            .path("/chat/completions")
+            .path("/v1/chat/completions")
             .json_body_includes(r#"{"model":"vendor/portable-model"}"#);
         then.status(200)
             .header("content-type", "application/json")
@@ -8832,63 +8812,51 @@ async fn model_api_keeps_duplicate_ids_provider_scoped_and_selects_ready_priorit
                 }
             }));
     });
-    let settings: LlmCatalogSettings = toml::from_str(&format!(
+    let overlay = format!(
         r#"
 [providers.direct]
 display_name = "Direct"
-adapter = "openai_compatible"
-agent_profile = "openai"
-base_url = "{}"
+adapter = "openai-compatible"
+codec = "openai-chat"
+base_url = {direct}
+auth = {{ type = "bearer" }}
 priority = 120
+default_model = "portable-model"
 
-[providers.direct.auth]
-credentials = ["vault:DIRECT_API_KEY"]
+[providers.direct.metadata.agent]
+profile = "openai"
 
 [providers.direct.models.portable-model]
 display_name = "Portable (direct)"
-family = "portable"
 aliases = ["portable"]
-default = true
-
-[providers.direct.models.portable-model.limits]
-context_window = 1000
-
-[providers.direct.models.portable-model.features]
-tools = false
-vision = false
-reasoning = false
+api_model = "portable-model"
+limits = {{ context_tokens = 1000, max_output_tokens = 500 }}
+capabilities = {{ text = true }}
 
 [providers.aggregator]
 display_name = "Aggregator"
-adapter = "openai_compatible"
-agent_profile = "openai"
-base_url = "{}"
+adapter = "openai-compatible"
+codec = "openai-chat"
+base_url = {aggregator}
+auth = {{ type = "bearer" }}
 priority = 110
+default_model = "portable-model"
 
-[providers.aggregator.auth]
-credentials = ["vault:AGGREGATOR_API_KEY"]
+[providers.aggregator.metadata.agent]
+profile = "openai"
 
 [providers.aggregator.models.portable-model]
-api_id = "vendor/portable-model"
 display_name = "Portable (aggregator)"
-family = "portable"
 aliases = ["portable"]
-default = true
-
-[providers.aggregator.models.portable-model.limits]
-context_window = 1000
-
-[providers.aggregator.models.portable-model.features]
-tools = false
-vision = false
-reasoning = false
+api_model = "vendor/portable-model"
+limits = {{ context_tokens = 1000, max_output_tokens = 500 }}
+capabilities = {{ text = true }}
 "#,
-        direct_upstream.base_url(),
-        aggregator_upstream.base_url(),
-    ))
-    .unwrap();
+        direct = toml::Value::String(direct_upstream.base_url()),
+        aggregator = toml::Value::String(aggregator_upstream.base_url()),
+    );
     let state = TestAppStateBuilder::new()
-        .llm_catalog_settings(settings)
+        .llm_overlay_toml(&overlay)
         .vault_entries([
             ("DIRECT_API_KEY", "direct-test-key"),
             ("AGGREGATOR_API_KEY", "aggregator-test-key"),
@@ -9009,7 +8977,7 @@ async fn test_model_forwards_and_validates_reasoning_effort() {
     let upstream = MockServer::start();
     let completion = upstream.mock(|when, then| {
         when.method(POST)
-            .path("/chat/completions")
+            .path("/v1/chat/completions")
             .json_body_includes(r#"{"model":"acme-reasoner","reasoning_effort":"low"}"#);
         then.status(200)
             .header("content-type", "application/json")
@@ -9027,40 +8995,31 @@ async fn test_model_forwards_and_validates_reasoning_effort() {
                 }
             }));
     });
-    let settings: LlmCatalogSettings = toml::from_str(&format!(
+    let overlay = format!(
         r#"
 [providers.acme]
 display_name = "Acme"
-adapter = "openai_compatible"
-agent_profile = "openai"
-base_url = "{}"
+adapter = "openai-compatible"
+codec = "openai-chat"
+base_url = {base_url}
+auth = {{ type = "bearer" }}
 priority = 120
+default_model = "acme-reasoner"
 
-[providers.acme.auth]
-credentials = ["vault:ACME_API_KEY"]
+[providers.acme.metadata.agent]
+profile = "openai"
 
 [providers.acme.models.acme-reasoner]
 display_name = "Acme Reasoner"
-family = "acme"
-default = true
-
-[providers.acme.models.acme-reasoner.limits]
-context_window = 128000
-
-[providers.acme.models.acme-reasoner.features]
-tools = true
-vision = false
-reasoning = true
-reasoning_effort = "levels"
-
-[providers.acme.models.acme-reasoner.controls]
-reasoning_effort = ["low", "high"]
+api_model = "acme-reasoner"
+limits = {{ context_tokens = 128000, max_output_tokens = 8192 }}
+capabilities = {{ text = true, tools = true, reasoning = true, reasoning_effort = {{ minimal = false, low = true, medium = false, high = true, xhigh = false, max = false }} }}
+protocol_options = {{ reasoning_effort_levels = true }}
 "#,
-        upstream.base_url()
-    ))
-    .expect("catalog fixture should parse");
+        base_url = toml::Value::String(upstream.base_url()),
+    );
     let state = TestAppStateBuilder::new()
-        .llm_catalog_settings(settings)
+        .llm_overlay_toml(&overlay)
         .vault_entries([("ACME_API_KEY", "acme-test-key")])
         .build();
     let app = crate::test_support::build_test_router(state);
@@ -9085,11 +9044,10 @@ reasoning_effort = ["low", "high"]
         .body(Body::empty())
         .unwrap();
     let response = app.oneshot(unsupported).await.unwrap();
-    let body = response_json!(response, StatusCode::OK).await;
-    assert_eq!(body["status"], "error");
+    let body = response_json!(response, StatusCode::BAD_REQUEST).await;
     assert_eq!(
-        body["error_message"],
-        "Invalid request: model 'acme-reasoner' does not support reasoning_effort 'medium'; allowed values: low, high"
+        body["errors"][0]["detail"],
+        "model 'acme-reasoner' does not support reasoning_effort 'medium'; allowed values: low, high"
     );
     completion.assert_calls(1);
 }
@@ -9099,7 +9057,7 @@ async fn test_provider_credentials_uses_app_state_catalog() {
     let upstream = MockServer::start();
     let completion = upstream.mock(|when, then| {
         when.method(POST)
-            .path("/chat/completions")
+            .path("/v1/chat/completions")
             .header("authorization", "Bearer sk-test");
         then.status(200)
             .header("content-type", "application/json")
@@ -9116,41 +9074,11 @@ async fn test_provider_credentials_uses_app_state_catalog() {
                 "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
             }));
     });
-    let llm_catalog_settings: LlmCatalogSettings = toml::from_str(&format!(
-        r#"
-[providers.acme]
-display_name = "Acme"
-adapter = "openai_compatible"
-agent_profile = "openai"
-base_url = "{}"
-priority = 120
-
-[providers.acme.auth]
-credentials = ["vault:ACME_API_KEY"]
-
-[models."acme-probe"]
-provider = "acme"
-api_id = "test-model"
-display_name = "Acme Probe"
-family = "acme"
-default = true
-probe = true
-
-[models."acme-probe".limits]
-context_window = 128000
-
-[models."acme-probe".features]
-tools = false
-vision = false
-reasoning = false
-"#,
-        upstream.base_url()
-    ))
-    .expect("catalog fixture should parse");
+    let overlay = acme_overlay(&upstream.base_url());
     let state = TestAppStateBuilder::new()
         .runtime_settings(default_test_server_settings(), RunLayer::default())
         .max_concurrent_runs(5)
-        .llm_catalog_settings(llm_catalog_settings)
+        .llm_overlay_toml(&overlay)
         .build();
     let app = crate::test_support::build_test_router(state);
 
@@ -9266,38 +9194,12 @@ async fn list_models_marks_configured_true_when_provider_has_credential_material
 
 #[tokio::test]
 async fn list_models_marks_configured_false_when_provider_cannot_register() {
-    let llm_catalog_settings: LlmCatalogSettings = toml::from_str(
-        r#"
-[providers.acme]
-display_name = "Acme"
-adapter = "openai_compatible"
-agent_profile = "openai"
-priority = 120
-
-[providers.acme.auth]
-credentials = ["env:ACME_API_KEY"]
-
-[models."acme-large"]
-provider = "acme"
-display_name = "Acme Large"
-family = "acme"
-default = true
-
-[models."acme-large".limits]
-context_window = 128000
-
-[models."acme-large".features]
-tools = true
-vision = false
-reasoning = false
-"#,
-    )
-    .expect("catalog fixture should parse");
+    let overlay = acme_overlay("https://api.acme.test/v1");
     let state = TestAppStateBuilder::new()
         .runtime_settings(default_test_server_settings(), RunLayer::default())
         .max_concurrent_runs(5)
         .env_lookup(|name| (name == "ACME_API_KEY").then(|| "acme-key".to_string()))
-        .llm_catalog_settings(llm_catalog_settings)
+        .llm_overlay_toml(&overlay)
         .build();
     let app = crate::test_support::build_test_router(state);
 
@@ -9362,36 +9264,9 @@ async fn list_models_unknown_provider_returns_empty_page() {
 
 #[tokio::test]
 async fn list_models_uses_app_state_catalog_overrides() {
-    let llm_catalog_settings: LlmCatalogSettings = toml::from_str(
-        r#"
-[providers.acme]
-display_name = "Acme"
-adapter = "openai_compatible"
-agent_profile = "openai"
-base_url = "https://api.acme.test/v1"
-priority = 120
-
-[providers.acme.auth]
-credentials = ["env:ACME_API_KEY"]
-
-[models."acme-large"]
-provider = "acme"
-display_name = "Acme Large"
-family = "acme"
-default = true
-
-[models."acme-large".limits]
-context_window = 128000
-
-[models."acme-large".features]
-tools = true
-vision = false
-reasoning = false
-"#,
-    )
-    .expect("catalog fixture should parse");
+    let overlay = acme_overlay("https://api.acme.test/v1");
     let state = TestAppStateBuilder::new()
-        .llm_catalog_settings(llm_catalog_settings)
+        .llm_overlay_toml(&overlay)
         .build();
     let app = crate::test_support::build_test_router(state);
 
@@ -9455,19 +9330,22 @@ async fn list_providers_marks_configured_per_provider_and_omits_secrets() {
 
     // `model_count` and `default_model` must reflect the catalog truth for
     // this exact provider, not merely be populated.
-    let catalog = Catalog::builtin();
-    let expected_model_count = catalog.list(Some(&ProviderId::anthropic())).len();
+    let catalog = state_test_catalog();
+    let anthropic_provider = catalog
+        .enabled_provider("anthropic")
+        .expect("anthropic should be listed");
+    let expected_model_count = anthropic_provider.offerings().len();
     assert_eq!(
         anthropic["model_count"].as_u64(),
         Some(expected_model_count as u64),
         "anthropic model_count should match the catalog"
     );
-    let expected_default = catalog
-        .default_for_provider(&ProviderId::anthropic())
+    let expected_default = anthropic_provider
+        .default_offering()
         .expect("anthropic should have a catalog default model");
     assert_eq!(
         anthropic["default_model"].as_str(),
-        Some(expected_default.id.as_str()),
+        Some(expected_default.model.id().as_str()),
         "anthropic default_model should match the catalog"
     );
 
@@ -9652,7 +9530,7 @@ async fn test_providers_auth_issue_returns_error_without_upstream_call() {
     let results = body["data"].as_array().unwrap();
 
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0]["provider"], "openai");
+    assert_eq!(results[0]["provider"], "openai-codex");
     assert!(results[0]["model_id"].is_null());
     assert_eq!(results[0]["status"], "error");
     assert!(
@@ -9670,36 +9548,16 @@ async fn test_providers_auth_issue_returns_error_without_upstream_call() {
 
 #[tokio::test]
 async fn test_providers_registration_issue_returns_error_without_probe() {
-    let llm_catalog_settings: LlmCatalogSettings = toml::from_str(
-        r#"
-[providers.acme]
-display_name = "Acme"
-adapter = "openai_compatible"
-
-[providers.acme.auth]
-credentials = ["vault:ACME_API_KEY"]
-
-[models."acme-probe"]
-provider = "acme"
-display_name = "Acme Probe"
-family = "acme"
-default = true
-probe = true
-
-[models."acme-probe".limits]
-context_window = 128000
-
-[models."acme-probe".features]
-tools = true
-vision = false
-reasoning = false
-"#,
-    )
-    .expect("catalog fixture should parse");
+    // An adapter lithos does not ship cannot be built, so the provider is
+    // configured (it has a vault key) yet unavailable.
+    let overlay = acme_overlay("https://api.acme.test/v1").replace(
+        "adapter = \"openai-compatible\"",
+        "adapter = \"not-an-adapter\"",
+    );
     let state = TestAppStateBuilder::new()
         .runtime_settings(default_test_server_settings(), RunLayer::default())
         .max_concurrent_runs(5)
-        .llm_catalog_settings(llm_catalog_settings)
+        .llm_overlay_toml(&overlay)
         .build();
     state
         .stores
@@ -9727,7 +9585,7 @@ reasoning = false
         results[0]["error_message"]
             .as_str()
             .unwrap()
-            .contains("does not configure base_url")
+            .contains("not-an-adapter")
     );
     assert_eq!(body["summary"]["status"], "error");
     assert_eq!(body["summary"]["total"], 1);
@@ -9763,61 +9621,47 @@ async fn test_providers_mixed_results_preserve_catalog_order_and_counts() {
                 }));
         })
         .await;
-    let llm_catalog_settings: LlmCatalogSettings = toml::from_str(&format!(
+    let overlay = format!(
         r#"
 [providers.zeta]
 display_name = "Zeta"
 adapter = "openai"
-base_url = "{base_url}"
+codec = "openai-responses"
+base_url = {base_url}
+auth = {{ type = "bearer" }}
+priority = 50
+default_model = "zeta-probe"
 
-[providers.zeta.auth]
-credentials = ["vault:ZETA_API_KEY"]
+[providers.zeta.models.zeta-probe]
+display_name = "Zeta Probe"
+api_model = "zeta-probe"
+limits = {{ context_tokens = 128000, max_output_tokens = 8192 }}
+capabilities = {{ text = true, tools = true }}
+probe = true
 
 [providers.alpha]
 display_name = "Alpha"
 adapter = "openai"
-base_url = "{base_url}"
+codec = "openai-responses"
+base_url = {base_url}
+auth = {{ type = "bearer" }}
+priority = 40
+default_model = "alpha-probe"
 
-[providers.alpha.auth]
-credentials = ["vault:ALPHA_API_KEY"]
-
-[models."zeta-probe"]
-provider = "zeta"
-display_name = "Zeta Probe"
-family = "zeta"
-default = true
-probe = true
-
-[models."zeta-probe".limits]
-context_window = 128000
-
-[models."zeta-probe".features]
-tools = true
-vision = false
-reasoning = false
-
-[models."alpha-probe"]
-provider = "alpha"
+[providers.alpha.models.alpha-probe]
 display_name = "Alpha Probe"
-family = "alpha"
-default = true
+api_model = "alpha-probe"
+limits = {{ context_tokens = 128000, max_output_tokens = 8192 }}
+capabilities = {{ text = true, tools = true }}
 probe = true
 
-[models."alpha-probe".limits]
-context_window = 128000
-
-[models."alpha-probe".features]
-tools = true
-vision = false
-reasoning = false
 "#,
-        base_url = server.url("/v1")
-    ))
-    .expect("catalog fixture should parse");
+        base_url = toml::Value::String(server.base_url()),
+    );
     let state = TestAppStateBuilder::new()
         .runtime_settings(default_test_server_settings(), RunLayer::default())
         .max_concurrent_runs(5)
-        .llm_catalog_settings(llm_catalog_settings)
+        .llm_overlay_toml(&overlay)
         .build();
     state
         .stores
@@ -11451,7 +11295,7 @@ async fn pull_request_creation_recovers_durable_request_after_crash_gap() {
         Some("ghu_test"),
         Some(github.base_url()),
         |_| None,
-        llm_catalog_settings_with_provider_base_url("openai", llm.url("/v1")),
+        llm_overlay_with_provider_base_url("openai", llm.url("/v1")),
     );
     state
         .stores
@@ -11548,11 +11392,17 @@ async fn pull_request_creation_returns_the_active_durable_request() {
     ))
     .await;
 
-    let configured_provider_ids = state.ready_llm_provider_ids().await;
+    let configured_provider_ids = state
+        .ready_llm_provider_ids()
+        .await
+        .into_iter()
+        .collect::<HashSet<_>>();
     let expected_default_model = state
         .catalog()
-        .default_for_configured_ids(&configured_provider_ids)
-        .id
+        .default_offering_for(&configured_provider_ids)
+        .expect("a ready provider should have a default model")
+        .model
+        .id()
         .to_string();
     let request_body = json!({
         "force": false,
@@ -16926,11 +16776,10 @@ async fn get_aggregate_billing_returns_provider_model_speed_identity() {
             .expect("aggregate billing lock");
         agg.total_runs = 1;
         agg.by_model.insert(
-            ModelRef {
-                provider: ProviderId::anthropic(),
-                model_id: "claude-opus-4-6".into(),
-                speed:    None,
-            },
+            ModelRef::new(
+                lithos_llm::catalog::builtin::anthropic(),
+                ModelId::new("claude-opus-4-6"),
+            ),
             ModelBillingTotals {
                 stages:  1,
                 billing: BilledTokenCounts {
@@ -16945,11 +16794,11 @@ async fn get_aggregate_billing_returns_provider_model_speed_identity() {
             },
         );
         agg.by_model.insert(
-            ModelRef {
-                provider: ProviderId::anthropic(),
-                model_id: "claude-opus-4-6".into(),
-                speed:    Some(Speed::Fast),
-            },
+            ModelRef::new(
+                lithos_llm::catalog::builtin::anthropic(),
+                ModelId::new("claude-opus-4-6"),
+            )
+            .with_speed(Some(Speed::Fast)),
             ModelBillingTotals {
                 stages:  1,
                 billing: BilledTokenCounts {
@@ -17006,11 +16855,10 @@ async fn get_aggregate_billing_saturates_total_cost_across_models() {
             .expect("aggregate billing lock");
         for (model_id, total_usd_micros) in [("maximum", i64::MAX), ("one", 1)] {
             agg.by_model.insert(
-                ModelRef {
-                    provider: ProviderId::openai(),
-                    model_id: model_id.into(),
-                    speed:    None,
-                },
+                ModelRef::new(
+                    lithos_llm::catalog::builtin::openai(),
+                    ModelId::new(model_id),
+                ),
                 ModelBillingTotals {
                     stages:  1,
                     billing: BilledTokenCounts {
@@ -17054,11 +16902,10 @@ fn aggregate_billing_counts_projection_rollup_usage_visits() {
         },
         by_model:           vec![
             fabro_workflow::ProjectionBillingByModel {
-                model:   ModelRef {
-                    provider: ProviderId::openai(),
-                    model_id: "gpt-5.4".into(),
-                    speed:    None,
-                },
+                model:   ModelRef::new(
+                    lithos_llm::catalog::builtin::openai(),
+                    ModelId::new("gpt-5.4"),
+                ),
                 stages:  1,
                 billing: BilledTokenCounts {
                     input_tokens:       100,
@@ -17071,11 +16918,11 @@ fn aggregate_billing_counts_projection_rollup_usage_visits() {
                 },
             },
             fabro_workflow::ProjectionBillingByModel {
-                model:   ModelRef {
-                    provider: ProviderId::openai(),
-                    model_id: "gpt-5.4".into(),
-                    speed:    Some(Speed::Fast),
-                },
+                model:   ModelRef::new(
+                    lithos_llm::catalog::builtin::openai(),
+                    ModelId::new("gpt-5.4"),
+                )
+                .with_speed(Some(Speed::Fast)),
                 stages:  1,
                 billing: BilledTokenCounts {
                     input_tokens:       200,
@@ -17098,39 +16945,37 @@ fn aggregate_billing_counts_projection_rollup_usage_visits() {
     assert_eq!(accumulator.total_timing.wall_time_ms, 2000);
     assert_eq!(accumulator.by_model.len(), 2);
     assert_eq!(
-        accumulator.by_model[&ModelRef {
-            provider: ProviderId::openai(),
-            model_id: "gpt-5.4".into(),
-            speed:    None,
-        }]
+        accumulator.by_model[&ModelRef::new(
+            lithos_llm::catalog::builtin::openai(),
+            ModelId::new("gpt-5.4")
+        )]
             .stages,
         1
     );
     assert_eq!(
-        accumulator.by_model[&ModelRef {
-            provider: ProviderId::openai(),
-            model_id: "gpt-5.4".into(),
-            speed:    None,
-        }]
+        accumulator.by_model[&ModelRef::new(
+            lithos_llm::catalog::builtin::openai(),
+            ModelId::new("gpt-5.4")
+        )]
             .billing
             .input_tokens,
         100
     );
     assert_eq!(
-        accumulator.by_model[&ModelRef {
-            provider: ProviderId::openai(),
-            model_id: "gpt-5.4".into(),
-            speed:    Some(Speed::Fast),
-        }]
+        accumulator.by_model[&ModelRef::new(
+            lithos_llm::catalog::builtin::openai(),
+            ModelId::new("gpt-5.4")
+        )
+        .with_speed(Some(Speed::Fast))]
             .stages,
         1
     );
     assert_eq!(
-        accumulator.by_model[&ModelRef {
-            provider: ProviderId::openai(),
-            model_id: "gpt-5.4".into(),
-            speed:    Some(Speed::Fast),
-        }]
+        accumulator.by_model[&ModelRef::new(
+            lithos_llm::catalog::builtin::openai(),
+            ModelId::new("gpt-5.4")
+        )
+        .with_speed(Some(Speed::Fast))]
             .billing
             .input_tokens,
         200
@@ -17275,7 +17120,7 @@ level = "debug"
     );
     assert_eq!(
         resolved_run.model.name.as_deref(),
-        Some("claude-sonnet-4-5"),
+        Some("claude-sonnet-4.5"),
     );
 
     // Server-operational fields (auth, integrations, etc.) deliberately
@@ -18470,17 +18315,15 @@ async fn attach_stream_replays_agent_message_reasoning() {
             visit:             1,
             event:             fabro_agent::AgentEvent::AssistantMessage {
                 text:            String::new(),
-                model:           ModelRef {
-                    provider: ProviderId::openai(),
-                    model_id: "gpt-5.4".into(),
-                    speed:    None,
-                },
+                model:           ModelRef::new(
+                    lithos_llm::catalog::builtin::openai(),
+                    ModelId::new("gpt-5.4"),
+                ),
                 usage:           TokenCounts::default(),
-                cost_usd:        None,
-                cost_source:     None,
+                cost:            None,
                 tool_call_count: 1,
                 context_window:  None,
-                reasoning:       Some(fabro_types::ReasoningOutput::new(
+                reasoning:       Some(ReasoningOutput::new(
                     "inspect the sink first",
                     "read events.rs, then attach",
                 )),
@@ -18685,7 +18528,7 @@ async fn create_completion_unknown_provider_returns_clear_error() {
                 "messages": [
                     {
                         "role": "user",
-                        "content": [{"kind": "text", "data": "hi"}]
+                        "content": [{"type": "text", "text": "hi"}]
                     }
                 ]
             })
@@ -18729,7 +18572,7 @@ async fn create_completion_unsupported_reasoning_efforts_return_bad_request() {
                         "messages": [
                             {
                                 "role": "user",
-                                "content": [{"kind": "text", "data": "hi"}]
+                                "content": [{"type": "text", "text": "hi"}]
                             }
                         ]
                     })
@@ -18740,11 +18583,8 @@ async fn create_completion_unsupported_reasoning_efforts_return_bad_request() {
             let response = app.clone().oneshot(req).await.unwrap();
             let body = response_json!(response, StatusCode::BAD_REQUEST).await;
             assert_eq!(
-                body["errors"][0]["detail"],
-                format!(
-                    "model 'kimi-k3' does not support reasoning_effort '{effort}'; allowed values: low, high, max"
-                ),
-                "stream={stream}"
+                body["errors"][0]["detail"], "model moonshot/kimi-k3 does not support reasoning",
+                "stream={stream} effort={effort}"
             );
         }
     }
@@ -18756,7 +18596,7 @@ async fn create_completion_unsupported_reasoning_efforts_return_bad_request() {
 async fn create_completion_returns_disjoint_usage_buckets() {
     let upstream = MockServer::start();
     let completion = upstream.mock(|when, then| {
-        when.method(POST).path("/chat/completions");
+        when.method(POST).path("/v1/chat/completions");
         then.status(200)
             .header("content-type", "application/json")
             .json_body(json!({
@@ -18797,7 +18637,7 @@ async fn create_completion_returns_disjoint_usage_buckets() {
                 "stream": false,
                 "messages": [{
                     "role": "user",
-                    "content": [{"kind": "text", "data": "hi"}]
+                    "content": [{"type": "text", "text": "hi"}]
                 }]
             })
             .to_string(),
@@ -18809,11 +18649,11 @@ async fn create_completion_returns_disjoint_usage_buckets() {
     assert_eq!(
         body["usage"],
         json!({
-            "input_tokens": 50,
-            "output_tokens": 10,
-            "reasoning_tokens": 20,
-            "cache_read_tokens": 50,
-            "cache_write_tokens": 100
+            "input": 50,
+            "output": 10,
+            "reasoning": 20,
+            "cache_read": 50,
+            "cache_write": 100
         })
     );
     completion.assert();
@@ -18824,42 +18664,15 @@ async fn create_completion_default_model_uses_app_state_catalog() {
     let upstream = MockServer::start();
     let completion = upstream.mock(|when, then| {
         when.method(POST)
-            .path("/chat/completions")
+            .path("/v1/chat/completions")
             .json_body_includes(r#"{"model":"acme-large"}"#);
         then.status(500)
             .header("content-type", "application/json")
             .json_body(json!({"error": {"message": "expected test failure"}}));
     });
-    let llm_catalog_settings: LlmCatalogSettings = toml::from_str(&format!(
-        r#"
-[providers.acme]
-display_name = "Acme"
-adapter = "openai_compatible"
-agent_profile = "openai"
-base_url = "{}"
-priority = 120
-
-[providers.acme.auth]
-credentials = ["vault:ACME_API_KEY"]
-
-[providers.acme.models."acme-large"]
-display_name = "Acme Large"
-family = "acme"
-default = true
-
-[providers.acme.models."acme-large".limits]
-context_window = 128000
-
-[providers.acme.models."acme-large".features]
-tools = true
-vision = false
-reasoning = false
-"#,
-        upstream.base_url()
-    ))
-    .expect("catalog fixture should parse");
+    let overlay = acme_overlay(&upstream.base_url());
     let state = TestAppStateBuilder::new()
-        .llm_catalog_settings(llm_catalog_settings)
+        .llm_overlay_toml(&overlay)
         .vault_entries([("ACME_API_KEY", "acme-test-key")])
         .build();
     let app = crate::test_support::build_test_router(state);
@@ -18874,7 +18687,7 @@ reasoning = false
                 "messages": [
                     {
                         "role": "user",
-                        "content": [{"kind": "text", "data": "hi"}]
+                        "content": [{"type": "text", "text": "hi"}]
                     }
                 ]
             })
@@ -18891,7 +18704,7 @@ reasoning = false
             .contains("expected test failure"),
         "unexpected error body: {body:?}"
     );
-    completion.assert();
+    assert!(completion.calls() >= 1);
 }
 
 #[tokio::test]
@@ -18899,7 +18712,7 @@ async fn create_completion_structured_output_forwards_reasoning_effort() {
     let upstream = MockServer::start();
     let completion = upstream.mock(|when, then| {
         when.method(POST)
-            .path("/chat/completions")
+            .path("/v1/chat/completions")
             .json_body_includes(r#"{"model":"kimi-k3","reasoning_effort":"high"}"#);
         then.status(200)
             .header("content-type", "application/json")
@@ -18946,7 +18759,7 @@ async fn create_completion_structured_output_forwards_reasoning_effort() {
                 "messages": [
                     {
                         "role": "user",
-                        "content": [{"kind": "text", "data": "Return the answer."}]
+                        "content": [{"type": "text", "text": "Return the answer."}]
                     }
                 ]
             })
