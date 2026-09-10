@@ -36,11 +36,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use fabro_sandbox::{
-    ProviderAccess, Sandbox as FabroSandbox, SandboxOptions, SandboxProviderKind, local_sandbox,
+    ProviderAccess, RunSandbox, SandboxOptions, SandboxProviderKind, local_sandbox,
     provider_sandbox,
 };
 use sandbox_driver::{
-    ExecSpec, GrepOptions, Sandbox as DriverSandbox, SandboxProvider, SandboxSource, SandboxSpec,
+    ExecSpec, GrepOptions, Sandbox as DriverHandle, SandboxProvider, SandboxSource, SandboxSpec,
     Search,
 };
 use sandbox_driver_docker::DockerProvider;
@@ -177,11 +177,7 @@ fn report(rows: &[Row]) {
 
 /// The two operations an agent issues most: a file read and a content
 /// search, expressed against fabro's current trait.
-async fn bench_fabro(
-    label: &'static str,
-    sandbox: &dyn FabroSandbox,
-    repo: &Repository,
-) -> Vec<Row> {
+async fn bench_fabro(label: &'static str, sandbox: &RunSandbox, repo: &Repository) -> Vec<Row> {
     let mut reads = Samples::default();
     for file in &repo.files {
         let started = Instant::now();
@@ -193,11 +189,9 @@ async fn bench_fabro(
         reads.record(started.elapsed());
     }
     let mut greps = Samples::default();
-    let options = fabro_sandbox::GrepOptions {
-        glob_filter:      Some("*.rs".to_owned()),
-        case_insensitive: false,
-        max_results:      Some(50),
-    };
+    let mut options = GrepOptions::default();
+    options.include = Some("*.rs".to_owned());
+    options.max_matches = Some(50);
     for _ in 0..GREPS {
         let started = Instant::now();
         let matches = sandbox
@@ -226,7 +220,7 @@ async fn bench_fabro(
 /// The same two operations against the driver's facets.
 async fn bench_driver(
     label: &'static str,
-    sandbox: &dyn DriverSandbox,
+    sandbox: &dyn DriverHandle,
     repo: &Repository,
 ) -> Vec<Row> {
     let mut reads = Samples::default();
@@ -270,7 +264,7 @@ async fn bench_driver(
     ]
 }
 
-async fn unpack_fabro(sandbox: &dyn FabroSandbox, repo: &Repository) {
+async fn unpack_fabro(sandbox: &RunSandbox, repo: &Repository) {
     sandbox
         .upload_file_from_local(&repo.tarball, "/tmp/repo.tar")
         .await
@@ -288,7 +282,7 @@ async fn unpack_fabro(sandbox: &dyn FabroSandbox, repo: &Repository) {
     assert!(result.is_success(), "unpack failed: {}", result.stderr);
 }
 
-async fn unpack_driver(sandbox: &dyn DriverSandbox, repo: &Repository) {
+async fn unpack_driver(sandbox: &dyn DriverHandle, repo: &Repository) {
     sandbox
         .fs()
         .upload(&repo.tarball, "/tmp/repo.tar")

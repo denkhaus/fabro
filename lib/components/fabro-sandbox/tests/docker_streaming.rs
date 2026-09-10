@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use fabro_sandbox::{
-    CommandOutputCallback, ExecStreamingRequest, ProviderAccess, Sandbox, SandboxOptions,
+    CommandOutputCallback, ExecStreamingRequest, ProviderAccess, SandboxOptions,
     SandboxProviderKind, provider_sandbox,
 };
 use tokio::process::Command;

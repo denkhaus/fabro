@@ -79,7 +79,7 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
-    use fabro_agent::{Sandbox, local_sandbox};
+    use fabro_agent::{RunSandbox, local_sandbox};
     use fabro_graphviz::graph::{AttrValue, Node};
     use fabro_model::{ReasoningEffort, Speed};
     use tokio_util::sync::CancellationToken;
@@ -114,7 +114,7 @@ mod tests {
     #[tokio::test]
     async fn router_routes_one_shot_to_api_by_default() {
         let node = Node::new("test");
-        let sandbox: Arc<dyn Sandbox> = Arc::new(
+        let sandbox: Arc<RunSandbox> = Arc::new(
             local_sandbox(tempfile::tempdir().unwrap().path().to_path_buf())
                 .await
                 .unwrap(),

@@ -6,7 +6,8 @@ use std::time::Duration;
 
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use fabro_sandbox::{
-    DriverSandbox, ProviderAccess, TerminalSize, open_terminal_for_run, reconnect_driver_for_run,
+    FileKind, ProviderAccess, RunSandbox, TerminalSize, open_terminal_for_run,
+    reconnect_driver_for_run,
 };
 use fabro_types::{
     RunSandboxInstance, SandboxProviderKind, SandboxServiceDiscoverySource, SandboxServiceListMeta,
@@ -16,7 +17,7 @@ use futures_util::future::BoxFuture;
 
 use super::super::{
     ApiError, AppState, Bytes, HeaderMap, IntoResponse, Json, NamedTempFile, Path,
-    PreviewUrlRequest, PreviewUrlResponse, Query, RequiredUser, Response, Router, RunId, Sandbox,
+    PreviewUrlRequest, PreviewUrlResponse, Query, RequiredUser, Response, Router, RunId,
     SandboxDetails, SandboxFileEntry, SandboxFileListResponse, SandboxService,
     SandboxServiceListResponse, SshAccessRequest, SshAccessResponse, State, StatusCode,
     VncPreviewResponse, collect_causes, fs, get, octet_stream_response, parse_run_id_path, post,
@@ -57,7 +58,7 @@ trait VncSandbox {
     fn vnc_viewer_url(&self) -> BoxFuture<'_, fabro_sandbox::Result<String>>;
 }
 
-impl VncSandbox for DriverSandbox {
+impl VncSandbox for RunSandbox {
     fn vnc_viewer_url(&self) -> BoxFuture<'_, fabro_sandbox::Result<String>> {
         async move {
             let vnc = self.handle()?.vnc().ok_or_else(|| {
@@ -353,7 +354,7 @@ async fn generate_preview_url(
         Ok(record) => record,
         Err(response) => return response,
     };
-    let sandbox = match reconnect_driver_sandbox_instance(&state, &id, &record).await {
+    let sandbox = match reconnect_run_sandbox_instance(&state, &id, &record).await {
         Ok(sandbox) => sandbox,
         Err(response) => return response,
     };
@@ -421,7 +422,7 @@ async fn create_ssh_access(
         )
         .into_response();
     }
-    let sandbox = match reconnect_driver_sandbox_instance(&state, &id, &record).await {
+    let sandbox = match reconnect_run_sandbox_instance(&state, &id, &record).await {
         Ok(sandbox) => sandbox,
         Err(response) => return response,
     };
@@ -474,7 +475,7 @@ async fn create_sandbox_vnc_preview(
         )
         .into_response();
     }
-    let sandbox = match reconnect_driver_sandbox_instance(&state, &id, &record).await {
+    let sandbox = match reconnect_run_sandbox_instance(&state, &id, &record).await {
         Ok(sandbox) => sandbox,
         Err(response) => return response,
     };
@@ -557,8 +558,8 @@ async fn list_sandbox_files(
             data: entries
                 .into_iter()
                 .map(|entry| SandboxFileEntry {
-                    is_dir: entry.is_dir,
-                    name:   entry.name,
+                    is_dir: entry.kind == FileKind::Directory,
+                    name:   entry.path,
                     size:   entry.size.map(u64::cast_signed),
                 })
                 .collect(),
@@ -872,28 +873,17 @@ async fn put_sandbox_file(
 async fn reconnect_run_sandbox(
     state: &Arc<AppState>,
     run_id: &RunId,
-) -> Result<Box<dyn Sandbox>, Response> {
+) -> Result<RunSandbox, Response> {
     let record = load_run_sandbox_instance(state, run_id).await?;
     reconnect_run_sandbox_instance(state, run_id, &record).await
 }
 
+/// Reconnects a run's sandbox and brings it to running.
 async fn reconnect_run_sandbox_instance(
     state: &Arc<AppState>,
     run_id: &RunId,
     record: &RunSandboxInstance,
-) -> Result<Box<dyn Sandbox>, Response> {
-    let sandbox = reconnect_driver_sandbox_instance(state, run_id, record).await?;
-    Ok(Box::new(sandbox))
-}
-
-/// Reconnects a run's sandbox as the driver-backed type, for endpoints that
-/// reach a driver facet fabro's `Sandbox` trait does not carry (VNC, signed
-/// previews, leased SSH).
-async fn reconnect_driver_sandbox_instance(
-    state: &Arc<AppState>,
-    run_id: &RunId,
-    record: &RunSandboxInstance,
-) -> Result<DriverSandbox, Response> {
+) -> Result<RunSandbox, Response> {
     let access = load_provider_access(state).await?;
     let sandbox = reconnect_driver_for_run(record, &access, Some(*run_id), None)
         .await

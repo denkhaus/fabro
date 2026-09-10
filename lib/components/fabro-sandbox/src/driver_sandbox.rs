@@ -20,10 +20,12 @@ use async_trait::async_trait;
 use fabro_github::GitHubCredentials;
 use fabro_github::token_source::InstallationTokenSource;
 use fabro_types::SandboxProviderKind;
+use fabro_util::workspace_glob::WorkspaceGlob;
 use sandbox_driver::{
-    Action, Event, EventBody, EventContext, EventObserver, FileKind, LifecycleTimers, ProgressCode,
-    PtyOptions, PtySize, Sandbox as DriverHandle, SandboxProvider as DriverProvider, SandboxSource,
-    SandboxSpec as DriverSpec, SandboxState, Search as _, WaitOptions,
+    Action, DirEntry, Event, EventBody, EventContext, EventObserver, FileKind, GrepMatch,
+    GrepOptions, LifecycleTimers, ProgressCode, PtyOptions, PtySize, Sandbox as DriverHandle,
+    SandboxProvider as DriverProvider, SandboxSource, SandboxSpec as DriverSpec, SandboxState,
+    Search as _, WaitOptions, WalkOptions,
 };
 use sandbox_driver_host::HostProvider;
 use tokio::fs;
@@ -44,7 +46,7 @@ use crate::{GitRunInfo, GitSetupIntent, RefreshOutcome, RetryPlan};
 /// scratch path. The registry lives in a per-process temporary root, so a
 /// later process rebuilds the handle by calling this again with the
 /// persisted working directory rather than by id.
-pub async fn local_sandbox(working_directory: impl Into<PathBuf>) -> crate::Result<DriverSandbox> {
+pub async fn local_sandbox(working_directory: impl Into<PathBuf>) -> crate::Result<RunSandbox> {
     let working_directory: PathBuf = working_directory.into();
     fs::create_dir_all(&working_directory)
         .await
@@ -56,15 +58,14 @@ pub async fn local_sandbox(working_directory: impl Into<PathBuf>) -> crate::Resu
         .create(&spec, None)
         .await
         .map_err(|error| crate::Error::context("Failed to create local sandbox", error))?;
-    let sandbox = DriverSandbox::new(SandboxProviderKind::LOCAL, handle);
+    let sandbox = RunSandbox::new(SandboxProviderKind::LOCAL, handle);
     sandbox.learn_platform().await?;
     Ok(sandbox)
 }
 use crate::exec::{ExplicitEnvPolicy, SandboxExec};
 use crate::sandbox::{
-    self, DirEntry, ExecResult, ExecStreamingRequest, ExecStreamingResult, GrepOptions, PushError,
-    PushReport, Sandbox, SandboxEvent, SandboxEventCallback, SandboxFile, SandboxWorkspaceLayout,
-    StdioProcess, WalkOptions,
+    self, ExecResult, ExecStreamingRequest, ExecStreamingResult, PushError, PushReport,
+    SandboxEvent, SandboxEventCallback, SandboxFile, SandboxWorkspaceLayout, StdioProcess,
 };
 
 /// Where a clone-based provider puts its files: the run works under
@@ -318,7 +319,7 @@ struct PendingCreate {
 }
 
 /// A fabro sandbox backed by a sandbox-driver handle.
-pub struct DriverSandbox {
+pub struct RunSandbox {
     kind:           SandboxProviderKind,
     /// Set at construction for an existing sandbox, at `initialize` for a
     /// pending one.
@@ -334,7 +335,7 @@ pub struct DriverSandbox {
     snapshot:       OnceLock<String>,
 }
 
-impl DriverSandbox {
+impl RunSandbox {
     /// Wraps a driver handle. `local` runs on the worker host, so explicit
     /// environment variables pass the credential filter; every other kind
     /// is isolated and takes the caller's environment as composed.
@@ -342,6 +343,20 @@ impl DriverSandbox {
     pub fn new(kind: SandboxProviderKind, handle: Arc<dyn DriverHandle>) -> Self {
         let sandbox = Self::empty(kind);
         let _ = sandbox.handle.set(handle);
+        sandbox
+    }
+
+    /// A sandbox over an existing handle whose platform is already known,
+    /// so tests need no activation round trip before reading it.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn new_with_platform(
+        kind: SandboxProviderKind,
+        handle: Arc<dyn DriverHandle>,
+        platform: impl Into<String>,
+        os_version: impl Into<String>,
+    ) -> Self {
+        let sandbox = Self::new(kind, handle);
+        let _ = sandbox.platform.set((platform.into(), os_version.into()));
         sandbox
     }
 
@@ -438,7 +453,9 @@ impl DriverSandbox {
         })
     }
 
-    fn exec(&self) -> crate::Result<SandboxExec<'_>> {
+    /// Fabro's exec policy over the driver's exec facet, working in the
+    /// run's directory. Absent until a pending sandbox is initialized.
+    pub fn exec(&self) -> crate::Result<SandboxExec<'_>> {
         let mut exec = SandboxExec::new(self.handle()?.exec(), self.env_policy);
         if let Some(workspace) = &self.workspace {
             if let Some(dir) = workspace.execution_directory.get() {
@@ -764,9 +781,8 @@ fn file_context(action: &str, path: &str) -> String {
     format!("Failed to {action} {path}")
 }
 
-#[async_trait]
-impl Sandbox for DriverSandbox {
-    async fn read_file_bytes(&self, path: &str) -> crate::Result<Vec<u8>> {
+impl RunSandbox {
+    pub async fn read_file_bytes(&self, path: &str) -> crate::Result<Vec<u8>> {
         self.handle()?
             .fs()
             .read(&self.resolve(path))
@@ -774,7 +790,26 @@ impl Sandbox for DriverSandbox {
             .map_err(|error| crate::Error::context(file_context("read", path), error))
     }
 
-    async fn write_file(&self, path: &str, content: &str) -> crate::Result<()> {
+    pub async fn read_file_text(&self, path: &str) -> crate::Result<String> {
+        String::from_utf8(self.read_file_bytes(path).await?)
+            .map_err(|err| crate::Error::context("File is not valid UTF-8", err))
+    }
+
+    /// A file's text with line numbers, from `offset` for `limit` lines.
+    pub async fn read_file(
+        &self,
+        path: &str,
+        offset: Option<usize>,
+        limit: Option<usize>,
+    ) -> crate::Result<String> {
+        Ok(sandbox::format_lines_numbered(
+            &self.read_file_text(path).await?,
+            offset,
+            limit,
+        ))
+    }
+
+    pub async fn write_file(&self, path: &str, content: &str) -> crate::Result<()> {
         self.handle()?
             .fs()
             .write(&self.resolve(path), content.as_bytes())
@@ -782,7 +817,7 @@ impl Sandbox for DriverSandbox {
             .map_err(|error| crate::Error::context(file_context("write", path), error))
     }
 
-    async fn delete_file(&self, path: &str) -> crate::Result<()> {
+    pub async fn delete_file(&self, path: &str) -> crate::Result<()> {
         // Fabro's contract fails on a missing file; the driver's delete is
         // idempotent, so check first.
         if !self.file_exists(path).await? {
@@ -798,7 +833,7 @@ impl Sandbox for DriverSandbox {
             .map_err(|error| crate::Error::context(file_context("delete", path), error))
     }
 
-    async fn file_exists(&self, path: &str) -> crate::Result<bool> {
+    pub async fn file_exists(&self, path: &str) -> crate::Result<bool> {
         self.handle()?
             .fs()
             .exists(&self.resolve(path))
@@ -806,32 +841,29 @@ impl Sandbox for DriverSandbox {
             .map_err(|error| crate::Error::context(file_context("stat", path), error))
     }
 
-    async fn list_directory(
+    /// Lists a directory to `depth` (`None` is the immediate children),
+    /// sorted by path. Sizes are reported for files only.
+    pub async fn list_directory(
         &self,
         path: &str,
         depth: Option<usize>,
     ) -> crate::Result<Vec<DirEntry>> {
-        let entries = self
+        let mut entries = self
             .handle()?
             .fs()
             .list_dir(&self.resolve(path), depth.unwrap_or(1))
             .await
             .map_err(|error| crate::Error::context(file_context("list", path), error))?;
-        let mut entries: Vec<DirEntry> = entries
-            .into_iter()
-            .map(|entry| DirEntry {
-                name:   entry.path,
-                is_dir: entry.kind == FileKind::Directory,
-                size:   (entry.kind == FileKind::File)
-                    .then_some(entry.size)
-                    .flatten(),
-            })
-            .collect();
-        entries.sort_by(|left, right| left.name.cmp(&right.name));
+        for entry in &mut entries {
+            if entry.kind != FileKind::File {
+                entry.size = None;
+            }
+        }
+        entries.sort_by(|left, right| left.path.cmp(&right.path));
         Ok(entries)
     }
 
-    async fn exec_command(
+    pub async fn exec_command(
         &self,
         command: &str,
         timeout_ms: u64,
@@ -850,14 +882,14 @@ impl Sandbox for DriverSandbox {
             .await
     }
 
-    async fn exec_command_streaming(
+    pub async fn exec_command_streaming(
         &self,
         request: ExecStreamingRequest<'_>,
     ) -> crate::Result<ExecStreamingResult> {
         self.exec()?.run_streaming(request).await
     }
 
-    async fn spawn_stdio_process(
+    pub async fn spawn_stdio_process(
         &self,
         command: &str,
         working_dir: Option<&str>,
@@ -869,44 +901,43 @@ impl Sandbox for DriverSandbox {
             .await
     }
 
-    async fn grep(
+    /// Searches file contents below `path`, resolved against the run's
+    /// working directory.
+    pub async fn grep(
         &self,
         pattern: &str,
         path: &str,
         options: &GrepOptions,
-    ) -> crate::Result<Vec<String>> {
-        let mut driver_options = sandbox_driver::GrepOptions::default();
-        driver_options.case_insensitive = options.case_insensitive;
-        driver_options.max_matches = options.max_results;
-        driver_options.include.clone_from(&options.glob_filter);
-        let matches = self
-            .search()?
-            .grep(pattern, &self.resolve(path), &driver_options)
+    ) -> crate::Result<Vec<GrepMatch>> {
+        self.search()?
+            .grep(pattern, &self.resolve(path), options)
             .await
-            .map_err(|error| crate::Error::context("Failed to search file contents", error))?;
-        Ok(matches
-            .into_iter()
-            .map(|m| format!("{}:{}:{}", m.path, m.line_number, m.line))
-            .collect())
+            .map_err(|error| crate::Error::context("Failed to search file contents", error))
     }
 
-    async fn walk_files(
+    /// Recursively enumerates regular files below `base`, starting at the
+    /// literal directory `relative_start` inside it. Every returned
+    /// `relative_path` is relative to `base`; `options.exclude_dirs` names
+    /// directory basenames pruned at every depth, including on the way to
+    /// `relative_start`.
+    pub async fn walk_files(
         &self,
         base: &str,
         relative_start: &str,
         options: &WalkOptions,
     ) -> crate::Result<Vec<SandboxFile>> {
-        if options.excludes_relative_path(relative_start) {
+        if relative_start.split('/').any(|segment| {
+            options
+                .exclude_dirs
+                .iter()
+                .any(|excluded| excluded == segment)
+        }) {
             return Ok(Vec::new());
         }
-        let mut driver_options = sandbox_driver::WalkOptions::default();
-        driver_options
-            .exclude_dirs
-            .clone_from(&options.excluded_directory_names);
         let walk_base = self.walk_base(base, relative_start);
         let walked = self
             .search()?
-            .walk(&walk_base, &driver_options)
+            .walk(&walk_base, options)
             .await
             .map_err(|error| crate::Error::context("Failed to enumerate files", error))?;
         let mut files = Vec::with_capacity(walked.len());
@@ -935,7 +966,23 @@ impl Sandbox for DriverSandbox {
         Ok(files)
     }
 
-    async fn download_file_to_local(
+    /// Matches a workspace-relative glob with provider-independent
+    /// semantics, over [`RunSandbox::walk_files`].
+    pub async fn glob(&self, pattern: &str, path: Option<&str>) -> crate::Result<Vec<String>> {
+        let glob = WorkspaceGlob::try_new(pattern)
+            .map_err(|error| crate::Error::context("Invalid glob pattern", error))?;
+        let base = path.unwrap_or_else(|| self.working_directory());
+        let mut files = self
+            .walk_files(base, glob.traversal_root(), &WalkOptions::default())
+            .await?
+            .into_iter()
+            .filter(|file| glob.is_match(&file.relative_path))
+            .collect::<Vec<_>>();
+        files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+        Ok(files.into_iter().map(|file| file.path).collect())
+    }
+
+    pub async fn download_file_to_local(
         &self,
         remote_path: &str,
         local_path: &Path,
@@ -947,7 +994,7 @@ impl Sandbox for DriverSandbox {
             .map_err(|error| crate::Error::context(file_context("download", remote_path), error))
     }
 
-    async fn upload_file_from_local(
+    pub async fn upload_file_from_local(
         &self,
         local_path: &Path,
         remote_path: &str,
@@ -961,7 +1008,7 @@ impl Sandbox for DriverSandbox {
 
     /// Create the sandbox when it is pending, bring it to `Running`, and
     /// prepare fabro's workspace (empty root or clone) on first use.
-    async fn initialize(&self) -> crate::Result<()> {
+    pub async fn initialize(&self) -> crate::Result<()> {
         self.emit(SandboxEvent::Initializing {
             provider: self.provider_name(),
         });
@@ -1006,7 +1053,7 @@ impl Sandbox for DriverSandbox {
 
     /// Idempotent access-time check: a running sandbox is left alone; a
     /// stopped or paused one is brought back and its Bash verified.
-    async fn activate(&self) -> crate::Result<()> {
+    pub async fn activate(&self) -> crate::Result<()> {
         let status = self.handle()?.describe().await?;
         if status.state == SandboxState::Running {
             return Ok(());
@@ -1014,7 +1061,7 @@ impl Sandbox for DriverSandbox {
         self.make_ready().await
     }
 
-    async fn start(&self) -> crate::Result<()> {
+    pub async fn start(&self) -> crate::Result<()> {
         self.emit(SandboxEvent::StartStarted {
             provider: self.provider_name(),
         });
@@ -1034,7 +1081,7 @@ impl Sandbox for DriverSandbox {
         result
     }
 
-    async fn stop(&self) -> crate::Result<()> {
+    pub async fn stop(&self) -> crate::Result<()> {
         self.emit(SandboxEvent::StopStarted {
             provider: self.provider_name(),
         });
@@ -1057,7 +1104,7 @@ impl Sandbox for DriverSandbox {
         result
     }
 
-    async fn delete(&self) -> crate::Result<()> {
+    pub async fn delete(&self) -> crate::Result<()> {
         self.emit(SandboxEvent::DeleteStarted {
             provider: self.provider_name(),
         });
@@ -1080,7 +1127,7 @@ impl Sandbox for DriverSandbox {
     /// Releases the sandbox. For a designated host directory this frees the
     /// handle and leaves the directory in place; for an isolated provider it
     /// removes the sandbox.
-    async fn cleanup(&self) -> crate::Result<()> {
+    pub async fn cleanup(&self) -> crate::Result<()> {
         self.emit(SandboxEvent::CleanupStarted {
             provider: self.provider_name(),
         });
@@ -1102,7 +1149,7 @@ impl Sandbox for DriverSandbox {
 
     /// The directory the run works in: the cloned repository's link for a
     /// clone-based workspace, the provider's working directory otherwise.
-    fn working_directory(&self) -> &str {
+    pub fn working_directory(&self) -> &str {
         if let Some(directory) = self
             .workspace
             .as_ref()
@@ -1115,19 +1162,19 @@ impl Sandbox for DriverSandbox {
             .map_or("", |handle| handle.working_directory())
     }
 
-    fn runtime_directory(&self) -> Option<&str> {
+    pub fn runtime_directory(&self) -> Option<&str> {
         self.handle
             .get()
             .and_then(|handle| handle.runtime_directory())
     }
 
-    fn platform(&self) -> &str {
+    pub fn platform(&self) -> &str {
         self.platform
             .get()
             .map_or("unknown", |(platform, _)| platform.as_str())
     }
 
-    fn os_version(&self) -> String {
+    pub fn os_version(&self) -> String {
         self.platform.get().map_or_else(
             || self.platform().to_string(),
             |(_, version)| version.clone(),
@@ -1138,7 +1185,7 @@ impl Sandbox for DriverSandbox {
     /// sandbox is its working directory, which the run record already
     /// carries, and its Host registry id does not outlive the process.
     /// Empty for a pending sandbox that has not been created.
-    fn sandbox_info(&self) -> String {
+    pub fn sandbox_info(&self) -> String {
         if self.kind.is_local() {
             return String::new();
         }
@@ -1148,15 +1195,15 @@ impl Sandbox for DriverSandbox {
             .unwrap_or_default()
     }
 
-    fn snapshot_info(&self) -> Option<String> {
+    pub fn snapshot_info(&self) -> Option<String> {
         self.snapshot.get().cloned()
     }
 
-    fn workspace_layout(&self) -> Option<SandboxWorkspaceLayout> {
+    pub fn workspace_layout(&self) -> Option<SandboxWorkspaceLayout> {
         self.workspace.as_ref().and_then(RepoWorkspace::record)
     }
 
-    async fn set_autostop_interval(&self, minutes: i32) -> crate::Result<()> {
+    pub async fn set_autostop_interval(&self, minutes: i32) -> crate::Result<()> {
         let mut timers = LifecycleTimers::default();
         timers.auto_stop_after_idle = u64::try_from(minutes)
             .ok()
@@ -1172,14 +1219,14 @@ impl Sandbox for DriverSandbox {
         }
     }
 
-    async fn setup_git(&self, intent: &GitSetupIntent) -> crate::Result<Option<GitRunInfo>> {
+    pub async fn setup_git(&self, intent: &GitSetupIntent) -> crate::Result<Option<GitRunInfo>> {
         if !self.repo_cloned() {
             return Ok(None);
         }
         sandbox::setup_git_via_exec(self, intent).await.map(Some)
     }
 
-    fn resume_setup_commands(&self, run_branch: &str) -> Vec<String> {
+    pub fn resume_setup_commands(&self, run_branch: &str) -> Vec<String> {
         if !self.repo_cloned() {
             return Vec::new();
         }
@@ -1190,7 +1237,11 @@ impl Sandbox for DriverSandbox {
         )]
     }
 
-    async fn git_push_ref(&self, refspec: &str, plan: &RetryPlan) -> Result<PushReport, PushError> {
+    pub async fn git_push_ref(
+        &self,
+        refspec: &str,
+        plan: &RetryPlan,
+    ) -> Result<PushReport, PushError> {
         let Some(workspace) = &self.workspace else {
             // A designated directory: push only when the checkout has an
             // origin, with whatever credentials its URL already carries.
@@ -1222,7 +1273,7 @@ impl Sandbox for DriverSandbox {
         sandbox::git_push_via_exec(self, credentials, refspec, plan).await
     }
 
-    fn origin_url(&self) -> Option<&str> {
+    pub fn origin_url(&self) -> Option<&str> {
         let workspace = self.workspace.as_ref()?;
         if !workspace.repo_cloned() {
             return None;
@@ -1231,7 +1282,7 @@ impl Sandbox for DriverSandbox {
     }
 
     #[tracing::instrument(name = "git_op", skip_all, fields(op = "refresh-credentials"))]
-    async fn refresh_push_credentials(&self) -> crate::Result<RefreshOutcome> {
+    pub async fn refresh_push_credentials(&self) -> crate::Result<RefreshOutcome> {
         let Some(workspace) = &self.workspace else {
             return Ok(RefreshOutcome::none());
         };
@@ -1249,7 +1300,7 @@ impl Sandbox for DriverSandbox {
             .await
     }
 
-    fn push_token_source(&self) -> Option<Arc<InstallationTokenSource>> {
+    pub fn push_token_source(&self) -> Option<Arc<InstallationTokenSource>> {
         self.workspace
             .as_ref()
             .and_then(|workspace| workspace.credentials.source().cloned())
@@ -1258,7 +1309,7 @@ impl Sandbox for DriverSandbox {
     /// The local command that opens a shell in the sandbox, from the
     /// provider's access facet. `None` when the provider has no such
     /// command (the local sandbox is the host).
-    async fn ssh_access_command(&self) -> crate::Result<Option<String>> {
+    pub async fn ssh_access_command(&self) -> crate::Result<Option<String>> {
         let Some(shell) = self.handle()?.shell_command() else {
             return Ok(None);
         };
@@ -1269,7 +1320,7 @@ impl Sandbox for DriverSandbox {
             .map_err(|error| crate::Error::context("Failed to build sandbox shell command", error))
     }
 
-    async fn get_preview_url(
+    pub async fn get_preview_url(
         &self,
         port: u16,
     ) -> crate::Result<Option<(String, HashMap<String, String>)>> {
@@ -1287,7 +1338,7 @@ impl Sandbox for DriverSandbox {
     }
 }
 
-impl DriverSandbox {
+impl RunSandbox {
     fn repo_cloned(&self) -> bool {
         self.workspace
             .as_ref()
@@ -1321,7 +1372,7 @@ mod tests {
     struct Fixture {
         dir:       tempfile::TempDir,
         _provider: HostProvider,
-        sandbox:   DriverSandbox,
+        sandbox:   RunSandbox,
     }
 
     async fn fixture() -> Fixture {
@@ -1338,7 +1389,7 @@ mod tests {
         Fixture {
             dir,
             _provider: provider,
-            sandbox: DriverSandbox::new(SandboxProviderKind::LOCAL, handle),
+            sandbox: RunSandbox::new(SandboxProviderKind::LOCAL, handle),
         }
     }
 
@@ -1378,15 +1429,15 @@ mod tests {
             .unwrap();
 
         let entries = f.sandbox.list_directory(".", None).await.unwrap();
-        let names: Vec<_> = entries.iter().map(|e| e.name.as_str()).collect();
+        let names: Vec<_> = entries.iter().map(|e| e.path.as_str()).collect();
         assert_eq!(names, vec!["a.txt", "b.txt", "c_dir"]);
         assert_eq!(entries[0].size, Some(2));
-        assert!(!entries[0].is_dir);
-        assert!(entries[2].is_dir);
+        assert_eq!(entries[0].kind, FileKind::File);
+        assert_eq!(entries[2].kind, FileKind::Directory);
         assert_eq!(entries[2].size, None);
 
         let deep = f.sandbox.list_directory(".", Some(2)).await.unwrap();
-        assert!(deep.iter().any(|e| e.name == "c_dir/inner.txt"));
+        assert!(deep.iter().any(|e| e.path == "c_dir/inner.txt"));
     }
 
     #[tokio::test]
@@ -1429,14 +1480,16 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
-        assert!(results[0].starts_with("test.rs:2:"), "{results:?}");
-        assert!(results[0].contains("println"));
+        assert_eq!(results[0].path, "test.rs", "{results:?}");
+        assert_eq!(results[0].line_number, 2);
+        assert!(results[0].line.contains("println"));
 
         let insensitive = f
             .sandbox
-            .grep("PRINTLN", ".", &GrepOptions {
-                case_insensitive: true,
-                ..GrepOptions::default()
+            .grep("PRINTLN", ".", &{
+                let mut options = GrepOptions::default();
+                options.case_insensitive = true;
+                options
             })
             .await
             .unwrap();
@@ -1464,8 +1517,10 @@ mod tests {
 
         let files = f
             .sandbox
-            .walk_files(f.sandbox.working_directory(), ".ai", &WalkOptions {
-                excluded_directory_names: vec!["target".to_string()],
+            .walk_files(f.sandbox.working_directory(), ".ai", &{
+                let mut options = WalkOptions::default();
+                options.exclude_dirs = vec!["target".to_string()];
+                options
             })
             .await
             .unwrap();
@@ -1551,7 +1606,7 @@ mod tests {
             "local sandboxes are identified by directory"
         );
         let handle = Arc::clone(f.sandbox.handle().unwrap());
-        let isolated = DriverSandbox::new(SandboxProviderKind::DOCKER, Arc::clone(&handle));
+        let isolated = RunSandbox::new(SandboxProviderKind::DOCKER, Arc::clone(&handle));
         assert_eq!(isolated.sandbox_info(), handle.id().to_string());
 
         f.sandbox.stop().await.unwrap();

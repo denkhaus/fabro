@@ -9,7 +9,7 @@ use crate::native_tool::{NativeTool, ToolVocabulary};
 use crate::profiles::{
     self, BaseProfile, EmbeddedPrompt, ProfileDeps, impl_base_profile_accessors, kimi_tools,
 };
-use crate::sandbox::Sandbox;
+use crate::sandbox::RunSandbox;
 use crate::skills::Skill;
 use crate::todo_runtime::TodoRuntime;
 use crate::todo_tools::make_todo_list_tool;
@@ -130,7 +130,7 @@ impl AgentProfile for KimiProfile {
 
     fn build_system_prompt(
         &self,
-        env: &dyn Sandbox,
+        env: &RunSandbox,
         env_context: &EnvContext,
         memory: &[String],
         user_instructions: Option<&str>,
@@ -370,7 +370,7 @@ mod tests {
         assert_eq!(profile.profile_kind(), AgentProfileKind::Kimi);
         assert_eq!(profile.provider_id(), ProviderId::new("openrouter"));
 
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains("You are Kimi"));
         assert!(prompt.contains("# Tracking Multi-Step Work"));

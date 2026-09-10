@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use fabro_types::{BundledProvider, RunId, RunSandboxInstance};
 
 use crate::driver::ProviderAccess;
-use crate::{Sandbox, reconnect};
+use crate::reconnect;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TerminalSize {

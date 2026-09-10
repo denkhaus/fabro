@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use fabro_agent::Sandbox;
+use fabro_agent::RunSandbox;
 use fabro_auth::CredentialSource;
 #[cfg(test)]
 use fabro_auth::test_support;
@@ -71,7 +71,7 @@ impl HookRunner {
     pub async fn run(
         &self,
         context: &HookContext,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         execution_context: HookExecutionContext,
     ) -> HookDecision {
         let matching = self.filter_hooks(context);
@@ -141,7 +141,7 @@ impl HookRunner {
         &self,
         hooks: &[&HookDefinition],
         context: &HookContext,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         execution_context: &HookExecutionContext,
     ) -> HookDecision {
         let mut merged = HookDecision::Proceed;
@@ -197,7 +197,7 @@ impl HookRunner {
         &self,
         hooks: &[&HookDefinition],
         context: &HookContext,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         execution_context: &HookExecutionContext,
     ) -> HookDecision {
         for hook in hooks {
@@ -254,7 +254,7 @@ mod tests {
             &self,
             definition: &HookDefinition,
             _context: &HookContext,
-            _sandbox: Arc<dyn Sandbox>,
+            _sandbox: Arc<RunSandbox>,
             _execution_context: &HookExecutionContext,
             _llm_source: &dyn CredentialSource,
             _catalog: Arc<Catalog>,
@@ -267,7 +267,7 @@ mod tests {
         }
     }
 
-    async fn make_sandbox() -> Arc<dyn Sandbox> {
+    async fn make_sandbox() -> Arc<RunSandbox> {
         Arc::new(
             fabro_agent::local_sandbox(std::env::current_dir().unwrap())
                 .await

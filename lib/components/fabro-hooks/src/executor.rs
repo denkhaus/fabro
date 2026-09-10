@@ -4,7 +4,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::Instant;
 
 use async_trait::async_trait;
-use fabro_agent::Sandbox;
+use fabro_agent::RunSandbox;
 use fabro_agent::tool_registry::ToolContext;
 use fabro_auth::CredentialSource;
 use fabro_llm::client::Client as LlmClient;
@@ -47,7 +47,7 @@ pub trait HookExecutor: Send + Sync {
         &self,
         definition: &HookDefinition,
         context: &HookContext,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         execution_context: &HookExecutionContext,
         llm_source: &dyn CredentialSource,
         catalog: Arc<Catalog>,
@@ -128,7 +128,7 @@ impl HookExecutorImpl {
         definition: &HookDefinition,
         command: &InterpString,
         context: &HookContext,
-        sandbox: &Arc<dyn Sandbox>,
+        sandbox: &Arc<RunSandbox>,
         execution_context: &HookExecutionContext,
     ) -> HookDecision {
         let command = match resolve_interp(command) {
@@ -346,7 +346,7 @@ impl HookExecutorImpl {
         model: Option<&InterpString>,
         max_tool_rounds: Option<u32>,
         context: &HookContext,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         llm_source: &dyn CredentialSource,
         catalog: Arc<Catalog>,
     ) -> HookDecision {
@@ -627,7 +627,7 @@ impl HookExecutor for HookExecutorImpl {
         &self,
         definition: &HookDefinition,
         context: &HookContext,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         execution_context: &HookExecutionContext,
         llm_source: &dyn CredentialSource,
         catalog: Arc<Catalog>,
@@ -740,7 +740,7 @@ mod tests {
         HookContext::new(HookEvent::StageStart, fixtures::RUN_1, "test-wf".into())
     }
 
-    async fn make_sandbox() -> Arc<dyn Sandbox> {
+    async fn make_sandbox() -> Arc<RunSandbox> {
         Arc::new(
             fabro_agent::local_sandbox(std::env::current_dir().unwrap())
                 .await

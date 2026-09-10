@@ -71,8 +71,8 @@ use fabro_sandbox::details::sandbox_details;
 use fabro_sandbox::driver::{DaytonaCredentials, ProviderAccess, ProviderConnectOptions};
 use fabro_sandbox::reconnect::reconnect_for_run;
 use fabro_sandbox::{
-    DriverInventoryProvider, LocalSandboxProvider, Sandbox, SandboxProvider,
-    SandboxProviderRegistry, daytona,
+    DriverInventoryProvider, LocalSandboxProvider, SandboxProvider, SandboxProviderRegistry,
+    daytona,
 };
 use fabro_slack::client::{PostedMessage as SlackPostedMessage, SlackClient};
 use fabro_slack::config::{

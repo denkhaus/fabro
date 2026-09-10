@@ -42,7 +42,7 @@ use crate::memory::{BUDGET_BYTES, MemoryDocument, discover_memory};
 use crate::native_tool::NativeTool;
 use crate::profiles::EnvContext;
 use crate::question_tools::AgentToolRuntime;
-use crate::sandbox::Sandbox;
+use crate::sandbox::RunSandbox;
 use crate::skills::{
     ExpandedInput, Skill, default_skill_dirs, discover_skills, expand_skill,
     make_use_skill_tool_for_vocabulary,
@@ -394,7 +394,7 @@ pub struct Session {
     ended: bool,
     llm_client: Client,
     provider_profile: Arc<dyn AgentProfile>,
-    sandbox: Arc<dyn Sandbox>,
+    sandbox: Arc<RunSandbox>,
     control_state: Arc<Mutex<ControlState>>,
     control_notify: Arc<Notify>,
     followup_queue: Arc<Mutex<VecDeque<String>>>,
@@ -420,7 +420,7 @@ impl Session {
     pub fn new(
         llm_client: Client,
         provider_profile: Arc<dyn AgentProfile>,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         config: SessionOptions,
         subagent_supervisor: Option<SubAgentSupervisor>,
     ) -> Self {
@@ -471,7 +471,7 @@ impl Session {
         source: &dyn CredentialSource,
         catalog: Arc<Catalog>,
         provider_profile: Arc<dyn AgentProfile>,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         config: SessionOptions,
         subagent_supervisor: Option<SubAgentSupervisor>,
     ) -> Result<Self, LlmError> {
@@ -490,7 +490,7 @@ impl Session {
         runtime_context: &[SessionMessage],
         llm_client: Client,
         provider_profile: Arc<dyn AgentProfile>,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         config: SessionOptions,
         subagent_supervisor: Option<SubAgentSupervisor>,
     ) -> Result<Self, Error> {
@@ -2243,7 +2243,7 @@ fn sandbox_mcp_launch_script(command: &[String]) -> String {
 /// `setsid` child but before reporting readiness. Errors from the sandbox
 /// are logged and swallowed; the caller is already returning a Cancelled
 /// error.
-async fn kill_mcp_pid(sandbox: &dyn Sandbox, pid: &str) {
+async fn kill_mcp_pid(sandbox: &RunSandbox, pid: &str) {
     let pid = pid.trim();
     if pid.is_empty() {
         return;
@@ -2570,7 +2570,7 @@ mod tests {
     ) -> Session {
         let client = make_client(provider).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         Session::new(
             client,
             profile,
@@ -2681,7 +2681,7 @@ mod tests {
         ));
         let client = make_client(provider).await;
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
 
         let result = session
@@ -3566,7 +3566,7 @@ mod tests {
         let provider = Arc::new(MockLlmProvider::new(responses));
         let client = make_client(provider).await;
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             enable_loop_detection: false,
             ..Default::default()
@@ -3603,7 +3603,7 @@ mod tests {
         });
         let client = make_client(error_provider).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
 
         let result = session.process_input("Hello").await;
@@ -3700,7 +3700,7 @@ mod tests {
         let provider = Arc::new(MockLlmProvider::new(responses));
         let client = make_client(provider).await;
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
         let mut rx = session.subscribe();
 
@@ -3751,7 +3751,7 @@ mod tests {
         let client = make_client(provider).await;
         let registry = ToolRegistry::new();
         let profile = Arc::new(TestProfile::with_context_window(registry, 100));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
         let mut rx = session.subscribe();
 
@@ -3773,7 +3773,7 @@ mod tests {
         let provider_ref = provider.clone();
         let client = make_client(provider as Arc<dyn ProviderAdapter>).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
 
         // Default reasoning_effort is None
@@ -3796,7 +3796,7 @@ mod tests {
         let registry = ToolRegistry::new();
         // Large context window so short input stays well under 80%
         let profile = Arc::new(TestProfile::with_context_window(registry, 200_000));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
         let mut rx = session.subscribe();
 
@@ -3928,7 +3928,7 @@ mod tests {
         let provider_ref = provider.clone();
         let client = make_client(provider as Arc<dyn ProviderAdapter>).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             user_instructions: Some("Always use TDD".into()),
             ..Default::default()
@@ -3956,7 +3956,7 @@ mod tests {
         let provider_ref = provider.clone();
         let client = make_client(provider as Arc<dyn ProviderAdapter>).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
 
         // Intentionally skip initialize(): system prompt remains empty.
@@ -3988,7 +3988,7 @@ mod tests {
         registry.register(make_named_noop_tool("read_file"));
         registry.register(make_named_noop_tool("write_file"));
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
 
         session.process_input("test").await.unwrap();
@@ -4042,7 +4042,7 @@ mod tests {
         registry.register(make_named_noop_tool("read_file"));
         registry.register(make_named_noop_tool("write_file"));
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             tool_access_policy: Some(Arc::new(NamedToolAccessPolicy::new(vec![
                 ("read_file", ToolAccess::Allowed),
@@ -4073,7 +4073,7 @@ mod tests {
         registry.register(make_named_noop_tool("apply_patch"));
         registry.register(make_named_noop_tool("shell"));
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             tool_access_policy: Some(Arc::new(NamedToolAccessPolicy::new(vec![
                 ("read_file", ToolAccess::Allowed),
@@ -4105,7 +4105,7 @@ mod tests {
         registry.register(make_named_noop_tool("read_file"));
         registry.register(make_named_noop_tool("shell"));
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             tool_access_policy: Some(Arc::new(NamedToolAccessPolicy::new(vec![
                 ("read_file", ToolAccess::Allowed),
@@ -4971,7 +4971,7 @@ mod tests {
         let client = make_client(provider).await;
         let registry = ToolRegistry::new();
         let profile = Arc::new(TestProfile::with_context_window(registry, 100));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             enable_context_compaction: true,
             compaction_preserve_turns: 1,
@@ -5017,7 +5017,7 @@ mod tests {
         let client = make_client(provider).await;
         let registry = ToolRegistry::new();
         let profile = Arc::new(TestProfile::with_context_window(registry, 100));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             enable_context_compaction: true,
             compaction_preserve_turns: 1,
@@ -5057,7 +5057,7 @@ mod tests {
         let client = make_client(provider).await;
         let registry = ToolRegistry::new();
         let profile = Arc::new(TestProfile::with_context_window(registry, 100));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             enable_context_compaction: true,
             compaction_preserve_turns: 10,
@@ -5098,7 +5098,7 @@ mod tests {
         let client = make_client(provider).await;
         let registry = ToolRegistry::new();
         let profile = Arc::new(TestProfile::with_context_window(registry, 100));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             enable_context_compaction: false,
             ..Default::default()
@@ -5128,7 +5128,7 @@ mod tests {
         let client = make_client(provider).await;
         let registry = ToolRegistry::new();
         let profile = Arc::new(TestProfile::with_context_window(registry, 100));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             enable_context_compaction: false,
             compaction_preserve_turns: 1,
@@ -5235,7 +5235,7 @@ mod tests {
         let client = make_client(provider.clone() as Arc<dyn ProviderAdapter>).await;
         let registry = ToolRegistry::new();
         let profile = Arc::new(TestProfile::with_context_window(registry, 100));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             enable_context_compaction: true,
             compaction_preserve_turns: 1,
@@ -5346,7 +5346,7 @@ mod tests {
         let client = make_client(provider.clone() as Arc<dyn ProviderAdapter>).await;
         // Tiny context window to force compaction
         let profile = Arc::new(TestProfile::with_context_window(registry, 100));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             enable_context_compaction: true,
             compaction_preserve_turns: 1,
@@ -5449,7 +5449,7 @@ mod tests {
         let provider = Arc::new(MockLlmProvider::new(responses));
         let client = make_client(provider).await;
         let profile: Arc<dyn AgentProfile> = Arc::new(TestProfile::new());
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, config, None);
 
         // Subscribe to events before initialize
@@ -5647,7 +5647,7 @@ mod tests {
         ]));
         let client = make_client(parent_provider).await;
         let profile = Arc::new(TestProfile::with_tools(parent_registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let session = Session::new(
             client,
             profile,
@@ -5852,7 +5852,7 @@ mod tests {
     }
 
     async fn build_initialized_session(
-        sandbox: Arc<MockSandbox>,
+        sandbox: Arc<RunSandbox>,
         config: SessionOptions,
     ) -> Session {
         let provider = Arc::new(MockLlmProvider::new(vec![text_response("ok")]));
@@ -5865,10 +5865,11 @@ mod tests {
     async fn initialize_emits_memory_loaded_with_file_metadata() {
         let mut files = std::collections::HashMap::new();
         files.insert("/home/test/AGENTS.md".into(), "Hello world".into());
-        let sandbox = Arc::new(MockSandbox {
+        let sandbox = MockSandbox {
             files,
             ..MockSandbox::linux()
-        });
+        }
+        .sandbox();
         let config = SessionOptions {
             git_root: Some("/home/test".into()),
             skill_dirs: Some(Vec::new()),
@@ -5904,7 +5905,7 @@ mod tests {
 
     #[tokio::test]
     async fn initialize_emits_memory_loaded_event_with_empty_files_when_no_memory() {
-        let sandbox = Arc::new(MockSandbox::linux());
+        let sandbox = MockSandbox::linux().sandbox();
         let config = SessionOptions {
             git_root: Some("/home/test".into()),
             skill_dirs: Some(Vec::new()),
@@ -5935,11 +5936,11 @@ mod tests {
             "/skills/commit/SKILL.md".into(),
             "---\nname: commit\ndescription: Make a commit\n---\nDo commit".into(),
         );
-        let sandbox = Arc::new(MockSandbox {
+        let sandbox = MockSandbox {
             files,
-            glob_results: vec!["/skills/commit/SKILL.md".into()],
             ..MockSandbox::linux()
-        });
+        }
+        .sandbox();
         let config = SessionOptions {
             git_root: Some("/home/test".into()),
             skill_dirs: Some(vec!["/skills".into()]),
@@ -5972,7 +5973,7 @@ mod tests {
 
     #[tokio::test]
     async fn initialize_emits_skills_discovered_event_when_no_skills() {
-        let sandbox = Arc::new(MockSandbox::linux());
+        let sandbox = MockSandbox::linux().sandbox();
         let config = SessionOptions {
             git_root: Some("/home/test".into()),
             skill_dirs: Some(Vec::new()),
@@ -6003,11 +6004,11 @@ mod tests {
             "/skills/commit/SKILL.md".into(),
             "---\nname: commit\ndescription: Make a commit\n---\nRun commit. {{user_input}}".into(),
         );
-        let sandbox = Arc::new(MockSandbox {
+        let sandbox = MockSandbox {
             files,
-            glob_results: vec!["/skills/commit/SKILL.md".into()],
             ..MockSandbox::linux()
-        });
+        }
+        .sandbox();
         let config = SessionOptions {
             git_root: Some("/home/test".into()),
             skill_dirs: Some(vec!["/skills".into()]),
@@ -6043,11 +6044,11 @@ mod tests {
             "/skills/commit/SKILL.md".into(),
             "---\nname: commit\ndescription: Make a commit\n---\nRun commit.".into(),
         );
-        let sandbox = Arc::new(MockSandbox {
+        let sandbox = MockSandbox {
             files,
-            glob_results: vec!["/skills/commit/SKILL.md".into()],
             ..MockSandbox::linux()
-        });
+        }
+        .sandbox();
         let config = SessionOptions {
             git_root: Some("/home/test".into()),
             skill_dirs: Some(vec!["/skills".into()]),
@@ -6087,7 +6088,7 @@ mod tests {
 
     #[tokio::test]
     async fn use_skill_tool_failed_lookup_does_not_emit_activation() {
-        let sandbox = Arc::new(MockSandbox::linux());
+        let sandbox = MockSandbox::linux().sandbox();
         let config = SessionOptions {
             git_root: Some("/home/test".into()),
             skill_dirs: Some(Vec::new()),
@@ -6104,7 +6105,7 @@ mod tests {
         let skills_arc = Arc::new(Vec::<Skill>::new());
         let tool = make_use_skill_tool(skills_arc);
         let mut rx = session.subscribe();
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let ctx = ToolContext {
             env,
             cancel: CancellationToken::new(),

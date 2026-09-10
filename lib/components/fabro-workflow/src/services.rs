@@ -4,7 +4,7 @@ use std::sync::Arc;
 #[cfg(test)]
 use std::time::Duration;
 
-use fabro_agent::{Sandbox, ToolEnvProvider};
+use fabro_agent::{RunSandbox, ToolEnvProvider};
 use fabro_auth::CredentialSource;
 #[cfg(test)]
 use fabro_auth::ResolvedCredentials;
@@ -48,7 +48,7 @@ impl RunLocations {
     #[must_use]
     pub fn for_sandbox(
         host_source_dir: Option<PathBuf>,
-        sandbox: &dyn Sandbox,
+        sandbox: &RunSandbox,
         run_scratch_dir: PathBuf,
     ) -> Self {
         Self::new(
@@ -95,7 +95,7 @@ pub struct FabroRunToolServices {
 pub struct RunServices {
     pub run_store:                RunStoreHandle,
     pub emitter:                  Arc<Emitter>,
-    pub sandbox:                  Arc<dyn Sandbox>,
+    pub sandbox:                  Arc<RunSandbox>,
     pub hook_runner:              Option<Arc<HookRunner>>,
     pub locations:                RunLocations,
     pub(crate) cancel_token:      CancellationToken,
@@ -117,7 +117,7 @@ impl RunServices {
     pub(crate) fn new(
         run_store: RunStoreHandle,
         emitter: Arc<Emitter>,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         hook_runner: Option<Arc<HookRunner>>,
         locations: RunLocations,
         cancel_token: CancellationToken,
@@ -188,7 +188,7 @@ impl RunServices {
     }
 
     #[must_use]
-    pub fn with_sandbox(self: &Arc<Self>, sandbox: Arc<dyn Sandbox>) -> Arc<Self> {
+    pub fn with_sandbox(self: &Arc<Self>, sandbox: Arc<RunSandbox>) -> Arc<Self> {
         let locations = self
             .locations
             .with_sandbox_work_dir(Some(PathBuf::from(sandbox.working_directory())));
@@ -301,7 +301,7 @@ impl EngineServices {
                         .create_run(&fabro_types::RunId::new())
                         .await
                         .expect("slate-backed test run store should initialize");
-                    let sandbox: Arc<dyn Sandbox> = Arc::new(
+                    let sandbox: Arc<RunSandbox> = Arc::new(
                         fabro_agent::local_sandbox(
                             std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
                         )

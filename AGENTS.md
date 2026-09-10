@@ -122,7 +122,7 @@ Fabro is an AI-powered workflow orchestration platform. Workflows are defined as
 ### Rust crates (`lib/apps/`, `lib/components/`, and `lib/foundation/`)
 - **fabro-cli** — CLI entry point. Commands: `run`, `exec`, `serve`, `validate`, `parse`, `cp`, `model`, `doctor`, `install`, `ps`, `system prune`
 - **fabro-workflow** — Core workflow engine. Parses Graphviz graphs, runs stages, manages checkpoints/resume, hooks, and human-in-the-loop interactions
-- **fabro-agent** — AI coding agent with tool use (Bash, Read, Write, Edit, Glob, Grep, WebFetch). `Sandbox` trait abstracts execution environments
+- **fabro-agent** — AI coding agent with tool use (Bash, Read, Write, Edit, Glob, Grep, WebFetch). Tools run through `RunSandbox`, fabro's one sandbox type over the sandbox driver
 - **fabro-sandbox** — Local, Docker, and Daytona sandbox providers. Docker is the default runtime provider and creates clone-based `/workspace` containers through the operator's Docker daemon; Daytona uses the same GitHub-only clone-source contract. Docker daemon access is host-root-equivalent and assumes trusted callers/payloads.
 - **fabro-server** — Axum HTTP server. Routes for runs, sessions, models, completions, usage. SSE event streaming. Demo mode via header
 - **fabro-llm** — Unified LLM client with providers: Anthropic, OpenAI, Gemini, OpenAI-compatible, plus retry/middleware/streaming
@@ -139,7 +139,7 @@ Fabro is an AI-powered workflow orchestration platform. Workflows are defined as
 - **lib/packages/fabro-api-client** — Auto-generated TypeScript Axios client from OpenAPI spec
 
 ### Key design patterns
-- **Sandbox trait** — Uniform interface for local, Docker, and Daytona execution environments. Clone-based providers use run-spec GitHub origin metadata rather than worker process cwd detection.
+- **RunSandbox** — One concrete sandbox type for local, Docker, and Daytona execution environments, over the `sandbox-driver` facets (exec, filesystem, search, git). There is no fabro-side sandbox trait; tests use `fabro_sandbox::test_support::MockSandbox` over the driver's scripted doubles. Clone-based providers use run-spec GitHub origin metadata rather than worker process cwd detection.
 - **Graphviz graph workflows** — Stages and transitions defined as Graphviz graph attributes
 - **OpenAPI-first** — `fabro-api.yaml` drives Rust type + client generation (progenitor) and TypeScript client generation (openapi-generator)
 - **Checkpoint/resume** — Workflows can be paused, checkpointed, and resumed

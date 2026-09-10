@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use fabro_agent::{Sandbox, ToolHookCallback, ToolHookDecision};
+use fabro_agent::{RunSandbox, ToolHookCallback, ToolHookDecision};
 use fabro_types::RunId;
 
 use crate::runner::HookRunner;
@@ -12,7 +12,7 @@ use crate::types::{HookContext, HookDecision, HookEvent, HookExecutionContext};
 /// context needed to build `HookContext` for tool-level events.
 pub struct WorkflowToolHookCallback {
     pub hook_runner:            Arc<HookRunner>,
-    pub sandbox:                Arc<dyn Sandbox>,
+    pub sandbox:                Arc<RunSandbox>,
     pub run_id:                 RunId,
     pub workflow_name:          String,
     pub hook_execution_context: HookExecutionContext,
@@ -98,7 +98,7 @@ mod tests {
             &self,
             _definition: &HookDefinition,
             context: &HookContext,
-            _sandbox: Arc<dyn Sandbox>,
+            _sandbox: Arc<RunSandbox>,
             execution_context: &HookExecutionContext,
             _llm_source: &dyn fabro_auth::CredentialSource,
             _catalog: Arc<Catalog>,
@@ -129,7 +129,7 @@ mod tests {
         }
     }
 
-    async fn make_sandbox() -> Arc<dyn Sandbox> {
+    async fn make_sandbox() -> Arc<RunSandbox> {
         Arc::new(
             fabro_agent::local_sandbox(std::env::current_dir().unwrap())
                 .await
@@ -139,7 +139,7 @@ mod tests {
 
     fn make_bridge(
         hook_runner: Arc<HookRunner>,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         hook_execution_context: HookExecutionContext,
     ) -> WorkflowToolHookCallback {
         WorkflowToolHookCallback {

@@ -83,7 +83,7 @@ fn catalog_with_provider_base_url(provider: &str, base_url: &str) -> Arc<Catalog
     )
 }
 
-async fn local_env() -> Arc<dyn fabro_agent::Sandbox> {
+async fn local_env() -> Arc<fabro_agent::RunSandbox> {
     Arc::new(
         fabro_agent::local_sandbox(
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
@@ -10476,121 +10476,13 @@ async fn large_context_values_are_offloaded_to_artifact_store() {
 // Artifact sync to remote sandboxs
 // ---------------------------------------------------------------------------
 
-/// A mock sandbox where `file_exists` always returns false,
-/// simulating a remote container that doesn't have local artifact files.
-struct RemoteMockEnv {
-    working_dir:    String,
-    written:        std::sync::Mutex<Vec<(String, String)>>,
-    existing_paths: std::sync::Mutex<std::collections::HashSet<String>>,
-}
-
-impl RemoteMockEnv {
-    fn new(working_dir: &str) -> Self {
-        Self {
-            working_dir:    working_dir.to_string(),
-            written:        std::sync::Mutex::new(Vec::new()),
-            existing_paths: std::sync::Mutex::new(std::collections::HashSet::new()),
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl fabro_agent::Sandbox for RemoteMockEnv {
-    async fn read_file_bytes(&self, _path: &str) -> fabro_sandbox::Result<Vec<u8>> {
-        Err("not implemented".into())
-    }
-
-    async fn write_file(&self, path: &str, content: &str) -> fabro_sandbox::Result<()> {
-        self.written
-            .lock()
-            .unwrap()
-            .push((path.to_string(), content.to_string()));
-        self.existing_paths.lock().unwrap().insert(path.to_string());
-        Ok(())
-    }
-
-    async fn delete_file(&self, _path: &str) -> fabro_sandbox::Result<()> {
-        Err("not implemented".into())
-    }
-
-    async fn file_exists(&self, path: &str) -> fabro_sandbox::Result<bool> {
-        Ok(self.existing_paths.lock().unwrap().contains(path))
-    }
-
-    fn runtime_directory(&self) -> Option<&str> {
-        Some("/tmp/fabro/runtime")
-    }
-
-    async fn list_directory(
-        &self,
-        _path: &str,
-        _depth: Option<usize>,
-    ) -> fabro_sandbox::Result<Vec<fabro_agent::DirEntry>> {
-        Err("not implemented".into())
-    }
-
-    async fn exec_command(
-        &self,
-        _command: &str,
-        _timeout_ms: u64,
-        _working_dir: Option<&str>,
-        _env_vars: Option<&std::collections::HashMap<String, String>>,
-        _cancel_token: Option<tokio_util::sync::CancellationToken>,
-    ) -> fabro_sandbox::Result<fabro_agent::ExecResult> {
-        Err("not implemented".into())
-    }
-
-    async fn grep(
-        &self,
-        _pattern: &str,
-        _path: &str,
-        _options: &fabro_agent::GrepOptions,
-    ) -> fabro_sandbox::Result<Vec<String>> {
-        Err("not implemented".into())
-    }
-
-    async fn glob(
-        &self,
-        _pattern: &str,
-        _path: Option<&str>,
-    ) -> fabro_sandbox::Result<Vec<String>> {
-        Err("not implemented".into())
-    }
-
-    async fn initialize(&self) -> fabro_sandbox::Result<()> {
-        Ok(())
-    }
-
-    async fn cleanup(&self) -> fabro_sandbox::Result<()> {
-        Ok(())
-    }
-
-    async fn download_file_to_local(
-        &self,
-        _: &str,
-        _: &std::path::Path,
-    ) -> fabro_sandbox::Result<()> {
-        Err("not implemented".into())
-    }
-
-    async fn upload_file_from_local(
-        &self,
-        _: &std::path::Path,
-        _: &str,
-    ) -> fabro_sandbox::Result<()> {
-        Err("not implemented".into())
-    }
-
-    fn working_directory(&self) -> &str {
-        &self.working_dir
-    }
-
-    fn platform(&self) -> &str {
-        "linux"
-    }
-
-    fn os_version(&self) -> String {
-        "Linux 5.15".to_string()
+/// A remote sandbox: the engine's run directory does not exist inside it,
+/// and it offers a runtime directory outside the checkout.
+fn remote_mock_env() -> fabro_sandbox::test_support::MockSandbox {
+    fabro_sandbox::test_support::MockSandbox {
+        working_dir: "/sandbox",
+        runtime_dir: Some("/tmp/fabro/runtime"),
+        ..fabro_sandbox::test_support::MockSandbox::linux()
     }
 }
 
@@ -10598,7 +10490,7 @@ impl fabro_agent::Sandbox for RemoteMockEnv {
 async fn artifact_pointers_rewritten_for_remote_sandbox() {
     // Pipeline: start -> big_output -> exit
     // big_output uses LargeOutputHandler which returns a >100KB context_update.
-    // RemoteMockEnv simulates a container where local files don't exist.
+    // The remote sandbox has none of the run directory's files.
     let mut graph = make_graph_with_start_exit("ArtifactSync");
     graph.attrs.insert(
         "goal".to_string(),
@@ -10620,8 +10512,8 @@ async fn artifact_pointers_rewritten_for_remote_sandbox() {
     registry.register("start", Box::new(StartHandler));
     registry.register("exit", Box::new(ExitHandler));
 
-    let remote_env = Arc::new(RemoteMockEnv::new("/sandbox"));
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), remote_env.clone());
+    let remote_env = remote_mock_env();
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), remote_env.sandbox());
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -10661,7 +10553,7 @@ async fn artifact_pointers_rewritten_for_remote_sandbox() {
         "offloaded value should round-trip through the run store"
     );
 
-    let written = remote_env.written.lock().unwrap();
+    let written = remote_env.written_files();
     assert!(
         written.is_empty(),
         "blob materialization should not happen until a downstream execution needs it"
@@ -10790,8 +10682,8 @@ async fn downstream_remote_execution_resolves_response_blob_refs_as_text() {
         }),
     );
 
-    let remote_env = Arc::new(RemoteMockEnv::new("/sandbox"));
-    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), remote_env.clone());
+    let remote_env = remote_mock_env();
+    let engine = WorkflowRunner::new(registry, Arc::new(Emitter::default()), remote_env.sandbox());
     let run_options = RunOptions {
         settings:         WorkflowSettings::default(),
         run_dir:          dir.path().to_path_buf(),
@@ -10818,7 +10710,7 @@ async fn downstream_remote_execution_resolves_response_blob_refs_as_text() {
     // directory, but nowhere else.
     let captured_value = captured.lock().unwrap().first().cloned().unwrap();
     assert_eq!(captured_value, "x".repeat(150 * 1024));
-    let written = remote_env.written.lock().unwrap();
+    let written = remote_env.written_files();
     assert!(
         !written.is_empty(),
         "prompt demotion materializes the oversized response into the sandbox"
@@ -11083,7 +10975,7 @@ async fn git_checkpoint_host_emits_events_and_diff_patch() {
     let emitter = Emitter::default();
     let events = collect_events(&emitter);
 
-    let env: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+    let env: Arc<fabro_agent::RunSandbox> = Arc::new(
         fabro_agent::local_sandbox(worktree_path.clone())
             .await
             .expect("local sandbox should be created"),
@@ -11251,7 +11143,7 @@ async fn git_checkpoint_host_skips_metadata_branch_without_writer_prereqs() {
     std::fs::write(run_dir.path().join("graph.fabro"), "digraph {}").unwrap();
     let emitter = Emitter::default();
 
-    let env: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+    let env: Arc<fabro_agent::RunSandbox> = Arc::new(
         fabro_agent::local_sandbox(worktree_path.clone())
             .await
             .expect("local sandbox should be created"),
@@ -11434,7 +11326,7 @@ async fn parallel_shared_checkout_host_e2e() {
     let emitter = Emitter::default();
     let events = collect_events(&emitter);
 
-    let env: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+    let env: Arc<fabro_agent::RunSandbox> = Arc::new(
         fabro_agent::local_sandbox(worktree_path.clone())
             .await
             .expect("local sandbox should be created"),
@@ -11692,7 +11584,7 @@ async fn git_checkpoint_host_skips_empty_diff_patch() {
     let emitter = Emitter::default();
     let _events = collect_events(&emitter);
 
-    let env: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+    let env: Arc<fabro_agent::RunSandbox> = Arc::new(
         fabro_agent::local_sandbox(worktree_path.clone())
             .await
             .expect("local sandbox should be created"),
@@ -13397,7 +13289,7 @@ async fn asset_collection_local_sandbox_success() {
     let work_dir = tempfile::tempdir().unwrap();
     let run_dir = tempfile::tempdir().unwrap();
 
-    let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+    let sandbox: Arc<fabro_agent::RunSandbox> = Arc::new(
         fabro_agent::local_sandbox(work_dir.path().to_path_buf())
             .await
             .expect("local sandbox should be created"),
@@ -13545,7 +13437,7 @@ async fn asset_collection_local_sandbox_symlink_working_directory() {
         .expect("workspace symlink should create");
     let run_dir = tempfile::tempdir().unwrap();
 
-    let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+    let sandbox: Arc<fabro_agent::RunSandbox> = Arc::new(
         fabro_agent::local_sandbox(symlink_work_dir)
             .await
             .expect("local sandbox should be created"),
@@ -13648,7 +13540,7 @@ async fn asset_collection_local_sandbox_on_failure() {
     let work_dir = tempfile::tempdir().unwrap();
     let run_dir = tempfile::tempdir().unwrap();
 
-    let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+    let sandbox: Arc<fabro_agent::RunSandbox> = Arc::new(
         fabro_agent::local_sandbox(work_dir.path().to_path_buf())
             .await
             .expect("local sandbox should be created"),
@@ -13758,7 +13650,7 @@ async fn asset_collection_docker_sandbox() {
         skip_clone: true,
         ..Default::default()
     };
-    let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+    let sandbox: Arc<fabro_agent::RunSandbox> = Arc::new(
         fabro_agent::provider_sandbox(
             fabro_agent::SandboxProviderKind::DOCKER,
             &fabro_agent::ProviderAccess::default(),

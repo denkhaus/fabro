@@ -75,7 +75,7 @@ impl Handler for PromptHandler {
             )?
             .profile_kind;
             let docs = match fabro_agent::discover_memory(
-                &*services.run.sandbox,
+                &services.run.sandbox,
                 working_dir,
                 working_dir,
                 profile_kind,

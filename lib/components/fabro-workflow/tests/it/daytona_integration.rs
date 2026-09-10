@@ -22,11 +22,10 @@ use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::sync::Arc;
 
-use fabro_agent::Sandbox;
+use fabro_agent::RunSandbox;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_sandbox::{
-    DaytonaCredentials, DriverSandbox, ProviderAccess, SandboxOptions, SandboxProviderKind,
-    provider_sandbox,
+    DaytonaCredentials, ProviderAccess, SandboxOptions, SandboxProviderKind, provider_sandbox,
 };
 use fabro_static::EnvVars;
 use fabro_store::{ArtifactKey, ArtifactStore};
@@ -206,7 +205,7 @@ fn live_daytona_credentials() -> DaytonaCredentials {
     }
 }
 
-async fn create_env() -> DriverSandbox {
+async fn create_env() -> RunSandbox {
     let creds = load_github_app_credentials();
     create_env_with_github_app(Some(creds)).await
 }
@@ -221,7 +220,7 @@ fn test_artifact_store(run_dir: &Path) -> ArtifactStore {
 
 async fn create_env_with_github_app(
     github_app: Option<fabro_github::GitHubCredentials>,
-) -> DriverSandbox {
+) -> RunSandbox {
     provider_sandbox(
         SandboxProviderKind::DAYTONA,
         &daytona_access(live_daytona_credentials()),
@@ -543,7 +542,7 @@ impl Handler for LargeOutputHandler {
 async fn daytona_pipeline_artifact_offload_and_sync() {
     let env = create_env().await;
     env.initialize().await.unwrap();
-    let env: Arc<dyn Sandbox> = Arc::new(env);
+    let env: Arc<RunSandbox> = Arc::new(env);
 
     // Pipeline: start -> big_output -> exit
     let mut graph = Graph::new("DaytonaArtifactPipeline");
@@ -659,7 +658,7 @@ impl Handler for FileWriterHandler {
 
 /// Set up git inside a Daytona sandbox for checkpoint commits.
 /// Returns (run_id, base_sha, branch_name) on success.
-async fn setup_daytona_git(sandbox: &dyn Sandbox) -> (RunId, String, String) {
+async fn setup_daytona_git(sandbox: &RunSandbox) -> (RunId, String, String) {
     // Get current HEAD as base SHA
     let sha_result = sandbox
         .exec_command("git rev-parse HEAD", 10_000, None, None, None)
@@ -697,7 +696,7 @@ async fn setup_daytona_git(sandbox: &dyn Sandbox) -> (RunId, String, String) {
 async fn daytona_git_checkpoint_remote_emits_events() {
     let env = create_env().await;
     env.initialize().await.unwrap();
-    let env: Arc<dyn Sandbox> = Arc::new(env);
+    let env: Arc<RunSandbox> = Arc::new(env);
 
     // Install git if not available (the default ubuntu:22.04 image may not have it)
     let git_check = env
@@ -723,7 +722,7 @@ async fn daytona_git_checkpoint_remote_emits_events() {
     }
 
     // Set up git in the sandbox
-    let (_run_id, base_sha, branch_name) = setup_daytona_git(&*env).await;
+    let (_run_id, base_sha, branch_name) = setup_daytona_git(&env).await;
 
     // Pipeline: start -> work -> exit
     let mut graph = Graph::new("DaytonaGitCheckpoint");
@@ -847,7 +846,7 @@ async fn daytona_git_checkpoint_remote_emits_events() {
 async fn daytona_git_checkpoint_with_shadow_branch() {
     let env = create_env().await;
     env.initialize().await.unwrap();
-    let env: Arc<dyn Sandbox> = Arc::new(env);
+    let env: Arc<RunSandbox> = Arc::new(env);
 
     // Install git if not available
     let git_check = env
@@ -873,7 +872,7 @@ async fn daytona_git_checkpoint_with_shadow_branch() {
     }
 
     // Set up git in the sandbox
-    let (run_id, base_sha, branch_name) = setup_daytona_git(&*env).await;
+    let (run_id, base_sha, branch_name) = setup_daytona_git(&env).await;
 
     // Pipeline: start -> work -> exit
     let mut graph = Graph::new("DaytonaShadowBranch");
@@ -1022,7 +1021,7 @@ impl Handler for AssetCreatorHandler {
 async fn daytona_asset_collection() {
     let env = create_env().await;
     env.initialize().await.unwrap();
-    let env: Arc<dyn Sandbox> = Arc::new(env);
+    let env: Arc<RunSandbox> = Arc::new(env);
 
     let dir = tempfile::tempdir().unwrap();
 
@@ -1280,7 +1279,7 @@ async fn daytona_git_push_run_branch_to_origin() {
     let creds = load_github_app_credentials();
     let env = create_env_with_github_app(Some(creds)).await;
     env.initialize().await.unwrap();
-    let env: Arc<dyn Sandbox> = Arc::new(env);
+    let env: Arc<RunSandbox> = Arc::new(env);
 
     // Install git if not available
     let git_check = env
@@ -1306,7 +1305,7 @@ async fn daytona_git_push_run_branch_to_origin() {
     }
 
     // Set up git in the sandbox
-    let (run_id, base_sha, branch_name) = setup_daytona_git(&*env).await;
+    let (run_id, base_sha, branch_name) = setup_daytona_git(&env).await;
 
     // Pipeline: start -> work -> exit
     let mut graph = Graph::new("DaytonaGitPush");
@@ -1797,8 +1796,6 @@ async fn daytona_computer_use_browser_screenshot() {
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"))]
 async fn daytona_playwright_mcp_sandbox_transport() {
-    use fabro_agent::Sandbox;
-
     // Create sandbox from daytona-medium (has Node.js + Chromium)
     let options = SandboxOptions {
         skip_clone: true,

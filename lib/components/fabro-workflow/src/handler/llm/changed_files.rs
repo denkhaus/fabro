@@ -1,12 +1,12 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use fabro_agent::{Sandbox, shell_quote};
+use fabro_agent::{RunSandbox, shell_quote};
 
 const DIFF_MARKER: &str = "__FABRO_CHANGED_FILES_DIFF__";
 const UNTRACKED_MARKER: &str = "__FABRO_CHANGED_FILES_UNTRACKED__";
 
-pub async fn detect_changed_files(sandbox: &Arc<dyn Sandbox>) -> Vec<String> {
+pub async fn detect_changed_files(sandbox: &Arc<RunSandbox>) -> Vec<String> {
     let mut files: Vec<String> = Vec::new();
     let command = format!(
         "printf '%s\\n' {diff}; git diff --name-only || true; \
@@ -29,7 +29,7 @@ pub async fn detect_changed_files(sandbox: &Arc<dyn Sandbox>) -> Vec<String> {
 }
 
 pub async fn files_touched_since(
-    sandbox: &Arc<dyn Sandbox>,
+    sandbox: &Arc<RunSandbox>,
     files_before: &[String],
 ) -> (Vec<String>, Option<String>) {
     let files_after = detect_changed_files(sandbox).await;

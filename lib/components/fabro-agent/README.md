@@ -9,7 +9,7 @@ The crate is organized around a central `Session` that drives an agentic loop:
 1. **User input** is appended to a conversation `History`
 2. The session builds a `Request` with system prompt, history, and tools
 3. An LLM generates a response (text and/or tool calls) via `unified-llm`
-4. Tool calls are executed through a `ToolRegistry` against a `Sandbox`
+4. Tool calls are executed through a `ToolRegistry` against a `RunSandbox`
 5. Results are recorded and the loop continues until the LLM responds with text only (natural completion), a turn limit is reached, or the session is interrupted
 
 ```
@@ -41,7 +41,7 @@ User Input
 
 - **`Session`** -- Manages the full agentic loop: LLM calls, tool execution, steering, follow-ups, interrupt handling, and event emission.
 - **`AgentProfile`** (trait) -- Defines how to build system prompts, which tools to register, and what capabilities a provider supports. Ships with `AnthropicProfile`, `OpenAiProfile`, and `GeminiProfile`.
-- **`Sandbox`** (trait) -- Abstracts filesystem, shell, grep, and glob operations. `LocalSandbox` provides a real implementation; the trait enables sandboxing and testing.
+- **`RunSandbox`** -- Filesystem, shell, grep, and glob operations over a sandbox-driver sandbox: the local filesystem through `local_sandbox`, or a Docker or Daytona provider through `provider_sandbox`. Tests script one with `fabro_sandbox::test_support::MockSandbox`.
 - **`ToolRegistry`** -- Maps tool names to definitions and async executor functions. Tools are registered per-profile.
 - **`History`** -- Ordered list of `Turn` variants (`User`, `Assistant`, `ToolResults`, `System`, `Steering`) that converts to LLM messages.
 - **`Emitter`** -- Broadcasts `SessionEvent`s (tool calls, text, errors, warnings) over a `tokio::sync::broadcast` channel for UI or logging.
@@ -63,7 +63,7 @@ pub trait AgentProfile: Send + Sync {
     fn tool_registry(&self) -> &ToolRegistry;
     fn build_system_prompt(
         &self,
-        env: &dyn Sandbox,
+        env: &RunSandbox,
         env_context: &EnvContext,
         project_docs: &[String],
         user_instructions: Option<&str>,
@@ -81,23 +81,23 @@ All profiles include the common file, shell, search, and `web_fetch` tools.
 `web_search` is included only when a Brave Search API key is supplied while
 building the profile.
 
-### `Sandbox`
+### `RunSandbox`
 
 ```rust
-pub trait Sandbox: Send + Sync {
-    async fn read_file_bytes(&self, path: &str) -> Result<Vec<u8>, String>;
-    async fn read_file_text(&self, path: &str) -> Result<String, String>;
-    async fn read_file(&self, path: &str, offset: Option<usize>, limit: Option<usize>) -> Result<String, String>; // line-numbered display
-    async fn write_file(&self, path: &str, content: &str) -> Result<(), String>;
-    async fn exec_command(&self, command: &str, timeout_ms: u64, ...) -> Result<ExecResult, String>;
-    async fn grep(&self, pattern: &str, path: &str, options: &GrepOptions) -> Result<Vec<String>, String>;
-    async fn walk_files(&self, base: &str, relative_start: &str, options: &WalkOptions) -> Result<Vec<SandboxFile>, String>;
-    async fn glob(&self, pattern: &str, path: Option<&str>) -> Result<Vec<String>, String>;
+impl RunSandbox {
+    pub async fn read_file_bytes(&self, path: &str) -> Result<Vec<u8>>;
+    pub async fn read_file_text(&self, path: &str) -> Result<String>;
+    pub async fn read_file(&self, path: &str, offset: Option<usize>, limit: Option<usize>) -> Result<String>; // line-numbered display
+    pub async fn write_file(&self, path: &str, content: &str) -> Result<()>;
+    pub async fn exec_command(&self, command: &str, timeout_ms: u64, ...) -> Result<ExecResult>;
+    pub async fn grep(&self, pattern: &str, path: &str, options: &GrepOptions) -> Result<Vec<GrepMatch>>;
+    pub async fn walk_files(&self, base: &str, relative_start: &str, options: &WalkOptions) -> Result<Vec<SandboxFile>>;
+    pub async fn glob(&self, pattern: &str, path: Option<&str>) -> Result<Vec<String>>;
     // ... plus delete_file, file_exists, list_directory, initialize, cleanup, platform info
 }
 ```
 
-`LocalSandbox` is the real implementation with env-var filtering (strips secrets), process group management, and ripgrep/grep fallback.
+`RunSandbox` is one concrete type over a [sandbox-driver](https://github.com/lithoscomputer/sandbox-driver) sandbox. Paths resolve against the run's working directory; commands run as Bash under fabro's timeout and stop policy, with credential-shaped variables filtered when the sandbox is the worker host itself.
 
 ### `SessionConfig`
 
@@ -118,7 +118,7 @@ pub struct SessionConfig {
 
 ```rust
 use agent::{
-    AnthropicProfile, LocalSandbox, Session, SessionConfig,
+    AnthropicProfile, Session, SessionConfig, local_sandbox,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -131,9 +131,7 @@ let client: Client = /* configure unified-llm client */;
 let profile = Arc::new(AnthropicProfile::new("claude-sonnet-4-20250514"));
 
 // 3. Create a sandbox
-let env = Arc::new(LocalSandbox::new(
-    PathBuf::from("/path/to/project"),
-));
+let env = Arc::new(local_sandbox(PathBuf::from("/path/to/project")).await?);
 
 // 4. Configure the session
 let config = SessionConfig {
@@ -234,6 +232,6 @@ profile.register_subagent_tools(manager, factory, 0);
 - **Context window monitoring** -- Emits `Warning` events (kind `"context_window"`) when estimated usage exceeds 80%
 - **Tool argument validation** -- Validates arguments against JSON Schema before execution
 - **Tool output truncation** -- Per-tool character and line limits with head/tail or tail-only truncation modes
-- **Environment variable filtering** -- `LocalSandbox` strips secrets (`*_API_KEY`, `*_SECRET`, `*_TOKEN`, `*_PASSWORD`, `*_CREDENTIAL`) from subprocess environments
+- **Environment variable filtering** -- the local sandbox strips secrets (`*_API_KEY`, `*_SECRET`, `*_TOKEN`, `*_PASSWORD`, `*_CREDENTIAL`) from subprocess environments
 - **Command timeouts** -- Configurable per-command with process group cleanup (SIGTERM then SIGKILL)
 - **Project doc discovery** -- Automatically discovers `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, or `.codex/instructions.md` based on provider, with a 32KB budget

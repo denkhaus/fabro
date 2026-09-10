@@ -84,6 +84,7 @@ fabro-workflow = { path = ".", features = ["test-support"] }
 fabro-api = { path = "../../foundation/fabro-api" }
 fabro-environment = { path = "../fabro-environment" }
 fabro-sandbox = { path = "../fabro-sandbox", features = ["test-support"] }
+sandbox-driver.workspace = true
 fabro-mcp = { path = "../fabro-mcp" }
 tokio = { workspace = true, features = ["test-util", "macros"] }
 object_store.workspace = true

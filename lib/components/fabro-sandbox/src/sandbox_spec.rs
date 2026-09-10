@@ -6,9 +6,9 @@ use fabro_github::GitHubCredentials;
 use fabro_types::{RunId, RunSandboxInstance, RunSandboxRuntime, SandboxProviderKind};
 
 use crate::driver::ProviderAccess;
-use crate::driver_sandbox::{LayoutSource, local_sandbox};
+use crate::driver_sandbox::{LayoutSource, RunSandbox, local_sandbox};
 use crate::options::SandboxOptions;
-use crate::{Sandbox, SandboxEventCallback, clone_source, provider_sandbox};
+use crate::{SandboxEventCallback, clone_source, provider_sandbox};
 
 /// Options for sandbox initialization and construction.
 #[derive(Clone, Debug)]
@@ -52,7 +52,7 @@ impl SandboxSpec {
     /// Build initialized sandbox metadata for persistence.
     pub fn to_run_sandbox_instance(
         &self,
-        sandbox: &dyn Sandbox,
+        sandbox: &RunSandbox,
         run_id: RunId,
     ) -> RunSandboxInstance {
         let working_directory = sandbox.working_directory().to_string();
@@ -146,7 +146,7 @@ impl SandboxSpec {
     pub async fn build(
         &self,
         event_callback: Option<SandboxEventCallback>,
-    ) -> Result<Arc<dyn Sandbox>, anyhow::Error> {
+    ) -> Result<Arc<RunSandbox>, anyhow::Error> {
         match self {
             Self::Local { working_directory } => {
                 let mut sandbox = local_sandbox(working_directory.clone())
@@ -206,9 +206,19 @@ fn runtime_layout_metadata(
 #[cfg(test)]
 mod tests {
     use fabro_types::RunId;
+    use sandbox_driver_testing::ScriptedSandbox;
 
     use super::*;
-    use crate::test_support::MockSandbox;
+
+    fn sandbox_at(working_dir: &str) -> RunSandbox {
+        RunSandbox::new(
+            SandboxProviderKind::DOCKER,
+            Arc::new(ScriptedSandbox::with_id_and_working_dir(
+                "scripted-1",
+                working_dir,
+            )),
+        )
+    }
 
     #[test]
     fn docker_run_sandbox_persists_layout_metadata_for_cloned_repo() {
@@ -223,8 +233,7 @@ mod tests {
             clone_tag:        None,
             clone_commit_sha: None,
         }));
-        let mut sandbox = MockSandbox::linux();
-        sandbox.working_dir = "/workspace/rack-test";
+        let sandbox = sandbox_at("/workspace/rack-test");
 
         let run_id: RunId = "01HY0000000000000000000000".parse().unwrap();
         let record = spec.to_run_sandbox_instance(&sandbox, run_id);
@@ -294,8 +303,7 @@ mod tests {
             clone_tag:        None,
             clone_commit_sha: None,
         }));
-        let mut sandbox = MockSandbox::linux();
-        sandbox.working_dir = "/workspace";
+        let sandbox = sandbox_at("/workspace");
 
         let run_id: RunId = "01HY0000000000000000000000".parse().unwrap();
         let record = spec.to_run_sandbox_instance(&sandbox, run_id);

@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use fabro_agent::Sandbox;
+use fabro_agent::RunSandbox;
 use fabro_auth::test_support as auth_test_support;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_hooks::HookSettings;
@@ -40,7 +40,7 @@ use crate::records::RunSpec;
 use crate::run_options::{GitCheckpointOptions, LifecycleOptions, RunOptions, SetupCommand};
 use crate::test_support::run_graph;
 
-async fn local_env() -> Arc<dyn Sandbox> {
+async fn local_env() -> Arc<RunSandbox> {
     Arc::new(
         fabro_agent::local_sandbox(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
             .await
@@ -572,7 +572,7 @@ async fn resumed_in_flight_node_starts_a_new_stage_execution() {
 async fn run_with_lifecycle(
     registry: HandlerRegistry,
     emitter: Arc<Emitter>,
-    sandbox: Arc<dyn Sandbox>,
+    sandbox: Arc<RunSandbox>,
     graph: &Graph,
     run_options: RunOptions,
     lifecycle: LifecycleOptions,
@@ -717,7 +717,7 @@ fn interview_wait_graph(stall_timeout: Duration, node_timeout: Option<Duration>)
 }
 
 struct StopsSandboxHandler {
-    sandbox: Arc<MockSandbox>,
+    sandbox: Arc<RunSandbox>,
 }
 
 #[async_trait]
@@ -896,8 +896,9 @@ async fn execute_runs_simple_workflow() {
 #[tokio::test]
 async fn execute_preserves_sandbox_activation_error_chain() {
     let dir = tempfile::tempdir().unwrap();
-    let sandbox: Arc<dyn Sandbox> =
-        Arc::new(MockSandbox::linux().with_activate_error("provider unavailable"));
+    let sandbox = MockSandbox::linux()
+        .with_activate_error("provider unavailable")
+        .sandbox();
 
     let error = run_graph(
         make_registry(),
@@ -911,7 +912,6 @@ async fn execute_preserves_sandbox_activation_error_chain() {
 
     assert_eq!(error.causes(), vec![
         "failed to activate sandbox before node start",
-        "Mock sandbox activation failed",
         "provider unavailable",
     ]);
 }
@@ -919,15 +919,15 @@ async fn execute_preserves_sandbox_activation_error_chain() {
 #[tokio::test]
 async fn execute_reactivates_sandbox_after_a_stage_can_leave_it_stopped() {
     let dir = tempfile::tempdir().unwrap();
-    let sandbox = Arc::new(MockSandbox::linux());
+    let sandbox = MockSandbox::linux();
     let mut registry = make_registry();
     registry.register(
         "start",
         Box::new(StopsSandboxHandler {
-            sandbox: Arc::clone(&sandbox),
+            sandbox: sandbox.sandbox(),
         }),
     );
-    let sandbox_for_run: Arc<dyn Sandbox> = sandbox.clone();
+    let sandbox_for_run = sandbox.sandbox();
     let mut run_options = test_run_options(dir.path(), "test-run");
     run_options
         .settings
@@ -949,7 +949,11 @@ async fn execute_reactivates_sandbox_after_a_stage_can_leave_it_stopped() {
     assert_eq!(outcome.status, StageOutcome::Succeeded);
     assert_eq!(sandbox.stop_count(), 1);
     assert!(sandbox.walk_files_was_called());
-    assert!(!sandbox.walked_while_inactive());
+    assert_eq!(
+        sandbox.start_count(),
+        1,
+        "the stopped sandbox is started again before the walk"
+    );
 }
 
 #[tokio::test]

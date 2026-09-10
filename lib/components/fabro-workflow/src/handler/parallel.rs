@@ -268,7 +268,7 @@ async fn build_branch_plan(
         artifact::demote_large_items_for_prompt(
             &mut items,
             &services.run.run_store,
-            &*services.run.sandbox,
+            &services.run.sandbox,
             run_dir,
         )
         .await;

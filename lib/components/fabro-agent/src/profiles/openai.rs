@@ -9,7 +9,7 @@ use crate::config::NativeToolOptions;
 use crate::profiles::{
     self, BaseProfile, EmbeddedPrompt, ProfileDeps, impl_base_profile_accessors,
 };
-use crate::sandbox::Sandbox;
+use crate::sandbox::RunSandbox;
 use crate::skills::Skill;
 use crate::todo_runtime::TodoRuntime;
 use crate::todo_tools::make_update_plan_tool;
@@ -65,7 +65,7 @@ impl AgentProfile for OpenAiProfile {
 
     fn build_system_prompt(
         &self,
-        env: &dyn Sandbox,
+        env: &RunSandbox,
         env_context: &EnvContext,
         memory: &[String],
         user_instructions: Option<&str>,
@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn openai_system_prompt_contains_env_context() {
         let profile = OpenAiProfile::new("o3-mini");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains("You are a coding agent powered by openai"));
         assert!(prompt.contains("<environment>"));
@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn openai_system_prompt_contains_tool_guidance() {
         let profile = OpenAiProfile::new("o3-mini");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains("read_file"));
         assert!(prompt.contains("apply_patch"));
@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn openai_system_prompt_contains_coding_best_practices() {
         let profile = OpenAiProfile::new("o3-mini");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains("clean, maintainable code"));
         assert!(prompt.contains("existing code conventions"));
@@ -156,7 +156,7 @@ mod tests {
     #[test]
     fn openai_system_prompt_matches_codex_incremental_plan_guidance() {
         let profile = OpenAiProfile::new("gpt-5.5");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains(
             "update item statuses incrementally as each item is completed rather than \
@@ -167,7 +167,7 @@ mod tests {
     #[test]
     fn openai_system_prompt_includes_memory() {
         let profile = OpenAiProfile::new("o3-mini");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let docs = vec!["# Project README".into(), "# CONTRIBUTING guide".into()];
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &docs, None, &[]);
         assert!(prompt.contains("# Project README"));
@@ -177,7 +177,7 @@ mod tests {
     #[test]
     fn openai_system_prompt_includes_user_instructions() {
         let profile = OpenAiProfile::new("o3-mini");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(
             &env,
             &EnvContext::default(),
@@ -232,7 +232,7 @@ mod tests {
     fn moonshot_provider_prompt_uses_catalog_display_name() {
         let profile =
             OpenAiProfile::new("kimi-k2.5").with_route(ProviderId::new("moonshot"), test_catalog());
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains("powered by Moonshot AI"));
         assert!(!prompt.contains("powered by OpenAI"));
@@ -258,7 +258,7 @@ mod tests {
             );
         }
 
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains("## edit_file"));
         assert!(!prompt.contains("## apply_patch"));
@@ -269,7 +269,7 @@ mod tests {
     fn zai_provider_prompt_uses_catalog_display_name() {
         let profile =
             OpenAiProfile::new("glm-4.7").with_route(ProviderId::new("zai"), test_catalog());
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains("powered by Z.ai"));
     }
@@ -278,7 +278,7 @@ mod tests {
     fn minimax_provider_prompt_uses_catalog_display_name() {
         let profile = OpenAiProfile::new("minimax-m2.5")
             .with_route(ProviderId::new("minimax"), test_catalog());
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains("powered by MiniMax"));
     }
@@ -287,7 +287,7 @@ mod tests {
     fn inception_provider_prompt_uses_catalog_display_name() {
         let profile = OpenAiProfile::new("mercury-2")
             .with_route(ProviderId::new("inception"), test_catalog());
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains("powered by Inception"));
     }

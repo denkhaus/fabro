@@ -4,8 +4,8 @@ mod daytona_streaming_live {
 
     use anyhow::{Context, Result, ensure};
     use fabro_sandbox::{
-        CommandOutputCallback, DaytonaCredentials, DriverSandbox, ExecStreamingResult,
-        ProviderAccess, Sandbox, SandboxOptions, SandboxProviderKind, provider_sandbox,
+        CommandOutputCallback, DaytonaCredentials, ExecStreamingResult, ProviderAccess, RunSandbox,
+        SandboxOptions, SandboxProviderKind, provider_sandbox,
     };
     use fabro_static::EnvVars;
     use fabro_types::{CommandOutputStream, CommandTermination};
@@ -327,7 +327,7 @@ mod daytona_streaming_live {
         Ok(())
     }
 
-    async fn run_glob_checks(sandbox: &DriverSandbox) -> Result<()> {
+    async fn run_glob_checks(sandbox: &RunSandbox) -> Result<()> {
         // Build a skills tree with a SKILL.md at the search root, one level
         // below it, and two levels below it.
         let seed = sandbox
@@ -372,7 +372,7 @@ mod daytona_streaming_live {
         Ok(())
     }
 
-    async fn run_smoke(sandbox: Arc<DriverSandbox>) -> Result<()> {
+    async fn run_smoke(sandbox: Arc<RunSandbox>) -> Result<()> {
         let chunks = Arc::new(Mutex::new(Vec::new()));
         let cancel_token = CancellationToken::new();
         let callback = capture_callback(Arc::clone(&chunks));
@@ -498,7 +498,7 @@ mod daytona_streaming_live {
     }
 
     async fn run_captured(
-        sandbox: &DriverSandbox,
+        sandbox: &RunSandbox,
         command: &str,
         timeout_ms: u64,
         cancel_token: Option<CancellationToken>,
@@ -507,7 +507,7 @@ mod daytona_streaming_live {
     }
 
     async fn run_captured_with_stdin(
-        sandbox: &DriverSandbox,
+        sandbox: &RunSandbox,
         command: &str,
         timeout_ms: u64,
         cancel_token: Option<CancellationToken>,

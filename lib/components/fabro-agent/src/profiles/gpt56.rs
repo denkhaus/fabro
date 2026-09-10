@@ -27,7 +27,7 @@ use crate::native_tool::{NativeTool, ToolVocabulary};
 use crate::profiles::{
     self, BaseProfile, EmbeddedPrompt, FileEditToolKind, ProfileDeps, impl_base_profile_accessors,
 };
-use crate::sandbox::Sandbox;
+use crate::sandbox::RunSandbox;
 use crate::skills::Skill;
 use crate::todo_runtime::TodoRuntime;
 use crate::todo_tools::make_update_plan_tool;
@@ -185,7 +185,7 @@ impl AgentProfile for Gpt56Profile {
 
     fn build_system_prompt(
         &self,
-        env: &dyn Sandbox,
+        env: &RunSandbox,
         env_context: &EnvContext,
         memory: &[String],
         user_instructions: Option<&str>,
@@ -240,7 +240,7 @@ mod tests {
     }
 
     fn prompt(profile: &Gpt56Profile) -> String {
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[])
     }
 
@@ -405,7 +405,7 @@ mod tests {
     #[test]
     fn prompt_contains_env_context_and_memory_and_user_instructions() {
         let profile = Gpt56Profile::new("gpt-5.6-sol");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let docs = vec!["# Project README".to_string()];
         let rendered = profile.build_system_prompt(
             &env,

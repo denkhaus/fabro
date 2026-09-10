@@ -1,4 +1,4 @@
-use fabro_agent::Sandbox;
+use fabro_agent::RunSandbox;
 use fabro_sandbox::shell_quote;
 use fabro_util::error::SharedError;
 use tokio::sync::OnceCell;
@@ -37,7 +37,7 @@ impl SandboxGitRuntime {
 
     pub(crate) async fn ensure_git_available(
         &self,
-        sandbox: &dyn Sandbox,
+        sandbox: &RunSandbox,
     ) -> Result<(), SharedError> {
         self.probe
             .get_or_init(|| async { probe_sandbox_git(sandbox).await })
@@ -52,7 +52,7 @@ impl Default for SandboxGitRuntime {
     }
 }
 
-async fn probe_sandbox_git(sandbox: &dyn Sandbox) -> Result<(), SharedError> {
+async fn probe_sandbox_git(sandbox: &RunSandbox) -> Result<(), SharedError> {
     let temp = sandbox_temp_dir(sandbox, "probe", "git");
     let index = format!("{temp}/index");
     let probe_file = format!("{temp}/probe.txt");
@@ -74,13 +74,13 @@ async fn probe_sandbox_git(sandbox: &dyn Sandbox) -> Result<(), SharedError> {
     exec_ok(sandbox, &command).await
 }
 
-fn sandbox_temp_dir(sandbox: &dyn Sandbox, run_id: &str, label: &str) -> String {
+fn sandbox_temp_dir(sandbox: &RunSandbox, run_id: &str, label: &str) -> String {
     let cwd = sandbox.working_directory().trim_end_matches('/');
     let id = uuid::Uuid::new_v4();
     format!("{cwd}/.fabro/tmp/{label}-{run_id}-{id}")
 }
 
-async fn exec_ok(sandbox: &dyn Sandbox, command: &str) -> Result<(), SharedError> {
+async fn exec_ok(sandbox: &RunSandbox, command: &str) -> Result<(), SharedError> {
     let result = sandbox
         .exec_command(command, 30_000, None, None, None)
         .await

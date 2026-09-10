@@ -15,7 +15,7 @@
 )]
 
 use fabro_sandbox::reconnect::reconnect;
-use fabro_sandbox::{ProviderAccess, Sandbox as _, SandboxOptions, provider_sandbox};
+use fabro_sandbox::{ProviderAccess, SandboxOptions, provider_sandbox};
 use fabro_types::{RunSandboxInstance, RunSandboxRuntime, SandboxProviderKind};
 
 const DOCKER_CP_IMAGE: &str = "buildpack-deps:noble";

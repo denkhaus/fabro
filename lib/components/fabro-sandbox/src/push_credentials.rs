@@ -256,7 +256,7 @@ impl CredentialLease<'_> {
     /// propagated: the push proceeds with the last embedded token.
     pub(crate) async fn ensure_embedded(
         &mut self,
-        sandbox: &dyn crate::Sandbox,
+        sandbox: &crate::RunSandbox,
         origin_url: &str,
         force: bool,
     ) -> crate::Result<EnsureOutcome> {
@@ -345,7 +345,7 @@ impl CredentialLease<'_> {
 /// Rewrite `origin` with the token embedded, through the sandbox's uniform
 /// exec surface.
 async fn set_url_via_exec(
-    sandbox: &dyn crate::Sandbox,
+    sandbox: &crate::RunSandbox,
     origin_url: &str,
     token: &ResolvedToken,
 ) -> crate::Result<()> {
@@ -360,7 +360,7 @@ async fn set_url_via_exec(
 }
 
 pub(crate) async fn set_auth_url_via_exec(
-    sandbox: &dyn crate::Sandbox,
+    sandbox: &crate::RunSandbox,
     auth_url: DisplaySafeUrl,
 ) -> crate::Result<()> {
     let command = format!(

@@ -4,12 +4,12 @@ edition.workspace = true
 version.workspace = true
 publish = false
 license.workspace = true
-description = "Sandbox trait and implementations for Fabro agent execution environments"
+description = "Fabro run sandboxes over the sandbox driver: local, Docker, and Daytona"
 
 [features]
 default = ["local"]
 local = []
-test-support = []
+test-support = ["dep:sandbox-driver-testing"]
 
 [lib]
 doctest = false
@@ -25,6 +25,7 @@ sandbox-driver-docker.workspace = true
 sandbox-driver-docker-config.workspace = true
 sandbox-driver-daytona.workspace = true
 sandbox-driver-daytona-config.workspace = true
+sandbox-driver-testing = { workspace = true, optional = true }
 anyhow.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
@@ -54,6 +55,7 @@ chrono = { workspace = true }
 
 [dev-dependencies]
 fabro-github = { path = "../fabro-github", features = ["test-support"] }
+sandbox-driver-testing.workspace = true
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"
 serde_json.workspace = true

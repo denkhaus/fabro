@@ -1,69 +1,100 @@
+//! Test doubles for fabro's sandbox layer.
+//!
+//! [`MockSandbox`] is a configuration and a recorder over the sandbox
+//! driver's scripted double: a test writes down the files, the command
+//! answer, and the failures it wants, takes a [`RunSandbox`] from it, and
+//! reads back what the code under test ran or wrote. Nothing here fakes
+//! fabro's own logic; every call goes through the real `RunSandbox` and
+//! fabro's exec policy, down to the scripted driver.
+
 use std::collections::HashMap;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use async_trait::async_trait;
-use fabro_types::CommandTermination;
-use tokio::fs;
-use tokio::io::{DuplexStream, duplex};
-use tokio::time::sleep;
-use tokio_util::sync::CancellationToken;
+use fabro_types::{CommandTermination, SandboxProviderKind};
+use sandbox_driver::{GrepMatch, PlatformInfo, SandboxState, Termination, WalkedFile};
+pub use sandbox_driver_testing::{ScriptedExec, ScriptedSandbox, ScriptedStdioProcess};
+use tokio::io::DuplexStream;
 
-use crate::sandbox::{self, StdioProcessControl};
-use crate::{
-    DEFAULT_EXEC_OUTPUT_TAIL_BYTES, DirEntry, ExecResult, ExecStreamingRequest, GrepOptions,
-    Sandbox, SandboxEvent, SandboxEventCallback, SandboxFile, StderrCollector, StdioProcess,
-    StdioProcessHandle, StdioProcessTermination, WalkOptions,
-};
+use crate::driver_sandbox::RunSandbox;
+use crate::sandbox::{ExecResult, SandboxEventCallback, SandboxFile, StderrCollector};
 
 // --- MockSandbox ---
 
+/// What a test wants its sandbox to be, and what the code under test did
+/// with it.
+///
+/// Build it with a struct literal over [`MockSandbox::default`] (or
+/// [`MockSandbox::linux`]), then take the run sandbox with
+/// [`MockSandbox::sandbox`]. Every command answers with `exec_result`
+/// unless `exec_error` is set, in which case every command fails as a
+/// transport error. Files seed an in-memory filesystem under
+/// `working_dir`; absolute paths are kept as given.
 pub struct MockSandbox {
-    pub files:                 HashMap<String, String>,
-    pub exec_result:           ExecResult,
-    pub grep_results:          Vec<String>,
-    pub glob_results:          Vec<String>,
-    pub working_dir:           &'static str,
-    pub platform_str:          &'static str,
-    pub os_version_str:        String,
-    /// Captures (path, content) pairs from `write_file` calls.
-    pub written_files:         Mutex<Vec<(String, String)>>,
-    /// Counts calls to `write_existing_file`.
-    pub existing_file_writes:  AtomicUsize,
-    /// Captures the `timeout_ms` argument from `exec_command` calls.
-    pub captured_timeout:      Mutex<Option<u64>>,
-    /// Captures the `command` argument from `exec_command` calls (last only).
-    pub captured_command:      Mutex<Option<String>>,
-    /// Captures all `command` arguments from `exec_command` calls in order.
-    pub captured_commands:     Mutex<Vec<String>>,
-    /// Captures all `working_dir` arguments from `exec_command` calls in order.
-    pub captured_working_dirs: Mutex<Vec<Option<String>>>,
-    /// Captures the `env_vars` argument from `exec_command` calls.
-    pub captured_env_vars:     Mutex<Option<HashMap<String, String>>>,
-    /// Captures the bytes passed to a streaming command's standard input.
-    pub captured_stdin:        Mutex<Option<Vec<u8>>>,
-    pub active:                AtomicBool,
-    pub activate_error:        Option<String>,
-    pub activate_calls:        Mutex<u32>,
-    pub start_calls:           Mutex<u32>,
-    pub stop_calls:            Mutex<u32>,
-    pub delete_calls:          Mutex<u32>,
-    pub event_callback:        Option<SandboxEventCallback>,
-    pub stdio_process_error:   Option<String>,
-    pub stdio_process:         Mutex<Option<MockStdioProcess>>,
-    /// Fails `exec_command` and `exec_command_streaming` before any process
-    /// runs, so callers see a transport error rather than an `ExecResult`.
-    pub exec_error:            Option<String>,
-    /// Files returned by `walk_files`, before traversal-root and exclusion
-    /// filtering.
-    pub walk_files:            Vec<SandboxFile>,
-    pub walk_files_error:      Option<String>,
-    pub walk_files_called:     AtomicBool,
-    pub walked_while_inactive: AtomicBool,
-    /// Reported by `exec_command_streaming`. Set to `false` to model a
-    /// provider that cannot separate stdout from stderr.
-    pub streams_separated:     bool,
+    pub files:               HashMap<String, String>,
+    pub exec_result:         ExecResult,
+    /// Fails every command before any process runs, so callers see a
+    /// transport error rather than an `ExecResult`.
+    pub exec_error:          Option<String>,
+    pub working_dir:         &'static str,
+    /// The run-scoped scratch directory the sandbox reports, outside any
+    /// checkout; `None` models a provider without one.
+    pub runtime_dir:         Option<&'static str>,
+    pub platform_str:        &'static str,
+    pub os_version_str:      String,
+    /// Fails `activate` after the sandbox is built, as a sandbox whose
+    /// Bash contract broke would.
+    pub activate_error:      Option<String>,
+    pub event_callback:      Option<SandboxEventCallback>,
+    pub stdio_process:       Option<MockStdioProcess>,
+    pub stdio_process_error: Option<String>,
+    /// Lines every grep returns, as `path:line:content`.
+    pub grep_results:        Vec<String>,
+    /// Files returned by `walk_files` instead of the seeded files, before
+    /// traversal-root and exclusion filtering.
+    pub walk_files:          Vec<SandboxFile>,
+    pub walk_files_error:    Option<String>,
+    /// Reported by streaming execution. Set to `false` to model a provider
+    /// that cannot separate stdout from stderr.
+    pub streams_separated:   bool,
+    /// The sandbox once built. Public only so `..Default::default()` works
+    /// from other crates; leave it at its default.
+    pub built:               OnceLock<Built>,
+}
+
+/// The lazily built sandbox and its scripted driver.
+pub struct Built {
+    run:    Arc<RunSandbox>,
+    driver: Arc<ScriptedSandbox>,
+}
+
+impl Default for MockSandbox {
+    fn default() -> Self {
+        Self {
+            files:               HashMap::new(),
+            exec_result:         ExecResult {
+                stdout:      "mock output".into(),
+                stderr:      String::new(),
+                exit_code:   Some(0),
+                termination: CommandTermination::Exited,
+                duration_ms: 10,
+            },
+            exec_error:          None,
+            working_dir:         "/work",
+            runtime_dir:         None,
+            platform_str:        "darwin",
+            os_version_str:      "Darwin 24.0.0".into(),
+            activate_error:      None,
+            event_callback:      None,
+            stdio_process:       None,
+            stdio_process_error: None,
+            grep_results:        Vec::new(),
+            walk_files:          Vec::new(),
+            walk_files_error:    None,
+            streams_separated:   true,
+            built:               OnceLock::new(),
+        }
+    }
 }
 
 impl MockSandbox {
@@ -72,49 +103,8 @@ impl MockSandbox {
             working_dir: "/home/test",
             platform_str: "linux",
             os_version_str: "Linux 6.1.0".into(),
-            ..Default::default()
+            ..Self::default()
         }
-    }
-
-    pub fn start_count(&self) -> u32 {
-        *self.start_calls.lock().expect("start_calls lock poisoned")
-    }
-
-    pub fn activate_count(&self) -> u32 {
-        *self
-            .activate_calls
-            .lock()
-            .expect("activate_calls lock poisoned")
-    }
-
-    pub fn stop_count(&self) -> u32 {
-        *self.stop_calls.lock().expect("stop_calls lock poisoned")
-    }
-
-    pub fn walk_files_was_called(&self) -> bool {
-        self.walk_files_called.load(Ordering::Relaxed)
-    }
-
-    pub fn walked_while_inactive(&self) -> bool {
-        self.walked_while_inactive.load(Ordering::Relaxed)
-    }
-
-    pub fn delete_count(&self) -> u32 {
-        *self
-            .delete_calls
-            .lock()
-            .expect("delete_calls lock poisoned")
-    }
-
-    pub fn existing_file_write_count(&self) -> usize {
-        self.existing_file_writes.load(Ordering::Relaxed)
-    }
-
-    pub fn set_stdio_process(&self, process: MockStdioProcess) {
-        *self
-            .stdio_process
-            .lock()
-            .expect("stdio_process lock poisoned") = Some(process);
     }
 
     #[must_use]
@@ -134,67 +124,275 @@ impl MockSandbox {
         self.activate_error = Some(error.into());
         self
     }
-}
 
-impl MockSandbox {
-    fn emit(&self, event: SandboxEvent) {
-        event.trace();
-        if let Some(ref cb) = self.event_callback {
-            cb(event);
+    /// The run sandbox this configuration describes, built once: repeated
+    /// calls return the same sandbox over the same recorder.
+    pub fn sandbox(&self) -> Arc<RunSandbox> {
+        Arc::clone(&self.built().run)
+    }
+
+    /// The scripted driver double behind [`MockSandbox::sandbox`], for
+    /// scripting beyond what the fields express.
+    pub fn driver(&self) -> Arc<ScriptedSandbox> {
+        Arc::clone(&self.built().driver)
+    }
+
+    /// Answers commands by their Bash source, ahead of the queue and
+    /// `exec_result`: a responder that returns `Some` decides the result,
+    /// `None` falls through. For tests that interleave different commands
+    /// and want each answered by what it is rather than by its position.
+    pub fn respond_with(
+        &self,
+        responder: impl Fn(&str) -> Option<ExecResult> + Send + Sync + 'static,
+    ) -> &Self {
+        self.driver().scripted_exec().respond_with(move |spec| {
+            let command = spec.args.last().map(String::as_str).unwrap_or_default();
+            responder(command).map(|result| driver_result(&result))
+        });
+        self
+    }
+
+    /// Queues the result for the next command, ahead of `exec_result`.
+    /// Results answer in the order they were pushed.
+    pub fn push_exec_result(&self, result: &ExecResult) -> &Self {
+        self.driver()
+            .scripted_exec()
+            .push_result(driver_result(result));
+        self
+    }
+
+    fn built(&self) -> &Built {
+        self.built.get_or_init(|| {
+            let driver = Arc::new(self.build_driver());
+            // An isolated provider: explicit environment passes as the
+            // caller composed it, as it does for Docker and Daytona runs.
+            let mut run = RunSandbox::new_with_platform(
+                SandboxProviderKind::DOCKER,
+                Arc::clone(&driver) as Arc<dyn sandbox_driver::Sandbox>,
+                self.platform_str,
+                self.os_version_str.clone(),
+            );
+            if let Some(callback) = &self.event_callback {
+                run.set_event_callback(Arc::clone(callback));
+            }
+            Built {
+                run: Arc::new(run),
+                driver,
+            }
+        })
+    }
+
+    fn build_driver(&self) -> ScriptedSandbox {
+        let mut driver =
+            ScriptedSandbox::with_id_and_working_dir("mock-sandbox", self.working_dir).platform(
+                PlatformInfo::new(self.platform_str, "x86_64", self.os_version_str.clone()),
+            );
+        if let Some(directory) = self.runtime_dir {
+            driver = driver.runtime_directory(directory);
         }
+        if let Some(message) = &self.activate_error {
+            // A stopped sandbox whose provider cannot start it.
+            driver = driver
+                .state(SandboxState::Stopped)
+                .start_error(message.clone());
+        }
+        for (path, content) in &self.files {
+            driver = driver.file(path, content);
+        }
+        let exec = driver.scripted_exec();
+        match &self.exec_error {
+            Some(message) => exec.fail_by_default(message.clone()),
+            None => exec.set_default(driver_result(&self.exec_result)),
+        };
+        exec.set_streams_separated(self.streams_separated);
+        if let Some(message) = &self.stdio_process_error {
+            exec.set_stdio_error(message.clone());
+        }
+        if let Some(process) = self.stdio_process.as_ref() {
+            if let Some(scripted) = process.take() {
+                exec.set_stdio_process(scripted);
+            }
+        }
+        let search = driver.scripted_search();
+        search.set_grep(
+            self.grep_results
+                .iter()
+                .map(|line| {
+                    let mut parts = line.splitn(3, ':');
+                    let path = parts.next().unwrap_or_default();
+                    let line_number = parts.next().and_then(|n| n.parse().ok()).unwrap_or(0);
+                    GrepMatch::new(path, line_number, parts.next().unwrap_or_default())
+                })
+                .collect(),
+        );
+        if let Some(message) = &self.walk_files_error {
+            search.set_walk_error(message.clone());
+        } else if !self.walk_files.is_empty() {
+            search.set_walk(
+                self.walk_files
+                    .iter()
+                    .map(|file| WalkedFile::new(file.relative_path.clone(), Some(file.size)))
+                    .collect(),
+            );
+        }
+        driver
+    }
+
+    fn recorded(&self) -> Vec<sandbox_driver::ExecSpec> {
+        self.built
+            .get()
+            .map(|built| built.driver.scripted_exec().recorded())
+            .unwrap_or_default()
+    }
+
+    /// The Bash source of every command run so far, in order.
+    pub fn captured_commands(&self) -> Vec<String> {
+        self.recorded()
+            .iter()
+            .map(|spec| spec.args.last().cloned().unwrap_or_default())
+            .collect()
+    }
+
+    /// The last command's Bash source.
+    pub fn captured_command(&self) -> Option<String> {
+        self.captured_commands().pop()
+    }
+
+    /// The last command's timeout in milliseconds.
+    pub fn captured_timeout(&self) -> Option<u64> {
+        self.recorded()
+            .last()
+            .and_then(|spec| spec.timeout)
+            .map(|timeout| u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX))
+    }
+
+    /// The timeout of every command in milliseconds, in order.
+    pub fn captured_timeouts(&self) -> Vec<u64> {
+        self.recorded()
+            .iter()
+            .filter_map(|spec| spec.timeout)
+            .map(|timeout| u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX))
+            .collect()
+    }
+
+    /// Whether each command was given the run's cancellation to stop on,
+    /// in order.
+    pub fn captured_term_stops(&self) -> Vec<bool> {
+        self.built
+            .get()
+            .map(|built| built.driver.scripted_exec().term_stops())
+            .unwrap_or_default()
+    }
+
+    /// The working directory of every command, in order.
+    pub fn captured_working_dirs(&self) -> Vec<Option<String>> {
+        self.recorded()
+            .iter()
+            .map(|spec| spec.working_dir.clone())
+            .collect()
+    }
+
+    /// The explicit variables of the last command as the caller passed them.
+    /// The exec policy's own `BASH_ENV` blank is not the caller's.
+    pub fn captured_env_vars(&self) -> Option<HashMap<String, String>> {
+        self.recorded().last().map(|spec| {
+            spec.env
+                .iter()
+                .filter(|(key, _)| key.as_str() != sandbox_driver::BASH_ENV_VAR)
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        })
+    }
+
+    /// The bytes the last streaming command was fed on standard input.
+    pub fn captured_stdin(&self) -> Option<Vec<u8>> {
+        self.built
+            .get()
+            .and_then(|built| built.driver.scripted_exec().captured_stdin().pop())
+    }
+
+    /// Every file written so far as `(path, content)`, in order.
+    pub fn written_files(&self) -> Vec<(String, String)> {
+        self.built
+            .get()
+            .map(|built| {
+                built
+                    .driver
+                    .memory_fs()
+                    .writes()
+                    .into_iter()
+                    .map(|(path, bytes)| (path, String::from_utf8_lossy(&bytes).into_owned()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Every file deleted so far by absolute path, in order.
+    pub fn deleted_files(&self) -> Vec<String> {
+        self.built
+            .get()
+            .map(|built| built.driver.memory_fs().deletes())
+            .unwrap_or_default()
+    }
+
+    /// How many times the code under test asked whether a path exists.
+    pub fn exists_calls(&self) -> usize {
+        self.built
+            .get()
+            .map_or(0, |built| built.driver.memory_fs().exists_calls())
+    }
+
+    pub fn start_count(&self) -> u32 {
+        self.built
+            .get()
+            .map_or(0, |built| built.driver.start_count())
+    }
+
+    pub fn stop_count(&self) -> u32 {
+        self.built
+            .get()
+            .map_or(0, |built| built.driver.stop_count())
+    }
+
+    pub fn delete_count(&self) -> u32 {
+        self.built
+            .get()
+            .map_or(0, |built| built.driver.delete_count())
+    }
+
+    /// How many walks the code under test ran.
+    pub fn walk_files_was_called(&self) -> bool {
+        self.built
+            .get()
+            .is_some_and(|built| built.driver.scripted_search().walk_calls() > 0)
     }
 }
 
-impl Default for MockSandbox {
-    fn default() -> Self {
-        Self {
-            files:                 HashMap::new(),
-            exec_result:           ExecResult {
-                stdout:      "mock output".into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 10,
-            },
-            grep_results:          vec![],
-            glob_results:          vec![],
-            working_dir:           "/work",
-            platform_str:          "darwin",
-            os_version_str:        "Darwin 24.0.0".into(),
-            written_files:         Mutex::new(Vec::new()),
-            existing_file_writes:  AtomicUsize::new(0),
-            captured_timeout:      Mutex::new(None),
-            captured_command:      Mutex::new(None),
-            captured_commands:     Mutex::new(Vec::new()),
-            captured_working_dirs: Mutex::new(Vec::new()),
-            captured_env_vars:     Mutex::new(None),
-            captured_stdin:        Mutex::new(None),
-            active:                AtomicBool::new(true),
-            activate_error:        None,
-            activate_calls:        Mutex::new(0),
-            start_calls:           Mutex::new(0),
-            stop_calls:            Mutex::new(0),
-            delete_calls:          Mutex::new(0),
-            event_callback:        None,
-            stdio_process_error:   None,
-            stdio_process:         Mutex::new(None),
-            exec_error:            None,
-            walk_files:            Vec::new(),
-            walk_files_error:      None,
-            walk_files_called:     AtomicBool::new(false),
-            walked_while_inactive: AtomicBool::new(false),
-            streams_separated:     true,
-        }
-    }
+/// The driver result fabro's exec policy reads back as `result`.
+fn driver_result(result: &ExecResult) -> sandbox_driver::ExecResult {
+    let termination = match result.termination {
+        CommandTermination::Exited => Termination::Exited,
+        CommandTermination::TimedOut => Termination::TimedOut,
+        CommandTermination::Cancelled => Termination::Cancelled,
+    };
+    let mut driver = sandbox_driver::ExecResult::new(
+        termination,
+        result.exit_code,
+        Duration::from_millis(result.duration_ms),
+    );
+    driver.stdout = result.stdout.clone().into_bytes();
+    driver.stderr = result.stderr.clone().into_bytes();
+    driver
 }
 
-type StdioProcessDriver =
-    Box<dyn FnOnce(DuplexStream, DuplexStream, StderrCollector) + Send + 'static>;
+// --- MockStdioProcess ---
 
+/// A stdio process a test drives, over the driver's scripted process.
+///
+/// The driver closure receives the process's end of standard input, its
+/// end of standard output, and fabro's stderr collector for the process.
 pub struct MockStdioProcess {
-    exit_code:  Option<i32>,
-    wait_delay: Duration,
-    driver:     StdioProcessDriver,
+    inner: std::sync::Mutex<Option<ScriptedStdioProcess>>,
 }
 
 impl MockStdioProcess {
@@ -202,528 +400,32 @@ impl MockStdioProcess {
         driver: impl FnOnce(DuplexStream, DuplexStream, StderrCollector) + Send + 'static,
     ) -> Self {
         Self {
-            exit_code:  Some(0),
-            wait_delay: Duration::ZERO,
-            driver:     Box::new(driver),
+            inner: std::sync::Mutex::new(Some(ScriptedStdioProcess::new(
+                move |stdin, stdout, tail| {
+                    driver(stdin, stdout, StderrCollector::from_driver_tail(tail));
+                },
+            ))),
         }
     }
 
     #[must_use]
-    pub fn with_exit_code(mut self, exit_code: Option<i32>) -> Self {
-        self.exit_code = exit_code;
-        self
-    }
-
-    #[must_use]
-    pub fn with_wait_delay(mut self, wait_delay: Duration) -> Self {
-        self.wait_delay = wait_delay;
-        self
-    }
-}
-
-struct MockStdioProcessControl {
-    exit_code:  Option<i32>,
-    wait_delay: Duration,
-}
-
-#[async_trait]
-impl StdioProcessControl for MockStdioProcessControl {
-    async fn terminate(&self) -> crate::Result<()> {
-        Ok(())
-    }
-
-    async fn wait(&self) -> crate::Result<StdioProcessTermination> {
-        if !self.wait_delay.is_zero() {
-            sleep(self.wait_delay).await;
-        }
-        Ok(StdioProcessTermination::exited(self.exit_code))
-    }
-}
-
-#[async_trait]
-impl Sandbox for MockSandbox {
-    async fn read_file_bytes(&self, path: &str) -> crate::Result<Vec<u8>> {
-        self.files
-            .get(path)
-            .map(|content| content.as_bytes().to_vec())
-            .ok_or_else(|| crate::Error::message(format!("File not found: {path}")))
-    }
-
-    async fn write_file(&self, path: &str, content: &str) -> crate::Result<()> {
-        self.written_files
-            .lock()
-            .expect("written_files lock poisoned")
-            .push((path.to_string(), content.to_string()));
-        Ok(())
-    }
-
-    async fn write_existing_file(&self, path: &str, content: &str) -> crate::Result<()> {
-        self.existing_file_writes.fetch_add(1, Ordering::Relaxed);
-        self.write_file(path, content).await
-    }
-
-    async fn delete_file(&self, _path: &str) -> crate::Result<()> {
-        Ok(())
-    }
-
-    async fn file_exists(&self, path: &str) -> crate::Result<bool> {
-        Ok(self.files.contains_key(path))
-    }
-
-    async fn list_directory(
-        &self,
-        _path: &str,
-        _depth: Option<usize>,
-    ) -> crate::Result<Vec<DirEntry>> {
-        Ok(vec![])
-    }
-
-    async fn exec_command(
-        &self,
-        command: &str,
-        timeout_ms: u64,
-        working_dir: Option<&str>,
-        env_vars: Option<&std::collections::HashMap<String, String>>,
-        _cancel_token: Option<CancellationToken>,
-    ) -> crate::Result<ExecResult> {
-        *self
-            .captured_timeout
-            .lock()
-            .expect("captured_timeout lock poisoned") = Some(timeout_ms);
-        *self
-            .captured_command
-            .lock()
-            .expect("captured_command lock poisoned") = Some(command.to_string());
-        self.captured_commands
-            .lock()
-            .expect("captured_commands lock poisoned")
-            .push(command.to_string());
-        self.captured_working_dirs
-            .lock()
-            .expect("captured_working_dirs lock poisoned")
-            .push(working_dir.map(String::from));
-        *self
-            .captured_env_vars
-            .lock()
-            .expect("captured_env_vars lock poisoned") = env_vars.cloned();
-        match &self.exec_error {
-            Some(error) => Err(crate::Error::message(error.clone())),
-            None => Ok(self.exec_result.clone()),
-        }
-    }
-
-    async fn exec_command_streaming(
-        &self,
-        request: ExecStreamingRequest<'_>,
-    ) -> crate::Result<crate::ExecStreamingResult> {
-        let ExecStreamingRequest {
-            command,
-            timeout_ms,
-            working_dir,
-            env_vars,
-            cancel_token,
-            stdin,
-            output_callback,
-            stream_output_bytes_cap,
-        } = request;
-        *self
-            .captured_stdin
-            .lock()
-            .expect("captured_stdin lock poisoned") = stdin;
-        let result = self
-            .exec_command(
-                command,
-                timeout_ms.unwrap_or(u64::MAX),
-                working_dir,
-                env_vars,
-                cancel_token,
-            )
-            .await?;
-        sandbox::replay_exec_result(
-            result,
-            self.streams_separated,
-            output_callback.as_ref(),
-            stream_output_bytes_cap,
-        )
-        .await
-    }
-
-    async fn spawn_stdio_process(
-        &self,
-        command: &str,
-        working_dir: Option<&str>,
-        env_vars: Option<&std::collections::HashMap<String, String>>,
-        _cancel_token: Option<CancellationToken>,
-    ) -> crate::Result<StdioProcess> {
-        *self
-            .captured_command
-            .lock()
-            .expect("captured_command lock poisoned") = Some(command.to_string());
-        self.captured_commands
-            .lock()
-            .expect("captured_commands lock poisoned")
-            .push(command.to_string());
-        self.captured_working_dirs
-            .lock()
-            .expect("captured_working_dirs lock poisoned")
-            .push(working_dir.map(String::from));
-        *self
-            .captured_env_vars
-            .lock()
-            .expect("captured_env_vars lock poisoned") = env_vars.cloned();
-
-        if let Some(error) = &self.stdio_process_error {
-            return Err(crate::Error::message(error.clone()));
-        }
-
-        if let Some(process) = self
-            .stdio_process
-            .lock()
-            .expect("stdio_process lock poisoned")
-            .take()
-        {
-            let (stdin, stdin_reader) = duplex(4096);
-            let (stdout_writer, stdout) = duplex(4096);
-            let stderr = StderrCollector::new(DEFAULT_EXEC_OUTPUT_TAIL_BYTES);
-            (process.driver)(stdin_reader, stdout_writer, stderr.clone());
-            return Ok(StdioProcess {
-                stdin: Box::pin(stdin),
-                stdout: Box::pin(stdout),
-                stderr,
-                handle: StdioProcessHandle::new(MockStdioProcessControl {
-                    exit_code:  process.exit_code,
-                    wait_delay: process.wait_delay,
-                }),
-            });
-        }
-
-        let (stdin, _stdin_read) = duplex(1024);
-        let (_stdout_write, stdout) = duplex(1024);
-        Ok(StdioProcess {
-            stdin:  Box::pin(stdin),
-            stdout: Box::pin(stdout),
-            stderr: StderrCollector::new(DEFAULT_EXEC_OUTPUT_TAIL_BYTES),
-            handle: StdioProcessHandle::new(MockStdioProcessControl {
-                exit_code:  Some(0),
-                wait_delay: Duration::ZERO,
-            }),
-        })
-    }
-
-    async fn grep(
-        &self,
-        _pattern: &str,
-        _path: &str,
-        _options: &GrepOptions,
-    ) -> crate::Result<Vec<String>> {
-        Ok(self.grep_results.clone())
-    }
-
-    async fn glob(&self, _pattern: &str, _path: Option<&str>) -> crate::Result<Vec<String>> {
-        Ok(self.glob_results.clone())
-    }
-
-    async fn walk_files(
-        &self,
-        _base: &str,
-        relative_start: &str,
-        options: &WalkOptions,
-    ) -> crate::Result<Vec<SandboxFile>> {
-        self.walk_files_called.store(true, Ordering::Relaxed);
-        if !self.active.load(Ordering::Relaxed) {
-            self.walked_while_inactive.store(true, Ordering::Relaxed);
-            return Err(crate::Error::message("Sandbox is stopped"));
-        }
-        if let Some(error) = &self.walk_files_error {
-            return Err(crate::Error::message(error.clone()));
-        }
-
-        Ok(self
-            .walk_files
-            .iter()
-            .filter(|file| {
-                relative_start.is_empty()
-                    || file.relative_path == relative_start
-                    || file
-                        .relative_path
-                        .strip_prefix(relative_start)
-                        .is_some_and(|suffix| suffix.starts_with('/'))
-            })
-            .filter(|file| {
-                let parent = file
-                    .relative_path
-                    .rsplit_once('/')
-                    .map_or("", |(parent, _)| parent);
-                !options.excludes_relative_path(parent)
-            })
-            .cloned()
-            .collect())
-    }
-
-    async fn download_file_to_local(
-        &self,
-        remote_path: &str,
-        local_path: &std::path::Path,
-    ) -> crate::Result<()> {
-        let content = self
-            .files
-            .get(remote_path)
-            .ok_or_else(|| crate::Error::message(format!("File not found: {remote_path}")))?;
-        if let Some(parent) = local_path.parent() {
-            fs::create_dir_all(parent)
-                .await
-                .map_err(|e| crate::Error::context("Failed to create parent dirs", e))?;
-        }
-        fs::write(local_path, content.as_bytes())
-            .await
-            .map_err(|e| {
-                crate::Error::context(format!("Failed to write {}", local_path.display()), e)
-            })?;
-        Ok(())
-    }
-
-    async fn upload_file_from_local(
-        &self,
-        local_path: &std::path::Path,
-        _remote_path: &str,
-    ) -> crate::Result<()> {
-        if !local_path.exists() {
-            return Err(crate::Error::message(format!(
-                "File not found: {}",
-                local_path.display()
-            )));
-        }
-        Ok(())
-    }
-
-    async fn initialize(&self) -> crate::Result<()> {
-        self.active.store(true, Ordering::Relaxed);
-        self.emit(SandboxEvent::Initializing {
-            provider: "mock".into(),
-        });
-        self.emit(SandboxEvent::Ready {
-            provider:    "mock".into(),
-            duration_ms: 0,
-            name:        None,
-            cpu:         None,
-            memory:      None,
-            url:         None,
-        });
-        Ok(())
-    }
-
-    async fn activate(&self) -> crate::Result<()> {
-        *self
-            .activate_calls
-            .lock()
-            .expect("activate_calls lock poisoned") += 1;
-        if let Some(error) = &self.activate_error {
-            return Err(crate::Error::context(
-                "Mock sandbox activation failed",
-                std::io::Error::other(error.clone()),
-            ));
-        }
-        self.start().await
-    }
-
-    async fn start(&self) -> crate::Result<()> {
-        *self.start_calls.lock().expect("start_calls lock poisoned") += 1;
-        self.active.store(true, Ordering::Relaxed);
-        Ok(())
-    }
-
-    async fn stop(&self) -> crate::Result<()> {
-        *self.stop_calls.lock().expect("stop_calls lock poisoned") += 1;
-        self.active.store(false, Ordering::Relaxed);
-        Ok(())
-    }
-
-    async fn delete(&self) -> crate::Result<()> {
-        *self
-            .delete_calls
-            .lock()
-            .expect("delete_calls lock poisoned") += 1;
-        Ok(())
-    }
-
-    async fn cleanup(&self) -> crate::Result<()> {
-        self.emit(SandboxEvent::CleanupStarted {
-            provider: "mock".into(),
-        });
-        self.emit(SandboxEvent::CleanupCompleted {
-            provider:    "mock".into(),
-            duration_ms: 0,
-        });
-        Ok(())
-    }
-
-    fn working_directory(&self) -> &str {
-        self.working_dir
-    }
-
-    fn platform(&self) -> &str {
-        self.platform_str
-    }
-
-    fn os_version(&self) -> String {
-        self.os_version_str.clone()
-    }
-}
-
-// --- MutableMockSandbox ---
-
-/// A mock sandbox with Mutex-protected files for tests that need
-/// write operations to be visible to subsequent reads (e.g., `apply_patch`
-/// tests).
-pub struct MutableMockSandbox {
-    pub files: Mutex<HashMap<String, String>>,
-}
-
-impl MutableMockSandbox {
-    pub fn new(files: HashMap<String, String>) -> Self {
+    pub fn with_exit_code(self, exit_code: Option<i32>) -> Self {
+        let inner = self.inner.lock().expect("stdio process").take();
         Self {
-            files: Mutex::new(files),
+            inner: std::sync::Mutex::new(inner.map(|process| process.exit_code(exit_code))),
         }
     }
-}
 
-#[async_trait]
-impl Sandbox for MutableMockSandbox {
-    async fn read_file_bytes(&self, path: &str) -> crate::Result<Vec<u8>> {
-        self.files
-            .lock()
-            .expect("files lock poisoned")
-            .get(path)
-            .map(|content| content.as_bytes().to_vec())
-            .ok_or_else(|| crate::Error::message(format!("File not found: {path}")))
-    }
-
-    async fn write_file(&self, path: &str, content: &str) -> crate::Result<()> {
-        self.files
-            .lock()
-            .expect("files lock poisoned")
-            .insert(path.to_string(), content.to_string());
-        Ok(())
-    }
-
-    async fn delete_file(&self, path: &str) -> crate::Result<()> {
-        self.files.lock().expect("files lock poisoned").remove(path);
-        Ok(())
-    }
-
-    async fn file_exists(&self, path: &str) -> crate::Result<bool> {
-        Ok(self
-            .files
-            .lock()
-            .expect("files lock poisoned")
-            .contains_key(path))
-    }
-
-    async fn list_directory(
-        &self,
-        _path: &str,
-        _depth: Option<usize>,
-    ) -> crate::Result<Vec<DirEntry>> {
-        Ok(vec![])
-    }
-
-    async fn exec_command(
-        &self,
-        _command: &str,
-        _timeout_ms: u64,
-        _working_dir: Option<&str>,
-        _env_vars: Option<&std::collections::HashMap<String, String>>,
-        _cancel_token: Option<CancellationToken>,
-    ) -> crate::Result<ExecResult> {
-        Ok(ExecResult {
-            stdout:      String::new(),
-            stderr:      String::new(),
-            exit_code:   Some(0),
-            termination: CommandTermination::Exited,
-            duration_ms: 0,
-        })
-    }
-
-    async fn grep(
-        &self,
-        pattern: &str,
-        _path: &str,
-        _options: &GrepOptions,
-    ) -> crate::Result<Vec<String>> {
-        let files = self.files.lock().expect("files lock poisoned");
-        let mut results = Vec::new();
-        for (path, content) in files.iter() {
-            for (i, line) in content.lines().enumerate() {
-                if line.contains(pattern) {
-                    results.push(format!("{}:{}:{}", path, i + 1, line));
-                }
-            }
+    #[must_use]
+    pub fn with_wait_delay(self, wait_delay: Duration) -> Self {
+        let inner = self.inner.lock().expect("stdio process").take();
+        Self {
+            inner: std::sync::Mutex::new(inner.map(|process| process.wait_delay(wait_delay))),
         }
-        Ok(results)
     }
 
-    async fn glob(&self, _pattern: &str, _path: Option<&str>) -> crate::Result<Vec<String>> {
-        Ok(vec![])
-    }
-
-    async fn download_file_to_local(
-        &self,
-        remote_path: &str,
-        local_path: &std::path::Path,
-    ) -> crate::Result<()> {
-        let content = self
-            .files
-            .lock()
-            .expect("files lock poisoned")
-            .get(remote_path)
-            .cloned()
-            .ok_or_else(|| crate::Error::message(format!("File not found: {remote_path}")))?;
-        if let Some(parent) = local_path.parent() {
-            fs::create_dir_all(parent)
-                .await
-                .map_err(|e| crate::Error::context("Failed to create parent dirs", e))?;
-        }
-        fs::write(local_path, content.as_bytes())
-            .await
-            .map_err(|e| {
-                crate::Error::context(format!("Failed to write {}", local_path.display()), e)
-            })?;
-        Ok(())
-    }
-
-    async fn upload_file_from_local(
-        &self,
-        local_path: &std::path::Path,
-        remote_path: &str,
-    ) -> crate::Result<()> {
-        let content = fs::read_to_string(local_path).await.map_err(|e| {
-            crate::Error::context(format!("Failed to read {}", local_path.display()), e)
-        })?;
-        self.files
-            .lock()
-            .expect("files lock poisoned")
-            .insert(remote_path.to_string(), content);
-        Ok(())
-    }
-
-    async fn initialize(&self) -> crate::Result<()> {
-        Ok(())
-    }
-
-    async fn cleanup(&self) -> crate::Result<()> {
-        Ok(())
-    }
-
-    fn working_directory(&self) -> &'static str {
-        "/work"
-    }
-
-    fn platform(&self) -> &'static str {
-        "linux"
-    }
-
-    fn os_version(&self) -> String {
-        "Linux 6.1.0".into()
+    fn take(&self) -> Option<ScriptedStdioProcess> {
+        self.inner.lock().expect("stdio process").take()
     }
 }
 

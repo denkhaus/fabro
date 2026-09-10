@@ -4,17 +4,14 @@ use anyhow::{Context, Result};
 use fabro_types::{BundledProvider, RunId, RunSandboxInstance};
 
 use crate::driver::ProviderAccess;
-use crate::driver_sandbox::{DriverSandbox, local_sandbox};
+use crate::driver_sandbox::{RunSandbox, local_sandbox};
 use crate::{SandboxEventCallback, provider_sandbox};
 
 /// Reconnect to a sandbox from a saved record.
 ///
 /// `access` carries the provider settings and vault credentials the record's
 /// provider needs; the process environment is never consulted.
-pub async fn reconnect(
-    record: &RunSandboxInstance,
-    access: &ProviderAccess,
-) -> Result<Box<dyn crate::Sandbox>> {
+pub async fn reconnect(record: &RunSandboxInstance, access: &ProviderAccess) -> Result<RunSandbox> {
     reconnect_for_run(record, access, None).await
 }
 
@@ -22,7 +19,7 @@ pub async fn reconnect_for_run(
     record: &RunSandboxInstance,
     access: &ProviderAccess,
     run_id: Option<RunId>,
-) -> Result<Box<dyn crate::Sandbox>> {
+) -> Result<RunSandbox> {
     reconnect_for_run_with_callback(record, access, run_id, None).await
 }
 
@@ -31,9 +28,8 @@ pub async fn reconnect_for_run_with_callback(
     access: &ProviderAccess,
     run_id: Option<RunId>,
     event_callback: Option<SandboxEventCallback>,
-) -> Result<Box<dyn crate::Sandbox>> {
-    let sandbox = reconnect_driver_for_run(record, access, run_id, event_callback).await?;
-    Ok(Box::new(sandbox))
+) -> Result<RunSandbox> {
+    reconnect_driver_for_run(record, access, run_id, event_callback).await
 }
 
 /// Reconnects as the driver-backed sandbox type, for callers that need a
@@ -44,7 +40,7 @@ pub async fn reconnect_driver_for_run(
     access: &ProviderAccess,
     run_id: Option<RunId>,
     event_callback: Option<SandboxEventCallback>,
-) -> Result<DriverSandbox> {
+) -> Result<RunSandbox> {
     let runtime = &record.runtime;
     // A local sandbox is its working directory: rebuilding the handle over
     // that directory is the reconnect. The per-process Host registry holds

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use fabro_agent::Sandbox;
+use fabro_agent::RunSandbox;
 use fabro_checkpoint::trailer as trailerlink;
 use fabro_checkpoint::trailer::Trailer;
 use fabro_sandbox::shell_quote;
@@ -49,7 +49,7 @@ pub(crate) fn exec_err(label: &str, r: fabro_sandbox::ExecResult) -> GitCommandE
     reason = "Checkpointing needs explicit run metadata, checkpoint settings, and author inputs."
 )]
 pub async fn git_checkpoint(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     run_id: &str,
     node_id: &str,
     status: &str,
@@ -161,7 +161,7 @@ pub async fn git_checkpoint(
 #[tracing::instrument(name = "git_op", skip_all, fields(op = "checkpoint-commit"))]
 pub(crate) async fn checked_git_checkpoint(
     runtime: &SandboxGitRuntime,
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     run_id: &str,
     node_id: &str,
     status: &str,
@@ -189,7 +189,7 @@ pub(crate) async fn checked_git_checkpoint(
 
 /// Run a git diff via the sandbox (30 s default timeout).
 pub(crate) async fn git_diff(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     base: &str,
 ) -> std::result::Result<String, GitCommandError> {
     git_diff_with_timeout(sandbox, base, 30_000).await
@@ -202,7 +202,7 @@ pub(crate) async fn git_diff(
 /// pathological workspace (FS locks, corrupted index) doesn't stall terminal
 /// event emission downstream (Slack notifier, SSE, CI hooks).
 pub(crate) async fn git_diff_with_timeout(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     base: &str,
     timeout_ms: u64,
 ) -> std::result::Result<String, GitCommandError> {
@@ -352,7 +352,7 @@ pub struct BlobMeta {
 /// The `--numstat` side-call classifies text vs binary so callers can skip
 /// binary contents without ever invoking `git cat-file --batch` on them.
 pub async fn list_changed_files_raw(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     base_sha: &str,
     to_sha: &str,
 ) -> std::result::Result<Vec<RawDiffEntry>, DiffError> {
@@ -555,7 +555,7 @@ pub fn summarize_diff_numstat(numstat: &DiffNumstat) -> DiffSummary {
 /// text-file `+/-` totals. The single call replaces the previous binary-only
 /// helper.
 pub async fn list_diff_numstat(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     base_sha: &str,
     to_sha: &str,
 ) -> std::result::Result<DiffNumstat, DiffError> {
@@ -642,7 +642,7 @@ fn extract_new_path_from_numstat(rest: &str) -> String {
 /// The order of returned `BlobMeta` entries matches the input `shas` order.
 /// SHAs reported as `missing` by git yield `BlobMeta { size: None, .. }`.
 pub async fn stream_blob_metadata(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     shas: &[String],
 ) -> std::result::Result<Vec<BlobMeta>, DiffError> {
     if shas.is_empty() {
@@ -708,7 +708,7 @@ pub async fn stream_blob_metadata(
 /// [`list_diff_numstat`] — `--batch` output stream is text-oriented and
 /// non-UTF-8 bytes are lossy through the sandbox `String` channel.
 pub async fn stream_blobs(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     shas: &[String],
     size_cap_bytes: u64,
 ) -> std::result::Result<Vec<Option<String>>, DiffError> {
@@ -812,173 +812,19 @@ mod tests {
         reason = "These unit tests use the real git CLI to construct sandbox-git fixture repositories and sync-write fixtures to disk."
     )]
 
-    use std::collections::VecDeque;
-    use std::sync::Mutex;
-
-    use async_trait::async_trait;
-    use fabro_agent::{DirEntry, ExecResult, GrepOptions};
+    use fabro_agent::ExecResult;
+    use fabro_sandbox::test_support::MockSandbox;
     use fabro_types::CommandTermination;
-    use tokio_util::sync::CancellationToken;
 
     use super::*;
 
-    struct ScriptedSandbox {
-        exec_results: Mutex<VecDeque<ExecResult>>,
-        commands:     Mutex<Vec<String>>,
-        timeouts:     Mutex<Vec<u64>>,
-        write_paths:  Mutex<Vec<String>>,
-        delete_paths: Mutex<Vec<String>>,
-    }
-
-    impl ScriptedSandbox {
-        fn new(exec_results: Vec<ExecResult>) -> Self {
-            Self {
-                exec_results: Mutex::new(exec_results.into()),
-                commands:     Mutex::new(Vec::new()),
-                timeouts:     Mutex::new(Vec::new()),
-                write_paths:  Mutex::new(Vec::new()),
-                delete_paths: Mutex::new(Vec::new()),
-            }
+    /// A sandbox answering commands from `exec_results`, in order.
+    fn scripted(exec_results: &[ExecResult]) -> MockSandbox {
+        let sandbox = MockSandbox::default();
+        for result in exec_results {
+            sandbox.push_exec_result(result);
         }
-
-        fn commands(&self) -> Vec<String> {
-            self.commands
-                .lock()
-                .expect("commands lock poisoned")
-                .clone()
-        }
-
-        fn timeouts(&self) -> Vec<u64> {
-            self.timeouts
-                .lock()
-                .expect("timeouts lock poisoned")
-                .clone()
-        }
-
-        fn write_paths(&self) -> Vec<String> {
-            self.write_paths
-                .lock()
-                .expect("write_paths lock poisoned")
-                .clone()
-        }
-
-        fn delete_paths(&self) -> Vec<String> {
-            self.delete_paths
-                .lock()
-                .expect("delete_paths lock poisoned")
-                .clone()
-        }
-    }
-
-    #[async_trait]
-    impl Sandbox for ScriptedSandbox {
-        async fn read_file_bytes(&self, _path: &str) -> fabro_sandbox::Result<Vec<u8>> {
-            Err("read_file not implemented for ScriptedSandbox".into())
-        }
-
-        async fn write_file(&self, path: &str, _content: &str) -> fabro_sandbox::Result<()> {
-            self.write_paths
-                .lock()
-                .expect("write_paths lock poisoned")
-                .push(path.to_string());
-            Ok(())
-        }
-
-        async fn delete_file(&self, path: &str) -> fabro_sandbox::Result<()> {
-            self.delete_paths
-                .lock()
-                .expect("delete_paths lock poisoned")
-                .push(path.to_string());
-            Ok(())
-        }
-
-        async fn file_exists(&self, _path: &str) -> fabro_sandbox::Result<bool> {
-            Ok(false)
-        }
-
-        async fn list_directory(
-            &self,
-            _path: &str,
-            _depth: Option<usize>,
-        ) -> fabro_sandbox::Result<Vec<DirEntry>> {
-            Ok(Vec::new())
-        }
-
-        async fn exec_command(
-            &self,
-            command: &str,
-            timeout_ms: u64,
-            _working_dir: Option<&str>,
-            _env_vars: Option<&std::collections::HashMap<String, String>>,
-            _cancel_token: Option<CancellationToken>,
-        ) -> fabro_sandbox::Result<ExecResult> {
-            self.commands
-                .lock()
-                .expect("commands lock poisoned")
-                .push(command.to_string());
-            self.timeouts
-                .lock()
-                .expect("timeouts lock poisoned")
-                .push(timeout_ms);
-            self.exec_results
-                .lock()
-                .expect("exec_results lock poisoned")
-                .pop_front()
-                .ok_or_else(|| fabro_sandbox::Error::message("unexpected exec_command call"))
-        }
-
-        async fn grep(
-            &self,
-            _pattern: &str,
-            _path: &str,
-            _options: &GrepOptions,
-        ) -> fabro_sandbox::Result<Vec<String>> {
-            Ok(Vec::new())
-        }
-
-        async fn glob(
-            &self,
-            _pattern: &str,
-            _path: Option<&str>,
-        ) -> fabro_sandbox::Result<Vec<String>> {
-            Ok(Vec::new())
-        }
-
-        async fn download_file_to_local(
-            &self,
-            _remote_path: &str,
-            _local_path: &std::path::Path,
-        ) -> fabro_sandbox::Result<()> {
-            Ok(())
-        }
-
-        async fn upload_file_from_local(
-            &self,
-            _local_path: &std::path::Path,
-            _remote_path: &str,
-        ) -> fabro_sandbox::Result<()> {
-            Ok(())
-        }
-
-        async fn initialize(&self) -> fabro_sandbox::Result<()> {
-            Ok(())
-        }
-
-        async fn cleanup(&self) -> fabro_sandbox::Result<()> {
-            Ok(())
-        }
-
-        fn working_directory(&self) -> &str {
-            "/work"
-        }
-
-        fn platform(&self) -> &str {
-            "darwin"
-        }
-
-        fn os_version(&self) -> String {
-            "Darwin".to_string()
-        }
+        sandbox
     }
 
     fn exec_ok() -> ExecResult {
@@ -1019,9 +865,9 @@ mod tests {
 
     #[tokio::test]
     async fn git_checkpoint_reports_add_timeout() {
-        let sandbox = ScriptedSandbox::new(vec![exec_timed_out(77)]);
+        let sandbox = scripted(&[exec_timed_out(77)]);
         let err = git_checkpoint(
-            &sandbox,
+            &sandbox.sandbox(),
             "run1",
             "work",
             "success",
@@ -1042,12 +888,12 @@ mod tests {
 
     #[tokio::test]
     async fn checked_git_checkpoint_fails_before_checkpoint_when_probe_fails() {
-        let sandbox = ScriptedSandbox::new(vec![exec_failed(127, "", "git missing\n")]);
+        let sandbox = scripted(&[exec_failed(127, "", "git missing\n")]);
         let runtime = crate::sandbox_git_runtime::SandboxGitRuntime::new();
 
         let err = checked_git_checkpoint(
             &runtime,
-            &sandbox,
+            &sandbox.sandbox(),
             "run1",
             "work",
             "success",
@@ -1075,9 +921,9 @@ mod tests {
 
     #[tokio::test]
     async fn git_checkpoint_reports_commit_timeout() {
-        let sandbox = ScriptedSandbox::new(vec![exec_ok(), exec_timed_out(88)]);
+        let sandbox = scripted(&[exec_ok(), exec_timed_out(88)]);
         let err = git_checkpoint(
-            &sandbox,
+            &sandbox.sandbox(),
             "run1",
             "work",
             "success",
@@ -1094,9 +940,9 @@ mod tests {
 
     #[tokio::test]
     async fn git_checkpoint_reports_rev_parse_killed_without_output() {
-        let sandbox = ScriptedSandbox::new(vec![exec_ok(), exec_ok(), exec_failed(-1, "", "")]);
+        let sandbox = scripted(&[exec_ok(), exec_ok(), exec_failed(-1, "", "")]);
         let err = git_checkpoint(
-            &sandbox,
+            &sandbox.sandbox(),
             "run1",
             "work",
             "success",
@@ -1113,7 +959,7 @@ mod tests {
 
     #[tokio::test]
     async fn git_checkpoint_uses_unique_commit_message_paths_for_same_run_and_node() {
-        let sandbox = ScriptedSandbox::new(vec![
+        let sandbox = scripted(&[
             exec_ok(),
             exec_ok(),
             exec_ok(),
@@ -1124,7 +970,7 @@ mod tests {
         let author = crate::git::GitAuthor::default();
 
         let first = git_checkpoint(
-            &sandbox,
+            &sandbox.sandbox(),
             "run1",
             "work",
             "success",
@@ -1135,7 +981,7 @@ mod tests {
         )
         .await;
         let second = git_checkpoint(
-            &sandbox,
+            &sandbox.sandbox(),
             "run1",
             "work",
             "success",
@@ -1153,7 +999,11 @@ mod tests {
             second.err()
         );
 
-        let write_paths = sandbox.write_paths();
+        let write_paths: Vec<String> = sandbox
+            .written_files()
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect();
         assert_eq!(write_paths.len(), 2);
         assert!(
             write_paths
@@ -1163,10 +1013,10 @@ mod tests {
         );
         assert_ne!(write_paths[0], write_paths[1]);
 
-        let delete_paths = sandbox.delete_paths();
+        let delete_paths = sandbox.deleted_files();
         assert_eq!(delete_paths, write_paths);
 
-        let commands = sandbox.commands();
+        let commands = sandbox.captured_commands();
         let commit_commands = commands
             .iter()
             .filter(|command| command.contains(" commit "))
@@ -1182,13 +1032,13 @@ mod tests {
 
     #[tokio::test]
     async fn git_checkpoint_uses_configured_timeout_for_add_and_commit() {
-        let sandbox = ScriptedSandbox::new(vec![exec_ok(), exec_ok(), exec_ok()]);
+        let sandbox = scripted(&[exec_ok(), exec_ok(), exec_ok()]);
         let checkpoint = RunCheckpointSettings {
             commit_timeout_ms: 600_000,
             ..RunCheckpointSettings::default()
         };
         git_checkpoint(
-            &sandbox,
+            &sandbox.sandbox(),
             "run1",
             "work",
             "success",
@@ -1200,13 +1050,13 @@ mod tests {
         .await
         .expect("checkpoint should succeed");
 
-        assert_eq!(sandbox.timeouts(), vec![600_000, 600_000, 10_000]);
+        assert_eq!(sandbox.captured_timeouts(), vec![600_000, 600_000, 10_000]);
     }
 
     #[tokio::test]
     async fn git_diff_reports_timeout() {
-        let sandbox = ScriptedSandbox::new(vec![exec_timed_out(99)]);
-        let err = git_diff_with_timeout(&sandbox, "HEAD~1", 99)
+        let sandbox = scripted(&[exec_timed_out(99)]);
+        let err = git_diff_with_timeout(&sandbox.sandbox(), "HEAD~1", 99)
             .await
             .unwrap_err();
 
@@ -1215,8 +1065,8 @@ mod tests {
 
     #[tokio::test]
     async fn git_diff_reports_failure_detail() {
-        let sandbox = ScriptedSandbox::new(vec![exec_failed(128, "", "fatal: bad revision\n")]);
-        let err = git_diff_with_timeout(&sandbox, "bad-base", 100)
+        let sandbox = scripted(&[exec_failed(128, "", "fatal: bad revision\n")]);
+        let err = git_diff_with_timeout(&sandbox.sandbox(), "bad-base", 100)
             .await
             .unwrap_err();
 
@@ -1230,13 +1080,13 @@ mod tests {
     #[tokio::test]
     async fn git_checkpoint_appends_no_verify_when_skip_hooks_enabled() {
         // add, commit, rev-parse
-        let sandbox = ScriptedSandbox::new(vec![exec_ok(), exec_ok(), exec_ok()]);
+        let sandbox = scripted(&[exec_ok(), exec_ok(), exec_ok()]);
         let checkpoint = RunCheckpointSettings {
             skip_git_hooks: true,
             ..RunCheckpointSettings::default()
         };
         git_checkpoint(
-            &sandbox,
+            &sandbox.sandbox(),
             "run1",
             "work",
             "success",
@@ -1248,7 +1098,7 @@ mod tests {
         .await
         .expect("checkpoint should succeed");
 
-        let commands = sandbox.commands();
+        let commands = sandbox.captured_commands();
         let commit_cmd = commands
             .iter()
             .find(|c| c.contains(" commit "))
@@ -1261,9 +1111,9 @@ mod tests {
 
     #[tokio::test]
     async fn git_checkpoint_omits_no_verify_when_skip_hooks_disabled() {
-        let sandbox = ScriptedSandbox::new(vec![exec_ok(), exec_ok(), exec_ok()]);
+        let sandbox = scripted(&[exec_ok(), exec_ok(), exec_ok()]);
         git_checkpoint(
-            &sandbox,
+            &sandbox.sandbox(),
             "run1",
             "work",
             "success",
@@ -1275,7 +1125,7 @@ mod tests {
         .await
         .expect("checkpoint should succeed");
 
-        let commands = sandbox.commands();
+        let commands = sandbox.captured_commands();
         let commit_cmd = commands
             .iter()
             .find(|c| c.contains(" commit "))

@@ -16,7 +16,7 @@ use fabro_types::{BundledProvider, RunId, SandboxProviderKind};
 use sandbox_driver::{OwnedProvider, SandboxId, SandboxProvider};
 
 use crate::driver::{ProviderAccess, connect_provider};
-use crate::driver_sandbox::{DriverSandbox, LayoutSource, RepoWorkspace};
+use crate::driver_sandbox::{LayoutSource, RepoWorkspace, RunSandbox};
 use crate::options::{self, SandboxOptions};
 use crate::{daytona, docker, managed_labels};
 
@@ -38,7 +38,7 @@ pub async fn provider_sandbox(
     clone_branch: Option<String>,
     clone_tag: Option<String>,
     clone_commit_sha: Option<String>,
-) -> crate::Result<DriverSandbox> {
+) -> crate::Result<RunSandbox> {
     let workspace = RepoWorkspace::plan(
         layout_source(&kind),
         options.skip_clone,
@@ -54,7 +54,7 @@ pub async fn provider_sandbox(
     Ok(match kind.bundled() {
         Some(BundledProvider::Docker) => {
             let (spec, image) = docker::overlay(base, &options);
-            DriverSandbox::pending(kind, provider, spec, Some(image), workspace)
+            RunSandbox::pending(kind, provider, spec, Some(image), workspace)
         }
         Some(BundledProvider::Daytona) => {
             let credentials = access
@@ -68,7 +68,7 @@ pub async fn provider_sandbox(
                 options,
                 run_id,
             );
-            DriverSandbox::pending_with_plan(kind, provider, Box::new(plan), workspace)
+            RunSandbox::pending_with_plan(kind, provider, Box::new(plan), workspace)
         }
         Some(BundledProvider::Local) => {
             return Err(crate::Error::message(
@@ -78,7 +78,7 @@ pub async fn provider_sandbox(
         None => {
             let mut spec = base;
             spec.network = options::supported_network(spec.network, provider.capabilities());
-            DriverSandbox::pending(kind, provider, spec, options.image.clone(), workspace)
+            RunSandbox::pending(kind, provider, spec, options.image.clone(), workspace)
         }
     })
 }
@@ -98,7 +98,7 @@ pub async fn attach_provider_sandbox(
     working_directory: String,
     clone_origin_url: Option<String>,
     run_id: Option<RunId>,
-) -> crate::Result<DriverSandbox> {
+) -> crate::Result<RunSandbox> {
     let provider = connect(&kind, access, run_id.as_ref()).await?;
     let id = SandboxId::try_new(sandbox_id)
         .map_err(|error| crate::Error::context(format!("Invalid {kind} sandbox id"), error))?;
@@ -115,7 +115,7 @@ pub async fn attach_provider_sandbox(
         working_directory,
         clone_origin_url,
     );
-    let sandbox = DriverSandbox::attached(kind.clone(), handle, workspace);
+    let sandbox = RunSandbox::attached(kind.clone(), handle, workspace);
     if kind.bundled() == Some(BundledProvider::Daytona) {
         if let Some(snapshot) = status.source {
             sandbox.set_snapshot(snapshot);

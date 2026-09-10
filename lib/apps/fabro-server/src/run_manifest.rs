@@ -19,7 +19,7 @@ use fabro_llm::model_test::{ModelTestStatus, run_basic_model_probe};
 use fabro_model::{Catalog, ProviderId};
 use fabro_sandbox::redact::redact_auth_url;
 use fabro_sandbox::{
-    ProviderAccess, ProviderSandboxSpec, Sandbox, SandboxSpec,
+    ProviderAccess, ProviderSandboxSpec, RunSandbox, SandboxSpec,
     local_working_directory_from_environment, options_from_environment, unresolved_env,
 };
 use fabro_static::EnvVars;
@@ -972,7 +972,7 @@ async fn run_sandbox_check(
             return false;
         }
     };
-    let sandbox_result: Result<Arc<dyn Sandbox>, String> = spec.build(None).await.map_err(|err| {
+    let sandbox_result: Result<Arc<RunSandbox>, String> = spec.build(None).await.map_err(|err| {
         if *sandbox_provider == SandboxProviderKind::DAYTONA {
             format!("Daytona sandbox creation failed: {err}")
         } else {

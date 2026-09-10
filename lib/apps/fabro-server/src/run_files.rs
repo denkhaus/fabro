@@ -26,7 +26,7 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use fabro_agent::Sandbox;
+use fabro_agent::RunSandbox;
 use fabro_api::types::{
     DiffFile, DiffStats, FileDiff, FileDiffChangeKind, FileDiffTruncationReason, ListRunFilesScope,
     PaginatedRunCommitList, PaginatedRunFileList, RunCommit, RunCommitParent, RunCommitParentSha,
@@ -306,10 +306,9 @@ async fn materialize_sandbox_range_path(
     let start = Instant::now();
     let projection = load_projection(state, run_id).await?;
     let sandbox = reconnect_run_sandbox(state, run_id, &projection).await?;
-    let (resolved_to_sha, to_sha_committed_at) =
-        resolve_ref_sha_and_time(sandbox.as_ref(), to_sha).await?;
+    let (resolved_to_sha, to_sha_committed_at) = resolve_ref_sha_and_time(&sandbox, to_sha).await?;
     materialize_committed_range_sandbox_path(
-        sandbox.as_ref(),
+        &sandbox,
         None,
         from_sha,
         &resolved_to_sha,
@@ -333,8 +332,8 @@ async fn materialize_run_commits(
         .and_then(|s| s.base_sha.clone())
         .ok_or_else(|| ApiError::new(StatusCode::CONFLICT, "Run has no base SHA."))?;
     let sandbox = reconnect_run_sandbox(state, run_id, &projection).await?;
-    let (head_sha, _) = resolve_ref_sha_and_time(sandbox.as_ref(), "HEAD").await?;
-    let output = git_log_commits(sandbox.as_ref(), &base_sha, &head_sha, limit + 1).await?;
+    let (head_sha, _) = resolve_ref_sha_and_time(&sandbox, "HEAD").await?;
+    let output = git_log_commits(&sandbox, &base_sha, &head_sha, limit + 1).await?;
     let mut commits = parse_git_log_commits(&output)?;
     let truncated = commits.len() > usize::try_from(limit).unwrap_or(usize::MAX);
     commits.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
@@ -354,7 +353,7 @@ async fn materialize_run_commits(
 }
 
 async fn git_log_commits(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     base_sha: &str,
     head_sha: &str,
     limit: u64,
@@ -538,18 +537,12 @@ async fn materialize_sandbox_path(
 
     let materialized = match scope {
         ListRunFilesScope::Committed => {
-            materialize_committed_sandbox_path(
-                sandbox.as_ref(),
-                &projection,
-                &base_sha,
-                run_id,
-                start,
-            )
-            .await
+            materialize_committed_sandbox_path(&sandbox, &projection, &base_sha, run_id, start)
+                .await
         }
         ListRunFilesScope::Uncommitted => {
             materialize_working_tree_sandbox_path(
-                sandbox.as_ref(),
+                &sandbox,
                 "HEAD",
                 RunFilesMetaScope::Uncommitted,
                 run_id,
@@ -559,7 +552,7 @@ async fn materialize_sandbox_path(
         }
         ListRunFilesScope::All => {
             materialize_working_tree_sandbox_path(
-                sandbox.as_ref(),
+                &sandbox,
                 &base_sha,
                 RunFilesMetaScope::All,
                 run_id,
@@ -589,7 +582,7 @@ fn sandbox_read_error_should_fallback(err: &ApiError) -> bool {
 }
 
 async fn materialize_committed_sandbox_path(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     projection: &fabro_store::RunProjection,
     base_sha: &str,
     run_id: &RunId,
@@ -611,7 +604,7 @@ async fn materialize_committed_sandbox_path(
 }
 
 async fn materialize_committed_range_sandbox_path(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     fallback_projection: Option<&fabro_store::RunProjection>,
     base_sha: &str,
     to_sha: &str,
@@ -733,7 +726,7 @@ async fn materialize_committed_range_sandbox_path(
 }
 
 async fn materialize_working_tree_sandbox_path(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     base_ref: &str,
     scope: RunFilesMetaScope,
     run_id: &RunId,
@@ -771,7 +764,7 @@ async fn materialize_working_tree_sandbox_path(
 }
 
 async fn sandbox_git_stdout(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     command: &str,
     op: &str,
 ) -> std::result::Result<String, ApiError> {
@@ -1201,7 +1194,7 @@ async fn reconnect_run_sandbox(
     state: &Arc<AppState>,
     run_id: &RunId,
     projection: &fabro_store::RunProjection,
-) -> std::result::Result<Box<dyn Sandbox>, ApiError> {
+) -> std::result::Result<RunSandbox, ApiError> {
     let record = projection
         .sandbox
         .as_ref()
@@ -1227,13 +1220,13 @@ async fn reconnect_run_sandbox(
 /// a space. The commit time is best-effort — if parsing fails the handler
 /// still succeeds without the freshness timestamp.
 async fn resolve_head_sha_and_time(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
 ) -> std::result::Result<(String, Option<chrono::DateTime<chrono::Utc>>), ApiError> {
     resolve_ref_sha_and_time(sandbox, "HEAD").await
 }
 
 async fn resolve_ref_sha_and_time(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     git_ref: &str,
 ) -> std::result::Result<(String, Option<chrono::DateTime<chrono::Utc>>), ApiError> {
     let ref_q = shell_quote(git_ref);
@@ -1615,7 +1608,7 @@ fn collect_blob_shas(classified: &[ClassifiedEntry]) -> Vec<String> {
 ///   but with a semantically-accurate cause.
 /// - Phase 2 transient error: 503 to the client.
 async fn fetch_blob_table(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     shas: &[String],
 ) -> std::result::Result<HashMap<String, Option<String>>, ApiError> {
     if shas.is_empty() {
@@ -1747,25 +1740,14 @@ mod tests {
         }
     }
 
-    struct ScriptedWorkingTreeSandbox {
-        commands: StdMutex<Vec<String>>,
-    }
-
-    #[async_trait::async_trait]
-    impl fabro_agent::Sandbox for ScriptedWorkingTreeSandbox {
-        async fn exec_command(
-            &self,
-            command: &str,
-            _timeout_ms: u64,
-            _working_dir: Option<&str>,
-            _env_vars: Option<&std::collections::HashMap<String, String>>,
-            _cancel_token: Option<tokio_util::sync::CancellationToken>,
-        ) -> fabro_sandbox::Result<fabro_sandbox::ExecResult> {
-            self.commands
-                .lock()
-                .expect("commands lock poisoned")
-                .push(command.to_string());
-
+    #[tokio::test]
+    async fn working_tree_scope_uses_one_git_diff_and_excludes_untracked_files() {
+        // The commit header, then the one diff; anything else is unexpected.
+        let sandbox = MockSandbox {
+            exec_error: Some("unexpected command".into()),
+            ..MockSandbox::default()
+        };
+        sandbox.respond_with(|command| {
             let stdout = if command.contains(" show -s --format=") {
                 "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 2026-05-09T17:12:40Z\n".to_string()
             } else if command.contains(" diff --patch --find-renames=50% ") {
@@ -1779,93 +1761,19 @@ diff --git a/src/live.rs b/src/live.rs
 "
                 .to_string()
             } else {
-                return Err(fabro_sandbox::Error::message(format!(
-                    "unexpected command: {command}"
-                )));
+                return None;
             };
-
-            Ok(fabro_sandbox::ExecResult {
+            Some(fabro_sandbox::ExecResult {
                 stdout,
                 stderr: String::new(),
                 exit_code: Some(0),
                 termination: CommandTermination::Exited,
                 duration_ms: 0,
             })
-        }
-
-        async fn read_file_bytes(&self, _path: &str) -> fabro_sandbox::Result<Vec<u8>> {
-            unimplemented!()
-        }
-        async fn write_file(&self, _: &str, _: &str) -> fabro_sandbox::Result<()> {
-            unimplemented!()
-        }
-        async fn delete_file(&self, _: &str) -> fabro_sandbox::Result<()> {
-            unimplemented!()
-        }
-        async fn file_exists(&self, _: &str) -> fabro_sandbox::Result<bool> {
-            unimplemented!()
-        }
-        async fn list_directory(
-            &self,
-            _path: &str,
-            _depth: Option<usize>,
-        ) -> fabro_sandbox::Result<Vec<fabro_sandbox::DirEntry>> {
-            unimplemented!()
-        }
-        async fn grep(
-            &self,
-            _pattern: &str,
-            _path: &str,
-            _options: &fabro_sandbox::GrepOptions,
-        ) -> fabro_sandbox::Result<Vec<String>> {
-            unimplemented!()
-        }
-        async fn glob(
-            &self,
-            _pattern: &str,
-            _path: Option<&str>,
-        ) -> fabro_sandbox::Result<Vec<String>> {
-            unimplemented!()
-        }
-        async fn download_file_to_local(
-            &self,
-            _remote: &str,
-            _local: &std::path::Path,
-        ) -> fabro_sandbox::Result<()> {
-            unimplemented!()
-        }
-        async fn upload_file_from_local(
-            &self,
-            _local: &std::path::Path,
-            _remote: &str,
-        ) -> fabro_sandbox::Result<()> {
-            unimplemented!()
-        }
-        async fn initialize(&self) -> fabro_sandbox::Result<()> {
-            Ok(())
-        }
-        async fn cleanup(&self) -> fabro_sandbox::Result<()> {
-            Ok(())
-        }
-        fn working_directory(&self) -> &'static str {
-            "/tmp"
-        }
-        fn platform(&self) -> &'static str {
-            "linux"
-        }
-        fn os_version(&self) -> String {
-            "test".to_string()
-        }
-    }
-
-    #[tokio::test]
-    async fn working_tree_scope_uses_one_git_diff_and_excludes_untracked_files() {
-        let sandbox = ScriptedWorkingTreeSandbox {
-            commands: StdMutex::new(Vec::new()),
-        };
+        });
 
         let body = materialize_working_tree_sandbox_path(
-            &sandbox,
+            &sandbox.sandbox(),
             "HEAD",
             RunFilesMetaScope::Uncommitted,
             &RunId::new(),
@@ -1877,7 +1785,7 @@ diff --git a/src/live.rs b/src/live.rs
         assert_eq!(body.meta.source, RunFilesMetaSource::Sandbox);
         assert_eq!(body.meta.scope, RunFilesMetaScope::Uncommitted);
         assert_eq!(body.data.len(), 1);
-        let commands = sandbox.commands.lock().expect("commands lock poisoned");
+        let commands = sandbox.captured_commands();
         assert_eq!(commands.len(), 2);
         assert!(commands[0].contains(" show -s --format="));
         assert!(commands[1].contains(" diff --patch --find-renames=50% HEAD"));
@@ -2942,100 +2850,27 @@ rename to .env.production
 
     // ── fetch_blob_table two-phase error isolation ─────────────────────
 
-    use async_trait::async_trait;
-    use fabro_sandbox::{Error as SandboxError, ExecResult, Result as SandboxResult};
+    use fabro_sandbox::ExecResult;
+    use fabro_sandbox::test_support::MockSandbox;
 
-    /// Scripted sandbox for the two-phase tests — serves different
-    /// `exec_command` responses for `cat-file --batch-check` vs
-    /// `cat-file --batch`. Every other `Sandbox` method panics because
-    /// `fetch_blob_table` only uses `exec_command`.
-    struct ScriptedBlobSandbox {
-        batch_check_result: ExecResult,
-        batch_result:       ExecResult,
-    }
-
-    #[async_trait]
-    impl fabro_agent::Sandbox for ScriptedBlobSandbox {
-        async fn exec_command(
-            &self,
-            command: &str,
-            _timeout_ms: u64,
-            _working_dir: Option<&str>,
-            _env_vars: Option<&std::collections::HashMap<String, String>>,
-            _cancel_token: Option<tokio_util::sync::CancellationToken>,
-        ) -> SandboxResult<ExecResult> {
+    /// A sandbox for the two-phase tests: it answers `cat-file --batch-check`
+    /// and `cat-file --batch` differently and fails any other command, since
+    /// `fetch_blob_table` runs nothing else.
+    fn blob_sandbox(batch_check_result: ExecResult, batch_result: ExecResult) -> MockSandbox {
+        let sandbox = MockSandbox {
+            exec_error: Some("unexpected command".into()),
+            ..MockSandbox::default()
+        };
+        sandbox.respond_with(move |command| {
             if command.contains("cat-file --batch-check") {
-                Ok(self.batch_check_result.clone())
+                Some(batch_check_result.clone())
             } else if command.contains("cat-file --batch") {
-                Ok(self.batch_result.clone())
+                Some(batch_result.clone())
             } else {
-                Err(SandboxError::message(format!(
-                    "unexpected command in ScriptedBlobSandbox: {command}"
-                )))
+                None
             }
-        }
-
-        // Unused by fetch_blob_table — panic loudly if anything tries to
-        // use this sandbox beyond cat-file.
-        async fn read_file_bytes(&self, _path: &str) -> SandboxResult<Vec<u8>> {
-            unimplemented!()
-        }
-        async fn write_file(&self, _: &str, _: &str) -> SandboxResult<()> {
-            unimplemented!()
-        }
-        async fn delete_file(&self, _: &str) -> SandboxResult<()> {
-            unimplemented!()
-        }
-        async fn file_exists(&self, _: &str) -> SandboxResult<bool> {
-            unimplemented!()
-        }
-        async fn list_directory(
-            &self,
-            _path: &str,
-            _depth: Option<usize>,
-        ) -> SandboxResult<Vec<fabro_sandbox::DirEntry>> {
-            unimplemented!()
-        }
-        async fn grep(
-            &self,
-            _pattern: &str,
-            _path: &str,
-            _options: &fabro_sandbox::GrepOptions,
-        ) -> SandboxResult<Vec<String>> {
-            unimplemented!()
-        }
-        async fn glob(&self, _pattern: &str, _path: Option<&str>) -> SandboxResult<Vec<String>> {
-            unimplemented!()
-        }
-        async fn download_file_to_local(
-            &self,
-            _remote: &str,
-            _local: &std::path::Path,
-        ) -> SandboxResult<()> {
-            unimplemented!()
-        }
-        async fn upload_file_from_local(
-            &self,
-            _local: &std::path::Path,
-            _remote: &str,
-        ) -> SandboxResult<()> {
-            unimplemented!()
-        }
-        async fn initialize(&self) -> SandboxResult<()> {
-            Ok(())
-        }
-        async fn cleanup(&self) -> SandboxResult<()> {
-            Ok(())
-        }
-        fn working_directory(&self) -> &'static str {
-            "/tmp"
-        }
-        fn platform(&self) -> &'static str {
-            "linux"
-        }
-        fn os_version(&self) -> String {
-            "test".to_string()
-        }
+        });
+        sandbox
     }
 
     fn ok_exec(stdout: &str) -> ExecResult {
@@ -3088,12 +2923,9 @@ rename to .env.production
         // Permanent error.
         let batch_stdout = format!("{} blob 999999\n<no content>\n", shas[1]);
 
-        let sandbox = ScriptedBlobSandbox {
-            batch_check_result: ok_exec(&batch_check_stdout),
-            batch_result:       ok_exec(&batch_stdout),
-        };
+        let sandbox = blob_sandbox(ok_exec(&batch_check_stdout), ok_exec(&batch_stdout));
 
-        let table = fetch_blob_table(&sandbox, &shas)
+        let table = fetch_blob_table(&sandbox.sandbox(), &shas)
             .await
             .expect("transient-only errors should never bubble up for permanent parse fail");
 
@@ -3117,7 +2949,7 @@ rename to .env.production
     #[tokio::test]
     async fn fetch_blob_table_small_sha_list_skips_phase1() {
         // With ≤ METADATA_PHASE_SHA_THRESHOLD SHAs, phase 1 is skipped. If
-        // phase-1 were to run, ScriptedBlobSandbox's batch_check_result
+        // phase-1 were to run, the batch-check result
         // would need to be valid; we make it an error that would fail the
         // whole request to prove phase 1 wasn't invoked.
         let sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
@@ -3125,14 +2957,14 @@ rename to .env.production
 
         let batch_stdout = format!("{sha} blob 5\nhello\n");
 
-        let sandbox = ScriptedBlobSandbox {
-            // If phase 1 ran this would surface as a transient 503 and
-            // break the test.
-            batch_check_result: fail_exec("phase 1 should not have been called"),
-            batch_result:       ok_exec(&batch_stdout),
-        };
+        // If phase 1 ran, its failure would surface as a transient 503 and
+        // break the test.
+        let sandbox = blob_sandbox(
+            fail_exec("phase 1 should not have been called"),
+            ok_exec(&batch_stdout),
+        );
 
-        let table = fetch_blob_table(&sandbox, &shas)
+        let table = fetch_blob_table(&sandbox.sandbox(), &shas)
             .await
             .expect("small SHA lists skip phase 1 entirely; phase-2 success is the full story");
         assert_eq!(table.get(&sha), Some(&Some("hello".to_string())));

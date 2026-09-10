@@ -8,7 +8,7 @@ use crate::config::NativeToolOptions;
 use crate::profiles::{
     self, BaseProfile, EmbeddedPrompt, ProfileDeps, impl_base_profile_accessors,
 };
-use crate::sandbox::Sandbox;
+use crate::sandbox::RunSandbox;
 use crate::skills::Skill;
 use crate::tool_registry::ToolRegistry;
 use crate::tools::{
@@ -68,7 +68,7 @@ impl AgentProfile for GeminiProfile {
 
     fn build_system_prompt(
         &self,
-        env: &dyn Sandbox,
+        env: &RunSandbox,
         env_context: &EnvContext,
         memory: &[String],
         user_instructions: Option<&str>,
@@ -118,7 +118,7 @@ mod tests {
     #[test]
     fn gemini_system_prompt_contains_identity() {
         let profile = GeminiProfile::new("gemini-2.0-flash");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains("You are Gemini CLI"));
         assert!(prompt.contains("solving bugs"));
@@ -130,7 +130,7 @@ mod tests {
     #[test]
     fn gemini_system_prompt_contains_tool_guidance() {
         let profile = GeminiProfile::new("gemini-2.0-flash");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains("read_file"));
         assert!(prompt.contains("read_many_files"));
@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn gemini_system_prompt_contains_memory_convention() {
         let profile = GeminiProfile::new("gemini-2.0-flash");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains("GEMINI.md"));
         assert!(prompt.contains("AGENTS.md"));
@@ -157,7 +157,7 @@ mod tests {
     #[test]
     fn gemini_system_prompt_contains_coding_best_practices() {
         let profile = GeminiProfile::new("gemini-2.0-flash");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains("clean, maintainable code"));
         assert!(prompt.contains("Handle errors appropriately"));
@@ -167,7 +167,7 @@ mod tests {
     #[test]
     fn gemini_system_prompt_contains_env_context() {
         let profile = GeminiProfile::new("gemini-2.0-flash");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains("<environment>"));
         assert!(prompt.contains("linux"));

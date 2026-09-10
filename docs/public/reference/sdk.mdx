@@ -27,7 +27,7 @@ tokio = { version = "1", features = ["full"] }
 
 ```rust
 use fabro_agent::{
-    AnthropicProfile, LocalSandbox, Session, SessionOptions,
+    AnthropicProfile, Session, SessionOptions, local_sandbox,
 };
 use fabro_auth::EnvCredentialSource;
 use fabro_llm::client::Client;
@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source = EnvCredentialSource::new();
     let catalog = Arc::new(Catalog::from_builtin_with_overrides(&LlmCatalogSettings::default())?);
     let client = Client::from_source(&source, Arc::clone(&catalog)).await?;
-    let sandbox = Arc::new(LocalSandbox::new(PathBuf::from(".")));
+    let sandbox = Arc::new(local_sandbox(PathBuf::from(".")).await?);
     let profile = Arc::new(AnthropicProfile::new("claude-sonnet-4-5"));
     let config = SessionOptions::default();
 
@@ -74,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 pub fn new(
     llm_client: Client,
     provider_profile: Arc<dyn AgentProfile>,
-    sandbox: Arc<dyn Sandbox>,
+    sandbox: Arc<RunSandbox>,
     config: SessionOptions,
 ) -> Self
 ```
@@ -123,44 +123,57 @@ All fields are public. Key settings with their defaults:
 
 ### Sandbox
 
-The `Sandbox` trait abstracts where tools execute — local filesystem, Docker container, SSH remote, or a cloud sandbox. All tool operations go through this interface.
+`RunSandbox` is where tools execute: the local filesystem, a Docker container,
+or a cloud sandbox. It is one concrete type over a
+[sandbox-driver](https://github.com/lithoscomputer/sandbox-driver) sandbox,
+and every tool operation goes through it. Paths resolve against the run's
+working directory, commands run as Bash with fabro's timeout and stop policy,
+and output is drained even when the retained copy is capped.
 
 ```rust
-#[async_trait]
-pub trait Sandbox: Send + Sync {
-    async fn read_file_bytes(&self, path: &str) -> Result<Vec<u8>, String>;
-    async fn read_file_text(&self, path: &str) -> Result<String, String>;
-    async fn read_file(&self, path: &str, offset: Option<usize>, limit: Option<usize>) -> Result<String, String>;
-    async fn write_file(&self, path: &str, content: &str) -> Result<(), String>;
-    async fn delete_file(&self, path: &str) -> Result<(), String>;
-    async fn file_exists(&self, path: &str) -> Result<bool, String>;
-    async fn list_directory(&self, path: &str, depth: Option<usize>) -> Result<Vec<DirEntry>, String>;
-    async fn exec_command(
+impl RunSandbox {
+    pub async fn read_file_bytes(&self, path: &str) -> Result<Vec<u8>>;
+    pub async fn read_file_text(&self, path: &str) -> Result<String>;
+    pub async fn read_file(&self, path: &str, offset: Option<usize>, limit: Option<usize>) -> Result<String>;
+    pub async fn write_file(&self, path: &str, content: &str) -> Result<()>;
+    pub async fn delete_file(&self, path: &str) -> Result<()>;
+    pub async fn file_exists(&self, path: &str) -> Result<bool>;
+    pub async fn list_directory(&self, path: &str, depth: Option<usize>) -> Result<Vec<DirEntry>>;
+    pub async fn exec_command(
         &self,
         command: &str,
         timeout_ms: u64,
         working_dir: Option<&str>,
         env_vars: Option<&HashMap<String, String>>,
         cancel_token: Option<CancellationToken>,
-    ) -> Result<ExecResult, String>;
-    async fn grep(&self, pattern: &str, path: &str, options: &GrepOptions) -> Result<Vec<String>, String>;
-    async fn walk_files(&self, base: &str, relative_start: &str, options: &WalkOptions) -> Result<Vec<SandboxFile>, String>;
-    async fn glob(&self, pattern: &str, path: Option<&str>) -> Result<Vec<String>, String>;
-    async fn initialize(&self) -> Result<(), String>;
-    async fn cleanup(&self) -> Result<(), String>;
-    fn working_directory(&self) -> &str;
-    fn platform(&self) -> &str;
-    fn os_version(&self) -> String;
-    // ... optional methods with defaults: setup_git(), git_push_ref(), etc.
+    ) -> Result<ExecResult>;
+    pub async fn grep(&self, pattern: &str, path: &str, options: &GrepOptions) -> Result<Vec<GrepMatch>>;
+    pub async fn walk_files(&self, base: &str, relative_start: &str, options: &WalkOptions) -> Result<Vec<SandboxFile>>;
+    pub async fn glob(&self, pattern: &str, path: Option<&str>) -> Result<Vec<String>>;
+    pub async fn initialize(&self) -> Result<()>;
+    pub async fn cleanup(&self) -> Result<()>;
+    pub fn working_directory(&self) -> &str;
+    pub fn platform(&self) -> &str;
+    pub fn os_version(&self) -> String;
+    // ... plus git setup and push, credentials refresh, preview URLs, and access commands.
 }
 ```
 
-**Built-in implementations:**
+`DirEntry`, `GrepMatch`, `GrepOptions`, and `WalkOptions` are the driver's own
+types, re-exported from `fabro_sandbox`.
 
-| Type | Description |
+**Constructors:**
+
+| Function | Description |
 |---|---|
-| `local_sandbox(...)` | Executes directly on the local filesystem through the sandbox driver Host provider. |
+| `local_sandbox(directory)` | Executes directly on the local filesystem through the sandbox driver Host provider. |
 | `provider_sandbox(kind, ...)` | Runs on any sandbox driver provider by kind: the bundled `docker` and `daytona` providers in process, or a configured plugin. |
+
+**Testing:** `fabro_sandbox::test_support::MockSandbox` (behind the
+`test-support` feature) describes a scripted sandbox by its fields — seeded
+files, the result every command returns, the platform — and hands out the
+`RunSandbox` with `.sandbox()`. Afterwards it reads back what the code did:
+`captured_commands()`, `written_files()`, `deleted_files()`, and so on.
 
 ### Provider profiles
 
@@ -172,7 +185,7 @@ pub trait AgentProfile: Send + Sync {
     fn model(&self) -> &str;
     fn tool_registry(&self) -> &ToolRegistry;
     fn tool_registry_mut(&mut self) -> &mut ToolRegistry;
-    fn build_system_prompt(&self, env: &dyn Sandbox, ...) -> String;
+    fn build_system_prompt(&self, env: &RunSandbox, ...) -> String;
     fn capabilities(&self) -> ProfileCapabilities;
     fn tools(&self) -> Vec<ToolDefinition>;
     // ...

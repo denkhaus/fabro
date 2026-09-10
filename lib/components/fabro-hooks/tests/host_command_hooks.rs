@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use fabro_agent::{Sandbox, local_sandbox};
+use fabro_agent::{RunSandbox, local_sandbox};
 use fabro_auth::{CredentialSource, test_support};
 use fabro_hooks::{
     HookContext, HookDecision, HookDefinition, HookEvent, HookExecutionContext, HookRunner,
@@ -19,7 +19,7 @@ fn test_catalog() -> Arc<Catalog> {
     Arc::new(Catalog::from_builtin().expect("default catalog should build"))
 }
 
-async fn test_sandbox() -> Arc<dyn Sandbox> {
+async fn test_sandbox() -> Arc<RunSandbox> {
     Arc::new(
         local_sandbox(std::env::current_dir().expect("test process should have a cwd"))
             .await

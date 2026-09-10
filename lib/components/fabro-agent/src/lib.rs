@@ -41,7 +41,7 @@ pub use fabro_mcp::config::McpServerSettings;
 pub use fabro_sandbox::{ProviderAccess, SandboxOptions, SandboxProviderKind, provider_sandbox};
 pub use fabro_types::SteeringMessage;
 pub use history::History;
-pub use local_sandbox::{DriverSandbox, local_sandbox};
+pub use local_sandbox::local_sandbox;
 pub use loop_detection::detect_loop;
 pub use memory::{MemoryDocument, discover_memory};
 pub use native_tool::{NativeTool, ToolVocabulary};
@@ -56,9 +56,10 @@ pub use question_tools::{
 };
 pub use sandbox::{
     CommandOutputCallback, DirEntry, ExecResult, ExecStreamingRequest, ExecStreamingResult,
-    GrepOptions, OutputCaptureStats, RefreshOutcome, RemoteCredentialAction, Sandbox, SandboxEvent,
-    SandboxEventCallback, StderrCollector, StdioProcess, StdioProcessHandle, TokenProvenance,
-    TokenSnapshot, format_lines_numbered, shell_quote,
+    FileKind, GrepMatch, GrepOptions, OutputCaptureStats, RefreshOutcome, RemoteCredentialAction,
+    RunSandbox, SandboxEvent, SandboxEventCallback, SandboxFile, StderrCollector, StdioProcess,
+    StdioProcessHandle, TokenProvenance, TokenSnapshot, WalkOptions, format_lines_numbered,
+    shell_quote,
 };
 pub use session::{
     CompletionCoordinator, Session, SessionControlHandle, SessionInputTiming,

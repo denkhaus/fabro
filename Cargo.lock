@@ -2305,6 +2305,7 @@ dependencies = [
  "jsonschema",
  "libc",
  "paste",
+ "sandbox-driver-testing",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -3002,6 +3003,7 @@ dependencies = [
  "sandbox-driver-docker-config",
  "sandbox-driver-host",
  "sandbox-driver-protocol",
+ "sandbox-driver-testing",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -3423,6 +3425,7 @@ dependencies = [
  "predicates",
  "rand 0.9.4",
  "regex",
+ "sandbox-driver",
  "scopeguard",
  "serde",
  "serde_json",
@@ -7007,7 +7010,7 @@ dependencies = [
 [[package]]
 name = "sandbox-driver"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=1c30e72062d20df802d491f07b428318391498f1#1c30e72062d20df802d491f07b428318391498f1"
+source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=f66eb17c92ed4e70565473a256e7cf34fa3d02c6#f66eb17c92ed4e70565473a256e7cf34fa3d02c6"
 dependencies = [
  "async-trait",
  "globset",
@@ -7023,7 +7026,7 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-daytona"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=1c30e72062d20df802d491f07b428318391498f1#1c30e72062d20df802d491f07b428318391498f1"
+source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=f66eb17c92ed4e70565473a256e7cf34fa3d02c6#f66eb17c92ed4e70565473a256e7cf34fa3d02c6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7048,7 +7051,7 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-daytona-config"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=1c30e72062d20df802d491f07b428318391498f1#1c30e72062d20df802d491f07b428318391498f1"
+source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=f66eb17c92ed4e70565473a256e7cf34fa3d02c6#f66eb17c92ed4e70565473a256e7cf34fa3d02c6"
 dependencies = [
  "sandbox-driver-docker-config",
  "serde",
@@ -7058,7 +7061,7 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-docker"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=1c30e72062d20df802d491f07b428318391498f1#1c30e72062d20df802d491f07b428318391498f1"
+source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=f66eb17c92ed4e70565473a256e7cf34fa3d02c6#f66eb17c92ed4e70565473a256e7cf34fa3d02c6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7079,7 +7082,7 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-docker-config"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=1c30e72062d20df802d491f07b428318391498f1#1c30e72062d20df802d491f07b428318391498f1"
+source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=f66eb17c92ed4e70565473a256e7cf34fa3d02c6#f66eb17c92ed4e70565473a256e7cf34fa3d02c6"
 dependencies = [
  "serde",
  "serde_json",
@@ -7088,7 +7091,7 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-host"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=1c30e72062d20df802d491f07b428318391498f1#1c30e72062d20df802d491f07b428318391498f1"
+source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=f66eb17c92ed4e70565473a256e7cf34fa3d02c6#f66eb17c92ed4e70565473a256e7cf34fa3d02c6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7106,7 +7109,7 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-protocol"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=1c30e72062d20df802d491f07b428318391498f1#1c30e72062d20df802d491f07b428318391498f1"
+source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=f66eb17c92ed4e70565473a256e7cf34fa3d02c6#f66eb17c92ed4e70565473a256e7cf34fa3d02c6"
 dependencies = [
  "async-trait",
  "base64",
@@ -7118,6 +7121,16 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "sandbox-driver-testing"
+version = "0.1.0"
+source = "git+https://github.com/lithoscomputer/sandbox-driver?rev=f66eb17c92ed4e70565473a256e7cf34fa3d02c6#f66eb17c92ed4e70565473a256e7cf34fa3d02c6"
+dependencies = [
+ "async-trait",
+ "sandbox-driver",
+ "tokio",
 ]
 
 [[package]]

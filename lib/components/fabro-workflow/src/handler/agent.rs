@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use fabro_agent::Sandbox;
+use fabro_agent::RunSandbox;
 use fabro_graphviz::graph::{Graph, Node};
 use fabro_types::{StageModelUsage, StageTiming};
 pub(crate) use structured_output::extract_status_fields;
@@ -45,7 +45,7 @@ pub struct CodergenRunRequest<'a> {
     pub context:            &'a Context,
     pub thread_id:          Option<&'a str>,
     pub emitter:            &'a Arc<Emitter>,
-    pub sandbox:            &'a Arc<dyn Sandbox>,
+    pub sandbox:            &'a Arc<RunSandbox>,
     pub tool_hooks:         Option<Arc<dyn fabro_agent::ToolHookCallback>>,
     pub cancel_token:       CancellationToken,
     pub agent_tool_runtime: fabro_agent::AgentToolRuntime,
@@ -57,7 +57,7 @@ pub struct OneShotRequest<'a> {
     pub system_prompt: Option<&'a str>,
     pub emitter:       &'a Arc<Emitter>,
     pub stage_scope:   &'a StageScope,
-    pub sandbox:       &'a Arc<dyn Sandbox>,
+    pub sandbox:       &'a Arc<RunSandbox>,
     pub cancel_token:  CancellationToken,
 }
 
@@ -146,7 +146,7 @@ impl AgentHandler {
 pub(crate) async fn validate_agent_output_sources(
     schema: &OutputSchemaKind,
     response_text: &str,
-    sandbox: &Arc<dyn Sandbox>,
+    sandbox: &Arc<RunSandbox>,
     last_file_touched: Option<&str>,
 ) -> Result<ValidatedStructuredOutput, StructuredOutputError> {
     if !matches!(schema, OutputSchemaKind::Routing) {
@@ -179,14 +179,14 @@ pub(crate) async fn validate_agent_output_sources(
     Err(fallback_error)
 }
 
-async fn read_sandbox_file(sandbox: &Arc<dyn Sandbox>, path: &str) -> Option<String> {
+async fn read_sandbox_file(sandbox: &Arc<RunSandbox>, path: &str) -> Option<String> {
     sandbox.read_file_text(path).await.ok()
 }
 
 /// Extract the terminal JSON object from the last-touched file when it has an
 /// eligible extension. Does not check that the object contains routing fields;
 /// callers validate that.
-async fn read_last_file_routing_json(sandbox: &Arc<dyn Sandbox>, path: &str) -> Option<String> {
+async fn read_last_file_routing_json(sandbox: &Arc<RunSandbox>, path: &str) -> Option<String> {
     let extension = Path::new(path).extension()?.to_str()?;
     if !LAST_FILE_ROUTING_EXTENSIONS
         .iter()
@@ -541,10 +541,10 @@ mod tests {
         }
     }
 
-    async fn sandbox_with_file(path: &str, contents: &str) -> (TempDir, Arc<dyn Sandbox>) {
+    async fn sandbox_with_file(path: &str, contents: &str) -> (TempDir, Arc<RunSandbox>) {
         let sandbox_dir = TempDir::new().unwrap();
         std::fs::write(sandbox_dir.path().join(path), contents).unwrap();
-        let sandbox: Arc<dyn Sandbox> = Arc::new(
+        let sandbox: Arc<RunSandbox> = Arc::new(
             fabro_agent::local_sandbox(sandbox_dir.path().to_path_buf())
                 .await
                 .unwrap(),

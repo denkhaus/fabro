@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use fabro_agent::Sandbox;
+use fabro_agent::RunSandbox;
 use fabro_auth::{CredentialSource, test_support as auth_test_support};
 use fabro_graphviz::graph::Graph as GvGraph;
 use fabro_interview::AutoApproveInterviewer;
@@ -166,7 +166,7 @@ fn bound_emitter(run_id: fabro_types::RunId, observer: &Arc<Emitter>) -> Arc<Emi
 async fn initialized(
     registry: HandlerRegistry,
     emitter: Arc<Emitter>,
-    sandbox: Arc<dyn Sandbox>,
+    sandbox: Arc<RunSandbox>,
     graph: &GvGraph,
     run_options: &RunOptions,
     options: InitializedOptions,
@@ -301,7 +301,7 @@ async fn initialized(
 pub async fn run_graph(
     registry: HandlerRegistry,
     emitter: Arc<Emitter>,
-    sandbox: Arc<dyn Sandbox>,
+    sandbox: Arc<RunSandbox>,
     graph: &GvGraph,
     run_options: &RunOptions,
 ) -> Result<Outcome> {
@@ -326,7 +326,7 @@ pub async fn run_graph(
 pub async fn run_graph_with_state(
     registry: HandlerRegistry,
     emitter: Arc<Emitter>,
-    sandbox: Arc<dyn Sandbox>,
+    sandbox: Arc<RunSandbox>,
     graph: &GvGraph,
     run_options: &RunOptions,
 ) -> Result<(Outcome, RunProjection)> {
@@ -359,7 +359,7 @@ pub async fn run_graph_with_state(
 pub async fn run_graph_with_hooks(
     registry: HandlerRegistry,
     emitter: Arc<Emitter>,
-    sandbox: Arc<dyn Sandbox>,
+    sandbox: Arc<RunSandbox>,
     graph: &GvGraph,
     run_options: &RunOptions,
     hook_runner: Arc<fabro_hooks::HookRunner>,
@@ -386,7 +386,7 @@ pub async fn run_graph_with_hooks(
 pub async fn run_graph_with_hooks_and_state(
     registry: HandlerRegistry,
     emitter: Arc<Emitter>,
-    sandbox: Arc<dyn Sandbox>,
+    sandbox: Arc<RunSandbox>,
     graph: &GvGraph,
     run_options: &RunOptions,
     hook_runner: Arc<fabro_hooks::HookRunner>,
@@ -421,7 +421,7 @@ pub async fn run_graph_with_hooks_and_state(
 pub async fn run_graph_from_checkpoint(
     registry: HandlerRegistry,
     emitter: Arc<Emitter>,
-    sandbox: Arc<dyn Sandbox>,
+    sandbox: Arc<RunSandbox>,
     graph: &GvGraph,
     run_options: &RunOptions,
     checkpoint: &Checkpoint,
@@ -447,7 +447,7 @@ pub async fn run_graph_from_checkpoint(
 pub async fn run_graph_from_checkpoint_with_state(
     registry: HandlerRegistry,
     emitter: Arc<Emitter>,
-    sandbox: Arc<dyn Sandbox>,
+    sandbox: Arc<RunSandbox>,
     graph: &GvGraph,
     run_options: &RunOptions,
     checkpoint: &Checkpoint,
@@ -481,7 +481,7 @@ pub async fn run_graph_from_checkpoint_with_state(
 pub async fn run_graph_with_state_and_llm_source(
     registry: HandlerRegistry,
     emitter: Arc<Emitter>,
-    sandbox: Arc<dyn Sandbox>,
+    sandbox: Arc<RunSandbox>,
     graph: &GvGraph,
     run_options: &RunOptions,
     llm_source: Arc<dyn CredentialSource>,
@@ -520,16 +520,12 @@ pub async fn run_graph_with_state_and_llm_source(
 pub struct WorkflowRunner {
     registry: std::sync::Mutex<Option<HandlerRegistry>>,
     emitter:  Arc<Emitter>,
-    sandbox:  Arc<dyn Sandbox>,
+    sandbox:  Arc<RunSandbox>,
 }
 
 impl WorkflowRunner {
     #[must_use]
-    pub fn new(
-        registry: HandlerRegistry,
-        emitter: Arc<Emitter>,
-        sandbox: Arc<dyn Sandbox>,
-    ) -> Self {
+    pub fn new(registry: HandlerRegistry, emitter: Arc<Emitter>, sandbox: Arc<RunSandbox>) -> Self {
         Self {
             registry: std::sync::Mutex::new(Some(registry)),
             emitter,

@@ -5,7 +5,6 @@
 use std::sync::Arc;
 
 use fabro_agent::event::SessionBoundEmitter;
-use fabro_agent::sandbox::Sandbox;
 use fabro_agent::tool_registry::ToolContext;
 use fabro_agent::tools::make_shell_tool;
 use fabro_agent::types::AgentEvent;
@@ -48,7 +47,7 @@ async fn shell_reports_real_docker_process_outcome() {
     let result = (tool.executor)(
         serde_json::json!({"command": "printf 'out'; printf 'err' >&2; exit 7"}),
         ToolContext {
-            env:                 sandbox.clone() as Arc<dyn Sandbox>,
+            env:                 sandbox.clone(),
             cancel:              CancellationToken::new(),
             tool_env_provider:   None,
             session_id:          Some("test-session".to_string()),

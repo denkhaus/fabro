@@ -10,7 +10,7 @@ use fabro_acp::{
     run_acp_turn,
 };
 use fabro_sandbox::test_support::{MockSandbox, MockStdioProcess};
-use fabro_sandbox::{Sandbox, local_sandbox, shell_quote};
+use fabro_sandbox::{RunSandbox, local_sandbox, shell_quote};
 use fabro_types::SteeringMessage;
 use fabro_util::error::collect_chain;
 use tokio::fs::{read_to_string, write};
@@ -39,7 +39,7 @@ async fn stdio_spawn_failure_returns_sandbox_error() {
     let command = AcpProcessSpec::from_command_attr("fake-acp-agent").expect("parse ACP command");
     let mut sandbox = MockSandbox::linux();
     sandbox.stdio_process_error = Some(SANDBOX_FAILURE.to_string());
-    let sandbox: Arc<dyn Sandbox> = Arc::new(sandbox);
+    let sandbox = sandbox.sandbox();
 
     let result = run_acp_turn(AcpRunRequest {
         command,
@@ -70,9 +70,11 @@ async fn stdio_spawn_failure_returns_sandbox_error() {
 
 #[tokio::test]
 async fn clean_stdio_exit_after_final_response_completes_turn() {
-    let sandbox = MockSandbox::linux();
-    sandbox.set_stdio_process(mock_acp_stdio_process("end_turn"));
-    let sandbox: Arc<dyn Sandbox> = Arc::new(sandbox);
+    let sandbox = MockSandbox {
+        stdio_process: Some(mock_acp_stdio_process("end_turn")),
+        ..MockSandbox::linux()
+    }
+    .sandbox();
     let command = AcpProcessSpec::from_command_attr("mock-acp-agent").expect("parse ACP command");
 
     let result = run_acp_turn(AcpRunRequest {
@@ -104,7 +106,7 @@ async fn session_lifecycle_initializes_sends_prompt_and_aggregates_text() {
 
     let raw_command = format!("python3 {}", shell_quote(&script_path.to_string_lossy()));
     let command = AcpProcessSpec::from_command_attr(&raw_command).expect("parse ACP command");
-    let sandbox: Arc<dyn Sandbox> = Arc::new(
+    let sandbox: Arc<RunSandbox> = Arc::new(
         local_sandbox(tempdir.path().to_path_buf())
             .await
             .expect("local sandbox should be created"),
@@ -149,7 +151,7 @@ async fn steering_sends_followup_session_prompt_over_acp() {
 
     let raw_command = format!("python3 {}", shell_quote(&script_path.to_string_lossy()));
     let command = AcpProcessSpec::from_command_attr(&raw_command).expect("parse ACP command");
-    let sandbox: Arc<dyn Sandbox> = Arc::new(
+    let sandbox: Arc<RunSandbox> = Arc::new(
         local_sandbox(tempdir.path().to_path_buf())
             .await
             .expect("local sandbox should be created"),
@@ -216,7 +218,7 @@ async fn interrupt_then_steer_sends_cancel_then_followup_session_prompt_over_acp
 
     let raw_command = format!("python3 {}", shell_quote(&script_path.to_string_lossy()));
     let command = AcpProcessSpec::from_command_attr(&raw_command).expect("parse ACP command");
-    let sandbox: Arc<dyn Sandbox> = Arc::new(
+    let sandbox: Arc<RunSandbox> = Arc::new(
         local_sandbox(tempdir.path().to_path_buf())
             .await
             .expect("local sandbox should be created"),
@@ -295,7 +297,7 @@ async fn inline_interrupt_terminates_agent_that_ignores_cancel() {
 
     let raw_command = format!("python3 {}", shell_quote(&script_path.to_string_lossy()));
     let command = AcpProcessSpec::from_command_attr(&raw_command).expect("parse ACP command");
-    let sandbox: Arc<dyn Sandbox> = Arc::new(
+    let sandbox: Arc<RunSandbox> = Arc::new(
         local_sandbox(tempdir.path().to_path_buf())
             .await
             .expect("local sandbox should be created"),
@@ -686,7 +688,7 @@ async fn run_fake_agent_with_activity(
         .expect("write fake ACP agent");
     let raw_command = format!("python3 {}", shell_quote(&script_path.to_string_lossy()));
     let command = AcpProcessSpec::from_command_attr(&raw_command).expect("parse ACP command");
-    let sandbox: Arc<dyn Sandbox> = Arc::new(
+    let sandbox: Arc<RunSandbox> = Arc::new(
         local_sandbox(tempdir.to_path_buf())
             .await
             .expect("local sandbox should be created"),

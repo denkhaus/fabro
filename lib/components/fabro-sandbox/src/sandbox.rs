@@ -1,17 +1,15 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::future::Future;
-use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use fabro_github::token_source::{InstallationTokenSource, TokenSnapshot};
+use fabro_github::token_source::TokenSnapshot;
 pub use fabro_types::run_event::GitCredentialAction as RemoteCredentialAction;
 use fabro_types::{CommandOutputStream, CommandTermination};
 use fabro_util::shell;
-use fabro_util::workspace_glob::WorkspaceGlob;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 use tokio::sync::Mutex as TokioMutex;
@@ -19,6 +17,7 @@ use tokio::task::JoinHandle;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
+use crate::driver_sandbox::RunSandbox;
 use crate::git_retry::{self, CredentialContext, GitRetryReason, RetryPlan};
 use crate::push_credentials::{CredentialLease, PushCredentialState, RefreshErrorKind};
 
@@ -59,224 +58,6 @@ pub enum GitSetupIntent {
     },
 }
 
-/// Generates an `#[async_trait] impl Sandbox` block for a decorator type
-/// that wraps an `Arc<dyn Sandbox>`. The caller provides custom method
-/// implementations; all remaining trait methods delegate to the inner field.
-///
-/// # Usage
-///
-/// ```ignore
-/// delegate_sandbox! {
-///     MyDecorator => inner {
-///         // Only provide methods with custom logic — the rest delegate automatically.
-///         async fn read_file_bytes(&self, path: &str) -> $crate::Result<Vec<u8>> {
-///             // custom logic...
-///         }
-///     }
-/// }
-/// ```
-#[macro_export]
-macro_rules! delegate_sandbox {
-    (
-        $type:ty => $field:ident {
-            $($custom:item)*
-        }
-    ) => {
-        #[async_trait::async_trait]
-        impl $crate::Sandbox for $type {
-            $($custom)*
-
-            async fn file_exists(&self, path: &str) -> $crate::Result<bool> {
-                self.$field.file_exists(path).await
-            }
-
-            async fn list_directory(
-                &self,
-                path: &str,
-                depth: Option<usize>,
-            ) -> $crate::Result<Vec<$crate::DirEntry>> {
-                self.$field.list_directory(path, depth).await
-            }
-
-            async fn exec_command(
-                &self,
-                command: &str,
-                timeout_ms: u64,
-                working_dir: Option<&str>,
-                env_vars: Option<&std::collections::HashMap<String, String>>,
-                cancel_token: Option<tokio_util::sync::CancellationToken>,
-            ) -> $crate::Result<$crate::ExecResult> {
-                self.$field
-                    .exec_command(command, timeout_ms, working_dir, env_vars, cancel_token)
-                    .await
-            }
-
-            async fn exec_command_streaming(
-                &self,
-                request: $crate::ExecStreamingRequest<'_>,
-            ) -> $crate::Result<$crate::ExecStreamingResult> {
-                self.$field.exec_command_streaming(request).await
-            }
-
-            async fn spawn_stdio_process(
-                &self,
-                command: &str,
-                working_dir: Option<&str>,
-                env_vars: Option<&std::collections::HashMap<String, String>>,
-                cancel_token: Option<tokio_util::sync::CancellationToken>,
-            ) -> $crate::Result<$crate::StdioProcess> {
-                self.$field
-                    .spawn_stdio_process(command, working_dir, env_vars, cancel_token)
-                    .await
-            }
-
-            async fn glob(&self, pattern: &str, path: Option<&str>) -> $crate::Result<Vec<String>> {
-                self.$field.glob(pattern, path).await
-            }
-
-            async fn walk_files(
-                &self,
-                base: &str,
-                relative_start: &str,
-                options: &$crate::WalkOptions,
-            ) -> $crate::Result<Vec<$crate::SandboxFile>> {
-                self.$field
-                    .walk_files(base, relative_start, options)
-                    .await
-            }
-
-            async fn download_file_to_local(
-                &self,
-                remote_path: &str,
-                local_path: &std::path::Path,
-            ) -> $crate::Result<()> {
-                self.$field.download_file_to_local(remote_path, local_path).await
-            }
-
-            async fn upload_file_from_local(
-                &self,
-                local_path: &std::path::Path,
-                remote_path: &str,
-            ) -> $crate::Result<()> {
-                self.$field.upload_file_from_local(local_path, remote_path).await
-            }
-
-            async fn initialize(&self) -> $crate::Result<()> {
-                self.$field.initialize().await
-            }
-
-            async fn activate(&self) -> $crate::Result<()> {
-                self.$field.activate().await
-            }
-
-            async fn start(&self) -> $crate::Result<()> {
-                self.$field.start().await
-            }
-
-            async fn stop(&self) -> $crate::Result<()> {
-                self.$field.stop().await
-            }
-
-            async fn delete(&self) -> $crate::Result<()> {
-                self.$field.delete().await
-            }
-
-            async fn cleanup(&self) -> $crate::Result<()> {
-                self.$field.cleanup().await
-            }
-
-            fn working_directory(&self) -> &str {
-                self.$field.working_directory()
-            }
-
-            fn platform(&self) -> &str {
-                self.$field.platform()
-            }
-
-            fn os_version(&self) -> String {
-                self.$field.os_version()
-            }
-
-            fn sandbox_info(&self) -> String {
-                self.$field.sandbox_info()
-            }
-
-            fn snapshot_info(&self) -> Option<String> {
-                self.$field.snapshot_info()
-            }
-
-            fn workspace_layout(&self) -> Option<$crate::SandboxWorkspaceLayout> {
-                self.$field.workspace_layout()
-            }
-
-            async fn refresh_push_credentials(&self) -> $crate::Result<$crate::RefreshOutcome> {
-                self.$field.refresh_push_credentials().await
-            }
-
-            fn push_token_source(
-                &self,
-            ) -> Option<std::sync::Arc<$crate::InstallationTokenSource>> {
-                self.$field.push_token_source()
-            }
-
-            async fn set_autostop_interval(&self, minutes: i32) -> $crate::Result<()> {
-                self.$field.set_autostop_interval(minutes).await
-            }
-
-            async fn setup_git(&self, intent: &$crate::GitSetupIntent) -> $crate::Result<Option<$crate::GitRunInfo>> {
-                self.$field.setup_git(intent).await
-            }
-
-            fn resume_setup_commands(&self, run_branch: &str) -> Vec<String> {
-                self.$field.resume_setup_commands(run_branch)
-            }
-
-            async fn git_push_ref(
-                &self,
-                refspec: &str,
-                plan: &$crate::RetryPlan,
-            ) -> Result<$crate::PushReport, $crate::PushError> {
-                self.$field.git_push_ref(refspec, plan).await
-            }
-
-            async fn ssh_access_command(&self) -> $crate::Result<Option<String>> {
-                self.$field.ssh_access_command().await
-            }
-
-            fn origin_url(&self) -> Option<&str> {
-                self.$field.origin_url()
-            }
-
-            async fn get_preview_url(&self, port: u16) -> $crate::Result<Option<(String, std::collections::HashMap<String, String>)>> {
-                self.$field.get_preview_url(port).await
-            }
-
-            async fn read_file_bytes(&self, path: &str) -> $crate::Result<Vec<u8>> {
-                self.$field.read_file_bytes(path).await
-            }
-
-            async fn read_file(
-                &self,
-                path: &str,
-                offset: Option<usize>,
-                limit: Option<usize>,
-            ) -> $crate::Result<String> {
-                self.$field.read_file(path, offset, limit).await
-            }
-
-            async fn grep(
-                &self,
-                pattern: &str,
-                path: &str,
-                options: &$crate::GrepOptions,
-            ) -> $crate::Result<Vec<String>> {
-                self.$field.grep(pattern, path, options).await
-            }
-        }
-    };
-}
-
-/// Events emitted during sandbox lifecycle operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SandboxEvent {
     // -- Common lifecycle --
@@ -733,83 +514,6 @@ impl OutputCaptureStats {
     }
 }
 
-/// A byte buffer that keeps an equal-sized stable prefix and rolling suffix.
-///
-/// The process is always drained. Once the optional cap is full, bytes from
-/// the middle are discarded while the newest suffix replaces the old tail.
-#[derive(Debug)]
-pub(crate) struct OutputCaptureBuffer {
-    max_bytes:      Option<usize>,
-    head:           Vec<u8>,
-    tail:           VecDeque<u8>,
-    observed_bytes: usize,
-}
-
-impl OutputCaptureBuffer {
-    #[must_use]
-    pub(crate) fn new(max_bytes: Option<usize>) -> Self {
-        Self {
-            max_bytes,
-            head: Vec::new(),
-            tail: VecDeque::new(),
-            observed_bytes: 0,
-        }
-    }
-
-    pub(crate) fn push(&mut self, bytes: &[u8]) {
-        self.observed_bytes = self.observed_bytes.saturating_add(bytes.len());
-        let Some(max_bytes) = self.max_bytes else {
-            self.head.extend_from_slice(bytes);
-            return;
-        };
-
-        let head_budget = max_bytes / 2;
-        let tail_budget = max_bytes.saturating_sub(head_budget);
-        let head_remaining = head_budget.saturating_sub(self.head.len());
-        let head_take = head_remaining.min(bytes.len());
-        self.head.extend_from_slice(&bytes[..head_take]);
-
-        let tail_bytes = &bytes[head_take..];
-        let overflow = self
-            .tail
-            .len()
-            .saturating_add(tail_bytes.len())
-            .saturating_sub(tail_budget);
-        if overflow >= self.tail.len() {
-            let skip = overflow.saturating_sub(self.tail.len());
-            self.tail.clear();
-            self.tail.extend(&tail_bytes[skip..]);
-        } else {
-            self.tail.drain(..overflow);
-            self.tail.extend(tail_bytes);
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn stats(&self) -> OutputCaptureStats {
-        let retained_bytes = self.head.len().saturating_add(self.tail.len());
-        OutputCaptureStats {
-            observed_bytes: self.observed_bytes,
-            retained_bytes,
-            omitted_bytes: self.observed_bytes.saturating_sub(retained_bytes),
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn into_parts(self) -> (Vec<u8>, OutputCaptureStats) {
-        let stats = self.stats();
-        let Self {
-            head: mut bytes,
-            tail,
-            ..
-        } = self;
-        let (front, back) = tail.as_slices();
-        bytes.extend_from_slice(front);
-        bytes.extend_from_slice(back);
-        (bytes, stats)
-    }
-}
-
 pub type CommandOutputCallback = Arc<
     dyn Fn(CommandOutputStream, Vec<u8>) -> Pin<Box<dyn Future<Output = crate::Result<()>> + Send>>
         + Send
@@ -852,55 +556,6 @@ impl<'a> ExecStreamingRequest<'a> {
             output_callback: None,
             stream_output_bytes_cap: None,
         }
-    }
-}
-
-pub(crate) async fn replay_exec_result(
-    mut result: ExecResult,
-    streams_separated: bool,
-    output_callback: Option<&CommandOutputCallback>,
-    stream_output_bytes_cap: Option<usize>,
-) -> crate::Result<ExecStreamingResult> {
-    if let Some(output_callback) = output_callback {
-        if !result.stdout.is_empty() {
-            output_callback(
-                CommandOutputStream::Stdout,
-                result.stdout.as_bytes().to_vec(),
-            )
-            .await?;
-        }
-        if !result.stderr.is_empty() {
-            output_callback(
-                CommandOutputStream::Stderr,
-                result.stderr.as_bytes().to_vec(),
-            )
-            .await?;
-        }
-    }
-    let stdout_capture = capture_replayed_stream(&mut result.stdout, stream_output_bytes_cap);
-    let stderr_capture = capture_replayed_stream(&mut result.stderr, stream_output_bytes_cap);
-
-    Ok(ExecStreamingResult {
-        result,
-        streams_separated,
-        live_streaming: false,
-        stdout_capture,
-        stderr_capture,
-    })
-}
-
-/// Bound one replayed stream in place, leaving it untouched when it already
-/// fits the cap.
-fn capture_replayed_stream(text: &mut String, cap: Option<usize>) -> OutputCaptureStats {
-    match cap {
-        Some(cap) if text.len() > cap => {
-            let mut buffer = OutputCaptureBuffer::new(Some(cap));
-            buffer.push(text.as_bytes());
-            let (bytes, stats) = buffer.into_parts();
-            *text = String::from_utf8_lossy(&bytes).into_owned();
-            stats
-        }
-        _ => OutputCaptureStats::complete(text.len()),
     }
 }
 
@@ -1044,13 +699,6 @@ pub(crate) trait StdioProcessControl: Send + Sync {
     async fn wait(&self) -> crate::Result<StdioProcessTermination>;
 }
 
-#[derive(Debug, Clone)]
-pub struct DirEntry {
-    pub name:   String,
-    pub is_dir: bool,
-    pub size:   Option<u64>,
-}
-
 /// A regular file discovered inside a sandbox.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxFile {
@@ -1061,39 +709,11 @@ pub struct SandboxFile {
     pub size:          u64,
 }
 
-/// Provider-neutral controls for recursive file traversal.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct WalkOptions {
-    /// Directory basenames that providers must prune at every depth.
-    pub excluded_directory_names: Vec<String>,
-}
-
-impl WalkOptions {
-    #[must_use]
-    pub fn excludes_name(&self, name: &str) -> bool {
-        self.excluded_directory_names
-            .iter()
-            .any(|excluded| excluded == name)
-    }
-
-    #[must_use]
-    pub fn excludes_relative_path(&self, relative_path: &str) -> bool {
-        relative_path
-            .split('/')
-            .any(|segment| self.excludes_name(segment))
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct GrepOptions {
-    pub glob_filter:      Option<String>,
-    pub case_insensitive: bool,
-    pub max_results:      Option<usize>,
-}
-
-/// Outcome of [`Sandbox::refresh_push_credentials`]: what this call did to the
-/// remote, and the non-secret description of the token embedded in it.
-/// `token` is `None` only when `action` is [`RemoteCredentialAction::None`].
+/// Outcome of
+/// [`RunSandbox::refresh_push_credentials`](crate::RunSandbox::refresh_push_credentials):
+/// what this call did to the remote, and the non-secret description of the
+/// token embedded in it. `token` is `None` only when `action` is
+/// [`RemoteCredentialAction::None`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefreshOutcome {
     /// No managed credentials exist for this sandbox.
@@ -1139,329 +759,6 @@ impl RefreshOutcome {
     }
 }
 
-#[async_trait]
-pub trait Sandbox: Send + Sync {
-    async fn read_file_bytes(&self, path: &str) -> crate::Result<Vec<u8>>;
-
-    async fn read_file_text(&self, path: &str) -> crate::Result<String> {
-        String::from_utf8(self.read_file_bytes(path).await?)
-            .map_err(|err| crate::Error::context("File is not valid UTF-8", err))
-    }
-
-    async fn read_file(
-        &self,
-        path: &str,
-        offset: Option<usize>,
-        limit: Option<usize>,
-    ) -> crate::Result<String> {
-        Ok(format_lines_numbered(
-            &self.read_file_text(path).await?,
-            offset,
-            limit,
-        ))
-    }
-
-    async fn write_file(&self, path: &str, content: &str) -> crate::Result<()>;
-
-    /// Write a file that the caller has already confirmed exists.
-    ///
-    /// Providers can override this method to skip setup that is only needed
-    /// when creating a new path. The default preserves the behavior of
-    /// [`Sandbox::write_file`].
-    async fn write_existing_file(&self, path: &str, content: &str) -> crate::Result<()> {
-        self.write_file(path, content).await
-    }
-
-    async fn delete_file(&self, path: &str) -> crate::Result<()>;
-    async fn file_exists(&self, path: &str) -> crate::Result<bool>;
-    async fn list_directory(
-        &self,
-        path: &str,
-        depth: Option<usize>,
-    ) -> crate::Result<Vec<DirEntry>>;
-    /// Run `command` to completion and return its captured output.
-    ///
-    /// On Unix production sandboxes `command` is **Bash source**: it is
-    /// evaluated as a non-login Bash program, equivalent to `bash -c
-    /// <command>`. Implementations select the interpreter, not its options —
-    /// they must not add login mode, `errexit`, `pipefail`, or any other
-    /// implicit shell option, and must never fall back to `sh` or delegate
-    /// evaluation to a provider's ambient shell. A caller that wants different
-    /// semantics writes them into the command itself (`sh -c ...`, a
-    /// `#!/bin/sh` script, an explicit `set -o pipefail`), which then runs
-    /// beneath this Bash boundary.
-    ///
-    /// Providers resolve the Bash executable differently: the local sandbox
-    /// resolves `bash` through the worker's `PATH` (NixOS has no `/bin/bash`),
-    /// while the Linux remote providers require `/bin/bash`.
-    async fn exec_command(
-        &self,
-        command: &str,
-        timeout_ms: u64,
-        working_dir: Option<&str>,
-        env_vars: Option<&std::collections::HashMap<String, String>>,
-        cancel_token: Option<CancellationToken>,
-    ) -> crate::Result<ExecResult>;
-    /// Stream a command's output as it runs.
-    ///
-    /// `command` carries exactly the same interpreter semantics as
-    /// [`exec_command`](Self::exec_command) — the two paths must not differ in
-    /// interpreter or shell options, so Bash-only syntax behaves identically
-    /// through both.
-    ///
-    /// When `request.stdin` is set, providers must write those exact bytes to
-    /// the process's standard input and then close it to deliver EOF. The bytes
-    /// must remain separate from command source and diagnostics.
-    ///
-    /// **Production sandboxes must override this.** The default falls back to
-    /// the non-streaming [`exec_command`](Self::exec_command) and replays its
-    /// output through `output_callback` at the end when one is supplied,
-    /// marking `live_streaming: false`. Passing `None` captures the final
-    /// result without paying per-chunk callback costs. That's the right
-    /// behavior for test mocks but silently drops live output for any real
-    /// sandbox that wraps another — decorators in particular must forward to
-    /// the inner sandbox's streaming implementation rather than relying on
-    /// this default. The fallback rejects `request.stdin` because
-    /// [`exec_command`](Self::exec_command) has no stdin channel.
-    async fn exec_command_streaming(
-        &self,
-        request: ExecStreamingRequest<'_>,
-    ) -> crate::Result<ExecStreamingResult> {
-        if request.stdin.is_some() {
-            return Err(crate::Error::message(
-                "This sandbox does not support standard input for streaming commands",
-            ));
-        }
-        let fallback_timeout_ms = request.timeout_ms.unwrap_or(u64::MAX);
-        let result = self
-            .exec_command(
-                request.command,
-                fallback_timeout_ms,
-                request.working_dir,
-                request.env_vars,
-                request.cancel_token,
-            )
-            .await?;
-        replay_exec_result(
-            result,
-            true,
-            request.output_callback.as_ref(),
-            request.stream_output_bytes_cap,
-        )
-        .await
-    }
-
-    /// Launch a long-lived process with bidirectional stdio attached.
-    ///
-    /// Where supported, `_command` is evaluated under the same non-login Bash
-    /// contract as [`exec_command`](Self::exec_command) before the shell
-    /// replaces itself with the requested process. Providers without
-    /// bidirectional stdio keep this default and report the capability as
-    /// unsupported rather than substituting another interpreter.
-    async fn spawn_stdio_process(
-        &self,
-        _command: &str,
-        _working_dir: Option<&str>,
-        _env_vars: Option<&HashMap<String, String>>,
-        _cancel_token: Option<CancellationToken>,
-    ) -> crate::Result<StdioProcess> {
-        Err(crate::Error::message(
-            "ACP backend requires bidirectional stdio; this sandbox provider does not support it",
-        ))
-    }
-
-    async fn grep(
-        &self,
-        pattern: &str,
-        path: &str,
-        options: &GrepOptions,
-    ) -> crate::Result<Vec<String>>;
-
-    /// Recursively enumerate regular files below a caller-declared base.
-    ///
-    /// `relative_start` is a normalized literal directory path relative to
-    /// `base`; it is an optimization boundary, not a matching expression.
-    /// Every returned `relative_path` remains relative to `base`.
-    /// Implementations resolve `base` itself but must not recurse through
-    /// symlinks encountered in `relative_start` or below it.
-    ///
-    /// Production providers that support filesystem search must override this.
-    async fn walk_files(
-        &self,
-        _base: &str,
-        _relative_start: &str,
-        _options: &WalkOptions,
-    ) -> crate::Result<Vec<SandboxFile>> {
-        Err(crate::Error::message(
-            "recursive file traversal is not supported by this sandbox",
-        ))
-    }
-
-    /// Match a workspace-relative glob using provider-independent semantics.
-    async fn glob(&self, pattern: &str, path: Option<&str>) -> crate::Result<Vec<String>> {
-        let glob = WorkspaceGlob::try_new(pattern)
-            .map_err(|error| crate::Error::context("Invalid glob pattern", error))?;
-        let base = path.unwrap_or_else(|| self.working_directory());
-        let mut files = self
-            .walk_files(base, glob.traversal_root(), &WalkOptions::default())
-            .await?
-            .into_iter()
-            .filter(|file| glob.is_match(&file.relative_path))
-            .collect::<Vec<_>>();
-        files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
-        Ok(files.into_iter().map(|file| file.path).collect())
-    }
-    /// Copy a file from the sandbox to a local filesystem path.
-    /// Handles binary files correctly across all sandbox types.
-    async fn download_file_to_local(
-        &self,
-        remote_path: &str,
-        local_path: &Path,
-    ) -> crate::Result<()>;
-    /// Copy a file from the local filesystem into the sandbox.
-    /// Handles binary files correctly across all sandbox types.
-    async fn upload_file_from_local(
-        &self,
-        local_path: &Path,
-        remote_path: &str,
-    ) -> crate::Result<()>;
-    async fn initialize(&self) -> crate::Result<()>;
-    /// Ensure the provider resource is running and not paused before access.
-    ///
-    /// This access-time operation must be idempotent. Providers that can stop
-    /// independently should avoid restarting an already-active sandbox. This
-    /// lightweight check does not require the full health verification done by
-    /// [`Sandbox::start`], and it does not keep a sandbox active between calls.
-    async fn activate(&self) -> crate::Result<()> {
-        self.start().await
-    }
-    async fn start(&self) -> crate::Result<()> {
-        Ok(())
-    }
-    async fn stop(&self) -> crate::Result<()> {
-        Ok(())
-    }
-    async fn delete(&self) -> crate::Result<()> {
-        self.cleanup().await
-    }
-    async fn cleanup(&self) -> crate::Result<()>;
-    fn working_directory(&self) -> &str;
-    /// Run-scoped directory for Fabro-owned runtime files inside the sandbox,
-    /// or `None` when the sandbox has no such directory.
-    ///
-    /// The directory sits outside every repository checkout, so runtime files
-    /// Fabro materializes beneath it — for example oversized prompt values
-    /// projected out of the durable blob store — never appear in `git status`
-    /// and can never be committed by a checkpoint. Its contents are
-    /// disposable: everything beneath it can be recreated from durable
-    /// storage on demand.
-    ///
-    /// Providers that provision an isolated per-run environment (Docker,
-    /// Daytona) create the directory during initialization with private
-    /// permissions and return its path. Sandboxes that execute directly on
-    /// the worker host return `None`; the workflow engine owns a host-side
-    /// runtime directory for those runs.
-    fn runtime_directory(&self) -> Option<&str> {
-        None
-    }
-    fn platform(&self) -> &str;
-    fn os_version(&self) -> String;
-    /// Return a human-readable identifier for the sandbox (e.g. container ID,
-    /// sandbox name). Used when `--preserve-sandbox` is active to tell the
-    /// user how to reconnect.
-    fn sandbox_info(&self) -> String {
-        String::new()
-    }
-
-    /// Return the provider snapshot used by an initialized sandbox, when the
-    /// provider has a snapshot concept.
-    fn snapshot_info(&self) -> Option<String> {
-        None
-    }
-
-    /// The clone-based workspace layout of an initialized sandbox, for the
-    /// run record. `None` for a sandbox that works in a designated
-    /// directory.
-    fn workspace_layout(&self) -> Option<SandboxWorkspaceLayout> {
-        None
-    }
-
-    /// Refresh git push credentials (e.g. rotate an expiring GitHub App token).
-    /// Default is a no-op; Docker/Daytona override to resolve a token through
-    /// the shared source and update the remote URL when the embedded
-    /// generation is stale. Returns [`RefreshOutcome`] so callers can tell
-    /// what happened to the remote and which token it carries.
-    async fn refresh_push_credentials(&self) -> crate::Result<RefreshOutcome> {
-        Ok(RefreshOutcome::none())
-    }
-
-    /// The shared installation-token source feeding this sandbox's push
-    /// credentials, when the provider manages GitHub credentials.
-    ///
-    /// Consumers outside the sandbox (e.g. the run-metadata writer) share
-    /// this source so every GitHub-token consumer for the origin repository
-    /// reuses one cached token instead of minting its own.
-    fn push_token_source(&self) -> Option<Arc<InstallationTokenSource>> {
-        None
-    }
-
-    /// Set the auto-stop interval in minutes (0 to disable).
-    /// Default is a no-op; Daytona overrides to call the Daytona API.
-    async fn set_autostop_interval(&self, _minutes: i32) -> crate::Result<()> {
-        Ok(())
-    }
-
-    /// Set up git state for a workflow run.
-    /// Sandboxes that manage their own git clone (e.g., remote VMs) should
-    /// create a run branch and return the git info.
-    async fn setup_git(&self, _intent: &GitSetupIntent) -> crate::Result<Option<GitRunInfo>> {
-        Ok(None)
-    }
-
-    /// Commands to run inside the sandbox when resuming on an existing run
-    /// branch.
-    fn resume_setup_commands(&self, _run_branch: &str) -> Vec<String> {
-        Vec::new()
-    }
-
-    /// Push a full refspec to origin from inside the sandbox, retrying per
-    /// `plan` with a pinned credential generation. Failures keep their
-    /// attempt history in the returned [`PushError`].
-    async fn git_push_ref(
-        &self,
-        _refspec: &str,
-        _plan: &RetryPlan,
-    ) -> Result<PushReport, PushError> {
-        Err(PushError {
-            report: PushReport::default(),
-            error:  crate::Error::message("git_push_ref not implemented for this sandbox"),
-        })
-    }
-
-    /// Return an SSH command string for connecting to this sandbox, if
-    /// supported.
-    async fn ssh_access_command(&self) -> crate::Result<Option<String>> {
-        Ok(None)
-    }
-
-    /// The display URL of the cloned origin remote, if known.
-    fn origin_url(&self) -> Option<&str> {
-        None
-    }
-
-    /// Get an authenticated preview URL for a port exposed by this sandbox.
-    /// Returns `Ok(None)` when the sandbox does not support port previews.
-    /// Used to connect to services (e.g. MCP servers) running inside the
-    /// sandbox.
-    async fn get_preview_url(
-        &self,
-        _port: u16,
-    ) -> crate::Result<Option<(String, HashMap<String, String>)>> {
-        Ok(None)
-    }
-}
-
-/// Resolve a path: relative paths are prepended with the working directory.
 pub(crate) fn resolve_path(path: &str, working_dir: &str) -> String {
     if std::path::Path::new(path).is_absolute() {
         path.to_string()
@@ -1493,7 +790,7 @@ pub fn shell_quote(s: &str) -> String {
 /// Helper for sandbox implementations that manage git internally.
 /// Executes git commands inside the sandbox to create a run branch.
 pub async fn setup_git_via_exec(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     intent: &GitSetupIntent,
 ) -> crate::Result<GitRunInfo> {
     // Get current branch name
@@ -1556,7 +853,7 @@ pub async fn setup_git_via_exec(
 
 #[tracing::instrument(name = "git_op", skip_all, fields(op = "fetch"))]
 pub(crate) async fn fetch_source_run_ref(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     source_run_id: &str,
     checkpoint_sha: &str,
 ) -> crate::Result<()> {
@@ -1674,7 +971,7 @@ fn push_failure_looks_auth_shaped(error: &crate::Error) -> bool {
 /// local sandbox, or a workspace without managed credentials).
 #[tracing::instrument(name = "git_op", skip_all, fields(op = "push"))]
 pub(crate) async fn git_push_via_exec(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     credentials: Option<(&PushCredentialState, &str)>,
     refspec: &str,
     plan: &RetryPlan,
@@ -1861,6 +1158,8 @@ mod push_tests {
     use fabro_github::InstallationToken;
     use fabro_github::test_support::{InstallationTokenMinter, installation_token_source};
     use fabro_github::token_source::{InstallationTokenSource, REFRESH_MARGIN};
+    use fabro_types::SandboxProviderKind;
+    use sandbox_driver_testing::ScriptedSandbox;
     use tokio::sync::Mutex as AsyncMutex;
 
     use super::*;
@@ -1870,7 +1169,7 @@ mod push_tests {
     const ORIGIN: &str = "https://github.com/fabro-testing/repo";
     const REFSPEC: &str = "refs/heads/fabro/run/01M0DH033P2XSTHAGVBHG6922F";
 
-    fn ok_exec() -> ExecResult {
+    fn ok_fabro_exec() -> ExecResult {
         ExecResult {
             stdout:      String::new(),
             stderr:      String::new(),
@@ -1900,143 +1199,92 @@ mod push_tests {
         }
     }
 
-    /// Sandbox stub that scripts `git push` results and records the exec
-    /// commands the push driver runs. `git remote set-url` execs succeed
-    /// unless scripted otherwise.
+    /// A run sandbox over a scripted driver double: `git push` answers come
+    /// from a script, `git remote set-url` succeeds unless scripted
+    /// otherwise, and every command is recorded.
     struct ScriptedGitSandbox {
-        push_results:     Mutex<VecDeque<ExecResult>>,
-        set_url_results:  Mutex<VecDeque<ExecResult>>,
-        push_commands:    Mutex<Vec<String>>,
-        set_url_commands: Mutex<Vec<String>>,
+        run:    RunSandbox,
+        driver: Arc<ScriptedSandbox>,
     }
 
     impl ScriptedGitSandbox {
         fn new(push_results: Vec<ExecResult>) -> Self {
-            Self {
-                push_results:     Mutex::new(push_results.into()),
-                set_url_results:  Mutex::new(VecDeque::new()),
-                push_commands:    Mutex::new(Vec::new()),
-                set_url_commands: Mutex::new(Vec::new()),
-            }
+            Self::with_set_url_results(push_results, Vec::new())
         }
 
-        fn with_set_url_results(self, results: Vec<ExecResult>) -> Self {
-            *self.set_url_results.lock().unwrap() = results.into();
-            self
+        fn with_set_url_results(
+            push_results: Vec<ExecResult>,
+            set_url_results: Vec<ExecResult>,
+        ) -> Self {
+            let driver = Arc::new(ScriptedSandbox::with_id_and_working_dir(
+                "scripted-git",
+                "/workspace",
+            ));
+            let pushes = Mutex::new(VecDeque::from(push_results));
+            let set_urls = Mutex::new(VecDeque::from(set_url_results));
+            driver.scripted_exec().respond_with(move |spec| {
+                let script = spec.args.last().map(String::as_str).unwrap_or_default();
+                if script.contains("remote set-url") {
+                    return Some(
+                        set_urls
+                            .lock()
+                            .unwrap()
+                            .pop_front()
+                            .map_or_else(ok_exec, driver_result),
+                    );
+                }
+                assert!(script.contains("push origin"), "unexpected exec: {script}");
+                Some(driver_result(
+                    pushes
+                        .lock()
+                        .unwrap()
+                        .pop_front()
+                        .expect("push script exhausted"),
+                ))
+            });
+            let run = RunSandbox::new(SandboxProviderKind::LOCAL, Arc::clone(&driver) as _);
+            Self { run, driver }
+        }
+
+        fn commands(&self) -> Vec<String> {
+            self.driver.scripted_exec().commands()
         }
 
         fn push_count(&self) -> usize {
-            self.push_commands.lock().unwrap().len()
+            self.commands()
+                .iter()
+                .filter(|command| command.contains("push origin"))
+                .count()
         }
 
         fn set_url_commands(&self) -> Vec<String> {
-            self.set_url_commands.lock().unwrap().clone()
+            self.commands()
+                .into_iter()
+                .filter(|command| command.contains("remote set-url"))
+                .collect()
         }
     }
 
-    #[async_trait]
-    impl Sandbox for ScriptedGitSandbox {
-        async fn exec_command(
-            &self,
-            command: &str,
-            _timeout_ms: u64,
-            _working_dir: Option<&str>,
-            _env_vars: Option<&HashMap<String, String>>,
-            _cancel_token: Option<CancellationToken>,
-        ) -> crate::Result<ExecResult> {
-            if command.contains("remote set-url") {
-                self.set_url_commands
-                    .lock()
-                    .unwrap()
-                    .push(command.to_string());
-                return Ok(self
-                    .set_url_results
-                    .lock()
-                    .unwrap()
-                    .pop_front()
-                    .unwrap_or_else(ok_exec));
-            }
-            assert!(
-                command.contains("push origin"),
-                "unexpected exec: {command}"
-            );
-            self.push_commands.lock().unwrap().push(command.to_string());
-            Ok(self
-                .push_results
-                .lock()
-                .unwrap()
-                .pop_front()
-                .expect("push script exhausted"))
-        }
+    /// The driver-level result fabro's exec policy reads back as the fabro
+    /// result the push tests script.
+    fn driver_result(result: ExecResult) -> sandbox_driver::ExecResult {
+        let termination = match result.termination {
+            CommandTermination::Exited => sandbox_driver::Termination::Exited,
+            CommandTermination::TimedOut => sandbox_driver::Termination::TimedOut,
+            CommandTermination::Cancelled => sandbox_driver::Termination::Cancelled,
+        };
+        let mut driver = sandbox_driver::ExecResult::new(
+            termination,
+            result.exit_code,
+            Duration::from_millis(result.duration_ms),
+        );
+        driver.stdout = result.stdout.into_bytes();
+        driver.stderr = result.stderr.into_bytes();
+        driver
+    }
 
-        async fn read_file_bytes(&self, _path: &str) -> crate::Result<Vec<u8>> {
-            unimplemented!()
-        }
-
-        async fn write_file(&self, _path: &str, _content: &str) -> crate::Result<()> {
-            unimplemented!()
-        }
-
-        async fn delete_file(&self, _path: &str) -> crate::Result<()> {
-            unimplemented!()
-        }
-
-        async fn file_exists(&self, _path: &str) -> crate::Result<bool> {
-            unimplemented!()
-        }
-
-        async fn list_directory(
-            &self,
-            _path: &str,
-            _depth: Option<usize>,
-        ) -> crate::Result<Vec<DirEntry>> {
-            unimplemented!()
-        }
-
-        async fn grep(
-            &self,
-            _pattern: &str,
-            _path: &str,
-            _options: &GrepOptions,
-        ) -> crate::Result<Vec<String>> {
-            unimplemented!()
-        }
-
-        async fn download_file_to_local(
-            &self,
-            _remote_path: &str,
-            _local_path: &Path,
-        ) -> crate::Result<()> {
-            unimplemented!()
-        }
-
-        async fn upload_file_from_local(
-            &self,
-            _local_path: &Path,
-            _remote_path: &str,
-        ) -> crate::Result<()> {
-            unimplemented!()
-        }
-
-        async fn initialize(&self) -> crate::Result<()> {
-            Ok(())
-        }
-
-        async fn cleanup(&self) -> crate::Result<()> {
-            Ok(())
-        }
-
-        fn working_directory(&self) -> &'static str {
-            "/workspace"
-        }
-
-        fn platform(&self) -> &'static str {
-            "linux"
-        }
-
-        fn os_version(&self) -> String {
-            "linux".to_string()
-        }
+    fn ok_exec() -> sandbox_driver::ExecResult {
+        driver_result(ok_fabro_exec())
     }
 
     enum MintAction {
@@ -2124,11 +1372,11 @@ mod push_tests {
         let sandbox = ScriptedGitSandbox::new(vec![
             failed_exec("remote: Repository not found."),
             failed_exec("remote: Repository not found."),
-            ok_exec(),
+            ok_fabro_exec(),
         ]);
 
         let report = git_push_via_exec(
-            &sandbox,
+            &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
             &RetryPlan::checkpoint_push(),
@@ -2169,11 +1417,11 @@ mod push_tests {
             failed_exec("remote: Repository not found."),
             failed_exec("remote: Repository not found."),
             failed_exec("remote: Repository not found."),
-            ok_exec(),
+            ok_fabro_exec(),
         ]);
 
         let report = git_push_via_exec(
-            &sandbox,
+            &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
             &RetryPlan::publish_push(),
@@ -2200,11 +1448,11 @@ mod push_tests {
         let sandbox = ScriptedGitSandbox::new(vec![
             failed_exec("remote: Repository not found."),
             failed_exec("remote: Repository not found."),
-            ok_exec(),
+            ok_fabro_exec(),
         ]);
 
         let report = git_push_via_exec(
-            &sandbox,
+            &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
             &RetryPlan::checkpoint_push(),
@@ -2236,7 +1484,7 @@ mod push_tests {
         )]);
 
         let push_error = git_push_via_exec(
-            &sandbox,
+            &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
             &RetryPlan::publish_push(),
@@ -2261,10 +1509,10 @@ mod push_tests {
             MintAction::Error("mint failed"),
         ]);
         seed_clone_token(&state).await;
-        let sandbox = ScriptedGitSandbox::new(vec![ok_exec()]);
+        let sandbox = ScriptedGitSandbox::new(vec![ok_fabro_exec()]);
 
         let report = git_push_via_exec(
-            &sandbox,
+            &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
             &RetryPlan::checkpoint_push(),
@@ -2293,7 +1541,7 @@ mod push_tests {
         let sandbox = ScriptedGitSandbox::new(vec![]);
 
         let push_error = git_push_via_exec(
-            &sandbox,
+            &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
             &RetryPlan::checkpoint_push(),
@@ -2319,11 +1567,11 @@ mod push_tests {
         seed_clone_token(&state).await;
         let sandbox = ScriptedGitSandbox::new(vec![
             failed_exec("fatal: Authentication failed for 'https://github.com'"),
-            ok_exec(),
+            ok_fabro_exec(),
         ]);
 
         let report = git_push_via_exec(
-            &sandbox,
+            &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
             &RetryPlan::checkpoint_push(),
@@ -2356,14 +1604,16 @@ mod push_tests {
             MintAction::Token("ghs_gen2", chrono::Duration::minutes(60)),
         ]);
         seed_clone_token(&state).await;
-        let sandbox = ScriptedGitSandbox::new(vec![
-            failed_exec("error: RPC failed; connection reset by peer"),
-            ok_exec(),
-        ])
-        .with_set_url_results(vec![failed_exec("error: could not lock config file")]);
+        let sandbox = ScriptedGitSandbox::with_set_url_results(
+            vec![
+                failed_exec("error: RPC failed; connection reset by peer"),
+                ok_fabro_exec(),
+            ],
+            vec![failed_exec("error: could not lock config file")],
+        );
 
         let report = git_push_via_exec(
-            &sandbox,
+            &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
             &RetryPlan::checkpoint_push(),
@@ -2403,10 +1653,10 @@ mod push_tests {
             MintAction::Token("ghs_gen2", chrono::Duration::minutes(60)),
         ]);
         seed_clone_token(&state).await;
-        let sandbox = ScriptedGitSandbox::new(vec![]).with_set_url_results(vec![timed_out_exec()]);
+        let sandbox = ScriptedGitSandbox::with_set_url_results(vec![], vec![timed_out_exec()]);
 
         let push_error = git_push_via_exec(
-            &sandbox,
+            &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
             &RetryPlan::checkpoint_push(),
@@ -2433,11 +1683,11 @@ mod push_tests {
             failed_exec(
                 "fatal: could not read Username for 'https://github.com': No such device or address\nremote: Repository not found.",
             ),
-            ok_exec(),
+            ok_fabro_exec(),
         ]);
 
         let report = git_push_via_exec(
-            &sandbox,
+            &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
             &RetryPlan::checkpoint_push(),
@@ -2463,9 +1713,9 @@ mod push_tests {
 
     #[tokio::test(start_paused = true)]
     async fn push_without_managed_credentials_reports_no_token() {
-        let sandbox = ScriptedGitSandbox::new(vec![ok_exec()]);
+        let sandbox = ScriptedGitSandbox::new(vec![ok_fabro_exec()]);
 
-        let report = git_push_via_exec(&sandbox, None, REFSPEC, &RetryPlan::checkpoint_push())
+        let report = git_push_via_exec(&sandbox.run, None, REFSPEC, &RetryPlan::checkpoint_push())
             .await
             .expect("push succeeds");
 
@@ -2480,7 +1730,7 @@ mod push_tests {
             "fatal: Authentication failed for 'https://github.com/fabro-testing/repo'",
         )]);
 
-        let push_error = git_push_via_exec(&sandbox, None, REFSPEC, &RetryPlan::publish_push())
+        let push_error = git_push_via_exec(&sandbox.run, None, REFSPEC, &RetryPlan::publish_push())
             .await
             .expect_err("no credentials to wait on");
 
@@ -2492,7 +1742,7 @@ mod push_tests {
     async fn timed_out_push_is_not_retried_while_the_remote_process_may_still_run() {
         let sandbox = ScriptedGitSandbox::new(vec![timed_out_exec()]);
 
-        let push_error = git_push_via_exec(&sandbox, None, REFSPEC, &RetryPlan::publish_push())
+        let push_error = git_push_via_exec(&sandbox.run, None, REFSPEC, &RetryPlan::publish_push())
             .await
             .expect_err("an unconfirmed timeout must fail without another push");
 
@@ -2509,7 +1759,7 @@ mod push_tests {
         let mut plan = RetryPlan::checkpoint_push();
         plan.max_elapsed = Some(Duration::from_secs(1));
 
-        let push_error = git_push_via_exec(&sandbox, Some((&state, ORIGIN)), REFSPEC, &plan)
+        let push_error = git_push_via_exec(&sandbox.run, Some((&state, ORIGIN)), REFSPEC, &plan)
             .await
             .expect_err("credential acquisition must stop at the operation deadline");
 
@@ -2524,7 +1774,7 @@ mod push_tests {
         let mut plan = RetryPlan::checkpoint_push();
         plan.max_elapsed = Some(Duration::ZERO);
 
-        let push_error = git_push_via_exec(&sandbox, None, REFSPEC, &plan)
+        let push_error = git_push_via_exec(&sandbox.run, None, REFSPEC, &plan)
             .await
             .expect_err("an expired operation must stop before exec");
 
@@ -2536,43 +1786,6 @@ mod push_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn output_capture_buffer_keeps_stable_head_and_rolling_tail() {
-        let mut buffer = OutputCaptureBuffer::new(Some(8));
-        buffer.push(b"abc");
-        buffer.push(b"defghi");
-        buffer.push(b"jkl");
-
-        let (bytes, stats) = buffer.into_parts();
-        assert_eq!(bytes, b"abcdijkl");
-        assert_eq!(stats.observed_bytes, 12);
-        assert_eq!(stats.retained_bytes, 8);
-        assert_eq!(stats.omitted_bytes, 4);
-    }
-
-    #[test]
-    fn output_capture_buffer_without_cap_retains_everything() {
-        let mut buffer = OutputCaptureBuffer::new(None);
-        buffer.push(b"abc");
-        buffer.push(b"def");
-
-        let (bytes, stats) = buffer.into_parts();
-        assert_eq!(bytes, b"abcdef");
-        assert_eq!(stats, OutputCaptureStats::complete(6));
-    }
-
-    #[test]
-    fn zero_byte_output_capture_buffer_still_counts_drained_bytes() {
-        let mut buffer = OutputCaptureBuffer::new(Some(0));
-        buffer.push(b"abcdef");
-
-        let (bytes, stats) = buffer.into_parts();
-        assert!(bytes.is_empty());
-        assert_eq!(stats.observed_bytes, 6);
-        assert_eq!(stats.retained_bytes, 0);
-        assert_eq!(stats.omitted_bytes, 6);
-    }
 
     #[test]
     fn exec_result_fields() {
@@ -2767,26 +1980,6 @@ mod tests {
             "raw command/cmd/stdin tracing fields found:\n{}",
             failures.join("\n")
         );
-    }
-
-    #[test]
-    fn dir_entry_fields() {
-        let entry = DirEntry {
-            name:   "src".into(),
-            is_dir: true,
-            size:   None,
-        };
-        assert_eq!(entry.name, "src");
-        assert!(entry.is_dir);
-        assert!(entry.size.is_none());
-    }
-
-    #[test]
-    fn grep_options_defaults() {
-        let opts = GrepOptions::default();
-        assert!(opts.glob_filter.is_none());
-        assert!(!opts.case_insensitive);
-        assert!(opts.max_results.is_none());
     }
 
     #[test]

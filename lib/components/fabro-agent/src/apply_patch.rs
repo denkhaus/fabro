@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use fabro_llm::types::ToolDefinition;
 
-use crate::sandbox::Sandbox;
+use crate::sandbox::RunSandbox;
 use crate::tool_registry::{RegisteredTool, ToolSource};
 
 const APPLY_PATCH_LARK_GRAMMAR: &str = include_str!("apply_patch.lark");
@@ -234,7 +234,7 @@ fn check_patch_boundaries_strict(lines: &[&str]) -> Result<(), String> {
 /// Returns an error if any file operation fails.
 pub async fn apply_patch_operations(
     ops: &[PatchOperation],
-    env: &dyn Sandbox,
+    env: &RunSandbox,
 ) -> Result<String, String> {
     if ops.is_empty() {
         return Err("No files were modified.".to_string());
@@ -510,7 +510,7 @@ mod tests {
 
     use super::*;
     use crate::local_sandbox;
-    use crate::test_support::MutableMockSandbox;
+    use crate::test_support::MockSandbox;
     use crate::tool_registry::ToolContext;
 
     #[test]
@@ -656,7 +656,11 @@ mod tests {
             "src/game.py".to_string(),
             "from src.cards import Suit\nfrom src.piles import Pile\n\nclass GameState:\n    stock: list = field(default_factory=list)\n    waste: list = field(default_factory=list)".to_string(),
         );
-        let env = MutableMockSandbox::new(files);
+        let env = MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox();
 
         let ops = vec![PatchOperation::Update {
             path:     "src/game.py".into(),
@@ -787,7 +791,11 @@ mod tests {
             "src/lib.rs".to_string(),
             "fn unchanged() {\n    old_line();\n}".to_string(),
         );
-        let env = MutableMockSandbox::new(files);
+        let env = MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox();
 
         let ops = vec![PatchOperation::Update {
             path:     "src/lib.rs".into(),
@@ -818,7 +826,11 @@ mod tests {
             "src/lib.rs".to_string(),
             "import foo\nimport bar\n\ndef setup():\n    old_setup()\n\ndef teardown():\n    old_teardown()\n".to_string(),
         );
-        let env = MutableMockSandbox::new(files);
+        let env = MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox();
 
         let ops = vec![PatchOperation::Update {
             path:     "src/lib.rs".into(),
@@ -855,7 +867,11 @@ mod tests {
 
     #[tokio::test]
     async fn apply_patch_add_file() {
-        let env = MutableMockSandbox::new(HashMap::new());
+        let env = MockSandbox {
+            files: HashMap::new(),
+            ..Default::default()
+        }
+        .sandbox();
         let ops = vec![PatchOperation::Add {
             path:    "src/new.rs".into(),
             content: "fn new() {}".into(),
@@ -875,7 +891,11 @@ mod tests {
             "src/lib.rs".to_string(),
             "fn hello() {\n    println!(\"old\");\n}".to_string(),
         );
-        let env = MutableMockSandbox::new(files);
+        let env = MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox();
 
         let ops = vec![PatchOperation::Update {
             path:     "src/lib.rs".into(),
@@ -950,7 +970,11 @@ mod tests {
 
     #[tokio::test]
     async fn apply_patch_tool_executor_accepts_raw_patch_string() {
-        let env = Arc::new(MutableMockSandbox::new(HashMap::new()));
+        let env = MockSandbox {
+            files: HashMap::new(),
+            ..Default::default()
+        }
+        .sandbox();
         let tool = make_apply_patch_tool();
         let patch = "\
 *** Begin Patch
@@ -982,7 +1006,11 @@ mod tests {
     async fn apply_patch_add_overwrites_existing_file_with_codex_summary() {
         let mut files = HashMap::new();
         files.insert("duplicate.txt".to_string(), "old content\n".to_string());
-        let env = MutableMockSandbox::new(files);
+        let env = MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox();
         let patch = "\
 *** Begin Patch
 *** Add File: duplicate.txt
@@ -1018,7 +1046,11 @@ mod tests {
     async fn pure_addition_update_hunk_appends_before_final_newline() {
         let mut files = HashMap::new();
         files.insert("insert_only.txt".to_string(), "alpha\nomega\n".to_string());
-        let env = MutableMockSandbox::new(files);
+        let env = MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox();
         let patch = "\
 *** Begin Patch
 *** Update File: insert_only.txt
@@ -1072,7 +1104,11 @@ mod tests {
             "no_newline.txt".to_string(),
             "no newline at end".to_string(),
         );
-        let env = MutableMockSandbox::new(files);
+        let env = MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox();
         let patch = "\
 *** Begin Patch
 *** Update File: no_newline.txt
@@ -1111,7 +1147,11 @@ please apply this
             "src/game.py".to_string(),
             "def real_fn():\n    pass".to_string(),
         );
-        let env = MutableMockSandbox::new(files);
+        let env = MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox();
 
         let ops = vec![PatchOperation::Update {
             path:     "src/game.py".into(),
@@ -1135,7 +1175,11 @@ please apply this
 
     #[tokio::test]
     async fn update_missing_target_file_rejected() {
-        let env = MutableMockSandbox::new(HashMap::new());
+        let env = MockSandbox {
+            files: HashMap::new(),
+            ..Default::default()
+        }
+        .sandbox();
         let patch = "\
 *** Begin Patch
 *** Update File: missing.txt
@@ -1152,7 +1196,11 @@ please apply this
 
     #[tokio::test]
     async fn delete_missing_target_file_rejected() {
-        let env = MutableMockSandbox::new(HashMap::new());
+        let env = MockSandbox {
+            files: HashMap::new(),
+            ..Default::default()
+        }
+        .sandbox();
         let patch = "\
 *** Begin Patch
 *** Delete File: missing.txt
@@ -1318,7 +1366,11 @@ please apply this
             "src/old.py".to_string(),
             "def hello():\n    pass".to_string(),
         );
-        let env = MutableMockSandbox::new(files);
+        let env = MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox();
 
         let ops = vec![PatchOperation::Update {
             path:     "src/old.py".into(),
@@ -1458,7 +1510,11 @@ class GameState:
 "
             .to_string(),
         );
-        let env = MutableMockSandbox::new(files);
+        let env = MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox();
 
         let patch = "\
 *** Begin Patch
@@ -1516,7 +1572,11 @@ def main():
 "
             .to_string(),
         );
-        let env = MutableMockSandbox::new(files);
+        let env = MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox();
 
         let patch = "\
 *** Begin Patch
@@ -1571,7 +1631,11 @@ class User:
 "
             .to_string(),
         );
-        let env = MutableMockSandbox::new(files);
+        let env = MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox();
 
         // Heredoc-wrapped patch with stacked @@, End of File, and Move to
         let patch = "\
@@ -1633,7 +1697,11 @@ def gamma():
 "
             .to_string(),
         );
-        let env = MutableMockSandbox::new(files);
+        let env = MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox();
 
         let patch = "\
 *** Begin Patch
@@ -1667,7 +1735,11 @@ def gamma():
             "src/lib.rs".to_string(),
             "fn main() {  \n    println!(\"hello\");  \n}\n".to_string(),
         );
-        let env = MutableMockSandbox::new(files);
+        let env = MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox();
 
         let patch = "\
 *** Begin Patch
@@ -1709,7 +1781,11 @@ def farewell(name):
             "src/obsolete.py".to_string(),
             "def old():\n    pass\n".to_string(),
         );
-        let env = Arc::new(MutableMockSandbox::new(files));
+        let env = MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox();
 
         // Register apply_patch tool
         let mut registry = ToolRegistry::new();
@@ -1796,7 +1872,11 @@ def farewell(name):
             "src/app.py".to_string(),
             "def present():\n    return 1\n".to_string(),
         );
-        let env = Arc::new(MutableMockSandbox::new(files));
+        let env = MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox();
 
         let mut registry = ToolRegistry::new();
         registry.register(make_apply_patch_tool());

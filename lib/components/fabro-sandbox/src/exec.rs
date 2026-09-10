@@ -20,7 +20,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use fabro_static::EnvVars;
@@ -169,7 +169,6 @@ impl<'a> SandboxExec<'a> {
             output_callback,
             stream_output_bytes_cap,
         } = request;
-        let started = Instant::now();
 
         let mut spec = ExecSpec::bash(command)
             .no_timeout()
@@ -202,7 +201,7 @@ impl<'a> SandboxExec<'a> {
         let streaming = self.exec.run_streaming(&spec, controls).await?;
 
         let termination = map_termination(streaming.result.termination);
-        let duration_ms = elapsed_ms(started);
+        let duration_ms = duration_ms(streaming.result.duration);
         Ok(ExecStreamingResult {
             result:            ExecResult {
                 stdout: String::from_utf8_lossy(&streaming.result.stdout).into_owned(),
@@ -328,8 +327,9 @@ fn adapt_output_callback(callback: CommandOutputCallback) -> sandbox_driver::Out
     })
 }
 
-fn elapsed_ms(started: Instant) -> u64 {
-    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+/// The provider's measured run time in whole milliseconds.
+fn duration_ms(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 struct DriverStdioControl {
@@ -356,6 +356,7 @@ impl StdioProcessControl for DriverStdioControl {
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
+    use std::time::Instant;
 
     use sandbox_driver::{SandboxProvider as _, SandboxSource, SandboxSpec};
     use sandbox_driver_host::HostProvider;

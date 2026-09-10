@@ -9,7 +9,7 @@ use agent_client_protocol::{
     Agent, Client, ConnectTo, Error as ProtocolError, Lines, Result as AcpProtocolResult,
 };
 use fabro_sandbox::{
-    DEFAULT_EXEC_OUTPUT_TAIL_BYTES, Error as SandboxError, Result as SandboxResult, Sandbox,
+    DEFAULT_EXEC_OUTPUT_TAIL_BYTES, Error as SandboxError, Result as SandboxResult, RunSandbox,
     StderrCollector, StdioProcessHandle, StdioProcessTermination,
 };
 use fabro_types::{CommandTermination, ExecOutputTail};
@@ -92,7 +92,7 @@ pub(crate) struct SandboxAcpTransport {
     command: AcpProcessSpec,
     cwd:     String,
     env:     HashMap<String, String>,
-    sandbox: Arc<dyn Sandbox>,
+    sandbox: Arc<RunSandbox>,
     state:   TransportState,
 }
 
@@ -101,7 +101,7 @@ impl SandboxAcpTransport {
         command: AcpProcessSpec,
         cwd: String,
         env: HashMap<String, String>,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         state: TransportState,
     ) -> Self {
         Self {

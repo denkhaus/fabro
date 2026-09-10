@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use fabro_agent::{Sandbox, ToolSecrets};
+use fabro_agent::{RunSandbox, ToolSecrets};
 use fabro_auth::{
     CredentialSource, ExtraHeadersCredentialSource, VaultCredentialSource, auth_issue_message,
 };
@@ -51,7 +51,7 @@ struct BuiltSandboxEnv {
 async fn run_hooks(
     hook_runner: Option<&HookRunner>,
     hook_context: &HookContext,
-    sandbox: Arc<dyn Sandbox>,
+    sandbox: Arc<RunSandbox>,
     execution_context: HookExecutionContext,
 ) -> HookDecision {
     let Some(runner) = hook_runner else {
@@ -75,7 +75,7 @@ fn git_setup_intent(run_options: &RunOptions) -> GitSetupIntent {
 }
 
 async fn configure_sandbox_git_identity(
-    sandbox: &dyn Sandbox,
+    sandbox: &RunSandbox,
     author: &GitAuthor,
 ) -> Result<(), Error> {
     let command = format!(
@@ -431,7 +431,7 @@ pub async fn initialize(
         None
     };
     let attach_existing = attach_instance.is_some();
-    let sandbox: Arc<dyn Sandbox> = if let Some(instance) = attach_instance {
+    let sandbox: Arc<RunSandbox> = if let Some(instance) = attach_instance {
         let access = ProviderAccess {
             providers: options.sandbox_providers.clone(),
             daytona:   options
@@ -505,7 +505,7 @@ pub async fn initialize(
     if !attach_existing {
         let run_sandbox = options
             .sandbox
-            .to_run_sandbox_instance(&*sandbox, options.run_options.run_id);
+            .to_run_sandbox_instance(&sandbox, options.run_options.run_id);
         let runtime = &run_sandbox.runtime;
         options.emitter.emit(&Event::SandboxInitialized {
             working_directory: runtime.working_directory.clone(),
@@ -576,7 +576,7 @@ pub async fn initialize(
         let sandbox_has_origin = sandbox.origin_url().is_some();
         if sandbox_has_origin {
             sandbox_git
-                .ensure_git_available(&*sandbox)
+                .ensure_git_available(&sandbox)
                 .await
                 .map_err(|err| Error::engine_with_source("sandbox git unavailable", err))?;
         }
@@ -1049,15 +1049,11 @@ mod tests {
             Some("fabro-bot@example.com".to_string()),
         );
 
-        configure_sandbox_git_identity(&sandbox, &author)
+        configure_sandbox_git_identity(&sandbox.sandbox(), &author)
             .await
             .expect("git identity should configure");
 
-        let commands = sandbox
-            .captured_commands
-            .lock()
-            .expect("captured_commands lock poisoned")
-            .clone();
+        let commands = sandbox.captured_commands();
         assert_eq!(commands, vec![
             "git config --local user.name 'Fabro Bot' && git config --local user.email \
              fabro-bot@example.com"

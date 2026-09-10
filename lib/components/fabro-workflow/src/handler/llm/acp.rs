@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::env;
+use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -11,7 +12,7 @@ use fabro_acp::{
     render_stop_reason,
 };
 use fabro_agent::{
-    AgentEvent, RefreshOutcome, Sandbox, StaticEnvProvider, SteeringItem, ToolEnvProvider,
+    AgentEvent, RefreshOutcome, RunSandbox, StaticEnvProvider, SteeringItem, ToolEnvProvider,
 };
 use fabro_github::token_source::REFRESH_MARGIN;
 use fabro_graphviz::graph::Node;
@@ -131,21 +132,21 @@ fn next_refresh_delay(outcome: &RefreshOutcome) -> Option<Duration> {
 /// reschedules from the embedded token's expiry ([`next_refresh_delay`]); a
 /// failed or timed-out tick retries after a shorter delay so a transient
 /// error does not leave a longer-than-interval window with an expired token.
-async fn refresh_ahead_loop(
-    sandbox: Arc<dyn Sandbox>,
+async fn refresh_ahead_loop<Fut>(
+    refresh: impl Fn() -> Fut + Send,
     cancel: CancellationToken,
     interval: Duration,
     initial_delay: Duration,
-) {
+) where
+    Fut: Future<Output = fabro_sandbox::Result<RefreshOutcome>> + Send,
+{
     let retry_delay = interval.min(Duration::from_mins(1));
     let mut delay = initial_delay;
     loop {
         tokio::select! {
             () = cancel.cancelled() => break,
             () = sleep(delay) => {
-                match timeout(REFRESH_MINT_TIMEOUT, sandbox.refresh_push_credentials())
-                    .await
-                {
+                match timeout(REFRESH_MINT_TIMEOUT, refresh()).await {
                     Ok(Ok(outcome)) => {
                         match outcome {
                             RefreshOutcome::Embedded(token) => {
@@ -240,7 +241,7 @@ impl AgentAcpBackend {
         prompt: String,
         emitter: &Arc<Emitter>,
         stage_scope: &StageScope,
-        sandbox: &Arc<dyn Sandbox>,
+        sandbox: &Arc<RunSandbox>,
         cancel_token: CancellationToken,
     ) -> Result<CodergenResult, Error> {
         let process_spec = resolve_acp_process_spec(node)?;
@@ -354,8 +355,12 @@ impl AgentAcpBackend {
         };
         let _refresh_ahead_guard: Option<AbortOnDrop> =
             refresh_schedule.map(|(interval, initial_delay)| {
+                let sandbox = Arc::clone(sandbox);
                 AbortOnDrop(tokio::spawn(refresh_ahead_loop(
-                    Arc::clone(sandbox),
+                    move || {
+                        let sandbox = Arc::clone(&sandbox);
+                        async move { sandbox.refresh_push_credentials().await }
+                    },
                     cancel_token.child_token(),
                     interval,
                     initial_delay,
@@ -647,7 +652,7 @@ mod tests {
     use fabro_acp::test_support::fake_acp_agent_script;
     use fabro_acp::{AcpError, AcpProcessExit};
     use fabro_agent::{
-        RefreshOutcome, RemoteCredentialAction, Sandbox, TokenProvenance, TokenSnapshot,
+        RefreshOutcome, RemoteCredentialAction, RunSandbox, TokenProvenance, TokenSnapshot,
         local_sandbox, shell_quote,
     };
     use fabro_graphviz::graph::{AttrValue, Node};
@@ -711,11 +716,11 @@ mod tests {
 
     #[tokio::test]
     async fn refresh_reports_no_action_without_managed_credentials() {
-        // MockSandbox uses the trait default (no GitHub App creds), so refresh
-        // is a no-op that must report no remote action and no token — the
-        // signal the refresh-ahead loop relies on to log at debug rather than
-        // falsely claim a re-embed.
-        let sandbox = MockSandbox::linux();
+        // A mock sandbox has no cloned workspace and so no managed push
+        // credentials: refresh is a no-op that must report no remote action
+        // and no token — the signal the refresh-ahead loop relies on to log
+        // at debug rather than falsely claim a re-embed.
+        let sandbox = MockSandbox::linux().sandbox();
         assert_eq!(
             sandbox.refresh_push_credentials().await.unwrap(),
             RefreshOutcome::none()
@@ -798,14 +803,14 @@ mod tests {
         assert_eq!(next_refresh_delay(&RefreshOutcome::none()), None);
     }
 
-    /// Sandbox stub whose refresh outcomes are scripted, recording when each
-    /// refresh tick lands on the (paused) tokio clock.
-    struct ScriptedRefreshSandbox {
+    /// Scripted refresh outcomes, recording when each refresh tick lands on
+    /// the (paused) tokio clock.
+    struct ScriptedRefresh {
         script: Mutex<std::collections::VecDeque<RefreshOutcome>>,
         ticks:  Mutex<Vec<tokio::time::Instant>>,
     }
 
-    impl ScriptedRefreshSandbox {
+    impl ScriptedRefresh {
         fn new(script: Vec<RefreshOutcome>) -> Arc<Self> {
             Arc::new(Self {
                 script: Mutex::new(script.into()),
@@ -816,101 +821,24 @@ mod tests {
         fn ticks(&self) -> Vec<tokio::time::Instant> {
             self.ticks.lock().expect("ticks lock").clone()
         }
-    }
 
-    #[async_trait::async_trait]
-    impl Sandbox for ScriptedRefreshSandbox {
-        async fn refresh_push_credentials(&self) -> fabro_sandbox::Result<RefreshOutcome> {
-            self.ticks
-                .lock()
-                .expect("ticks lock")
-                .push(tokio::time::Instant::now());
-            Ok(self
-                .script
-                .lock()
-                .expect("script lock")
-                .pop_front()
-                .expect("refresh script exhausted"))
-        }
-
-        async fn read_file_bytes(&self, _path: &str) -> fabro_sandbox::Result<Vec<u8>> {
-            unimplemented!("refresh loop only calls refresh_push_credentials")
-        }
-
-        async fn write_file(&self, _path: &str, _content: &str) -> fabro_sandbox::Result<()> {
-            unimplemented!()
-        }
-
-        async fn delete_file(&self, _path: &str) -> fabro_sandbox::Result<()> {
-            unimplemented!()
-        }
-
-        async fn file_exists(&self, _path: &str) -> fabro_sandbox::Result<bool> {
-            unimplemented!()
-        }
-
-        async fn list_directory(
-            &self,
-            _path: &str,
-            _depth: Option<usize>,
-        ) -> fabro_sandbox::Result<Vec<fabro_sandbox::DirEntry>> {
-            unimplemented!()
-        }
-
-        async fn exec_command(
-            &self,
-            _command: &str,
-            _timeout_ms: u64,
-            _working_dir: Option<&str>,
-            _env_vars: Option<&HashMap<String, String>>,
-            _cancel_token: Option<CancellationToken>,
-        ) -> fabro_sandbox::Result<fabro_sandbox::ExecResult> {
-            unimplemented!()
-        }
-
-        async fn grep(
-            &self,
-            _pattern: &str,
-            _path: &str,
-            _options: &fabro_sandbox::GrepOptions,
-        ) -> fabro_sandbox::Result<Vec<String>> {
-            unimplemented!()
-        }
-
-        async fn download_file_to_local(
-            &self,
-            _remote_path: &str,
-            _local_path: &std::path::Path,
-        ) -> fabro_sandbox::Result<()> {
-            unimplemented!()
-        }
-
-        async fn upload_file_from_local(
-            &self,
-            _local_path: &std::path::Path,
-            _remote_path: &str,
-        ) -> fabro_sandbox::Result<()> {
-            unimplemented!()
-        }
-
-        async fn initialize(&self) -> fabro_sandbox::Result<()> {
-            Ok(())
-        }
-
-        async fn cleanup(&self) -> fabro_sandbox::Result<()> {
-            Ok(())
-        }
-
-        fn working_directory(&self) -> &str {
-            "/workspace"
-        }
-
-        fn platform(&self) -> &str {
-            "linux"
-        }
-
-        fn os_version(&self) -> String {
-            "linux".to_string()
+        /// The refresh the loop calls: answers the next scripted outcome.
+        fn refresher(
+            self: &Arc<Self>,
+        ) -> impl Fn() -> std::future::Ready<fabro_sandbox::Result<RefreshOutcome>> + Send {
+            let this = Arc::clone(self);
+            move || {
+                this.ticks
+                    .lock()
+                    .expect("ticks lock")
+                    .push(tokio::time::Instant::now());
+                std::future::ready(Ok(this
+                    .script
+                    .lock()
+                    .expect("script lock")
+                    .pop_front()
+                    .expect("refresh script exhausted")))
+            }
         }
     }
 
@@ -923,7 +851,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn refresh_ahead_reschedules_from_token_expiry_across_a_long_turn() {
         let interval = Duration::from_mins(45);
-        let sandbox = ScriptedRefreshSandbox::new(vec![
+        let sandbox = ScriptedRefresh::new(vec![
             // Minute 45: cache still fresh (expires minute 60, margin opens
             // minute 50).
             minted_outcome(
@@ -953,7 +881,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let start = tokio::time::Instant::now();
         let loop_task = tokio::spawn(refresh_ahead_loop(
-            Arc::clone(&sandbox) as Arc<dyn Sandbox>,
+            sandbox.refresher(),
             cancel.clone(),
             interval,
             interval,
@@ -989,7 +917,7 @@ mod tests {
             true,
         );
         let initial_delay = next_refresh_delay(&entry_outcome).unwrap();
-        let sandbox = ScriptedRefreshSandbox::new(vec![minted_outcome(
+        let sandbox = ScriptedRefresh::new(vec![minted_outcome(
             RemoteCredentialAction::Embedded,
             2,
             chrono::Duration::zero(),
@@ -999,7 +927,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let start = tokio::time::Instant::now();
         let loop_task = tokio::spawn(refresh_ahead_loop(
-            Arc::clone(&sandbox) as Arc<dyn Sandbox>,
+            sandbox.refresher(),
             cancel.clone(),
             interval,
             initial_delay,
@@ -1040,7 +968,7 @@ mod tests {
             "ACP_MODE".to_string(),
             "write_file".to_string(),
         )]));
-        let sandbox: Arc<dyn Sandbox> =
+        let sandbox: Arc<RunSandbox> =
             Arc::new(local_sandbox(tempdir.path().to_path_buf()).await.unwrap());
         let emitter = Arc::new(Emitter::default());
         let context = Context::new();
@@ -1089,7 +1017,7 @@ mod tests {
         );
 
         let backend = AgentAcpBackend::new();
-        let sandbox: Arc<dyn Sandbox> =
+        let sandbox: Arc<RunSandbox> =
             Arc::new(local_sandbox(tempdir.path().to_path_buf()).await.unwrap());
         let emitter = Arc::new(Emitter::default());
         let context = Context::new();
@@ -1161,7 +1089,7 @@ mod tests {
                 "steer".to_string(),
             )]))
             .with_steering_hub(steering_hub);
-        let sandbox: Arc<dyn Sandbox> =
+        let sandbox: Arc<RunSandbox> =
             Arc::new(local_sandbox(tempdir.path().to_path_buf()).await.unwrap());
         let context = Context::new();
         let result = backend
@@ -1209,7 +1137,7 @@ mod tests {
             "ACP_MODE".to_string(),
             "write_file".to_string(),
         )]));
-        let sandbox: Arc<dyn Sandbox> =
+        let sandbox: Arc<RunSandbox> =
             Arc::new(local_sandbox(tempdir.path().to_path_buf()).await.unwrap());
         let emitter = Arc::new(Emitter::default());
         let context = Context::new();
@@ -1238,8 +1166,7 @@ mod tests {
     async fn acp_backend_does_not_forward_provider_credentials() {
         let mut sandbox = MockSandbox::linux();
         sandbox.stdio_process_error = Some("stop before ACP handshake".to_string());
-        let sandbox = Arc::new(sandbox);
-        let sandbox_dyn: Arc<dyn Sandbox> = sandbox.clone();
+        let sandbox_dyn = sandbox.sandbox();
 
         let mut node = Node::new("work");
         node.attrs
@@ -1267,12 +1194,7 @@ mod tests {
             .await;
         assert!(result.is_err());
 
-        let captured = sandbox
-            .captured_env_vars
-            .lock()
-            .expect("captured env lock poisoned")
-            .clone()
-            .unwrap_or_default();
+        let captured = sandbox.captured_env_vars().unwrap_or_default();
         assert!(!captured.contains_key("OPENAI_API_KEY"));
         assert!(!captured.contains_key("ANTHROPIC_API_KEY"));
         assert!(!captured.contains_key("GEMINI_API_KEY"));
@@ -1299,7 +1221,7 @@ mod tests {
             "ACP_STOP_REASON".to_string(),
             "cancelled".to_string(),
         )]));
-        let sandbox: Arc<dyn Sandbox> =
+        let sandbox: Arc<RunSandbox> =
             Arc::new(local_sandbox(tempdir.path().to_path_buf()).await.unwrap());
         let emitter = Arc::new(Emitter::default());
         let context = Context::new();
@@ -1348,7 +1270,7 @@ mod tests {
             .insert("acp.config".to_string(), AttrValue::String(raw_command));
 
         let backend = AgentAcpBackend::new();
-        let sandbox: Arc<dyn Sandbox> =
+        let sandbox: Arc<RunSandbox> =
             Arc::new(local_sandbox(tempdir.path().to_path_buf()).await.unwrap());
         let emitter = Arc::new(Emitter::default());
         let events = Arc::new(Mutex::new(Vec::new()));
@@ -1390,8 +1312,7 @@ mod tests {
     #[tokio::test]
     async fn acp_backend_requires_explicit_process_attr() {
         let sandbox = MockSandbox::linux();
-        let sandbox = Arc::new(sandbox);
-        let sandbox_dyn: Arc<dyn Sandbox> = sandbox.clone();
+        let sandbox_dyn = sandbox.sandbox();
 
         let mut node = Node::new("work");
         node.attrs
@@ -1421,11 +1342,7 @@ mod tests {
                 .contains("requires exactly one of acp.command or acp.config")
         );
         assert!(
-            sandbox
-                .captured_env_vars
-                .lock()
-                .expect("captured env lock poisoned")
-                .is_none(),
+            sandbox.captured_env_vars().is_none(),
             "ACP process should not launch when process attr is missing"
         );
     }
@@ -1436,8 +1353,7 @@ mod tests {
 
         let mut sandbox = MockSandbox::linux();
         sandbox.stdio_process_error = Some(DAYTONA_UNSUPPORTED_ACP.to_string());
-        let sandbox = Arc::new(sandbox);
-        let sandbox_dyn: Arc<dyn Sandbox> = sandbox.clone();
+        let sandbox_dyn = sandbox.sandbox();
 
         let mut node = Node::new("work");
         node.attrs

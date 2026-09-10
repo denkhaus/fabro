@@ -754,8 +754,7 @@ mod wire_gate {
     use tokio::io::{duplex, split};
 
     use super::*;
-    use crate::Sandbox as _;
-    use crate::driver_sandbox::{DriverSandbox, LayoutSource, RepoWorkspace};
+    use crate::driver_sandbox::{LayoutSource, RepoWorkspace, RunSandbox};
     use crate::options::base_spec;
 
     #[expect(
@@ -805,7 +804,7 @@ mod wire_gate {
         let snapshot = SnapshotId::try_new(DEFAULT_SNAPSHOT).expect("snapshot id");
         let options = SandboxOptions::default();
         let spec = overlay(base_spec(&options, None), &options, None, &snapshot);
-        let sandbox = DriverSandbox::pending(
+        let sandbox = RunSandbox::pending(
             SandboxProviderKind::DAYTONA,
             remote,
             spec,

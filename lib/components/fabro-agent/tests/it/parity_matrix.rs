@@ -82,7 +82,7 @@ async fn make_session(
     let client = make_client(&provider, twin.as_ref()).await;
     let profile_builder = profile_builder(&provider, model, &client, tool_secrets);
     let mut profile = profile_builder.build();
-    let env: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+    let env: Arc<fabro_agent::RunSandbox> = Arc::new(
         local_sandbox(cwd.to_path_buf())
             .await
             .expect("local sandbox should be created"),

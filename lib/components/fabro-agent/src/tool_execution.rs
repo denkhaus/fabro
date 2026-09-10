@@ -9,7 +9,7 @@ use tracing::debug;
 use crate::config::{SessionOptions, ToolHookCallback, ToolHookDecision};
 use crate::event::{Emitter, SessionBoundEmitter};
 use crate::question_tools::{self, AgentToolRuntime, is_question_tool};
-use crate::sandbox::{OutputCaptureStats, Sandbox};
+use crate::sandbox::{OutputCaptureStats, RunSandbox};
 use crate::session::ToolEnvProvider;
 use crate::tool_registry::{AgentEventEmitter, RegisteredTool, ToolContext, ToolRegistry};
 use crate::truncation::{
@@ -28,7 +28,7 @@ pub async fn execute_tool_calls(
     tool_calls: &[ToolCall],
     parallel: bool,
     registry: &ToolRegistry,
-    env: Arc<dyn Sandbox>,
+    env: Arc<RunSandbox>,
     tool_hooks: Option<&Arc<dyn ToolHookCallback>>,
     cancel_token: &CancellationToken,
     config: &SessionOptions,
@@ -95,7 +95,7 @@ pub async fn execute_tool_calls(
 async fn execute_tool_calls_sequential(
     tool_calls: &[ToolCall],
     registry: &ToolRegistry,
-    env: Arc<dyn Sandbox>,
+    env: Arc<RunSandbox>,
     tool_hooks: Option<&Arc<dyn ToolHookCallback>>,
     cancel_token: &CancellationToken,
     config: &SessionOptions,
@@ -138,7 +138,7 @@ async fn execute_tool_calls_sequential(
 async fn execute_tool_calls_parallel(
     tool_calls: &[ToolCall],
     registry: &ToolRegistry,
-    env: Arc<dyn Sandbox>,
+    env: Arc<RunSandbox>,
     tool_hooks: Option<&Arc<dyn ToolHookCallback>>,
     cancel_token: &CancellationToken,
     config: &SessionOptions,
@@ -200,7 +200,7 @@ async fn execute_tool_calls_parallel(
 async fn execute_question_tool_round(
     tool_calls: &[ToolCall],
     registry: &ToolRegistry,
-    env: Arc<dyn Sandbox>,
+    env: Arc<RunSandbox>,
     tool_hooks: Option<&Arc<dyn ToolHookCallback>>,
     cancel_token: &CancellationToken,
     config: &SessionOptions,
@@ -329,7 +329,7 @@ fn emit_tool_call_result(
 pub async fn execute_and_emit_one_tool(
     tc: &ToolCall,
     registry: &ToolRegistry,
-    env: Arc<dyn Sandbox>,
+    env: Arc<RunSandbox>,
     tool_hooks: Option<&Arc<dyn ToolHookCallback>>,
     cancel_token: CancellationToken,
     config: &SessionOptions,
@@ -361,7 +361,7 @@ pub async fn execute_and_emit_one_tool(
 async fn execute_and_emit_one_tool_with_runtime(
     tc: &ToolCall,
     registry: &ToolRegistry,
-    env: Arc<dyn Sandbox>,
+    env: Arc<RunSandbox>,
     tool_hooks: Option<&Arc<dyn ToolHookCallback>>,
     cancel_token: CancellationToken,
     config: &SessionOptions,
@@ -404,7 +404,7 @@ async fn execute_and_emit_one_tool_with_lookup(
     tc: &ToolCall,
     registered_tool: Option<&RegisteredTool>,
     access_denial: Option<String>,
-    env: Arc<dyn Sandbox>,
+    env: Arc<RunSandbox>,
     tool_hooks: Option<&Arc<dyn ToolHookCallback>>,
     cancel_token: CancellationToken,
     config: &SessionOptions,
@@ -518,7 +518,7 @@ struct ExecutedToolResult {
 async fn execute_one_tool(
     tc: &ToolCall,
     registered_tool: Option<&RegisteredTool>,
-    env: Arc<dyn Sandbox>,
+    env: Arc<RunSandbox>,
     cancel_token: CancellationToken,
     emitter: &Emitter,
     session_id: &str,
@@ -897,7 +897,7 @@ mod tests {
         }
     }
 
-    async fn make_sandbox() -> Arc<dyn Sandbox> {
+    async fn make_sandbox() -> Arc<RunSandbox> {
         Arc::new(
             local_sandbox(std::env::current_dir().unwrap())
                 .await
@@ -1336,11 +1336,12 @@ mod tests {
         assert_eq!(*executions.lock().unwrap(), 0);
     }
 
-    fn shell_sandbox(result: fabro_sandbox::ExecResult) -> Arc<dyn Sandbox> {
-        Arc::new(MockSandbox {
+    fn shell_sandbox(result: fabro_sandbox::ExecResult) -> Arc<RunSandbox> {
+        MockSandbox {
             exec_result: result,
             ..Default::default()
-        })
+        }
+        .sandbox()
     }
 
     fn exited(exit_code: i32) -> fabro_sandbox::ExecResult {

@@ -725,7 +725,7 @@ async fn build_agent_session(
         .activate()
         .await
         .map_err(|err| AskFabroBuildError::SandboxUnavailable(anyhow::Error::new(err)))?;
-    let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::from(sandbox);
+    let sandbox = Arc::new(sandbox);
     // No optional web-tool dependencies: `AskFabroToolAccessPolicy` denies
     // `web_search` and `web_fetch`, and both `tools()` and the prompt are
     // filtered through that policy.
@@ -946,7 +946,7 @@ fn render_ask_fabro_tool_guidance(
 }
 
 fn build_ask_fabro_system_prompt(
-    env: &dyn fabro_agent::Sandbox,
+    env: &fabro_agent::RunSandbox,
     env_context: &fabro_agent::EnvContext,
     _memory: &[String],
     user_instructions: Option<&str>,
@@ -1113,7 +1113,7 @@ impl AgentProfile for AskFabroProfile {
 
     fn build_system_prompt(
         &self,
-        env: &dyn fabro_agent::Sandbox,
+        env: &fabro_agent::RunSandbox,
         env_context: &fabro_agent::EnvContext,
         memory: &[String],
         user_instructions: Option<&str>,
@@ -2033,7 +2033,7 @@ reasoning = false
             tool_exposure_mode: ToolExposureMode::AutoApprovedOnly,
             ..SessionOptions::default()
         };
-        let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+        let sandbox = Arc::new(
             fabro_agent::local_sandbox(std::env::current_dir().unwrap())
                 .await
                 .unwrap(),

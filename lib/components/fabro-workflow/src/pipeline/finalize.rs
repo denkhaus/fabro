@@ -312,8 +312,8 @@ async fn compute_final_patch(
     };
     let to_sha = "HEAD";
     let (patch_result, numstat_result) = tokio::join!(
-        git_diff_with_timeout(&*services.sandbox, &base_sha, timeout_ms),
-        list_diff_numstat(&*services.sandbox, &base_sha, to_sha),
+        git_diff_with_timeout(&services.sandbox, &base_sha, timeout_ms),
+        list_diff_numstat(&services.sandbox, &base_sha, to_sha),
     );
     let final_patch = match patch_result {
         Ok(patch) if !patch.is_empty() => Some(patch),
@@ -981,7 +981,7 @@ mod tests {
     fn test_services(
         run_store: RunStoreHandle,
         emitter: Arc<Emitter>,
-        sandbox: Arc<dyn fabro_agent::Sandbox>,
+        sandbox: Arc<fabro_agent::RunSandbox>,
         metadata_runtime: Arc<RunMetadataRuntime>,
         metadata_writer: Option<RunMetadataWriterHandle>,
     ) -> Arc<RunServices> {
@@ -1018,7 +1018,7 @@ mod tests {
         let emitter = Arc::new(Emitter::new(test_run_id()));
         let store_logger = StoreProgressLogger::new(run_store.clone());
         store_logger.register(&emitter);
-        let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(
+        let sandbox: Arc<fabro_agent::RunSandbox> = Arc::new(
             fabro_agent::local_sandbox(std::env::current_dir().unwrap())
                 .await
                 .unwrap(),
@@ -1270,7 +1270,7 @@ mod tests {
         let services = test_services(
             RunStoreHandle::local(seeded_run_store().await),
             emitter,
-            Arc::new(MockSandbox::linux()),
+            MockSandbox::linux().sandbox(),
             Arc::new(RunMetadataRuntime::new()),
             None,
         );
@@ -1318,7 +1318,12 @@ mod tests {
     #[tokio::test]
     async fn final_push_failure_becomes_terminal_publish_failure() {
         let repo_dir = tempfile::tempdir().unwrap();
-        let sandbox = Arc::new(MockSandbox::linux());
+        // The sandbox is unreachable, so the final push cannot run.
+        let sandbox = MockSandbox {
+            exec_error: Some("sandbox unreachable".into()),
+            ..MockSandbox::linux()
+        }
+        .sandbox();
         let emitter = Arc::new(Emitter::new(test_run_id()));
         let events = record_events(&emitter);
         let services = test_services(
@@ -1613,11 +1618,11 @@ mod tests {
     #[tokio::test]
     async fn finalize_stops_sandbox_on_terminal_without_deleting() {
         let repo_dir = tempfile::tempdir().unwrap();
-        let sandbox = Arc::new(MockSandbox::linux());
+        let sandbox = MockSandbox::linux();
         let services = test_services(
             RunStoreHandle::local(seeded_run_store().await),
             Arc::new(Emitter::new(test_run_id())),
-            sandbox.clone(),
+            sandbox.sandbox(),
             Arc::new(RunMetadataRuntime::new()),
             None,
         );
@@ -1647,11 +1652,11 @@ mod tests {
     #[tokio::test]
     async fn finalize_leaves_sandbox_running_when_stop_on_terminal_is_false() {
         let repo_dir = tempfile::tempdir().unwrap();
-        let sandbox = Arc::new(MockSandbox::linux());
+        let sandbox = MockSandbox::linux();
         let services = test_services(
             RunStoreHandle::local(seeded_run_store().await),
             Arc::new(Emitter::new(test_run_id())),
-            sandbox.clone(),
+            sandbox.sandbox(),
             Arc::new(RunMetadataRuntime::new()),
             None,
         );

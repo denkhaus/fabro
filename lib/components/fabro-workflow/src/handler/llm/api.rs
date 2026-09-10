@@ -7,7 +7,7 @@ use fabro_agent::subagent::{SessionFactory, SubAgentSupervisor};
 use fabro_agent::tool_registry::{RegisteredTool, ToolContext, ToolRegistry, ToolSource};
 use fabro_agent::{
     AgentEvent, AgentProfile, AgentProfileBuilder, CompletionCoordinator, Message as AgentMessage,
-    Sandbox, Session, SessionOptions, SessionShutdownReason, StaticEnvProvider, ToolEnvProvider,
+    RunSandbox, Session, SessionOptions, SessionShutdownReason, StaticEnvProvider, ToolEnvProvider,
     ToolSecrets, WebFetchSummarizer, canonical_tool_name, register_question_tools,
 };
 use fabro_auth::CredentialSource;
@@ -998,7 +998,7 @@ impl AgentApiBackend {
     async fn create_session_with_plan(
         &self,
         node: &Node,
-        sandbox: &Arc<dyn Sandbox>,
+        sandbox: &Arc<RunSandbox>,
         tool_hooks: Option<Arc<dyn fabro_agent::ToolHookCallback>>,
     ) -> Result<(CachedAgentSession, Vec<ModelFallbackNotice>), Error> {
         let model = node.model().unwrap_or(&self.model);
@@ -1044,7 +1044,7 @@ impl AgentApiBackend {
         provider: ProviderContext,
         controls: EffectiveRequestControls,
         node: &Node,
-        sandbox: &Arc<dyn Sandbox>,
+        sandbox: &Arc<RunSandbox>,
         source: &dyn CredentialSource,
         catalog: Arc<Catalog>,
         tool_env: Option<&Arc<dyn ToolEnvProvider>>,
@@ -1937,7 +1937,7 @@ mod tests {
 
         fn build_system_prompt(
             &self,
-            _env: &dyn fabro_agent::Sandbox,
+            _env: &fabro_agent::RunSandbox,
             _env_context: &fabro_agent::EnvContext,
             _memory: &[String],
             _user_instructions: Option<&str>,
@@ -3068,7 +3068,7 @@ reasoning = false
         tokio::fs::write(workspace.path().join("data.txt"), "hello\n")
             .await
             .unwrap();
-        let sandbox: Arc<dyn fabro_agent::Sandbox> =
+        let sandbox: Arc<fabro_agent::RunSandbox> =
             Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let mut session = backend
@@ -3608,7 +3608,7 @@ enabled = true
         let stage_scope = StageScope::for_handler(&context, &node.id);
         let emitter = Arc::new(Emitter::new(fabro_types::RunId::new()));
         let workspace = tempfile::tempdir().unwrap();
-        let sandbox: Arc<dyn fabro_agent::Sandbox> =
+        let sandbox: Arc<fabro_agent::RunSandbox> =
             Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
@@ -3674,7 +3674,7 @@ enabled = true
         let stage_scope = StageScope::for_handler(&context, &node.id);
         let emitter = Arc::new(Emitter::new(fabro_types::RunId::new()));
         let workspace = tempfile::tempdir().unwrap();
-        let sandbox: Arc<dyn fabro_agent::Sandbox> =
+        let sandbox: Arc<fabro_agent::RunSandbox> =
             Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
@@ -3735,7 +3735,7 @@ enabled = true
         let context = Context::new();
         let emitter = Arc::new(Emitter::new(fabro_types::RunId::new()));
         let workspace = tempfile::tempdir().unwrap();
-        let sandbox: Arc<dyn fabro_agent::Sandbox> =
+        let sandbox: Arc<fabro_agent::RunSandbox> =
             Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
@@ -3807,7 +3807,7 @@ enabled = true
         let context = Context::new();
         let emitter = Arc::new(Emitter::new(fabro_types::RunId::new()));
         let workspace = tempfile::tempdir().unwrap();
-        let sandbox: Arc<dyn fabro_agent::Sandbox> =
+        let sandbox: Arc<fabro_agent::RunSandbox> =
             Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
@@ -3878,7 +3878,7 @@ enabled = true
         let context = Context::new();
         let emitter = Arc::new(Emitter::new(fabro_types::RunId::new()));
         let workspace = tempfile::tempdir().unwrap();
-        let sandbox: Arc<dyn fabro_agent::Sandbox> =
+        let sandbox: Arc<fabro_agent::RunSandbox> =
             Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
@@ -3952,7 +3952,7 @@ enabled = true
             }
         });
         let workspace = tempfile::tempdir().unwrap();
-        let sandbox: Arc<dyn fabro_agent::Sandbox> =
+        let sandbox: Arc<fabro_agent::RunSandbox> =
             Arc::new(local_sandbox(workspace.path().to_path_buf()).await.unwrap());
 
         let result = backend
