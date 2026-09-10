@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M256QJB48JK8BXJE1TVM2HYS.jsonl b/.fabro/journal/01M256QJB48JK8BXJE1TVM2HYS.jsonl
+index 65b713f..8570f56 100644
+--- a/.fabro/journal/01M256QJB48JK8BXJE1TVM2HYS.jsonl
++++ b/.fabro/journal/01M256QJB48JK8BXJE1TVM2HYS.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M256QJB48JK8BXJE1TVM2HYS","node":"start","visit":1,"status":"succeeded","ts":"2026-09-10T08:25:23Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M256QJB48JK8BXJE1TVM2HYS","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-10T08:26:14Z","data":{"painpoints":[],"observations":["fabro-afb8 was claimed verification-only: the fix (get -o -> get -i in scripts/smoke.nu) already landed in commit 7ae575c on this branch; tracker was stale relative to the worktree","In-flight check clean: fabro_runs_list showed no open PRs and no other non-terminal develop runs besides this one"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M256QJB48JK8BXJE1TVM2HYS","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-10T08:27:19Z","data":{"painpoints":[],"observations":["scripts/smoke.nu line 89 contains the literal string 'get -o' inside an explanatory comment; any gate or check grepping the file for 'get -o' will false-positive even though the code is 0.101-safe — string-level acceptance criteria on this file should exclude comment lines (run 01M256QJB48JK8BXJE1TVM2HYS, seed fabro-afb8)"]}}
