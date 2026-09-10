@@ -1,0 +1,1485 @@
+diff --git a/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl b/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl
+index f401c23..05374d7 100644
+--- a/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl
++++ b/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M25R832HP615J291N72FHNCS","node":"start","visit":1,"status":"succeeded","ts":"2026-09-10T13:31:32Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M25R832HP615J291N72FHNCS","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-10T13:33:46Z","data":{"painpoints":[{"text":"fabro_runs_list reports PR #121 as state 'merged' while the base branch has none of its work (no lifecycle_events.rs, no squash commit; newest base commit 76ed619 explicitly says the close lives only on the unmerged branch). The in-flight check relies on run/PR projections — a wrongly-'merged' open PR is invisible as in-flight and misleads reconciliation. Evidence: runs list for workflow develop, run 01M25K41V4NEWXSA3SVGRHKRXK, checked 2026-09-10 in run 01M25R832HP615J291N72FHNCS. Fix idea: postlude/post-merge reconciliation should correct PR state, or the projection should re-check against git."},{"text":"Journal fallback for run 01M23RQRCB748R4VRXA2WE6BZ0 (open PR #109) found no journal file at `.fabro/journal/<run_id>.jsonl` — had to recover the in-flight seed (fabro-e702) by fetching the run branch and parsing the .seeds/issues.jsonl diff. This is exactly the known gap of seed fabro-adf7 (failed runs lose stage journals); the prompt's journal fallback silently degrades to nothing."}],"observations":["In-flight exclusions applied this pass: fabro-e702 (open PR #109, seed recovered via run-branch seeds diff), and self (this run). PR #109 is old (2026-09-09) and still open — a stale in-flight lock on its seed.","fabro-3fe4 re-claimed rather than fabro-7627 (also High, listed first): tie-break per observed-failure-class rule — 3fe4 has a concrete gate failure and ~55 min of reusable work on the PR #121 branch; 7627 stays top of the next run's list.","The runs-list 'merged' state for PR #121 contradicts base history; the seed's REOPEN CONTEXT (base commit 76ed619) was treated as authoritative. The implementer MUST fetch the PR #121 branch before starting."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M25R832HP615J291N72FHNCS","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-10T14:54:35Z","data":{"painpoints":[{"text":"The reopen brief's git fetch of `fabro/run/01M25K41V4NEWXSA3SVGRHKRXK` produced branch commits (7a0a7db, f051098) whose fixes were partially superseded by an in-progress unstaged worktree state with no journal record explaining it — an interrupted prior pass of run 01M25R832HP left ambiguous reconciliation state. Suggestion: journal the reconciliation decision (reuse vs supersede) as the first action of a re-claim pass so the next interruption is recoverable."}],"observations":["The PR #121 branch's fix (Runnable-retry inside the Rejected arm + durable-terminal fallback in the delete guard) diverged from the worktree's cleaner shared-helper fix; choosing the shared helper required reading both diffs carefully — the branch's zz_probe_seeded_completed_status debug test in `lib/apps/fabro-cli/tests/it/cmd/rm.rs` is correctly absent from the final tree.","rg pattern `pub fn` misses `pub async fn` declarations — lifecycle_events.rs looked empty on first inventory; pattern discipline matters when verifying module interfaces."]}}
+diff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl
+index e677d3f..db14517 100644
+--- a/.mulch/expertise/engine.jsonl
++++ b/.mulch/expertise/engine.jsonl
+@@ -53,3 +53,5 @@
+ {"type":"decision","classification":"tactical","recorded_at":"2026-09-09T18:46:28.575Z","evidence":{"commit":"2510041b02b1e609e990cf3058116dde2282b25d"},"title":"adr-0020-node-tools-reviewer-gated","rationale":"User decision 2026-09-09 grill: an engine-side read-only allowlist would split the capability model and make the overall logic harder to explain without removing the trust question; the reviewer is the instance that can best judge 'what the task minimally requires' and must recognize and block unjustified escalations. Run-wide flag remains the only widener for attribute-less stages; new tools stay full ADR-0019 item-4 user decisions.","id":"mx-92e1a7"}
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-09T18:41:55.712Z","evidence":{"commit":"9a7a3b1a2be24180e4d240d1c089307fd639ca54"},"description":"resolve_pr_model (lib/components/fabro-workflow/src/operations/start.rs) only falls back to the run model for bare provider tokens / ambiguous refs; a provider-QUALIFIED unknown selector (e.g. zai:nonexistent-model) passes through resolve_selection which echoes the selector as the model id, so the PR-body call would fail at client time instead of falling back to the run model. Found while writing fabro-6a5a tests; documented via resolve_pr_model_falls_back_to_run_model_for_bare_provider.","resolution":"Not fixed (out of fabro-6a5a scope): documented via the bare-provider fallback test; the qualified-unknown-selector passthrough is journal-reported for a future seed.","id":"mx-232137"}
+ {"type":"decision","classification":"tactical","recorded_at":"2026-09-09T19:35:33.832Z","evidence":{"seeds":"fabro-c0e5","commit":"cbaec07acdaff2408bf340a029f074ff0100c8c0"},"title":"Mixed-capture evidence: anomaly section for loop paths changed alongside seed work","rationale":"PR #109 flipped auto_merge=false across three workflow.toml files and was approved because the evidence capture demoted loop-path changes to counts-only churn whenever seed work existed — the reviewer never saw the diff. Detection is cheaper and safer than classification: fabro-93a7 (spec-named path promotion) and fabro-9d2f (worktree-diff quarantine) stay open separately.","id":"mx-b6e12b"}
++{"type":"pattern","classification":"tactical","recorded_at":"2026-09-10T14:43:40.831Z","evidence":{"commit":"2a2f189a4cf44f95b03420280c488971156ae8b6"},"dir_anchors":["lib/components/fabro-workflow/src/operations"],"name":"lifecycle-two-reducer-equivalence-via-shared-table","description":"Proving server live fold and store RunProjectionReducer agree is done transitively (fabro-3fe4): one pure table fabro_types::apply_lifecycle_event consumed by BOTH, plus two thin equivalence tests (xorshift property test durable-reducer-vs-table in run_state.rs::lifecycle_equivalence, and live_lifecycle_status-vs-table step test in fabro-server server/tests.rs). Live-only guards (RunRunnable ingestion suppression) are documented deviations in the step test, not table arms. Historic pre-table stream shapes (Submitted->Starting jumps, fast-forwarded RunFailed) live in fabro_types::historic_skipped_statuses so the shim has one owner and the table stays strict.","files":["lib/apps/fabro-server/src/server.rs","lib/apps/fabro-server/src/server/tests.rs","lib/components/fabro-store/src/run_state.rs","lib/components/fabro-workflow/src/operations/lifecycle_events.rs","lib/components/fabro-workflow/src/operations/mod.rs","lib/components/fabro-workflow/src/operations/resume.rs","lib/components/fabro-workflow/src/operations/start.rs","lib/components/fabro-workflow/src/test_support.rs","lib/foundation/fabro-types/src/lib.rs","lib/foundation/fabro-types/src/lifecycle.rs"],"id":"mx-840e1b"}
++{"type":"failure","classification":"tactical","recorded_at":"2026-09-10T14:54:14.516Z","evidence":{"commit":"2a2f189a4cf44f95b03420280c488971156ae8b6"},"dir_anchors":["lib/components/fabro-workflow/src/operations"],"description":"fabro-3fe4 reopen (runs 01M25K41V4NE, 01M25R832HP): making the live reducer strictly apply the shared lifecycle table stranded injected event sequences (submitted + worker-shaped run.starting, RunRunnable suppressed by the scheduling guard) at Submitted, so fabro rm no longer saw terminal runs as completed and failed dogfood-gate. Lesson: when two reducers share one strict table, any per-reducer guard (RunRunnable suppression) must be paired with the shared fast-forward path, or live/durable status drift breaks downstream terminality predicates like requires_force_to_delete.","resolution":"Shared helper fabro_types::historic_skipped_statuses consumed by BOTH live_lifecycle_status (server.rs) and RunProjectionReducer (run_state.rs); rm completed-run tests pass on final tree.","id":"mx-c555a3"}
+diff --git a/lib/apps/fabro-server/src/server.rs b/lib/apps/fabro-server/src/server.rs
+index 88b2ad5..f51e7da 100644
+--- a/lib/apps/fabro-server/src/server.rs
++++ b/lib/apps/fabro-server/src/server.rs
+@@ -113,6 +113,7 @@ use fabro_workflow::artifact_upload::ArtifactSink;
+ use fabro_workflow::command_log::command_log_path;
+ use fabro_workflow::event::{self as workflow_event, Emitter};
+ use fabro_workflow::handler::HandlerRegistry;
++use fabro_workflow::operations::lifecycle_events;
+ use fabro_workflow::pipeline::Persisted;
+ use fabro_workflow::records::Checkpoint;
+ use fabro_workflow::run_lookup::{
+@@ -3409,16 +3410,14 @@ async fn persist_cancelled_run_status(state: &AppState, run_id: RunId) -> anyhow
+         return Ok(());
+     }
+ 
+-    let failure_event = workflow_event::Event::workflow_run_failed_from_error(
++    lifecycle_events::terminal_failure(
++        &run_store,
++        &run_id,
+         &WorkflowError::Cancelled,
+-        fabro_types::RunTiming::default(),
+         FailureReason::Cancelled,
+-        None,
+-        None,
+-        None,
+-        None,
+-    );
+-    workflow_event::append_event(&run_store, &run_id, &failure_event).await
++        fabro_types::RunTiming::default(),
++    )
++    .await
+ }
+ 
+ async fn finish_cancelled_run_before_execution(state: &Arc<AppState>, run_id: RunId) {
+@@ -3463,17 +3462,14 @@ async fn fail_run_before_execution(
+ ) {
+     match state.stores.runs.open_run(&run_id).await {
+         Ok(run_store) => {
+-            let failure_event = workflow_event::Event::workflow_run_failed_from_error(
++            if let Err(err) = lifecycle_events::terminal_failure(
++                &run_store,
++                &run_id,
+                 &WorkflowError::engine(message.clone()),
+-                fabro_types::RunTiming::default(),
+                 reason,
+-                None,
+-                None,
+-                None,
+-                None,
+-            );
+-            if let Err(err) =
+-                workflow_event::append_event(&run_store, &run_id, &failure_event).await
++                fabro_types::RunTiming::default(),
++            )
++            .await
+             {
+                 error!(run_id = %run_id, error = %err, "Failed to persist run failure status");
+             }
+@@ -3573,6 +3569,32 @@ fn fail_managed_run(state: &Arc<AppState>, run_id: RunId, reason: FailureReason,
+     cleanup_worker_control_bus_for_run(state.as_ref(), run_id);
+ }
+ 
++/// Live-reducer status step over the shared lifecycle transition table
++/// (fabro-3fe4). `Ok(Some(next))` assigns the next live status; `Ok(None)`
++/// leaves it unchanged (non-lifecycle events and the `RunRunnable`
++/// scheduling guard); `Err` marks a transition the table rejects. Historic
++/// streams that skipped intermediate statuses (e.g. injected
++/// `submitted -> starting` sequences) fast-forward through the shared
++/// `historic_skipped_statuses` helper, the same replay path the durable
++/// projection reducer uses, so both folds stay equivalent.
++fn live_lifecycle_status(
++    current: RunStatus,
++    event: &RunEvent,
++) -> Result<Option<RunStatus>, fabro_types::InvalidTransition> {
++    if matches!(event.body, EventBody::RunRunnable(_)) {
++        return Ok(None);
++    }
++    let mut status = current;
++    for skipped in fabro_types::historic_skipped_statuses(status, &event.body) {
++        status = skipped;
++    }
++    match fabro_types::apply_lifecycle_event(status, &event.body) {
++        fabro_types::LifecycleTransition::Next(next) => Ok(Some(next)),
++        fabro_types::LifecycleTransition::Rejected(err) => Err(err),
++        fabro_types::LifecycleTransition::NotLifecycle => Ok(None),
++    }
++}
++
+ fn update_live_run_from_event(state: &AppState, run_id: RunId, event: &RunEvent) {
+     use fabro_types::EventBody;
+ 
+@@ -3589,59 +3611,19 @@ fn update_live_run_from_event(state: &AppState, run_id: RunId, event: &RunEvent)
+         return;
+     }
+ 
+-    match &event.body {
+-        EventBody::RunSubmitted(_) => managed_run.status = RunStatus::Submitted,
+-        EventBody::RunPending(props) => {
+-            managed_run.status = RunStatus::Pending {
+-                reason: props.reason,
+-            };
+-        }
+-        EventBody::RunStarting(_) => managed_run.status = RunStatus::Starting,
+-        EventBody::RunRunning(_) => managed_run.status = RunStatus::Running,
+-        EventBody::RunBlocked(props) => {
+-            managed_run.status = match managed_run.status {
+-                RunStatus::Paused { .. } => RunStatus::Paused {
+-                    prior_block: Some(props.blocked_reason),
+-                },
+-                _ => RunStatus::Blocked {
+-                    blocked_reason: props.blocked_reason,
+-                },
+-            };
+-        }
+-        EventBody::RunUnblocked(_) => {
+-            managed_run.status = match managed_run.status {
+-                RunStatus::Paused {
+-                    prior_block: Some(_) | None,
+-                } => RunStatus::Paused { prior_block: None },
+-                _ => RunStatus::Running,
+-            };
+-        }
+-        EventBody::RunPaused(_) => {
+-            let prior_block = match managed_run.status {
+-                RunStatus::Blocked { blocked_reason } => Some(blocked_reason),
+-                RunStatus::Paused { prior_block } => prior_block,
+-                _ => None,
+-            };
+-            managed_run.status = RunStatus::Paused { prior_block };
+-        }
+-        EventBody::RunUnpaused(_) => {
+-            managed_run.status = match managed_run.status {
+-                RunStatus::Paused {
+-                    prior_block: Some(blocked_reason),
+-                } => RunStatus::Blocked { blocked_reason },
+-                _ => RunStatus::Running,
+-            };
++    // Status transitions are owned by the shared lifecycle table; the live
++    // reducer keeps only its side effects on top (error field, active-stage
++    // map cleanup, worker control bus cleanup).
++    match live_lifecycle_status(managed_run.status, event) {
++        Ok(Some(next)) => managed_run.status = next,
++        Ok(None) => {}
++        Err(err) => {
++            tracing::warn!(run_id = %run_id, error = %err, "Rejecting out-of-order lifecycle event");
+         }
+-        EventBody::RunRemoving(_) => managed_run.status = RunStatus::Removing,
+-        EventBody::RunCompleted(_) => {
+-            let EventBody::RunCompleted(props) = &event.body else {
+-                unreachable!(
+-                    "outer match arm already verified event.body is EventBody::RunCompleted"
+-                )
+-            };
+-            managed_run.status = RunStatus::Succeeded {
+-                reason: props.reason,
+-            };
++    }
++
++    match &event.body {
++        EventBody::RunCompleted(props) => {
+             // Publish-blocked completions keep the run green but surface the
+             // blocked delivery as the run error so list/detail views render
+             // the remediation (fabro-67e5).
+@@ -3652,9 +3634,6 @@ fn update_live_run_from_event(state: &AppState, run_id: RunId, event: &RunEvent)
+             cleanup_worker_control_bus_for_run(state, run_id);
+         }
+         EventBody::RunFailed(props) => {
+-            managed_run.status = RunStatus::Failed {
+-                reason: props.failure.reason,
+-            };
+             managed_run.error = Some(render_compact_with_causes(
+                 &props.failure.detail.message,
+                 &props.failure.detail.causes,
+diff --git a/lib/apps/fabro-server/src/server/tests.rs b/lib/apps/fabro-server/src/server/tests.rs
+index cc460d3..161d838 100644
+--- a/lib/apps/fabro-server/src/server/tests.rs
++++ b/lib/apps/fabro-server/src/server/tests.rs
+@@ -17134,6 +17134,95 @@ async fn interrupt_terminal_run_returns_run_not_interruptible() {
+     assert_eq!(body["errors"][0]["code"], "run_not_interruptible");
+ }
+ 
++/// fabro-3fe4: the live status step is the shared lifecycle table plus two
++/// documented deviations — the `RunRunnable` scheduling guard and the
++/// shared `historic_skipped_statuses` replay path (the same fast-forward
++/// the durable projection reducer uses). No AppState (or lock surgery) is
++/// needed to prove it.
++#[test]
++fn live_status_step_matches_the_shared_table_except_runnable_suppression() {
++    use fabro_types::{LifecycleTransition, RunRunnableSource, apply_lifecycle_event};
++
++    let run_id = fixtures::RUN_1;
++    let runnable = workflow_event::to_run_event(&run_id, &workflow_event::Event::RunRunnable {
++        source: RunRunnableSource::StartRequested,
++        actor:  None,
++    });
++    // Live-only scheduling guard: an injected runnable event never flips
++    // status, no matter the current status.
++    assert_eq!(
++        super::live_lifecycle_status(RunStatus::Submitted, &runnable),
++        Ok(None)
++    );
++    assert_eq!(
++        super::live_lifecycle_status(RunStatus::Runnable, &runnable),
++        Ok(None)
++    );
++
++    let lifecycle_events = vec![
++        workflow_event::to_run_event(&run_id, &workflow_event::Event::RunStarting),
++        workflow_event::to_run_event(&run_id, &workflow_event::Event::RunRunning),
++        workflow_event::to_run_event(&run_id, &workflow_event::Event::WorkflowRunCompleted {
++            timing:               fabro_types::RunTiming::wall_only(1),
++            artifact_count:       0,
++            status:               "succeeded".to_string(),
++            reason:               SuccessReason::Completed,
++            failure:              None,
++            total_usd_micros:     None,
++            final_git_commit_sha: None,
++            final_patch:          None,
++            diff_summary:         None,
++            billing:              None,
++        }),
++        workflow_event::to_run_event(&run_id, &workflow_event::Event::WorkflowRunFailed {
++            failure:              fabro_types::RunFailure {
++                reason: fabro_types::FailureReason::Cancelled,
++                detail: FailureDetail::new(
++                    "cancelled before start",
++                    FailureCategory::Deterministic,
++                ),
++            },
++            timing:               fabro_types::RunTiming::wall_only(1),
++            final_git_commit_sha: None,
++            final_patch:          None,
++            diff_summary:         None,
++            billing:              None,
++        }),
++    ];
++    let statuses = [
++        RunStatus::Submitted,
++        RunStatus::Runnable,
++        RunStatus::Starting,
++        RunStatus::Running,
++        RunStatus::Paused { prior_block: None },
++        RunStatus::Failed {
++            reason: fabro_types::FailureReason::Cancelled,
++        },
++    ];
++
++    for status in statuses {
++        for event in &lifecycle_events {
++            // The shared historic fast-forward replays the same intermediate
++            // statuses the durable reducer replays, so the live fold agrees
++            // with a full-table fold from the fast-forwarded status.
++            let mut table_status = status;
++            for skipped in fabro_types::historic_skipped_statuses(table_status, &event.body) {
++                table_status = skipped;
++            }
++            let expected = match apply_lifecycle_event(table_status, &event.body) {
++                LifecycleTransition::Next(next) => Ok(Some(next)),
++                LifecycleTransition::Rejected(err) => Err(err),
++                LifecycleTransition::NotLifecycle => Ok(None),
++            };
++            assert_eq!(
++                super::live_lifecycle_status(status, event),
++                expected,
++                "live step drifted from the table at {status}"
++            );
++        }
++    }
++}
++
+ #[test]
+ fn injected_runnable_event_does_not_make_submitted_run_schedulable() {
+     let state = test_app_state();
+@@ -17168,6 +17257,14 @@ fn injected_runnable_event_does_not_make_submitted_run_schedulable() {
+     update_live_run_from_event(&state, run_id, &starting);
+ 
+     let runs = state.runs.lock().expect("runs lock poisoned");
++    // The runnable guard keeps scheduling ownership with the lifecycle
++    // handlers, but a follow-up `run.starting` still advances the live
++    // status through the shared historic fast-forward (submitted ->
++    // runnable -> starting) — the same replay the durable projection
++    // reducer performs, so live and durable folds stay equivalent and
++    // seeded event sequences reach terminal statuses (fabro-3fe4 reopen:
++    // the strict rejection stranded injected runs at `submitted` and broke
++    // `fabro rm` completed-run handling).
+     assert_eq!(runs.get(&run_id).unwrap().status, RunStatus::Starting);
+ }
+ 
+diff --git a/lib/components/fabro-store/src/run_state.rs b/lib/components/fabro-store/src/run_state.rs
+index a268f8d..1c6653a 100644
+--- a/lib/components/fabro-store/src/run_state.rs
++++ b/lib/components/fabro-store/src/run_state.rs
+@@ -16,7 +16,7 @@ use fabro_types::{
+     Run, RunApproval, RunApprovalState, RunBillingSummary, RunControlAction, RunDiff, RunEvent,
+     RunId, RunLifecycle, RunLinks, RunModel, RunOrigin, RunProjection, RunSandbox,
+     RunSandboxFailure, RunSandboxInstance, RunSandboxPlan, RunSandboxRuntime, RunSize, RunSpec,
+-    RunStatus, RunTimestamps, SandboxProviderKind, StageCompletion, StageHandler, StageId,
++    RunTimestamps, SandboxProviderKind, StageCompletion, StageHandler, StageId,
+     StageInferenceProjection, StageModelUsage, StageOutcome, StageProjection, StageState,
+     StartRecord, SubAgentProjection, SubAgentStatus, TodoListKind, TodoListProjection,
+     TodoProjection, WorkflowRef, billing_rollup, first_event_seq, timing,
+@@ -89,30 +89,14 @@ impl RunProjectionReducer for RunProjection {
+         };
+         let mut state = projection_from_created(first)?;
+         for event in rest {
+-            // Runs written before the runnable state was introduced can move
+-            // directly from submitted to starting. Replay that historical
+-            // shape through the equivalent current transition while keeping
+-            // live single-event transitions strict.
+-            if matches!(event.event.body, EventBody::RunStarting(_))
+-                && matches!(state.status, RunStatus::Submitted)
+-            {
+-                state.try_apply_status(RunStatus::Runnable, event.event.ts)?;
+-            }
+-            if let EventBody::RunFailed(props) = &event.event.body {
+-                let failed = RunStatus::Failed {
+-                    reason: props.failure.reason,
+-                };
+-                if !state.status.can_transition_to(failed) {
+-                    if matches!(
+-                        state.status,
+-                        RunStatus::Submitted | RunStatus::Pending { .. }
+-                    ) {
+-                        state.try_apply_status(RunStatus::Runnable, event.event.ts)?;
+-                    }
+-                    if matches!(state.status, RunStatus::Runnable) {
+-                        state.try_apply_status(RunStatus::Starting, event.event.ts)?;
+-                    }
+-                }
++            // HISTORIC SHIM (reason, fabro-3fe4): runs written before the
++            // lifecycle table existed can skip intermediate statuses
++            // (submitted -> starting, failures naming never-recorded
++            // states). The shared `historic_skipped_statuses` helper replays
++            // the missing steps so both reducers converge on the same final
++            // status; live single-event transitions are never patched.
++            for skipped in fabro_types::historic_skipped_statuses(state.status, &event.event.body) {
++                state.try_apply_status(skipped, event.event.ts)?;
+             }
+             state.apply_event(event)?;
+         }
+@@ -125,6 +109,20 @@ impl RunProjectionReducer for RunProjection {
+ 
+         self.last_event_at = ts;
+ 
++        // Status transitions are owned by the shared lifecycle table
++        // (fabro-3fe4): this reducer keeps only the non-status side effects
++        // and rejects exactly the transitions the table rejects.
++        match fabro_types::apply_lifecycle_event(self.status, &stored.body) {
++            fabro_types::LifecycleTransition::NotLifecycle => {}
++            fabro_types::LifecycleTransition::Next(next) => {
++                if next != self.status {
++                    self.status = next;
++                    self.status_updated_at = ts;
++                }
++            }
++            fabro_types::LifecycleTransition::Rejected(err) => return Err(err.into()),
++        }
++
+         match &stored.body {
+             EventBody::RunCreated(_) => {
+                 return Err(Error::InvalidEvent(
+@@ -142,24 +140,15 @@ impl RunProjectionReducer for RunProjection {
+                 self.spec.definition_blob = props.definition_blob;
+             }
+             EventBody::RunStartRequested(props) if props.resume => {
+-                self.try_apply_status(RunStatus::Submitted, ts)?;
+                 self.conclusion = None;
+             }
+-            EventBody::RunPending(props) => {
+-                self.try_apply_status(
+-                    RunStatus::Pending {
+-                        reason: props.reason,
+-                    },
+-                    ts,
+-                )?;
+-                if props.reason == PendingReason::ApprovalRequired {
+-                    self.approval = Some(RunApproval {
+-                        state:         RunApprovalState::Pending,
+-                        requested_at:  ts,
+-                        decided_at:    None,
+-                        denial_reason: None,
+-                    });
+-                }
++            EventBody::RunPending(props) if props.reason == PendingReason::ApprovalRequired => {
++                self.approval = Some(RunApproval {
++                    state:         RunApprovalState::Pending,
++                    requested_at:  ts,
++                    decided_at:    None,
++                    denial_reason: None,
++                });
+             }
+             EventBody::RunApproved(_) => {
+                 if let Some(approval) = &mut self.approval {
+@@ -175,42 +164,6 @@ impl RunProjectionReducer for RunProjection {
+                     approval.denial_reason.clone_from(&props.reason);
+                 }
+             }
+-            EventBody::RunRunnable(_) => {
+-                self.try_apply_status(RunStatus::Runnable, ts)?;
+-            }
+-            EventBody::RunStarting(_) => {
+-                self.try_apply_status(RunStatus::Starting, ts)?;
+-            }
+-            EventBody::RunRunning(_) => {
+-                self.try_apply_status(RunStatus::Running, ts)?;
+-            }
+-            EventBody::RunBlocked(props) => {
+-                let next = if matches!(self.status, RunStatus::Paused { .. }) {
+-                    RunStatus::Paused {
+-                        prior_block: Some(props.blocked_reason),
+-                    }
+-                } else {
+-                    RunStatus::Blocked {
+-                        blocked_reason: props.blocked_reason,
+-                    }
+-                };
+-                self.try_apply_status(next, ts)?;
+-            }
+-            EventBody::RunUnblocked(_) => {
+-                let next = match self.status {
+-                    RunStatus::Paused {
+-                        prior_block: Some(_),
+-                    } => RunStatus::Paused { prior_block: None },
+-                    RunStatus::Paused { prior_block: None } => {
+-                        RunStatus::Paused { prior_block: None }
+-                    }
+-                    _ => RunStatus::Running,
+-                };
+-                self.try_apply_status(next, ts)?;
+-            }
+-            EventBody::RunRemoving(_) => {
+-                self.try_apply_status(RunStatus::Removing, ts)?;
+-            }
+             EventBody::RunCancelRequested(_) => {
+                 self.pending_control = Some(RunControlAction::Cancel);
+             }
+@@ -220,43 +173,15 @@ impl RunProjectionReducer for RunProjection {
+             EventBody::RunUnpauseRequested(_) => {
+                 self.pending_control = Some(RunControlAction::Unpause);
+             }
+-            EventBody::RunPaused(_) => {
+-                self.try_apply_status(
+-                    RunStatus::Paused {
+-                        prior_block: self.status.blocked_reason(),
+-                    },
+-                    ts,
+-                )?;
+-                self.pending_control = None;
+-            }
+-            EventBody::RunUnpaused(_) => {
+-                let next = match self.status {
+-                    RunStatus::Paused {
+-                        prior_block: Some(blocked_reason),
+-                    } => RunStatus::Blocked { blocked_reason },
+-                    _ => RunStatus::Running,
+-                };
+-                self.try_apply_status(next, ts)?;
++            EventBody::RunPaused(_) | EventBody::RunUnpaused(_) => {
+                 self.pending_control = None;
+             }
+             EventBody::RunCompleted(props) => {
+-                self.try_apply_status(
+-                    RunStatus::Succeeded {
+-                        reason: props.reason,
+-                    },
+-                    ts,
+-                )?;
+                 self.pending_control = None;
+                 self.conclusion = Some(conclusion_from_completed(self, props, ts)?);
+                 self.pending_interviews.clear();
+             }
+             EventBody::RunFailed(props) => {
+-                self.try_apply_status(
+-                    RunStatus::Failed {
+-                        reason: props.failure.reason,
+-                    },
+-                    ts,
+-                )?;
+                 self.pending_control = None;
+                 self.conclusion = Some(conclusion_from_failed(self, props, ts));
+                 self.pending_interviews.clear();
+@@ -7861,4 +7786,215 @@ mod tests {
+             assert!(open_bracket(&state).is_none());
+         }
+     }
++
++    /// fabro-3fe4: the durable reducer and the shared lifecycle transition
++    /// table (`fabro_types::apply_lifecycle_event`) must yield the same
++    /// status for every table-valid event sequence. A deterministic
++    /// xorshift PRNG drives a property test over random sequences: the
++    /// sequence ends where the table rejects (the durable reducer would
++    /// error on the same event), and both folds must agree at every step.
++    mod lifecycle_equivalence {
++        use fabro_types::run_event::{
++            RunApprovedProps, RunBlockedProps, RunCompletedProps, RunControlEffectProps,
++            RunControlRequestedProps, RunDeniedProps, RunFailedProps, RunPendingProps,
++            RunRunnableProps, RunStartRequestedProps, RunStatusEffectProps,
++            RunStatusTransitionProps, RunSubmittedProps, RunTitleUpdatedProps,
++        };
++        use fabro_types::{
++            BlockedReason, EventBody, FailureCategory, FailureDetail, FailureReason,
++            LifecycleTransition, PendingReason, RunControlAction, RunFailure, RunRunnableSource,
++            RunStatus, RunTiming, SuccessReason, apply_lifecycle_event,
++        };
++
++        use super::{RunProjectionReducer, initialized_projection, test_event};
++
++        struct XorShift(u64);
++
++        impl XorShift {
++            fn next(&mut self) -> u64 {
++                let mut x = self.0;
++                x ^= x << 13;
++                x ^= x >> 7;
++                x ^= x << 17;
++                self.0 = x;
++                x
++            }
++
++            fn below(&mut self, bound: usize) -> usize {
++                usize::try_from(self.next() % (bound as u64)).expect("modulo stays in range")
++            }
++        }
++
++        fn failed_props(reason: FailureReason) -> RunFailedProps {
++            RunFailedProps {
++                failure:              RunFailure {
++                    reason,
++                    detail: FailureDetail::new("equivalence", FailureCategory::Deterministic),
++                },
++                timing:               RunTiming::default(),
++                final_git_commit_sha: None,
++                final_patch:          None,
++                diff_summary:         None,
++                billing:              None,
++            }
++        }
++
++        fn completed_props(reason: SuccessReason) -> RunCompletedProps {
++            RunCompletedProps {
++                timing: RunTiming::wall_only(1),
++                artifact_count: 0,
++                status: "succeeded".to_string(),
++                reason,
++                failure: None,
++                total_usd_micros: None,
++                final_git_commit_sha: None,
++                final_patch: None,
++                diff_summary: None,
++                billing: None,
++            }
++        }
++
++        fn random_body(rng: &mut XorShift) -> EventBody {
++            let reasons = [
++                FailureReason::Cancelled,
++                FailureReason::LaunchFailed,
++                FailureReason::WorkflowError,
++                FailureReason::Terminated,
++                FailureReason::BootstrapFailed,
++                FailureReason::PublishFailed,
++                FailureReason::ApprovalDenied,
++                FailureReason::ApprovalTimeout,
++            ];
++            match rng.below(17) {
++                0 => EventBody::RunSubmitted(RunSubmittedProps {
++                    definition_blob: None,
++                }),
++                1 => EventBody::RunStartRequested(RunStartRequestedProps { resume: true }),
++                2 => EventBody::RunStartRequested(RunStartRequestedProps { resume: false }),
++                3 => EventBody::RunPending(RunPendingProps {
++                    reason: PendingReason::ApprovalRequired,
++                }),
++                4 => EventBody::RunApproved(RunApprovedProps {}),
++                5 => EventBody::RunDenied(RunDeniedProps { reason: None }),
++                6 => EventBody::RunRunnable(RunRunnableProps {
++                    source: RunRunnableSource::StartRequested,
++                }),
++                7 => EventBody::RunStarting(RunStatusTransitionProps {}),
++                8 => EventBody::RunRunning(RunStatusTransitionProps {}),
++                9 => EventBody::RunBlocked(RunBlockedProps {
++                    blocked_reason: BlockedReason::HumanInputRequired,
++                }),
++                10 => EventBody::RunUnblocked(RunStatusEffectProps {}),
++                11 => EventBody::RunPaused(RunControlEffectProps {}),
++                12 => EventBody::RunUnpaused(RunControlEffectProps {}),
++                13 => EventBody::RunCompleted(completed_props(
++                    [SuccessReason::Completed, SuccessReason::PublishBlocked][rng.below(2)],
++                )),
++                14 => EventBody::RunFailed(failed_props(reasons[rng.below(reasons.len())])),
++                15 => EventBody::RunTitleUpdated(RunTitleUpdatedProps {
++                    title: "equivalence".to_string(),
++                }),
++                _ => EventBody::RunCancelRequested(RunControlRequestedProps {
++                    action: [RunControlAction::Cancel, RunControlAction::Pause][rng.below(2)],
++                }),
++            }
++        }
++
++        #[test]
++        fn durable_reducer_matches_the_shared_table_for_random_event_sequences() {
++            let mut rng = XorShift(0x3fe4_2026_0910_1234);
++            let mut cases_agreeing = 0usize;
++
++            for case in 0..2_000u32 {
++                let mut table_status = RunStatus::Submitted;
++                let mut projection = initialized_projection();
++                let len = 1 + rng.below(16);
++                let len_u32 = u32::try_from(len).expect("sequence length fits u32");
++
++                for seq in 1..=len_u32 {
++                    let body = random_body(&mut rng);
++                    match apply_lifecycle_event(table_status, &body) {
++                        LifecycleTransition::Rejected(_) => break,
++                        LifecycleTransition::Next(next) => {
++                            table_status = next;
++                            projection
++                                .apply_event(&test_event(seq, body, None))
++                                .expect("reducer accepts what the table accepts");
++                        }
++                        LifecycleTransition::NotLifecycle => {
++                            projection
++                                .apply_event(&test_event(seq, body, None))
++                                .expect("reducer accepts non-lifecycle events");
++                        }
++                    }
++                    assert_eq!(
++                        projection.status, table_status,
++                        "case {case} seq {seq}: durable reducer drifted from the table"
++                    );
++                }
++                cases_agreeing += 1;
++            }
++            assert!(cases_agreeing > 0);
++        }
++
++        #[test]
++        fn cancel_before_starting_and_failure_before_running_replay_strictly() {
++            // Cancel-before-starting: submitted -> failed(cancelled).
++            let mut projection = initialized_projection();
++            projection
++                .apply_event(&test_event(
++                    1,
++                    EventBody::RunFailed(failed_props(FailureReason::Cancelled)),
++                    None,
++                ))
++                .unwrap();
++            assert_eq!(projection.status, RunStatus::Failed {
++                reason: FailureReason::Cancelled,
++            });
++
++            // Failure-before-running: runnable -> failed(launch_failed)
++            // without an intervening starting event.
++            let mut projection = initialized_projection();
++            projection
++                .apply_event(&test_event(
++                    1,
++                    EventBody::RunRunnable(RunRunnableProps {
++                        source: RunRunnableSource::StartRequested,
++                    }),
++                    None,
++                ))
++                .unwrap();
++            projection
++                .apply_event(&test_event(
++                    2,
++                    EventBody::RunFailed(failed_props(FailureReason::LaunchFailed)),
++                    None,
++                ))
++                .unwrap();
++            assert_eq!(projection.status, RunStatus::Failed {
++                reason: FailureReason::LaunchFailed,
++            });
++
++            // A post-start failure reason is rejected from runnable.
++            let mut projection = initialized_projection();
++            projection
++                .apply_event(&test_event(
++                    1,
++                    EventBody::RunRunnable(RunRunnableProps {
++                        source: RunRunnableSource::StartRequested,
++                    }),
++                    None,
++                ))
++                .unwrap();
++            let err = projection.apply_event(&test_event(
++                2,
++                EventBody::RunFailed(failed_props(FailureReason::PublishFailed)),
++                None,
++            ));
++            assert!(
++                matches!(err, Err(crate::Error::InvalidTransition(_))),
++                "{err:?}"
++            );
++        }
++    }
+ }
+diff --git a/lib/components/fabro-workflow/src/operations/lifecycle_events.rs b/lib/components/fabro-workflow/src/operations/lifecycle_events.rs
+new file mode 100644
+index 0000000..3561fd1
+--- /dev/null
++++ b/lib/components/fabro-workflow/src/operations/lifecycle_events.rs
+@@ -0,0 +1,70 @@
++//! Owner of the run-lifecycle event sequence (fabro-3fe4).
++//!
++//! The protocol `RunStartRequested -> RunRunnable -> RunStarting -> Running`
++//! (plus the resubmit and terminal-failure entries) has exactly one emission
++//! point: this module. Emitters (`operations::start`, `operations::resume`,
++//! the server's terminal writes, and workflow test support) are adapters over
++//! these functions; the status semantics of the emitted stream are owned by
++//! the shared transition table in `fabro_types::apply_lifecycle_event`.
++
++use fabro_store::RunDatabase;
++use fabro_types::{BlobHash, FailureReason, Principal, RunId, RunRunnableSource, RunTiming};
++
++use crate::error::Error;
++use crate::event::{
++    Event, RunEventPersistenceError, RunEventSink, append_event, append_event_to_sink,
++};
++
++/// Request a start (or resubmission) for a run. `resume: true` re-opens a
++/// terminal run; `resume: false` is the request marker of a fresh start.
++pub async fn request_start(
++    sink: &RunEventSink,
++    run_id: &RunId,
++    resume: bool,
++    actor: Option<Principal>,
++) -> Result<(), RunEventPersistenceError> {
++    append_event_to_sink(sink, run_id, &Event::RunStartRequested { resume, actor }).await
++}
++
++/// Mark the run schedulable after a start request or an approval.
++pub async fn runnable(
++    sink: &RunEventSink,
++    run_id: &RunId,
++    source: RunRunnableSource,
++    actor: Option<Principal>,
++) -> Result<(), RunEventPersistenceError> {
++    append_event_to_sink(sink, run_id, &Event::RunRunnable { source, actor }).await
++}
++
++/// A worker picked the run up and is initializing.
++pub async fn starting(sink: &RunEventSink, run_id: &RunId) -> Result<(), RunEventPersistenceError> {
++    append_event_to_sink(sink, run_id, &Event::RunStarting).await
++}
++
++/// The workflow graph began executing.
++pub async fn running(sink: &RunEventSink, run_id: &RunId) -> Result<(), RunEventPersistenceError> {
++    append_event_to_sink(sink, run_id, &Event::RunRunning).await
++}
++
++/// Resubmit a run's spec (definition blob) ahead of a resume.
++pub async fn resubmit(
++    sink: &RunEventSink,
++    run_id: &RunId,
++    definition_blob: Option<BlobHash>,
++) -> Result<(), RunEventPersistenceError> {
++    append_event_to_sink(sink, run_id, &Event::RunSubmitted { definition_blob }).await
++}
++
++/// Persist the terminal `run.failed` event for a run that failed outside the
++/// normal worker pipeline (pre-execution rejection or cancellation).
++pub async fn terminal_failure(
++    run_store: &RunDatabase,
++    run_id: &RunId,
++    error: &Error,
++    reason: FailureReason,
++    timing: RunTiming,
++) -> anyhow::Result<()> {
++    let failure_event =
++        Event::workflow_run_failed_from_error(error, timing, reason, None, None, None, None);
++    append_event(run_store, run_id, &failure_event).await
++}
+diff --git a/lib/components/fabro-workflow/src/operations/mod.rs b/lib/components/fabro-workflow/src/operations/mod.rs
+index 57ed472..6a954c1 100644
+--- a/lib/components/fabro-workflow/src/operations/mod.rs
++++ b/lib/components/fabro-workflow/src/operations/mod.rs
+@@ -1,6 +1,7 @@
+ mod archive;
+ mod create;
+ mod fork;
++pub mod lifecycle_events;
+ mod resume;
+ mod retry;
+ mod rewind;
+diff --git a/lib/components/fabro-workflow/src/operations/resume.rs b/lib/components/fabro-workflow/src/operations/resume.rs
+index 466ae5e..b3b2b92 100644
+--- a/lib/components/fabro-workflow/src/operations/resume.rs
++++ b/lib/components/fabro-workflow/src/operations/resume.rs
+@@ -2,7 +2,6 @@ use std::path::Path;
+ 
+ use super::start::{StartServices, Started, execute_persisted_run};
+ use crate::error::Error;
+-use crate::event::{Event, append_event_to_sink};
+ use crate::outcome::StageOutcome;
+ use crate::pipeline::ResumeState;
+ use crate::run_status::RunStatus;
+@@ -38,12 +37,8 @@ pub async fn resume(run_dir: &Path, services: StartServices) -> Result<Started,
+     let definition_blob = state.spec.definition_blob;
+ 
+     cleanup_resume_artifacts(run_dir);
+-    append_event_to_sink(
+-        &services.event_sink,
+-        &services.run_id,
+-        &Event::RunSubmitted { definition_blob },
+-    )
+-    .await?;
++    super::lifecycle_events::resubmit(&services.event_sink, &services.run_id, definition_blob)
++        .await?;
+ 
+     Box::pin(execute_persisted_run(run_dir, Some(resume_state), services)).await
+ }
+diff --git a/lib/components/fabro-workflow/src/operations/start.rs b/lib/components/fabro-workflow/src/operations/start.rs
+index 9847f36..4501ac1 100644
+--- a/lib/components/fabro-workflow/src/operations/start.rs
++++ b/lib/components/fabro-workflow/src/operations/start.rs
+@@ -162,22 +162,13 @@ pub async fn start(run_dir: &Path, services: StartServices) -> Result<Started, E
+         )));
+     }
+     if matches!(status, RunStatus::Submitted) {
+-        append_event_to_sink(
++        super::lifecycle_events::request_start(&services.event_sink, &services.run_id, false, None)
++            .await?;
++        super::lifecycle_events::runnable(
+             &services.event_sink,
+             &services.run_id,
+-            &Event::RunStartRequested {
+-                resume: false,
+-                actor:  None,
+-            },
+-        )
+-        .await?;
+-        append_event_to_sink(
+-            &services.event_sink,
+-            &services.run_id,
+-            &Event::RunRunnable {
+-                source: RunRunnableSource::StartRequested,
+-                actor:  None,
+-            },
++            RunRunnableSource::StartRequested,
++            None,
+         )
+         .await?;
+     }
+@@ -208,7 +199,7 @@ pub(super) async fn execute_persisted_run(
+         .await;
+         return Err(error);
+     }
+-    if let Err(err) = append_event_to_sink(&event_sink, &run_id, &Event::RunStarting).await {
++    if let Err(err) = super::lifecycle_events::starting(&event_sink, &run_id).await {
+         let error = Error::from(err);
+         let _ = persist_detached_failure(
+             run_id,
+diff --git a/lib/components/fabro-workflow/src/test_support.rs b/lib/components/fabro-workflow/src/test_support.rs
+index 9baf66d..e7472ae 100644
+--- a/lib/components/fabro-workflow/src/test_support.rs
++++ b/lib/components/fabro-workflow/src/test_support.rs
+@@ -108,24 +108,28 @@ pub fn test_usage(
+ }
+ 
+ /// Append the `RunStartRequested → RunRunnable → RunStarting → RunRunning`
+-/// sequence so subsequent calls observe the run as live.
++/// sequence so subsequent calls observe the run as live. Adapter over the
++/// lifecycle event protocol owner (fabro-3fe4).
+ pub async fn mark_run_running(run_store: &fabro_store::RunDatabase, run_id: &fabro_types::RunId) {
+-    append_event(run_store, run_id, &Event::RunStartRequested {
+-        resume: false,
+-        actor:  None,
+-    })
+-    .await
+-    .expect("seed run.start_requested");
+-    append_event(run_store, run_id, &Event::RunRunnable {
+-        source: fabro_types::RunRunnableSource::StartRequested,
+-        actor:  None,
+-    })
++    use crate::event::RunEventSink;
++    use crate::operations::lifecycle_events;
++
++    let sink = RunEventSink::store(run_store.clone());
++    lifecycle_events::request_start(&sink, run_id, false, None)
++        .await
++        .expect("seed run.start_requested");
++    lifecycle_events::runnable(
++        &sink,
++        run_id,
++        fabro_types::RunRunnableSource::StartRequested,
++        None,
++    )
+     .await
+     .expect("seed run.runnable");
+-    append_event(run_store, run_id, &Event::RunStarting)
++    lifecycle_events::starting(&sink, run_id)
+         .await
+         .expect("seed run.starting");
+-    append_event(run_store, run_id, &Event::RunRunning)
++    lifecycle_events::running(&sink, run_id)
+         .await
+         .expect("seed run.running");
+ }
+diff --git a/lib/foundation/fabro-types/src/lib.rs b/lib/foundation/fabro-types/src/lib.rs
+index 39fa5fb..f086767 100644
+--- a/lib/foundation/fabro-types/src/lib.rs
++++ b/lib/foundation/fabro-types/src/lib.rs
+@@ -18,6 +18,7 @@ pub mod graph;
+ mod id;
+ mod input_scalar;
+ pub mod interview;
++pub mod lifecycle;
+ pub mod llm_backend;
+ pub mod manifest_path;
+ pub mod mcp_store;
+@@ -90,6 +91,7 @@ pub use input_scalar::{
+ pub use interview::{
+     InterviewQuestionRecord, QuestionType, ReviewTarget, ReviewTargetError, ReviewTargetKind,
+ };
++pub use lifecycle::{LifecycleTransition, apply_lifecycle_event, historic_skipped_statuses};
+ pub use llm_backend::AgentBackend;
+ pub use manifest_path::{ManifestPath, ManifestPathParseError};
+ pub use mcp_store::{
+diff --git a/lib/foundation/fabro-types/src/lifecycle.rs b/lib/foundation/fabro-types/src/lifecycle.rs
+new file mode 100644
+index 0000000..b6eafb6
+--- /dev/null
++++ b/lib/foundation/fabro-types/src/lifecycle.rs
+@@ -0,0 +1,541 @@
++//! Shared run-lifecycle transition table (fabro-3fe4).
++//!
++//! One pure function owns the mapping `(RunStatus, EventBody) -> RunStatus`
++//! for every event that drives run status. Both reducers — the server's live
++//! in-memory reducer (`update_live_run_from_event`) and the durable
++//! projection reducer (`fabro_store::RunProjectionReducer`) — consume this
++//! table so their status folds cannot drift. Reducers keep only their
++//! non-status side effects on top of it.
++
++use crate::run_event::EventBody;
++use crate::status::{InvalidTransition, RunStatus};
++
++/// Result of applying one event body to a run status.
++#[derive(Debug, Clone, PartialEq)]
++pub enum LifecycleTransition {
++    /// The event does not participate in the run-lifecycle state machine;
++    /// reducers leave the status untouched.
++    NotLifecycle,
++    /// The event is valid for the current status; `RunStatus` is the status
++    /// after the event (identical to the input for idempotent repeats).
++    Next(RunStatus),
++    /// The event cannot follow the current status.
++    Rejected(InvalidTransition),
++}
++
++/// Intermediate statuses a historic (pre-table) event stream may have
++/// skipped between `status` and `body`'s target (fabro-3fe4).
++///
++/// Runs written before the lifecycle table existed can jump directly from
++/// `Submitted` to `Starting` (the runnable state was introduced later), and
++/// historic `run.failed` events can name states the run never recorded.
++/// Reducers replaying history fast-forward through the missing intermediate
++/// statuses so both folds converge on the same final status while the table
++/// itself stays strict for live single-event transitions.
++#[must_use]
++pub fn historic_skipped_statuses(status: RunStatus, body: &EventBody) -> Vec<RunStatus> {
++    let mut skipped = Vec::new();
++    if matches!(body, EventBody::RunStarting(_)) && matches!(status, RunStatus::Submitted) {
++        skipped.push(RunStatus::Runnable);
++    }
++    if let EventBody::RunFailed(props) = body {
++        let failed = RunStatus::Failed {
++            reason: props.failure.reason,
++        };
++        if !status.can_transition_to(failed) {
++            let mut current = status;
++            if matches!(current, RunStatus::Submitted | RunStatus::Pending { .. }) {
++                skipped.push(RunStatus::Runnable);
++                current = RunStatus::Runnable;
++            }
++            if matches!(current, RunStatus::Runnable) {
++                skipped.push(RunStatus::Starting);
++            }
++        }
++    }
++    skipped
++}
++
++/// Pure transition table for the run-lifecycle event protocol.
++///
++/// Validity reuses [`RunStatus::can_transition_to`]; an event whose target
++/// equals the current status is an idempotent no-op (`Next(current)`),
++/// mirroring `RunProjection::try_apply_status`.
++///
++/// Protocol notes:
++/// - `run.submitted` carries the definition blob but does not drive status: the
++///   resubmit flow reaches `Submitted` through `run.start_requested` (`resume:
++///   true`), and a status write here would force every later `run.starting`
++///   through the historic `Submitted -> Starting` replay shim.
++/// - `run.start_requested` with `resume: false` is a request marker only; the
++///   status change is owned by the following `run.runnable` event.
++#[must_use]
++pub fn apply_lifecycle_event(status: RunStatus, body: &EventBody) -> LifecycleTransition {
++    let target = match body {
++        EventBody::RunStartRequested(props) if props.resume => Some(RunStatus::Submitted),
++        EventBody::RunPending(props) => Some(RunStatus::Pending {
++            reason: props.reason,
++        }),
++        EventBody::RunRunnable(_) => Some(RunStatus::Runnable),
++        EventBody::RunStarting(_) => Some(RunStatus::Starting),
++        EventBody::RunRunning(_) => Some(RunStatus::Running),
++        EventBody::RunBlocked(props) => Some(match status {
++            RunStatus::Paused { .. } => RunStatus::Paused {
++                prior_block: Some(props.blocked_reason),
++            },
++            _ => RunStatus::Blocked {
++                blocked_reason: props.blocked_reason,
++            },
++        }),
++        EventBody::RunUnblocked(_) => Some(match status {
++            RunStatus::Paused { .. } => RunStatus::Paused { prior_block: None },
++            _ => RunStatus::Running,
++        }),
++        EventBody::RunRemoving(_) => Some(RunStatus::Removing),
++        EventBody::RunPaused(_) => Some(RunStatus::Paused {
++            prior_block: status.blocked_reason(),
++        }),
++        EventBody::RunUnpaused(_) => Some(match status {
++            RunStatus::Paused {
++                prior_block: Some(blocked_reason),
++            } => RunStatus::Blocked { blocked_reason },
++            _ => RunStatus::Running,
++        }),
++        EventBody::RunCompleted(props) => Some(RunStatus::Succeeded {
++            reason: props.reason,
++        }),
++        EventBody::RunFailed(props) => Some(RunStatus::Failed {
++            reason: props.failure.reason,
++        }),
++        _ => None,
++    };
++
++    match target {
++        None => LifecycleTransition::NotLifecycle,
++        Some(next) if next == status => LifecycleTransition::Next(next),
++        Some(next) => match status.transition_to(next) {
++            Ok(next) => LifecycleTransition::Next(next),
++            Err(err) => LifecycleTransition::Rejected(err),
++        },
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::run_event::{
++        RunApprovedProps, RunBlockedProps, RunCompletedProps, RunControlEffectProps,
++        RunCreatedProps, RunFailedProps, RunPendingProps, RunRunnableProps, RunStartRequestedProps,
++        RunStatusEffectProps, RunStatusTransitionProps, RunSubmittedProps,
++    };
++    use crate::{
++        BlockedReason, FailureCategory, FailureDetail, FailureReason, Graph, PendingReason,
++        RunFailure, RunRunnableSource, RunTiming, SuccessReason, WorkflowSettings, test_support,
++    };
++
++    fn transition_props() -> RunStatusTransitionProps {
++        RunStatusTransitionProps {}
++    }
++
++    fn effect() -> RunControlEffectProps {
++        RunControlEffectProps {}
++    }
++
++    fn unblocked() -> RunStatusEffectProps {
++        RunStatusEffectProps {}
++    }
++
++    fn failed(reason: FailureReason) -> RunFailedProps {
++        RunFailedProps {
++            failure:              RunFailure {
++                reason,
++                detail: FailureDetail::new("table test", FailureCategory::Deterministic),
++            },
++            timing:               RunTiming::default(),
++            final_git_commit_sha: None,
++            final_patch:          None,
++            diff_summary:         None,
++            billing:              None,
++        }
++    }
++
++    fn completed(reason: SuccessReason) -> RunCompletedProps {
++        RunCompletedProps {
++            timing: RunTiming::wall_only(1),
++            artifact_count: 0,
++            status: "succeeded".to_string(),
++            reason,
++            failure: None,
++            total_usd_micros: None,
++            final_git_commit_sha: None,
++            final_patch: None,
++            diff_summary: None,
++            billing: None,
++        }
++    }
++
++    fn blocked() -> RunBlockedProps {
++        RunBlockedProps {
++            blocked_reason: BlockedReason::HumanInputRequired,
++        }
++    }
++
++    fn next(status: RunStatus, body: &EventBody) -> RunStatus {
++        match apply_lifecycle_event(status, body) {
++            LifecycleTransition::Next(next) => next,
++            other => panic!("expected Next, got {other:?} for {status} + {body:?}"),
++        }
++    }
++
++    fn rejected(status: RunStatus, body: &EventBody) {
++        assert!(
++            matches!(
++                apply_lifecycle_event(status, body),
++                LifecycleTransition::Rejected(_)
++            ),
++            "expected Rejected for {status} + {body:?}"
++        );
++    }
++
++    #[test]
++    fn request_start_resubmits_terminal_runs_to_submitted() {
++        let resume = EventBody::RunStartRequested(RunStartRequestedProps { resume: true });
++        assert_eq!(
++            next(
++                RunStatus::Failed {
++                    reason: FailureReason::WorkflowError,
++                },
++                &resume
++            ),
++            RunStatus::Submitted
++        );
++        // Fresh (non-resume) start requests are markers only.
++        let fresh = EventBody::RunStartRequested(RunStartRequestedProps { resume: false });
++        assert_eq!(
++            apply_lifecycle_event(RunStatus::Submitted, &fresh),
++            LifecycleTransition::NotLifecycle
++        );
++    }
++
++    #[test]
++    fn runnable_pending_and_starting_advance_in_order() {
++        let pending = EventBody::RunPending(RunPendingProps {
++            reason: PendingReason::ApprovalRequired,
++        });
++        assert_eq!(next(RunStatus::Submitted, &pending), RunStatus::Pending {
++            reason: PendingReason::ApprovalRequired,
++        });
++        assert_eq!(
++            next(
++                RunStatus::Pending {
++                    reason: PendingReason::ApprovalRequired,
++                },
++                &pending
++            ),
++            RunStatus::Pending {
++                reason: PendingReason::ApprovalRequired,
++            }
++        );
++
++        let runnable = EventBody::RunRunnable(RunRunnableProps {
++            source: RunRunnableSource::StartRequested,
++        });
++        assert_eq!(next(RunStatus::Submitted, &runnable), RunStatus::Runnable);
++        assert_eq!(
++            next(
++                RunStatus::Pending {
++                    reason: PendingReason::ApprovalRequired,
++                },
++                &runnable
++            ),
++            RunStatus::Runnable
++        );
++
++        let starting = EventBody::RunStarting(transition_props());
++        assert_eq!(next(RunStatus::Runnable, &starting), RunStatus::Starting);
++        // Cancel-before-starting: Submitted and Pending runs can be cancelled
++        // before any worker reaches Starting.
++        assert_eq!(
++            next(
++                RunStatus::Submitted,
++                &EventBody::RunFailed(failed(FailureReason::Cancelled))
++            ),
++            RunStatus::Failed {
++                reason: FailureReason::Cancelled,
++            }
++        );
++        assert_eq!(
++            next(
++                RunStatus::Pending {
++                    reason: PendingReason::ApprovalRequired,
++                },
++                &EventBody::RunFailed(failed(FailureReason::ApprovalTimeout))
++            ),
++            RunStatus::Failed {
++                reason: FailureReason::ApprovalTimeout,
++            }
++        );
++    }
++
++    #[test]
++    fn submitted_cannot_skip_runnable_to_starting() {
++        rejected(
++            RunStatus::Submitted,
++            &EventBody::RunStarting(transition_props()),
++        );
++        rejected(
++            RunStatus::Submitted,
++            &EventBody::RunRunning(transition_props()),
++        );
++    }
++
++    #[test]
++    fn failure_before_running_is_valid_only_for_pre_start_reasons() {
++        // Failure-before-running: a worker that dies after being scheduled
++        // (Runnable) but before appending RunStarting fails the run directly.
++        assert_eq!(
++            next(
++                RunStatus::Runnable,
++                &EventBody::RunFailed(failed(FailureReason::LaunchFailed))
++            ),
++            RunStatus::Failed {
++                reason: FailureReason::LaunchFailed,
++            }
++        );
++        assert_eq!(
++            next(
++                RunStatus::Runnable,
++                &EventBody::RunFailed(failed(FailureReason::Cancelled))
++            ),
++            RunStatus::Failed {
++                reason: FailureReason::Cancelled,
++            }
++        );
++        // Reasons that imply the run already progressed past Starting are
++        // rejected from Runnable.
++        rejected(
++            RunStatus::Runnable,
++            &EventBody::RunFailed(failed(FailureReason::SandboxInitFailed)),
++        );
++        rejected(
++            RunStatus::Runnable,
++            &EventBody::RunFailed(failed(FailureReason::PublishFailed)),
++        );
++    }
++
++    #[test]
++    fn running_blocked_pause_and_control_round_trips() {
++        let starting = EventBody::RunStarting(transition_props());
++        let running = EventBody::RunRunning(transition_props());
++        let runnable = RunStatus::Runnable;
++        assert_eq!(next(runnable, &starting), RunStatus::Starting);
++        assert_eq!(next(RunStatus::Starting, &running), RunStatus::Running);
++
++        assert_eq!(
++            next(RunStatus::Running, &EventBody::RunBlocked(blocked())),
++            RunStatus::Blocked {
++                blocked_reason: BlockedReason::HumanInputRequired,
++            }
++        );
++        assert_eq!(
++            next(
++                RunStatus::Blocked {
++                    blocked_reason: BlockedReason::HumanInputRequired,
++                },
++                &EventBody::RunRunning(transition_props())
++            ),
++            RunStatus::Running
++        );
++
++        // Pause preserves the prior block; unpaused restores it.
++        assert_eq!(
++            next(
++                RunStatus::Blocked {
++                    blocked_reason: BlockedReason::HumanInputRequired,
++                },
++                &EventBody::RunPaused(effect())
++            ),
++            RunStatus::Paused {
++                prior_block: Some(BlockedReason::HumanInputRequired),
++            }
++        );
++        assert_eq!(
++            next(
++                RunStatus::Paused {
++                    prior_block: Some(BlockedReason::HumanInputRequired),
++                },
++                &EventBody::RunUnpaused(effect())
++            ),
++            RunStatus::Blocked {
++                blocked_reason: BlockedReason::HumanInputRequired,
++            }
++        );
++
++        // Unblocked clears a prior block while paused, otherwise resumes.
++        assert_eq!(
++            next(
++                RunStatus::Paused {
++                    prior_block: Some(BlockedReason::HumanInputRequired),
++                },
++                &EventBody::RunUnblocked(unblocked())
++            ),
++            RunStatus::Paused { prior_block: None }
++        );
++        assert_eq!(
++            next(
++                RunStatus::Blocked {
++                    blocked_reason: BlockedReason::HumanInputRequired,
++                },
++                &EventBody::RunUnblocked(unblocked())
++            ),
++            RunStatus::Running
++        );
++
++        // A block arriving while paused refreshes the prior block instead of
++        // leaving the paused state.
++        assert_eq!(
++            next(
++                RunStatus::Paused { prior_block: None },
++                &EventBody::RunBlocked(blocked())
++            ),
++            RunStatus::Paused {
++                prior_block: Some(BlockedReason::HumanInputRequired),
++            }
++        );
++    }
++
++    #[test]
++    fn terminal_events_close_active_runs_and_stay_frozen() {
++        let running = EventBody::RunRunning(transition_props());
++        let succeeded = EventBody::RunCompleted(completed(SuccessReason::Completed));
++        assert_eq!(next(RunStatus::Running, &succeeded), RunStatus::Succeeded {
++            reason: SuccessReason::Completed,
++        });
++        assert_eq!(
++            next(
++                RunStatus::Starting,
++                &EventBody::RunFailed(failed(FailureReason::Terminated))
++            ),
++            RunStatus::Failed {
++                reason: FailureReason::Terminated,
++            }
++        );
++
++        // Terminal statuses are immutable: no lifecycle event moves them
++        // (Dead remains the deletion escape hatch outside this table's
++        // lifecycle events).
++        let terminal = RunStatus::Succeeded {
++            reason: SuccessReason::Completed,
++        };
++        rejected(terminal, &running);
++        rejected(terminal, &EventBody::RunStarting(transition_props()));
++        rejected(
++            RunStatus::Failed {
++                reason: FailureReason::WorkflowError,
++            },
++            &EventBody::RunCompleted(completed(SuccessReason::Completed)),
++        );
++    }
++
++    #[test]
++    fn non_lifecycle_events_leave_status_untouched() {
++        for body in [
++            EventBody::RunCreated(RunCreatedProps {
++                title:               None,
++                settings:            WorkflowSettings::default(),
++                graph:               Graph::new("test"),
++                workflow_source:     None,
++                labels:              std::collections::BTreeMap::new(),
++                source_directory:    None,
++                workflow_slug:       None,
++                workflow_version_id: None,
++                target:              None,
++                automation:          None,
++                provenance:          test_support::test_run_provenance(),
++                manifest_blob:       None,
++                spec_blob:           None,
++                git:                 None,
++                fork_source_ref:     None,
++                retried_from:        None,
++                parent_id:           None,
++                web_url:             None,
++            }),
++            EventBody::RunSubmitted(RunSubmittedProps {
++                definition_blob: None,
++            }),
++            EventBody::RunApproved(RunApprovedProps {}),
++        ] {
++            assert_eq!(
++                apply_lifecycle_event(RunStatus::Running, &body),
++                LifecycleTransition::NotLifecycle,
++                "{body:?}"
++            );
++        }
++    }
++
++    #[test]
++    fn historic_skipped_statuses_replay_missing_intermediate_steps() {
++        // Historic submitted -> starting jumps skipped runnable.
++        assert_eq!(
++            historic_skipped_statuses(
++                RunStatus::Submitted,
++                &EventBody::RunStarting(transition_props()),
++            ),
++            vec![RunStatus::Runnable]
++        );
++        // Historic failure from submitted without runnable/starting events
++        // fast-forwards through both intermediate statuses.
++        assert_eq!(
++            historic_skipped_statuses(
++                RunStatus::Submitted,
++                &EventBody::RunFailed(failed(FailureReason::SandboxInitFailed)),
++            ),
++            vec![RunStatus::Runnable, RunStatus::Starting]
++        );
++        assert_eq!(
++            historic_skipped_statuses(
++                RunStatus::Runnable,
++                &EventBody::RunFailed(failed(FailureReason::SandboxInitFailed)),
++            ),
++            vec![RunStatus::Starting]
++        );
++        // Current-protocol streams skip nothing.
++        assert!(
++            historic_skipped_statuses(
++                RunStatus::Runnable,
++                &EventBody::RunStarting(transition_props()),
++            )
++            .is_empty()
++        );
++        assert!(
++            historic_skipped_statuses(
++                RunStatus::Running,
++                &EventBody::RunFailed(failed(FailureReason::WorkflowError)),
++            )
++            .is_empty()
++        );
++        // Failures the table accepts directly from submitted skip nothing.
++        assert!(
++            historic_skipped_statuses(
++                RunStatus::Submitted,
++                &EventBody::RunFailed(failed(FailureReason::Cancelled)),
++            )
++            .is_empty()
++        );
++    }
++
++    #[test]
++    fn idempotent_repeats_return_current_status() {
++        let running = EventBody::RunRunning(transition_props());
++        assert_eq!(
++            apply_lifecycle_event(RunStatus::Running, &running),
++            LifecycleTransition::Next(RunStatus::Running)
++        );
++        let removing = EventBody::RunRemoving(transition_props());
++        // Repeated removal is an idempotent no-op like every repeat.
++        assert_eq!(
++            apply_lifecycle_event(RunStatus::Removing, &removing),
++            LifecycleTransition::Next(RunStatus::Removing)
++        );
++    }
++}
