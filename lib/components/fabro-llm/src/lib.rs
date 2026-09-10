@@ -4,8 +4,7 @@
 //! the client. This crate adds what is specific to Fabro:
 //!
 //! - building the catalog from the lithos built-ins and the operator `[llm]`
-//!   overlay, and the catalog queries Fabro's dispatch boundaries share
-//!   ([`catalog`]);
+//!   overlay, and reading the agent harness a model expects ([`catalog`]);
 //! - Fabro's passthrough policy for selections made before a request exists
 //!   ([`selection`]); at request time the lithos resolver enforces `enabled`
 //!   and `stands_in_for` itself;

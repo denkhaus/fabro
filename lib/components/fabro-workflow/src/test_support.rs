@@ -8,7 +8,6 @@ use fabro_agent::Sandbox;
 use fabro_auth::test_support as auth_test_support;
 use fabro_graphviz::graph::Graph as GvGraph;
 use fabro_interview::AutoApproveInterviewer;
-use fabro_llm::catalog;
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::test_support::test_catalog;
@@ -40,7 +39,7 @@ pub(crate) fn test_configured_provider_ids(
     assume_ready: bool,
 ) -> Vec<ProviderId> {
     if assume_ready {
-        catalog::enabled_provider_ids(catalog).into_iter().collect()
+        catalog.enabled_provider_ids().into_iter().collect()
     } else {
         configured_provider_ids
     }

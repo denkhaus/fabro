@@ -20,10 +20,8 @@ use std::collections::HashSet;
 use std::fmt;
 
 use fabro_types::{ModelId, ProviderId};
-use lithos_llm::catalog::Catalog;
+use lithos_llm::catalog::{Catalog, Offering};
 use thiserror::Error;
-
-use crate::catalog::{self, ModelEntry};
 
 /// A provider/model pair one of the selection functions chose.
 ///
@@ -94,11 +92,12 @@ pub fn require_provider(
     catalog: &Catalog,
     selector: &str,
 ) -> Result<ProviderId, ModelSelectionError> {
-    catalog::canonical_provider_id(catalog, selector).ok_or_else(|| {
-        ModelSelectionError::UnknownProvider {
+    catalog
+        .enabled_provider(selector)
+        .map(|provider| provider.id().clone())
+        .ok_or_else(|| ModelSelectionError::UnknownProvider {
             provider: selector.to_string(),
-        }
-    })
+        })
 }
 
 /// Canonicalizes a provider and requires it to be in the eligible set.
@@ -120,14 +119,15 @@ pub fn resolve_on_provider<'a>(
     catalog: &'a Catalog,
     provider: &ProviderId,
     selector: &str,
-) -> Result<ModelEntry<'a>, ModelSelectionError> {
+) -> Result<Offering<'a>, ModelSelectionError> {
     let provider = require_provider(catalog, provider.as_str())?;
-    catalog::model_on_provider(catalog, provider.as_str(), selector).ok_or(
-        ModelSelectionError::UnknownSelectorOnProvider {
+    catalog
+        .enabled_provider(provider.as_str())
+        .and_then(|provider| provider.offering(selector))
+        .ok_or(ModelSelectionError::UnknownSelectorOnProvider {
             selector: selector.to_string(),
             provider,
-        },
-    )
+        })
 }
 
 /// Selects a catalog model for `selector`, requiring a real offering.
@@ -140,7 +140,7 @@ pub fn select<'a>(
     selector: &str,
     explicit_provider: Option<&ProviderId>,
     eligible: &HashSet<ProviderId>,
-) -> Result<ModelEntry<'a>, ModelSelectionError> {
+) -> Result<Offering<'a>, ModelSelectionError> {
     if let Some(explicit) = explicit_provider {
         let provider = ready_provider(catalog, explicit, eligible)?;
         return resolve_on_provider(catalog, &provider, selector);
@@ -149,12 +149,12 @@ pub fn select<'a>(
     // it at request time. A slash whose prefix is not a provider (an
     // aggregator's `vendor/model` api id) falls through to plain matching.
     if let Some((prefix, rest)) = selector.split_once('/') {
-        if let Some(provider) = catalog::canonical_provider_id(catalog, prefix) {
-            let provider = ready_provider(catalog, &provider, eligible)?;
+        if let Some(provider) = catalog.enabled_provider(prefix) {
+            let provider = ready_provider(catalog, provider.id(), eligible)?;
             return resolve_on_provider(catalog, &provider, rest);
         }
     }
-    let matches = catalog::models_matching(catalog, selector);
+    let matches = catalog.offerings_matching(selector);
     if matches.is_empty() {
         return Err(ModelSelectionError::UnknownSelector {
             selector: selector.to_string(),
@@ -178,19 +178,21 @@ pub fn select<'a>(
 pub fn select_default<'a>(
     catalog: &'a Catalog,
     eligible: &HashSet<ProviderId>,
-) -> Result<ModelEntry<'a>, ModelSelectionError> {
+) -> Result<Offering<'a>, ModelSelectionError> {
     let eligible = canonical_eligible(catalog, eligible);
-    let providers_with_defaults: Vec<_> = catalog::enabled_providers(catalog)
+    let providers_with_defaults: Vec<_> = catalog
+        .enabled_providers()
         .into_iter()
         .filter_map(|provider| {
-            catalog::default_model(catalog, provider.id().as_str())
-                .map(|model| (provider.id().clone(), model))
+            provider
+                .default_offering()
+                .map(|offering| (provider.id().clone(), offering))
         })
         .collect();
     providers_with_defaults
         .iter()
         .find(|(provider, _)| eligible.contains(provider))
-        .map(|(_, model)| model.clone())
+        .map(|(_, offering)| *offering)
         .ok_or_else(|| ModelSelectionError::NoDefaultModel {
             providers: providers_with_defaults
                 .into_iter()
@@ -258,7 +260,7 @@ pub fn resolve_selection_with_catalog_fallback(
             catalog,
             selector,
             explicit_provider,
-            &catalog::enabled_provider_ids(catalog),
+            &catalog.enabled_provider_ids().into_iter().collect(),
         ),
         result => result,
     }
@@ -267,7 +269,8 @@ pub fn resolve_selection_with_catalog_fallback(
 fn canonical_eligible(catalog: &Catalog, eligible: &HashSet<ProviderId>) -> HashSet<ProviderId> {
     eligible
         .iter()
-        .filter_map(|id| catalog::canonical_provider_id(catalog, id.as_str()))
+        .filter_map(|id| catalog.enabled_provider(id.as_str()))
+        .map(|provider| provider.id().clone())
         .collect()
 }
 

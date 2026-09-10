@@ -34,7 +34,6 @@ use fabro_install::{
     restore_optional_file, rollback_dev_token_write, seed_environments_in_storage,
     write_github_app_settings, write_token_settings,
 };
-use fabro_llm::catalog;
 use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_server::serve;
 use fabro_store::ArtifactStore;
@@ -82,7 +81,8 @@ fn supports_install_api_key(provider: &CatalogProvider) -> bool {
 }
 
 fn install_llm_provider_ids(catalog: &Catalog) -> Vec<ProviderId> {
-    catalog::listed_providers(catalog)
+    catalog
+        .listed_providers()
         .into_iter()
         .filter(|provider| supports_install_api_key(provider))
         .map(|provider| provider.id().clone())
@@ -90,14 +90,16 @@ fn install_llm_provider_ids(catalog: &Catalog) -> Vec<ProviderId> {
 }
 
 fn provider_env_var_label(provider: &ProviderId, catalog: &Catalog) -> String {
-    catalog::provider(catalog, provider.as_str())
+    catalog
+        .enabled_provider(provider.as_str())
         .map(|provider| fabro_auth::secret_names(provider).join(" / "))
         .filter(|label| !label.is_empty())
         .unwrap_or_else(|| "API_KEY".to_string())
 }
 
 fn provider_vault_secret_name(provider: &ProviderId, catalog: &Catalog) -> String {
-    catalog::provider(catalog, provider.as_str())
+    catalog
+        .enabled_provider(provider.as_str())
         .and_then(fabro_auth::expected_secret_name)
         .unwrap_or_else(|| format!("{}_API_KEY", provider.to_string().to_uppercase()))
 }

@@ -14,9 +14,9 @@ use fabro_config::{
 use fabro_github::token_source::{InstallationTokenSource, ResolvedToken, TokenSnapshot};
 use fabro_graphviz::graph::{Graph, is_llm_handler_type};
 use fabro_graphviz::render::apply_direction;
+use fabro_llm::FabroClient;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::probe::{self, ModelTestStatus};
-use fabro_llm::{FabroClient, catalog};
 use fabro_sandbox::daytona::DaytonaConfig;
 use fabro_sandbox::from_environment::{
     daytona_config_from_environment, docker_config_from_environment,
@@ -1209,8 +1209,10 @@ async fn run_llm_check(
 }
 
 fn canonical_provider_id(catalog: &Catalog, provider_name: &str) -> ProviderId {
-    catalog::canonical_provider_id(catalog, provider_name)
-        .unwrap_or_else(|| ProviderId::new(provider_name))
+    catalog.enabled_provider(provider_name).map_or_else(
+        || ProviderId::new(provider_name),
+        |provider| provider.id().clone(),
+    )
 }
 
 async fn run_github_token_check(

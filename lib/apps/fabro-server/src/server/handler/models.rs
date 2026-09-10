@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::probe::{self, ApiKeyProbeError, ModelTestStatus};
-use fabro_llm::{ModelSelectionError, api, catalog, selection};
+use fabro_llm::{ModelSelectionError, api, selection};
 use fabro_redact::redact_string;
 use fabro_types::ReasoningEffort;
 
@@ -59,8 +59,10 @@ async fn list_models(
     let catalog = state.catalog();
     // An unknown provider filter matches nothing rather than erroring.
     let provider_id = params.provider.as_deref().map(|selector| {
-        catalog::canonical_provider_id(&catalog, selector)
-            .unwrap_or_else(|| ProviderId::new(selector))
+        catalog.enabled_provider(selector).map_or_else(
+            || ProviderId::new(selector),
+            |provider| provider.id().clone(),
+        )
     });
 
     let query = params.query.as_ref().map(|value| value.to_lowercase());

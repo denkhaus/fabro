@@ -1485,7 +1485,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         assert_eq!(
             truncation_caps(
                 "unknown-model",
-                &fabro_llm::catalog::enabled_provider_ids(&mock_catalog()),
+                &mock_catalog().enabled_provider_ids().into_iter().collect(),
                 &mock_catalog(),
             ),
             TruncationCaps {

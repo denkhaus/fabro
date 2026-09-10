@@ -9,7 +9,7 @@ use fabro_agent::cli::{
 };
 use fabro_llm::gateway::{GatewayAdapter, GatewayError, GatewayTransport};
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_llm::{ErrorFacts, ErrorKind, catalog};
+use fabro_llm::{ErrorFacts, ErrorKind};
 use fabro_mcp::config::McpServerSettings;
 use fabro_types::ProviderId;
 use fabro_types::settings::cli::OutputFormat as SettingsOutputFormat;
@@ -143,8 +143,10 @@ pub(crate) async fn execute(mut args: ExecArgs, ctx: &CommandContext) -> AnyResu
             .clone()
             .unwrap_or_else(|| "anthropic".to_string());
         let catalog = ctx.catalog()?;
-        let provider_id = catalog::canonical_provider_id(&catalog, &provider_name)
-            .unwrap_or_else(|| ProviderId::new(provider_name.as_str()));
+        let provider_id = catalog.enabled_provider(&provider_name).map_or_else(
+            || ProviderId::new(provider_name.as_str()),
+            |provider| provider.id().clone(),
+        );
         let server_client = server_client::connect_server_target(&target).await?;
         let adapter = Arc::new(GatewayAdapter::new(Box::new(
             ServerCompletionTransport::new(server_client),

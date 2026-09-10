@@ -24,7 +24,6 @@ use fabro_install::{
     write_github_app_settings, write_object_store_settings, write_sandbox_settings,
     write_token_settings,
 };
-use fabro_llm::catalog as llm_catalog;
 use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_llm::probe::{self, ApiKeyProbeError, ModelTestStatus};
 use fabro_sandbox::daytona;
@@ -846,7 +845,8 @@ async fn put_install_llm(
 }
 
 fn install_catalog_provider(provider: &ProviderId) -> Result<&'static CatalogProvider, String> {
-    let catalog_provider = llm_catalog::provider(&INSTALL_CATALOG, provider.as_str())
+    let catalog_provider = INSTALL_CATALOG
+        .enabled_provider(provider.as_str())
         .ok_or_else(|| format!("provider '{provider}' is not configured in the model catalog"))?;
     if fabro_auth::accepts_api_key(catalog_provider) {
         Ok(catalog_provider)

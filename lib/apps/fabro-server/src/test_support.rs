@@ -18,7 +18,6 @@ use fabro_config::user::default_storage_dir;
 use fabro_config::{LlmLayer, RunLayer, ServerSettingsBuilder, Storage, envfile};
 use fabro_db::DbPool;
 use fabro_interview::Interviewer;
-use fabro_llm::catalog;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_sandbox::SandboxProviderRegistry;
 use fabro_static::EnvVars;
@@ -67,7 +66,7 @@ pub(crate) fn test_run_materialization_provider_ids(
     let assume_ready = process_env_var(FABRO_TEST_ASSUME_LLM_READY)
         .is_some_and(|value| !matches!(value.as_str(), "" | "0" | "false" | "no"));
     if assume_ready {
-        catalog::enabled_provider_ids(catalog).into_iter().collect()
+        catalog.enabled_provider_ids().into_iter().collect()
     } else {
         ready_provider_ids.to_vec()
     }

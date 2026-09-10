@@ -7,9 +7,9 @@ use fabro_llm::test_support::test_catalog;
 #[test]
 fn profile_context_window_matches_catalog_for_default_models() {
     let catalog = Arc::new(test_catalog());
-    for provider in catalog::listed_providers(&catalog) {
+    for provider in catalog.listed_providers() {
         let provider_id = provider.id().clone();
-        let Some(default) = catalog::default_model(&catalog, provider_id.as_str()) else {
+        let Some(default) = provider.default_offering() else {
             // Deployment-defined providers (LiteLLM, Modal, Ollama) carry no
             // built-in default model.
             continue;
@@ -21,7 +21,7 @@ fn profile_context_window_matches_catalog_for_default_models() {
         );
 
         let profile: Box<dyn AgentProfile> = AgentProfileBuilder::new(
-            default.agent_profile(),
+            catalog::offering_agent_profile(&default),
             provider_id.clone(),
             model.as_str(),
             Arc::clone(&catalog),

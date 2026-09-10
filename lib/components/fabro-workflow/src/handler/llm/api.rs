@@ -15,7 +15,7 @@ use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::error::failover_eligible;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::types::ResponseFormat;
-use fabro_llm::{Client, ClientOptions, FallbackTarget, LlmError, Request, Response, catalog};
+use fabro_llm::{Client, ClientOptions, FallbackTarget, LlmError, Request, Response};
 use fabro_mcp::config::McpServerSettings;
 use fabro_types::settings::run::RunModelControls;
 use fabro_types::{
@@ -40,7 +40,7 @@ use crate::context::WorkflowContext;
 use crate::context::keys::Fidelity;
 use crate::error::Error;
 use crate::event::{Emitter, Event, StageScope};
-use crate::model_fallback::{ModelFallbackNotice, ModelFallbackPolicy};
+use crate::model_fallback::{ModelFallbackNotice, ModelFallbackPolicy, canonical_model_id};
 use crate::outcome::billed_model_usage_from_llm;
 use crate::services::FabroRunToolServices;
 use crate::steering_hub::{ActiveControlHandle, SteeringHub};
@@ -888,11 +888,11 @@ impl AgentApiBackend {
         let Some(requested_effort) = requested.reasoning_effort else {
             return FallbackControls::Usable(requested);
         };
-        let Some(offering) = catalog::model_on_provider(
-            &self.catalog,
-            target.provider.as_str(),
-            target.model.as_str(),
-        ) else {
+        let Some(offering) = self
+            .catalog
+            .enabled_provider(target.provider.as_str())
+            .and_then(|provider| provider.offering(target.model.as_str()))
+        else {
             // A catalog-unknown passthrough target has no advertised controls.
             // Preserve the request and let the provider validate it.
             return FallbackControls::Usable(requested);
@@ -925,7 +925,7 @@ impl AgentApiBackend {
         provider: &ProviderId,
         requested_controls: EffectiveRequestControls,
     ) -> (FallbackPlan, Vec<ModelFallbackNotice>) {
-        let primary_model = catalog::canonical_model_id(&self.catalog, provider, model);
+        let primary_model = canonical_model_id(&self.catalog, provider, model);
         let original = LlmRoute {
             target:   FallbackTarget::new(provider, &primary_model),
             controls: requested_controls,
@@ -1371,13 +1371,11 @@ impl AgentApiBackend {
 
     fn route_max_tokens(&self, node: &Node, route: &LlmRoute) -> Option<u32> {
         node_max_output_tokens(node).or_else(|| {
-            catalog::model_on_provider(
-                &self.catalog,
-                route.target.provider.as_str(),
-                route.target.model.as_str(),
-            )
-            .and_then(|entry| entry.model.limits())
-            .map(|limits| u32::try_from(limits.max_output_tokens).unwrap_or(u32::MAX))
+            self.catalog
+                .enabled_provider(route.target.provider.as_str())
+                .and_then(|provider| provider.offering(route.target.model.as_str()))
+                .and_then(|entry| entry.model.limits())
+                .map(|limits| u32::try_from(limits.max_output_tokens).unwrap_or(u32::MAX))
         })
     }
 

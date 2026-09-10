@@ -18,7 +18,6 @@ use fabro_auth::{
     AuthContextRequest, AuthContextResponse, AuthMethod, LoginResult, codex_oauth_config,
     strategy_for,
 };
-use fabro_llm::catalog;
 use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_llm::probe::{self, ApiKeyProbeError, ModelTestStatus};
 use fabro_types::{ProviderId, provider_ids};
@@ -59,7 +58,7 @@ fn default_catalog_for_provider_auth() -> Arc<Catalog> {
 }
 
 pub(crate) fn provider_display_name(provider: &ProviderId, catalog: &Catalog) -> String {
-    catalog::provider(catalog, provider.as_str()).map_or_else(
+    catalog.enabled_provider(provider.as_str()).map_or_else(
         || provider.to_string(),
         |provider| provider.display_name().to_string(),
     )
@@ -69,7 +68,8 @@ fn api_key_catalog_provider<'a>(
     provider: &ProviderId,
     catalog: &'a Catalog,
 ) -> Result<&'a CatalogProvider> {
-    let provider = catalog::provider(catalog, provider.as_str())
+    let provider = catalog
+        .enabled_provider(provider.as_str())
         .with_context(|| format!("provider '{provider}' is not configured in the model catalog"))?;
     anyhow::ensure!(
         fabro_auth::accepts_api_key(provider),

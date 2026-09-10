@@ -1,7 +1,6 @@
 pub use fabro_core::outcome::{
     FailureCategory, FailureDetail, OutcomeMeta, StageOutcome, StageState,
 };
-use fabro_llm::catalog;
 use fabro_llm::lithos_catalog::Catalog;
 pub use fabro_types::BilledModelUsage;
 use fabro_types::{BilledTokenCounts, ModelRef, TokenCounts};
@@ -19,13 +18,13 @@ pub fn billed_model_usage_from_llm(
     model: &ModelRef,
     usage: TokenCounts,
 ) -> Result<BilledModelUsage, Error> {
-    if catalog::provider(catalog, model.provider.as_str()).is_none() {
+    if catalog.enabled_provider(model.provider.as_str()).is_none() {
         return Err(Error::Precondition(format!(
             "Provider \"{}\" is not configured",
             model.provider
         )));
     }
-    let cost = catalog::estimate_cost(catalog, model, usage);
+    let cost = catalog.estimate_cost(&model.handle(), usage, model.speed);
     Ok(BilledModelUsage::new(model.clone(), usage, cost))
 }
 

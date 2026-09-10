@@ -21,7 +21,7 @@ use fabro_api::types::{
 use fabro_config::{CliLayer, RunLayer, Storage, project};
 use fabro_environment::{DEFAULT_ENVIRONMENT_ID, EnvironmentId};
 use fabro_interview::AnswerSubmission;
-use fabro_llm::{Client as LlmClient, catalog};
+use fabro_llm::Client as LlmClient;
 use fabro_manifest::RunOverrideInput;
 use fabro_static::EnvVars;
 use fabro_store::{
@@ -953,11 +953,7 @@ async fn finalize_created_run(
             let workflow = run_title_generation::workflow_summary(&run_spec.graph);
             let run_inputs = run_spec.settings.run.inputs.clone();
             let title_catalog = state.catalog();
-            let ready = ready_provider_ids
-                .iter()
-                .cloned()
-                .collect::<std::collections::HashSet<_>>();
-            if let Some(title_model) = catalog::small_default_for_ready(&title_catalog, &ready) {
+            if let Some(title_model) = title_catalog.small_default_for(&ready_provider_ids) {
                 spawn_generated_title_task(GeneratedTitleTask {
                     state: Arc::clone(&state),
                     run_id: created.run_id,

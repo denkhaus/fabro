@@ -9,7 +9,6 @@ use lithos_llm::catalog::Catalog;
 use lithos_llm::client::{Client, ProbeOptions, ProbeOutcome};
 use strum::IntoStaticStr;
 
-use crate::catalog;
 use crate::client::{ClientOptions, LlmSetupError, build_client};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr)]
@@ -104,13 +103,15 @@ pub async fn probe_provider_with_api_key(
     api_key: String,
     timeout: Duration,
 ) -> Result<ModelTestOutcome, ApiKeyProbeError> {
-    let catalog_provider = catalog::provider(&catalog, provider.as_str())
+    let catalog_provider = catalog
+        .enabled_provider(provider.as_str())
         .ok_or_else(|| ApiKeyProbeError::UnknownProvider(provider.to_string()))?;
     let provider_id = catalog_provider.id().clone();
     if !fabro_auth::accepts_api_key(catalog_provider) {
         return Err(ApiKeyProbeError::NoApiKeyPath(provider_id));
     }
-    let model = catalog::probe_model(&catalog, provider_id.as_str())
+    let model = catalog_provider
+        .probe_offering()
         .ok_or_else(|| ApiKeyProbeError::NoProbeModel(provider_id.clone()))?;
     let selector = format!("{provider_id}/{}", model.model.id());
     let source = Arc::new(ApiKeyCredentialSource::new(provider_id.clone(), api_key));

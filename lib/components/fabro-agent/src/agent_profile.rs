@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use fabro_llm::catalog::{self, ModelEntry};
-use fabro_llm::lithos_catalog::Catalog;
+use fabro_llm::catalog;
+use fabro_llm::lithos_catalog::{Catalog, Offering};
 use fabro_types::{AgentProfileKind, ProviderId, ToolDefinition};
 
 use crate::profiles::EnvContext;
@@ -44,9 +44,10 @@ pub trait AgentProfile: Send + Sync {
     }
 
     /// The catalog row for this profile's route, when the catalog knows it.
-    fn catalog_model(&self) -> Option<ModelEntry<'_>> {
-        let catalog = self.catalog()?;
-        catalog::model_on_provider(catalog, self.provider_id().as_str(), self.model())
+    fn catalog_model(&self) -> Option<Offering<'_>> {
+        self.catalog()?
+            .enabled_provider(self.provider_id().as_str())?
+            .offering(self.model())
     }
 
     fn context_window_size(&self) -> usize {
@@ -65,7 +66,7 @@ pub trait AgentProfile: Send + Sync {
 
     fn reasons_by_default(&self) -> bool {
         self.catalog_model()
-            .is_some_and(|entry| entry.reasons_by_default())
+            .is_some_and(|entry| catalog::reasons_by_default(&entry))
     }
 
     fn register_subagent_tools(

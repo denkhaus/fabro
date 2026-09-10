@@ -9322,16 +9322,17 @@ async fn list_providers_marks_configured_per_provider_and_omits_secrets() {
     // `model_count` and `default_model` must reflect the catalog truth for
     // this exact provider, not merely be populated.
     let catalog = state_test_catalog();
-    let expected_model_count = fabro_llm::catalog::provider_models(
-        fabro_llm::catalog::provider(&catalog, "anthropic").expect("anthropic should be listed"),
-    )
-    .len();
+    let anthropic_provider = catalog
+        .enabled_provider("anthropic")
+        .expect("anthropic should be listed");
+    let expected_model_count = anthropic_provider.offerings().len();
     assert_eq!(
         anthropic["model_count"].as_u64(),
         Some(expected_model_count as u64),
         "anthropic model_count should match the catalog"
     );
-    let expected_default = fabro_llm::catalog::default_model(&catalog, "anthropic")
+    let expected_default = anthropic_provider
+        .default_offering()
         .expect("anthropic should have a catalog default model");
     assert_eq!(
         anthropic["default_model"].as_str(),
@@ -11387,12 +11388,13 @@ async fn pull_request_creation_returns_the_active_durable_request() {
         .await
         .into_iter()
         .collect::<HashSet<_>>();
-    let expected_default_model =
-        fabro_llm::catalog::default_for_ready(&state.catalog(), &configured_provider_ids)
-            .expect("a ready provider should have a default model")
-            .model
-            .id()
-            .to_string();
+    let expected_default_model = state
+        .catalog()
+        .default_offering_for(&configured_provider_ids)
+        .expect("a ready provider should have a default model")
+        .model
+        .id()
+        .to_string();
     let request_body = json!({
         "force": false,
         "model": null

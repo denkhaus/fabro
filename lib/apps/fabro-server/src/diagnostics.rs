@@ -5,9 +5,9 @@ use std::time::Duration;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use fabro_http::Response;
-use fabro_llm::lithos_catalog::Catalog;
+use fabro_llm::Client;
+use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_llm::probe::{self, ModelTestStatus};
-use fabro_llm::{Client, catalog};
 use fabro_redact::redact_string;
 use fabro_sandbox::{DockerSandboxProvider, daytona};
 use fabro_static::EnvVars;
@@ -249,7 +249,10 @@ async fn probe_single_provider(
         return provider_probe_error(provider, None, message, None);
     }
 
-    let Some(model) = catalog::probe_model(catalog, provider.as_str()) else {
+    let Some(model) = catalog
+        .enabled_provider(provider.as_str())
+        .and_then(CatalogProvider::probe_offering)
+    else {
         return provider_probe_error(
             provider,
             None,

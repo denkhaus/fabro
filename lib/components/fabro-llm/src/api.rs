@@ -9,31 +9,32 @@ use fabro_types::{
     Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits, Provider, ProviderId,
     ReasoningEffort,
 };
-use lithos_llm::catalog::{Catalog, CatalogProvider};
-
-use crate::catalog::{self, ModelEntry};
+use lithos_llm::catalog::{Catalog, CatalogProvider, Offering};
 
 const USD_MICROS_PER_USD: f64 = 1_000_000.0;
 
 /// Every enabled model on every listed provider, provider priority order.
 #[must_use]
 pub fn models(catalog: &Catalog, configured: &HashSet<ProviderId>) -> Vec<Model> {
-    catalog::models(catalog)
-        .iter()
-        .map(|entry| model_view(entry, configured.contains(entry.provider.id())))
+    catalog
+        .listed_providers()
+        .into_iter()
+        .flat_map(CatalogProvider::offerings)
+        .map(|offering| model_view(&offering, configured.contains(offering.provider.id())))
         .collect()
 }
 
 /// Every listed provider, priority order.
 #[must_use]
 pub fn providers(catalog: &Catalog, configured: &HashSet<ProviderId>) -> Vec<Provider> {
-    catalog::listed_providers(catalog)
-        .iter()
+    catalog
+        .listed_providers()
+        .into_iter()
         .map(|provider| provider_view(provider, configured.contains(provider.id())))
         .collect()
 }
 
-fn model_view(entry: &ModelEntry<'_>, configured: bool) -> Model {
+fn model_view(entry: &Offering<'_>, configured: bool) -> Model {
     let model = entry.model;
     let capabilities = model.capabilities();
     let pricing = model.pricing();
@@ -95,7 +96,7 @@ fn provider_view(provider: &CatalogProvider, configured: bool) -> Provider {
         api_key_url: provider.api_key_url().map(str::to_string),
         priority: provider.priority(),
         aliases: provider.aliases().to_vec(),
-        model_count: u32::try_from(catalog::provider_models(provider).len()).unwrap_or(u32::MAX),
+        model_count: u32::try_from(provider.offerings().len()).unwrap_or(u32::MAX),
         default_model: provider.default_model().map(str::to_string),
         configured,
         expected_secret_name: fabro_auth::expected_secret_name(provider),

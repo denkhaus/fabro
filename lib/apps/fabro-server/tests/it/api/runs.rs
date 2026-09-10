@@ -1,5 +1,6 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use fabro_llm::lithos_catalog::CatalogProvider;
 use fabro_types::settings::run::EnvironmentProvider;
 use tower::ServiceExt;
 
@@ -161,7 +162,9 @@ _version = 1
         "sandbox_not_ready"
     );
     let catalog = fabro_llm::test_support::test_catalog();
-    let default_openai_model = fabro_llm::catalog::default_model(&catalog, "openai")
+    let default_openai_model = catalog
+        .enabled_provider("openai")
+        .and_then(CatalogProvider::default_offering)
         .expect("the built-in OpenAI provider should have a default model");
     assert_eq!(
         created["ask_fabro"]["default_model"].as_str(),

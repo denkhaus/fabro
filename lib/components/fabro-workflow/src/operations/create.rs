@@ -753,7 +753,8 @@ mod tests {
     }
 
     fn test_provider_ids() -> Vec<ProviderId> {
-        fabro_llm::catalog::enabled_provider_ids(&fabro_llm::test_support::test_catalog())
+        fabro_llm::test_support::test_catalog()
+            .enabled_provider_ids()
             .into_iter()
             .collect()
     }

@@ -59,7 +59,7 @@ use fabro_interview::{
 };
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_llm::{ClientOptions, FabroClient, catalog};
+use fabro_llm::{ClientOptions, FabroClient};
 use fabro_mcp_store::McpServerStore;
 use fabro_redact::redact_jsonl_line;
 use fabro_sandbox::daytona::{self, DaytonaSandbox};
@@ -1446,8 +1446,8 @@ impl AppState {
         let default_model = if provider_ids.is_empty() {
             None
         } else {
-            let ready = provider_ids.iter().cloned().collect::<HashSet<_>>();
-            catalog::default_for_ready(&self.catalog(), &ready)
+            self.catalog()
+                .default_offering_for(&provider_ids)
                 .map(|entry| entry.model.id().to_string())
         };
         AskFabroReadiness { default_model }
