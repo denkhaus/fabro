@@ -701,14 +701,186 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M25VVK131JTQB3BRBPAV0DWR",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-09-10T14:34:33.579357183Z",
+    "run_branch": "fabro/run/01M25VVK131JTQB3BRBPAV0DWR",
+    "base_sha": "76ed61987005000c9dff63010cbdff8984a72484"
   },
-  "status_updated_at": "2026-09-10T14:34:26.898438596Z",
-  "last_event_at": "2026-09-10T14:34:32.822031766Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-09-10T14:34:33.579526197Z",
+  "last_event_at": "2026-09-10T14:42:53.302362070Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 19,
+      "checkpoint": {
+        "timestamp": "2026-09-10T14:34:36.491358074Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.preamble_budget_kb": "24",
+          "outcome": "succeeded",
+          "internal.node_visit_count": 1,
+          "internal.run_id": "01M25VVK131JTQB3BRBPAV0DWR",
+          "current_node": "start",
+          "internal.thread_id": null,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.retry_count.start": 0,
+          "graph.rankdir": "LR",
+          "seed_cycles": {
+            "start": 1
+          },
+          "graph.inspects": "develop",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.fidelity": "compact",
+          "graph.max_node_visits": "40",
+          "failure_signature": "",
+          "internal.seed_cycle_anchor": "",
+          "internal.work_dir": "/workspace/fabro",
+          "failure_class": ""
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "planner",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-10T14:42:53.678678081Z",
+        "current_node": "planner",
+        "completed_nodes": [
+          "start",
+          "planner"
+        ],
+        "node_retries": {
+          "planner": 2
+        },
+        "context_values": {
+          "graph.inspects": "develop",
+          "internal.run_id": "01M25VVK131JTQB3BRBPAV0DWR",
+          "graph.preamble_budget_kb": "24",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "current_node": "planner",
+          "internal.node_visit_count": 1,
+          "failure_signature": "",
+          "internal.seed_cycle_anchor": "fabro-7627",
+          "last_response": "Claimed fabro-7627 (High feature, top of `sd ready`). Basis verified against the current tree; the optional \"Rewind to checkpoint…\" picker is waived to keep the cycle focused.\n\n{\n  \"outcome\": \"succe",
+          "internal.retry_count.planner": 2,
+          "current_seed_title": "Web UI run actions: add Resume that re-runs the last failed node — engine auto-rewinds to its entry checkpoint",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Sibling running develop run 01M25R832HP615J291N72FHNCS (13:31, non-terminal) has NO journal file at .fabro/journal/<id>.jsonl, so the in-flight seed-id fallback found nothing — treated as no exclusion; if it double-picks fabro-7627 that is the root cause.",
+              "No open develop PRs existed, so the open-PR leg of the in-flight check was clean.",
+              "fabro-7627 is a broad seed (engine + web + OpenAPI); the optional rewind-picker advanced form is waived in the brief to keep one-cycle scope."
+            ]
+          },
+          "last_stage": "planner",
+          "internal.fidelity": "compact",
+          "graph.rankdir": "LR",
+          "failure_class": "",
+          "internal.thread_id": "start",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3067,
+            "preview": "Claimed fabro-7627 (High feature, top of `sd ready`). Basis verified against the current tree; the optional \"Rewind to checkpoint…\" picker is waived to keep the cycle focused.\n\n{\n  \"outcome\": \"succe"
+          },
+          "preferred_label": "Seed claimed",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.work_dir": "/workspace/fabro",
+          "seed_cycles": {
+            "planner": 1
+          },
+          "current_seed_id": "fabro-7627",
+          "outcome": "succeeded",
+          "thread.start.current_node": "planner",
+          "graph.max_node_visits": "40",
+          "current_seed_brief": "Add a true Resume recovery path for terminal failed runs so a mid-run death (e.g. provider 429) re-executes only the failed node instead of the whole workflow. Today `apps/fabro-web/app/lib/run-actions.ts` only offers retry, and plain POST /api/v1/runs/{id}/start with `resume=true` replays the exit stage and re-parks when a routing decision was already checkpointed. Acceptance criteria: - Engine: Resume of a terminal failed run itself determines the rewind target — the entry checkpoint of the last failed stage, dropping that stage's committed outcome/routing decision — so resume re-runs exactly the failed node with all prior committed work intact (checkpoint-store rewind logic; `fabro rewind` forks a new run id like 01M25G94TMN8, so either keep the fork+parent link or grow in-place resume-from-failure for terminal runs — choose one and document it in the PR body) - Web UI: a Resume action in the run actions menu for terminal runs that have checkpoints, wired through `apps/fabro-web/app/lib/run-actions.ts`; Retry stays for explicit fresh starts and the UI copy distinguishes the two (e.g. Resume = 're-run from the failed stage', Retry = 'start over') - API: OpenAPI-first flow — edit `docs/public/api-reference/fabro-api.yaml`, `cargo build -p fabro-api` (build.rs regen), handler + route in `lib/apps/fabro-server/src/server.rs`, then `cd lib/packages/fabro-api-client && bun run generate` - Tests: engine test proving a terminal failed run with a committed routing decision resumes to the failed node's entry checkpoint (not the exit stage); web unit test covering the new action's availability and copy - Verification order (cheapest first): `python3 -c` TOML/YAML parse of the spec, `cargo nextest run -p fabro-server` for the new handler/route conformance, `cd apps/fabro-web && bun run test && bun run typecheck` - Gate green via the deterministic tester step (never run the full gate yourself) - WAIVED: the optional 'Rewind to checkpoint…' timeline picker (advanced form, explicitly optional in the seed)",
+          "internal.retry_count.start": 0
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Add a true Resume recovery path for terminal failed runs so a mid-run death (e.g. provider 429) re-executes only the failed node instead of the whole workflow. Today `apps/fabro-web/app/lib/run-actions.ts` only offers retry, and plain POST /api/v1/runs/{id}/start with `resume=true` replays the exit stage and re-parks when a routing decision was already checkpointed. Acceptance criteria: - Engine: Resume of a terminal failed run itself determines the rewind target — the entry checkpoint of the last failed stage, dropping that stage's committed outcome/routing decision — so resume re-runs exactly the failed node with all prior committed work intact (checkpoint-store rewind logic; `fabro rewind` forks a new run id like 01M25G94TMN8, so either keep the fork+parent link or grow in-place resume-from-failure for terminal runs — choose one and document it in the PR body) - Web UI: a Resume action in the run actions menu for terminal runs that have checkpoints, wired through `apps/fabro-web/app/lib/run-actions.ts`; Retry stays for explicit fresh starts and the UI copy distinguishes the two (e.g. Resume = 're-run from the failed stage', Retry = 'start over') - API: OpenAPI-first flow — edit `docs/public/api-reference/fabro-api.yaml`, `cargo build -p fabro-api` (build.rs regen), handler + route in `lib/apps/fabro-server/src/server.rs`, then `cd lib/packages/fabro-api-client && bun run generate` - Tests: engine test proving a terminal failed run with a committed routing decision resumes to the failed node's entry checkpoint (not the exit stage); web unit test covering the new action's availability and copy - Verification order (cheapest first): `python3 -c` TOML/YAML parse of the spec, `cargo nextest run -p fabro-server` for the new handler/route conformance, `cd apps/fabro-web && bun run test && bun run typecheck` - Gate green via the deterministic tester step (never run the full gate yourself) - WAIVED: the optional 'Rewind to checkpoint…' timeline picker (advanced form, explicitly optional in the seed)",
+              "current_seed_title": "Web UI run actions: add Resume that re-runs the last failed node — engine auto-rewinds to its entry checkpoint",
+              "last_response": "Claimed fabro-7627 (High feature, top of `sd ready`). Basis verified against the current tree; the optional \"Rewind to checkpoint…\" picker is waived to keep the cycle focused.\n\n{\n  \"outcome\": \"succe",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3067,
+                "preview": "Claimed fabro-7627 (High feature, top of `sd ready`). Basis verified against the current tree; the optional \"Rewind to checkpoint…\" picker is waived to keep the cycle focused.\n\n{\n  \"outcome\": \"succe"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Sibling running develop run 01M25R832HP615J291N72FHNCS (13:31, non-terminal) has NO journal file at .fabro/journal/<id>.jsonl, so the in-flight seed-id fallback found nothing — treated as no exclusion; if it double-picks fabro-7627 that is the root cause.",
+                  "No open develop PRs existed, so the open-PR leg of the in-flight check was clean.",
+                  "fabro-7627 is a broad seed (engine + web + OpenAPI); the optional rewind-picker advanced form is waived in the brief to keep one-cycle scope."
+                ]
+              },
+              "last_stage": "planner",
+              "current_seed_id": "fabro-7627"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 18791,
+                    "output_tokens": 1152,
+                    "reasoning_tokens": 564,
+                    "cache_read_tokens": 155776,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 74352
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 156934,
+              "tool_time_ms": 5031,
+              "active_time_ms": 161965
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "implementer",
+        "node_visits": {
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -734,5 +906,265 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-10T14:34:35.860024844Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-10T14:34:35.850067611Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "planner@1": {
+      "first_event_seq": 20,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-10T14:42:53.302362070Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-10T14:40:10.647152258Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 162639,
+        "inference_time_ms": 156934,
+        "tool_time_ms": 5031,
+        "active_time_ms": 161965
+      },
+      "usage": {
+        "input_tokens": 18791,
+        "output_tokens": 1152,
+        "total_tokens": 176283,
+        "reasoning_tokens": 564,
+        "cache_read_tokens": 155776,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 74352
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 32935,
+        "usage_percent": 3.1409263610839844,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-10T14:42:53.291204069Z",
+        "event_seq": 140,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1275,
+            "usage_percent": 0.12159347534179688
+          },
+          {
+            "category": "tools",
+            "tokens": 1941,
+            "usage_percent": 0.18510818481445312
+          },
+          {
+            "category": "memory",
+            "tokens": 6454,
+            "usage_percent": 0.6155014038085938
+          },
+          {
+            "category": "conversation",
+            "tokens": 23258,
+            "usage_percent": 2.2180557250976562
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
