@@ -72,18 +72,20 @@ fn resolve_sandbox(
     layer: Option<&ServerSandboxLayer>,
     errors: &mut Vec<ResolveError>,
 ) -> ServerSandboxSettings {
-    let _ = errors;
     let configured = layer
         .and_then(|sandbox| sandbox.providers.as_ref())
         .map(|providers| &providers.entries);
     let mut entries = BTreeMap::new();
-    // Bundled providers always have a policy entry; missing means enabled
-    // and served in-process.
+    // Bundled providers always have a policy entry; missing means enabled.
     for kind in SandboxProviderKind::bundled_kinds() {
         let layer = configured.and_then(|entries| entries.get(&kind));
+        let path = format!("server.sandbox.providers.{kind}");
+        if let Some(layer) = layer {
+            reject_plugin_fields_for_bundled(layer, &path, errors);
+        }
         entries.insert(kind, ServerSandboxProviderSettings {
             enabled: layer.and_then(|provider| provider.enabled).unwrap_or(true),
-            plugin:  layer.and_then(plugin_settings),
+            plugin:  None,
         });
     }
     for (kind, layer) in configured.into_iter().flatten() {
@@ -92,7 +94,14 @@ fn resolve_sandbox(
         }
         entries.insert(kind.clone(), ServerSandboxProviderSettings {
             enabled: layer.enabled.unwrap_or(true),
-            plugin:  Some(plugin_settings(layer).unwrap_or_default()),
+            plugin:  Some(SandboxPluginSettings {
+                path:        layer.path.clone(),
+                sha256:      layer.sha256.clone(),
+                dev:         layer.dev.unwrap_or(false),
+                args:        layer.args.clone().unwrap_or_default(),
+                env:         layer.env.clone().unwrap_or_default(),
+                inherit_env: layer.inherit_env.clone().unwrap_or_default(),
+            }),
         });
     }
     ServerSandboxSettings {
@@ -100,33 +109,37 @@ fn resolve_sandbox(
     }
 }
 
-/// Plugin launch settings when the entry names any. A bundled kind with
-/// none runs in-process; a bundled kind with any runs out of process
-/// through the driver's executable for that kind.
-fn plugin_settings(layer: &ServerSandboxProviderLayer) -> Option<SandboxPluginSettings> {
+fn reject_plugin_fields_for_bundled(
+    layer: &ServerSandboxProviderLayer,
+    path: &str,
+    errors: &mut Vec<ResolveError>,
+) {
     let ServerSandboxProviderLayer {
         enabled: _,
-        path,
+        path: plugin_path,
         sha256,
         dev,
         args,
         env,
         inherit_env,
     } = layer;
-    let any_set = path.is_some()
-        || sha256.is_some()
-        || dev.is_some()
-        || args.is_some()
-        || env.is_some()
-        || inherit_env.is_some();
-    any_set.then(|| SandboxPluginSettings {
-        path:        path.clone(),
-        sha256:      sha256.clone(),
-        dev:         dev.unwrap_or(false),
-        args:        args.clone().unwrap_or_default(),
-        env:         env.clone().unwrap_or_default(),
-        inherit_env: inherit_env.clone().unwrap_or_default(),
-    })
+    let set = [
+        ("path", plugin_path.is_some()),
+        ("sha256", sha256.is_some()),
+        ("dev", dev.is_some()),
+        ("args", args.is_some()),
+        ("env", env.is_some()),
+        ("inherit_env", inherit_env.is_some()),
+    ];
+    for (field, is_set) in set {
+        if is_set {
+            errors.push(ResolveError::Invalid {
+                path:   format!("{path}.{field}"),
+                reason: "bundled sandbox providers run in-process and take no plugin settings"
+                    .to_string(),
+            });
+        }
+    }
 }
 
 fn resolve_storage(layer: Option<&ServerStorageLayer>) -> ServerStorageSettings {

@@ -90,21 +90,21 @@ async fn host_plugin_under_a_non_bundled_kind_creates_and_reattaches_by_persiste
     );
 }
 
+/// The configured kind is fabro's name for the executable it points at; the
+/// plugin's own declared kind is information, not a gate.
 #[tokio::test]
-async fn a_plugin_that_declares_another_kind_is_rejected() {
+async fn the_configured_kind_names_the_plugin_whatever_it_declares() {
     let registry = tempfile::tempdir().expect("registry tempdir");
-    let kind = SandboxProviderKind::try_new("e2b").expect("valid kind");
-    let error = connect_provider(
+    let kind = SandboxProviderKind::try_new("host-alias").expect("valid kind");
+    let connected = connect_provider(
         &kind,
         &host_plugin_settings(registry.path()),
         &ProviderConnectOptions::default(),
     )
     .await
-    .err()
-    .expect("the host executable declares `host`, not `e2b`");
-    let rendered = format!(
-        "{error}: {:?}",
-        std::error::Error::source(&error).map(ToString::to_string)
-    );
-    assert!(rendered.contains("e2b"), "{rendered}");
+    .expect("an aliased plugin launches");
+    assert_eq!(connected.kind, kind);
+    // Fabro's handle on the plugin carries the configured name, so records,
+    // events, and errors all speak of the kind the operator wrote down.
+    assert_eq!(connected.provider.kind().as_str(), "host-alias");
 }

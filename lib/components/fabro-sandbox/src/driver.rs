@@ -154,12 +154,12 @@ pub enum ConnectError {
 
 /// Connects the provider behind `kind`.
 ///
-/// Bundled kinds return the in-process driver provider unless their entry
-/// names a plugin executable, in which case the same kind is served out of
-/// process. Any other kind launches the plugin named by `settings.plugin`.
-/// A plugin returns a supervised handle that relaunches it after a crash
-/// for new work only. Disabled entries are refused here so no caller has to
-/// remember the policy check.
+/// Bundled kinds return the in-process driver provider. Any other kind
+/// launches the plugin named by `settings.plugin` and returns a supervised
+/// handle that relaunches it after a crash for new work only. The
+/// configured kind is fabro's name for whatever the executable serves; the
+/// kind the plugin declares is not compared against it. Disabled entries
+/// are refused here so no caller has to remember the policy check.
 pub async fn connect_provider(
     kind: &SandboxProviderKind,
     settings: &ServerSandboxProviderSettings,
@@ -167,12 +167,6 @@ pub async fn connect_provider(
 ) -> Result<ConnectedProvider, ConnectError> {
     if !settings.enabled {
         return Err(ConnectError::Disabled { kind: kind.clone() });
-    }
-    if let Some(plugin) = &settings.plugin {
-        return Ok(ConnectedProvider {
-            kind:     kind.clone(),
-            provider: Arc::new(PluginBackedProvider::launch(kind, plugin).await?),
-        });
     }
     let driver = |source| ConnectError::Driver {
         kind: kind.clone(),
@@ -208,7 +202,13 @@ pub async fn connect_provider(
                     .map_err(driver)?,
             )
         }
-        None => return Err(ConnectError::MissingPluginSettings { kind: kind.clone() }),
+        None => {
+            let plugin = settings
+                .plugin
+                .as_ref()
+                .ok_or_else(|| ConnectError::MissingPluginSettings { kind: kind.clone() })?;
+            Arc::new(PluginBackedProvider::launch(kind, plugin).await?)
+        }
     };
     Ok(ConnectedProvider {
         kind: kind.clone(),

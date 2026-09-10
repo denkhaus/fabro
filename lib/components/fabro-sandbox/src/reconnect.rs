@@ -46,14 +46,7 @@ pub async fn reconnect_driver_for_run(
     event_callback: Option<SandboxEventCallback>,
 ) -> Result<DriverSandbox> {
     let runtime = &record.runtime;
-    let settings = access.settings_for(&record.provider);
-    // A bundled kind whose entry names a plugin executable is served out of
-    // process, exactly as a third-party kind is.
-    let plugin_served = settings
-        .as_ref()
-        .is_some_and(|settings| settings.plugin.is_some());
-    let bundled = record.provider.bundled().filter(|_| !plugin_served);
-    match bundled {
+    match record.provider.bundled() {
         // A local sandbox is its working directory: rebuilding the handle
         // over that directory is the reconnect. The per-process Host
         // registry holds no state worth attaching to.
@@ -107,7 +100,7 @@ pub async fn reconnect_driver_for_run(
             Ok(sandbox)
         }
         None => {
-            let settings = settings.with_context(|| {
+            let settings = access.settings_for(&record.provider).with_context(|| {
                 format!(
                     "sandbox provider `{}` is not configured; add [server.sandbox.providers.{}] to settings.toml",
                     record.provider, record.provider

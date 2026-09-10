@@ -2,7 +2,9 @@
 //! workflow scenarios.
 //!
 //! The executables come from the `fabro-sandbox` package's `[[bin]]` targets,
-//! which `cargo` places beside the `fabro` binary under test. A scenario
+//! which `cargo` places beside the `fabro` binary under test. Each runs under
+//! a kind of the scenario's choosing (`host`, `docker-plugin`): the configured
+//! kind names the plugin, whatever the executable declares. A scenario
 //! configured here runs against its own server so the plugin settings and the
 //! environment it creates never leak into the shared session server.
 
@@ -32,8 +34,8 @@ const DOCKER_IMAGE: &str = "buildpack-deps:noble";
 pub(crate) enum Plugin {
     /// The driver's Host executable under the non-bundled `host` kind.
     Host,
-    /// The driver's Docker executable serving the bundled `docker` kind out
-    /// of process.
+    /// The driver's Docker executable under the non-bundled `docker-plugin`
+    /// kind: the same containers, reached over stdio.
     Docker,
 }
 
@@ -41,7 +43,7 @@ impl Plugin {
     fn kind(self) -> &'static str {
         match self {
             Self::Host => "host",
-            Self::Docker => "docker",
+            Self::Docker => "docker-plugin",
         }
     }
 
@@ -117,7 +119,7 @@ root = "{storage}"
 [server.auth]
 methods = ["dev-token"]
 
-[server.sandbox.providers.docker]
+[server.sandbox.providers.docker-plugin]
 path = "{path}"
 dev = true
 inherit_env = ["PATH", "HOME", "DOCKER_HOST", "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY"]

@@ -174,8 +174,8 @@ fn run_events(run_dir: &Path) -> Vec<EventEnvelope> {
 /// - `daytona`: the bundled Daytona provider, live credentials required.
 /// - `host-plugin`: the driver's Host executable over stdio under the
 ///   non-bundled `host` kind, a clone-based managed workspace.
-/// - `docker-plugin`: the bundled `docker` kind served out of process by the
-///   driver's Docker executable.
+/// - `docker-plugin`: the driver's Docker executable over stdio under the
+///   non-bundled `docker-plugin` kind.
 ///
 /// The plugin variants need the executables `cargo` builds for
 /// `fabro-sandbox`; without them (or without a Docker daemon) they skip,
