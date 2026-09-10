@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-10T11:31:36.101721735Z",
-  "last_event_at": "2026-09-10T11:36:44.916006782Z",
+  "last_event_at": "2026-09-10T11:36:50.628099939Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1069,15 +1069,230 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 183,
       "checkpoint": {
-        "timestamp": "2026-09-10T11:36:45.164457103Z",
+        "timestamp": "2026-09-10T11:36:50.212836629Z",
         "current_node": "tester",
         "completed_nodes": [
           "start",
           "planner",
           "implementer",
           "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.inspects": "develop",
+          "internal.node_visit_count": 1,
+          "current_seed_title": "Planner: exit already-landed seeds before the cycle instead of running a no-op verification lap",
+          "implementation_summary": "Made the planner's already-implemented case mechanical (fabro-d183): replaced the 'do NOT close' paragraph in `.fabro/workflows/develop/prompts/planner.md` with a two-branch rule — (a) fix commit referencing the seed already in base history AND criteria hold → `sd close <id> --reason \"superseded: fix landed in <sha>\"` and route the new \"Already landed\" exit label; (b) criteria satisfied with no referencing commit → verification-only claim path unchanged. Extended the outcome contract with the new route's JSON shape (mirrors Tracker empty, no `current_seed_id`). Updated the `sd close` table row — which lives in `.fabro/workflows/develop/prompts/project-facts.md` (planner.md renders it via include; the brief's planner.md anchor was corrected to the real location) — to permit exactly the one mandatory-reason superseded-close. Added the `planner -> exit [label=\"Already landed\"]` edge to `.fabro/workflows/develop/workflow.fabro` next to the Tracker empty edge, comment citing fabro-d183. No implementer/sweep changes (scope guard), no Rust touched. Lesson capture: nothing durable — skipped. Per-criterion report: - PASS two-branch rule replaces the line-45 paragraph, superseded-close + \"Already landed\" routing, branch (b) unchanged: planner.md:45-47. - PASS sd close table row permits exactly the one superseded-close form, reason mandatory, all other closes forbidden: project-facts.md:39 (anchor annotation: table lives there, not in planner.md). - PASS outcome contract extended with new route JSON shape mirroring Tracker empty, `current_seed_id` absent: planner.md:77,105-112. - PASS graph edge with exact label placed next to Tracker empty edge, comment cites fabro-d183: workflow.fabro:296-302. - PASS label string identical in prompt and graph (`grep -n 'Already landed'` both files agree). - PASS scope guard: `git status` shows exactly the 3 loop-asset files, no implementer prompt or sweep changes. - PASS verification cheapest-first: grep label check, `tomllib` parse of untouched `workflow.toml`, `dot -Tcanon` unavailable so the edge block was eyeballed (identical shape to adjacent edge); no gate run, no cargo.",
+          "lesson_capture": "nothing durable — skipped",
+          "internal.thread_id": "implementer",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1
+          },
+          "internal.retry_count.tester": 0,
+          "command.output": "blob://sha256/6a6aa88e48376bd588e37c4a4ca50ef237d01806809b8c9a9775f1785909c11b",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 4278,
+            "preview": "All criteria verified. `sd close --reason` exists, so the newly instructed command form is valid. Summary of the pass:\n\n- **`prompts/planner.md`** — replaced the \"do NOT close it yourself\" paragraph"
+          },
+          "internal.work_dir": "/workspace/fabro",
+          "current_node": "tester",
+          "last_stage": "implementer",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3313,
+            "preview": "Claimed `fabro-d183`. Brief written into context below.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-d183\",\n    \"current_"
+          },
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "The brief named the sd close table row under prompts/planner.md, but that table lives in prompts/project-facts.md and is rendered into planner.md via include (planner.md:26-28 says so explicitly) — edited at the real location; future loop-asset seeds naming prompt anchors should check the include chain.",
+              "`dot` is not installed in this environment, so the workflow.fabro render-check fell back to eyeballing the edge block; the new edge is byte-shape-identical to the adjacent Tracker empty edge.",
+              "Verified `sd close --reason` exists (`sd close --help`) before baking the command form into the prompt — the flag is real, not invented."
+            ]
+          },
+          "thread.implementer.current_node": "tester",
+          "internal.fidelity": "compact",
+          "current_seed_brief": "Make the develop planner's already-implemented case mechanical so stale tracker rows exit immediately instead of burning a full verification cycle (evidence: run 01M256QJB48JK8BXJE1TVM2HYS ran a whole cycle for seed fabro-afb8 whose fix commit 7ae575c was already in base). All targets are loop assets under `.fabro/workflows/develop/` — fs_hide-bound for FILE TOOLS; edit via shell (sed/python3 heredoc) only.\n\nAcceptance criteria:\n- `prompts/planner.md`: replace the current 'do NOT close it yourself' paragraph (the one beginning 'If the top candidate looks already implemented' at line 45) with a two-branch rule: (a) when `git log --grep <seed-id>` shows a fix commit referencing the seed already in base history AND the seed's acceptance criteria hold in the worktree → close with `sd close <id> --reason \"superseded: fix landed in <sha>\"` and route the new exit label; (b) criteria satisfied but NO referencing commit → keep the existing verification-only claim path unchanged\n- `prompts/planner.md`: update the sd command table row that says `sd close <id>` is 'NEVER yours' to permit exactly this one superseded-close form (reason string mandatory), keeping it forbidden for every other case\n- `prompts/planner.md`: extend the outcome contract with the new route's JSON shape (mirror the Tracker empty shape: `succeeded` + the new label + journal keys; `current_seed_id` not required on that route)\n- `workflow.fabro`: add a planner exit edge for the new label, e.g. `planner -> exit [label=\"Already landed\", condition=\"preferred_label=\\\"Already landed\\\"\"]`, placed next to the existing 'Tracker empty' edge with a brief comment citing fabro-d183\n- The new label string must be used identically in prompt and graph (label contract requires exact match)\n- Scope guard: this is the planner's claim-time decision only — no changes to the implementer prompt (fabro-5656 owns that) or any post-merge sweep (fabro-ab38 owns that)\n- Verification (cheapest first): `grep -n 'Already landed'` both files to confirm prompt/graph agree; `python3 -c` TOML/structure sanity on `workflow.toml` untouched; render-check `workflow.fabro` with `dot -Tcanon` if available, else eyeball the edge block; do NOT run `just qualitygate` or any byte-equivalent full-gate invocation — gate green via the deterministic tester step\n- No Rust code changes expected: `cargo` builds are not part of this seed's verification",
+          "thread.planner.current_node": "implementer",
+          "last_response": "All criteria verified. `sd close --reason` exists, so the newly instructed command form is valid. Summary of the pass:\n\n- **`prompts/planner.md`** — replaced the \"do NOT close it yourself\" paragraph",
+          "internal.retry_count.planner": 0,
+          "outcome": "succeeded",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.start": 0,
+          "internal.seed_cycle_anchor": "fabro-d183",
+          "preferred_label": "Implemented",
+          "internal.run_id": "01M25HCK22PNFPARY8R3YVC9DK",
+          "graph.rankdir": "LR",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "failure_class": "",
+          "thread.start.current_node": "planner",
+          "internal.retry_count.implementer": 0,
+          "failure_signature": "",
+          "graph.preamble_budget_kb": "24",
+          "current_seed_id": "fabro-d183"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Claimed `fabro-d183`. Brief written into context below.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-d183\",\n    \"current_",
+              "current_seed_brief": "Make the develop planner's already-implemented case mechanical so stale tracker rows exit immediately instead of burning a full verification cycle (evidence: run 01M256QJB48JK8BXJE1TVM2HYS ran a whole cycle for seed fabro-afb8 whose fix commit 7ae575c was already in base). All targets are loop assets under `.fabro/workflows/develop/` — fs_hide-bound for FILE TOOLS; edit via shell (sed/python3 heredoc) only.\n\nAcceptance criteria:\n- `prompts/planner.md`: replace the current 'do NOT close it yourself' paragraph (the one beginning 'If the top candidate looks already implemented' at line 45) with a two-branch rule: (a) when `git log --grep <seed-id>` shows a fix commit referencing the seed already in base history AND the seed's acceptance criteria hold in the worktree → close with `sd close <id> --reason \"superseded: fix landed in <sha>\"` and route the new exit label; (b) criteria satisfied but NO referencing commit → keep the existing verification-only claim path unchanged\n- `prompts/planner.md`: update the sd command table row that says `sd close <id>` is 'NEVER yours' to permit exactly this one superseded-close form (reason string mandatory), keeping it forbidden for every other case\n- `prompts/planner.md`: extend the outcome contract with the new route's JSON shape (mirror the Tracker empty shape: `succeeded` + the new label + journal keys; `current_seed_id` not required on that route)\n- `workflow.fabro`: add a planner exit edge for the new label, e.g. `planner -> exit [label=\"Already landed\", condition=\"preferred_label=\\\"Already landed\\\"\"]`, placed next to the existing 'Tracker empty' edge with a brief comment citing fabro-d183\n- The new label string must be used identically in prompt and graph (label contract requires exact match)\n- Scope guard: this is the planner's claim-time decision only — no changes to the implementer prompt (fabro-5656 owns that) or any post-merge sweep (fabro-ab38 owns that)\n- Verification (cheapest first): `grep -n 'Already landed'` both files to confirm prompt/graph agree; `python3 -c` TOML/structure sanity on `workflow.toml` untouched; render-check `workflow.fabro` with `dot -Tcanon` if available, else eyeball the edge block; do NOT run `just qualitygate` or any byte-equivalent full-gate invocation — gate green via the deterministic tester step\n- No Rust code changes expected: `cargo` builds are not part of this seed's verification",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-d183 names 'step 3' of planner.md but the already-implemented paragraph is an unlabeled paragraph after the numbered list (line 45) — brief annotates the actual location",
+                  "in-flight check: only this run itself is non-terminal; all other develop runs are terminal with merged/closed PRs, so no exclusions were needed",
+                  "graph currently has no planner exit edge for an already-landed case; Tracker empty/Blocked/failed edges exist and serve as the pattern for the new edge"
+                ]
+              },
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3313,
+                "preview": "Claimed `fabro-d183`. Brief written into context below.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-d183\",\n    \"current_"
+              },
+              "current_seed_id": "fabro-d183",
+              "current_seed_title": "Planner: exit already-landed seeds before the cycle instead of running a no-op verification lap",
+              "last_stage": "planner"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 34725,
+                    "output_tokens": 1316,
+                    "reasoning_tokens": 917,
+                    "cache_read_tokens": 225152,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 116969
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 93649,
+              "tool_time_ms": 6234,
+              "active_time_ms": 99883
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/6a6aa88e48376bd588e37c4a4ca50ef237d01806809b8c9a9775f1785909c11b"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5073,
+              "active_time_ms": 5073
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 4278,
+                "preview": "All criteria verified. `sd close --reason` exists, so the newly instructed command form is valid. Summary of the pass:\n\n- **`prompts/planner.md`** — replaced the \"do NOT close it yourself\" paragraph"
+              },
+              "lesson_capture": "nothing durable — skipped",
+              "last_response": "All criteria verified. `sd close --reason` exists, so the newly instructed command form is valid. Summary of the pass:\n\n- **`prompts/planner.md`** — replaced the \"do NOT close it yourself\" paragraph",
+              "implementation_summary": "Made the planner's already-implemented case mechanical (fabro-d183): replaced the 'do NOT close' paragraph in `.fabro/workflows/develop/prompts/planner.md` with a two-branch rule — (a) fix commit referencing the seed already in base history AND criteria hold → `sd close <id> --reason \"superseded: fix landed in <sha>\"` and route the new \"Already landed\" exit label; (b) criteria satisfied with no referencing commit → verification-only claim path unchanged. Extended the outcome contract with the new route's JSON shape (mirrors Tracker empty, no `current_seed_id`). Updated the `sd close` table row — which lives in `.fabro/workflows/develop/prompts/project-facts.md` (planner.md renders it via include; the brief's planner.md anchor was corrected to the real location) — to permit exactly the one mandatory-reason superseded-close. Added the `planner -> exit [label=\"Already landed\"]` edge to `.fabro/workflows/develop/workflow.fabro` next to the Tracker empty edge, comment citing fabro-d183. No implementer/sweep changes (scope guard), no Rust touched. Lesson capture: nothing durable — skipped. Per-criterion report: - PASS two-branch rule replaces the line-45 paragraph, superseded-close + \"Already landed\" routing, branch (b) unchanged: planner.md:45-47. - PASS sd close table row permits exactly the one superseded-close form, reason mandatory, all other closes forbidden: project-facts.md:39 (anchor annotation: table lives there, not in planner.md). - PASS outcome contract extended with new route JSON shape mirroring Tracker empty, `current_seed_id` absent: planner.md:77,105-112. - PASS graph edge with exact label placed next to Tracker empty edge, comment cites fabro-d183: workflow.fabro:296-302. - PASS label string identical in prompt and graph (`grep -n 'Already landed'` both files agree). - PASS scope guard: `git status` shows exactly the 3 loop-asset files, no implementer prompt or sweep changes. - PASS verification cheapest-first: grep label check, `tomllib` parse of untouched `workflow.toml`, `dot -Tcanon` unavailable so the edge block was eyeballed (identical shape to adjacent edge); no gate run, no cargo.",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The brief named the sd close table row under prompts/planner.md, but that table lives in prompts/project-facts.md and is rendered into planner.md via include (planner.md:26-28 says so explicitly) — edited at the real location; future loop-asset seeds naming prompt anchors should check the include chain.",
+                  "`dot` is not installed in this environment, so the workflow.fabro render-check fell back to eyeballing the edge block; the new edge is byte-shape-identical to the adjacent Tracker empty edge.",
+                  "Verified `sd close --reason` exists (`sd close --help`) before baking the command form into the prompt — the flag is real, not invented."
+                ]
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 27261,
+                    "output_tokens": 3034,
+                    "reasoning_tokens": 2341,
+                    "cache_read_tokens": 174848,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 107264
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 188358,
+              "tool_time_ms": 1600,
+              "active_time_ms": 189958
+            }
+          }
+        },
+        "next_node_id": "evidence",
+        "git_commit_sha": "df36b7b15c29c8c1da31ce6baf8ae182f868c948",
+        "node_visits": {
+          "start": 1,
+          "tester": 1,
+          "planner": 1,
+          "implementer": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M25HCK22PNFPARY8R3YVC9DK.jsonl b/.fabro/journal/01M25HCK22PNFPARY8R3YVC9DK.jsonl\nindex 171b7ab..a1601a9 100644\n--- a/.fabro/journal/01M25HCK22PNFPARY8R3YVC9DK.jsonl\n+++ b/.fabro/journal/01M25HCK22PNFPARY8R3YVC9DK.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25HCK22PNFPARY8R3YVC9DK\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T11:31:38Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25HCK22PNFPARY8R3YVC9DK\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T11:33:19Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-d183 names 'step 3' of planner.md but the already-implemented paragraph is an unlabeled paragraph after the numbered list (line 45) — brief annotates the actual location\",\"in-flight check: only this run itself is non-terminal; all other develop runs are terminal with merged/closed PRs, so no exclusions were needed\",\"graph currently has no planner exit edge for an already-landed case; Tracker empty/Blocked/failed edges exist and serve as the pattern for the new edge\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25HCK22PNFPARY8R3YVC9DK\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T11:36:35Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The brief named the sd close table row under prompts/planner.md, but that table lives in prompts/project-facts.md and is rendered into planner.md via include (planner.md:26-28 says so explicitly) — edited at the real location; future loop-asset seeds naming prompt anchors should check the include chain.\",\"`dot` is not installed in this environment, so the workflow.fabro render-check fell back to eyeballing the edge block; the new edge is byte-shape-identical to the adjacent Tracker empty edge.\",\"Verified `sd close --reason` exists (`sd close --help`) before baking the command form into the prompt — the flag is real, not invented.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25HCK22PNFPARY8R3YVC9DK\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T11:36:45Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 26,
+          "deletions": 3
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-10T11:36:50.855560536Z",
+        "current_node": "evidence",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence"
         ],
         "node_retries": {},
         "context_values": {
@@ -1089,13 +1304,13 @@
             "chars": 3313,
             "preview": "Claimed `fabro-d183`. Brief written into context below.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-d183\",\n    \"current_"
           },
-          "internal.thread_id": "implementer",
+          "internal.thread_id": "tester",
           "internal.node_visit_count": 1,
           "thread.planner.current_node": "implementer",
           "graph.max_node_visits": "40",
           "implementation_summary": "Made the planner's already-implemented case mechanical (fabro-d183): replaced the 'do NOT close' paragraph in `.fabro/workflows/develop/prompts/planner.md` with a two-branch rule — (a) fix commit referencing the seed already in base history AND criteria hold → `sd close <id> --reason \"superseded: fix landed in <sha>\"` and route the new \"Already landed\" exit label; (b) criteria satisfied with no referencing commit → verification-only claim path unchanged. Extended the outcome contract with the new route's JSON shape (mirrors Tracker empty, no `current_seed_id`). Updated the `sd close` table row — which lives in `.fabro/workflows/develop/prompts/project-facts.md` (planner.md renders it via include; the brief's planner.md anchor was corrected to the real location) — to permit exactly the one mandatory-reason superseded-close. Added the `planner -> exit [label=\"Already landed\"]` edge to `.fabro/workflows/develop/workflow.fabro` next to the Tracker empty edge, comment citing fabro-d183. No implementer/sweep changes (scope guard), no Rust touched. Lesson capture: nothing durable — skipped. Per-criterion report: - PASS two-branch rule replaces the line-45 paragraph, superseded-close + \"Already landed\" routing, branch (b) unchanged: planner.md:45-47. - PASS sd close table row permits exactly the one superseded-close form, reason mandatory, all other closes forbidden: project-facts.md:39 (anchor annotation: table lives there, not in planner.md). - PASS outcome contract extended with new route JSON shape mirroring Tracker empty, `current_seed_id` absent: planner.md:77,105-112. - PASS graph edge with exact label placed next to Tracker empty edge, comment cites fabro-d183: workflow.fabro:296-302. - PASS label string identical in prompt and graph (`grep -n 'Already landed'` both files agree). - PASS scope guard: `git status` shows exactly the 3 loop-asset files, no implementer prompt or sweep changes. - PASS verification cheapest-first: grep label check, `tomllib` parse of untouched `workflow.toml`, `dot -Tcanon` unavailable so the edge block was eyeballed (identical shape to adjacent edge); no gate run, no cargo.",
           "internal.retry_count.implementer": 0,
-          "command.output": "blob://sha256/6a6aa88e48376bd588e37c4a4ca50ef237d01806809b8c9a9775f1785909c11b",
+          "command.output": "blob://sha256/278c58d84af7c488f41b25c659a5a4164401f6bdf3f7eddf0f518d8b880435b2",
           "internal.run_id": "01M25HCK22PNFPARY8R3YVC9DK",
           "failure_signature": "",
           "graph.inspects": "develop",
@@ -1110,14 +1325,16 @@
           },
           "thread.start.current_node": "planner",
           "graph.preamble_budget_kb": "24",
-          "current_node": "tester",
+          "current_node": "evidence",
           "current_seed_brief": "Make the develop planner's already-implemented case mechanical so stale tracker rows exit immediately instead of burning a full verification cycle (evidence: run 01M256QJB48JK8BXJE1TVM2HYS ran a whole cycle for seed fabro-afb8 whose fix commit 7ae575c was already in base). All targets are loop assets under `.fabro/workflows/develop/` — fs_hide-bound for FILE TOOLS; edit via shell (sed/python3 heredoc) only.\n\nAcceptance criteria:\n- `prompts/planner.md`: replace the current 'do NOT close it yourself' paragraph (the one beginning 'If the top candidate looks already implemented' at line 45) with a two-branch rule: (a) when `git log --grep <seed-id>` shows a fix commit referencing the seed already in base history AND the seed's acceptance criteria hold in the worktree → close with `sd close <id> --reason \"superseded: fix landed in <sha>\"` and route the new exit label; (b) criteria satisfied but NO referencing commit → keep the existing verification-only claim path unchanged\n- `prompts/planner.md`: update the sd command table row that says `sd close <id>` is 'NEVER yours' to permit exactly this one superseded-close form (reason string mandatory), keeping it forbidden for every other case\n- `prompts/planner.md`: extend the outcome contract with the new route's JSON shape (mirror the Tracker empty shape: `succeeded` + the new label + journal keys; `current_seed_id` not required on that route)\n- `workflow.fabro`: add a planner exit edge for the new label, e.g. `planner -> exit [label=\"Already landed\", condition=\"preferred_label=\\\"Already landed\\\"\"]`, placed next to the existing 'Tracker empty' edge with a brief comment citing fabro-d183\n- The new label string must be used identically in prompt and graph (label contract requires exact match)\n- Scope guard: this is the planner's claim-time decision only — no changes to the implementer prompt (fabro-5656 owns that) or any post-merge sweep (fabro-ab38 owns that)\n- Verification (cheapest first): `grep -n 'Already landed'` both files to confirm prompt/graph agree; `python3 -c` TOML/structure sanity on `workflow.toml` untouched; render-check `workflow.fabro` with `dot -Tcanon` if available, else eyeball the edge block; do NOT run `just qualitygate` or any byte-equivalent full-gate invocation — gate green via the deterministic tester step\n- No Rust code changes expected: `cargo` builds are not part of this seed's verification",
           "lesson_capture": "nothing durable — skipped",
           "thread.implementer.current_node": "tester",
+          "internal.retry_count.evidence": 0,
           "outcome": "succeeded",
           "internal.work_dir": "/workspace/fabro",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "failure_class": "",
+          "thread.tester.current_node": "evidence",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -1130,7 +1347,8 @@
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
-            "tester": 1
+            "tester": 1,
+            "evidence": 1
           },
           "last_response": "All criteria verified. `sd close --reason` exists, so the newly instructed command form is valid. Summary of the pass:\n\n- **`prompts/planner.md`** — replaced the \"do NOT close it yourself\" paragraph",
           "internal.seed_cycle_anchor": "fabro-d183",
@@ -1190,6 +1408,20 @@
               "inference_time_ms": 188358,
               "tool_time_ms": 1600,
               "active_time_ms": 189958
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/278c58d84af7c488f41b25c659a5a4164401f6bdf3f7eddf0f518d8b880435b2"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 392,
+              "active_time_ms": 392
             }
           },
           "tester": {
@@ -1264,10 +1496,11 @@
             }
           }
         },
-        "next_node_id": "evidence",
+        "next_node_id": "reviewer",
         "node_visits": {
           "start": 1,
           "planner": 1,
+          "evidence": 1,
           "implementer": 1,
           "tester": 1
         }
@@ -1821,6 +2054,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "evidence@1": {
+      "first_event_seq": 186,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-10T11:36:50.628099939Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/278c58d84af7c488f41b25c659a5a4164401f6bdf3f7eddf0f518d8b880435b2",
+        "exit_code": 0,
+        "duration_ms": 392,
+        "termination": "exited",
+        "output_bytes": 11427,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 11427,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-10T11:36:50.223753512Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 396,
+        "inference_time_ms": 0,
+        "tool_time_ms": 392,
+        "active_time_ms": 392
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
