@@ -7,3 +7,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M25HCK22PNFPARY8R3YVC9DK","node":"planner","visit":2,"status":"succeeded","ts":"2026-09-10T11:39:34Z","data":{"painpoints":[],"observations":["Re-claim pass for fabro-d183: review requested deletion of one contradictory routing sentence in planner.md branch (a) that made the new 'Already landed' exit edge unreachable; brief narrowed to that single edit so the pass cannot drift."]}}
 {"$schema":"fabro-journal-v1","run_id":"01M25HCK22PNFPARY8R3YVC9DK","node":"implementer","visit":2,"status":"succeeded","ts":"2026-09-10T11:40:25Z","data":{"painpoints":[],"observations":["none"]}}
 {"$schema":"fabro-journal-v1","run_id":"01M25HCK22PNFPARY8R3YVC9DK","node":"tester","visit":2,"status":"succeeded","ts":"2026-09-10T11:40:36Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M25HCK22PNFPARY8R3YVC9DK","node":"evidence","visit":2,"status":"succeeded","ts":"2026-09-10T11:40:41Z","data":{}}
