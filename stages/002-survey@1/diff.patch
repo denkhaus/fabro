@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M25K0SNNZABSBAE4XJ5S0R4Y.jsonl b/.fabro/journal/01M25K0SNNZABSBAE4XJ5S0R4Y.jsonl
+new file mode 100644
+index 000000000..b3bbc2705
+--- /dev/null
++++ b/.fabro/journal/01M25K0SNNZABSBAE4XJ5S0R4Y.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M25K0SNNZABSBAE4XJ5S0R4Y","node":"start","visit":1,"status":"succeeded","ts":"2026-09-10T12:00:18Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M25K0SNNZABSBAE4XJ5S0R4Y","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-10T12:01:30Z","data":{"painpoints":[{"text":"Revisor backlog signal is assembled from review filenames under .fabro/reviews/develop/ only; develop run 01M25732658J2RFTM6MDM8CPFG (PR 116) has no review artifact while older and newer runs do, but a missing file could also mean a no-op revisor pass. Suggest the revisor stage write an explicit review record (even a skipped marker) per develop run id so the backlog check is unambiguous."}],"observations":["upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: Bump version to 0.348.0-nightly.0. Below MIN threshold 5; drift accumulates from zero this pass.","revisor backlog: 01M25732658J2RFTM6MDM8CPFG (develop run, PR 116 merged) has no revisor review artifact; 01M256QJB48JK8BXJE1TVM2HYS and 01M25HCK22PNFPARY8R3YVC9DK are covered.","Next surveyor: backlog is a single run; a revisor pass this line burns it, then normal develop cycling resumes."]}}
