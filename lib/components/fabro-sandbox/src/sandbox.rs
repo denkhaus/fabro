@@ -10,6 +10,7 @@ use fabro_github::token_source::TokenSnapshot;
 pub use fabro_types::run_event::GitCredentialAction as RemoteCredentialAction;
 use fabro_types::{CommandOutputStream, CommandTermination};
 use fabro_util::shell;
+use sandbox_driver::{Git as _, GitCheckoutOptions, GitFailureKind, GitPushOptions, Termination};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 use tokio::sync::Mutex as TokioMutex;
@@ -556,41 +557,27 @@ pub fn shell_quote(s: &str) -> String {
     shell::shell_quote(s)
 }
 
-/// Helper for sandbox implementations that manage git internally.
-/// Executes git commands inside the sandbox to create a run branch.
-pub async fn setup_git_via_exec(
-    sandbox: &RunSandbox,
-    intent: &GitSetupIntent,
-) -> crate::Result<GitRunInfo> {
-    // Get current branch name
-    let branch_result = sandbox
-        .exec_command("git rev-parse --abbrev-ref HEAD", 10_000, None, None, None)
+/// Creates the run branch in the sandbox's checkout through the driver's
+/// git facet: a new run branches from `HEAD`, a fork from the source run's
+/// checkpoint. The branch is created at that base, or moved to it when an
+/// earlier attempt already created it.
+pub async fn setup_git(sandbox: &RunSandbox, intent: &GitSetupIntent) -> crate::Result<GitRunInfo> {
+    let git = sandbox.git()?;
+    let repo = sandbox.working_directory().to_owned();
+    let status = git
+        .status(&repo)
         .await
-        .map_err(|e| {
-            crate::Error::message(format!("git rev-parse --abbrev-ref HEAD failed: {e}"))
-        })?;
-    let base_branch = if branch_result.is_success() {
-        let name = branch_result.stdout.trim().to_string();
-        if name.is_empty() || name == "HEAD" {
-            None
-        } else {
-            Some(name)
-        }
-    } else {
-        None
-    };
+        .map_err(|error| crate::Error::context("git status", error))?;
+    let base_branch = status
+        .current_branch
+        .filter(|name| !name.is_empty() && name != "HEAD");
 
     let (base_sha, branch_name) = match intent {
         GitSetupIntent::NewRun { run_id } => {
-            let sha_result = sandbox
-                .exec_command("git rev-parse HEAD", 10_000, None, None, None)
-                .await
-                .map_err(|e| crate::Error::context("git rev-parse HEAD", e))?
-                .into_result("git rev-parse HEAD")?;
-            (
-                sha_result.stdout.trim().to_string(),
-                format!("fabro/run/{run_id}"),
-            )
+            let head = status.head.ok_or_else(|| {
+                crate::Error::message("the repository has no commit to branch the run from")
+            })?;
+            (head, format!("fabro/run/{run_id}"))
         }
         GitSetupIntent::ForkFromCheckpoint {
             new_run_id,
@@ -602,16 +589,14 @@ pub async fn setup_git_via_exec(
         }
     };
 
-    let checkout_cmd = format!(
-        "git checkout -B {} {}",
-        shell_quote(&branch_name),
-        shell_quote(&base_sha)
-    );
-    sandbox
-        .exec_command(&checkout_cmd, 10_000, None, None, None)
-        .await
-        .map_err(|e| crate::Error::context("git checkout -B", e))?
-        .into_result("git checkout -B")?;
+    git.checkout(
+        &repo,
+        &GitCheckoutOptions::new(&branch_name)
+            .create_or_reset()
+            .start_point(&base_sha),
+    )
+    .await
+    .map_err(|error| crate::Error::context("git checkout -B", error))?;
 
     Ok(GitRunInfo {
         base_sha,
@@ -706,40 +691,39 @@ pub struct PushError {
     pub error:  crate::Error,
 }
 
-/// Classify a failed push attempt by the failure's rendered output.
+/// What a failed push attempt means for retrying. The driver classified
+/// the failure; a push that did not run to completion (timed out or
+/// cancelled) is never retried, because the remote may still be applying
+/// it.
 fn classify_push_error(error: &crate::Error, cred: CredentialContext) -> Option<GitRetryReason> {
-    let class = match error {
-        crate::Error::Exec { result, .. } if result.termination != CommandTermination::Exited => {
+    let driver = error.driver()?;
+    if let sandbox_driver::Error::Git(failure) = driver {
+        if failure
+            .output()
+            .is_some_and(|output| output.termination() != Termination::Exited)
+        {
             return None;
         }
-        crate::Error::Exec { result, .. } => {
-            git_retry::classify_output(&result.stderr, &result.stdout, cred)
-        }
-        other => git_retry::classify_message(&crate::display_for_log(other), cred),
-    };
-    class.retry_reason()
-}
-
-/// Whether a failed push attempt has the 404/auth-failure shape that a
-/// drifted or missing embedded token also produces.
-fn push_failure_looks_auth_shaped(error: &crate::Error) -> bool {
-    match error {
-        crate::Error::Exec { result, .. } => {
-            git_retry::output_matches_auth_failure_hints(&result.stderr, &result.stdout)
-        }
-        other => git_retry::matches_auth_failure_hints(&crate::display_for_log(other)),
     }
+    git_retry::classify_driver_failure(driver, cred)
 }
 
-/// Helper for sandbox implementations that manage git internally.
-///
-/// Pushes a refspec to origin via `exec_command` inside the sandbox,
-/// retrying per `plan` with one pinned credential generation for the whole
-/// operation. `credentials` is the provider's push-credential state plus the
-/// origin URL; `None` pushes with whatever the remote already carries (the
-/// local sandbox, or a workspace without managed credentials).
+/// Whether a failed push attempt was rejected as unauthenticated, the shape
+/// a drifted or missing embedded token also produces.
+fn push_failure_looks_auth_shaped(error: &crate::Error) -> bool {
+    matches!(
+        error.driver(),
+        Some(sandbox_driver::Error::Git(failure)) if failure.kind() == GitFailureKind::AuthRejected
+    )
+}
+
+/// Pushes a refspec to origin through the driver's git facet, retrying per
+/// `plan` with one pinned credential generation for the whole operation.
+/// `credentials` is the provider's push-credential state plus the origin
+/// URL; `None` pushes with whatever the remote already carries (the local
+/// sandbox, or a workspace without managed credentials).
 #[tracing::instrument(name = "git_op", skip_all, fields(op = "push"))]
-pub(crate) async fn git_push_via_exec(
+pub(crate) async fn git_push(
     sandbox: &RunSandbox,
     credentials: Option<(&PushCredentialState, &str)>,
     refspec: &str,
@@ -750,6 +734,16 @@ pub(crate) async fn git_push_via_exec(
 
     let start = time::Instant::now();
     let deadline = plan.effective_deadline(start);
+    let git = match sandbox.git() {
+        Ok(git) => git,
+        Err(error) => {
+            return Err(PushError {
+                report: PushReport::default(),
+                error,
+            });
+        }
+    };
+    let repo = sandbox.working_directory().to_owned();
 
     // The lease pins one token generation and owns the embed mutex for the
     // whole operation; no concurrent refresh can re-embed mid-operation, and
@@ -782,7 +776,6 @@ pub(crate) async fn git_push_via_exec(
     let mut attempts: Vec<PushAttempt> = Vec::new();
     let mut force_reembed = false;
     let mut drift_repaired = false;
-    let cmd = format!("{GIT} push origin {}", shell_quote(refspec));
     let label = format!("git push origin {refspec}");
 
     loop {
@@ -824,17 +817,17 @@ pub(crate) async fn git_push_via_exec(
         };
 
         let remaining = attempt_deadline.saturating_duration_since(time::Instant::now());
-        let timeout_ms = u64::try_from(remaining.as_millis()).unwrap_or(u64::MAX);
-        if timeout_ms == 0 {
+        if remaining.is_zero() {
             return Err(push_deadline_error(attempts, "before running git push"));
         }
-        let push_result = match sandbox
-            .exec_command(&cmd, timeout_ms, None, None, None)
+        let mut options = GitPushOptions::default();
+        options.remote = Some("origin".to_owned());
+        options.refspec = Some(refspec.to_owned());
+        options.timeout = Some(remaining);
+        let push_result = git
+            .push(&repo, &options)
             .await
-        {
-            Ok(result) => result.into_result(&label).map(|_| ()),
-            Err(err) => Err(crate::Error::context(label.clone(), err)),
-        };
+            .map_err(|error| crate::Error::context(label.clone(), error));
 
         match push_result {
             Ok(()) => {
@@ -1002,7 +995,10 @@ mod push_tests {
                             .map_or_else(ok_exec, driver_result),
                     );
                 }
-                assert!(script.contains("push origin"), "unexpected exec: {script}");
+                assert!(
+                    script.contains("'push' 'origin'"),
+                    "unexpected exec: {script}"
+                );
                 Some(driver_result(
                     pushes
                         .lock()
@@ -1022,7 +1018,7 @@ mod push_tests {
         fn push_count(&self) -> usize {
             self.commands()
                 .iter()
-                .filter(|command| command.contains("push origin"))
+                .filter(|command| command.contains("'push' 'origin'"))
                 .count()
         }
 
@@ -1144,7 +1140,7 @@ mod push_tests {
             ok_fabro_exec(),
         ]);
 
-        let report = git_push_via_exec(
+        let report = git_push(
             &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
@@ -1189,7 +1185,7 @@ mod push_tests {
             ok_fabro_exec(),
         ]);
 
-        let report = git_push_via_exec(
+        let report = git_push(
             &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
@@ -1220,7 +1216,7 @@ mod push_tests {
             ok_fabro_exec(),
         ]);
 
-        let report = git_push_via_exec(
+        let report = git_push(
             &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
@@ -1252,7 +1248,7 @@ mod push_tests {
             "fatal: Authentication failed for 'https://github.com/fabro-testing/repo'",
         )]);
 
-        let push_error = git_push_via_exec(
+        let push_error = git_push(
             &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
@@ -1280,7 +1276,7 @@ mod push_tests {
         seed_clone_token(&state).await;
         let sandbox = ScriptedGitSandbox::new(vec![ok_fabro_exec()]);
 
-        let report = git_push_via_exec(
+        let report = git_push(
             &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
@@ -1309,7 +1305,7 @@ mod push_tests {
         let (state, _minter) = minting_state(vec![MintAction::Error("mint failed")]);
         let sandbox = ScriptedGitSandbox::new(vec![]);
 
-        let push_error = git_push_via_exec(
+        let push_error = git_push(
             &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
@@ -1339,7 +1335,7 @@ mod push_tests {
             ok_fabro_exec(),
         ]);
 
-        let report = git_push_via_exec(
+        let report = git_push(
             &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
@@ -1381,7 +1377,7 @@ mod push_tests {
             vec![failed_exec("error: could not lock config file")],
         );
 
-        let report = git_push_via_exec(
+        let report = git_push(
             &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
@@ -1424,7 +1420,7 @@ mod push_tests {
         seed_clone_token(&state).await;
         let sandbox = ScriptedGitSandbox::with_set_url_results(vec![], vec![timed_out_exec()]);
 
-        let push_error = git_push_via_exec(
+        let push_error = git_push(
             &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
@@ -1455,7 +1451,7 @@ mod push_tests {
             ok_fabro_exec(),
         ]);
 
-        let report = git_push_via_exec(
+        let report = git_push(
             &sandbox.run,
             Some((&state, ORIGIN)),
             REFSPEC,
@@ -1484,7 +1480,7 @@ mod push_tests {
     async fn push_without_managed_credentials_reports_no_token() {
         let sandbox = ScriptedGitSandbox::new(vec![ok_fabro_exec()]);
 
-        let report = git_push_via_exec(&sandbox.run, None, REFSPEC, &RetryPlan::checkpoint_push())
+        let report = git_push(&sandbox.run, None, REFSPEC, &RetryPlan::checkpoint_push())
             .await
             .expect("push succeeds");
 
@@ -1499,7 +1495,7 @@ mod push_tests {
             "fatal: Authentication failed for 'https://github.com/fabro-testing/repo'",
         )]);
 
-        let push_error = git_push_via_exec(&sandbox.run, None, REFSPEC, &RetryPlan::publish_push())
+        let push_error = git_push(&sandbox.run, None, REFSPEC, &RetryPlan::publish_push())
             .await
             .expect_err("no credentials to wait on");
 
@@ -1511,7 +1507,7 @@ mod push_tests {
     async fn timed_out_push_is_not_retried_while_the_remote_process_may_still_run() {
         let sandbox = ScriptedGitSandbox::new(vec![timed_out_exec()]);
 
-        let push_error = git_push_via_exec(&sandbox.run, None, REFSPEC, &RetryPlan::publish_push())
+        let push_error = git_push(&sandbox.run, None, REFSPEC, &RetryPlan::publish_push())
             .await
             .expect_err("an unconfirmed timeout must fail without another push");
 
@@ -1528,7 +1524,7 @@ mod push_tests {
         let mut plan = RetryPlan::checkpoint_push();
         plan.max_elapsed = Some(Duration::from_secs(1));
 
-        let push_error = git_push_via_exec(&sandbox.run, Some((&state, ORIGIN)), REFSPEC, &plan)
+        let push_error = git_push(&sandbox.run, Some((&state, ORIGIN)), REFSPEC, &plan)
             .await
             .expect_err("credential acquisition must stop at the operation deadline");
 
@@ -1543,7 +1539,7 @@ mod push_tests {
         let mut plan = RetryPlan::checkpoint_push();
         plan.max_elapsed = Some(Duration::ZERO);
 
-        let push_error = git_push_via_exec(&sandbox.run, None, REFSPEC, &plan)
+        let push_error = git_push(&sandbox.run, None, REFSPEC, &plan)
             .await
             .expect_err("an expired operation must stop before exec");
 

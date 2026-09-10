@@ -5,10 +5,10 @@
 //! credentials it carries, and how failures retry. The layout is fabro's:
 //! the repository checks out under `<repos_root>/<owner>/<repo>` and the
 //! run works in `<workspace_root>/<repo>`, a symlink to the checkout. An
-//! exact commit goes through the driver's pinned clone; a tag pin runs
-//! fabro's own init, fetch, and attach sequence through `Exec`, because a
-//! tag must be fetched by its fully qualified ref so a same-named branch is
-//! never consulted. Neither path ever falls back to the branch head.
+//! exact commit or a tag is pinned by the driver's clone options, which
+//! fetch a tag by its fully qualified ref so a same-named branch is never
+//! consulted; fabro verifies the checked-out head afterwards. Neither path
+//! ever falls back to the branch head.
 
 use std::time::Duration;
 

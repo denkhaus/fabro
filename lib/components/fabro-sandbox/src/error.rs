@@ -198,21 +198,38 @@ pub fn default_redacted_output_tail(
 ) -> Option<fabro_types::ExecOutputTail> {
     let mut current = Some(err);
     while let Some(err) = current {
-        if let Some(Error::Exec { result, .. }) = err.downcast_ref::<Error>() {
-            return result.default_redacted_output_tail();
+        match err.downcast_ref::<Error>() {
+            Some(Error::Exec { result, .. }) => return result.default_redacted_output_tail(),
+            Some(Error::Driver(driver)) => {
+                if let Some(tail) = driver_output_tail(driver) {
+                    return Some(tail);
+                }
+            }
+            _ => {}
         }
-        if let Some(sandbox_driver::Error::Exec(failure)) =
-            err.downcast_ref::<sandbox_driver::Error>()
-        {
-            return redacted_output_tail(
-                &String::from_utf8_lossy(failure.stdout()),
-                &String::from_utf8_lossy(failure.stderr()),
-                DEFAULT_EXEC_OUTPUT_TAIL_BYTES,
-            );
+        if let Some(driver) = err.downcast_ref::<sandbox_driver::Error>() {
+            if let Some(tail) = driver_output_tail(driver) {
+                return Some(tail);
+            }
         }
         current = err.source();
     }
     None
+}
+
+/// The output a driver failure carries: a command that ran and failed, or
+/// a git operation whose command output the driver kept as evidence.
+fn driver_output_tail(error: &sandbox_driver::Error) -> Option<fabro_types::ExecOutputTail> {
+    let failure = match error {
+        sandbox_driver::Error::Exec(failure) => failure,
+        sandbox_driver::Error::Git(git) => git.output()?,
+        _ => return None,
+    };
+    redacted_output_tail(
+        &String::from_utf8_lossy(failure.stdout()),
+        &String::from_utf8_lossy(failure.stderr()),
+        DEFAULT_EXEC_OUTPUT_TAIL_BYTES,
+    )
 }
 
 pub fn display_for_log(err: &(dyn std::error::Error + 'static)) -> String {

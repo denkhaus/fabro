@@ -483,6 +483,17 @@ impl RunSandbox {
         }
     }
 
+    /// The driver's git facet for this sandbox's checkout. Absent until a
+    /// pending sandbox is initialized, or when the provider has no git.
+    pub(crate) fn git(&self) -> crate::Result<sandbox_driver::GitFacet<'_>> {
+        self.handle()?.git().ok_or_else(|| {
+            crate::Error::message(format!(
+                "sandbox provider `{}` does not support git",
+                self.kind
+            ))
+        })
+    }
+
     fn search(&self) -> crate::Result<sandbox_driver::SearchFacet<'_>> {
         self.handle()?.search().ok_or_else(|| {
             crate::Error::message(format!(
@@ -1040,7 +1051,7 @@ impl RunSandbox {
         if !self.repo_cloned() {
             return Ok(None);
         }
-        sandbox::setup_git_via_exec(self, intent).await.map(Some)
+        sandbox::setup_git(self, intent).await.map(Some)
     }
 
     pub fn resume_setup_commands(&self, run_branch: &str) -> Vec<String> {
@@ -1078,7 +1089,7 @@ impl RunSandbox {
             if !has_origin {
                 return Ok(PushReport::default());
             }
-            return sandbox::git_push_via_exec(self, None, refspec, plan).await;
+            return sandbox::git_push(self, None, refspec, plan).await;
         };
         if !workspace.repo_cloned() {
             return Ok(PushReport::default());
@@ -1087,7 +1098,7 @@ impl RunSandbox {
             .origin_url
             .get()
             .map(|origin_url| (&workspace.credentials, origin_url.as_str()));
-        sandbox::git_push_via_exec(self, credentials, refspec, plan).await
+        sandbox::git_push(self, credentials, refspec, plan).await
     }
 
     pub fn origin_url(&self) -> Option<&str> {

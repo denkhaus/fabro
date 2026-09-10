@@ -65,7 +65,7 @@ pub use sandbox::{
     ExecStreamingResult, GitRunInfo, GitSetupIntent, OutputCaptureStats, PushAttempt, PushError,
     PushReport, RefreshOutcome, RemoteCredentialAction, SandboxFile, SandboxWorkspaceLayout,
     StderrCollector, StdioProcess, StdioProcessHandle, StdioProcessTermination,
-    format_lines_numbered, redacted_output_tail, setup_git_via_exec, shell_quote,
+    format_lines_numbered, redacted_output_tail, setup_git, shell_quote,
 };
 /// Driver types a run sandbox's file and search operations speak, and the
 /// network policy a [`SandboxOptions`] asks for, re-exported so consumers

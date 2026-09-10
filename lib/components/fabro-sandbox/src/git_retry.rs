@@ -86,17 +86,6 @@ impl CredentialContext {
     }
 }
 
-/// Whether a failure message has the 404/auth-failure shape GitHub produces
-/// for both token-replication lag and a drifted or missing embedded token.
-pub(crate) fn matches_auth_failure_hints(message: &str) -> bool {
-    GitFailureKind::from_message(message) == GitFailureKind::AuthRejected
-}
-
-pub(crate) fn output_matches_auth_failure_hints(stderr: &str, stdout: &str) -> bool {
-    GitFailureKind::from_output(stderr.as_bytes(), stdout.as_bytes())
-        == GitFailureKind::AuthRejected
-}
-
 /// What a classified git failure means for retrying with these credentials.
 ///
 /// The driver reads the failure; fabro decides. A remote that could not
@@ -120,20 +109,11 @@ pub(crate) fn decide(kind: GitFailureKind, cred: CredentialContext) -> GitMessag
     }
 }
 
-/// Classify a failed git operation by its rendered message.
+/// Classify a failed git operation by its rendered message. For git that
+/// ran outside a sandbox — the host-side repository probe and metadata
+/// push — where the driver never saw the failure.
 pub(crate) fn classify_message(message: &str, cred: CredentialContext) -> GitMessageClass {
     decide(GitFailureKind::from_message(message), cred)
-}
-
-pub(crate) fn classify_output(
-    stderr: &str,
-    stdout: &str,
-    cred: CredentialContext,
-) -> GitMessageClass {
-    decide(
-        GitFailureKind::from_output(stderr.as_bytes(), stdout.as_bytes()),
-        cred,
-    )
 }
 
 /// Classify a rendered git failure message, returning the retry reason when
