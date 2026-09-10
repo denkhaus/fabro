@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "fabro_run_create returned 'Access denied' on three attempts (full workflow_source spec with auto_approve, and bare string shorthand); no child run was created and no merge could be started. The Fabro API was reachable (fabro_run_get responded), so this is an authorization/permission failure on run creation, not a schema or connectivity issue.",
+  "timestamp": "2026-09-10T17:32:42.994290269Z"
+}

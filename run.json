@@ -570,7 +570,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-10T17:30:27.531230697Z",
-  "last_event_at": "2026-09-10T17:32:42.981032030Z",
+  "last_event_at": "2026-09-10T17:32:47.524868358Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -750,9 +750,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 110,
       "checkpoint": {
-        "timestamp": "2026-09-10T17:32:42.994665950Z",
+        "timestamp": "2026-09-10T17:32:47.524530846Z",
         "current_node": "merge",
         "completed_nodes": [
           "start",
@@ -761,6 +761,10 @@
         ],
         "node_retries": {},
         "context_values": {
+          "internal.node_visit_count": 1,
+          "internal.run_id": "01M265X1PE76AADDVHB5SJ4R7F",
+          "internal.fidelity": "compact",
+          "graph.preamble_budget_kb": "12",
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
@@ -768,40 +772,21 @@
             "preview": "{\"preferred_next_label\":\"Merge needed\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[{\"text\":\"fabro_runs_list output disagrees with on-d"
           },
           "graph.cycle_counter_reset_key": "pass_id",
-          "internal.node_visit_count": 1,
-          "internal.retry_count.survey": 0,
-          "failure_signature": "merge|deterministic|fabro_run_create returned 'access denied' on three attempts (full workflow_source spec with auto_approve,and bare string shorthand); no child run was created and no merge could be started. the fabro api was reachable (fabro_run_get responde",
-          "failure_class": "deterministic",
-          "graph.preamble_budget_kb": "12",
-          "internal.run_id": "01M265X1PE76AADDVHB5SJ4R7F",
+          "preferred_label": "Unrouted merge outcome",
           "internal.retry_count.start": 0,
           "graph.rankdir": "LR",
-          "internal.fidelity": "compact",
           "thread.survey.current_node": "merge",
-          "graph.max_node_visits": "12",
-          "internal.retry_count.merge": 0,
-          "internal.work_dir": "/workspace/fabro",
-          "last_stage": "merge",
-          "outcome": "failed",
-          "internal.seed_cycle_anchor": "",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
           "graph.inspects": "develop,merge-upstream,revisor",
-          "last_response": "The create tool is returning `Access denied` regardless of payload shape (full spec, and string shorthand), and run lookup confirms the Fabro tool layer is reachable but denying run creation. Per the ",
-          "preferred_label": "Unrouted merge outcome",
-          "current_node": "merge",
-          "internal.thread_id": "survey",
-          "response.merge": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.merge",
-            "chars": 1937,
-            "preview": "The create tool is returning `Access denied` regardless of payload shape (full spec, and string shorthand), and run lookup confirms the Fabro tool layer is reachable but denying run creation. Per the "
-          },
-          "thread.start.current_node": "survey",
           "internal.exit_kind": "soft",
-          "seed_cycles": {
-            "start": 1,
-            "survey": 1,
-            "merge": 1
-          },
+          "internal.seed_cycle_anchor": "",
+          "outcome": "failed",
+          "current_node": "merge",
+          "failure_class": "deterministic",
+          "failure_signature": "merge|deterministic|fabro_run_create returned 'access denied' on three attempts (full workflow_source spec with auto_approve,and bare string shorthand); no child run was created and no merge could be started. the fabro api was reachable (fabro_run_get responde",
+          "internal.thread_id": "survey",
+          "thread.start.current_node": "survey",
+          "internal.retry_count.merge": 0,
           "journal": {
             "painpoints": [
               {
@@ -812,66 +797,27 @@
               "Merge leg aborted before child creation: fabro_run_create access-denied on all payload shapes (workflow_source spec + auto_approve=true, bare string); fabro_run_get works, so API reachable, authorization on create broken. No child_run_id exists, no merge performed. Upstream drift remains at 24 commits (origin/denkhaus..upstream/main, newest 'Merge pull request #848 from fabro-sh/rust-boundary'); next merge leg should retry the child create and, if denial persists, investigate the server-side run-creation permission for the conductor's token/environment 'toolchain'."
             ]
           },
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged"
+          "internal.retry_count.survey": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "last_stage": "merge",
+          "response.merge": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.merge",
+            "chars": 1937,
+            "preview": "The create tool is returning `Access denied` regardless of payload shape (full spec, and string shorthand), and run lookup confirms the Fabro tool layer is reachable but denying run creation. Per the "
+          },
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "merge": 1
+          },
+          "last_response": "The create tool is returning `Access denied` regardless of payload shape (full spec, and string shorthand), and run lookup confirms the Fabro tool layer is reachable but denying run creation. Per the ",
+          "graph.max_node_visits": "12"
         },
         "node_outcomes": {
           "start": {
             "status": "succeeded",
             "usage": null
-          },
-          "survey": {
-            "status": "succeeded",
-            "preferred_label": "Merge needed",
-            "context_updates": {
-              "last_response": "{\"preferred_next_label\":\"Merge needed\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[{\"text\":\"fabro_runs_list output disagrees with on-d",
-              "response.survey": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.survey",
-                "chars": 1156,
-                "preview": "{\"preferred_next_label\":\"Merge needed\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[{\"text\":\"fabro_runs_list output disagrees with on-d"
-              },
-              "last_stage": "survey",
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "fabro_runs_list output disagrees with on-disk artifacts: listing develop runs shows nothing newer than 2026-09-08 while `.fabro/reviews/develop/` contains revisor reviews dated 2026-09-10 (e.g. 01M25K41V4NEWXSA3SVGRHKRXK.md). Suggest the runs-list tool or its created_since filter be checked for a stale/truncated index so the revisor-backlog signal is not silently wrong."
-                  }
-                ],
-                "observations": [
-                  "upstream count 24 (origin/denkhaus..upstream/main), >= 5 MIN threshold -> Merge needed; newest upstream subject: 'Merge pull request #848 from fabro-sh/rust-boundary'",
-                  "revisor backlog: none visible — newest develop run 01M25K41V4NEWXSA3SVGRHKRXK has a revisor review (2026-09-10 13:04); runs_list created_since=2026-09-10 returned 0 develop runs, though listing appears to omit runs newer than 2026-09-08, so treat backlog as clear-with-mild-ambiguity",
-                  "next surveyor should expect the merge pass to substantially reset the drift count; after merge, verify the count drops to 0 before routing Work"
-                ]
-              }
-            },
-            "notes": "Stage completed: survey",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 34980,
-                    "output_tokens": 1141,
-                    "reasoning_tokens": 748,
-                    "cache_read_tokens": 140928,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 93920
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 60547,
-              "tool_time_ms": 14480,
-              "active_time_ms": 75027
-            }
           },
           "merge": {
             "status": "failed",
@@ -928,19 +874,156 @@
               "tool_time_ms": 12,
               "active_time_ms": 39635
             }
+          },
+          "survey": {
+            "status": "succeeded",
+            "preferred_label": "Merge needed",
+            "context_updates": {
+              "last_response": "{\"preferred_next_label\":\"Merge needed\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[{\"text\":\"fabro_runs_list output disagrees with on-d",
+              "response.survey": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.survey",
+                "chars": 1156,
+                "preview": "{\"preferred_next_label\":\"Merge needed\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[{\"text\":\"fabro_runs_list output disagrees with on-d"
+              },
+              "last_stage": "survey",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "fabro_runs_list output disagrees with on-disk artifacts: listing develop runs shows nothing newer than 2026-09-08 while `.fabro/reviews/develop/` contains revisor reviews dated 2026-09-10 (e.g. 01M25K41V4NEWXSA3SVGRHKRXK.md). Suggest the runs-list tool or its created_since filter be checked for a stale/truncated index so the revisor-backlog signal is not silently wrong."
+                  }
+                ],
+                "observations": [
+                  "upstream count 24 (origin/denkhaus..upstream/main), >= 5 MIN threshold -> Merge needed; newest upstream subject: 'Merge pull request #848 from fabro-sh/rust-boundary'",
+                  "revisor backlog: none visible — newest develop run 01M25K41V4NEWXSA3SVGRHKRXK has a revisor review (2026-09-10 13:04); runs_list created_since=2026-09-10 returned 0 develop runs, though listing appears to omit runs newer than 2026-09-08, so treat backlog as clear-with-mild-ambiguity",
+                  "next surveyor should expect the merge pass to substantially reset the drift count; after merge, verify the count drops to 0 before routing Work"
+                ]
+              }
+            },
+            "notes": "Stage completed: survey",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 34980,
+                    "output_tokens": 1141,
+                    "reasoning_tokens": 748,
+                    "cache_read_tokens": 140928,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 93920
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 60547,
+              "tool_time_ms": 14480,
+              "active_time_ms": 75027
+            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "b74a775d7cf193a53603ff8ee4f5f4a92294dfd0",
+        "loop_failure_signatures": {
+          "merge|deterministic|fabro_run_create returned 'access denied' on three attempts (full workflow_source spec with auto_approve,and bare string shorthand); no child run was created and no merge could be started. the fabro api was reachable (fabro_run_get responde": 1
+        },
         "node_visits": {
-          "survey": 1,
+          "merge": 1,
           "start": 1,
-          "merge": 1
+          "survey": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 1,
+          "additions": 2,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-10T17:32:47.563082997Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 128417,
+      "inference_time_ms": 100170,
+      "tool_time_ms": 14492,
+      "active_time_ms": 114662
+    },
+    "failure": {
+      "reason": "soft_stop",
+      "detail": {
+        "message": "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; the next run re-enters autonomously",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "b74a775d7cf193a53603ff8ee4f5f4a92294dfd0",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 75671,
+          "inference_time_ms": 60547,
+          "tool_time_ms": 14480,
+          "active_time_ms": 75027
+        },
+        "billing_usd_micros": 93920,
+        "retries": 0
+      },
+      {
+        "stage_id": "merge",
+        "stage_label": "merge",
+        "timing": {
+          "wall_time_ms": 40135,
+          "inference_time_ms": 39623,
+          "tool_time_ms": 12,
+          "active_time_ms": 39635
+        },
+        "billing_usd_micros": 33005,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 47250,
+      "output_tokens": 1759,
+      "total_tokens": 238287,
+      "reasoning_tokens": 926,
+      "cache_read_tokens": 188352,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 126925
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M265X1PE76AADDVHB5SJ4R7F.jsonl b/.fabro/journal/01M265X1PE76AADDVHB5SJ4R7F.jsonl\nnew file mode 100644\nindex 000000000..b47992025\n--- /dev/null\n+++ b/.fabro/journal/01M265X1PE76AADDVHB5SJ4R7F.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M265X1PE76AADDVHB5SJ4R7F\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T17:30:30Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M265X1PE76AADDVHB5SJ4R7F\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T17:31:54Z\",\"data\":{\"painpoints\":[{\"text\":\"fabro_runs_list output disagrees with on-disk artifacts: listing develop runs shows nothing newer than 2026-09-08 while `.fabro/reviews/develop/` contains revisor reviews dated 2026-09-10 (e.g. 01M25K41V4NEWXSA3SVGRHKRXK.md). Suggest the runs-list tool or its created_since filter be checked for a stale/truncated index so the revisor-backlog signal is not silently wrong.\"}],\"observations\":[\"upstream count 24 (origin/denkhaus..upstream/main), >= 5 MIN threshold -> Merge needed; newest upstream subject: 'Merge pull request #848 from fabro-sh/rust-boundary'\",\"revisor backlog: none visible — newest develop run 01M25K41V4NEWXSA3SVGRHKRXK has a revisor review (2026-09-10 13:04); runs_list created_since=2026-09-10 returned 0 develop runs, though listing appears to omit runs newer than 2026-09-08, so treat backlog as clear-with-mild-ambiguity\",\"next surveyor should expect the merge pass to substantially reset the drift count; after merge, verify the count drops to 0 before routing Work\"]}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 2,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "soft"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -967,11 +1050,52 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 113,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-10T17:32:47.524868358Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-10T17:32:47.524800484Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "merge@1": {
       "first_event_seq": 71,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "failed",
+        "notes": null,
+        "failure_reason": "fabro_run_create returned 'Access denied' on three attempts (full workflow_source spec with auto_approve, and bare string shorthand); no child run was created and no merge could be started. The Fabro API was reachable (fabro_run_get responded), so this is an authorization/permission failure on run creation, not a schema or connectivity issue.",
+        "timestamp": "2026-09-10T17:32:42.994290269Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -986,8 +1110,12 @@
       "started_at": "2026-09-10T17:31:59.924671416Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 42541,
-      "live_tool_ms": 9,
+      "timing": {
+        "wall_time_ms": 40135,
+        "inference_time_ms": 39623,
+        "tool_time_ms": 12,
+        "active_time_ms": 39635
+      },
       "usage": {
         "input_tokens": 12270,
         "output_tokens": 618,
@@ -1229,7 +1357,43 @@
         "warnings": []
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "failed"
+    },
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-10T17:30:30.053011247Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-10T17:30:30.042588168Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
     },
     "survey@1": {
       "first_event_seq": 21,
@@ -1473,42 +1637,6 @@
           }
         ],
         "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "start@1": {
-      "first_event_seq": 17,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": null,
-        "failure_reason": null,
-        "timestamp": "2026-09-10T17:30:30.053011247Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-10T17:30:30.042588168Z",
-      "handler": "start",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 0,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
