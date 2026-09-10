@@ -1,55 +1,50 @@
 use std::path::PathBuf;
 
-#[allow(
-    unused_imports,
-    reason = "Feature-gated branches consume these imports when optional backends are enabled."
-)]
 use anyhow::{Context, Result, bail};
 use fabro_types::{BundledProvider, RunId, RunSandboxInstance};
 
-#[cfg(feature = "daytona")]
-use crate::daytona::DaytonaSandbox;
-use crate::driver_sandbox::local_sandbox;
-use crate::{SandboxEventCallback, docker};
+use crate::driver::DaytonaCredentials;
+use crate::driver_sandbox::{DriverSandbox, local_sandbox};
+use crate::{SandboxEventCallback, daytona, docker};
 
 /// Reconnect to a sandbox from a saved record.
 ///
-/// `daytona_api_key` is forwarded to the Daytona SDK when the provider is
-/// `"daytona"`. Pass `None` to fall back to the `DAYTONA_API_KEY` env var.
-#[allow(
-    clippy::unused_async,
-    unused_variables,
-    reason = "Feature-gated sandbox backends leave some parameters unused on partial builds."
-)]
+/// `daytona` carries the vault credentials a `"daytona"` record needs; the
+/// process environment is never consulted.
 pub async fn reconnect(
     record: &RunSandboxInstance,
-    daytona_api_key: Option<String>,
+    daytona: Option<DaytonaCredentials>,
 ) -> Result<Box<dyn crate::Sandbox>> {
-    reconnect_for_run(record, daytona_api_key, None).await
+    reconnect_for_run(record, daytona, None).await
 }
 
-#[allow(
-    unused_variables,
-    reason = "Feature-gated sandbox backends leave parameters unused on partial builds."
-)]
 pub async fn reconnect_for_run(
     record: &RunSandboxInstance,
-    daytona_api_key: Option<String>,
+    daytona: Option<DaytonaCredentials>,
     run_id: Option<RunId>,
 ) -> Result<Box<dyn crate::Sandbox>> {
-    reconnect_for_run_with_callback(record, daytona_api_key, run_id, None).await
+    reconnect_for_run_with_callback(record, daytona, run_id, None).await
 }
 
-#[allow(
-    unused_variables,
-    reason = "Feature-gated sandbox backends leave parameters unused on partial builds."
-)]
 pub async fn reconnect_for_run_with_callback(
     record: &RunSandboxInstance,
-    daytona_api_key: Option<String>,
+    daytona: Option<DaytonaCredentials>,
     run_id: Option<RunId>,
     event_callback: Option<SandboxEventCallback>,
 ) -> Result<Box<dyn crate::Sandbox>> {
+    let sandbox = reconnect_driver_for_run(record, daytona, run_id, event_callback).await?;
+    Ok(Box::new(sandbox))
+}
+
+/// Reconnects as the driver-backed sandbox type, for callers that need a
+/// driver facet fabro's [`Sandbox`](crate::Sandbox) trait does not carry
+/// (VNC, signed previews, leased SSH).
+pub async fn reconnect_driver_for_run(
+    record: &RunSandboxInstance,
+    daytona: Option<DaytonaCredentials>,
+    run_id: Option<RunId>,
+    event_callback: Option<SandboxEventCallback>,
+) -> Result<DriverSandbox> {
     let runtime = &record.runtime;
     match record.provider.bundled() {
         // A local sandbox is its working directory: rebuilding the handle
@@ -62,7 +57,7 @@ pub async fn reconnect_for_run_with_callback(
             if let Some(callback) = event_callback {
                 sandbox.set_event_callback(callback);
             }
-            Ok(Box::new(sandbox))
+            Ok(sandbox)
         }
         Some(BundledProvider::Docker) => {
             let repo_cloned = runtime
@@ -80,31 +75,30 @@ pub async fn reconnect_for_run_with_callback(
             if let Some(callback) = event_callback {
                 sandbox.set_event_callback(callback);
             }
-            Ok(Box::new(sandbox))
+            Ok(sandbox)
         }
-        #[cfg(feature = "daytona")]
         Some(BundledProvider::Daytona) => {
             let repo_cloned = runtime
                 .repo_cloned
                 .context("Daytona run sandbox missing repo_cloned metadata")?;
-
-            let mut sandbox = DaytonaSandbox::reconnect(
+            let credentials = daytona.context(
+                "Daytona run sandbox cannot be reconnected without DAYTONA_API_KEY in the vault",
+            )?;
+            let mut sandbox = daytona::attach_daytona(
                 &runtime.id,
-                daytona_api_key,
                 repo_cloned,
                 runtime.working_directory.clone(),
                 runtime.clone_origin_url.clone(),
-                runtime.clone_branch.clone(),
+                run_id,
+                &credentials,
             )
             .await
-            .map_err(anyhow::Error::new)?;
+            .context("Failed to reconnect Daytona sandbox")?;
             if let Some(callback) = event_callback {
                 sandbox.set_event_callback(callback);
             }
-            Ok(Box::new(sandbox))
+            Ok(sandbox)
         }
-        #[cfg(not(feature = "daytona"))]
-        Some(BundledProvider::Daytona) => bail!("Daytona sandbox support is not enabled"),
         None => bail!(
             "sandbox provider `{}` is not bundled; plugin reconnect is not wired yet",
             record.provider

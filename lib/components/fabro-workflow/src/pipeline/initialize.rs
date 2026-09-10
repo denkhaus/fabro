@@ -12,7 +12,8 @@ use fabro_graphviz::graph;
 use fabro_hooks::{HookContext, HookDecision, HookEvent, HookExecutionContext, HookRunner};
 use fabro_model::Catalog;
 use fabro_sandbox::{
-    GitSetupIntent, SandboxEventCallback, SandboxSpec, reconnect_for_run_with_callback, shell_quote,
+    DaytonaCredentials, GitSetupIntent, SandboxEventCallback, SandboxSpec,
+    reconnect_for_run_with_callback, shell_quote,
 };
 use fabro_static::EnvVars;
 use fabro_types::RunSandboxKind;
@@ -431,15 +432,15 @@ pub async fn initialize(
     };
     let attach_existing = attach_instance.is_some();
     let sandbox: Arc<dyn Sandbox> = if let Some(instance) = attach_instance {
-        let daytona_api_key = options
+        let daytona = options
             .vault
             .read()
             .await
             .get(EnvVars::DAYTONA_API_KEY)
-            .map(str::to_string);
+            .map(|api_key| DaytonaCredentials::from_api_key(api_key.to_string(), process_env_var));
         let sandbox = reconnect_for_run_with_callback(
             &instance,
-            daytona_api_key,
+            daytona,
             Some(options.run_options.run_id),
             Some(Arc::clone(&sandbox_event_callback)),
         )
@@ -735,6 +736,14 @@ pub async fn initialize(
         engine,
         model: options.llm.model,
     })
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "A CLI worker resolves the Daytona control-plane URL from its own environment; server-spawned workers run with a cleared environment and take the defaults."
+)]
+fn process_env_var(name: &str) -> Option<String> {
+    std::env::var(name).ok()
 }
 
 #[cfg(test)]

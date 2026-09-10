@@ -37,7 +37,6 @@ use fabro_api::types::{
 };
 use fabro_sandbox::reconnect::reconnect_for_run;
 use fabro_sandbox::shell_quote;
-use fabro_static::EnvVars;
 use fabro_types::RunId;
 use fabro_workflow::sandbox_git::{
     DiffError, DiffNumstat, RawDiffEntry, SubmoduleChange, SymlinkChange, list_changed_files_raw,
@@ -1209,11 +1208,11 @@ async fn reconnect_run_sandbox(
         .and_then(fabro_types::RunSandbox::instance)
         .cloned()
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Run sandbox was not created."))?;
-    let daytona_api_key = state
-        .vault_secret(EnvVars::DAYTONA_API_KEY)
+    let daytona = state
+        .vault_daytona_credentials()
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    let sandbox = reconnect_for_run(&record, daytona_api_key, Some(*run_id))
+    let sandbox = reconnect_for_run(&record, daytona, Some(*run_id))
         .await
         .map_err(|err| ApiError::new(StatusCode::CONFLICT, err.to_string()))?;
     sandbox

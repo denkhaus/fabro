@@ -95,8 +95,6 @@ twin-openai = { path = "test/twin/openai" }
 twin-github = { path = "test/twin/github" }
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
-daytona-sdk = { git = "https://github.com/brynary/daytona-sdk-rust", rev = "5e86990418e21f4288ce537c9852dfdf78768abc", package = "daytona-sdk" }
-daytona-api-client = { git = "https://github.com/brynary/daytona-sdk-rust", rev = "5e86990418e21f4288ce537c9852dfdf78768abc", package = "daytona-api-client" }
 # sandbox-driver: the sandbox provider layer. Bundled Host, Docker, and
 # Daytona providers link in-process; third-party providers run as stdio
 # plugins through sandbox-driver-protocol. Pinned by rev like the Daytona SDK.

@@ -67,13 +67,12 @@ use fabro_mcp_store::McpServerStore;
 use fabro_model::catalog::LlmCatalogSettings;
 use fabro_model::{BilledTokenCounts, Catalog, ModelRef, ModelTestMode, ProviderId};
 use fabro_redact::redact_jsonl_line;
-use fabro_sandbox::daytona::{self, DaytonaSandbox};
 use fabro_sandbox::details::sandbox_details;
-use fabro_sandbox::driver::ProviderConnectOptions;
+use fabro_sandbox::driver::{DaytonaCredentials, ProviderConnectOptions};
 use fabro_sandbox::reconnect::reconnect_for_run;
 use fabro_sandbox::{
-    DaytonaSandboxProvider, DriverInventoryProvider, LocalSandboxProvider, Sandbox,
-    SandboxProvider, SandboxProviderRegistry,
+    DriverInventoryProvider, LocalSandboxProvider, Sandbox, SandboxProvider,
+    SandboxProviderRegistry, daytona,
 };
 use fabro_slack::client::{PostedMessage as SlackPostedMessage, SlackClient};
 use fabro_slack::config::{
@@ -1472,6 +1471,32 @@ impl AppState {
         (self.env_lookup)(name)
     }
 
+    /// Daytona credentials for `api_key`: the key from the vault, the
+    /// control-plane URL and organization from server configuration, and
+    /// the server's HTTP client. The process environment is consulted only
+    /// through the configured lookup.
+    pub(crate) fn daytona_credentials(&self, api_key: String) -> DaytonaCredentials {
+        DaytonaCredentials {
+            api_key,
+            api_url: self
+                .config_env_lookup(EnvVars::DAYTONA_API_URL)
+                .or_else(|| self.config_env_lookup(EnvVars::DAYTONA_SERVER_URL)),
+            organization_id: self.config_env_lookup(EnvVars::DAYTONA_ORGANIZATION_ID),
+            target: None,
+            http_client: self.http_client().ok(),
+        }
+    }
+
+    /// Daytona credentials from the vault, `None` when no key is stored.
+    pub(crate) async fn vault_daytona_credentials(
+        &self,
+    ) -> Result<Option<DaytonaCredentials>, SecretStoreError> {
+        Ok(self
+            .vault_secret(EnvVars::DAYTONA_API_KEY)
+            .await?
+            .map(|api_key| self.daytona_credentials(api_key)))
+    }
+
     pub(crate) async fn check_daytona_api_key(
         &self,
         api_key: String,
@@ -1485,21 +1510,7 @@ impl AppState {
         api_key: String,
         probe_timeout: Duration,
     ) -> anyhow::Result<daytona::DaytonaKeyCheck> {
-        let base_url = self
-            .config_env_lookup(EnvVars::DAYTONA_API_URL)
-            .or_else(|| self.config_env_lookup(EnvVars::DAYTONA_SERVER_URL))
-            .unwrap_or_else(|| daytona::DEFAULT_DAYTONA_API_URL.to_string());
-        let org_id = self.config_env_lookup(EnvVars::DAYTONA_ORGANIZATION_ID);
-
-        let http_client = fabro_http::http_client().context("failed to build HTTP client")?;
-        daytona::check_daytona_api_key_with_timeout(
-            &base_url,
-            org_id.as_deref(),
-            api_key,
-            http_client,
-            probe_timeout,
-        )
-        .await
+        daytona::check_daytona_api_key(&self.daytona_credentials(api_key), probe_timeout).await
     }
 
     /// Borrow the persistent store so sibling modules can open run readers
@@ -2351,16 +2362,25 @@ fn build_sandbox_provider_registry(
         }
     }
 
-    if provider_settings.is_enabled(&SandboxProviderKind::DAYTONA) && daytona_api_key.is_some() {
-        let api_url = env_lookup(EnvVars::DAYTONA_API_URL)
-            .or_else(|| env_lookup(EnvVars::DAYTONA_SERVER_URL));
-        let organization_id = env_lookup(EnvVars::DAYTONA_ORGANIZATION_ID);
-        providers.push(Arc::new(DaytonaSandboxProvider::new(
-            daytona_api_key,
-            api_url,
-            organization_id,
-            http_client,
-        )));
+    if let Some(daytona) = provider_settings.get(&SandboxProviderKind::DAYTONA) {
+        if let Some(api_key) = daytona_api_key.filter(|_| daytona.enabled) {
+            let credentials = DaytonaCredentials {
+                api_key,
+                api_url: env_lookup(EnvVars::DAYTONA_API_URL)
+                    .or_else(|| env_lookup(EnvVars::DAYTONA_SERVER_URL)),
+                organization_id: env_lookup(EnvVars::DAYTONA_ORGANIZATION_ID),
+                target: None,
+                http_client,
+            };
+            providers.push(Arc::new(DriverInventoryProvider::lazy(
+                SandboxProviderKind::DAYTONA,
+                daytona.clone(),
+                ProviderConnectOptions {
+                    host_registry_root: None,
+                    daytona:            Some(credentials),
+                },
+            )));
+        }
     }
 
     SandboxProviderRegistry::new(providers)
@@ -2770,11 +2790,11 @@ async fn delete_run_sandbox_resource(
         }));
     }
 
-    let daytona_api_key = state
-        .vault_secret(EnvVars::DAYTONA_API_KEY)
+    let daytona = state
+        .vault_daytona_credentials()
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    let sandbox = match reconnect_for_run(&record, daytona_api_key, Some(id)).await {
+    let sandbox = match reconnect_for_run(&record, daytona, Some(id)).await {
         Ok(sandbox) => sandbox,
         Err(err) if force || delete_started => {
             tracing::warn!(

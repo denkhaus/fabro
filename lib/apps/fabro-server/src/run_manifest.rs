@@ -23,7 +23,7 @@ use fabro_sandbox::from_environment::{
     local_working_directory_from_environment,
 };
 use fabro_sandbox::redact::redact_auth_url;
-use fabro_sandbox::{DockerSandboxOptions, Sandbox, SandboxSpec};
+use fabro_sandbox::{DaytonaCredentials, DockerSandboxOptions, Sandbox, SandboxSpec};
 use fabro_static::EnvVars;
 use fabro_types::settings::ModelRef;
 use fabro_types::settings::cli::OutputVerbosity;
@@ -484,14 +484,14 @@ async fn build_preflight_report(
         None
     };
 
-    let daytona_api_key = state.vault_secret(EnvVars::DAYTONA_API_KEY).await?;
+    let daytona = state.vault_daytona_credentials().await?;
     let sandbox_ok = run_sandbox_check(
         &mut checks,
         &sandbox_provider,
         prepared,
         &resolved_run,
         github_app.clone(),
-        daytona_api_key,
+        daytona,
     )
     .await;
     let repository_access_ok = run_repository_access_check(
@@ -919,7 +919,7 @@ fn preflight_sandbox_spec(
     prepared: &PreparedManifest,
     resolved_run: &RunNamespace,
     github_app: Option<fabro_github::GitHubCredentials>,
-    daytona_api_key: Option<String>,
+    daytona: Option<DaytonaCredentials>,
 ) -> std::result::Result<SandboxSpec, fabro_sandbox::Error> {
     let clone_origin_url = prepared
         .git
@@ -959,7 +959,7 @@ fn preflight_sandbox_spec(
                 clone_branch,
                 clone_tag: None,
                 clone_commit_sha: None,
-                api_key: daytona_api_key,
+                credentials: daytona,
             }
         }
         None => {
@@ -976,14 +976,14 @@ async fn run_sandbox_check(
     prepared: &PreparedManifest,
     resolved_run: &RunNamespace,
     github_app: Option<fabro_github::GitHubCredentials>,
-    daytona_api_key: Option<String>,
+    daytona: Option<DaytonaCredentials>,
 ) -> bool {
     let spec = match preflight_sandbox_spec(
         sandbox_provider,
         prepared,
         resolved_run,
         github_app.clone(),
-        daytona_api_key,
+        daytona,
     ) {
         Ok(spec) => spec,
         Err(err) => {

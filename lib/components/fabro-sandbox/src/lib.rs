@@ -29,14 +29,15 @@ pub mod terminal;
 mod clone;
 pub mod docker;
 
-#[cfg(feature = "daytona")]
 pub mod daytona;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 
+pub use daytona::{DaytonaConfig, attach_daytona, daytona_sandbox};
 pub use details::sandbox_details;
 pub use docker::{DockerSandboxOptions, attach_docker, check_docker_daemon, docker_sandbox};
+pub use driver::DaytonaCredentials;
 pub use driver_sandbox::{DriverSandbox, local_sandbox};
 pub use error::{Error, Result, default_redacted_output_tail, display_for_log};
 pub use exec::{ExplicitEnvPolicy, SandboxExec, is_sensitive_env_var};
@@ -47,14 +48,14 @@ pub use fabro_types::{RunSandboxInstance, SandboxProviderKind};
 pub use git_retry::{
     CredentialContext, GitRetryReason, RetryPlan, classify_failure, retry_git_operation,
 };
-#[cfg(feature = "daytona")]
-pub use provider::daytona::DaytonaSandboxProvider;
 pub use provider::driver::DriverInventoryProvider;
 pub use provider::{
     LocalSandboxProvider, SandboxLookupError, SandboxProvider, SandboxProviderRegistry,
 };
 pub use push_credentials::RefreshErrorKind;
-pub use reconnect::{reconnect, reconnect_for_run, reconnect_for_run_with_callback};
+pub use reconnect::{
+    reconnect, reconnect_driver_for_run, reconnect_for_run, reconnect_for_run_with_callback,
+};
 pub use sandbox::{
     CommandOutputCallback, DEFAULT_EXEC_OUTPUT_TAIL_BYTES, DirEntry, ExecResult,
     ExecStreamingRequest, ExecStreamingResult, GitRunInfo, GitSetupIntent, GrepOptions,

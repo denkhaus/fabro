@@ -7,8 +7,6 @@
 //! repository checks out under [`REPOS_ROOT`] and is linked into the
 //! workspace, so the run works in `/workspace/<repo>`.
 
-use std::collections::BTreeMap;
-
 use fabro_github::GitHubCredentials;
 use fabro_types::settings::run::RunCloneSettings;
 use fabro_types::settings::server::ServerSandboxProviderSettings;
@@ -20,7 +18,7 @@ use sandbox_driver_docker_config::DockerProviderConfig;
 
 use crate::driver::{ProviderConnectOptions, connect_provider};
 use crate::driver_sandbox::{DriverSandbox, RepoWorkspace, WorkspaceLayout};
-use crate::managed_labels::{self, MANAGED_LABEL, MANAGED_LABEL_VALUE, RUN_ID_LABEL};
+use crate::managed_labels;
 
 pub const WORKING_DIRECTORY: &str = "/workspace";
 pub const REPOS_ROOT: &str = "/repos";
@@ -187,7 +185,12 @@ pub async fn attach_docker(
         )
     })?;
     let status = handle.describe().await?;
-    verify_managed_labels(container_id, &status.labels, run_id.as_ref())?;
+    managed_labels::verify_managed(
+        &SandboxProviderKind::DOCKER,
+        container_id,
+        &status.labels,
+        run_id.as_ref(),
+    )?;
     let workspace =
         RepoWorkspace::attached(layout(), repo_cloned, working_directory, clone_origin_url);
     Ok(DriverSandbox::attached(
@@ -215,28 +218,6 @@ pub async fn check_docker_daemon() -> crate::Result<()> {
             "Docker daemon reported an unknown health state",
         )),
     }
-}
-
-pub(crate) fn verify_managed_labels(
-    container_id: &str,
-    labels: &BTreeMap<String, String>,
-    run_id: Option<&RunId>,
-) -> crate::Result<()> {
-    if labels.get(MANAGED_LABEL).map(String::as_str) != Some(MANAGED_LABEL_VALUE) {
-        return Err(crate::Error::message(format!(
-            "Refusing to operate on Docker container '{container_id}' because it is missing label {MANAGED_LABEL}={MANAGED_LABEL_VALUE}"
-        )));
-    }
-    if let Some(run_id) = run_id {
-        let actual = labels.get(RUN_ID_LABEL).map(String::as_str);
-        let expected = run_id.to_string();
-        if actual != Some(expected.as_str()) {
-            return Err(crate::Error::message(format!(
-                "Refusing to operate on Docker container '{container_id}' because label {RUN_ID_LABEL}={actual:?} does not match run {run_id}"
-            )));
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -269,11 +250,11 @@ mod tests {
         );
         assert_eq!(spec.working_directory.as_deref(), Some(WORKING_DIRECTORY));
         assert_eq!(
-            spec.labels.get(MANAGED_LABEL).map(String::as_str),
+            spec.labels.get("sh.fabro.managed").map(String::as_str),
             Some("true")
         );
         assert_eq!(
-            spec.labels.get(RUN_ID_LABEL).map(String::as_str),
+            spec.labels.get("sh.fabro.run_id").map(String::as_str),
             Some("01HY0000000000000000000000")
         );
         assert_eq!(spec.env.get("FOO").map(String::as_str), Some("bar"));
@@ -291,18 +272,6 @@ mod tests {
         assert!(spec.name.is_none());
         assert!(matches!(spec.network, NetworkPolicy::AllowAll));
         assert_eq!(spec.resources, Resources::default());
-        assert!(!spec.labels.contains_key(RUN_ID_LABEL));
-    }
-
-    #[test]
-    fn managed_label_check_requires_fabro_ownership_and_matching_run() {
-        let run_id: RunId = "01HY0000000000000000000000".parse().unwrap();
-        let mut labels = BTreeMap::new();
-        assert!(verify_managed_labels("c1", &labels, None).is_err());
-        labels.insert(MANAGED_LABEL.to_string(), "true".to_string());
-        assert!(verify_managed_labels("c1", &labels, None).is_ok());
-        assert!(verify_managed_labels("c1", &labels, Some(&run_id)).is_err());
-        labels.insert(RUN_ID_LABEL.to_string(), run_id.to_string());
-        assert!(verify_managed_labels("c1", &labels, Some(&run_id)).is_ok());
+        assert!(!spec.labels.contains_key("sh.fabro.run_id"));
     }
 }

@@ -2790,9 +2790,8 @@ async fn sandbox_daytona_test_endpoint_rejects_under_scoped_api_key() {
 
     assert_eq!(
         body["errors"][0]["detail"],
-        "API key 'delete-only' is missing required Daytona scopes: \
-         write:snapshots, write:sandboxes. Regenerate the key with all \
-         snapshot and sandbox scopes."
+        "Daytona API key is missing required scopes: write:snapshots, write:sandboxes. \
+         Regenerate the key with all snapshot and sandbox scopes."
     );
     auth.assert_async().await;
     current_key.assert_async().await;

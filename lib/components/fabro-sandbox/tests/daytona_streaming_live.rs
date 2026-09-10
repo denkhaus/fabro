@@ -1,11 +1,13 @@
-#[cfg(feature = "daytona")]
 mod daytona_streaming_live {
     use std::sync::Arc;
     use std::time::Duration;
 
     use anyhow::{Context, Result, ensure};
-    use fabro_sandbox::daytona::{DaytonaConfig, DaytonaSandbox};
-    use fabro_sandbox::{CommandOutputCallback, ExecStreamingResult, Sandbox};
+    use fabro_sandbox::daytona::DaytonaConfig;
+    use fabro_sandbox::{
+        CommandOutputCallback, DaytonaCredentials, DriverSandbox, ExecStreamingResult, Sandbox,
+        daytona_sandbox,
+    };
     use fabro_static::EnvVars;
     use fabro_types::{CommandOutputStream, CommandTermination};
     use tokio::sync::Mutex;
@@ -27,7 +29,7 @@ mod daytona_streaming_live {
         );
 
         let sandbox = Arc::new(
-            DaytonaSandbox::new(
+            daytona_sandbox(
                 DaytonaConfig {
                     skip_clone: true,
                     ..Default::default()
@@ -38,7 +40,7 @@ mod daytona_streaming_live {
                 None,
                 None,
                 None,
-                None,
+                &live_credentials()?,
             )
             .await?,
         );
@@ -66,7 +68,7 @@ mod daytona_streaming_live {
             "DAYTONA_API_KEY must be set to run this live smoke test"
         );
 
-        let sandbox = DaytonaSandbox::new(
+        let sandbox = daytona_sandbox(
             DaytonaConfig {
                 skip_clone: true,
                 ..Default::default()
@@ -77,7 +79,7 @@ mod daytona_streaming_live {
             None,
             None,
             None,
-            None,
+            &live_credentials()?,
         )
         .await?;
         sandbox.initialize().await?;
@@ -169,7 +171,7 @@ mod daytona_streaming_live {
         );
 
         let run_id: fabro_types::RunId = "01HY0000000000000000000000".parse().unwrap();
-        let sandbox = DaytonaSandbox::new(
+        let sandbox = daytona_sandbox(
             DaytonaConfig {
                 skip_clone: true,
                 labels: Some(std::collections::HashMap::from([(
@@ -184,16 +186,18 @@ mod daytona_streaming_live {
             None,
             None,
             None,
-            None,
+            &live_credentials()?,
         )
         .await?;
 
         sandbox.initialize().await?;
         let labels = sandbox
-            .sandbox_handle()
+            .handle()
             .context("sandbox handle should be initialized")?
-            .labels
-            .clone();
+            .describe()
+            .await
+            .context("describe sandbox")?
+            .labels;
         let cleanup_result = sandbox.cleanup().await.context("clean up Daytona sandbox");
 
         ensure_eq(
@@ -224,7 +228,7 @@ mod daytona_streaming_live {
             "DAYTONA_API_KEY must be set to run this live smoke test"
         );
 
-        let sandbox = DaytonaSandbox::new(
+        let sandbox = daytona_sandbox(
             DaytonaConfig {
                 skip_clone: false,
                 ..Default::default()
@@ -235,7 +239,7 @@ mod daytona_streaming_live {
             None,
             None,
             None,
-            None,
+            &live_credentials()?,
         )
         .await?;
 
@@ -293,7 +297,7 @@ mod daytona_streaming_live {
             "DAYTONA_API_KEY must be set to run this live glob test"
         );
 
-        let sandbox = DaytonaSandbox::new(
+        let sandbox = daytona_sandbox(
             DaytonaConfig {
                 skip_clone: true,
                 ..Default::default()
@@ -304,7 +308,7 @@ mod daytona_streaming_live {
             None,
             None,
             None,
-            None,
+            &live_credentials()?,
         )
         .await?;
 
@@ -319,7 +323,7 @@ mod daytona_streaming_live {
         Ok(())
     }
 
-    async fn run_glob_checks(sandbox: &DaytonaSandbox) -> Result<()> {
+    async fn run_glob_checks(sandbox: &DriverSandbox) -> Result<()> {
         // Build a skills tree with a SKILL.md at the search root, one level
         // below it, and two levels below it.
         let seed = sandbox
@@ -364,7 +368,7 @@ mod daytona_streaming_live {
         Ok(())
     }
 
-    async fn run_smoke(sandbox: Arc<DaytonaSandbox>) -> Result<()> {
+    async fn run_smoke(sandbox: Arc<DriverSandbox>) -> Result<()> {
         let chunks = Arc::new(Mutex::new(Vec::new()));
         let cancel_token = CancellationToken::new();
         let callback = capture_callback(Arc::clone(&chunks));
@@ -490,7 +494,7 @@ mod daytona_streaming_live {
     }
 
     async fn run_captured(
-        sandbox: &DaytonaSandbox,
+        sandbox: &DriverSandbox,
         command: &str,
         timeout_ms: u64,
         cancel_token: Option<CancellationToken>,
@@ -499,7 +503,7 @@ mod daytona_streaming_live {
     }
 
     async fn run_captured_with_stdin(
-        sandbox: &DaytonaSandbox,
+        sandbox: &DriverSandbox,
         command: &str,
         timeout_ms: u64,
         cancel_token: Option<CancellationToken>,
@@ -540,6 +544,25 @@ mod daytona_streaming_live {
     )]
     fn daytona_api_key_present() -> bool {
         std::env::var_os(EnvVars::DAYTONA_API_KEY).is_some()
+    }
+
+    /// Live credentials from the process environment, the way the vault
+    /// would supply them in production.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "live smoke tests take Daytona credentials from the developer's environment"
+    )]
+    fn live_credentials() -> Result<DaytonaCredentials> {
+        Ok(DaytonaCredentials {
+            api_key:         std::env::var(EnvVars::DAYTONA_API_KEY)
+                .context("DAYTONA_API_KEY must be set")?,
+            api_url:         std::env::var(EnvVars::DAYTONA_API_URL)
+                .or_else(|_| std::env::var(EnvVars::DAYTONA_SERVER_URL))
+                .ok(),
+            organization_id: std::env::var(EnvVars::DAYTONA_ORGANIZATION_ID).ok(),
+            target:          None,
+            http_client:     None,
+        })
     }
 
     async fn wait_for_chunks(

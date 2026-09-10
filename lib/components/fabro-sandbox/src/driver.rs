@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use fabro_static::EnvVars;
 use fabro_types::settings::server::{SandboxPluginSettings, ServerSandboxProviderSettings};
 use fabro_types::{BundledProvider, SandboxProviderKind};
 use sandbox_driver::{
@@ -44,6 +45,22 @@ pub struct DaytonaCredentials {
     pub target:          Option<String>,
     /// Shared HTTP client; tests pass a no-proxy client here.
     pub http_client:     Option<reqwest::Client>,
+}
+
+impl DaytonaCredentials {
+    /// Credentials for a vault API key, with the control-plane URL and
+    /// organization taken from `lookup` (server configuration, or the
+    /// process environment in a CLI worker). Nothing is read implicitly.
+    pub fn from_api_key(api_key: String, lookup: impl Fn(&str) -> Option<String>) -> Self {
+        Self {
+            api_key,
+            api_url: lookup(EnvVars::DAYTONA_API_URL)
+                .or_else(|| lookup(EnvVars::DAYTONA_SERVER_URL)),
+            organization_id: lookup(EnvVars::DAYTONA_ORGANIZATION_ID),
+            target: None,
+            http_client: None,
+        }
+    }
 }
 
 impl std::fmt::Debug for DaytonaCredentials {

@@ -3,33 +3,28 @@ use std::collections::BTreeMap;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use fabro_types::{
-    BundledProvider, RunId, RunSandboxInstance, SandboxDetails, SandboxNetwork, SandboxResources,
-    SandboxState, SandboxTimestamps,
+    BundledProvider, RunId, RunSandboxInstance, SandboxDetails, SandboxNetwork,
+    SandboxProviderKind, SandboxResources, SandboxState, SandboxTimestamps,
 };
 
-use crate::docker;
+use crate::driver::DaytonaCredentials;
+use crate::{daytona, docker};
 
 /// Inspect the sandbox identified by `record` and return provider-neutral
 /// details for control-plane display.
 ///
 /// - `local` always returns a minimal record describing the host.
 /// - `docker` describes the managed container through the sandbox driver.
-/// - `daytona` reconnects to the SDK sandbox (feature-gated).
-#[allow(
-    unused_variables,
-    reason = "Feature-gated providers consume some parameters only when enabled."
-)]
+/// - `daytona` describes the sandbox through the sandbox driver.
 pub async fn sandbox_details(
     record: &RunSandboxInstance,
-    daytona_api_key: Option<String>,
-    daytona_organization_id: Option<String>,
+    daytona: Option<DaytonaCredentials>,
     run_id: Option<RunId>,
 ) -> Result<SandboxDetails> {
     match record.provider.bundled() {
         Some(BundledProvider::Local) => Ok(local_details(record)),
         Some(BundledProvider::Docker) => docker_details(record, run_id).await,
-        #[cfg(feature = "daytona")]
-        Some(BundledProvider::Daytona) => daytona::daytona_details(record, daytona_api_key).await,
+        Some(BundledProvider::Daytona) => daytona_details(record, daytona, run_id).await,
         _ => Err(anyhow::anyhow!(
             "Sandbox provider '{}' has no details implementation",
             record.provider
@@ -49,13 +44,6 @@ fn local_details(record: &RunSandboxInstance) -> SandboxDetails {
         labels:       BTreeMap::new(),
         timestamps:   SandboxTimestamps::default(),
     }
-}
-
-#[cfg(feature = "daytona")]
-fn parse_rfc3339_utc(value: &str) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|dt| dt.with_timezone(&Utc))
 }
 
 /// Projection of a sandbox-driver [`sandbox_driver::SandboxStatus`] into
@@ -92,7 +80,14 @@ pub(crate) fn details_from_status(
     let fields = fields_from_status(status);
     SandboxDetails {
         sandbox:      RunSandboxInstance {
-            image: status.source.clone().or_else(|| record.image.clone()),
+            image: (record.provider == SandboxProviderKind::DOCKER)
+                .then(|| status.source.clone())
+                .flatten()
+                .or_else(|| record.image.clone()),
+            snapshot: (record.provider == SandboxProviderKind::DAYTONA)
+                .then(|| status.source.clone())
+                .flatten()
+                .or_else(|| record.snapshot.clone()),
             ..record.clone()
         },
         state:        fields.state,
@@ -153,6 +148,30 @@ pub(crate) fn normalize_driver_state(state: sandbox_driver::SandboxState) -> San
     }
 }
 
+async fn daytona_details(
+    record: &RunSandboxInstance,
+    daytona: Option<DaytonaCredentials>,
+    run_id: Option<RunId>,
+) -> Result<SandboxDetails> {
+    let runtime = &record.runtime;
+    let credentials = daytona.ok_or_else(|| {
+        anyhow::anyhow!("Daytona sandbox details require DAYTONA_API_KEY in the vault")
+    })?;
+    let sandbox = daytona::attach_daytona(
+        &runtime.id,
+        runtime.repo_cloned.unwrap_or(false),
+        runtime.working_directory.clone(),
+        runtime.clone_origin_url.clone(),
+        run_id,
+        &credentials,
+    )
+    .await?;
+    let status = sandbox.handle()?.describe().await.map_err(|err| {
+        anyhow::anyhow!("Failed to describe Daytona sandbox '{}': {err}", runtime.id)
+    })?;
+    Ok(details_from_status(record, &status))
+}
+
 async fn docker_details(
     record: &RunSandboxInstance,
     run_id: Option<RunId>,
@@ -175,347 +194,8 @@ async fn docker_details(
     Ok(details_from_status(record, &status))
 }
 
-#[cfg(feature = "daytona")]
-pub(crate) mod daytona {
-    use std::collections::BTreeMap;
-
-    use anyhow::{Context, Result, anyhow};
-    use daytona_api_client::models::SandboxState as DaytonaState;
-    use fabro_types::{
-        RunSandboxInstance, SandboxDetails, SandboxInfo, SandboxNetwork, SandboxNetworkPolicy,
-        SandboxProviderKind, SandboxResources, SandboxState, SandboxTimestamps,
-    };
-
-    use super::parse_rfc3339_utc;
-    use crate::daytona::{DAYTONA_DASHBOARD_SANDBOXES_URL, DaytonaSandbox, WORKING_DIRECTORY};
-
-    pub(super) async fn daytona_details(
-        record: &RunSandboxInstance,
-        daytona_api_key: Option<String>,
-    ) -> Result<SandboxDetails> {
-        let runtime = &record.runtime;
-        let repo_cloned = runtime
-            .repo_cloned
-            .context("Daytona run sandbox missing clone metadata")?;
-
-        let sandbox_handle = DaytonaSandbox::reconnect(
-            &runtime.id,
-            daytona_api_key,
-            repo_cloned,
-            runtime.working_directory.clone(),
-            runtime.clone_origin_url.clone(),
-            runtime.clone_branch.clone(),
-        )
-        .await
-        .map_err(anyhow::Error::new)?;
-        let sdk_sandbox = sandbox_handle
-            .sandbox_handle()
-            .ok_or_else(|| anyhow!("Daytona sandbox is not initialized after reconnect"))?;
-
-        Ok(map_daytona_sandbox(sdk_sandbox, record))
-    }
-
-    pub(crate) fn daytona_info_from_sdk_sandbox(sandbox: &daytona_sdk::Sandbox) -> SandboxInfo {
-        let fields = daytona_fields_from_sdk_sandbox(sandbox);
-        SandboxInfo {
-            provider:          SandboxProviderKind::DAYTONA,
-            id:                sandbox.id.clone(),
-            display_name:      Some(sandbox.name.clone()).filter(|name| !name.is_empty()),
-            state:             fields.state,
-            native_state:      fields.native_state,
-            image:             None,
-            snapshot:          sandbox.snapshot.clone(),
-            region:            fields.region,
-            web_url:           Some(daytona_dashboard_url(&sandbox.id)),
-            working_directory: Some(WORKING_DIRECTORY.to_string()),
-            resources:         fields.resources,
-            network:           fields.network,
-            labels:            fields.labels,
-            timestamps:        fields.timestamps,
-        }
-    }
-
-    pub(super) fn map_daytona_sandbox(
-        sandbox: &daytona_sdk::Sandbox,
-        record: &RunSandboxInstance,
-    ) -> SandboxDetails {
-        let fields = daytona_fields_from_sdk_sandbox(sandbox);
-        SandboxDetails {
-            sandbox:      RunSandboxInstance {
-                snapshot: sandbox.snapshot.clone().or_else(|| record.snapshot.clone()),
-                ..record.clone()
-            },
-            state:        fields.state,
-            native_state: fields.native_state,
-            region:       fields.region,
-            web_url:      Some(daytona_dashboard_url(&sandbox.id)),
-            resources:    fields.resources,
-            network:      fields.network,
-            labels:       fields.labels,
-            timestamps:   fields.timestamps,
-        }
-    }
-
-    struct DaytonaFields {
-        state:        SandboxState,
-        native_state: Option<String>,
-        region:       Option<String>,
-        resources:    SandboxResources,
-        network:      SandboxNetwork,
-        labels:       BTreeMap<String, String>,
-        timestamps:   SandboxTimestamps,
-    }
-
-    fn daytona_fields_from_sdk_sandbox(sandbox: &daytona_sdk::Sandbox) -> DaytonaFields {
-        let normalized_state = sandbox
-            .state
-            .map_or(SandboxState::Unknown, normalize_daytona_state);
-        let native_state = sandbox.state.map(|state| state.to_string());
-
-        let resources = SandboxResources {
-            cpu_cores:    Some(sandbox.cpu),
-            memory_bytes: gibibytes_to_bytes(sandbox.memory),
-            disk_bytes:   gibibytes_to_bytes(sandbox.disk),
-        };
-
-        let labels: BTreeMap<String, String> = sandbox
-            .labels
-            .iter()
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect();
-
-        let target = sandbox.target.clone();
-        let region = if target.is_empty() {
-            None
-        } else {
-            Some(target)
-        };
-
-        DaytonaFields {
-            state: normalized_state,
-            native_state,
-            region,
-            resources,
-            network: daytona_network(
-                sandbox.network_block_all,
-                sandbox.network_allow_list.as_deref(),
-            ),
-            labels,
-            timestamps: SandboxTimestamps {
-                created_at:       sandbox.created_at.as_deref().and_then(parse_rfc3339_utc),
-                last_activity_at: sandbox.updated_at.as_deref().and_then(parse_rfc3339_utc),
-            },
-        }
-    }
-
-    /// The Daytona SDK reports CPU/memory/disk as floats in their respective
-    /// SI units (cores, GiB, GiB). Convert mem/disk into bytes.
-    fn gibibytes_to_bytes(value: f64) -> Option<u64> {
-        if value <= 0.0 || !value.is_finite() {
-            return None;
-        }
-        #[allow(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            clippy::cast_precision_loss,
-            reason = "Daytona memory/disk values are well within u64 range and only need approximate byte counts."
-        )]
-        let bytes = (value * 1024.0 * 1024.0 * 1024.0) as u64;
-        Some(bytes)
-    }
-
-    fn daytona_dashboard_url(sandbox_id: &str) -> String {
-        format!("{DAYTONA_DASHBOARD_SANDBOXES_URL}?sandboxId={sandbox_id}")
-    }
-
-    fn daytona_network(
-        network_block_all: bool,
-        network_allow_list: Option<&str>,
-    ) -> SandboxNetwork {
-        let egress = if network_block_all {
-            SandboxNetworkPolicy::blocked()
-        } else {
-            let cidrs = network_allow_list
-                .into_iter()
-                .flat_map(|allow_list| allow_list.split(','))
-                .map(str::trim)
-                .filter(|cidr| !cidr.is_empty());
-            let cidrs: Vec<_> = cidrs.collect();
-            if cidrs.is_empty() {
-                SandboxNetworkPolicy::open()
-            } else {
-                SandboxNetworkPolicy::allow_cidrs(cidrs)
-            }
-        };
-
-        SandboxNetwork {
-            egress,
-            ingress: SandboxNetworkPolicy::blocked(),
-        }
-    }
-
-    pub(super) fn normalize_daytona_state(state: DaytonaState) -> SandboxState {
-        match state {
-            DaytonaState::Creating
-            | DaytonaState::PendingBuild
-            | DaytonaState::BuildingSnapshot
-            | DaytonaState::PullingSnapshot
-            | DaytonaState::Forking => SandboxState::Provisioning,
-            DaytonaState::Starting | DaytonaState::Resuming => SandboxState::Starting,
-            DaytonaState::Started | DaytonaState::Snapshotting => SandboxState::Running,
-            DaytonaState::Stopping | DaytonaState::Archiving | DaytonaState::Pausing => {
-                SandboxState::Stopping
-            }
-            DaytonaState::Stopped => SandboxState::Stopped,
-            DaytonaState::Paused => SandboxState::Paused,
-            DaytonaState::Restoring => SandboxState::Restoring,
-            DaytonaState::Resizing => SandboxState::Resizing,
-            DaytonaState::Archived => SandboxState::Archived,
-            DaytonaState::Destroying => SandboxState::Deleting,
-            DaytonaState::Destroyed => SandboxState::Deleted,
-            DaytonaState::Error | DaytonaState::BuildFailed => SandboxState::Error,
-            DaytonaState::Unknown | DaytonaState::UnknownDefaultOpenApi => SandboxState::Unknown,
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn started_normalizes_to_running() {
-            assert_eq!(
-                normalize_daytona_state(DaytonaState::Started),
-                SandboxState::Running
-            );
-        }
-
-        #[test]
-        fn creating_normalizes_to_provisioning() {
-            assert_eq!(
-                normalize_daytona_state(DaytonaState::Creating),
-                SandboxState::Provisioning
-            );
-        }
-
-        #[test]
-        fn building_snapshot_normalizes_to_provisioning() {
-            assert_eq!(
-                normalize_daytona_state(DaytonaState::BuildingSnapshot),
-                SandboxState::Provisioning
-            );
-        }
-
-        #[test]
-        fn stopped_normalizes_to_stopped() {
-            assert_eq!(
-                normalize_daytona_state(DaytonaState::Stopped),
-                SandboxState::Stopped
-            );
-        }
-
-        #[test]
-        fn archived_normalizes_to_archived() {
-            assert_eq!(
-                normalize_daytona_state(DaytonaState::Archived),
-                SandboxState::Archived
-            );
-        }
-
-        #[test]
-        fn destroyed_normalizes_to_deleted() {
-            assert_eq!(
-                normalize_daytona_state(DaytonaState::Destroyed),
-                SandboxState::Deleted
-            );
-        }
-
-        #[test]
-        fn build_failed_normalizes_to_error() {
-            assert_eq!(
-                normalize_daytona_state(DaytonaState::BuildFailed),
-                SandboxState::Error
-            );
-        }
-
-        #[test]
-        fn unknown_normalizes_to_unknown() {
-            assert_eq!(
-                normalize_daytona_state(DaytonaState::Unknown),
-                SandboxState::Unknown
-            );
-        }
-
-        #[test]
-        fn pause_states_normalize_to_fabro_states() {
-            assert_eq!(
-                normalize_daytona_state(DaytonaState::Pausing),
-                SandboxState::Stopping
-            );
-            assert_eq!(
-                normalize_daytona_state(DaytonaState::Paused),
-                SandboxState::Paused
-            );
-            assert_eq!(
-                normalize_daytona_state(DaytonaState::Resuming),
-                SandboxState::Starting
-            );
-        }
-
-        #[test]
-        fn gibibytes_to_bytes_converts_positive_values() {
-            assert_eq!(gibibytes_to_bytes(2.0), Some(2 * 1024 * 1024 * 1024));
-        }
-
-        #[test]
-        fn gibibytes_to_bytes_returns_none_for_zero() {
-            assert_eq!(gibibytes_to_bytes(0.0), None);
-        }
-
-        #[test]
-        fn daytona_dashboard_url_uses_sandbox_id_query_param() {
-            assert_eq!(
-                daytona_dashboard_url("ad65029a-2d01-421e-8936-49451653fcd9"),
-                "https://app.daytona.io/dashboard/sandboxes?sandboxId=ad65029a-2d01-421e-8936-49451653fcd9",
-            );
-        }
-
-        #[test]
-        fn network_block_all_blocks_egress_and_ingress() {
-            let network = daytona_network(true, Some("10.0.0.0/8"));
-            assert_eq!(network.egress, SandboxNetworkPolicy::blocked());
-            assert_eq!(network.ingress, SandboxNetworkPolicy::blocked());
-        }
-
-        #[test]
-        fn network_allow_list_maps_to_cidr_allow_list_and_blocks_ingress() {
-            let network = daytona_network(false, Some("10.0.0.0/8, 192.168.0.0/16 "));
-            assert_eq!(
-                network.egress,
-                SandboxNetworkPolicy::allow_cidrs(["10.0.0.0/8", "192.168.0.0/16"])
-            );
-            assert_eq!(network.ingress, SandboxNetworkPolicy::blocked());
-        }
-
-        #[test]
-        fn empty_network_allow_list_is_open_egress_and_blocked_ingress() {
-            let network = daytona_network(false, Some(" , "));
-            assert_eq!(network.egress, SandboxNetworkPolicy::open());
-            assert_eq!(network.ingress, SandboxNetworkPolicy::blocked());
-        }
-
-        #[test]
-        fn default_daytona_network_is_open_egress_and_blocked_ingress() {
-            let network = daytona_network(false, None);
-            assert_eq!(network.egress, SandboxNetworkPolicy::open());
-            assert_eq!(network.ingress, SandboxNetworkPolicy::blocked());
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use fabro_types::SandboxProviderKind;
     use sandbox_driver::SandboxId;
 
     use super::*;

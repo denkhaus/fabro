@@ -1644,9 +1644,8 @@ async fn create_secret_rejects_under_scoped_daytona_api_key_and_leaves_vault_unc
 
     assert_eq!(
         body["errors"][0]["detail"],
-        "API key 'delete-only' is missing required Daytona scopes: \
-         write:snapshots, write:sandboxes. Regenerate the key with all \
-         snapshot and sandbox scopes."
+        "Daytona API key is missing required scopes: write:snapshots, write:sandboxes. \
+         Regenerate the key with all snapshot and sandbox scopes."
     );
     assert_eq!(
         state

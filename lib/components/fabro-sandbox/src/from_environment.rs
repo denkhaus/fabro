@@ -6,22 +6,18 @@
 use std::path::{Path, PathBuf};
 
 use fabro_types::settings::ResolveError;
-#[cfg(feature = "daytona")]
-use fabro_types::settings::run::DockerfileSource as ResolvedDockerfileSource;
 use fabro_types::settings::run::{
-    EnvironmentNetworkMode, RunCloneSettings, RunEnvironmentSettings,
+    DockerfileSource as ResolvedDockerfileSource, EnvironmentNetworkMode, RunCloneSettings,
+    RunEnvironmentSettings,
 };
 
-#[cfg(feature = "daytona")]
 use crate::config::{
     DaytonaNetwork, DaytonaSnapshotSettings, DaytonaSnapshotSource,
     DockerfileSource as SandboxDockerfileSource,
 };
-#[cfg(feature = "daytona")]
 use crate::daytona::DaytonaConfig;
 use crate::docker::DockerSandboxOptions;
 
-#[cfg(feature = "daytona")]
 #[must_use]
 pub fn daytona_config_from_environment(
     settings: &RunEnvironmentSettings,
@@ -167,13 +163,11 @@ pub fn local_working_directory_from_environment(
     )))
 }
 
-#[cfg(feature = "daytona")]
 fn duration_to_minutes_i32(duration: std::time::Duration) -> i32 {
     let minutes = duration.as_secs() / 60;
     i32::try_from(minutes).unwrap_or(i32::MAX)
 }
 
-#[cfg(feature = "daytona")]
 fn size_to_gb_i32(bytes: u64) -> i32 {
     let gb = bytes / 1_000_000_000;
     i32::try_from(gb).unwrap_or(i32::MAX)
@@ -247,7 +241,6 @@ mod tests {
         assert!(!missing.exists());
     }
 
-    #[cfg(feature = "daytona")]
     #[test]
     fn daytona_config_maps_docker_image_to_snapshot() {
         let mut settings = run_environment(SandboxProviderKind::DAYTONA);

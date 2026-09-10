@@ -14,7 +14,7 @@ use fabro_sandbox::from_environment::{
     daytona_config_from_environment, docker_config_from_environment_with_secrets,
     local_working_directory_from_environment,
 };
-use fabro_sandbox::{DockerSandboxOptions, SandboxSpec};
+use fabro_sandbox::{DaytonaCredentials, DockerSandboxOptions, SandboxSpec};
 use fabro_static::EnvVars;
 #[cfg(test)]
 use fabro_types::GitRunTarget;
@@ -543,9 +543,9 @@ impl RunSession {
                 }
             }
             Some(BundledProvider::Daytona) => {
-                let api_key = vault_guard
-                    .get(EnvVars::DAYTONA_API_KEY)
-                    .map(str::to_string);
+                let credentials = vault_guard.get(EnvVars::DAYTONA_API_KEY).map(|api_key| {
+                    DaytonaCredentials::from_api_key(api_key.to_string(), process_env_var)
+                });
                 let mut config = resolve_daytona_config(resolved);
                 config.skip_clone |= clone_source.skip_clone;
                 SandboxSpec::Daytona {
@@ -556,7 +556,7 @@ impl RunSession {
                     clone_branch: clone_source.branch,
                     clone_tag: clone_source.tag,
                     clone_commit_sha: clone_source.commit_sha,
-                    api_key,
+                    credentials,
                 }
             }
             None => {

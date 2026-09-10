@@ -27,91 +27,6 @@ pub(crate) const GIT: &str = "git -c maintenance.auto=0 -c gc.auto=0";
 
 pub const DEFAULT_EXEC_OUTPUT_TAIL_BYTES: usize = 8 * 1024;
 
-/// Maximum time a sandbox lifecycle check may spend proving Bash is usable.
-pub(crate) const BASH_PROBE_TIMEOUT_MS: u64 = 10_000;
-
-/// Bash path required by Linux-backed remote sandbox providers.
-pub(crate) const REMOTE_BASH: &str = "/bin/bash";
-
-/// Timeout for provider-neutral remote file traversal.
-pub(crate) const REMOTE_WALK_TIMEOUT_MS: u64 = 30_000;
-
-/// Environment variable Bash consults for non-interactive startup source.
-///
-/// Sandbox providers must remove or blank this before invoking `bash -c`;
-/// otherwise ambient worker or image configuration can execute code before the
-/// requested command.
-pub(crate) const BASH_ENV_VAR: &str = "BASH_ENV";
-
-/// Marker a successful [`BASH_PROBE_SCRIPT`] run prints on stdout.
-///
-/// Providers validate the marker rather than trusting a zero exit: a non-Bash
-/// shell can exit zero for simple scripts without satisfying the contract.
-pub(crate) const BASH_PROBE_MARKER: &str = "fabro-bash-ready";
-
-/// Deterministic probe proving a sandbox's interpreter is non-login Bash.
-///
-/// Run as the argument to `bash -c` during fresh initialization and on
-/// resume/start, before the sandbox is reported usable. It fails when the
-/// interpreter has an ambient `BASH_ENV` startup source, is not Bash, was
-/// started as a login shell, or is in POSIX mode. Bash invoked under the name
-/// `sh` still sets `BASH_VERSION` while enabling POSIX behavior, so the full
-/// interpreter contract is checked rather than assumed.
-pub(crate) const BASH_PROBE_SCRIPT: &str = r#"if [ -n "${BASH_ENV:-}" ]; then
-  echo 'sandbox interpreter has BASH_ENV startup source configured' >&2
-  exit 1
-fi
-if [ -z "${BASH_VERSION:-}" ]; then
-  echo 'sandbox interpreter is not bash' >&2
-  exit 1
-fi
-if shopt -q login_shell; then
-  echo 'sandbox interpreter is a login shell' >&2
-  exit 1
-fi
-if shopt -qo posix; then
-  echo 'sandbox interpreter is bash in posix mode' >&2
-  exit 1
-fi
-printf '%s\n' 'fabro-bash-ready'"#;
-
-/// Whether a [`BASH_PROBE_SCRIPT`] run succeeded.
-///
-/// A zero exit without exactly the marker is not a successful probe.
-pub(crate) fn bash_probe_passed(exit_code: Option<i32>, stdout: &str) -> bool {
-    exit_code == Some(0) && stdout.trim() == BASH_PROBE_MARKER
-}
-
-/// Validate a completed Bash probe without flattening its raw output into an
-/// error message.
-///
-/// [`Error::Exec`](crate::Error::Exec) retains stdout/stderr for the existing
-/// redacted-tail diagnostics while its display form exposes only bounded,
-/// classified metadata safe for lifecycle events and tracing.
-pub(crate) fn validate_bash_probe(
-    result: ExecResult,
-    remediation: impl Into<String>,
-) -> crate::Result<()> {
-    if result.is_success() && bash_probe_passed(result.exit_code, &result.stdout) {
-        return Ok(());
-    }
-
-    Err(crate::Error::context(
-        remediation,
-        result.into_exec_error("Sandbox Bash probe"),
-    ))
-}
-
-/// Sleep for `timeout_ms` if `Some`, otherwise never resolves. Used by
-/// streaming `exec_command` impls to model "no timeout" without scheduling a
-/// `Duration::from_millis(u64::MAX)` sleep.
-pub(crate) async fn optional_timeout(timeout_ms: Option<u64>) {
-    match timeout_ms {
-        Some(ms) => time::sleep(Duration::from_millis(ms)).await,
-        None => std::future::pending::<()>().await,
-    }
-}
-
 /// Information returned when a sandbox sets up git for a workflow run.
 #[derive(Debug, Clone)]
 pub struct GitRunInfo {
@@ -865,17 +780,6 @@ impl OutputCaptureBuffer {
         }
     }
 
-    #[cfg(feature = "daytona")]
-    #[must_use]
-    pub(crate) fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(self.head.len().saturating_add(self.tail.len()));
-        bytes.extend_from_slice(&self.head);
-        let (front, back) = self.tail.as_slices();
-        bytes.extend_from_slice(front);
-        bytes.extend_from_slice(back);
-        bytes
-    }
-
     #[must_use]
     pub(crate) fn into_parts(self) -> (Vec<u8>, OutputCaptureStats) {
         let stats = self.stats();
@@ -888,14 +792,6 @@ impl OutputCaptureBuffer {
         bytes.extend_from_slice(front);
         bytes.extend_from_slice(back);
         (bytes, stats)
-    }
-
-    /// Retained bytes as two contiguous slices: the stable head, then the
-    /// rolling tail.
-    #[cfg(feature = "daytona")]
-    #[must_use]
-    pub(crate) fn retained_slices(&mut self) -> (&[u8], &[u8]) {
-        (&self.head, self.tail.make_contiguous())
     }
 }
 
@@ -1563,75 +1459,6 @@ pub(crate) fn join_sandbox_path(base: &str, relative_path: &str) -> String {
         return format!("/{relative_path}");
     }
     format!("{}/{relative_path}", base.trim_end_matches('/'))
-}
-
-pub(crate) fn build_remote_walk_command(
-    base: &str,
-    relative_start: &str,
-    options: &WalkOptions,
-) -> String {
-    let traversal_root = join_sandbox_path(base, relative_start);
-    let quoted_root = shell_quote(&traversal_root);
-    let mut command = format!("if [ -e {quoted_root} ]");
-    let mut component_path = base.to_string();
-    for segment in relative_start
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-    {
-        component_path = join_sandbox_path(&component_path, segment);
-        let _ = write!(command, " && [ ! -L {} ]", shell_quote(&component_path));
-    }
-    let _ = write!(command, "; then find -H {quoted_root}");
-
-    if !options.excluded_directory_names.is_empty() {
-        command.push_str(" \\( -type d \\(");
-        for (index, directory_name) in options.excluded_directory_names.iter().enumerate() {
-            if index > 0 {
-                command.push_str(" -o");
-            }
-            let _ = write!(command, " -name {}", shell_quote(directory_name));
-        }
-        command.push_str(" \\) -prune \\) -o");
-    }
-
-    command.push_str(" -not -type l -type f -printf '%s\\0%P\\0'; fi");
-    command
-}
-
-pub(crate) fn parse_remote_walk_output(
-    base: &str,
-    relative_start: &str,
-    output: &str,
-) -> crate::Result<Vec<SandboxFile>> {
-    let mut fields = output.split('\0');
-    let mut files = Vec::new();
-
-    while let Some(size) = fields.next() {
-        if size.is_empty() {
-            break;
-        }
-        let relative_to_start = fields.next().ok_or_else(|| {
-            crate::Error::message("Malformed recursive file traversal output: missing path")
-        })?;
-        let size = size.parse::<u64>().map_err(|error| {
-            crate::Error::context(
-                format!("Malformed recursive file traversal size {size:?}"),
-                error,
-            )
-        })?;
-        let relative_path = if relative_to_start.is_empty() {
-            relative_start.to_string()
-        } else {
-            join_sandbox_path(relative_start, relative_to_start)
-        };
-        files.push(SandboxFile {
-            path: join_sandbox_path(base, &relative_path),
-            relative_path,
-            size,
-        });
-    }
-
-    Ok(files)
 }
 
 /// Shell-quote a string using `shlex::try_quote`, with a fallback for edge
@@ -3039,104 +2866,6 @@ mod tests {
     fn shell_quote_basic() {
         assert_eq!(shell_quote("hello"), "hello");
         assert_eq!(shell_quote("hello world"), "'hello world'");
-    }
-
-    #[test]
-    fn bash_probe_script_prints_the_marker_callers_validate() {
-        assert!(
-            BASH_PROBE_SCRIPT.contains(BASH_PROBE_MARKER),
-            "the probe must print the marker providers check for"
-        );
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn bash_probe_accepts_only_clean_non_login_bash() {
-        use tokio::process::Command;
-
-        async fn run(program: &str, args: &[&str]) -> (Option<i32>, String) {
-            let output = Command::new(program)
-                .args(args)
-                .arg(BASH_PROBE_SCRIPT)
-                .env_remove("BASH_ENV")
-                .output()
-                .await
-                .expect("probe should run");
-            (
-                output.status.code(),
-                String::from_utf8_lossy(&output.stdout).into_owned(),
-            )
-        }
-
-        let (code, stdout) = run("bash", &["-c"]).await;
-        assert!(bash_probe_passed(code, &stdout), "non-login bash: {stdout}");
-
-        let (code, stdout) = run("bash", &["--noprofile", "-lc"]).await;
-        assert!(
-            !bash_probe_passed(code, &stdout),
-            "a login shell must fail the probe: {stdout}"
-        );
-
-        let output = Command::new("bash")
-            .args(["-c", BASH_PROBE_SCRIPT])
-            .env(BASH_ENV_VAR, "/dev/null")
-            .output()
-            .await
-            .expect("probe with BASH_ENV should run");
-        assert!(
-            !bash_probe_passed(
-                output.status.code(),
-                &String::from_utf8_lossy(&output.stdout)
-            ),
-            "a shell with BASH_ENV must fail the probe"
-        );
-
-        // Where `/bin/sh` is really Bash (macOS), Bash enters POSIX mode and
-        // changes behavior; where it is dash (most Linux images),
-        // `BASH_VERSION` is unset. The probe rejects both.
-        let (code, stdout) = run("sh", &["-c"]).await;
-        assert!(
-            !bash_probe_passed(code, &stdout),
-            "sh must fail the probe: {stdout}"
-        );
-    }
-
-    #[test]
-    fn bash_probe_requires_the_exact_marker_output() {
-        assert!(bash_probe_passed(
-            Some(0),
-            &format!("  {BASH_PROBE_MARKER}\n")
-        ));
-        assert!(!bash_probe_passed(
-            Some(0),
-            &format!("prefix-{BASH_PROBE_MARKER}-suffix")
-        ));
-        assert!(!bash_probe_passed(
-            Some(0),
-            &format!("{BASH_PROBE_MARKER}\nunexpected output")
-        ));
-    }
-
-    #[test]
-    fn bash_probe_failure_keeps_raw_output_out_of_the_error_chain() {
-        let err = validate_bash_probe(
-            ExecResult {
-                stdout:      String::new(),
-                stderr:      "raw-probe-output".to_string(),
-                exit_code:   Some(1),
-                termination: CommandTermination::Exited,
-                duration_ms: 1,
-            },
-            "Install Bash",
-        )
-        .expect_err("failed probe should return remediation");
-
-        assert!(!err.display_with_causes().contains("raw-probe-output"));
-        assert_eq!(
-            err.default_redacted_output_tail()
-                .and_then(|tail| tail.stderr),
-            Some("raw-probe-output".to_string())
-        );
     }
 
     #[expect(

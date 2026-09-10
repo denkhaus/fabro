@@ -1,4 +1,4 @@
-//! Integration tests for `DaytonaSandbox`.
+//! Integration tests for the driver-backed Daytona sandbox.
 //!
 //! These tests require a `DAYTONA_API_KEY` environment variable and network
 //! access. Run with: `cargo test --package arc-workflows -- --ignored daytona`
@@ -24,7 +24,8 @@ use std::sync::Arc;
 
 use fabro_agent::Sandbox;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
-use fabro_sandbox::daytona::{DaytonaConfig, DaytonaSandbox};
+use fabro_sandbox::daytona::DaytonaConfig;
+use fabro_sandbox::{DaytonaCredentials, DriverSandbox, daytona_sandbox};
 use fabro_static::EnvVars;
 use fabro_store::{ArtifactKey, ArtifactStore};
 use fabro_types::{RunId, StageId, WorkflowSettings, parse_blob_ref};
@@ -181,7 +182,22 @@ async fn resolve_checkpoint_text(
     Ok(artifact::resolve_text_or_blob_ref_str(current, &run_store).await?)
 }
 
-async fn create_env() -> DaytonaSandbox {
+/// Live credentials from the process environment, the way the vault would
+/// supply them in production.
+fn live_daytona_credentials() -> DaytonaCredentials {
+    DaytonaCredentials {
+        api_key:         std::env::var(EnvVars::DAYTONA_API_KEY)
+            .expect("DAYTONA_API_KEY must be set"),
+        api_url:         std::env::var(EnvVars::DAYTONA_API_URL)
+            .or_else(|_| std::env::var(EnvVars::DAYTONA_SERVER_URL))
+            .ok(),
+        organization_id: std::env::var(EnvVars::DAYTONA_ORGANIZATION_ID).ok(),
+        target:          None,
+        http_client:     None,
+    }
+}
+
+async fn create_env() -> DriverSandbox {
     let creds = load_github_app_credentials();
     create_env_with_github_app(Some(creds)).await
 }
@@ -196,16 +212,16 @@ fn test_artifact_store(run_dir: &Path) -> ArtifactStore {
 
 async fn create_env_with_github_app(
     github_app: Option<fabro_github::GitHubCredentials>,
-) -> DaytonaSandbox {
-    DaytonaSandbox::new(
+) -> DriverSandbox {
+    daytona_sandbox(
         DaytonaConfig::default(),
-        github_app,
+        github_app.as_ref(),
         None,
         None,
         None,
         None,
         None,
-        None,
+        &live_daytona_credentials(),
     )
     .await
     .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?")
@@ -414,9 +430,18 @@ async fn daytona_snapshot_sandbox() {
     };
 
     let creds = load_github_app_credentials();
-    let env = DaytonaSandbox::new(config, Some(creds), None, None, None, None, None, None)
-        .await
-        .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?");
+    let env = daytona_sandbox(
+        config,
+        Some(&creds),
+        None,
+        None,
+        None,
+        None,
+        None,
+        &live_daytona_credentials(),
+    )
+    .await
+    .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?");
     env.initialize().await.unwrap();
 
     // Verify rg is available (installed by snapshot)
@@ -1093,7 +1118,11 @@ async fn daytona_ssh_access() {
     let env = create_env().await;
     env.initialize().await.unwrap();
 
-    let ssh_command = env.create_ssh_access(Some(60.0)).await.unwrap();
+    let ssh_command = env
+        .ssh_access_command()
+        .await
+        .unwrap()
+        .expect("Daytona should offer an SSH command");
     assert!(!ssh_command.is_empty(), "ssh_command should not be empty");
     assert!(
         ssh_command.contains("ssh"),
@@ -1107,7 +1136,7 @@ async fn daytona_ssh_access() {
 async fn daytona_ssh_access_before_init_fails() {
     let env = create_env().await;
 
-    let result = env.create_ssh_access(Some(60.0)).await;
+    let result = env.ssh_access_command().await;
     assert!(result.is_err(), "should fail before initialize()");
     assert!(
         result.unwrap_err().to_string().contains("not initialized"),
@@ -1613,21 +1642,35 @@ async fn daytona_cp_upload_download_round_trip() {
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"))]
 async fn daytona_computer_use_browser_screenshot() {
-    use base64::Engine;
     let config = DaytonaConfig {
         snapshot: None,
         skip_clone: true,
         ..DaytonaConfig::default()
     };
-    let env = DaytonaSandbox::new(config, None, None, None, None, None, None, None)
-        .await
-        .expect("DAYTONA_API_KEY must be set");
+    let env = daytona_sandbox(
+        config,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        &live_daytona_credentials(),
+    )
+    .await
+    .expect("DAYTONA_API_KEY must be set");
     env.initialize().await.unwrap();
 
-    // 1. Start the computer use desktop environment (Xvfb, xfce4, etc.)
-    let cu = env.computer_use().await.unwrap();
-    let start_resp = cu.start().await.expect("computer_use.start() failed");
-    eprintln!("Computer use started: {:?}", start_resp.message);
+    // 1. Start the computer use desktop environment (Xvfb, xfce4, etc.) through the
+    //    driver's VNC facet, which also signs a viewer URL.
+    let vnc = env
+        .handle()
+        .expect("initialized sandbox has a handle")
+        .vnc()
+        .expect("Daytona exposes VNC");
+    let connection = vnc.vnc_connection().await.expect("VNC connection failed");
+    eprintln!("VNC viewer: {}", connection.url);
+    assert!(connection.url.contains("vnc.html"));
 
     // 2. Find or install a browser
     let check = env
@@ -1724,36 +1767,23 @@ async fn daytona_computer_use_browser_screenshot() {
         .unwrap();
     eprintln!("Chrome stderr:\n{}", stderr_check.stdout);
 
-    // 5. Take a screenshot via the Computer Use API
-    let screenshot = cu
-        .screenshot()
-        .take_full_screen()
+    // 5. The desktop is serving: noVNC listens on its port.
+    let listening = env
+        .exec_command(
+            "ss -ltn 2>/dev/null | grep -q ':6080 ' || (command -v curl >/dev/null && curl -sf -o /dev/null http://127.0.0.1:6080/)",
+            10_000,
+            None,
+            None,
+            None,
+        )
         .await
-        .expect("screenshot failed");
-
-    let b64_data = screenshot
-        .screenshot
-        .expect("screenshot response had no data");
-    eprintln!(
-        "Screenshot captured: {} bytes base64 ({} bytes decoded approx)",
-        b64_data.len(),
-        b64_data.len() * 3 / 4
-    );
-    assert!(!b64_data.is_empty(), "screenshot should not be empty");
-
-    // 6. Decode and save to /tmp for manual inspection
-    let png_bytes = base64::engine::general_purpose::STANDARD
-        .decode(&b64_data)
-        .expect("base64 decode failed");
-    let output_path = "/tmp/daytona_browser_screenshot.png";
-    std::fs::write(output_path, &png_bytes).expect("failed to write screenshot");
-    eprintln!(
-        "Screenshot saved to {output_path} ({} bytes)",
-        png_bytes.len()
+        .unwrap();
+    assert!(
+        listening.is_success(),
+        "noVNC should be reachable inside the sandbox"
     );
 
     // 7. Cleanup
-    cu.stop().await.ok();
     env.cleanup().await.unwrap();
 }
 
@@ -1767,9 +1797,18 @@ async fn daytona_playwright_mcp_sandbox_transport() {
         skip_clone: true,
         ..DaytonaConfig::default()
     };
-    let sandbox = DaytonaSandbox::new(config, None, None, None, None, None, None, None)
-        .await
-        .expect("DAYTONA_API_KEY must be set");
+    let sandbox = daytona_sandbox(
+        config,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        &live_daytona_credentials(),
+    )
+    .await
+    .expect("DAYTONA_API_KEY must be set");
     sandbox.initialize().await.unwrap();
 
     // 1. Install Playwright MCP server and its browser

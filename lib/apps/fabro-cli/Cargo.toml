@@ -34,7 +34,7 @@ fabro-mcp = { path = "../../components/fabro-mcp" }
 fabro-mcp-server = { path = "../fabro-mcp-server" }
 fabro-manifest = { path = "../../components/fabro-manifest" }
 fabro-proc = { path = "../../foundation/fabro-proc" }
-fabro-sandbox = { path = "../../components/fabro-sandbox", features = ["daytona"] }
+fabro-sandbox = { path = "../../components/fabro-sandbox" }
 fabro-checkpoint = { path = "../../components/fabro-checkpoint" }
 fabro-graphviz = { path = "../../components/fabro-graphviz" }
 fabro-validate = { path = "../../components/fabro-validate" }
@@ -57,7 +57,6 @@ clap_complete.workspace = true
 cli-table.workspace = true
 console.workspace = true
 indicatif.workspace = true
-daytona-sdk.workspace = true
 anyhow.workspace = true
 miette.workspace = true
 dotenvy.workspace = true
@@ -104,7 +103,7 @@ nix = { version = "0.30", features = ["fs"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = { version = "0.9", optional = true }
 
-# Vendor openssl only for musl targets. daytona-sdk transitively pulls
+# Vendor openssl only for musl targets. Transitive dependencies pull
 # native-tls via reqwest, which needs libssl. On glibc runners the system
 # libssl is used; on musl runners we compile openssl from source.
 [target.'cfg(target_env = "musl")'.dependencies]

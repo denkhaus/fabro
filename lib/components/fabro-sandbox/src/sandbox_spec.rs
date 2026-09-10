@@ -3,15 +3,11 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use fabro_github::GitHubCredentials;
-#[allow(
-    unused_imports,
-    reason = "Daytona-enabled builds persist RunId in the sandbox spec."
-)]
 use fabro_types::{RunId, RunSandboxInstance, RunSandboxRuntime, SandboxProviderKind};
 
-#[cfg(feature = "daytona")]
-use crate::daytona::{self, DaytonaConfig, DaytonaSandbox};
+use crate::daytona::{self, DaytonaConfig};
 use crate::docker::{self, DockerSandboxOptions};
+use crate::driver::DaytonaCredentials;
 use crate::driver_sandbox::local_sandbox;
 use crate::{Sandbox, SandboxEventCallback, clone_source};
 
@@ -29,7 +25,6 @@ pub enum SandboxSpec {
         clone_tag:        Option<String>,
         clone_commit_sha: Option<String>,
     },
-    #[cfg(feature = "daytona")]
     Daytona {
         config:           Box<DaytonaConfig>,
         github_app:       Option<GitHubCredentials>,
@@ -38,7 +33,10 @@ pub enum SandboxSpec {
         clone_branch:     Option<String>,
         clone_tag:        Option<String>,
         clone_commit_sha: Option<String>,
-        api_key:          Option<String>,
+        /// Vault credentials for the Daytona control plane; `None` fails at
+        /// build time with a clear message rather than reading the process
+        /// environment.
+        credentials:      Option<DaytonaCredentials>,
     },
 }
 
@@ -47,7 +45,6 @@ impl SandboxSpec {
         match self {
             Self::Local { .. } => SandboxProviderKind::LOCAL,
             Self::Docker { .. } => SandboxProviderKind::DOCKER,
-            #[cfg(feature = "daytona")]
             Self::Daytona { .. } => SandboxProviderKind::DAYTONA,
         }
     }
@@ -56,7 +53,6 @@ impl SandboxSpec {
         match self {
             Self::Local { .. } => "local",
             Self::Docker { .. } => "docker",
-            #[cfg(feature = "daytona")]
             Self::Daytona { .. } => "daytona",
         }
     }
@@ -117,7 +113,6 @@ impl SandboxSpec {
                     },
                 }
             }
-            #[cfg(feature = "daytona")]
             Self::Daytona {
                 config,
                 clone_origin_url,
@@ -157,7 +152,7 @@ impl SandboxSpec {
                     },
                 }
             }
-            _ => RunSandboxInstance {
+            Self::Local { .. } => RunSandboxInstance {
                 provider: self.provider(),
                 image:    None,
                 snapshot: None,
@@ -215,7 +210,6 @@ impl SandboxSpec {
                 }
                 Ok(Arc::new(sandbox))
             }
-            #[cfg(feature = "daytona")]
             Self::Daytona {
                 config,
                 github_app,
@@ -224,20 +218,23 @@ impl SandboxSpec {
                 clone_branch,
                 clone_tag,
                 clone_commit_sha,
-                api_key,
+                credentials,
             } => {
-                let mut sandbox = DaytonaSandbox::new(
+                let credentials = credentials.as_ref().context(
+                    "Daytona sandboxes require DAYTONA_API_KEY in the vault; run `fabro secret set DAYTONA_API_KEY`",
+                )?;
+                let mut sandbox = daytona::daytona_sandbox(
                     config.as_ref().clone(),
-                    github_app.clone(),
+                    github_app.as_ref(),
                     *run_id,
                     clone_origin_url.clone(),
                     clone_branch.clone(),
                     clone_tag.clone(),
                     clone_commit_sha.clone(),
-                    api_key.clone(),
+                    credentials,
                 )
                 .await
-                .map_err(anyhow::Error::new)?;
+                .context("Failed to create Daytona sandbox")?;
                 if let Some(callback) = event_callback {
                     sandbox.set_event_callback(callback);
                 }

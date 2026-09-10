@@ -29,6 +29,7 @@ use fabro_llm::generate::{GenerateParams, generate};
 use fabro_model::catalog::CatalogProvider;
 use fabro_model::{Catalog, ProviderId};
 use fabro_sandbox::daytona;
+use fabro_sandbox::driver::DaytonaCredentials;
 use fabro_static::EnvVars;
 use fabro_store::ArtifactStore;
 use fabro_types::settings::server::ObjectStoreSettings;
@@ -1008,14 +1009,14 @@ async fn check_install_daytona_api_key(
     state: &InstallAppState,
     api_key: String,
 ) -> anyhow::Result<daytona::DaytonaKeyCheck> {
-    let base_url = state
-        .upstreams
-        .daytona_api_base_url
-        .as_deref()
-        .unwrap_or(daytona::DEFAULT_DAYTONA_API_URL);
-    let organization_id = state.upstreams.daytona_organization_id.as_deref();
-    let http_client = fabro_http::http_client().context("failed to build HTTP client")?;
-    daytona::check_daytona_api_key_with(base_url, organization_id, api_key, http_client).await
+    let credentials = DaytonaCredentials {
+        api_key,
+        api_url: state.upstreams.daytona_api_base_url.clone(),
+        organization_id: state.upstreams.daytona_organization_id.clone(),
+        target: None,
+        http_client: Some(fabro_http::http_client().context("failed to build HTTP client")?),
+    };
+    daytona::check_daytona_api_key(&credentials, daytona::DAYTONA_CREDENTIAL_PROBE_TIMEOUT).await
 }
 
 async fn put_install_sandbox(

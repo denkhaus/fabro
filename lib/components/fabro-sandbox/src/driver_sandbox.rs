@@ -202,13 +202,46 @@ impl RepoWorkspace {
     }
 }
 
-/// A sandbox that does not exist yet: `initialize` creates it from the
-/// spec on the provider.
+/// What a create needs once its inputs are settled.
+#[derive(Clone)]
+pub(crate) struct PreparedCreate {
+    pub(crate) spec:     DriverSpec,
+    /// The image or snapshot named by the spec, for pull progress events.
+    pub(crate) source:   Option<String>,
+    /// The provider snapshot the sandbox is created from, when the provider
+    /// has that concept; recorded on the run.
+    pub(crate) snapshot: Option<String>,
+}
+
+/// Settles a create's inputs right before the provider call. A plan may
+/// build provider resources first (a Daytona snapshot) and report progress
+/// through fabro's events.
+#[async_trait]
+pub(crate) trait CreatePlan: Send + Sync {
+    async fn prepare(
+        &self,
+        emit: &(dyn Fn(SandboxEvent) + Send + Sync),
+    ) -> crate::Result<PreparedCreate>;
+}
+
+/// A create whose spec is known up front.
+struct SpecPlan(PreparedCreate);
+
+#[async_trait]
+impl CreatePlan for SpecPlan {
+    async fn prepare(
+        &self,
+        _emit: &(dyn Fn(SandboxEvent) + Send + Sync),
+    ) -> crate::Result<PreparedCreate> {
+        Ok(self.0.clone())
+    }
+}
+
+/// A sandbox that does not exist yet: `initialize` creates it on the
+/// provider from the plan's spec.
 struct PendingCreate {
     provider: Arc<dyn DriverProvider>,
-    spec:     DriverSpec,
-    /// The image or snapshot named by the spec, for pull progress events.
-    source:   Option<String>,
+    plan:     Box<dyn CreatePlan>,
 }
 
 /// A fabro sandbox backed by a sandbox-driver handle.
@@ -224,6 +257,8 @@ pub struct DriverSandbox {
     /// `(platform, os_version)` learned from the sandbox at initialize or
     /// start; unknown until then.
     platform:       OnceLock<(String, String)>,
+    /// The provider snapshot the sandbox was created from, when known.
+    snapshot:       OnceLock<String>,
 }
 
 impl DriverSandbox {
@@ -246,14 +281,35 @@ impl DriverSandbox {
         source: Option<String>,
         workspace: RepoWorkspace,
     ) -> Self {
-        let mut sandbox = Self::empty(kind);
-        sandbox.pending = Some(PendingCreate {
+        Self::pending_with_plan(
+            kind,
             provider,
-            spec,
-            source,
-        });
+            Box::new(SpecPlan(PreparedCreate {
+                spec,
+                source,
+                snapshot: None,
+            })),
+            workspace,
+        )
+    }
+
+    /// A sandbox `initialize` will create on `provider` once `plan` has
+    /// settled its spec, then prepare per `workspace`.
+    pub(crate) fn pending_with_plan(
+        kind: SandboxProviderKind,
+        provider: Arc<dyn DriverProvider>,
+        plan: Box<dyn CreatePlan>,
+        workspace: RepoWorkspace,
+    ) -> Self {
+        let mut sandbox = Self::empty(kind);
+        sandbox.pending = Some(PendingCreate { provider, plan });
         sandbox.workspace = Some(workspace);
         sandbox
+    }
+
+    /// Records the provider snapshot an attached sandbox was created from.
+    pub(crate) fn set_snapshot(&self, snapshot: String) {
+        let _ = self.snapshot.set(snapshot);
     }
 
     /// An existing sandbox reattached by handle, with the workspace an
@@ -282,6 +338,7 @@ impl DriverSandbox {
             env_policy,
             event_callback: None,
             platform: OnceLock::new(),
+            snapshot: OnceLock::new(),
         }
     }
 
@@ -357,13 +414,17 @@ impl DriverSandbox {
         let Some(pending) = &self.pending else {
             return self.handle().map(|_| ());
         };
+        let prepared = pending.plan.prepare(&|event| self.emit(event)).await?;
+        if let Some(snapshot) = prepared.snapshot {
+            let _ = self.snapshot.set(snapshot);
+        }
         let observer = Arc::new(CreateProgress::new(
-            pending.source.clone(),
+            prepared.source,
             self.event_callback.clone(),
         ));
         let handle = pending
             .provider
-            .create(&pending.spec, Some(EventContext::new(observer)))
+            .create(&prepared.spec, Some(EventContext::new(observer)))
             .await
             .map_err(|error| {
                 crate::Error::context(format!("Failed to create {} sandbox", self.kind), error)
@@ -831,14 +892,26 @@ impl Sandbox for DriverSandbox {
         .await;
         let duration_ms = elapsed_ms(started);
         match &result {
-            Ok(()) => self.emit(SandboxEvent::Ready {
-                provider: self.provider_name(),
-                duration_ms,
-                name: Some(self.sandbox_info()).filter(|name| !name.is_empty()),
-                cpu: None,
-                memory: None,
-                url: None,
-            }),
+            Ok(()) => {
+                // The provider's console page, when it has one. Best effort:
+                // a failed describe never fails a successful initialize.
+                let url = match self.handle() {
+                    Ok(handle) if !self.kind.is_local() => handle
+                        .describe()
+                        .await
+                        .ok()
+                        .and_then(|status| status.web_url),
+                    _ => None,
+                };
+                self.emit(SandboxEvent::Ready {
+                    provider: self.provider_name(),
+                    duration_ms,
+                    name: Some(self.sandbox_info()).filter(|name| !name.is_empty()),
+                    cpu: None,
+                    memory: None,
+                    url,
+                });
+            }
             Err(error) => self.emit(SandboxEvent::InitializeFailed {
                 provider: self.provider_name(),
                 error: error.to_string(),
@@ -987,6 +1060,10 @@ impl Sandbox for DriverSandbox {
             .get()
             .map(|handle| handle.id().to_string())
             .unwrap_or_default()
+    }
+
+    fn snapshot_info(&self) -> Option<String> {
+        self.snapshot.get().cloned()
     }
 
     async fn set_autostop_interval(&self, minutes: i32) -> crate::Result<()> {

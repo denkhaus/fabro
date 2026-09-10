@@ -23,7 +23,6 @@ use fabro_api::types::{
 use fabro_llm::types::ToolDefinition;
 use fabro_model::{AgentProfileKind, Catalog, ModelSelectionError, ProviderId, catalog};
 use fabro_sandbox::reconnect::reconnect_for_run;
-use fabro_static::EnvVars;
 use fabro_store::{
     EventPayload, ProjectedRunSession, RunDatabase, project_run_session, project_run_sessions,
 };
@@ -715,11 +714,11 @@ async fn build_agent_session(
     let sandbox_instance = sandbox_record.instance().ok_or_else(|| {
         AskFabroBuildError::SandboxUnavailable(anyhow::anyhow!("run sandbox was not created"))
     })?;
-    let daytona_api_key = state
-        .vault_secret(EnvVars::DAYTONA_API_KEY)
+    let daytona = state
+        .vault_daytona_credentials()
         .await
         .map_err(|err| AskFabroBuildError::Agent(anyhow::Error::new(err)))?;
-    let sandbox = reconnect_for_run(sandbox_instance, daytona_api_key, Some(run_id))
+    let sandbox = reconnect_for_run(sandbox_instance, daytona, Some(run_id))
         .await
         .map_err(AskFabroBuildError::SandboxUnavailable)?;
     sandbox

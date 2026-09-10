@@ -9,7 +9,6 @@ description = "Sandbox trait and implementations for Fabro agent execution envir
 [features]
 default = ["local"]
 local = []
-daytona = ["dep:daytona-sdk", "dep:daytona-api-client", "dep:git2", "dep:fabro-config", "dep:fabro-http", "dep:reqwest-middleware", "dep:rand", "dep:tokio-tungstenite", "dep:futures-util", "dep:rustls"]
 test-support = []
 
 [lib]
@@ -57,23 +56,10 @@ fabro-redact.workspace = true
 
 futures = { workspace = true }
 
-# daytona
-fabro-config = { path = "../../foundation/fabro-config", optional = true }
 fabro-github = { path = "../fabro-github" }
 fabro-types = { path = "../../foundation/fabro-types" }
 
 chrono = { workspace = true }
-
-# daytona
-rand = { workspace = true, optional = true }
-daytona-sdk = { workspace = true, optional = true }
-daytona-api-client = { workspace = true, optional = true }
-git2 = { workspace = true, optional = true }
-fabro-http = { workspace = true, optional = true }
-reqwest-middleware = { version = "0.5", features = ["json", "multipart", "form", "query"], optional = true }
-tokio-tungstenite = { workspace = true, optional = true }
-futures-util = { workspace = true, optional = true }
-rustls = { version = "0.23", default-features = false, features = ["std", "ring"], optional = true }
 
 [dev-dependencies]
 fabro-github = { path = "../fabro-github", features = ["test-support"] }
@@ -81,5 +67,4 @@ tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"
 serde_json.workspace = true
 toml.workspace = true
-httpmock = "0.8"
 fabro-test.workspace = true

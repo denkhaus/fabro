@@ -674,7 +674,7 @@ fn cloud_sandbox_probe_check(probe: anyhow::Result<daytona::DaytonaKeyCheck>) ->
         Ok(check) if check.ok() => CheckResult {
             name:        "Cloud Sandbox".to_string(),
             status:      CheckStatus::Pass,
-            summary:     format!("Daytona configured ({})", check.key_name),
+            summary:     "Daytona configured".to_string(),
             details:     Vec::new(),
             remediation: None,
         },

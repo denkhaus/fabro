@@ -6,7 +6,6 @@
 //! daemon or account; fabro filters on its label and refuses to delete a
 //! sandbox that does not carry it.
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -18,7 +17,7 @@ use tokio::sync::OnceCell;
 use super::SandboxProvider;
 use crate::details;
 use crate::driver::{ConnectedProvider, ProviderConnectOptions, connect_provider};
-use crate::managed_labels::{MANAGED_LABEL, MANAGED_LABEL_VALUE};
+use crate::managed_labels::{self, MANAGED_LABEL, MANAGED_LABEL_VALUE};
 
 /// How the driver provider behind the inventory is obtained.
 enum Connection {
@@ -96,10 +95,6 @@ impl DriverInventoryProvider {
         filter
     }
 
-    fn is_managed(labels: &BTreeMap<String, String>) -> bool {
-        labels.get(MANAGED_LABEL).map(String::as_str) == Some(MANAGED_LABEL_VALUE)
-    }
-
     async fn describe_managed(
         &self,
         id: &str,
@@ -125,7 +120,7 @@ impl DriverInventoryProvider {
             )
         })?;
         if status.state == sandbox_driver::SandboxState::Deleted
-            || !Self::is_managed(&status.labels)
+            || !managed_labels::is_managed(&status.labels)
         {
             return Ok(None);
         }
@@ -152,7 +147,7 @@ impl SandboxProvider for DriverInventoryProvider {
             .iter()
             // The filter is a request; a provider that cannot filter on
             // labels returns everything, so the label is checked again.
-            .filter(|status| Self::is_managed(&status.labels))
+            .filter(|status| managed_labels::is_managed(&status.labels))
             .map(|status| details::info_from_status(&self.kind, status))
             .collect())
     }
