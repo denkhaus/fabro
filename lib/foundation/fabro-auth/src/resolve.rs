@@ -559,7 +559,7 @@ mod tests {
                 auth: HttpAuthentication::Bearer(secret),
                 ..
             }) => secret.expose_secret(),
-            other => panic!("expected bearer credentials, got {other:?}"),
+            _ => panic!("expected bearer credentials"),
         }
     }
 
@@ -622,7 +622,7 @@ mod tests {
                 assert_eq!(header.name, "x-api-key");
                 assert_eq!(header.value.expose_secret(), "anthropic-key");
             }
-            other => panic!("expected header credentials, got {other:?}"),
+            _ => panic!("expected header credentials"),
         }
     }
 
@@ -724,7 +724,7 @@ mod tests {
         let credentials = resolver.resolve(modal).await.unwrap();
         match &credentials {
             Credentials::Http(http) => assert!(matches!(http.auth, HttpAuthentication::None)),
-            other => panic!("expected header-only credentials, got {other:?}"),
+            _ => panic!("expected header-only credentials"),
         }
         assert_eq!(header_value(&credentials, "Modal-Key"), Some("wk-test"));
         assert_eq!(header_value(&credentials, "Modal-Secret"), Some("ws-test"));
