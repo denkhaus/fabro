@@ -10,8 +10,6 @@ use lithos_llm::catalog::{ModelHandle, ModelId, ProviderId};
 pub use lithos_llm::types::{Cost, CostSource, Speed, TokenCounts};
 use serde::{Deserialize, Serialize};
 
-use crate::controls;
-
 const USD_MICROS_PER_USD_F64: f64 = 1_000_000.0;
 
 #[allow(
@@ -156,7 +154,7 @@ impl ModelRef {
         (
             self.provider.as_str(),
             self.model_id.as_str(),
-            self.speed.map_or("", controls::speed_name),
+            self.speed.map_or("", Speed::as_str),
         )
     }
 }
@@ -165,7 +163,7 @@ impl std::hash::Hash for ModelRef {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.provider.hash(state);
         self.model_id.hash(state);
-        self.speed.map(controls::speed_name).hash(state);
+        self.speed.map(Speed::as_str).hash(state);
     }
 }
 
@@ -173,7 +171,7 @@ impl std::fmt::Display for ModelRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}/{}", self.provider, self.model_id)?;
         if let Some(speed) = self.speed {
-            write!(f, " ({})", controls::speed_name(speed))?;
+            write!(f, " ({speed})")?;
         }
         Ok(())
     }

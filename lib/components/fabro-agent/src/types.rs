@@ -4,8 +4,8 @@ use chrono::{DateTime, Utc};
 use fabro_llm::LlmError;
 use fabro_types::{
     CommandTermination, ContentPart, Cost, ExecOutputTail, LlmOutputKind, LlmRetryPhase,
-    Message as LlmMessage, ModelRef, ReasoningOutput, Role, SessionMessage,
-    StageContextWindowProjection, TokenCounts, ToolCall, ToolResult, controls,
+    Message as LlmMessage, ModelRef, ReasoningOutput, Role, SessionMessage, Speed,
+    StageContextWindowProjection, TokenCounts, ToolCall, ToolResult,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -511,7 +511,7 @@ impl AgentEvent {
                     session_id,
                     provider = %requested_model.provider,
                     model = %requested_model.model_id,
-                    speed = requested_model.speed.map_or("", controls::speed_name),
+                    speed = requested_model.speed.map_or("", Speed::as_str),
                     "LLM request started"
                 );
             }

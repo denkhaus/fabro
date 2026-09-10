@@ -5,9 +5,9 @@
 
 use std::collections::HashSet;
 
-use fabro_types::controls::REASONING_EFFORTS;
 use fabro_types::{
     Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits, Provider, ProviderId,
+    ReasoningEffort,
 };
 use lithos_llm::catalog::{Catalog, CatalogProvider};
 
@@ -62,9 +62,8 @@ fn model_view(entry: &ModelEntry<'_>, configured: bool) -> Model {
             sampling:     capabilities.sampling().is_supported(),
         },
         controls: ModelControls {
-            reasoning_effort: REASONING_EFFORTS
-                .iter()
-                .copied()
+            reasoning_effort: ReasoningEffort::ALL
+                .into_iter()
                 .filter(|effort| capabilities.reasoning_effort(*effort).is_supported())
                 .collect(),
         },

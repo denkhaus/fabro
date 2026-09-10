@@ -392,29 +392,25 @@ fn control_attr<'a>(node: &'a Node, key: &str) -> Option<&'a str> {
 }
 
 fn parse_reasoning_effort(node: &Node, value: &str) -> Result<ReasoningEffort, Error> {
-    controls::parse_reasoning_effort(value).ok_or_else(|| {
+    value.parse().map_err(|_| {
         Error::handler(format!(
             "Invalid reasoning_effort \"{value}\" for node \"{}\"; expected one of: {}",
             node.id,
             expected_values(
-                controls::REASONING_EFFORTS
-                    .iter()
-                    .map(|effort| controls::reasoning_effort_name(*effort))
+                ReasoningEffort::ALL
+                    .into_iter()
+                    .map(ReasoningEffort::as_str)
             ),
         ))
     })
 }
 
 fn parse_speed(node: &Node, value: &str) -> Result<Speed, Error> {
-    controls::parse_speed(value).ok_or_else(|| {
+    value.parse().map_err(|_| {
         Error::handler(format!(
             "Invalid speed \"{value}\" for node \"{}\"; expected one of: {}",
             node.id,
-            expected_values(
-                controls::SPEEDS
-                    .iter()
-                    .map(|speed| controls::speed_name(*speed))
-            ),
+            expected_values(Speed::ALL.into_iter().map(Speed::as_str)),
         ))
     })
 }

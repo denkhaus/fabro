@@ -6,7 +6,7 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::probe::{self, ApiKeyProbeError, ModelTestStatus};
 use fabro_llm::{ModelSelectionError, api, catalog, selection};
 use fabro_redact::redact_string;
-use fabro_types::controls;
+use fabro_types::ReasoningEffort;
 
 use super::super::{
     ApiError, AppState, FromStr, IntoResponse, Json, MAX_PAGE_OFFSET, ModelTestMode, Path,
@@ -204,9 +204,9 @@ async fn test_model(
         Err(error) => return error.into_response(),
     };
     let reasoning_effort = match params.reasoning_effort.as_deref() {
-        Some(value) => match controls::parse_reasoning_effort(value) {
-            Some(effort) => Some(effort),
-            None => {
+        Some(value) => match value.parse::<ReasoningEffort>() {
+            Ok(effort) => Some(effort),
+            Err(_) => {
                 return ApiError::new(
                     StatusCode::BAD_REQUEST,
                     format!("invalid reasoning effort: {value}"),
@@ -264,16 +264,14 @@ async fn test_model(
     if let Some(effort) = reasoning_effort {
         let capabilities = info.model.capabilities();
         if !capabilities.reasoning_effort(effort).is_supported() {
-            let allowed = controls::REASONING_EFFORTS
-                .iter()
-                .copied()
+            let allowed = ReasoningEffort::ALL
+                .into_iter()
                 .filter(|candidate| capabilities.reasoning_effort(*candidate).is_supported())
-                .map(controls::reasoning_effort_name)
+                .map(ReasoningEffort::as_str)
                 .collect::<Vec<_>>()
                 .join(", ");
             return ApiError::bad_request(format!(
-                "model '{model_id}' does not support reasoning_effort '{}'; allowed values: {allowed}",
-                controls::reasoning_effort_name(effort)
+                "model '{model_id}' does not support reasoning_effort '{effort}'; allowed values: {allowed}"
             ))
             .into_response();
         }

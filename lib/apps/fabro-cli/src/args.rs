@@ -7,9 +7,9 @@ use fabro_agent::cli::AgentArgs;
 use fabro_config::{CliLayer, CliLoggingLayer, CliOutputLayer, CliUpdatesLayer};
 use fabro_server::serve::DEFAULT_TCP_PORT;
 use fabro_static::EnvVars;
+use fabro_types::ReasoningEffort;
 use fabro_types::settings::cli::{OutputFormat, OutputVerbosity};
 use fabro_types::settings::run::MergeStrategy;
-use fabro_types::{ReasoningEffort, controls};
 use fabro_util::printer::Printer;
 
 pub(crate) const LONG_VERSION: &str = concat!(
@@ -1857,13 +1857,12 @@ pub(crate) struct CompletionArgs {
 }
 
 fn parse_reasoning_effort_arg(value: &str) -> Result<ReasoningEffort, String> {
-    controls::parse_reasoning_effort(value).ok_or_else(|| {
+    value.parse().map_err(|_| {
         format!(
             "unknown reasoning effort '{value}'; expected one of: {}",
-            controls::REASONING_EFFORTS
-                .iter()
-                .copied()
-                .map(controls::reasoning_effort_name)
+            ReasoningEffort::ALL
+                .into_iter()
+                .map(ReasoningEffort::as_str)
                 .collect::<Vec<_>>()
                 .join(", ")
         )

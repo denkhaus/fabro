@@ -4,7 +4,7 @@ use fabro_llm::catalog::ModelEntry;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{FallbackTarget, ModelSelectionError, catalog, selection};
 use fabro_types::settings::{ModelRef, ResolvedModelRef};
-use fabro_types::{ProviderId, ReasoningEffort, RunNoticeCode, RunNoticeLevel, controls};
+use fabro_types::{ProviderId, ReasoningEffort, RunNoticeCode, RunNoticeLevel};
 
 use crate::Error;
 
@@ -180,7 +180,6 @@ impl ModelFallbackNotice {
                 target,
                 requested_effort,
             } => {
-                let requested_effort = controls::reasoning_effort_name(*requested_effort);
                 format!(
                     "Model fallback `{target}` for requested model `{requested_model}` was skipped because it has no reasoning level near `{requested_effort}`."
                 )
