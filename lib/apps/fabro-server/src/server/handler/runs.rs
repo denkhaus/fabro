@@ -355,8 +355,18 @@ async fn list_runs(
 ) -> Response {
     // ADR-0011 inspection scope: workers holding inspects authority may
     // only enumerate runs of their declared workflows; the filter is
-    // mandatory.
+    // mandatory. Own-children enumeration is the enumeration analog of the
+    // ADR-0011 management allowances (own run, created runs, descendants):
+    // a worker listing `parent_id` equal to its own run id sees exactly the
+    // runs it created, which the per-run routes already grant (fabro-95e8 —
+    // the fabro_run_create duplicate-child guard lists its own children and
+    // must not trip this gate).
+    let own_children_enumeration = matches!(
+        (&auth.0, params.parent_id),
+        (Principal::Worker { run_id }, Some(parent_id)) if *run_id == parent_id
+    );
     if matches!(auth.0, Principal::Worker { .. })
+        && !own_children_enumeration
         && !auth.1.inspects().is_empty()
         && !params
             .workflow

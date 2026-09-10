@@ -15000,6 +15000,38 @@ async fn inspects_worker_lists_runs_only_through_declared_workflow_filter() {
     let parent_run_id = unique_run_id();
     let develop_run_id = unique_run_id();
     create_run_with_workflow_slug(&state, develop_run_id, "develop").await;
+    // Own child of the worker's run (fabro-95e8 shape: the duplicate-child
+    // guard enumerates exactly this slice).
+    let child_run_id = unique_run_id();
+    let child_store = state.stores.runs.create_run(&child_run_id).await.unwrap();
+    workflow_event::append_event(
+        &child_store,
+        &child_run_id,
+        &workflow_event::Event::RunCreated {
+            run_id:              child_run_id,
+            title:               None,
+            settings:            serde_json::to_value(fabro_types::WorkflowSettings::default())
+                .unwrap(),
+            graph:               serde_json::to_value(Graph::new("merge-upstream")).unwrap(),
+            workflow_source:     None,
+            labels:              std::collections::BTreeMap::default(),
+            source_directory:    None,
+            workflow_slug:       Some("merge-upstream".to_string()),
+            workflow_version_id: None,
+            target:              None,
+            automation:          None,
+            provenance:          test_support::test_run_provenance(),
+            manifest_blob:       None,
+            spec_blob:           None,
+            git:                 None,
+            fork_source_ref:     None,
+            retried_from:        None,
+            parent_id:           Some(parent_run_id),
+            web_url:             None,
+        },
+    )
+    .await
+    .unwrap();
     let inspects_token = issue_test_inspects_worker_token(&parent_run_id, &["develop".to_string()]);
     let plain_run_tools_token = issue_test_run_tools_worker_token(&parent_run_id);
 
@@ -15062,6 +15094,48 @@ async fn inspects_worker_lists_runs_only_through_declared_workflow_filter() {
         .await
         .unwrap();
     assert_status!(response, StatusCode::OK).await;
+
+    // fabro-95e8: own-children enumeration passes the inspects gate — the
+    // worker lists parent_id equal to its own run id and sees exactly its
+    // children (the enumeration analog of the ADR-0011 created-runs and
+    // descendant allowances).
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs?parent_id={parent_run_id}"),
+            &inspects_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::OK).await;
+    let child_ids: Vec<&str> = body["data"]
+        .as_array()
+        .expect("own-children data should be an array")
+        .iter()
+        .filter_map(|run| run["id"].as_str())
+        .collect();
+    assert_eq!(
+        child_ids,
+        vec![child_run_id.to_string().as_str()],
+        "own-children enumeration must return exactly the linked child"
+    );
+
+    // A parent_id the worker does not own keeps the gate: no widening to
+    // arbitrary parent-scoped enumeration.
+    let foreign_parent_id = unique_run_id();
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs?parent_id={foreign_parent_id}"),
+            &inspects_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
 }
 
 /// fabro-06e0: the live pull request details route is a run-management
