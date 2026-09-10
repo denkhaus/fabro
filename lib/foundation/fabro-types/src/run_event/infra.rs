@@ -195,33 +195,10 @@ pub struct SandboxReadyProps {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name:        Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cpu:         Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub memory:      Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url:         Option<String>,
 }
 
 pub type SandboxFailedProps = RunSandboxFailure;
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SandboxCleanupStartedProps {
-    pub provider: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SandboxCleanupCompletedProps {
-    pub provider:    String,
-    pub duration_ms: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SandboxCleanupFailedProps {
-    pub provider: String,
-    pub error:    String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub causes:   Vec<String>,
-}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SandboxStartStartedProps {
@@ -294,27 +271,6 @@ pub struct SnapshotCompletedProps {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SnapshotFailedProps {
     pub name:   String,
-    pub error:  String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub causes: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct GitCloneStartedProps {
-    pub url:    String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub branch: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct GitCloneCompletedProps {
-    pub url:         String,
-    pub duration_ms: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct GitCloneFailedProps {
-    pub url:    String,
     pub error:  String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub causes: Vec<String>,

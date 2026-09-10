@@ -17,7 +17,7 @@ pub use sandbox_driver_testing::{ScriptedExec, ScriptedSandbox, ScriptedStdioPro
 use tokio::io::DuplexStream;
 
 use crate::driver_sandbox::RunSandbox;
-use crate::sandbox::{ExecResult, SandboxEventCallback, SandboxFile, StderrCollector};
+use crate::sandbox::{ExecResult, SandboxFile, StderrCollector};
 
 // --- MockSandbox ---
 
@@ -45,7 +45,6 @@ pub struct MockSandbox {
     /// Fails `activate` after the sandbox is built, as a sandbox whose
     /// Bash contract broke would.
     pub activate_error:      Option<String>,
-    pub event_callback:      Option<SandboxEventCallback>,
     pub stdio_process:       Option<MockStdioProcess>,
     pub stdio_process_error: Option<String>,
     /// Lines every grep returns, as `path:line:content`.
@@ -85,7 +84,6 @@ impl Default for MockSandbox {
             platform_str:        "darwin",
             os_version_str:      "Darwin 24.0.0".into(),
             activate_error:      None,
-            event_callback:      None,
             stdio_process:       None,
             stdio_process_error: None,
             grep_results:        Vec::new(),
@@ -166,15 +164,12 @@ impl MockSandbox {
             let driver = Arc::new(self.build_driver());
             // An isolated provider: explicit environment passes as the
             // caller composed it, as it does for Docker and Daytona runs.
-            let mut run = RunSandbox::new_with_platform(
+            let run = RunSandbox::new_with_platform(
                 SandboxProviderKind::DOCKER,
                 Arc::clone(&driver) as Arc<dyn sandbox_driver::Sandbox>,
                 self.platform_str,
                 self.os_version_str.clone(),
             );
-            if let Some(callback) = &self.event_callback {
-                run.set_event_callback(Arc::clone(callback));
-            }
             Built {
                 run: Arc::new(run),
                 driver,

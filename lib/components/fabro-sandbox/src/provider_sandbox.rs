@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use fabro_github::GitHubCredentials;
 use fabro_types::{BundledProvider, RunId, SandboxProviderKind};
-use sandbox_driver::{OwnedProvider, SandboxId, SandboxProvider};
+use sandbox_driver::{EventContext, OwnedProvider, SandboxId, SandboxProvider};
 
 use crate::driver::{ProviderAccess, connect_provider};
 use crate::driver_sandbox::{LayoutSource, RepoWorkspace, RunSandbox};
@@ -53,8 +53,8 @@ pub async fn provider_sandbox(
     let base = options::base_spec(&options, run_id.as_ref());
     Ok(match kind.bundled() {
         Some(BundledProvider::Docker) => {
-            let (spec, image) = docker::overlay(base, &options);
-            RunSandbox::pending(kind, provider, spec, Some(image), workspace)
+            let (spec, _image) = docker::overlay(base, &options);
+            RunSandbox::pending(kind, provider, spec, workspace)
         }
         Some(BundledProvider::Daytona) => {
             let credentials = access
@@ -78,12 +78,13 @@ pub async fn provider_sandbox(
         None => {
             let mut spec = base;
             spec.network = options::supported_network(spec.network, provider.capabilities());
-            RunSandbox::pending(kind, provider, spec, options.image.clone(), workspace)
+            RunSandbox::pending(kind, provider, spec, workspace)
         }
     })
 }
 
-/// Reattach to a run's sandbox on `kind` by its persisted id.
+/// Reattach to a run's sandbox on `kind` by its persisted id. The driver
+/// reports the sandbox's lifecycle from here on through `events`.
 ///
 /// The sandbox must carry fabro's managed label and, when a run id is
 /// known, the matching run label: the provider shares its backend with
@@ -98,11 +99,12 @@ pub async fn attach_provider_sandbox(
     working_directory: String,
     clone_origin_url: Option<String>,
     run_id: Option<RunId>,
+    events: Option<EventContext>,
 ) -> crate::Result<RunSandbox> {
     let provider = connect(&kind, access, run_id.as_ref()).await?;
     let id = SandboxId::try_new(sandbox_id)
         .map_err(|error| crate::Error::context(format!("Invalid {kind} sandbox id"), error))?;
-    let handle = provider.attach(&id, None).await.map_err(|error| {
+    let handle = provider.attach(&id, events).await.map_err(|error| {
         crate::Error::context(
             format!("Failed to reconnect {kind} sandbox '{sandbox_id}'"),
             error,

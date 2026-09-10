@@ -16,7 +16,7 @@ use async_trait::async_trait;
 use fabro_types::settings::server::ServerSandboxProviderSettings;
 use fabro_types::{RunId, SandboxProviderKind};
 use sandbox_driver::{
-    HealthStatus, LifecycleTimers, Resources, SandboxProvider, SandboxSource,
+    EventContext, HealthStatus, LifecycleTimers, Resources, SandboxProvider, SandboxSource,
     SandboxSpec as DriverSpec, SnapshotId, SnapshotSource, SnapshotSpec,
 };
 use tokio::time;
@@ -25,7 +25,6 @@ pub use crate::driver::DaytonaCredentials;
 use crate::driver::{ProviderConnectOptions, connect_provider};
 use crate::driver_sandbox::{CreatePlan, PreparedCreate, WorkspaceLayout};
 use crate::options::SandboxOptions;
-use crate::sandbox::SandboxEvent;
 
 pub(crate) const WORKING_DIRECTORY: &str = "/home/daytona/workspace";
 pub(crate) const REPOS_ROOT: &str = "/home/daytona/repos";
@@ -332,6 +331,7 @@ async fn ensure_snapshot(
     provider: &dyn SandboxProvider,
     api_key: &str,
     inputs: &SnapshotInputs<'_>,
+    events: Option<EventContext>,
 ) -> crate::Result<(SnapshotId, String)> {
     let name = snapshot_identity::snapshot_name(api_key, inputs)?;
     let snapshots = provider.snapshots().ok_or_else(|| {
@@ -341,7 +341,7 @@ async fn ensure_snapshot(
         .ensure(
             &snapshot_spec(&name, inputs),
             DAYTONA_SNAPSHOT_ACTIVE_TIMEOUT,
-            None,
+            events,
         )
         .await
         .map_err(|error| {
@@ -402,38 +402,12 @@ pub(crate) fn create_plan(
 
 #[async_trait]
 impl CreatePlan for DaytonaCreatePlan {
-    async fn prepare(
-        &self,
-        emit: &(dyn Fn(SandboxEvent) + Send + Sync),
-    ) -> crate::Result<PreparedCreate> {
+    async fn prepare(&self, events: Option<EventContext>) -> crate::Result<PreparedCreate> {
         let (snapshot_id, snapshot_name) = match snapshot_inputs(&self.options) {
+            // The driver finds, activates, builds, or waits for the snapshot
+            // as needed, and reports that work through `events`.
             Some(inputs) => {
-                let started = time::Instant::now();
-                // The driver finds, activates, builds, or waits for the
-                // snapshot as needed; fabro reports the step around it.
-                let name = snapshot_identity::snapshot_name(&self.api_key, &inputs)?;
-                emit(SandboxEvent::SnapshotCreating { name });
-                let result = ensure_snapshot(self.provider.as_ref(), &self.api_key, &inputs).await;
-                match result {
-                    Ok((id, name)) => {
-                        emit(SandboxEvent::SnapshotReady {
-                            name:        name.clone(),
-                            duration_ms: u64::try_from(started.elapsed().as_millis())
-                                .unwrap_or(u64::MAX),
-                        });
-                        (id, name)
-                    }
-                    Err(error) => {
-                        let name = snapshot_identity::snapshot_name(&self.api_key, &inputs)
-                            .unwrap_or_default();
-                        emit(SandboxEvent::SnapshotFailed {
-                            name,
-                            error: error.to_string(),
-                            causes: error.causes(),
-                        });
-                        return Err(error);
-                    }
-                }
+                ensure_snapshot(self.provider.as_ref(), &self.api_key, &inputs, events).await?
             }
             None => (
                 SnapshotId::try_new(DEFAULT_SNAPSHOT).expect("the default snapshot name is valid"),
@@ -447,7 +421,6 @@ impl CreatePlan for DaytonaCreatePlan {
                 self.run_id.as_ref(),
                 &snapshot_id,
             ),
-            source:   Some(snapshot_name.clone()),
             snapshot: Some(snapshot_name),
         })
     }
@@ -804,13 +777,7 @@ mod wire_gate {
         let snapshot = SnapshotId::try_new(DEFAULT_SNAPSHOT).expect("snapshot id");
         let options = SandboxOptions::default();
         let spec = overlay(base_spec(&options, None), &options, None, &snapshot);
-        let sandbox = RunSandbox::pending(
-            SandboxProviderKind::DAYTONA,
-            remote,
-            spec,
-            Some(DEFAULT_SNAPSHOT.to_string()),
-            workspace,
-        );
+        let sandbox = RunSandbox::pending(SandboxProviderKind::DAYTONA, remote, spec, workspace);
         sandbox
             .initialize()
             .await

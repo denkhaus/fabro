@@ -53,8 +53,6 @@ pub(super) enum ProgressEvent {
         provider:    String,
         duration_ms: u64,
         name:        Option<String>,
-        cpu:         Option<f64>,
-        memory:      Option<f64>,
         url:         Option<String>,
     },
     SandboxFailed {
@@ -255,8 +253,6 @@ pub(super) fn from_run_event(stored: &RunEvent) -> Option<ProgressEvent> {
             provider:    props.provider.clone(),
             duration_ms: props.duration_ms,
             name:        props.name.clone(),
-            cpu:         props.cpu,
-            memory:      props.memory,
             url:         props.url.clone(),
         }),
         EventBody::SandboxFailed(props) => Some(ProgressEvent::SandboxFailed {
@@ -538,7 +534,7 @@ fn display_value(value: &Value) -> Option<String> {
 mod tests {
     use fabro_agent::AgentEvent;
     use fabro_types::{MetadataSnapshotFailureKind, MetadataSnapshotPhase, fixtures};
-    use fabro_workflow::event::{Event, RunNoticeCode, to_run_event};
+    use fabro_workflow::event::{Event, RunNoticeCode, SandboxLifecycle, to_run_event};
 
     use super::*;
 
@@ -748,12 +744,10 @@ mod tests {
     #[test]
     fn round_trip_sandbox_ready() {
         let event = Event::Sandbox {
-            event: fabro_agent::SandboxEvent::Ready {
+            event: SandboxLifecycle::Ready {
                 provider:    "daytona".into(),
                 duration_ms: 2500,
                 name:        Some("sandbox-1".into()),
-                cpu:         Some(4.0),
-                memory:      Some(8.0),
                 url:         Some("https://example.test".into()),
             },
         };
@@ -774,7 +768,7 @@ mod tests {
     #[test]
     fn round_trip_sandbox_failed() {
         let event = Event::Sandbox {
-            event: fabro_agent::SandboxEvent::InitializeFailed {
+            event: SandboxLifecycle::InitializeFailed {
                 provider:    "docker".into(),
                 error:       "pull failed".into(),
                 causes:      Vec::new(),
@@ -794,23 +788,23 @@ mod tests {
     #[test]
     fn round_trip_snapshot_lifecycle_events() {
         let pulling = to_run_event(&fixtures::RUN_1, &Event::Sandbox {
-            event: fabro_agent::SandboxEvent::SnapshotPulling {
+            event: SandboxLifecycle::SnapshotPulling {
                 name: "buildpack-deps:noble".into(),
             },
         });
         let creating = to_run_event(&fixtures::RUN_1, &Event::Sandbox {
-            event: fabro_agent::SandboxEvent::SnapshotCreating {
+            event: SandboxLifecycle::SnapshotCreating {
                 name: "fabro-v9".into(),
             },
         });
         let ready = to_run_event(&fixtures::RUN_1, &Event::Sandbox {
-            event: fabro_agent::SandboxEvent::SnapshotReady {
+            event: SandboxLifecycle::SnapshotReady {
                 name:        "buildpack-deps:noble".into(),
                 duration_ms: 1200,
             },
         });
         let failed = to_run_event(&fixtures::RUN_1, &Event::Sandbox {
-            event: fabro_agent::SandboxEvent::SnapshotFailed {
+            event: SandboxLifecycle::SnapshotFailed {
                 name:   "fabro-v9".into(),
                 error:  "build failed".into(),
                 causes: Vec::new(),

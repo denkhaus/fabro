@@ -57,9 +57,8 @@ pub use question_tools::{
 pub use sandbox::{
     CommandOutputCallback, DirEntry, ExecResult, ExecStreamingRequest, ExecStreamingResult,
     FileKind, GrepMatch, GrepOptions, OutputCaptureStats, RefreshOutcome, RemoteCredentialAction,
-    RunSandbox, SandboxEvent, SandboxEventCallback, SandboxFile, StderrCollector, StdioProcess,
-    StdioProcessHandle, TokenProvenance, TokenSnapshot, WalkOptions, format_lines_numbered,
-    shell_quote,
+    RunSandbox, SandboxFile, StderrCollector, StdioProcess, StdioProcessHandle, TokenProvenance,
+    TokenSnapshot, WalkOptions, format_lines_numbered, shell_quote,
 };
 pub use session::{
     CompletionCoordinator, Session, SessionControlHandle, SessionInputTiming,

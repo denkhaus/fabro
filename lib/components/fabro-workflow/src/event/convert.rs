@@ -2,12 +2,12 @@ use ::fabro_types::{
     EventBody, RunControlAction, RunEvent, RunId, StageOutcome, run_event as fabro_types,
 };
 use chrono::Utc;
-use fabro_agent::{AgentEvent, SandboxEvent, SkillActivationSource};
+use fabro_agent::{AgentEvent, SkillActivationSource};
 use fabro_model::UsdMicros;
 use uuid::Uuid;
 
-use super::Event;
 use super::stored_fields::stored_event_fields;
+use super::{Event, SandboxLifecycle};
 use crate::outcome::billed_token_counts_from_llm;
 use crate::stage_scope::StageScope;
 
@@ -974,27 +974,23 @@ fn event_body_from_event(event: &Event) -> EventBody {
             duration_ms:    *duration_ms,
         }),
         Event::Sandbox { event } => match event {
-            SandboxEvent::Initializing { provider } => {
+            SandboxLifecycle::Initializing { provider } => {
                 EventBody::SandboxInitializing(fabro_types::SandboxInitializingProps {
                     provider: provider.clone(),
                 })
             }
-            SandboxEvent::Ready {
+            SandboxLifecycle::Ready {
                 provider,
                 duration_ms,
                 name,
-                cpu,
-                memory,
                 url,
             } => EventBody::SandboxReady(fabro_types::SandboxReadyProps {
                 provider:    provider.clone(),
                 duration_ms: *duration_ms,
                 name:        name.clone(),
-                cpu:         *cpu,
-                memory:      *memory,
                 url:         url.clone(),
             }),
-            SandboxEvent::InitializeFailed {
+            SandboxLifecycle::InitializeFailed {
                 provider,
                 error,
                 causes,
@@ -1005,40 +1001,19 @@ fn event_body_from_event(event: &Event) -> EventBody {
                 causes:      causes.clone(),
                 duration_ms: *duration_ms,
             }),
-            SandboxEvent::CleanupStarted { provider } => {
-                EventBody::SandboxCleanupStarted(fabro_types::SandboxCleanupStartedProps {
-                    provider: provider.clone(),
-                })
-            }
-            SandboxEvent::CleanupCompleted {
-                provider,
-                duration_ms,
-            } => EventBody::SandboxCleanupCompleted(fabro_types::SandboxCleanupCompletedProps {
-                provider:    provider.clone(),
-                duration_ms: *duration_ms,
-            }),
-            SandboxEvent::CleanupFailed {
-                provider,
-                error,
-                causes,
-            } => EventBody::SandboxCleanupFailed(fabro_types::SandboxCleanupFailedProps {
-                provider: provider.clone(),
-                error:    error.clone(),
-                causes:   causes.clone(),
-            }),
-            SandboxEvent::StartStarted { provider } => {
+            SandboxLifecycle::StartStarted { provider } => {
                 EventBody::SandboxStartStarted(fabro_types::SandboxStartStartedProps {
                     provider: provider.clone(),
                 })
             }
-            SandboxEvent::StartCompleted {
+            SandboxLifecycle::StartCompleted {
                 provider,
                 duration_ms,
             } => EventBody::SandboxStartCompleted(fabro_types::SandboxStartCompletedProps {
                 provider:    provider.clone(),
                 duration_ms: *duration_ms,
             }),
-            SandboxEvent::StartFailed {
+            SandboxLifecycle::StartFailed {
                 provider,
                 error,
                 causes,
@@ -1047,19 +1022,19 @@ fn event_body_from_event(event: &Event) -> EventBody {
                 error:    error.clone(),
                 causes:   causes.clone(),
             }),
-            SandboxEvent::StopStarted { provider } => {
+            SandboxLifecycle::StopStarted { provider } => {
                 EventBody::SandboxStopStarted(fabro_types::SandboxStopStartedProps {
                     provider: provider.clone(),
                 })
             }
-            SandboxEvent::StopCompleted {
+            SandboxLifecycle::StopCompleted {
                 provider,
                 duration_ms,
             } => EventBody::SandboxStopCompleted(fabro_types::SandboxStopCompletedProps {
                 provider:    provider.clone(),
                 duration_ms: *duration_ms,
             }),
-            SandboxEvent::StopFailed {
+            SandboxLifecycle::StopFailed {
                 provider,
                 error,
                 causes,
@@ -1068,19 +1043,19 @@ fn event_body_from_event(event: &Event) -> EventBody {
                 error:    error.clone(),
                 causes:   causes.clone(),
             }),
-            SandboxEvent::DeleteStarted { provider } => {
+            SandboxLifecycle::DeleteStarted { provider } => {
                 EventBody::SandboxDeleteStarted(fabro_types::SandboxDeleteStartedProps {
                     provider: provider.clone(),
                 })
             }
-            SandboxEvent::DeleteCompleted {
+            SandboxLifecycle::DeleteCompleted {
                 provider,
                 duration_ms,
             } => EventBody::SandboxDeleteCompleted(fabro_types::SandboxDeleteCompletedProps {
                 provider:    provider.clone(),
                 duration_ms: *duration_ms,
             }),
-            SandboxEvent::DeleteFailed {
+            SandboxLifecycle::DeleteFailed {
                 provider,
                 error,
                 causes,
@@ -1089,19 +1064,19 @@ fn event_body_from_event(event: &Event) -> EventBody {
                 error:    error.clone(),
                 causes:   causes.clone(),
             }),
-            SandboxEvent::SnapshotPulling { name } => {
+            SandboxLifecycle::SnapshotPulling { name } => {
                 EventBody::SnapshotPulling(fabro_types::SnapshotNameProps { name: name.clone() })
             }
-            SandboxEvent::SnapshotCreating { name } => {
+            SandboxLifecycle::SnapshotCreating { name } => {
                 EventBody::SnapshotCreating(fabro_types::SnapshotNameProps { name: name.clone() })
             }
-            SandboxEvent::SnapshotReady { name, duration_ms } => {
+            SandboxLifecycle::SnapshotReady { name, duration_ms } => {
                 EventBody::SnapshotReady(fabro_types::SnapshotCompletedProps {
                     name:        name.clone(),
                     duration_ms: *duration_ms,
                 })
             }
-            SandboxEvent::SnapshotFailed {
+            SandboxLifecycle::SnapshotFailed {
                 name,
                 error,
                 causes,
@@ -1110,25 +1085,6 @@ fn event_body_from_event(event: &Event) -> EventBody {
                 error:  error.clone(),
                 causes: causes.clone(),
             }),
-            SandboxEvent::GitCloneStarted { url, branch } => {
-                EventBody::GitCloneStarted(fabro_types::GitCloneStartedProps {
-                    url:    url.clone(),
-                    branch: branch.clone(),
-                })
-            }
-            SandboxEvent::GitCloneCompleted { url, duration_ms } => {
-                EventBody::GitCloneCompleted(fabro_types::GitCloneCompletedProps {
-                    url:         url.clone(),
-                    duration_ms: *duration_ms,
-                })
-            }
-            SandboxEvent::GitCloneFailed { url, error, causes } => {
-                EventBody::GitCloneFailed(fabro_types::GitCloneFailedProps {
-                    url:    url.clone(),
-                    error:  error.clone(),
-                    causes: causes.clone(),
-                })
-            }
         },
         Event::SandboxInitialized {
             working_directory,
@@ -1469,8 +1425,7 @@ mod tests {
     };
     use chrono::Utc;
     use fabro_agent::{
-        AgentEvent, McpToolSummary, MemoryFileSummary, SandboxEvent, SkillActivationSource,
-        SkillSummary,
+        AgentEvent, McpToolSummary, MemoryFileSummary, SkillActivationSource, SkillSummary,
     };
     use fabro_llm::types::TokenCounts as LlmTokenCounts;
     use fabro_model::{ModelRef, ProviderId};
@@ -1707,12 +1662,10 @@ mod tests {
     #[test]
     fn run_event_sandbox_event_keeps_properties_nested() {
         let stored = to_run_event(&fixtures::RUN_5, &Event::Sandbox {
-            event: SandboxEvent::Ready {
+            event: SandboxLifecycle::Ready {
                 provider:    "daytona".to_string(),
                 duration_ms: 2500,
                 name:        Some("sandbox-1".to_string()),
-                cpu:         Some(4.0),
-                memory:      Some(8.0),
                 url:         Some("https://example.test".to_string()),
             },
         });
@@ -1727,13 +1680,13 @@ mod tests {
     #[test]
     fn run_event_sandbox_stop_and_delete_use_distinct_event_names() {
         let stopped = to_run_event(&fixtures::RUN_5, &Event::Sandbox {
-            event: SandboxEvent::StopCompleted {
+            event: SandboxLifecycle::StopCompleted {
                 provider:    "docker".to_string(),
                 duration_ms: 10,
             },
         });
         let deleted = to_run_event(&fixtures::RUN_5, &Event::Sandbox {
-            event: SandboxEvent::DeleteCompleted {
+            event: SandboxLifecycle::DeleteCompleted {
                 provider:    "docker".to_string(),
                 duration_ms: 20,
             },
@@ -1746,7 +1699,7 @@ mod tests {
     #[test]
     fn run_event_sandbox_failure_serializes_causes() {
         let stored = to_run_event(&fixtures::RUN_5, &Event::Sandbox {
-            event: SandboxEvent::InitializeFailed {
+            event: SandboxLifecycle::InitializeFailed {
                 provider:    "docker".to_string(),
                 error:       "Failed to pull Docker image buildpack-deps:noble".to_string(),
                 causes:      vec!["connection refused".to_string()],

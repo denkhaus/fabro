@@ -284,12 +284,6 @@ pub enum EventBody {
     SandboxReady(SandboxReadyProps),
     #[serde(rename = "sandbox.failed")]
     SandboxFailed(SandboxFailedProps),
-    #[serde(rename = "sandbox.cleanup.started")]
-    SandboxCleanupStarted(SandboxCleanupStartedProps),
-    #[serde(rename = "sandbox.cleanup.completed")]
-    SandboxCleanupCompleted(SandboxCleanupCompletedProps),
-    #[serde(rename = "sandbox.cleanup.failed")]
-    SandboxCleanupFailed(SandboxCleanupFailedProps),
     #[serde(rename = "sandbox.start.started")]
     SandboxStartStarted(SandboxStartStartedProps),
     #[serde(rename = "sandbox.start.completed")]
@@ -316,12 +310,6 @@ pub enum EventBody {
     SnapshotReady(SnapshotCompletedProps),
     #[serde(rename = "sandbox.snapshot.failed")]
     SnapshotFailed(SnapshotFailedProps),
-    #[serde(rename = "sandbox.git.started")]
-    GitCloneStarted(GitCloneStartedProps),
-    #[serde(rename = "sandbox.git.completed")]
-    GitCloneCompleted(GitCloneCompletedProps),
-    #[serde(rename = "sandbox.git.failed")]
-    GitCloneFailed(GitCloneFailedProps),
     #[serde(rename = "sandbox.initialized")]
     SandboxInitialized(SandboxInitializedProps),
     #[serde(rename = "setup.started")]
@@ -539,9 +527,6 @@ impl EventBody {
             Self::SandboxInitializing(_) => "sandbox.initializing",
             Self::SandboxReady(_) => "sandbox.ready",
             Self::SandboxFailed(_) => "sandbox.failed",
-            Self::SandboxCleanupStarted(_) => "sandbox.cleanup.started",
-            Self::SandboxCleanupCompleted(_) => "sandbox.cleanup.completed",
-            Self::SandboxCleanupFailed(_) => "sandbox.cleanup.failed",
             Self::SandboxStartStarted(_) => "sandbox.start.started",
             Self::SandboxStartCompleted(_) => "sandbox.start.completed",
             Self::SandboxStartFailed(_) => "sandbox.start.failed",
@@ -555,9 +540,6 @@ impl EventBody {
             Self::SnapshotCreating(_) => "sandbox.snapshot.creating",
             Self::SnapshotReady(_) => "sandbox.snapshot.ready",
             Self::SnapshotFailed(_) => "sandbox.snapshot.failed",
-            Self::GitCloneStarted(_) => "sandbox.git.started",
-            Self::GitCloneCompleted(_) => "sandbox.git.completed",
-            Self::GitCloneFailed(_) => "sandbox.git.failed",
             Self::SandboxInitialized(_) => "sandbox.initialized",
             Self::SetupStarted(_) => "setup.started",
             Self::SetupCommandStarted(_) => "setup.command.started",

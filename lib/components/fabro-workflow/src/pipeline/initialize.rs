@@ -12,18 +12,20 @@ use fabro_graphviz::graph;
 use fabro_hooks::{HookContext, HookDecision, HookEvent, HookExecutionContext, HookRunner};
 use fabro_model::Catalog;
 use fabro_sandbox::{
-    DaytonaCredentials, GitSetupIntent, ProviderAccess, SandboxEventCallback, SandboxSpec,
-    reconnect_for_run_with_callback, shell_quote,
+    DaytonaCredentials, GitSetupIntent, ProviderAccess, SandboxSpec, reconnect_for_run_with_events,
+    shell_quote,
 };
 use fabro_static::EnvVars;
 use fabro_types::RunSandboxKind;
+use fabro_util::time::elapsed_ms;
 use fabro_vault::Vault;
+use sandbox_driver::{CorrelationId, EventContext};
 use tokio::runtime::Handle;
 use tokio::sync::RwLock as AsyncRwLock;
 
 use super::types::{InitOptions, Initialized, LlmSpec, Persisted, SandboxEnvSpec};
 use crate::error::Error;
-use crate::event::{Event, RunNoticeCode, RunNoticeLevel};
+use crate::event::{Event, RunNoticeCode, RunNoticeLevel, SandboxEventBridge, SandboxLifecycle};
 use crate::git::GitAuthor;
 use crate::git_bridge;
 use crate::handler::llm::{AgentAcpBackend, AgentApiBackend, BackendRouter, routing};
@@ -396,12 +398,15 @@ pub async fn initialize(
         );
     }
 
-    let sandbox_event_callback: SandboxEventCallback = {
-        let emitter = Arc::clone(&options.emitter);
-        Arc::new(move |event| {
-            emitter.emit(&Event::Sandbox { event });
-        })
-    };
+    // The driver reports what it does to the run's sandbox; the bridge
+    // records the operations fabro keeps as run events.
+    let provider_name = options.sandbox.provider_name();
+    let sandbox_events = EventContext::new(Arc::new(SandboxEventBridge::new(
+        Arc::clone(&options.emitter),
+        provider_name.clone(),
+        options.sandbox.image(),
+    )))
+    .correlation_id(CorrelationId::new(options.run_options.run_id.to_string()));
     let attach_instance = if is_resume {
         let record = options
             .run_store
@@ -443,11 +448,11 @@ pub async fn initialize(
                     DaytonaCredentials::from_api_key(api_key.to_string(), process_env_var)
                 }),
         };
-        let sandbox = reconnect_for_run_with_callback(
+        let sandbox = reconnect_for_run_with_events(
             &instance,
             &access,
             Some(options.run_options.run_id),
-            Some(Arc::clone(&sandbox_event_callback)),
+            Some(sandbox_events.clone()),
         )
         .await
         .map_err(|err| Error::engine_with_anyhow("Failed to reconnect sandbox for resume", err))?;
@@ -455,7 +460,7 @@ pub async fn initialize(
     } else {
         options
             .sandbox
-            .build(Some(Arc::clone(&sandbox_event_callback)))
+            .build(Some(sandbox_events.clone()))
             .await
             .map_err(|e| Error::engine_with_anyhow("Failed to build sandbox", e))?
     };
@@ -477,10 +482,34 @@ pub async fn initialize(
             .await
             .map_err(|e| Error::engine_with_source("Failed to start sandbox", e))?;
     } else {
-        sandbox
-            .initialize()
-            .await
-            .map_err(|e| Error::engine_with_source("Failed to initialize sandbox", e))?;
+        options.emitter.emit(&Event::Sandbox {
+            event: SandboxLifecycle::Initializing {
+                provider: provider_name.clone(),
+            },
+        });
+        let started = Instant::now();
+        if let Err(error) = sandbox.initialize().await {
+            options.emitter.emit(&Event::Sandbox {
+                event: SandboxLifecycle::InitializeFailed {
+                    provider:    provider_name.clone(),
+                    error:       error.to_string(),
+                    causes:      error.causes(),
+                    duration_ms: elapsed_ms(started),
+                },
+            });
+            return Err(Error::engine_with_source(
+                "Failed to initialize sandbox",
+                error,
+            ));
+        }
+        options.emitter.emit(&Event::Sandbox {
+            event: SandboxLifecycle::Ready {
+                provider:    provider_name.clone(),
+                duration_ms: elapsed_ms(started),
+                name:        Some(sandbox.sandbox_info()).filter(|name| !name.is_empty()),
+                url:         sandbox.console_url().await,
+            },
+        });
     }
 
     let locations = RunLocations::for_sandbox(host_source_dir, sandbox.as_ref(), run_dir.clone());

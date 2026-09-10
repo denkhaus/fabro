@@ -58,15 +58,14 @@ pub use provider::{
 pub use provider_sandbox::{attach_provider_sandbox, provider_sandbox};
 pub use push_credentials::RefreshErrorKind;
 pub use reconnect::{
-    reconnect, reconnect_driver_for_run, reconnect_for_run, reconnect_for_run_with_callback,
+    reconnect, reconnect_driver_for_run, reconnect_for_run, reconnect_for_run_with_events,
 };
 pub use sandbox::{
     CommandOutputCallback, DEFAULT_EXEC_OUTPUT_TAIL_BYTES, ExecResult, ExecStreamingRequest,
     ExecStreamingResult, GitRunInfo, GitSetupIntent, OutputCaptureStats, PushAttempt, PushError,
-    PushReport, RefreshOutcome, RemoteCredentialAction, SandboxEvent, SandboxEventCallback,
-    SandboxFile, SandboxWorkspaceLayout, StderrCollector, StdioProcess, StdioProcessHandle,
-    StdioProcessTermination, format_lines_numbered, redacted_output_tail, setup_git_via_exec,
-    shell_quote,
+    PushReport, RefreshOutcome, RemoteCredentialAction, SandboxFile, SandboxWorkspaceLayout,
+    StderrCollector, StdioProcess, StdioProcessHandle, StdioProcessTermination,
+    format_lines_numbered, redacted_output_tail, setup_git_via_exec, shell_quote,
 };
 /// Driver types a run sandbox's file and search operations speak, and the
 /// network policy a [`SandboxOptions`] asks for, re-exported so consumers

@@ -7,13 +7,14 @@
 //! the handle or whether it runs in-process or over the plugin wire.
 //!
 //! What stays fabro's: the exec ladder, the credential filter on explicit
-//! environment variables, the lifecycle events fabro records on a run, and
-//! the run-facing conventions (`platform` names, grep line format, walk
-//! results relative to a caller-declared base).
+//! environment variables, and the run-facing conventions (`platform` names,
+//! grep line format, walk results relative to a caller-declared base). The
+//! driver reports lifecycle events itself, through the [`EventContext`] a
+//! sandbox is created or attached with.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock, PoisonError};
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -22,10 +23,9 @@ use fabro_github::token_source::InstallationTokenSource;
 use fabro_types::SandboxProviderKind;
 use fabro_util::workspace_glob::WorkspaceGlob;
 use sandbox_driver::{
-    Action, DirEntry, Event, EventBody, EventContext, EventObserver, FileKind, GrepMatch,
-    GrepOptions, LifecycleTimers, ProgressCode, PtyOptions, PtySize, Sandbox as DriverHandle,
-    SandboxProvider as DriverProvider, SandboxSource, SandboxSpec as DriverSpec, SandboxState,
-    Search as _, WaitOptions, WalkOptions,
+    DirEntry, EventContext, FileKind, GrepMatch, GrepOptions, LifecycleTimers, PtyOptions, PtySize,
+    Sandbox as DriverHandle, SandboxProvider as DriverProvider, SandboxSource,
+    SandboxSpec as DriverSpec, SandboxState, Search as _, WaitOptions, WalkOptions,
 };
 use sandbox_driver_host::HostProvider;
 use tokio::fs;
@@ -47,6 +47,14 @@ use crate::{GitRunInfo, GitSetupIntent, RefreshOutcome, RetryPlan};
 /// later process rebuilds the handle by calling this again with the
 /// persisted working directory rather than by id.
 pub async fn local_sandbox(working_directory: impl Into<PathBuf>) -> crate::Result<RunSandbox> {
+    local_sandbox_with_events(working_directory, None).await
+}
+
+/// [`local_sandbox`] whose driver lifecycle events reach `events`.
+pub async fn local_sandbox_with_events(
+    working_directory: impl Into<PathBuf>,
+    events: Option<EventContext>,
+) -> crate::Result<RunSandbox> {
     let working_directory: PathBuf = working_directory.into();
     fs::create_dir_all(&working_directory)
         .await
@@ -55,7 +63,7 @@ pub async fn local_sandbox(working_directory: impl Into<PathBuf>) -> crate::Resu
     let spec = DriverSpec::new(SandboxSource::HostDirectory)
         .working_directory(working_directory.display().to_string());
     let handle = provider
-        .create(&spec, None)
+        .create(&spec, events)
         .await
         .map_err(|error| crate::Error::context("Failed to create local sandbox", error))?;
     let sandbox = RunSandbox::new(SandboxProviderKind::LOCAL, handle);
@@ -65,7 +73,7 @@ pub async fn local_sandbox(working_directory: impl Into<PathBuf>) -> crate::Resu
 use crate::exec::{ExplicitEnvPolicy, SandboxExec};
 use crate::sandbox::{
     self, ExecResult, ExecStreamingRequest, ExecStreamingResult, PushError, PushReport,
-    SandboxEvent, SandboxEventCallback, SandboxFile, SandboxWorkspaceLayout, StdioProcess,
+    SandboxFile, SandboxWorkspaceLayout, StdioProcess,
 };
 
 /// Where a clone-based provider puts its files: the run works under
@@ -280,22 +288,17 @@ impl LayoutSource {
 #[derive(Clone)]
 pub(crate) struct PreparedCreate {
     pub(crate) spec:     DriverSpec,
-    /// The image or snapshot named by the spec, for pull progress events.
-    pub(crate) source:   Option<String>,
     /// The provider snapshot the sandbox is created from, when the provider
     /// has that concept; recorded on the run.
     pub(crate) snapshot: Option<String>,
 }
 
 /// Settles a create's inputs right before the provider call. A plan may
-/// build provider resources first (a Daytona snapshot) and report progress
-/// through fabro's events.
+/// build provider resources first (a Daytona snapshot); the driver reports
+/// that work through `events`.
 #[async_trait]
 pub(crate) trait CreatePlan: Send + Sync {
-    async fn prepare(
-        &self,
-        emit: &(dyn Fn(SandboxEvent) + Send + Sync),
-    ) -> crate::Result<PreparedCreate>;
+    async fn prepare(&self, events: Option<EventContext>) -> crate::Result<PreparedCreate>;
 }
 
 /// A create whose spec is known up front.
@@ -303,10 +306,7 @@ struct SpecPlan(PreparedCreate);
 
 #[async_trait]
 impl CreatePlan for SpecPlan {
-    async fn prepare(
-        &self,
-        _emit: &(dyn Fn(SandboxEvent) + Send + Sync),
-    ) -> crate::Result<PreparedCreate> {
+    async fn prepare(&self, _events: Option<EventContext>) -> crate::Result<PreparedCreate> {
         Ok(self.0.clone())
     }
 }
@@ -320,19 +320,22 @@ struct PendingCreate {
 
 /// A fabro sandbox backed by a sandbox-driver handle.
 pub struct RunSandbox {
-    kind:           SandboxProviderKind,
+    kind:       SandboxProviderKind,
     /// Set at construction for an existing sandbox, at `initialize` for a
     /// pending one.
-    handle:         OnceCell<Arc<dyn DriverHandle>>,
-    pending:        Option<PendingCreate>,
-    workspace:      Option<RepoWorkspace>,
-    env_policy:     ExplicitEnvPolicy,
-    event_callback: Option<SandboxEventCallback>,
+    handle:     OnceCell<Arc<dyn DriverHandle>>,
+    pending:    Option<PendingCreate>,
+    workspace:  Option<RepoWorkspace>,
+    env_policy: ExplicitEnvPolicy,
+    /// Where the driver reports the lifecycle of a sandbox this creates.
+    /// Set before `initialize` on a pending sandbox; an existing handle
+    /// already carries the context it was created or attached with.
+    events:     Option<EventContext>,
     /// `(platform, os_version)` learned from the sandbox at initialize or
     /// start; unknown until then.
-    platform:       OnceLock<(String, String)>,
+    platform:   OnceLock<(String, String)>,
     /// The provider snapshot the sandbox was created from, when known.
-    snapshot:       OnceLock<String>,
+    snapshot:   OnceLock<String>,
 }
 
 impl RunSandbox {
@@ -366,7 +369,6 @@ impl RunSandbox {
         kind: SandboxProviderKind,
         provider: Arc<dyn DriverProvider>,
         spec: DriverSpec,
-        source: Option<String>,
         workspace: RepoWorkspace,
     ) -> Self {
         Self::pending_with_plan(
@@ -374,7 +376,6 @@ impl RunSandbox {
             provider,
             Box::new(SpecPlan(PreparedCreate {
                 spec,
-                source,
                 snapshot: None,
             })),
             workspace,
@@ -425,14 +426,17 @@ impl RunSandbox {
             pending: None,
             workspace: None,
             env_policy,
-            event_callback: None,
+            events: None,
             platform: OnceLock::new(),
             snapshot: OnceLock::new(),
         }
     }
 
-    pub fn set_event_callback(&mut self, cb: SandboxEventCallback) {
-        self.event_callback = Some(cb);
+    /// Where the driver reports this sandbox's lifecycle once `initialize`
+    /// creates it. An existing handle reports through the context it was
+    /// created or attached with, so this only matters for a pending sandbox.
+    pub fn set_events(&mut self, events: EventContext) {
+        self.events = Some(events);
     }
 
     /// The provider kind fabro persists for this sandbox.
@@ -479,17 +483,6 @@ impl RunSandbox {
         }
     }
 
-    fn provider_name(&self) -> String {
-        self.kind.to_string()
-    }
-
-    fn emit(&self, event: SandboxEvent) {
-        event.trace();
-        if let Some(cb) = &self.event_callback {
-            cb(event);
-        }
-    }
-
     fn search(&self) -> crate::Result<sandbox_driver::SearchFacet<'_>> {
         self.handle()?.search().ok_or_else(|| {
             crate::Error::message(format!(
@@ -507,17 +500,13 @@ impl RunSandbox {
         let Some(pending) = &self.pending else {
             return self.handle().map(|_| ());
         };
-        let prepared = pending.plan.prepare(&|event| self.emit(event)).await?;
+        let prepared = pending.plan.prepare(self.events.clone()).await?;
         if let Some(snapshot) = prepared.snapshot {
             let _ = self.snapshot.set(snapshot);
         }
-        let observer = Arc::new(CreateProgress::new(
-            prepared.source,
-            self.event_callback.clone(),
-        ));
         let handle = pending
             .provider
-            .create(&prepared.spec, Some(EventContext::new(observer)))
+            .create(&prepared.spec, self.events.clone())
             .await
             .map_err(|error| {
                 crate::Error::context(format!("Failed to create {} sandbox", self.kind), error)
@@ -569,10 +558,11 @@ impl RunSandbox {
                 Ok(())
             }
             WorkspacePlan::Clone(plan) => {
-                self.emit(SandboxEvent::GitCloneStarted {
-                    url:    plan.origin_url.clone(),
-                    branch: plan.branch.clone(),
-                });
+                tracing::debug!(
+                    url = plan.origin_url.as_str(),
+                    branch = plan.branch.as_deref().unwrap_or(""),
+                    "Git clone started"
+                );
                 let started = Instant::now();
                 let handle = self.handle()?;
                 // The clone names every directory it touches, so it runs
@@ -598,18 +588,20 @@ impl RunSandbox {
                         let _ = workspace
                             .execution_directory
                             .set(outcome.layout.execution_directory.clone());
-                        self.emit(SandboxEvent::GitCloneCompleted {
-                            url:         plan.origin_url.clone(),
-                            duration_ms: elapsed_ms(started),
-                        });
+                        tracing::debug!(
+                            url = plan.origin_url.as_str(),
+                            duration_ms = elapsed_ms(started),
+                            "Git clone completed"
+                        );
                         Ok(())
                     }
                     Err(error) => {
-                        self.emit(SandboxEvent::GitCloneFailed {
-                            url:    plan.origin_url.clone(),
-                            error:  error.to_string(),
-                            causes: error.causes(),
-                        });
+                        tracing::error!(
+                            url = plan.origin_url.as_str(),
+                            error = %error,
+                            causes = ?error.causes(),
+                            "Git clone failed"
+                        );
                         Err(error)
                     }
                 }
@@ -679,92 +671,6 @@ impl RunSandbox {
             }
         } else {
             sandbox::join_sandbox_path(&self.resolve(base), relative_start)
-        }
-    }
-}
-
-/// Turns the driver's create-time progress into fabro's snapshot events:
-/// an image pull starts `SnapshotPulling` and the create's completion ends
-/// it. A create without a pull emits nothing.
-struct CreateProgress {
-    source:       Option<String>,
-    callback:     Option<SandboxEventCallback>,
-    pull_started: Mutex<Option<Instant>>,
-}
-
-impl CreateProgress {
-    fn new(source: Option<String>, callback: Option<SandboxEventCallback>) -> Self {
-        Self {
-            source,
-            callback,
-            pull_started: Mutex::new(None),
-        }
-    }
-
-    fn emit(&self, event: SandboxEvent) {
-        event.trace();
-        if let Some(cb) = &self.callback {
-            cb(event);
-        }
-    }
-
-    fn name(&self) -> String {
-        self.source.clone().unwrap_or_default()
-    }
-}
-
-#[async_trait]
-impl EventObserver for CreateProgress {
-    async fn observe(&self, event: Event) {
-        match &event.body {
-            EventBody::OperationProgress { progress, .. }
-                if progress.code.as_str() == ProgressCode::IMAGE_PULL =>
-            {
-                let mut started = self
-                    .pull_started
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner);
-                if started.is_none() {
-                    *started = Some(Instant::now());
-                    drop(started);
-                    self.emit(SandboxEvent::SnapshotPulling { name: self.name() });
-                }
-            }
-            EventBody::OperationCompleted {
-                action: Action::Create,
-                ..
-            } => {
-                let started = self
-                    .pull_started
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .take();
-                if let Some(started) = started {
-                    self.emit(SandboxEvent::SnapshotReady {
-                        name:        self.name(),
-                        duration_ms: elapsed_ms(started),
-                    });
-                }
-            }
-            EventBody::OperationFailed {
-                action: Action::Create,
-                error,
-                ..
-            } => {
-                let started = self
-                    .pull_started
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .take();
-                if started.is_some() {
-                    self.emit(SandboxEvent::SnapshotFailed {
-                        name:   self.name(),
-                        error:  error.message.clone(),
-                        causes: error.causes.clone(),
-                    });
-                }
-            }
-            _ => {}
         }
     }
 }
@@ -1009,46 +915,24 @@ impl RunSandbox {
     /// Create the sandbox when it is pending, bring it to `Running`, and
     /// prepare fabro's workspace (empty root or clone) on first use.
     pub async fn initialize(&self) -> crate::Result<()> {
-        self.emit(SandboxEvent::Initializing {
-            provider: self.provider_name(),
-        });
-        let started = Instant::now();
-        let result = async {
-            self.ensure_created().await?;
-            self.make_ready().await?;
-            self.prepare_workspace().await
+        self.ensure_created().await?;
+        self.make_ready().await?;
+        self.prepare_workspace().await
+    }
+
+    /// The provider's console page for this sandbox, when it has one. Best
+    /// effort: a failed describe reports no page. The local sandbox is the
+    /// host and has none.
+    pub async fn console_url(&self) -> Option<String> {
+        if self.kind.is_local() {
+            return None;
         }
-        .await;
-        let duration_ms = elapsed_ms(started);
-        match &result {
-            Ok(()) => {
-                // The provider's console page, when it has one. Best effort:
-                // a failed describe never fails a successful initialize.
-                let url = match self.handle() {
-                    Ok(handle) if !self.kind.is_local() => handle
-                        .describe()
-                        .await
-                        .ok()
-                        .and_then(|status| status.web_url),
-                    _ => None,
-                };
-                self.emit(SandboxEvent::Ready {
-                    provider: self.provider_name(),
-                    duration_ms,
-                    name: Some(self.sandbox_info()).filter(|name| !name.is_empty()),
-                    cpu: None,
-                    memory: None,
-                    url,
-                });
-            }
-            Err(error) => self.emit(SandboxEvent::InitializeFailed {
-                provider: self.provider_name(),
-                error: error.to_string(),
-                causes: error.causes(),
-                duration_ms,
-            }),
-        }
-        result
+        self.handle()
+            .ok()?
+            .describe()
+            .await
+            .ok()
+            .and_then(|status| status.web_url)
     }
 
     /// Idempotent access-time check: a running sandbox is left alone; a
@@ -1062,89 +946,22 @@ impl RunSandbox {
     }
 
     pub async fn start(&self) -> crate::Result<()> {
-        self.emit(SandboxEvent::StartStarted {
-            provider: self.provider_name(),
-        });
-        let started = Instant::now();
-        let result = self.make_ready().await;
-        match &result {
-            Ok(()) => self.emit(SandboxEvent::StartCompleted {
-                provider:    self.provider_name(),
-                duration_ms: elapsed_ms(started),
-            }),
-            Err(error) => self.emit(SandboxEvent::StartFailed {
-                provider: self.provider_name(),
-                error:    error.to_string(),
-                causes:   error.causes(),
-            }),
-        }
-        result
+        self.make_ready().await
     }
 
     pub async fn stop(&self) -> crate::Result<()> {
-        self.emit(SandboxEvent::StopStarted {
-            provider: self.provider_name(),
-        });
-        let started = Instant::now();
-        let result = match self.handle() {
-            Ok(handle) => handle.stop().await.map_err(crate::Error::from),
-            Err(error) => Err(error),
-        };
-        match &result {
-            Ok(()) => self.emit(SandboxEvent::StopCompleted {
-                provider:    self.provider_name(),
-                duration_ms: elapsed_ms(started),
-            }),
-            Err(error) => self.emit(SandboxEvent::StopFailed {
-                provider: self.provider_name(),
-                error:    error.to_string(),
-                causes:   error.causes(),
-            }),
-        }
-        result
+        self.handle()?.stop().await.map_err(crate::Error::from)
     }
 
     pub async fn delete(&self) -> crate::Result<()> {
-        self.emit(SandboxEvent::DeleteStarted {
-            provider: self.provider_name(),
-        });
-        let started = Instant::now();
-        let result = self.release().await;
-        match &result {
-            Ok(()) => self.emit(SandboxEvent::DeleteCompleted {
-                provider:    self.provider_name(),
-                duration_ms: elapsed_ms(started),
-            }),
-            Err(error) => self.emit(SandboxEvent::DeleteFailed {
-                provider: self.provider_name(),
-                error:    error.to_string(),
-                causes:   error.causes(),
-            }),
-        }
-        result
+        self.release().await
     }
 
     /// Releases the sandbox. For a designated host directory this frees the
     /// handle and leaves the directory in place; for an isolated provider it
     /// removes the sandbox.
     pub async fn cleanup(&self) -> crate::Result<()> {
-        self.emit(SandboxEvent::CleanupStarted {
-            provider: self.provider_name(),
-        });
-        let started = Instant::now();
-        let result = self.release().await;
-        match &result {
-            Ok(()) => self.emit(SandboxEvent::CleanupCompleted {
-                provider:    self.provider_name(),
-                duration_ms: elapsed_ms(started),
-            }),
-            Err(error) => self.emit(SandboxEvent::CleanupFailed {
-                provider: self.provider_name(),
-                error:    error.to_string(),
-                causes:   error.causes(),
-            }),
-        }
-        result
+        self.release().await
     }
 
     /// The directory the run works in: the cloned repository's link for a
@@ -1362,6 +1179,8 @@ fn elapsed_ms(started: Instant) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use fabro_types::CommandTermination;
     use sandbox_driver::{SandboxProvider as _, SandboxSource, SandboxSpec};
     use sandbox_driver_host::HostProvider;
@@ -1582,71 +1401,85 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn initialize_emits_lifecycle_events_and_learns_the_platform() {
-        let mut f = fixture().await;
-        let events: Arc<Mutex<Vec<SandboxEvent>>> = Arc::new(Mutex::new(Vec::new()));
-        let captured = Arc::clone(&events);
-        f.sandbox.set_event_callback(Arc::new(move |event| {
-            captured.lock().unwrap().push(event);
-        }));
-        assert_eq!(f.sandbox.platform(), "unknown");
+    /// Collects the driver's events for assertions.
+    struct Recorded(Mutex<Vec<sandbox_driver::Event>>);
 
-        f.sandbox.initialize().await.unwrap();
+    #[async_trait]
+    impl sandbox_driver::EventObserver for Recorded {
+        async fn observe(&self, event: sandbox_driver::Event) {
+            self.0.lock().unwrap().push(event);
+        }
+    }
+
+    #[tokio::test]
+    async fn lifecycle_reaches_the_driver_events_and_learns_the_platform() {
+        let dir = tempfile::tempdir().unwrap();
+        let recorded = Arc::new(Recorded(Mutex::new(Vec::new())));
+        let sandbox = local_sandbox_with_events(
+            dir.path(),
+            Some(EventContext::new(
+                Arc::clone(&recorded) as Arc<dyn sandbox_driver::EventObserver>
+            )),
+        )
+        .await
+        .unwrap();
         let expected = if cfg!(target_os = "macos") {
             "darwin"
         } else {
             std::env::consts::OS
         };
-        assert_eq!(f.sandbox.platform(), expected);
-        assert!(f.sandbox.os_version().starts_with(expected));
+        assert_eq!(sandbox.platform(), expected);
+        assert!(sandbox.os_version().starts_with(expected));
         assert_eq!(
-            f.sandbox.sandbox_info(),
+            sandbox.sandbox_info(),
             "",
             "local sandboxes are identified by directory"
         );
-        let handle = Arc::clone(f.sandbox.handle().unwrap());
+        let handle = Arc::clone(sandbox.handle().unwrap());
         let isolated = RunSandbox::new(SandboxProviderKind::DOCKER, Arc::clone(&handle));
         assert_eq!(isolated.sandbox_info(), handle.id().to_string());
+        assert_eq!(sandbox.console_url().await, None);
 
-        f.sandbox.stop().await.unwrap();
-        f.sandbox.activate().await.unwrap();
-        f.sandbox.cleanup().await.unwrap();
+        sandbox.stop().await.unwrap();
+        sandbox.activate().await.unwrap();
+        sandbox.cleanup().await.unwrap();
         assert!(
-            f.dir.path().is_dir(),
+            dir.path().is_dir(),
             "designated directories survive cleanup"
         );
 
-        let captured = events.lock().unwrap();
-        let names: Vec<&str> = captured
+        let captured = recorded.0.lock().unwrap();
+        let steps: Vec<String> = captured
             .iter()
-            .map(|event| match event {
-                SandboxEvent::Initializing { .. } => "initializing",
-                SandboxEvent::Ready { .. } => "ready",
-                SandboxEvent::StopStarted { .. } => "stop_started",
-                SandboxEvent::StopCompleted { .. } => "stop_completed",
-                SandboxEvent::CleanupStarted { .. } => "cleanup_started",
-                SandboxEvent::CleanupCompleted { .. } => "cleanup_completed",
-                _ => "other",
+            .filter_map(|event| match &event.body {
+                sandbox_driver::EventBody::OperationStarted { action } => {
+                    Some(format!("{action:?} started"))
+                }
+                sandbox_driver::EventBody::OperationCompleted { action, .. } => {
+                    Some(format!("{action:?} completed"))
+                }
+                sandbox_driver::EventBody::OperationFailed { action, .. } => {
+                    Some(format!("{action:?} failed"))
+                }
+                _ => None,
             })
             .collect();
-        assert_eq!(names, vec![
-            "initializing",
-            "ready",
-            "stop_started",
-            "stop_completed",
-            "cleanup_started",
-            "cleanup_completed",
+        assert_eq!(steps, vec![
+            "Create started",
+            "Create completed",
+            "Stop started",
+            "Stop completed",
+            "Start started",
+            "Start completed",
+            "Delete started",
+            "Delete completed",
         ]);
-        assert!(captured.iter().all(|event| match event {
-            SandboxEvent::Initializing { provider }
-            | SandboxEvent::Ready { provider, .. }
-            | SandboxEvent::StopStarted { provider }
-            | SandboxEvent::StopCompleted { provider, .. }
-            | SandboxEvent::CleanupStarted { provider }
-            | SandboxEvent::CleanupCompleted { provider, .. } => provider == "local",
-            _ => true,
-        }));
+        assert!(
+            captured
+                .iter()
+                .all(|event| event.provider.to_string() == "host"),
+            "the driver names its own provider"
+        );
     }
 
     #[tokio::test]

@@ -140,8 +140,6 @@ impl ProgressUI {
                 provider,
                 duration_ms,
                 name,
-                cpu,
-                memory,
                 url,
             } => {
                 self.setup.on_sandbox_ready(
@@ -149,8 +147,6 @@ impl ProgressUI {
                     &provider,
                     duration_ms,
                     name.as_deref(),
-                    cpu,
-                    memory,
                     url.as_deref(),
                 );
             }
@@ -457,7 +453,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use chrono::{DateTime, Utc};
-    use fabro_agent::{AgentEvent, SandboxEvent};
+    use fabro_agent::AgentEvent;
     use fabro_llm::types::TokenCounts;
     use fabro_model::{Catalog, ModelRef, ProviderId};
     use fabro_types::run_event::CliEnsureCompletedProps;
@@ -465,7 +461,9 @@ mod tests {
         MetadataSnapshotFailureKind, MetadataSnapshotPhase, ParallelBranchId, SandboxProviderKind,
         StageId, fixtures,
     };
-    use fabro_workflow::event::{Event, RunNoticeLevel, to_run_event, to_run_event_at};
+    use fabro_workflow::event::{
+        Event, RunNoticeLevel, SandboxLifecycle, to_run_event, to_run_event_at,
+    };
     use fabro_workflow::outcome::billed_model_usage_from_llm;
 
     use super::*;
@@ -1048,17 +1046,15 @@ mod tests {
         let (mut ui, buffer) = capture_ui(false);
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Initializing {
+            event: SandboxLifecycle::Initializing {
                 provider: "daytona".into(),
             },
         });
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Ready {
+            event: SandboxLifecycle::Ready {
                 provider:    "daytona".into(),
                 duration_ms: 2500,
                 name:        Some("sandbox-1".into()),
-                cpu:         Some(4.0),
-                memory:      Some(8.0),
                 url:         None,
             },
         });
@@ -1077,12 +1073,12 @@ mod tests {
                 duration_ms:       600,
             }),
         );
-        insta::assert_snapshot!(rendered(&buffer), @r"
-            Sandbox: daytona (ready in 2s)
-                     sandbox-1 (4 cpu, 8 GB)
-                     ssh daytona@example
-            Setup: 2 commands (8s)
-            CLI: gh (installed, 600ms)
+        insta::assert_snapshot!(rendered(&buffer), @"
+        Sandbox: daytona (ready in 2s)
+                 sandbox-1
+                 ssh daytona@example
+        Setup: 2 commands (8s)
+        CLI: gh (installed, 600ms)
         ");
     }
 
@@ -1091,36 +1087,34 @@ mod tests {
         let (mut ui, buffer) = capture_ui(false);
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Initializing {
+            event: SandboxLifecycle::Initializing {
                 provider: "daytona".into(),
             },
         });
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::SnapshotCreating {
+            event: SandboxLifecycle::SnapshotCreating {
                 name: "fabro-v9-test".into(),
             },
         });
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::SnapshotReady {
+            event: SandboxLifecycle::SnapshotReady {
                 name:        "fabro-v9-test".into(),
                 duration_ms: 210_000,
             },
         });
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Ready {
+            event: SandboxLifecycle::Ready {
                 provider:    "daytona".into(),
                 duration_ms: 212_000,
                 name:        Some("sandbox-1".into()),
-                cpu:         Some(4.0),
-                memory:      Some(8.0),
                 url:         None,
             },
         });
 
-        insta::assert_snapshot!(rendered(&buffer), @r"
-            Sandbox: building fabro-v9-test...
-            Sandbox: daytona (ready in 3m32s)
-                     sandbox-1 (4 cpu, 8 GB)
+        insta::assert_snapshot!(rendered(&buffer), @"
+        Sandbox: building fabro-v9-test...
+        Sandbox: daytona (ready in 3m32s)
+                 sandbox-1
         ");
     }
 
@@ -1129,28 +1123,26 @@ mod tests {
         let (mut ui, buffer) = capture_ui(false);
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Initializing {
+            event: SandboxLifecycle::Initializing {
                 provider: "docker".into(),
             },
         });
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::SnapshotPulling {
+            event: SandboxLifecycle::SnapshotPulling {
                 name: "buildpack-deps:noble".into(),
             },
         });
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::SnapshotReady {
+            event: SandboxLifecycle::SnapshotReady {
                 name:        "buildpack-deps:noble".into(),
                 duration_ms: 8_200,
             },
         });
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Ready {
+            event: SandboxLifecycle::Ready {
                 provider:    "docker".into(),
                 duration_ms: 9_000,
                 name:        None,
-                cpu:         None,
-                memory:      None,
                 url:         None,
             },
         });
@@ -1166,17 +1158,15 @@ mod tests {
         let (mut ui, buffer) = capture_ui(false);
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Initializing {
+            event: SandboxLifecycle::Initializing {
                 provider: "docker".into(),
             },
         });
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Ready {
+            event: SandboxLifecycle::Ready {
                 provider:    "docker".into(),
                 duration_ms: 20,
                 name:        None,
-                cpu:         None,
-                memory:      None,
                 url:         None,
             },
         });
@@ -1189,19 +1179,19 @@ mod tests {
         let (mut ui, buffer) = capture_ui(false);
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Initializing {
+            event: SandboxLifecycle::Initializing {
                 provider: "docker".into(),
             },
         });
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::SnapshotFailed {
+            event: SandboxLifecycle::SnapshotFailed {
                 name:   "buildpack-deps:noble".into(),
                 error:  "pull failed".into(),
                 causes: Vec::new(),
             },
         });
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::InitializeFailed {
+            event: SandboxLifecycle::InitializeFailed {
                 provider:    "docker".into(),
                 error:       "pull failed".into(),
                 causes:      Vec::new(),
@@ -1220,14 +1210,14 @@ mod tests {
         let mut ui = ProgressUI::new(true, false);
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Initializing {
+            event: SandboxLifecycle::Initializing {
                 provider: "docker".into(),
             },
         });
         assert!(ui.setup.sandbox_bar.is_some());
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::SnapshotReady {
+            event: SandboxLifecycle::SnapshotReady {
                 name:        "buildpack-deps:noble".into(),
                 duration_ms: 10,
             },
@@ -1235,12 +1225,10 @@ mod tests {
         assert!(ui.setup.sandbox_bar.is_some());
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Ready {
+            event: SandboxLifecycle::Ready {
                 provider:    "docker".into(),
                 duration_ms: 20,
                 name:        None,
-                cpu:         None,
-                memory:      None,
                 url:         None,
             },
         });
@@ -1252,14 +1240,14 @@ mod tests {
         let mut ui = ProgressUI::new(true, false);
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::Initializing {
+            event: SandboxLifecycle::Initializing {
                 provider: "docker".into(),
             },
         });
         assert!(ui.setup.sandbox_bar.is_some());
 
         emit(&mut ui, Event::Sandbox {
-            event: SandboxEvent::InitializeFailed {
+            event: SandboxLifecycle::InitializeFailed {
                 provider:    "docker".into(),
                 error:       "pull failed".into(),
                 causes:      Vec::new(),

@@ -9,7 +9,7 @@ use ::fabro_types::{
     RunTiming, SandboxProviderKind, StageId, StageOutcome, StageTiming, SuccessReason,
     WorkflowVersionId, run_event as fabro_types,
 };
-use fabro_agent::{AgentEvent, SandboxEvent};
+use fabro_agent::AgentEvent;
 use fabro_model::{ReasoningEffort, Speed};
 use serde::{Deserialize, Serialize};
 
@@ -517,9 +517,10 @@ pub enum Event {
         status:         String,
         duration_ms:    u64,
     },
-    /// Forwarded from a sandbox lifecycle operation.
+    /// A fact about the run's sandbox: the pipeline bringing it up, or a
+    /// driver operation on it.
     Sandbox {
-        event: SandboxEvent,
+        event: SandboxLifecycle,
     },
     /// Emitted after the sandbox has been initialized (by engine lifecycle).
     SandboxInitialized {
@@ -760,6 +761,181 @@ pub enum Event {
         creation_id: Option<PullRequestCreationId>,
         error:       String,
     },
+}
+
+/// The lifecycle of a run's sandbox as workflow events.
+///
+/// Initializing, ready, and failed are the pipeline's view of bringing the
+/// sandbox up — create, activate, and prepare the workspace as one step.
+/// The rest are the sandbox driver's own operations and snapshot work,
+/// translated from its events by [`super::SandboxEventBridge`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SandboxLifecycle {
+    Initializing {
+        provider: String,
+    },
+    Ready {
+        provider:    String,
+        duration_ms: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name:        Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        url:         Option<String>,
+    },
+    InitializeFailed {
+        provider:    String,
+        error:       String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        causes:      Vec<String>,
+        duration_ms: u64,
+    },
+    StartStarted {
+        provider: String,
+    },
+    StartCompleted {
+        provider:    String,
+        duration_ms: u64,
+    },
+    StartFailed {
+        provider: String,
+        error:    String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        causes:   Vec<String>,
+    },
+    StopStarted {
+        provider: String,
+    },
+    StopCompleted {
+        provider:    String,
+        duration_ms: u64,
+    },
+    StopFailed {
+        provider: String,
+        error:    String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        causes:   Vec<String>,
+    },
+    DeleteStarted {
+        provider: String,
+    },
+    DeleteCompleted {
+        provider:    String,
+        duration_ms: u64,
+    },
+    DeleteFailed {
+        provider: String,
+        error:    String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        causes:   Vec<String>,
+    },
+    /// The provider is pulling the image the sandbox is created from.
+    SnapshotPulling {
+        name: String,
+    },
+    /// The provider is building or activating the snapshot.
+    SnapshotCreating {
+        name: String,
+    },
+    SnapshotReady {
+        name:        String,
+        duration_ms: u64,
+    },
+    SnapshotFailed {
+        name:   String,
+        error:  String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        causes: Vec<String>,
+    },
+}
+
+impl SandboxLifecycle {
+    pub fn trace(&self) {
+        use tracing::{debug, error, info, warn};
+        match self {
+            Self::Initializing { provider } => {
+                debug!(provider, "Sandbox initializing");
+            }
+            Self::Ready {
+                provider,
+                duration_ms,
+                ..
+            } => {
+                info!(provider, duration_ms, "Sandbox ready");
+            }
+            Self::InitializeFailed {
+                provider,
+                error,
+                causes,
+                duration_ms,
+            } => {
+                error!(provider, error, causes = ?causes, duration_ms, "Sandbox init failed");
+            }
+            Self::StartStarted { provider } => {
+                info!(provider, "Sandbox start started");
+            }
+            Self::StartCompleted {
+                provider,
+                duration_ms,
+            } => {
+                info!(provider, duration_ms, "Sandbox start completed");
+            }
+            Self::StartFailed {
+                provider,
+                error,
+                causes,
+            } => {
+                warn!(provider, error, causes = ?causes, "Sandbox start failed");
+            }
+            Self::StopStarted { provider } => {
+                info!(provider, "Sandbox stop started");
+            }
+            Self::StopCompleted {
+                provider,
+                duration_ms,
+            } => {
+                info!(provider, duration_ms, "Sandbox stop completed");
+            }
+            Self::StopFailed {
+                provider,
+                error,
+                causes,
+            } => {
+                warn!(provider, error, causes = ?causes, "Sandbox stop failed");
+            }
+            Self::DeleteStarted { provider } => {
+                info!(provider, "Sandbox delete started");
+            }
+            Self::DeleteCompleted {
+                provider,
+                duration_ms,
+            } => {
+                info!(provider, duration_ms, "Sandbox delete completed");
+            }
+            Self::DeleteFailed {
+                provider,
+                error,
+                causes,
+            } => {
+                warn!(provider, error, causes = ?causes, "Sandbox delete failed");
+            }
+            Self::SnapshotPulling { name } => {
+                debug!(name, "Snapshot pulling");
+            }
+            Self::SnapshotCreating { name } => {
+                debug!(name, "Snapshot creating");
+            }
+            Self::SnapshotReady { name, duration_ms } => {
+                info!(name, duration_ms, "Snapshot ready");
+            }
+            Self::SnapshotFailed {
+                name,
+                error,
+                causes,
+            } => {
+                error!(name, error, causes = ?causes, "Snapshot failed");
+            }
+        }
+    }
 }
 
 impl Event {
@@ -1311,7 +1487,8 @@ impl Event {
             } => {
                 debug!(node_id, model, provider, "Prompt completed");
             }
-            Self::Agent { .. } | Self::Sandbox { .. } => {}
+            Self::Agent { .. } => {}
+            Self::Sandbox { event } => event.trace(),
             Self::SandboxInitialized {
                 working_directory,
                 provider,

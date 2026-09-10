@@ -4,11 +4,12 @@ use std::sync::Arc;
 use anyhow::Context as _;
 use fabro_github::GitHubCredentials;
 use fabro_types::{RunId, RunSandboxInstance, RunSandboxRuntime, SandboxProviderKind};
+use sandbox_driver::EventContext;
 
 use crate::driver::ProviderAccess;
-use crate::driver_sandbox::{LayoutSource, RunSandbox, local_sandbox};
+use crate::driver_sandbox::{LayoutSource, RunSandbox, local_sandbox_with_events};
 use crate::options::SandboxOptions;
-use crate::{SandboxEventCallback, clone_source, provider_sandbox};
+use crate::{clone_source, provider_sandbox};
 
 /// Options for sandbox initialization and construction.
 #[derive(Clone, Debug)]
@@ -47,6 +48,16 @@ impl SandboxSpec {
 
     pub fn provider_name(&self) -> String {
         self.provider().to_string()
+    }
+
+    /// The image the run record names for this sandbox: the environment's,
+    /// or the provider's default when the environment names none. A local
+    /// sandbox has no image.
+    pub fn image(&self) -> Option<String> {
+        match self {
+            Self::Local { .. } => None,
+            Self::Provider(spec) => provider_sandbox::recorded_image(&spec.kind, &spec.options),
+        }
     }
 
     /// Build initialized sandbox metadata for persistence.
@@ -143,18 +154,18 @@ impl SandboxSpec {
         }
     }
 
+    /// Builds the sandbox. The driver reports its lifecycle through
+    /// `events`: the local sandbox's from creation here, a provider
+    /// sandbox's from `initialize` on.
     pub async fn build(
         &self,
-        event_callback: Option<SandboxEventCallback>,
+        events: Option<EventContext>,
     ) -> Result<Arc<RunSandbox>, anyhow::Error> {
         match self {
             Self::Local { working_directory } => {
-                let mut sandbox = local_sandbox(working_directory.clone())
+                let sandbox = local_sandbox_with_events(working_directory.clone(), events)
                     .await
                     .context("Failed to create local sandbox")?;
-                if let Some(callback) = event_callback {
-                    sandbox.set_event_callback(callback);
-                }
                 Ok(Arc::new(sandbox))
             }
             Self::Provider(spec) => {
@@ -182,8 +193,8 @@ impl SandboxSpec {
                 )
                 .await
                 .with_context(|| format!("Failed to create {kind} sandbox"))?;
-                if let Some(callback) = event_callback {
-                    sandbox.set_event_callback(callback);
+                if let Some(events) = events {
+                    sandbox.set_events(events);
                 }
                 Ok(Arc::new(sandbox))
             }

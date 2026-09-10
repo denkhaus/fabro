@@ -1,6 +1,6 @@
-use fabro_agent::{AgentEvent, SandboxEvent};
+use fabro_agent::AgentEvent;
 
-use super::Event;
+use super::{Event, SandboxLifecycle};
 
 #[must_use]
 pub fn event_name(event: &Event) -> &'static str {
@@ -102,28 +102,22 @@ pub fn event_name(event: &Event) -> &'static str {
         Event::SubgraphStarted { .. } => "subgraph.started",
         Event::SubgraphCompleted { .. } => "subgraph.completed",
         Event::Sandbox { event } => match event {
-            SandboxEvent::Initializing { .. } => "sandbox.initializing",
-            SandboxEvent::Ready { .. } => "sandbox.ready",
-            SandboxEvent::InitializeFailed { .. } => "sandbox.failed",
-            SandboxEvent::CleanupStarted { .. } => "sandbox.cleanup.started",
-            SandboxEvent::CleanupCompleted { .. } => "sandbox.cleanup.completed",
-            SandboxEvent::CleanupFailed { .. } => "sandbox.cleanup.failed",
-            SandboxEvent::StartStarted { .. } => "sandbox.start.started",
-            SandboxEvent::StartCompleted { .. } => "sandbox.start.completed",
-            SandboxEvent::StartFailed { .. } => "sandbox.start.failed",
-            SandboxEvent::StopStarted { .. } => "sandbox.stop.started",
-            SandboxEvent::StopCompleted { .. } => "sandbox.stop.completed",
-            SandboxEvent::StopFailed { .. } => "sandbox.stop.failed",
-            SandboxEvent::DeleteStarted { .. } => "sandbox.delete.started",
-            SandboxEvent::DeleteCompleted { .. } => "sandbox.delete.completed",
-            SandboxEvent::DeleteFailed { .. } => "sandbox.delete.failed",
-            SandboxEvent::SnapshotPulling { .. } => "sandbox.snapshot.pulling",
-            SandboxEvent::SnapshotCreating { .. } => "sandbox.snapshot.creating",
-            SandboxEvent::SnapshotReady { .. } => "sandbox.snapshot.ready",
-            SandboxEvent::SnapshotFailed { .. } => "sandbox.snapshot.failed",
-            SandboxEvent::GitCloneStarted { .. } => "sandbox.git.started",
-            SandboxEvent::GitCloneCompleted { .. } => "sandbox.git.completed",
-            SandboxEvent::GitCloneFailed { .. } => "sandbox.git.failed",
+            SandboxLifecycle::Initializing { .. } => "sandbox.initializing",
+            SandboxLifecycle::Ready { .. } => "sandbox.ready",
+            SandboxLifecycle::InitializeFailed { .. } => "sandbox.failed",
+            SandboxLifecycle::StartStarted { .. } => "sandbox.start.started",
+            SandboxLifecycle::StartCompleted { .. } => "sandbox.start.completed",
+            SandboxLifecycle::StartFailed { .. } => "sandbox.start.failed",
+            SandboxLifecycle::StopStarted { .. } => "sandbox.stop.started",
+            SandboxLifecycle::StopCompleted { .. } => "sandbox.stop.completed",
+            SandboxLifecycle::StopFailed { .. } => "sandbox.stop.failed",
+            SandboxLifecycle::DeleteStarted { .. } => "sandbox.delete.started",
+            SandboxLifecycle::DeleteCompleted { .. } => "sandbox.delete.completed",
+            SandboxLifecycle::DeleteFailed { .. } => "sandbox.delete.failed",
+            SandboxLifecycle::SnapshotPulling { .. } => "sandbox.snapshot.pulling",
+            SandboxLifecycle::SnapshotCreating { .. } => "sandbox.snapshot.creating",
+            SandboxLifecycle::SnapshotReady { .. } => "sandbox.snapshot.ready",
+            SandboxLifecycle::SnapshotFailed { .. } => "sandbox.snapshot.failed",
         },
         Event::SandboxInitialized { .. } => "sandbox.initialized",
         Event::SetupStarted { .. } => "setup.started",
