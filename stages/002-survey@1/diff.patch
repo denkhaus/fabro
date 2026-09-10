@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M253JDFD7WQMVT89H1SYZDJ2.jsonl b/.fabro/journal/01M253JDFD7WQMVT89H1SYZDJ2.jsonl
+new file mode 100644
+index 000000000..5baec635e
+--- /dev/null
++++ b/.fabro/journal/01M253JDFD7WQMVT89H1SYZDJ2.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M253JDFD7WQMVT89H1SYZDJ2","node":"start","visit":1,"status":"succeeded","ts":"2026-09-10T07:30:15Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M253JDFD7WQMVT89H1SYZDJ2","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-10T07:30:58Z","data":{"painpoints":[],"observations":["upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0' — below MIN threshold 5, no merge slot consumed","revisor backlog: none — newest develop run 01M23W4S7Q2GNEVPY779M4GMN6 has review artifact `.fabro/reviews/develop/01M23W4S7Q2GNEVPY779M4GMN6.md`; all 22 listed develop runs have merged/closed PRs and match review artifacts","next surveyor: upstream remote was missing this session and had to be added (`git remote add upstream https://github.com/fabro-sh/fabro`) — if the sandbox is fresh each pass, expect the same; fetch output is very noisy, consider `--quiet`"]}}
