@@ -4,11 +4,12 @@ mod daytona_streaming_live {
 
     use anyhow::{Context, Result, ensure};
     use fabro_sandbox::{
-        DaytonaCredentials, ExecControls, ExecSpec, ExecStreamingResult, OutputSink, OutputStream,
-        ProviderAccess, RunSandbox, SandboxOptions, SandboxProviderKind, Termination,
+        CloneRequest, DaytonaCredentials, ExecControls, ExecSpec, ExecStreamingResult, OutputSink,
+        OutputStream, ProviderAccess, RunSandbox, SandboxProviderKind, Termination,
         provider_sandbox,
     };
     use fabro_static::EnvVars;
+    use sandbox_driver::{SandboxSource, SandboxSpec};
     use tokio::sync::Mutex;
     use tokio::time::{Instant, sleep};
     use tokio_util::sync::CancellationToken;
@@ -31,14 +32,8 @@ mod daytona_streaming_live {
             provider_sandbox(
                 SandboxProviderKind::DAYTONA,
                 &daytona_access(live_credentials()?),
-                SandboxOptions {
-                    skip_clone: true,
-                    ..Default::default()
-                },
-                None,
-                None,
-                None,
-                None,
+                SandboxSpec::new(SandboxSource::HostDirectory),
+                &CloneRequest::none(),
                 None,
                 None,
             )
@@ -71,14 +66,8 @@ mod daytona_streaming_live {
         let sandbox = provider_sandbox(
             SandboxProviderKind::DAYTONA,
             &daytona_access(live_credentials()?),
-            SandboxOptions {
-                skip_clone: true,
-                ..Default::default()
-            },
-            None,
-            None,
-            None,
-            None,
+            SandboxSpec::new(SandboxSource::HostDirectory),
+            &CloneRequest::none(),
             None,
             None,
         )
@@ -177,20 +166,11 @@ mod daytona_streaming_live {
         let sandbox = provider_sandbox(
             SandboxProviderKind::DAYTONA,
             &daytona_access(live_credentials()?),
-            SandboxOptions {
-                skip_clone: true,
-                labels: std::collections::BTreeMap::from([(
-                    "team".to_string(),
-                    "platform".to_string(),
-                )]),
-                ..Default::default()
-            },
+            SandboxSpec::new(SandboxSource::HostDirectory)
+                .label("team".to_string(), "platform".to_string()),
+            &CloneRequest::none(),
             None,
             Some(run_id),
-            None,
-            None,
-            None,
-            None,
         )
         .await?;
 
@@ -235,14 +215,11 @@ mod daytona_streaming_live {
         let sandbox = provider_sandbox(
             SandboxProviderKind::DAYTONA,
             &daytona_access(live_credentials()?),
-            SandboxOptions {
-                skip_clone: false,
-                ..Default::default()
+            SandboxSpec::new(SandboxSource::HostDirectory),
+            &CloneRequest {
+                origin_url: Some("https://github.com/brynary/rack-test".to_string()),
+                ..CloneRequest::default()
             },
-            None,
-            None,
-            Some("https://github.com/brynary/rack-test".to_string()),
-            None,
             None,
             None,
         )
@@ -305,14 +282,8 @@ mod daytona_streaming_live {
         let sandbox = provider_sandbox(
             SandboxProviderKind::DAYTONA,
             &daytona_access(live_credentials()?),
-            SandboxOptions {
-                skip_clone: true,
-                ..Default::default()
-            },
-            None,
-            None,
-            None,
-            None,
+            SandboxSpec::new(SandboxSource::HostDirectory),
+            &CloneRequest::none(),
             None,
             None,
         )

@@ -1,60 +1,49 @@
 //! Run sandboxes on any provider fabro can name: a bundled kind in process
 //! or a sandbox-driver plugin executable.
 //!
-//! One path builds them all. The environment's [`SandboxOptions`] become
-//! the driver spec once, the provider is connected through the single
+//! One path builds them all. The environment's spec arrives built (see
+//! [`crate::environment`]), the provider is connected through the single
 //! construction function, and a bundled provider adds only what its
 //! backend needs on top: Docker its fixed working directory and default
 //! image, Daytona the snapshot it creates sandboxes from and its lifecycle
-//! timers. A plugin gets the spec as is, laid out inside the working
-//! directory the provider chooses.
+//! timers. A plugin gets the spec as is, trimmed to what it can honor, laid
+//! out inside the working directory the provider chooses.
 
 use std::sync::Arc;
 
 use fabro_github::GitHubCredentials;
 use fabro_types::{BundledProvider, RunId, SandboxProviderKind};
-use sandbox_driver::{EventContext, OwnedProvider, SandboxId, SandboxProvider};
+use sandbox_driver::{
+    EventContext, OwnedProvider, SandboxId, SandboxProvider, SandboxSource,
+    SandboxSpec as DriverSpec,
+};
 
 use crate::driver::{ProviderAccess, connect_provider};
 use crate::driver_sandbox::{LayoutSource, RepoWorkspace, RunSandbox};
-use crate::options::{self, SandboxOptions};
+use crate::environment::{self, CloneRequest};
 use crate::{daytona, docker, managed_labels};
 
 /// A sandbox for a run on `kind`. The sandbox is created by `initialize`;
 /// construction validates the clone request and connects the provider, so
-/// a bad spec, a missing credential, or a missing plugin executable fails
-/// before any backend call.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "mirrors SandboxSpec::Provider; clone inputs are validated together"
-)]
+/// a bad request, a missing credential, or a missing plugin executable
+/// fails before any backend call.
 pub async fn provider_sandbox(
     kind: SandboxProviderKind,
     access: &ProviderAccess,
-    options: SandboxOptions,
+    spec: DriverSpec,
+    clone: &CloneRequest,
     github_app: Option<&GitHubCredentials>,
     run_id: Option<RunId>,
-    clone_origin_url: Option<String>,
-    clone_branch: Option<String>,
-    clone_tag: Option<String>,
-    clone_commit_sha: Option<String>,
 ) -> crate::Result<RunSandbox> {
-    let workspace = RepoWorkspace::plan(
-        layout_source(&kind),
-        options.skip_clone,
-        clone_origin_url.as_deref(),
-        clone_branch.as_deref(),
-        clone_tag.as_deref(),
-        clone_commit_sha.as_deref(),
-        options.clone_depth,
-        github_app,
-    )?;
+    let workspace = RepoWorkspace::plan(layout_source(&kind), clone, github_app)?;
     let provider = connect(&kind, access, run_id.as_ref()).await?;
-    let base = options::base_spec(&options, run_id.as_ref());
+    let mut spec = spec;
+    if let Some(run_id) = &run_id {
+        spec = spec.name(environment::run_name(run_id));
+    }
     Ok(match kind.bundled() {
         Some(BundledProvider::Docker) => {
-            let (spec, _image) = docker::overlay(base, &options);
-            RunSandbox::pending(kind, provider, spec, workspace)
+            RunSandbox::pending(kind, provider, docker::overlay(spec), workspace)
         }
         Some(BundledProvider::Daytona) => {
             let credentials = access
@@ -64,8 +53,7 @@ pub async fn provider_sandbox(
             let plan = daytona::create_plan(
                 Arc::clone(&provider),
                 credentials.api_key.clone(),
-                base,
-                options,
+                spec,
                 run_id,
             );
             RunSandbox::pending_with_plan(kind, provider, Box::new(plan), workspace)
@@ -76,8 +64,9 @@ pub async fn provider_sandbox(
             ));
         }
         None => {
-            let mut spec = base;
-            spec.network = options::supported_network(spec.network, provider.capabilities());
+            let capabilities = provider.capabilities();
+            spec.network = environment::supported_network(spec.network, capabilities);
+            spec.timers = environment::supported_timers(spec.timers, capabilities);
             RunSandbox::pending(kind, provider, spec, workspace)
         }
     })
@@ -128,13 +117,11 @@ pub async fn attach_provider_sandbox(
 
 /// The image the run record names for a sandbox on `kind`: the
 /// environment's, or Docker's default when the environment names none.
-pub(crate) fn recorded_image(
-    kind: &SandboxProviderKind,
-    options: &SandboxOptions,
-) -> Option<String> {
-    match kind.bundled() {
-        Some(BundledProvider::Docker) => Some(docker::effective_image(options)),
-        _ => options.image.clone(),
+pub(crate) fn recorded_image(kind: &SandboxProviderKind, spec: &DriverSpec) -> Option<String> {
+    match (kind.bundled(), &spec.source) {
+        (Some(BundledProvider::Docker), _) => Some(docker::effective_image(spec)),
+        (_, SandboxSource::Image { reference }) => Some(reference.clone()),
+        _ => None,
     }
 }
 

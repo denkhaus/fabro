@@ -4,11 +4,11 @@ use std::sync::Arc;
 use anyhow::Context as _;
 use fabro_github::GitHubCredentials;
 use fabro_types::{RunId, RunSandboxInstance, RunSandboxRuntime, SandboxProviderKind};
-use sandbox_driver::EventContext;
+use sandbox_driver::{EventContext, SandboxSpec as DriverSpec};
 
 use crate::driver::ProviderAccess;
 use crate::driver_sandbox::{LayoutSource, RunSandbox, local_sandbox_with_events};
-use crate::options::SandboxOptions;
+use crate::environment::CloneRequest;
 use crate::{clone_source, provider_sandbox};
 
 /// Options for sandbox initialization and construction.
@@ -26,16 +26,15 @@ pub enum SandboxSpec {
 /// the repository is cloned into it.
 #[derive(Clone, Debug)]
 pub struct ProviderSandboxSpec {
-    pub kind:             SandboxProviderKind,
+    pub kind:       SandboxProviderKind,
     /// The provider settings and vault credentials the kind needs.
-    pub access:           ProviderAccess,
-    pub options:          SandboxOptions,
-    pub github_app:       Option<GitHubCredentials>,
-    pub run_id:           Option<RunId>,
-    pub clone_origin_url: Option<String>,
-    pub clone_branch:     Option<String>,
-    pub clone_tag:        Option<String>,
-    pub clone_commit_sha: Option<String>,
+    pub access:     ProviderAccess,
+    /// The environment's request, as the driver spec every provider
+    /// starts from.
+    pub spec:       DriverSpec,
+    pub clone:      CloneRequest,
+    pub github_app: Option<GitHubCredentials>,
+    pub run_id:     Option<RunId>,
 }
 
 impl SandboxSpec {
@@ -56,7 +55,7 @@ impl SandboxSpec {
     pub fn image(&self) -> Option<String> {
         match self {
             Self::Local { .. } => None,
-            Self::Provider(spec) => provider_sandbox::recorded_image(&spec.kind, &spec.options),
+            Self::Provider(spec) => provider_sandbox::recorded_image(&spec.kind, &spec.spec),
         }
     }
 
@@ -79,16 +78,11 @@ impl SandboxSpec {
         match self {
             Self::Provider(spec) => {
                 let ProviderSandboxSpec {
-                    kind,
-                    options,
-                    clone_origin_url,
-                    clone_branch,
-                    ..
+                    kind, spec, clone, ..
                 } = spec.as_ref();
-                let repo_cloned = clone_source::repo_cloned_for_record(
-                    options.skip_clone,
-                    clone_origin_url.as_deref(),
-                );
+                let clone_origin_url = &clone.origin_url;
+                let repo_cloned =
+                    clone_source::repo_cloned_for_record(clone.skip, clone_origin_url.as_deref());
                 // A fixed layout is known before the sandbox exists; a
                 // provider-chosen one only from the sandbox.
                 let layout = match provider_sandbox::layout_source(kind) {
@@ -114,7 +108,7 @@ impl SandboxSpec {
                 };
                 RunSandboxInstance {
                     provider: kind.clone(),
-                    image:    provider_sandbox::recorded_image(kind, options),
+                    image:    provider_sandbox::recorded_image(kind, spec),
                     snapshot: sandbox.snapshot_info(),
                     runtime:  RunSandboxRuntime {
                         id,
@@ -123,7 +117,7 @@ impl SandboxSpec {
                         clone_origin_url: clone_source::clean_clone_origin_for_record(
                             clone_origin_url.as_deref(),
                         ),
-                        clone_branch: clone_branch.clone(),
+                        clone_branch: clone.branch.clone(),
                         workspace_root: layout.as_ref().map(|layout| layout.workspace_root.clone()),
                         repos_root: layout.as_ref().map(|layout| layout.repos_root.clone()),
                         primary_repo_path: layout
@@ -172,24 +166,18 @@ impl SandboxSpec {
                 let ProviderSandboxSpec {
                     kind,
                     access,
-                    options,
+                    spec,
+                    clone,
                     github_app,
                     run_id,
-                    clone_origin_url,
-                    clone_branch,
-                    clone_tag,
-                    clone_commit_sha,
                 } = spec.as_ref();
                 let mut sandbox = provider_sandbox::provider_sandbox(
                     kind.clone(),
                     access,
-                    options.clone(),
+                    spec.clone(),
+                    clone,
                     github_app.as_ref(),
                     *run_id,
-                    clone_origin_url.clone(),
-                    clone_branch.clone(),
-                    clone_tag.clone(),
-                    clone_commit_sha.clone(),
                 )
                 .await
                 .with_context(|| format!("Failed to create {kind} sandbox"))?;
@@ -217,9 +205,21 @@ fn runtime_layout_metadata(
 #[cfg(test)]
 mod tests {
     use fabro_types::RunId;
+    use sandbox_driver::SandboxSource;
     use sandbox_driver_testing::ScriptedSandbox;
 
     use super::*;
+
+    fn provider_spec(clone: CloneRequest) -> ProviderSandboxSpec {
+        ProviderSandboxSpec {
+            kind: SandboxProviderKind::DOCKER,
+            access: ProviderAccess::default(),
+            spec: DriverSpec::new(SandboxSource::HostDirectory),
+            clone,
+            github_app: None,
+            run_id: None,
+        }
+    }
 
     fn sandbox_at(working_dir: &str) -> RunSandbox {
         RunSandbox::new(
@@ -233,17 +233,11 @@ mod tests {
 
     #[test]
     fn docker_run_sandbox_persists_layout_metadata_for_cloned_repo() {
-        let spec = SandboxSpec::Provider(Box::new(ProviderSandboxSpec {
-            kind:             SandboxProviderKind::DOCKER,
-            access:           ProviderAccess::default(),
-            options:          SandboxOptions::default(),
-            github_app:       None,
-            run_id:           None,
-            clone_origin_url: Some("git@github.com:brynary/rack-test.git".to_string()),
-            clone_branch:     Some("main".to_string()),
-            clone_tag:        None,
-            clone_commit_sha: None,
-        }));
+        let spec = SandboxSpec::Provider(Box::new(provider_spec(CloneRequest {
+            origin_url: Some("git@github.com:brynary/rack-test.git".to_string()),
+            branch: Some("main".to_string()),
+            ..CloneRequest::default()
+        })));
         let sandbox = sandbox_at("/workspace/rack-test");
 
         let run_id: RunId = "01HY0000000000000000000000".parse().unwrap();
@@ -272,17 +266,12 @@ mod tests {
 
     #[tokio::test]
     async fn invalid_exact_checkout_spec_fails_before_provider_connection() {
-        let spec = SandboxSpec::Provider(Box::new(ProviderSandboxSpec {
-            kind:             SandboxProviderKind::DOCKER,
-            access:           ProviderAccess::default(),
-            options:          SandboxOptions::default(),
-            github_app:       None,
-            run_id:           None,
-            clone_origin_url: Some("https://github.com/acme/widgets".to_string()),
-            clone_branch:     Some("main".to_string()),
-            clone_tag:        None,
-            clone_commit_sha: Some("not-a-sha".to_string()),
-        }));
+        let spec = SandboxSpec::Provider(Box::new(provider_spec(CloneRequest {
+            origin_url: Some("https://github.com/acme/widgets".to_string()),
+            branch: Some("main".to_string()),
+            commit_sha: Some("not-a-sha".to_string()),
+            ..CloneRequest::default()
+        })));
 
         let error = spec
             .build(None)
@@ -300,20 +289,10 @@ mod tests {
 
     #[test]
     fn docker_run_sandbox_omits_primary_repo_metadata_for_empty_workspace() {
-        let spec = SandboxSpec::Provider(Box::new(ProviderSandboxSpec {
-            kind:             SandboxProviderKind::DOCKER,
-            access:           ProviderAccess::default(),
-            options:          SandboxOptions {
-                skip_clone: true,
-                ..SandboxOptions::default()
-            },
-            github_app:       None,
-            run_id:           None,
-            clone_origin_url: Some("https://gitlab.com/acme/widgets".to_string()),
-            clone_branch:     None,
-            clone_tag:        None,
-            clone_commit_sha: None,
-        }));
+        let spec = SandboxSpec::Provider(Box::new(provider_spec(CloneRequest {
+            origin_url: Some("https://gitlab.com/acme/widgets".to_string()),
+            ..CloneRequest::none()
+        })));
         let sandbox = sandbox_at("/workspace");
 
         let run_id: RunId = "01HY0000000000000000000000".parse().unwrap();

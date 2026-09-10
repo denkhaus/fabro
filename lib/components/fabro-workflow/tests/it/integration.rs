@@ -13625,19 +13625,12 @@ async fn asset_collection_local_sandbox_on_failure() {
 async fn asset_collection_docker_sandbox() {
     let run_dir = tempfile::tempdir().unwrap();
 
-    let options = fabro_agent::SandboxOptions {
-        skip_clone: true,
-        ..Default::default()
-    };
     let sandbox: Arc<fabro_agent::RunSandbox> = Arc::new(
         fabro_agent::provider_sandbox(
             fabro_agent::SandboxProviderKind::DOCKER,
             &fabro_agent::ProviderAccess::default(),
-            options,
-            None,
-            None,
-            None,
-            None,
+            sandbox_driver::SandboxSpec::new(sandbox_driver::SandboxSource::HostDirectory),
+            &fabro_agent::CloneRequest::none(),
             None,
             None,
         )

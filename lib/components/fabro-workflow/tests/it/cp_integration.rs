@@ -15,8 +15,9 @@
 )]
 
 use fabro_sandbox::reconnect::reconnect;
-use fabro_sandbox::{ProviderAccess, SandboxOptions, provider_sandbox};
+use fabro_sandbox::{CloneRequest, ProviderAccess, provider_sandbox};
 use fabro_types::{RunSandboxInstance, RunSandboxRuntime, SandboxProviderKind};
+use sandbox_driver::{SandboxSource, SandboxSpec};
 
 const DOCKER_CP_IMAGE: &str = "buildpack-deps:noble";
 
@@ -187,15 +188,10 @@ async fn docker_cp_container() -> DockerCpContainer {
     let sandbox = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some(DOCKER_CP_IMAGE.to_string()),
-            skip_clone: true,
-            ..SandboxOptions::default()
-        },
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::Image {
+            reference: DOCKER_CP_IMAGE.to_string(),
+        }),
+        &CloneRequest::none(),
         None,
         None,
     )

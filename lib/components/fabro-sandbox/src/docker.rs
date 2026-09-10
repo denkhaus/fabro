@@ -8,12 +8,11 @@
 //! [`REPOS_ROOT`] and is linked into the workspace, so the run works in
 //! `/workspace/<repo>`.
 
-use sandbox_driver::{HealthStatus, SandboxSource, SandboxSpec as DriverSpec};
+use sandbox_driver::{HealthStatus, LifecycleTimers, SandboxSource, SandboxSpec as DriverSpec};
 use sandbox_driver_docker_config::DockerProviderConfig;
 
 use crate::driver::ProviderAccess;
 use crate::driver_sandbox::WorkspaceLayout;
-use crate::options::SandboxOptions;
 use crate::provider_sandbox;
 
 pub const WORKING_DIRECTORY: &str = "/workspace";
@@ -30,28 +29,28 @@ pub(crate) fn layout() -> WorkspaceLayout {
 }
 
 /// The image a Docker sandbox runs: the environment's, or the default.
-pub(crate) fn effective_image(options: &SandboxOptions) -> String {
-    options
-        .image
-        .clone()
-        .unwrap_or_else(|| DEFAULT_IMAGE.to_string())
+pub(crate) fn effective_image(spec: &DriverSpec) -> String {
+    match &spec.source {
+        SandboxSource::Image { reference } => reference.clone(),
+        _ => DEFAULT_IMAGE.to_string(),
+    }
 }
 
-/// Docker's additions to the base spec, and the image it will run.
-pub(crate) fn overlay(spec: DriverSpec, options: &SandboxOptions) -> (DriverSpec, String) {
-    let image = effective_image(options);
+/// Docker's additions to the environment's spec: the image it will run,
+/// the fixed working directory, and a pull for a missing image. Docker has
+/// no lifecycle timers, so the environment's auto-stop does not apply.
+pub(crate) fn overlay(spec: DriverSpec) -> DriverSpec {
+    let image = effective_image(&spec);
     let mut spec = spec;
-    spec.source = SandboxSource::Image {
-        reference: image.clone(),
-    };
-    let spec = spec.working_directory(WORKING_DIRECTORY).provider_config(
+    spec.source = SandboxSource::Image { reference: image };
+    spec.timers = LifecycleTimers::default();
+    spec.working_directory(WORKING_DIRECTORY).provider_config(
         DockerProviderConfig {
             auto_pull: true,
             ..DockerProviderConfig::default()
         }
         .into_value(),
-    );
-    (spec, image)
+    )
 }
 
 /// Whether the Docker daemon answers. Used by `fabro doctor`.
@@ -76,57 +75,49 @@ pub async fn check_docker_daemon() -> crate::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::time::Duration;
 
-    use fabro_types::RunId;
     use sandbox_driver::NetworkPolicy;
 
     use super::*;
-    use crate::options::base_spec;
 
     #[test]
     fn overlay_fixes_the_workspace_and_pulls_the_named_image() {
-        let run_id: RunId = "01HY0000000000000000000000".parse().unwrap();
-        let options = SandboxOptions {
-            image: Some("ghcr.io/acme/dev:1".to_string()),
-            env: BTreeMap::from([("FOO".to_string(), "bar".to_string())]),
-            memory_bytes: Some(4_000_000_000),
-            cpu: Some(2),
-            network: NetworkPolicy::Block,
-            ..SandboxOptions::default()
-        };
-        let (spec, image) = overlay(base_spec(&options, Some(&run_id)), &options);
-
-        assert_eq!(image, "ghcr.io/acme/dev:1");
+        let mut requested = LifecycleTimers::default();
+        requested.auto_stop_after_idle = Some(Duration::from_mins(45));
+        let spec = overlay(
+            DriverSpec::new(SandboxSource::Image {
+                reference: "ubuntu:24.04".to_string(),
+            })
+            .network(NetworkPolicy::Block)
+            .timers(requested),
+        );
         assert!(matches!(
             &spec.source,
-            SandboxSource::Image { reference } if reference == "ghcr.io/acme/dev:1"
+            SandboxSource::Image { reference } if reference == "ubuntu:24.04"
         ));
-        assert_eq!(
-            spec.name.as_deref(),
-            Some("fabro-run-01HY0000000000000000000000")
-        );
         assert_eq!(spec.working_directory.as_deref(), Some(WORKING_DIRECTORY));
-        assert!(
-            !spec.labels.contains_key("sh.fabro.managed"),
-            "ownership labels come from the scope the provider is connected through"
-        );
-        assert_eq!(spec.env.get("FOO").map(String::as_str), Some("bar"));
-        assert_eq!(spec.resources.cpu_cores, Some(2));
-        assert_eq!(spec.resources.memory_mb, Some(3815));
         assert!(matches!(spec.network, NetworkPolicy::Block));
-        assert_eq!(spec.provider_config["auto_pull"], true);
+        assert_eq!(
+            spec.timers,
+            LifecycleTimers::default(),
+            "docker has no timers to honor the environment's auto-stop with"
+        );
+        let config: DockerProviderConfig =
+            serde_json::from_value(spec.provider_config).expect("docker provider config");
+        assert!(config.auto_pull);
     }
 
     #[test]
     fn overlay_supplies_the_default_image_when_the_environment_names_none() {
-        let options = SandboxOptions::default();
-        let (spec, image) = overlay(base_spec(&options, None), &options);
-        assert_eq!(image, DEFAULT_IMAGE);
+        let spec = overlay(DriverSpec::new(SandboxSource::HostDirectory));
         assert!(matches!(
             &spec.source,
             SandboxSource::Image { reference } if reference == DEFAULT_IMAGE
         ));
-        assert!(spec.name.is_none());
+        assert_eq!(
+            effective_image(&DriverSpec::new(SandboxSource::HostDirectory)),
+            DEFAULT_IMAGE
+        );
     }
 }

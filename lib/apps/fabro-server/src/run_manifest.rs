@@ -19,8 +19,8 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::probe::{self, ModelTestStatus};
 use fabro_sandbox::redact::redact_auth_url;
 use fabro_sandbox::{
-    ProviderAccess, ProviderSandboxSpec, RunSandbox, SandboxSpec,
-    local_working_directory_from_environment, options_from_environment, unresolved_env,
+    CloneRequest, ProviderAccess, ProviderSandboxSpec, RunSandbox, SandboxSpec,
+    sandbox_spec_for_environment,
 };
 use fabro_static::EnvVars;
 use fabro_types::settings::ModelRef;
@@ -918,30 +918,35 @@ fn preflight_sandbox_spec(
     let clone_branch = prepared.git.as_ref().map(|git| git.branch.clone());
 
     if sandbox_provider.bundled() == Some(BundledProvider::Local) {
-        let working_directory = local_working_directory_from_environment(
-            &resolved_run.environment,
-            Some(&prepared.source_directory),
-        )?;
+        let working_directory = resolved_run
+            .environment
+            .local_working_directory(Some(&prepared.source_directory))
+            .map_err(|err| {
+                fabro_sandbox::Error::context(
+                    "Failed to resolve local environment working directory",
+                    err,
+                )
+            })?;
         return Ok(SandboxSpec::Local { working_directory });
     }
     // No vault is available on this path, so a `{{ secrets.* }}` value keeps
-    // its source form.
-    let mut options = options_from_environment(
+    // its source form. Preflight never clones.
+    let spec = sandbox_spec_for_environment(
         &resolved_run.environment,
-        &resolved_run.clone,
-        unresolved_env(&resolved_run.environment),
+        resolved_run.environment.unresolved_env(),
     )?;
-    options.skip_clone = true;
+    let clone = CloneRequest {
+        origin_url: clone_origin_url,
+        branch: clone_branch,
+        ..CloneRequest::none()
+    };
     Ok(SandboxSpec::Provider(Box::new(ProviderSandboxSpec {
         kind: sandbox_provider.clone(),
         access: access.clone(),
-        options,
+        spec,
+        clone,
         github_app,
         run_id: None,
-        clone_origin_url,
-        clone_branch,
-        clone_tag: None,
-        clone_commit_sha: None,
     })))
 }
 
@@ -2218,12 +2223,12 @@ provider = "local"
         match spec {
             Ok(SandboxSpec::Provider(spec)) => {
                 assert_eq!(spec.kind, SandboxProviderKind::DOCKER);
-                assert!(spec.options.skip_clone);
+                assert!(spec.clone.skip);
                 assert_eq!(
-                    spec.clone_origin_url.as_deref(),
+                    spec.clone.origin_url.as_deref(),
                     Some("https://github.com/acme/widgets")
                 );
-                assert_eq!(spec.clone_branch.as_deref(), Some("main"));
+                assert_eq!(spec.clone.branch.as_deref(), Some("main"));
             }
             _ => panic!("expected Docker preflight sandbox spec"),
         }

@@ -16,7 +16,7 @@ use async_trait::async_trait;
 use fabro_types::settings::server::ServerSandboxProviderSettings;
 use fabro_types::{RunId, SandboxProviderKind};
 use sandbox_driver::{
-    EventContext, HealthStatus, LifecycleTimers, Resources, SandboxProvider, SandboxSource,
+    EventContext, HealthStatus, Resources, SandboxProvider, SandboxSource,
     SandboxSpec as DriverSpec, SnapshotId, SnapshotSource, SnapshotSpec,
 };
 use tokio::time;
@@ -24,7 +24,6 @@ use tokio::time;
 pub use crate::driver::DaytonaCredentials;
 use crate::driver::{ProviderConnectOptions, connect_provider};
 use crate::driver_sandbox::{CreatePlan, PreparedCreate, WorkspaceLayout};
-use crate::options::SandboxOptions;
 
 pub(crate) const WORKING_DIRECTORY: &str = "/home/daytona/workspace";
 pub(crate) const REPOS_ROOT: &str = "/home/daytona/repos";
@@ -69,25 +68,30 @@ pub enum SnapshotInput<'a> {
     Dockerfile(&'a str),
 }
 
-/// The snapshot `options` ask for, or `None` when the environment names no
+/// The snapshot `spec` asks for, or `None` when the environment names no
 /// image or Dockerfile and the sandbox comes from Daytona's default.
-pub fn snapshot_inputs(options: &SandboxOptions) -> Option<SnapshotInputs<'_>> {
-    let source = match (&options.image, &options.dockerfile) {
-        (Some(image), _) => SnapshotInput::Image(image),
-        (None, Some(dockerfile)) => SnapshotInput::Dockerfile(dockerfile),
-        (None, None) => return None,
+pub fn snapshot_inputs(spec: &DriverSpec) -> Option<SnapshotInputs<'_>> {
+    let source = match &spec.source {
+        SandboxSource::Image { reference } => SnapshotInput::Image(reference),
+        SandboxSource::Dockerfile { content } => SnapshotInput::Dockerfile(content),
+        _ => return None,
     };
     Some(SnapshotInputs {
         source,
-        cpu: options.cpu.and_then(|cpu| i32::try_from(cpu).ok()),
-        memory_gb: options.memory_bytes.map(bytes_to_gb),
-        disk_gb: options.disk_bytes.map(bytes_to_gb),
+        cpu: spec
+            .resources
+            .cpu_cores
+            .and_then(|cpu| i32::try_from(cpu).ok()),
+        memory_gb: spec.resources.memory_mb.map(gigabytes),
+        disk_gb: spec.resources.disk_mb.map(gigabytes),
     })
 }
 
-/// Whole decimal gigabytes, the unit Daytona sizes snapshots in.
-fn bytes_to_gb(bytes: u64) -> i32 {
-    i32::try_from(bytes / 1_000_000_000).unwrap_or(i32::MAX)
+/// Whole gibibytes, rounded up and never zero: the unit Daytona sizes
+/// snapshots in, computed as the driver's Daytona provider does so the
+/// snapshot's name and its provisioned size agree.
+fn gigabytes(mb: u64) -> i32 {
+    i32::try_from(mb.div_ceil(1024)).unwrap_or(i32::MAX).max(1)
 }
 
 pub mod snapshot_identity {
@@ -300,12 +304,12 @@ pub(crate) fn layout() -> WorkspaceLayout {
     }
 }
 
-/// Daytona's additions to the base spec: the snapshot the sandbox is created
-/// from, the fixed working directory, the run's Daytona name, and the
-/// lifecycle timers.
+/// Daytona's additions to the environment's spec: the snapshot the sandbox
+/// is created from, the fixed working directory, the run's Daytona name,
+/// and the lifecycle timers. The snapshot carries the resources; Daytona
+/// refuses them on a sandbox created from one.
 pub(crate) fn overlay(
     spec: DriverSpec,
-    options: &SandboxOptions,
     run_id: Option<&RunId>,
     snapshot: &SnapshotId,
 ) -> DriverSpec {
@@ -314,10 +318,11 @@ pub(crate) fn overlay(
         id: snapshot.clone(),
     };
     spec.name = run_id.map(|run_id| format!("fabro-{run_id}"));
-    let mut timers = LifecycleTimers::default();
+    spec.resources = Resources::default();
+    let mut timers = spec.timers;
     // An explicit zero disables auto-stop; the driver encodes
     // `Duration::ZERO` as that wire value.
-    timers.auto_stop_after_idle = Some(options.auto_stop.unwrap_or(DEFAULT_AUTO_STOP));
+    timers.auto_stop_after_idle = Some(timers.auto_stop_after_idle.unwrap_or(DEFAULT_AUTO_STOP));
     // Run sandboxes are never deleted on stop: the run record may need
     // them again on resume, and `fabro system prune` reclaims them.
     timers.auto_delete_after_stop = Some(Duration::ZERO);
@@ -377,25 +382,21 @@ pub(crate) struct DaytonaCreatePlan {
     provider: Arc<dyn SandboxProvider>,
     api_key:  String,
     base:     DriverSpec,
-    options:  SandboxOptions,
     run_id:   Option<RunId>,
 }
 
-/// The create plan for a run on Daytona: `base` is the spec the
-/// environment's options built, which the plan completes with the snapshot
-/// once it exists.
+/// The create plan for a run on Daytona: `base` is the environment's spec,
+/// which the plan completes with the snapshot once it exists.
 pub(crate) fn create_plan(
     provider: Arc<dyn SandboxProvider>,
     api_key: String,
     base: DriverSpec,
-    options: SandboxOptions,
     run_id: Option<RunId>,
 ) -> DaytonaCreatePlan {
     DaytonaCreatePlan {
         provider,
         api_key,
         base,
-        options,
         run_id,
     }
 }
@@ -403,7 +404,7 @@ pub(crate) fn create_plan(
 #[async_trait]
 impl CreatePlan for DaytonaCreatePlan {
     async fn prepare(&self, events: Option<EventContext>) -> crate::Result<PreparedCreate> {
-        let (snapshot_id, snapshot_name) = match snapshot_inputs(&self.options) {
+        let (snapshot_id, snapshot_name) = match snapshot_inputs(&self.base) {
             // The driver finds, activates, builds, or waits for the snapshot
             // as needed, and reports that work through `events`.
             Some(inputs) => {
@@ -415,12 +416,7 @@ impl CreatePlan for DaytonaCreatePlan {
             ),
         };
         Ok(PreparedCreate {
-            spec:     overlay(
-                self.base.clone(),
-                &self.options,
-                self.run_id.as_ref(),
-                &snapshot_id,
-            ),
+            spec:     overlay(self.base.clone(), self.run_id.as_ref(), &snapshot_id),
             snapshot: Some(snapshot_name),
         })
     }
@@ -428,12 +424,9 @@ impl CreatePlan for DaytonaCreatePlan {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
-    use sandbox_driver::NetworkPolicy;
+    use sandbox_driver::{LifecycleTimers, NetworkPolicy};
 
     use super::*;
-    use crate::options::base_spec;
 
     fn run_id() -> RunId {
         "01HY0000000000000000000000".parse().unwrap()
@@ -450,17 +443,20 @@ mod tests {
 
     #[test]
     fn snapshot_inputs_come_from_the_image_or_dockerfile_in_whole_gigabytes() {
-        assert!(snapshot_inputs(&SandboxOptions::default()).is_none());
+        assert!(snapshot_inputs(&DriverSpec::new(SandboxSource::HostDirectory)).is_none());
 
-        let options = SandboxOptions {
-            image: Some("ubuntu:24.04".to_string()),
-            cpu: Some(2),
-            memory_bytes: Some(4_000_000_000),
-            disk_bytes: Some(10_500_000_000),
-            ..SandboxOptions::default()
-        };
+        // 4 GB and 10.5 GB of memory and disk, as the environment mapping
+        // sizes them in mebibytes.
+        let mut resources = Resources::default();
+        resources.cpu_cores = Some(2);
+        resources.memory_mb = Some(3815);
+        resources.disk_mb = Some(10_014);
+        let spec = DriverSpec::new(SandboxSource::Image {
+            reference: "ubuntu:24.04".to_string(),
+        })
+        .resources(resources);
         assert_eq!(
-            snapshot_inputs(&options),
+            snapshot_inputs(&spec),
             Some(SnapshotInputs {
                 source:    SnapshotInput::Image("ubuntu:24.04"),
                 cpu:       Some(2),
@@ -469,32 +465,30 @@ mod tests {
             })
         );
 
-        let options = SandboxOptions {
-            dockerfile: Some("FROM ubuntu".to_string()),
-            ..SandboxOptions::default()
-        };
+        let spec = DriverSpec::new(SandboxSource::Dockerfile {
+            content: "FROM ubuntu".to_string(),
+        });
         assert_eq!(
-            snapshot_inputs(&options).map(|inputs| inputs.source),
+            snapshot_inputs(&spec).map(|inputs| inputs.source),
             Some(SnapshotInput::Dockerfile("FROM ubuntu"))
         );
+        assert_eq!(gigabytes(1), 1, "a snapshot is never sized at zero");
+        assert_eq!(gigabytes(1024), 1);
+        assert_eq!(gigabytes(1025), 2);
     }
 
     #[test]
     fn overlay_names_the_run_and_carries_fabro_labels_and_timers() {
-        let options = SandboxOptions {
-            labels: BTreeMap::from([("team".to_string(), "platform".to_string())]),
-            network: NetworkPolicy::CidrAllowList {
+        let mut resources = Resources::default();
+        resources.cpu_cores = Some(2);
+        let base = DriverSpec::new(SandboxSource::HostDirectory)
+            .label("team", "platform")
+            .network(NetworkPolicy::CidrAllowList {
                 cidrs: vec!["10.0.0.0/8".to_string()],
-            },
-            ..SandboxOptions::default()
-        };
+            })
+            .resources(resources);
         let snapshot = SnapshotId::try_new("snap-1").unwrap();
-        let spec = overlay(
-            base_spec(&options, Some(&run_id())),
-            &options,
-            Some(&run_id()),
-            &snapshot,
-        );
+        let spec = overlay(base, Some(&run_id()), &snapshot);
 
         assert!(matches!(&spec.source, SandboxSource::Snapshot { id } if id == &snapshot));
         assert_eq!(
@@ -519,18 +513,23 @@ mod tests {
             "an unset auto-stop gets fabro's explicit default, never Daytona's 15 minutes"
         );
         assert_eq!(spec.timers.auto_delete_after_stop, Some(Duration::ZERO));
+        assert_eq!(
+            spec.resources,
+            Resources::default(),
+            "the snapshot carries the resources; Daytona refuses them on the sandbox"
+        );
         assert!(!spec.ephemeral);
     }
 
     #[test]
     fn overlay_passes_explicit_auto_stop_through_and_zero_disables() {
         let snapshot = SnapshotId::try_new(DEFAULT_SNAPSHOT).unwrap();
-        let options = SandboxOptions {
-            auto_stop: Some(Duration::from_mins(45)),
-            network: NetworkPolicy::Block,
-            ..SandboxOptions::default()
-        };
-        let explicit = overlay(base_spec(&options, None), &options, None, &snapshot);
+        let mut timers = LifecycleTimers::default();
+        timers.auto_stop_after_idle = Some(Duration::from_mins(45));
+        let base = DriverSpec::new(SandboxSource::HostDirectory)
+            .network(NetworkPolicy::Block)
+            .timers(timers);
+        let explicit = overlay(base, None, &snapshot);
         assert_eq!(
             explicit.timers.auto_stop_after_idle,
             Some(Duration::from_mins(45))
@@ -538,11 +537,13 @@ mod tests {
         assert!(matches!(explicit.network, NetworkPolicy::Block));
         assert!(explicit.name.is_none());
 
-        let options = SandboxOptions {
-            auto_stop: Some(Duration::ZERO),
-            ..SandboxOptions::default()
-        };
-        let disabled = overlay(base_spec(&options, None), &options, None, &snapshot);
+        let mut timers = LifecycleTimers::default();
+        timers.auto_stop_after_idle = Some(Duration::ZERO);
+        let disabled = overlay(
+            DriverSpec::new(SandboxSource::HostDirectory).timers(timers),
+            None,
+            &snapshot,
+        );
         assert_eq!(disabled.timers.auto_stop_after_idle, Some(Duration::ZERO));
     }
 
@@ -728,7 +729,7 @@ mod wire_gate {
 
     use super::*;
     use crate::driver_sandbox::{LayoutSource, RepoWorkspace, RunSandbox};
-    use crate::options::base_spec;
+    use crate::environment::CloneRequest;
 
     #[expect(
         clippy::disallowed_methods,
@@ -765,18 +766,20 @@ mod wire_gate {
 
         let workspace = RepoWorkspace::plan(
             LayoutSource::Fixed(layout()),
-            false,
-            Some("https://github.com/brynary/rack-test"),
-            None,
-            None,
-            None,
-            Some(100),
+            &CloneRequest {
+                origin_url: Some("https://github.com/brynary/rack-test".to_string()),
+                depth: Some(100),
+                ..CloneRequest::default()
+            },
             None,
         )
         .expect("clone plan");
         let snapshot = SnapshotId::try_new(DEFAULT_SNAPSHOT).expect("snapshot id");
-        let options = SandboxOptions::default();
-        let spec = overlay(base_spec(&options, None), &options, None, &snapshot);
+        let spec = overlay(
+            DriverSpec::new(SandboxSource::HostDirectory),
+            None,
+            &snapshot,
+        );
         let sandbox = RunSandbox::pending(SandboxProviderKind::DAYTONA, remote, spec, workspace);
         sandbox
             .initialize()

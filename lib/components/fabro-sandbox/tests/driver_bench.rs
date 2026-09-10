@@ -36,8 +36,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use fabro_sandbox::{
-    ProviderAccess, RunSandbox, SandboxOptions, SandboxProviderKind, local_sandbox,
-    provider_sandbox,
+    CloneRequest, ProviderAccess, RunSandbox, SandboxProviderKind, local_sandbox, provider_sandbox,
 };
 use sandbox_driver::{
     ExecSpec, GrepOptions, Sandbox as DriverHandle, SandboxProvider, SandboxSource, SandboxSpec,
@@ -363,15 +362,10 @@ async fn agent_tool_call_latency_through_the_driver() {
     let fabro_docker = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some(IMAGE.to_owned()),
-            skip_clone: true,
-            ..SandboxOptions::default()
-        },
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::Image {
+            reference: IMAGE.to_owned(),
+        }),
+        &CloneRequest::none(),
         None,
         None,
     )

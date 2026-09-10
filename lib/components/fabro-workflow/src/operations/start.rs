@@ -10,8 +10,8 @@ use fabro_llm::credentials::readiness;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_mcp::config::McpServerSettings;
 use fabro_sandbox::{
-    DaytonaCredentials, ProviderAccess, ProviderSandboxSpec, SandboxOptions, SandboxSpec,
-    local_working_directory_from_environment, options_from_environment,
+    CloneRequest, DaytonaCredentials, ProviderAccess, ProviderSandboxSpec, SandboxSpec,
+    sandbox_spec_for_environment,
 };
 use fabro_static::EnvVars;
 #[cfg(test)]
@@ -521,16 +521,15 @@ impl RunSession {
                     working_directory: folder_working_directory_from_record(record, path).await?,
                 },
                 None => {
-                    let working_directory = local_working_directory_from_environment(
-                        &resolved.environment,
-                        record.source_directory.as_deref().map(Path::new),
-                    )
-                    .map_err(|err| {
-                        Error::engine_with_source(
-                            "Failed to resolve local environment working directory",
-                            err,
-                        )
-                    })?;
+                    let working_directory = resolved
+                        .environment
+                        .local_working_directory(record.source_directory.as_deref().map(Path::new))
+                        .map_err(|err| {
+                            Error::engine_with_source(
+                                "Failed to resolve local environment working directory",
+                                err,
+                            )
+                        })?;
                     SandboxSpec::Local { working_directory }
                 }
             },
@@ -542,18 +541,20 @@ impl RunSession {
                     providers: services.sandbox_providers.clone(),
                     daytona,
                 };
-                let mut options = resolve_sandbox_options(resolved, secret_lookup)?;
-                options.skip_clone |= clone_source.skip_clone;
+                let spec = resolve_sandbox_spec(resolved, secret_lookup)?;
+                let mut clone = CloneRequest::from_settings(&resolved.clone);
+                clone.skip |= clone_source.skip_clone;
+                clone.origin_url = clone_source.origin_url;
+                clone.branch = clone_source.branch;
+                clone.tag = clone_source.tag;
+                clone.commit_sha = clone_source.commit_sha;
                 SandboxSpec::Provider(Box::new(ProviderSandboxSpec {
                     kind: sandbox_provider.clone(),
                     access,
-                    options,
+                    spec,
+                    clone,
                     github_app: services.github_app.clone(),
                     run_id: Some(record.run_id),
-                    clone_origin_url: clone_source.origin_url,
-                    clone_branch: clone_source.branch,
-                    clone_tag: clone_source.tag,
-                    clone_commit_sha: clone_source.commit_sha,
                 }))
             }
         };
@@ -802,20 +803,20 @@ fn resolve_sandbox_provider(settings: &ResolvedRunSettings) -> SandboxProviderKi
     settings.environment.provider.clone()
 }
 
-/// The environment's sandbox options with its variables resolved through
-/// the vault.
-fn resolve_sandbox_options(
+/// The environment's sandbox spec with its variables resolved through the
+/// vault.
+fn resolve_sandbox_spec(
     settings: &ResolvedRunSettings,
     secrets_lookup: impl FnMut(&str) -> Option<String>,
-) -> Result<SandboxOptions, Error> {
+) -> Result<sandbox_driver::SandboxSpec, Error> {
     let env = settings
         .environment
         .resolve_env(secrets_lookup)
         .map_err(|err| Error::engine_with_source("failed to resolve environment variables", err))?
         .into_iter()
         .collect();
-    options_from_environment(&settings.environment, &settings.clone, env)
-        .map_err(|err| Error::engine_with_source("failed to resolve sandbox options", err))
+    sandbox_spec_for_environment(&settings.environment, env)
+        .map_err(|err| Error::engine_with_source("failed to resolve sandbox spec", err))
 }
 
 fn resolve_start_llm(
@@ -1525,9 +1526,9 @@ mod tests {
             ..RunLayer::default()
         });
 
-        let options = resolve_sandbox_options(&settings.run, |_| None).unwrap();
-        assert!(options.skip_clone);
-        assert_eq!(options.clone_depth, Some(1));
+        let clone = CloneRequest::from_settings(&settings.run.clone);
+        assert!(clone.skip);
+        assert_eq!(clone.depth, Some(1));
     }
 
     #[test]
@@ -1540,16 +1541,16 @@ mod tests {
             ..RunLayer::default()
         });
 
-        let options = resolve_sandbox_options(&settings.run, |_| None).unwrap();
-        assert_eq!(options.clone_depth, None);
+        let clone = CloneRequest::from_settings(&settings.run.clone);
+        assert_eq!(clone.depth, None);
     }
 
     #[test]
     fn clone_providers_default_to_depth_100() {
         let settings = settings_from_run_layer(RunLayer::default());
 
-        let options = resolve_sandbox_options(&settings.run, |_| None).unwrap();
-        assert_eq!(options.clone_depth, Some(100));
+        let clone = CloneRequest::from_settings(&settings.run.clone);
+        assert_eq!(clone.depth, Some(100));
     }
 
     #[test]
@@ -1877,19 +1878,12 @@ mod tests {
         let SandboxSpec::Provider(spec) = sandbox else {
             panic!("none target should retain the selected Docker provider");
         };
-        let ProviderSandboxSpec {
-            kind,
-            options,
-            clone_origin_url,
-            clone_branch,
-            clone_commit_sha,
-            ..
-        } = *spec;
+        let ProviderSandboxSpec { kind, clone, .. } = *spec;
         assert_eq!(kind, SandboxProviderKind::DOCKER);
-        assert!(options.skip_clone);
-        assert_eq!(clone_origin_url, None);
-        assert_eq!(clone_branch, None);
-        assert_eq!(clone_commit_sha, None);
+        assert!(clone.skip);
+        assert_eq!(clone.origin_url, None);
+        assert_eq!(clone.branch, None);
+        assert_eq!(clone.commit_sha, None);
         assert_eq!(sandbox_env.origin_url, None);
         assert_eq!(pr_origin_url, None);
     }
@@ -1949,18 +1943,15 @@ mod tests {
         let ProviderSandboxSpec {
             kind,
             access,
-            options,
-            clone_origin_url,
-            clone_branch,
-            clone_commit_sha,
+            clone,
             ..
         } = *spec;
         assert_eq!(kind, SandboxProviderKind::DAYTONA);
         assert!(access.daytona.is_some(), "the vault key reaches the spec");
-        assert!(options.skip_clone);
-        assert_eq!(clone_origin_url, None);
-        assert_eq!(clone_branch, None);
-        assert_eq!(clone_commit_sha, None);
+        assert!(clone.skip);
+        assert_eq!(clone.origin_url, None);
+        assert_eq!(clone.branch, None);
+        assert_eq!(clone.commit_sha, None);
         assert_eq!(sandbox_env.origin_url, None);
         assert_eq!(pr_origin_url, None);
     }
@@ -2338,17 +2329,21 @@ mod tests {
             ..RunLayer::default()
         });
 
-        let options = resolve_sandbox_options(&settings.run, |_| None).unwrap();
+        let spec = resolve_sandbox_spec(&settings.run, |_| None).unwrap();
 
-        assert_eq!(options.image.as_deref(), Some("ubuntu:24.04"));
-        assert_eq!(options.cpu, Some(4));
-        assert_eq!(options.memory_bytes, Some(2_000_000_000));
         assert!(matches!(
-            options.network,
-            fabro_sandbox::NetworkPolicy::Block
+            &spec.source,
+            fabro_sandbox::SandboxSource::Image { reference } if reference == "ubuntu:24.04"
         ));
+        assert_eq!(spec.resources.cpu_cores, Some(4));
         assert_eq!(
-            options.env,
+            spec.resources.memory_mb,
+            Some(1908),
+            "2 GB rounds up to whole mebibytes"
+        );
+        assert!(matches!(spec.network, fabro_sandbox::NetworkPolicy::Block));
+        assert_eq!(
+            spec.env,
             std::collections::BTreeMap::from([("NODE_ENV".to_string(), "test".to_string())])
         );
     }

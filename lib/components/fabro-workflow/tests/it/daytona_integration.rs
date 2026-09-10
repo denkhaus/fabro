@@ -25,7 +25,7 @@ use std::sync::Arc;
 use fabro_agent::RunSandbox;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_sandbox::{
-    DaytonaCredentials, ProviderAccess, SandboxOptions, SandboxProviderKind, provider_sandbox,
+    CloneRequest, DaytonaCredentials, ProviderAccess, SandboxProviderKind, provider_sandbox,
 };
 use fabro_static::EnvVars;
 use fabro_store::{ArtifactKey, ArtifactStore};
@@ -44,6 +44,7 @@ use fabro_workflow::run_options::{GitCheckpointOptions, RunOptions};
 use fabro_workflow::runtime_store::RunStoreHandle;
 use fabro_workflow::test_support::{WorkflowRunner, test_store_dir};
 use object_store::local::LocalFileSystem;
+use sandbox_driver::{LifecycleTimers, Resources, SandboxSource, SandboxSpec};
 use tokio_util::sync::CancellationToken;
 use ulid::Ulid;
 
@@ -224,12 +225,9 @@ async fn create_env_with_github_app(
     provider_sandbox(
         SandboxProviderKind::DAYTONA,
         &daytona_access(live_daytona_credentials()),
-        SandboxOptions::default(),
+        SandboxSpec::new(SandboxSource::HostDirectory),
+        &CloneRequest::default(),
         github_app.as_ref(),
-        None,
-        None,
-        None,
-        None,
         None,
     )
     .await
@@ -423,27 +421,25 @@ async fn daytona_full_lifecycle() {
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
 async fn daytona_snapshot_sandbox() {
-    let options = SandboxOptions {
-        auto_stop: Some(std::time::Duration::from_hours(1)),
-        dockerfile: Some(
-            "FROM ubuntu:22.04\nRUN apt-get update && apt-get install -y ripgrep".to_string(),
-        ),
-        cpu: Some(2),
-        memory_bytes: Some(4_000_000_000),
-        disk_bytes: Some(10_000_000_000),
-        ..SandboxOptions::default()
-    };
+    let mut resources = Resources::default();
+    resources.cpu_cores = Some(2);
+    resources.memory_mb = Some(4096);
+    resources.disk_mb = Some(10_240);
+    let mut timers = LifecycleTimers::default();
+    timers.auto_stop_after_idle = Some(std::time::Duration::from_hours(1));
+    let spec = SandboxSpec::new(SandboxSource::Dockerfile {
+        content: "FROM ubuntu:22.04\nRUN apt-get update && apt-get install -y ripgrep".to_string(),
+    })
+    .resources(resources)
+    .timers(timers);
 
     let creds = load_github_app_credentials();
     let env = provider_sandbox(
         SandboxProviderKind::DAYTONA,
         &daytona_access(live_daytona_credentials()),
-        options,
+        spec,
+        &CloneRequest::default(),
         Some(&creds),
-        None,
-        None,
-        None,
-        None,
         None,
     )
     .await
@@ -1652,18 +1648,11 @@ async fn daytona_cp_upload_download_round_trip() {
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"))]
 async fn daytona_computer_use_browser_screenshot() {
-    let options = SandboxOptions {
-        skip_clone: true,
-        ..SandboxOptions::default()
-    };
     let env = provider_sandbox(
         SandboxProviderKind::DAYTONA,
         &daytona_access(live_daytona_credentials()),
-        options,
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::HostDirectory),
+        &CloneRequest::none(),
         None,
         None,
     )
@@ -1800,18 +1789,11 @@ async fn daytona_computer_use_browser_screenshot() {
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"))]
 async fn daytona_playwright_mcp_sandbox_transport() {
     // Create sandbox from daytona-medium (has Node.js + Chromium)
-    let options = SandboxOptions {
-        skip_clone: true,
-        ..SandboxOptions::default()
-    };
     let sandbox = provider_sandbox(
         SandboxProviderKind::DAYTONA,
         &daytona_access(live_daytona_credentials()),
-        options,
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::HostDirectory),
+        &CloneRequest::none(),
         None,
         None,
     )

@@ -35,6 +35,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::clone::{self, GitHubClone};
 use crate::clone_source::{self, CloneDecision, EmptyWorkspaceReason};
+use crate::environment::CloneRequest;
 use crate::push_credentials::{self, PushCredentialState};
 use crate::{GitRunInfo, GitSetupIntent, RefreshOutcome, RetryPlan};
 
@@ -131,31 +132,22 @@ pub(crate) struct RepoWorkspace {
 impl RepoWorkspace {
     /// Decide the clone for a new sandbox. Fails before any provider call
     /// when the selectors are inconsistent (a pin without a branch, a
-    /// non-GitHub origin without `skip_clone`).
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the clone selectors are validated together by decide_clone"
-    )]
+    /// non-GitHub origin without `skip`).
     pub(crate) fn plan(
         layout: LayoutSource,
-        skip_clone: bool,
-        clone_origin_url: Option<&str>,
-        clone_branch: Option<&str>,
-        clone_tag: Option<&str>,
-        clone_commit_sha: Option<&str>,
-        clone_depth: Option<u32>,
+        clone: &CloneRequest,
         github_app: Option<&GitHubCredentials>,
     ) -> crate::Result<Self> {
         let decision = clone_source::decide_clone(
-            skip_clone,
-            clone_origin_url,
-            clone_branch,
-            clone_tag,
-            clone_commit_sha,
+            clone.skip,
+            clone.origin_url.as_deref(),
+            clone.branch.as_deref(),
+            clone.tag.as_deref(),
+            clone.commit_sha.as_deref(),
         )?;
         let credentials = PushCredentialState::new(push_credentials::build_token_source(
             github_app,
-            clone_origin_url,
+            clone.origin_url.as_deref(),
         )?);
         let plan = match decision {
             CloneDecision::EmptyWorkspace { reason } => WorkspacePlan::Empty(reason),
@@ -169,7 +161,7 @@ impl RepoWorkspace {
                 branch,
                 tag,
                 commit_sha,
-                depth: clone_depth,
+                depth: clone.depth,
             }),
         };
         Ok(Self {

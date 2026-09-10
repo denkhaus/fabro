@@ -38,7 +38,7 @@ pub use config::{
 pub use error::{CompactionError, Error, InterruptReason, Result};
 pub use event::Emitter;
 pub use fabro_mcp::config::McpServerSettings;
-pub use fabro_sandbox::{ProviderAccess, SandboxOptions, SandboxProviderKind, provider_sandbox};
+pub use fabro_sandbox::{CloneRequest, ProviderAccess, SandboxProviderKind, provider_sandbox};
 pub use fabro_types::SteeringMessage;
 pub use history::History;
 pub use local_sandbox::local_sandbox;
@@ -55,11 +55,11 @@ pub use question_tools::{
     OPENAI_REQUEST_USER_INPUT_TOOL, register_question_tools,
 };
 pub use sandbox::{
-    CaptureStats, DirEntry, ExecControls, ExecResult, ExecResultExt, ExecSpec, ExecStreamingResult,
-    FileKind, GrepMatch, GrepOptions, OutputSink, OutputStream, RefreshOutcome,
-    RemoteCredentialAction, RunSandbox, SandboxFile, StderrTail, StdioProcess, StdioProcessHandle,
-    Termination, TokenProvenance, TokenSnapshot, WalkOptions, command_termination,
-    format_lines_numbered, program_exit_code, shell_quote,
+    CaptureStats, DirEntry, DriverSpec, ExecControls, ExecResult, ExecResultExt, ExecSpec,
+    ExecStreamingResult, FileKind, GrepMatch, GrepOptions, OutputSink, OutputStream,
+    RefreshOutcome, RemoteCredentialAction, RunSandbox, SandboxFile, SandboxSource, StderrTail,
+    StdioProcess, StdioProcessHandle, Termination, TokenProvenance, TokenSnapshot, WalkOptions,
+    command_termination, format_lines_numbered, program_exit_code, shell_quote,
 };
 pub use session::{
     CompletionCoordinator, Session, SessionControlHandle, SessionInputTiming,

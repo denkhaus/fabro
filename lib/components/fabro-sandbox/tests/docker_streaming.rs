@@ -1,13 +1,13 @@
 //! Docker sandbox behaviour through the sandbox-driver Docker provider.
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use fabro_sandbox::{
-    ExecControls, ExecSpec, OutputSink, ProviderAccess, SandboxOptions, SandboxProviderKind,
+    CloneRequest, ExecControls, ExecSpec, OutputSink, ProviderAccess, SandboxProviderKind,
     Termination, provider_sandbox,
 };
+use sandbox_driver::{SandboxSource, SandboxSpec};
 use tokio::process::Command;
 use tokio::sync::Mutex;
 
@@ -44,15 +44,10 @@ async fn streaming_timeout_terminates_docker_exec_before_returning() {
     let sandbox = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some(image.to_string()),
-            skip_clone: true,
-            ..SandboxOptions::default()
-        },
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::Image {
+            reference: image.to_string(),
+        }),
+        &CloneRequest::none(),
         None,
         None,
     )
@@ -119,15 +114,10 @@ async fn streaming_command_receives_exact_stdin_and_eof() {
     let sandbox = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some(image.to_string()),
-            skip_clone: true,
-            ..SandboxOptions::default()
-        },
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::Image {
+            reference: image.to_string(),
+        }),
+        &CloneRequest::none(),
         None,
         None,
     )
@@ -182,15 +172,13 @@ async fn cloned_docker_sandbox_uses_repos_checkout_and_workspace_symlink() {
     let sandbox = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some(image.to_string()),
-            skip_clone: false,
-            ..SandboxOptions::default()
+        SandboxSpec::new(SandboxSource::Image {
+            reference: image.to_string(),
+        }),
+        &CloneRequest {
+            origin_url: Some("https://github.com/brynary/rack-test".to_string()),
+            ..CloneRequest::default()
         },
-        None,
-        None,
-        Some("https://github.com/brynary/rack-test".to_string()),
-        None,
         None,
         None,
     )
@@ -248,16 +236,11 @@ async fn docker_runs_clean_bash_through_both_command_paths() {
     let sandbox = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some(image.to_string()),
-            env: BTreeMap::from([("BASH_ENV".to_string(), "/tmp/fabro-bash-env".to_string())]),
-            skip_clone: true,
-            ..SandboxOptions::default()
-        },
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::Image {
+            reference: image.to_string(),
+        })
+        .env_var("BASH_ENV".to_string(), "/tmp/fabro-bash-env".to_string()),
+        &CloneRequest::none(),
         None,
         None,
     )
@@ -345,15 +328,10 @@ async fn docker_glob_matches_patterns_containing_a_path_separator() {
     let sandbox = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some(image.to_string()),
-            skip_clone: true,
-            ..SandboxOptions::default()
-        },
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::Image {
+            reference: image.to_string(),
+        }),
+        &CloneRequest::none(),
         None,
         None,
     )
@@ -430,15 +408,10 @@ async fn docker_runtime_directory_is_private_and_outside_workspace() {
     let sandbox = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some(image.to_string()),
-            skip_clone: true,
-            ..SandboxOptions::default()
-        },
-        None,
-        None,
-        None,
-        None,
+        SandboxSpec::new(SandboxSource::Image {
+            reference: image.to_string(),
+        }),
+        &CloneRequest::none(),
         None,
         None,
     )

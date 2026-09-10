@@ -8,7 +8,10 @@ use fabro_agent::event::SessionBoundEmitter;
 use fabro_agent::tool_registry::ToolContext;
 use fabro_agent::tools::make_shell_tool;
 use fabro_agent::types::AgentEvent;
-use fabro_agent::{Emitter, ProviderAccess, SandboxOptions, SandboxProviderKind, provider_sandbox};
+use fabro_agent::{
+    CloneRequest, DriverSpec, Emitter, ProviderAccess, SandboxProviderKind, SandboxSource,
+    provider_sandbox,
+};
 use fabro_types::CommandTermination;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
@@ -19,15 +22,10 @@ async fn shell_reports_real_docker_process_outcome() {
     let Ok(sandbox) = provider_sandbox(
         SandboxProviderKind::DOCKER,
         &ProviderAccess::default(),
-        SandboxOptions {
-            image: Some("buildpack-deps:noble".to_string()),
-            skip_clone: true,
-            ..SandboxOptions::default()
-        },
-        None,
-        None,
-        None,
-        None,
+        DriverSpec::new(SandboxSource::Image {
+            reference: "buildpack-deps:noble".to_string(),
+        }),
+        &CloneRequest::none(),
         None,
         None,
     )
