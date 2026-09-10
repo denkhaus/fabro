@@ -570,7 +570,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-10T18:00:28.056423703Z",
-  "last_event_at": "2026-09-10T18:02:13.180577729Z",
+  "last_event_at": "2026-09-10T18:02:18.098162948Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -750,9 +750,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 110,
       "checkpoint": {
-        "timestamp": "2026-09-10T18:02:13.200219842Z",
+        "timestamp": "2026-09-10T18:02:18.097716771Z",
         "current_node": "merge",
         "completed_nodes": [
           "start",
@@ -761,8 +761,23 @@
         ],
         "node_retries": {},
         "context_values": {
+          "response.merge": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.merge",
+            "chars": 1630,
+            "preview": "The `fabro_run_create` call is being rejected with \"Access denied\" on both attempts — the create itself is impossible, so no child run exists and no wait can begin. Per the outcome contract, that's "
+          },
+          "thread.survey.current_node": "merge",
+          "graph.cycle_counter_reset_key": "pass_id",
           "internal.retry_count.merge": 0,
-          "internal.retry_count.start": 0,
+          "internal.exit_kind": "soft",
+          "internal.thread_id": "survey",
+          "current_node": "merge",
+          "internal.fidelity": "compact",
+          "graph.preamble_budget_kb": "12",
+          "outcome": "failed",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.survey": 0,
           "journal": {
             "painpoints": [
               {
@@ -773,46 +788,31 @@
               "merge leg aborted before child creation: run-create denied twice at 2026-09-10; no child_run_id exists, no merge pass consumed. Upstream merge is still pending (count 24 >= 5 threshold, newest 'Merge pull request #848 from fabro-sh/rust-boundary'). Next merge leg should retry the same create shape after the access issue is resolved."
             ]
           },
-          "response.merge": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.merge",
-            "chars": 1630,
-            "preview": "The `fabro_run_create` call is being rejected with \"Access denied\" on both attempts — the create itself is impossible, so no child run exists and no wait can begin. Per the outcome contract, that's "
-          },
-          "last_stage": "merge",
-          "internal.fidelity": "compact",
-          "failure_signature": "merge|deterministic|fabro_run_create for merge-upstream (workflow_source {repo: denkhaus/fabro,branch: denkhaus,workflow: merge-upstream},environment=toolchain,auto_approve=true) returned 'access denied' on two consecutive attempts; no child run could be creat",
+          "last_response": "The `fabro_run_create` call is being rejected with \"Access denied\" on both attempts — the create itself is impossible, so no child run exists and no wait can begin. Per the outcome contract, that's ",
           "seed_cycles": {
             "start": 1,
             "survey": 1,
             "merge": 1
           },
-          "internal.seed_cycle_anchor": "",
-          "outcome": "failed",
-          "graph.cycle_counter_reset_key": "pass_id",
+          "internal.node_visit_count": 1,
+          "preferred_label": "Unrouted merge outcome",
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
             "chars": 1628,
             "preview": "```json\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Merge needed\",\n  \"context_updates\": {\n    \"journal\": {\n      \"painpoints\": [\n        {\n          \"text\": \"fabro_runs_list (workflow=devel"
           },
+          "failure_signature": "merge|deterministic|fabro_run_create for merge-upstream (workflow_source {repo: denkhaus/fabro,branch: denkhaus,workflow: merge-upstream},environment=toolchain,auto_approve=true) returned 'access denied' on two consecutive attempts; no child run could be creat",
+          "internal.run_id": "01M267M2EF8GPWQF32MT9RZGTB",
+          "last_stage": "merge",
+          "internal.retry_count.start": 0,
+          "thread.start.current_node": "survey",
+          "graph.inspects": "develop,merge-upstream,revisor",
           "graph.max_node_visits": "12",
           "failure_class": "deterministic",
-          "thread.start.current_node": "survey",
-          "internal.exit_kind": "soft",
-          "graph.rankdir": "LR",
-          "graph.preamble_budget_kb": "12",
-          "internal.retry_count.survey": 0,
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "internal.node_visit_count": 1,
+          "internal.seed_cycle_anchor": "",
           "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "thread.survey.current_node": "merge",
-          "internal.work_dir": "/workspace/fabro",
-          "current_node": "merge",
-          "preferred_label": "Unrouted merge outcome",
-          "internal.thread_id": "survey",
-          "last_response": "The `fabro_run_create` call is being rejected with \"Access denied\" on both attempts — the create itself is impossible, so no child run exists and no wait can begin. Per the outcome contract, that's ",
-          "internal.run_id": "01M267M2EF8GPWQF32MT9RZGTB"
+          "graph.rankdir": "LR"
         },
         "node_outcomes": {
           "start": {
@@ -931,16 +931,99 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "45796000d70903e7733b2e5beba5148af6c79a94",
+        "loop_failure_signatures": {
+          "merge|deterministic|fabro_run_create for merge-upstream (workflow_source {repo: denkhaus/fabro,branch: denkhaus,workflow: merge-upstream},environment=toolchain,auto_approve=true) returned 'access denied' on two consecutive attempts; no child run could be creat": 1
+        },
         "node_visits": {
           "merge": 1,
-          "survey": 1,
-          "start": 1
+          "start": 1,
+          "survey": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 1,
+          "additions": 2,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-10T18:02:18.139430885Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 101009,
+      "inference_time_ms": 68182,
+      "tool_time_ms": 19060,
+      "active_time_ms": 87242
+    },
+    "failure": {
+      "reason": "soft_stop",
+      "detail": {
+        "message": "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; the next run re-enters autonomously",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "45796000d70903e7733b2e5beba5148af6c79a94",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 70033,
+          "inference_time_ms": 50363,
+          "tool_time_ms": 19056,
+          "active_time_ms": 69419
+        },
+        "billing_usd_micros": 120964,
+        "retries": 0
+      },
+      {
+        "stage_id": "merge",
+        "stage_label": "merge",
+        "timing": {
+          "wall_time_ms": 18428,
+          "inference_time_ms": 17819,
+          "tool_time_ms": 4,
+          "active_time_ms": 17823
+        },
+        "billing_usd_micros": 25807,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 56102,
+      "output_tokens": 1514,
+      "total_tokens": 283037,
+      "reasoning_tokens": 717,
+      "cache_read_tokens": 224704,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 146771
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M267M2EF8GPWQF32MT9RZGTB.jsonl b/.fabro/journal/01M267M2EF8GPWQF32MT9RZGTB.jsonl\nnew file mode 100644\nindex 000000000..e21cca0ff\n--- /dev/null\n+++ b/.fabro/journal/01M267M2EF8GPWQF32MT9RZGTB.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M267M2EF8GPWQF32MT9RZGTB\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T18:00:30Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M267M2EF8GPWQF32MT9RZGTB\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T18:01:46Z\",\"data\":{\"painpoints\":[{\"text\":\"fabro_runs_list (workflow=develop) returned only runs up to 2026-09-08 (newest PR #76) and 0 runs for created_since 2026-09-09, while .fabro/journal/ and git history clearly show develop runs through 2026-09-10 (e.g. 01M25R832HP615J291N72FHNCS, PR #121/#123). The surveyor's revisor-backlog check cannot rely on the runs API for recent runs — I had to fall back to diffing .fabro/journal/ run ids against .fabro/reviews/develop/ artifacts. Fix idea: the runs-list projection should include runs from the last 48h, or the surveyor prompt should bless the journal/reviews diff as the primary backlog signal.\"}],\"observations\":[\"upstream count 24 (>= 5 threshold) -> Merge needed; newest upstream subject: 'Merge pull request #848 from fabro-sh/rust-boundary'; remote upstream was missing and was added fresh this pass (https://github.com/fabro-sh/fabro)\",\"revisor backlog: 01M25R832HP615J291N72FHNCS (develop run completed 2026-09-10 15:02Z, closeout succeeded, PR #121/#123 integration; no review artifact in .fabro/reviews/develop/ and no revisor run newer than 01M25K41V4NEWXSA3SVGRHKRXK which was revised 13:04Z)\",\"next surveyor note: current run 01M267M2EF8GPWQF32MT9RZGTB is the serialized line itself, not a develop run — exclude it from backlog math; after the merge pass, next Work pass should run the revisor against 01M25R832HP615J291N72FHNCS to burn the one-run backlog\"]}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 2,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "soft"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -971,7 +1054,12 @@
       "first_event_seq": 81,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "failed",
+        "notes": null,
+        "failure_reason": "fabro_run_create for merge-upstream (workflow_source {repo: denkhaus/fabro, branch: denkhaus, workflow: merge-upstream}, environment=toolchain, auto_approve=true) returned 'Access denied' on two consecutive attempts; no child run could be created, so the merge leg could not start. Likely an authorization/permission issue on the runs-create API for this session.",
+        "timestamp": "2026-09-10T18:02:13.198989570Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -986,8 +1074,12 @@
       "started_at": "2026-09-10T18:01:51.771313386Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 20799,
-      "live_tool_ms": 3,
+      "timing": {
+        "wall_time_ms": 18428,
+        "inference_time_ms": 17819,
+        "tool_time_ms": 4,
+        "active_time_ms": 17823
+      },
       "usage": {
         "input_tokens": 12139,
         "output_tokens": 525,
@@ -1229,7 +1321,43 @@
         "warnings": []
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "failed"
+    },
+    "exit@1": {
+      "first_event_seq": 113,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-10T18:02:18.098162948Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-10T18:02:18.098075253Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
     },
     "start@1": {
       "first_event_seq": 17,

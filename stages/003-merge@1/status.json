@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "fabro_run_create for merge-upstream (workflow_source {repo: denkhaus/fabro, branch: denkhaus, workflow: merge-upstream}, environment=toolchain, auto_approve=true) returned 'Access denied' on two consecutive attempts; no child run could be created, so the merge leg could not start. Likely an authorization/permission issue on the runs-create API for this session.",
+  "timestamp": "2026-09-10T18:02:13.198989570Z"
+}
