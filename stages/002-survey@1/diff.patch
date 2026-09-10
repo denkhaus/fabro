@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M257096GRAPXN5N0C82QD142.jsonl b/.fabro/journal/01M257096GRAPXN5N0C82QD142.jsonl
+new file mode 100644
+index 000000000..df4eef0d0
+--- /dev/null
++++ b/.fabro/journal/01M257096GRAPXN5N0C82QD142.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M257096GRAPXN5N0C82QD142","node":"start","visit":1,"status":"succeeded","ts":"2026-09-10T08:30:17Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M257096GRAPXN5N0C82QD142","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-10T08:31:17Z","data":{"painpoints":[],"observations":["upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0' — drift at zero after recent merges, accumulates toward MIN threshold of 5","revisor backlog: 01M256QJB48JK8BXJE1TVM2HYS (develop PR #115 merged 2026-09-10, no review artifact in .fabro/reviews/develop/; newest review covers 01M23W4S7Q2GNEVPY779M4GMN6 / PR #113)","next surveyor: nothing unusual in fetch; origin gained new branches (rule-files-sync-733cf9ca, virtual-weaving-firefly) and nightly tags v0.346-348 — no action needed"]}}
