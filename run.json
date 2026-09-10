@@ -710,7 +710,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-10T13:31:29.440406563Z",
-  "last_event_at": "2026-09-10T13:33:46.100138182Z",
+  "last_event_at": "2026-09-10T14:54:35.457715873Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -758,9 +758,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 124,
       "checkpoint": {
-        "timestamp": "2026-09-10T13:33:46.501935699Z",
+        "timestamp": "2026-09-10T13:33:51.885933098Z",
         "current_node": "planner",
         "completed_nodes": [
           "start",
@@ -768,35 +768,35 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.fidelity": "compact",
-          "last_response": "Basis resolves against the current tree (server.rs:3576 reducer, run_state.rs RunProjectionReducer both present). Claimed; brief written.\n\nClaimed a seed:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next",
-          "internal.thread_id": "start",
-          "outcome": "succeeded",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "current_node": "planner",
-          "seed_cycles": {
-            "planner": 1
-          },
           "failure_class": "",
-          "internal.run_id": "01M25R832HP615J291N72FHNCS",
-          "preferred_label": "Seed claimed",
+          "internal.fidelity": "compact",
+          "internal.retry_count.planner": 0,
           "current_seed_brief": "RE-CLAIM with failed-gate context: a first attempt (run 01M25K41V4NE, PR #121 branch, NOT on base) failed the dogfood-gate on two fabro-cli rm tests. FIRST reconcile with that branch: git fetch origin fabro/run/01M25K41V4NEWXSA3SVGRHKRXK — reuse or supersede its work; the fix is likely a transition-table/completed-predicate adjustment, not a rewrite. Then deliver: - new fork-owned module `lib/components/fabro-workflow/src/operations/lifecycle_events.rs` exposing the run-lifecycle sequence as an interface (request_start / runnable / starting / running / resubmit / terminal_failure); server.rs and test_support become adapters; - one pure transition table (RunStatus x EventBody) -> Result<RunStatus, InvalidTransition> in fabro-types; BOTH reducers consume it (server.rs update_live_run_from_event:3576 and fabro-store run_state.rs RunProjectionReducer:75); live reducer keeps only side effects (map/bus cleanup); - drift arms aligned: Paused{prior_block}/RunUnblocked (server.rs:3610-3616 vs run_state.rs:197-205); - historic shims in run_state.rs (Submitted->Starting / RunFailed fast-forward, run_state.rs:84-112) carry a documented reason comment; - equivalence: property/table test proving both reducers yield the same status for every event sequence; unit tests per transition including cancel-before-starting and failure-before-running; - the fabro-cli rm regression is fixed: targeted `cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors` passes on the final tree (these were the gate failures on PR #121 — rm stopped treating terminal runs as completed); - drift rules: additive fork-owned only, no wire-contract change, no new pub items on AppState, resume.rs gets a minimal adapter edit only; RunSupervisor build-out is OUT OF SCOPE; - gate green via the deterministic tester step (never run the full gate yourself). Cheapest-first verification: targeted nextest on the rm tests, then lifecycle unit tests, then fmt/clippy on touched crates.",
-          "graph.rankdir": "LR",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.inspects": "develop",
+          "internal.run_id": "01M25R832HP615J291N72FHNCS",
+          "internal.seed_cycle_anchor": "fabro-3fe4",
+          "internal.thread_id": "start",
+          "current_seed_id": "fabro-3fe4",
+          "last_response": "Basis resolves against the current tree (server.rs:3576 reducer, run_state.rs RunProjectionReducer both present). Claimed; brief written.\n\nClaimed a seed:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next",
+          "failure_signature": "",
+          "last_stage": "planner",
+          "preferred_label": "Seed claimed",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
             "chars": 4214,
             "preview": "Basis resolves against the current tree (server.rs:3576 reducer, run_state.rs RunProjectionReducer both present). Claimed; brief written.\n\nClaimed a seed:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next"
           },
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "graph.max_node_visits": "40",
-          "internal.retry_count.planner": 0,
-          "graph.preamble_budget_kb": "24",
-          "internal.retry_count.start": 0,
-          "graph.inspects": "develop",
-          "internal.work_dir": "/workspace/fabro",
-          "failure_signature": "",
           "thread.start.current_node": "planner",
+          "current_seed_title": "Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table",
+          "graph.max_node_visits": "40",
+          "graph.preamble_budget_kb": "24",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.rankdir": "LR",
+          "internal.node_visit_count": 1,
+          "internal.work_dir": "/workspace/fabro",
           "journal": {
             "painpoints": [
               {
@@ -812,11 +812,11 @@
               "The runs-list 'merged' state for PR #121 contradicts base history; the seed's REOPEN CONTEXT (base commit 76ed619) was treated as authoritative. The implementer MUST fetch the PR #121 branch before starting."
             ]
           },
-          "current_seed_title": "Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table",
-          "current_seed_id": "fabro-3fe4",
-          "internal.seed_cycle_anchor": "fabro-3fe4",
-          "last_stage": "planner",
-          "internal.node_visit_count": 1
+          "outcome": "succeeded",
+          "seed_cycles": {
+            "planner": 1
+          },
+          "internal.retry_count.start": 0
         },
         "node_outcomes": {
           "start": {
@@ -885,7 +885,216 @@
           }
         },
         "next_node_id": "implementer",
+        "git_commit_sha": "2a2f189a4cf44f95b03420280c488971156ae8b6",
         "node_visits": {
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl b/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl\nnew file mode 100644\nindex 0000000..f401c23\n--- /dev/null\n+++ b/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T13:31:32Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T13:33:46Z\",\"data\":{\"painpoints\":[{\"text\":\"fabro_runs_list reports PR #121 as state 'merged' while the base branch has none of its work (no lifecycle_events.rs, no squash commit; newest base commit 76ed619 explicitly says the close lives only on the unmerged branch). The in-flight check relies on run/PR projections — a wrongly-'merged' open PR is invisible as in-flight and misleads reconciliation. Evidence: runs list for workflow develop, run 01M25K41V4NEWXSA3SVGRHKRXK, checked 2026-09-10 in run 01M25R832HP615J291N72FHNCS. Fix idea: postlude/post-merge reconciliation should correct PR state, or the projection should re-check against git.\"},{\"text\":\"Journal fallback for run 01M23RQRCB748R4VRXA2WE6BZ0 (open PR #109) found no journal file at `.fabro/journal/<run_id>.jsonl` — had to recover the in-flight seed (fabro-e702) by fetching the run branch and parsing the .seeds/issues.jsonl diff. This is exactly the known gap of seed fabro-adf7 (failed runs lose stage journals); the prompt's journal fallback silently degrades to nothing.\"}],\"observations\":[\"In-flight exclusions applied this pass: fabro-e702 (open PR #109, seed recovered via run-branch seeds diff), and self (this run). PR #109 is old (2026-09-09) and still open — a stale in-flight lock on its seed.\",\"fabro-3fe4 re-claimed rather than fabro-7627 (also High, listed first): tie-break per observed-failure-class rule — 3fe4 has a concrete gate failure and ~55 min of reusable work on the PR #121 branch; 7627 stays top of the next run's list.\",\"The runs-list 'merged' state for PR #121 contradicts base history; the seed's REOPEN CONTEXT (base commit 76ed619) was treated as authoritative. The implementer MUST fetch the PR #121 branch before starting.\"]}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex e94edd6..6a12f1d 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -351,7 +351,7 @@\n {\"id\":\"fabro-c49c\",\"title\":\"Close the gate-ban equivalence loophole in planner step 7\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T20:14:39.400Z\",\"updatedAt\":\"2026-09-10T08:34:43.824Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 7, extend the gate-command rewrite rule from matching only 'just qualitygate' to also matching its recipe body or equivalent invocation (per PROJECT_FACTS the recipe delegates to 'nu scripts/qualitygate.nu'); the permitted substitute stays gate-green via the deterministic tester step. In run 01M23W4S7Q2GNEVPY779M4GMN6 the planner rewrote the banned command into its byte-equivalent body (checkpoint seq 82, justfile:128), so the implementer and reviewer each ran the full gate on top of the tester — three gate executions on one tree. The prior fix (fabro-f7cf, closed) only matched the literal command name; this is the bypass of that implemented rule, a different mechanism. Expected effect: no redundant full-gate runs; on Rust-touching seeds each avoided run is a cold compile measured at 8-15 min. Cross-references: fabro-f7cf (prior, implemented). Basis: run 01M23W4S7Q2GNEVPY779M4GMN6, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4c8683243f8c295438cf019e2f061f8812fc58db\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-10T08:34:43.824Z\"}\n {\"id\":\"fabro-5e3c\",\"title\":\"Fix hardcoded cwd restore in evidence-smoke.nu\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T20:14:45.326Z\",\"updatedAt\":\"2026-09-09T20:22:22.837Z\",\"description\":\"In scripts/evidence-smoke.nu (~line 60), replace the hardcoded 'cd /workspace/fabro' cwd restore with a captured $env.PWD at script start. The reviewer in run 01M23W4S7Q2GNEVPY779M4GMN6 found this defect (journal seq 296) and approved anyway because the only channel was a full Changes-requested cycle; the smoke was checked into the gate by seed fabro-bfe1's new loop-asset tier and now executes in every future 'just qualitygate', misbehaving in any worktree checkout. Expected effect: the new gate tier stays green outside the canonical checkout path, and the latent break stops executing on every run. Cross-references: fabro-bfe1 (open — added the tier that checked this script into the gate; thematic overlap, not the same change). Basis: run 01M23W4S7Q2GNEVPY779M4GMN6, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4c8683243f8c295438cf019e2f061f8812fc58db\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-afb8\",\"title\":\"smoke.nu uses 'get -o' which nushell 0.101 rejects — weblab deploys fail the smoke recipe although the server is healthy\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-09T20:32:25.962Z\",\"updatedAt\":\"2026-09-10T08:28:33.428Z\",\"assignee\":\"fabro\",\"description\":\"Weblab deploy 2026-09-09 ~20:40Z: 'just up' completed fully (image built, CLI 0.348.0 installed, compose recreated fabro-fabro-1, wait-healthy green twice) but the recipe then FAILED at scripts/smoke.nu:91 with a PARSE error: 'The get command doesn't have flag -o' on 'open $auth_path | get -o servers | default {}'. The weblab HOST nushell is 0.101.0 (just invokes the host nu; the mise nushell 0.115.0 pin lives only in the run toolchain image) while the dev machine that authored/tested smoke.nu runs nu 0.115.0, where get -o/--optional exists. Result: every weblab deploy reports failure while the deployment actually succeeded — the deploy ceremony cannot trust its exit code. Wanted: make smoke.nu (and audit the other nu deploy scripts: wait-healthy.nu, install-cli.nu) compatible with the OLDEST supported host nu, or have the justfile invoke the pinned nushell explicitly. 0.101-compatible form for the failing line: 'get -i servers | default {}' (-i/--ignore-errors exists in 0.101) or a try/catch wrapper. Acceptance: 'nu --ide-check'-level parse of smoke.nu under 0.101 semantics (or a smoke run against a 0.101 host); deploy on weblab exits 0. Basis: weblab ~/deploy-20260909.log tail (parse error + 'Recipe smoke failed'), weblab nu --version 0.101.0, dev-machine nu 0.115.0, manual smoke after the failure (ps ok, auth probe 200, container healthy).\",\"labels\":[\"workflows\"],\"closedAt\":\"2026-09-10T08:28:33.428Z\"}\n-{\"id\":\"fabro-3fe4\",\"title\":\"Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-10T07:14:04.557Z\",\"updatedAt\":\"2026-09-10T13:19:21.518Z\",\"description\":\"Architecture review 2026-09-10 (improve-codebase-architecture, user + agent; walkers: fabro-server, fabro-store/fabro-workflow). Top recommendation, filed unassigned per ADR-0018.\\n\\nPROBLEM: The run-lifecycle event protocol (RunStartRequested -> RunRunnable -> RunStarting -> Running, terminal fails) has no owner. Emitters are spread over operations/start.rs:137-227, operations/resume.rs:36-46, server.rs:3405-3488 (writes terminal events directly), and test_support.rs mark_run_running:112-130 (a second protocol adapter inside tests). The same event stream is folded by TWO reducers with no shared table: server.rs update_live_run_from_event:3576-3740 (no transition validation, RunRunnable suppression, publish-blocked error field) vs fabro-store run_state.rs RunProjectionReducer (try_apply_status + InvalidTransition). The Paused{prior_block}/RunUnblocked arms already drift (server.rs:3610-3616 vs run_state.rs:197-205), and run_state.rs:84-112 patches historic Submitted->Starting / RunFailed fast-forward forms because the protocol was never an interface.\\n\\nWANTED: (1) New fork-owned module fabro-workflow/src/operations/lifecycle_events.rs exposing the sequence as an interface (request_start / runnable / starting / running / resubmit / terminal_failure); server.rs and test_support become adapters. (2) One pure transition table (RunStatus x EventBody) -> Result<RunStatus, InvalidTransition> in fabro-types; BOTH reducers consume it, the live reducer adds only its side effects (map cleanup, bus cleanup).\\n\\nDRIFT RULES (fork of fabro-sh/fabro, upstream merged regularly — conductor pass): the module and table are additive/fork-owned; edits concentrate in already-fork-modified files (server.rs +279, start.rs +107, run_state.rs +34 fork lines); resume.rs is upstream-identical (churn 5/12w) and gets a minimal adapter edit only. No wire-contract change; no new pub items on AppState. Explicitly OUT OF SCOPE: the RunSupervisor full build-out (27 lock sites, ManagedRun) — that is phase 2 behind this seed.\\n\\nACCEPTANCE: equivalence test proving both reducers yield the same status for every event sequence (property test over the table); unit tests per transition incl. cancel-before-starting and failure-before-running; historic shims in run_state.rs carry a documented reason; lifecycle tests run without AppState lock surgery.\\n\\nBASIS: commit bfbe3a6c8 (2026-09-09); walk reports /tmp/arch-walk-server.md (F1/F2), /tmp/arch-walk-store-workflow.md (F2/F8); upstream churn 12w: server.rs 49, start.rs 47, run_state.rs 53, resume.rs 5.\\n\\nREOPEN CONTEXT (integrate, 2026-09-10 13:2x UTC): first implementation attempt (run 01M25K41V4NE, PR #121, 55 min) FAILED the dogfood-gate: fabro-cli::it::cmd::rm::rm_deletes_completed_run and rm_partial_failure_json_includes_removed_and_errors (lib/apps/fabro-cli/tests/it/cmd/rm.rs:284 — errors array expected [01M25QAG0W0V6X2CZAEZG47W8V], got []; rm did not treat the run as completed/deletable). The transition-table refactor changed which terminal states rm counts as completed. The seed stays OPEN on base (the close lives only in PR #121's unmerged branch); a re-claim must first reconcile with #121's branch (git fetch origin fabro/run/01M25K41V4NEWXSA3SVGRHKRXK — reuse or supersede its work) and the fix is likely a transition-table/`completed` predicate adjustment, not a rewrite. Repro on the #121 branch: cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors.\",\"labels\":[\"engine\",\"architecture\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-3fe4\",\"title\":\"Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-10T07:14:04.557Z\",\"updatedAt\":\"2026-09-10T13:33:21.615Z\",\"description\":\"Architecture review 2026-09-10 (improve-codebase-architecture, user + agent; walkers: fabro-server, fabro-store/fabro-workflow). Top recommendation, filed unassigned per ADR-0018.\\n\\nPROBLEM: The run-lifecycle event protocol (RunStartRequested -> RunRunnable -> RunStarting -> Running, terminal fails) has no owner. Emitters are spread over operations/start.rs:137-227, operations/resume.rs:36-46, server.rs:3405-3488 (writes terminal events directly), and test_support.rs mark_run_running:112-130 (a second protocol adapter inside tests). The same event stream is folded by TWO reducers with no shared table: server.rs update_live_run_from_event:3576-3740 (no transition validation, RunRunnable suppression, publish-blocked error field) vs fabro-store run_state.rs RunProjectionReducer (try_apply_status + InvalidTransition). The Paused{prior_block}/RunUnblocked arms already drift (server.rs:3610-3616 vs run_state.rs:197-205), and run_state.rs:84-112 patches historic Submitted->Starting / RunFailed fast-forward forms because the protocol was never an interface.\\n\\nWANTED: (1) New fork-owned module fabro-workflow/src/operations/lifecycle_events.rs exposing the sequence as an interface (request_start / runnable / starting / running / resubmit / terminal_failure); server.rs and test_support become adapters. (2) One pure transition table (RunStatus x EventBody) -> Result<RunStatus, InvalidTransition> in fabro-types; BOTH reducers consume it, the live reducer adds only its side effects (map cleanup, bus cleanup).\\n\\nDRIFT RULES (fork of fabro-sh/fabro, upstream merged regularly — conductor pass): the module and table are additive/fork-owned; edits concentrate in already-fork-modified files (server.rs +279, start.rs +107, run_state.rs +34 fork lines); resume.rs is upstream-identical (churn 5/12w) and gets a minimal adapter edit only. No wire-contract change; no new pub items on AppState. Explicitly OUT OF SCOPE: the RunSupervisor full build-out (27 lock sites, ManagedRun) — that is phase 2 behind this seed.\\n\\nACCEPTANCE: equivalence test proving both reducers yield the same status for every event sequence (property test over the table); unit tests per transition incl. cancel-before-starting and failure-before-running; historic shims in run_state.rs carry a documented reason; lifecycle tests run without AppState lock surgery.\\n\\nBASIS: commit bfbe3a6c8 (2026-09-09); walk reports /tmp/arch-walk-server.md (F1/F2), /tmp/arch-walk-store-workflow.md (F2/F8); upstream churn 12w: server.rs 49, start.rs 47, run_state.rs 53, resume.rs 5.\\n\\nREOPEN CONTEXT (integrate, 2026-09-10 13:2x UTC): first implementation attempt (run 01M25K41V4NE, PR #121, 55 min) FAILED the dogfood-gate: fabro-cli::it::cmd::rm::rm_deletes_completed_run and rm_partial_failure_json_includes_removed_and_errors (lib/apps/fabro-cli/tests/it/cmd/rm.rs:284 — errors array expected [01M25QAG0W0V6X2CZAEZG47W8V], got []; rm did not treat the run as completed/deletable). The transition-table refactor changed which terminal states rm counts as completed. The seed stays OPEN on base (the close lives only in PR #121's unmerged branch); a re-claim must first reconcile with #121's branch (git fetch origin fabro/run/01M25K41V4NEWXSA3SVGRHKRXK — reuse or supersede its work) and the fix is likely a transition-table/`completed` predicate adjustment, not a rewrite. Repro on the #121 branch: cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors.\",\"labels\":[\"engine\",\"architecture\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-0863\",\"title\":\"Engine: RunCreated constructor at the RunSpec seam — four hand-built sites become one constructor\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T07:14:04.654Z\",\"updatedAt\":\"2026-09-10T10:14:00.029Z\",\"description\":\"Architecture review 2026-09-10 (improve-codebase-architecture). Entry-level companion to the lifecycle-protocol seed; purely mechanical.\\n\\nPROBLEM: Event::RunCreated is hand-assembled at four sites — operations/create.rs:556-585, operations/retry.rs:68-93, operations/fork.rs:158-183, fabro-workflow test_support.rs:206-231 — each serializing settings/graph itself and threading ~24 fields individually. A new mandatory RunCreated field breaks four places; each site re-derives what persist_created_run already knows.\\n\\nWANTED: One constructor at the RunSpec seam, e.g. RunSpec::into_created_event(title, provenance_overrides, retried_from, parent_id, web_url) in fabro-types records.rs (upstream churn there: 0/12w). create/retry/fork/test_support call it with their deltas; serialization lives inside the constructor.\\n\\nDRIFT RULES: additive; exactly one call-site edit each in create.rs (upstream-identical, churn 35/12w) and fork.rs (churn 13/12w) — keep surgical, no reformatting beyond the call.\\n\\nACCEPTANCE: parity check that emitted event bytes are identical before/after (snapshot); a deliberately added mandatory field breaks exactly one place; retry/fork/create test fixtures shrink (no per-site 24-field building).\\n\\nBASIS: commit bfbe3a6c8 (2026-09-09); /tmp/arch-walk-store-workflow.md (F1).\",\"labels\":[\"engine\",\"architecture\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-ab8e\",\"title\":\"Fork footprint: extract fork additions out of upstream-churn hot files (tests.rs, automation_scheduler.rs)\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T07:14:04.741Z\",\"updatedAt\":\"2026-09-10T10:13:59.956Z\",\"description\":\"Architecture review 2026-09-10. Cross-cutting fork-strategy seed — runs alongside the other architecture seeds (lifecycle protocol, typed admission) whose modules are natural extraction targets.\\n\\nPROBLEM: Fork additions live physically inside upstream's hottest files. server/tests.rs carries +2083 fork-added lines while upstream churns it 112 commits/12w (worst ratio in the repo); automation_scheduler.rs is +555/1433 (~40% fork code, churn 13/12w); server.rs +279 (churn 49/12w). Every upstream merge pays conflict hunks on fork lines that have no locality of their own. The target pattern already exists and is proven: server/handler/wait.rs and tests/it/api/run_wait.rs are fork-owned files.\\n\\nWANTED: Move fork-added tests into fork-owned test files; extract fork scheduler/materializer logic into fork-owned modules (prefer interfaces delivered by the lifecycle/admission seeds); upstream files keep only registration and call-site lines. Moves only — no behavior change, no test deletions.\\n\\nACCEPTANCE: fork test count unchanged (moves, verified by count); fork additions greppable from fork-owned files; the next upstream merge shows measurably fewer conflicted hunks in tests.rs and automation_scheduler.rs (record the diff in the close note).\\n\\nBASIS: commit bfbe3a6c8 (2026-09-09); drift data from git diff --numstat upstream/main..HEAD and git log churn on upstream/main (12w); review card K7, /tmp/architecture-review-20260910-090054.html.\",\"labels\":[\"engine\",\"architecture\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-27dc\",\"title\":\"engine: conductor parks at soft exit after Work-routed survey since the 2026-09-09 22:29 deploy - develop leg never starts (line down)\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":0,\"createdAt\":\"2026-09-10T07:41:32.446Z\",\"updatedAt\":\"2026-09-10T12:28:54.497Z\",\"description\":\"LINE DOWN INCIDENT 2026-09-10 07:01-09:30 (line-watch, reproduced twice): after the night deploy (server image built 2026-09-09 22:29 CEST, container started 22:35), every conductor pass parks at the soft exit immediately after a Work-routed survey; the develop leg never starts.\\n\\nEvidence:\\n- Automation-fired pass 01M251VFNABCNMA94QDNHYZ5Q7 (07:00-07:01) and manual repair fire 01M253EWK1X299DRFTAJJHA0MV (07:28-07:29) both: survey stage completes green with correct route decision journaled ('route decision: Work'), then the exit handler completes in 0ms and run.failed fires with reason=soft_stop, kind=soft, category=deterministic (\\\"infrastructure could not finish\\\"). No develop-leg journal entry, no child run created.\\n- stage.completed context_values carry NO preferred_next_label on EITHER the broken passes or the last-known-good pass (20:08 yesterday on the OLD image) - routing reads the structured output elsewhere; do not chase the context key.\\n- Last known-good conductor pass on the previous image: 01M23W3067KQ 20:08-21:10 (develop child 01M23W4S7Q2G created fine, PR #113).\\n- The deployed image contains the 2026-09-09 engine merges: #84 (allow-keys lint), #90/fabro-91ff (overlap guard: run_summary_store + planner/analyze prompts), #96/fabro-de4d (preferred_label edge validation in fabro-validate, new rule routing_fallback_silent), #99/fabro-94e8 (update-branch), #107+#109 (PR postlude). Prime suspects: routing/output-schema handling around de4d and 91ff.\\n- Secondary blocker: the automation breaker (signature park|Conductor|soft_stop, consecutive_count 1, threshold appears to be 1) suppresses the */30 schedule after the first soft_stop - even a one-off park kills the line until the breaker resets.\\n\\nRepro: FABRO_SERVER=http://localhost:32276 just run conductor (twice, deterministic). Also note the local repair path tripped over auth.json URL keying (127.0.0.1 vs localhost entry) - separate papercut.\\n\\nExpected fix: find why the survey->develop edge (condition preferred_label=\\\"Work\\\") is not taken on the new image though the survey emits the route; also revisit the breaker threshold (a single soft_stop should not permanently suppress the schedule without an incident signal).\\n\\nExecution note: filed by line-watch during line-down; the line cannot pick this up itself (chicken-egg) - direct agent repair with user knowledge, or user-led. ROOT CAUSE FOUND (line-watch 10:2x, inspect of 01M253EWK1X): the survey agent's final answer literally set preferred_next_label=\\\"Unrouted survey outcome\\\" (last_response in the stage context: {\\\"preferred_next_label\\\":\\\"Unrouted survey outcome\\\",\\\"outcome\\\":\\\"succeeded\\\",...}) while its journal says 'route decision: Work'. The engine's Edge selected log confirms: from survey to exit label=\\\"Unrouted survey outcome\\\" reason=\\\"preferred_label\\\". fabro-de4d (#96, in the 22:29 image) constrains the routing output_schema enum from the node's outgoing edges - but the survey's outgoing set includes the UNCONDITIONAL safety-net edge (validator rule all_conditional_edges, label \\\"Unrouted survey outcome\\\"), so the fallback became a first-class valid choice and glm-5.3 picks it deterministically (2/2 passes on the new image). FIX DIRECTION: build the preferred_label enum from CONDITIONAL choice edges only (exclude unconditional safety nets and outcome=failed edges) in the de4d schema construction (lib/components/fabro-workflow, routing/output_schema area); optionally also make the model-facing schema description mark the fallback as engine-reserved. The old image worked because the enum was not edge-constrained. FIXED 2026-09-10 10:5x (line-watch direct repair, mandate: line down): lib/components/fabro-workflow/src/handler/structured_output.rs routable_edge_labels now includes conditional edges whose condition routes on preferred_label naming the label (clause walk incl. and/or/not); regression tests cover the conductor-survey shape and composite conditions. Verification: cargo test -p fabro-workflow --lib (2 new tests green, 1326 pass; 4 pipeline failures pre-exist on clean tree - sandbox/env-dependent), clippy + fmt on touched crate green (nightly-2026-04-14). Commit 0373f5c10; deployed via just up.\",\"labels\":[\"engine\",\"workflows\"],\"assignee\":\"agent\",\"closedAt\":\"2026-09-10T12:28:54.497Z\",\"closeReason\":\"superseded: fix landed in 0373f5c10 (routable_edge_labels includes conditional preferred_label edges; regression tests for the conductor-survey shape); verified live — passes 01M256NF09VY (08:24), 01M257096GRA (08:30), 01M25H9VVJ (11:30) all route Work and reach the develop leg after the 10:18 deploy\"}\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 3,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-10T14:54:35.733896883Z",
+        "current_node": "implementer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer"
+        ],
+        "node_retries": {
+          "implementer": 3
+        },
+        "context_values": {
+          "internal.fidelity": "summary:high",
+          "last_response": "Implementation complete. Summary of this pass:\n\n**Reconciliation**: the worktree already carried the reconciled PR #121 work plus unstaged follow-up edits that supersede the branch's fix (branch `7a0a",
+          "internal.thread_id": "planner",
+          "outcome": "succeeded",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "current_node": "implementer",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "failure_class": "",
+          "internal.run_id": "01M25R832HP615J291N72FHNCS",
+          "thread.planner.current_node": "implementer",
+          "preferred_label": "Implemented",
+          "current_seed_brief": "RE-CLAIM with failed-gate context: a first attempt (run 01M25K41V4NE, PR #121 branch, NOT on base) failed the dogfood-gate on two fabro-cli rm tests. FIRST reconcile with that branch: git fetch origin fabro/run/01M25K41V4NEWXSA3SVGRHKRXK — reuse or supersede its work; the fix is likely a transition-table/completed-predicate adjustment, not a rewrite. Then deliver: - new fork-owned module `lib/components/fabro-workflow/src/operations/lifecycle_events.rs` exposing the run-lifecycle sequence as an interface (request_start / runnable / starting / running / resubmit / terminal_failure); server.rs and test_support become adapters; - one pure transition table (RunStatus x EventBody) -> Result<RunStatus, InvalidTransition> in fabro-types; BOTH reducers consume it (server.rs update_live_run_from_event:3576 and fabro-store run_state.rs RunProjectionReducer:75); live reducer keeps only side effects (map/bus cleanup); - drift arms aligned: Paused{prior_block}/RunUnblocked (server.rs:3610-3616 vs run_state.rs:197-205); - historic shims in run_state.rs (Submitted->Starting / RunFailed fast-forward, run_state.rs:84-112) carry a documented reason comment; - equivalence: property/table test proving both reducers yield the same status for every event sequence; unit tests per transition including cancel-before-starting and failure-before-running; - the fabro-cli rm regression is fixed: targeted `cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors` passes on the final tree (these were the gate failures on PR #121 — rm stopped treating terminal runs as completed); - drift rules: additive fork-owned only, no wire-contract change, no new pub items on AppState, resume.rs gets a minimal adapter edit only; RunSupervisor build-out is OUT OF SCOPE; - gate green via the deterministic tester step (never run the full gate yourself). Cheapest-first verification: targeted nextest on the rm tests, then lifecycle unit tests, then fmt/clippy on touched crates.",
+          "graph.rankdir": "LR",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 4214,
+            "preview": "Basis resolves against the current tree (server.rs:3576 reducer, run_state.rs RunProjectionReducer both present). Claimed; brief written.\n\nClaimed a seed:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next"
+          },
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.planner": 0,
+          "graph.preamble_budget_kb": "24",
+          "lesson_capture": "mx-c555a3",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5269,
+            "preview": "Implementation complete. Summary of this pass:\n\n**Reconciliation**: the worktree already carried the reconciled PR #121 work plus unstaged follow-up edits that supersede the branch's fix (branch `7a0a"
+          },
+          "internal.retry_count.start": 0,
+          "internal.retry_count.implementer": 3,
+          "graph.inspects": "develop",
+          "internal.work_dir": "/workspace/fabro",
+          "failure_signature": "",
+          "thread.start.current_node": "planner",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "The reopen brief's git fetch of `fabro/run/01M25K41V4NEWXSA3SVGRHKRXK` produced branch commits (7a0a7db, f051098) whose fixes were partially superseded by an in-progress unstaged worktree state with no journal record explaining it — an interrupted prior pass of run 01M25R832HP left ambiguous reconciliation state. Suggestion: journal the reconciliation decision (reuse vs supersede) as the first action of a re-claim pass so the next interruption is recoverable."
+              }
+            ],
+            "observations": [
+              "The PR #121 branch's fix (Runnable-retry inside the Rejected arm + durable-terminal fallback in the delete guard) diverged from the worktree's cleaner shared-helper fix; choosing the shared helper required reading both diffs carefully — the branch's zz_probe_seeded_completed_status debug test in `lib/apps/fabro-cli/tests/it/cmd/rm.rs` is correctly absent from the final tree.",
+              "rg pattern `pub fn` misses `pub async fn` declarations — lifecycle_events.rs looked empty on first inventory; pattern discipline matters when verifying module interfaces."
+            ]
+          },
+          "current_seed_title": "Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table",
+          "current_seed_id": "fabro-3fe4",
+          "internal.seed_cycle_anchor": "fabro-3fe4",
+          "implementation_summary": "Reconciled with PR #121's branch: kept its transition-table refactor (staged) and superseded its regression hack with a shared `historic_skipped_statuses` fast-forward in `lib/foundation/fabro-types/src/lifecycle.rs` consumed by BOTH the live fold (`server.rs` `live_lifecycle_status`) and the durable replay (`run_state.rs`), fixing the fabro rm completed-run regression; lesson captured as mx-c555a3. Files: lifecycle.rs, lib.rs, run_state.rs, server.rs, server/tests.rs, operations/lifecycle_events.rs, operations/mod.rs, start.rs, resume.rs, test_support.rs. Per-criterion report: PASS lifecycle module interface (six fns, adapters wired); PASS shared pure table consumed by both reducers; PASS Paused/RunUnblocked arms aligned (lifecycle.rs:84-100); PASS documented historic shims; PASS equivalence property test (2000 random sequences) + exhaustive status×event live-step test; PASS per-transition unit tests incl. cancel-before-starting (lifecycle.rs:256) and failure-before-running (lifecycle.rs:293); PASS rm regression fixed (rm_deletes_completed_run + rm_partial_failure_json 2/2); PASS drift rules (additive, no wire change, minimal resume.rs adapter, RunSupervisor out of scope); PASS suites fabro-types 519, fabro-store 291, fabro-server 936, fabro-workflow 1545 all green; PASS fmt + default-features clippy clean on all four touched crates.",
+          "last_stage": "implementer",
+          "internal.node_visit_count": 1
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_stage": "implementer",
+              "last_response": "Implementation complete. Summary of this pass:\n\n**Reconciliation**: the worktree already carried the reconciled PR #121 work plus unstaged follow-up edits that supersede the branch's fix (branch `7a0a",
+              "implementation_summary": "Reconciled with PR #121's branch: kept its transition-table refactor (staged) and superseded its regression hack with a shared `historic_skipped_statuses` fast-forward in `lib/foundation/fabro-types/src/lifecycle.rs` consumed by BOTH the live fold (`server.rs` `live_lifecycle_status`) and the durable replay (`run_state.rs`), fixing the fabro rm completed-run regression; lesson captured as mx-c555a3. Files: lifecycle.rs, lib.rs, run_state.rs, server.rs, server/tests.rs, operations/lifecycle_events.rs, operations/mod.rs, start.rs, resume.rs, test_support.rs. Per-criterion report: PASS lifecycle module interface (six fns, adapters wired); PASS shared pure table consumed by both reducers; PASS Paused/RunUnblocked arms aligned (lifecycle.rs:84-100); PASS documented historic shims; PASS equivalence property test (2000 random sequences) + exhaustive status×event live-step test; PASS per-transition unit tests incl. cancel-before-starting (lifecycle.rs:256) and failure-before-running (lifecycle.rs:293); PASS rm regression fixed (rm_deletes_completed_run + rm_partial_failure_json 2/2); PASS drift rules (additive, no wire change, minimal resume.rs adapter, RunSupervisor out of scope); PASS suites fabro-types 519, fabro-store 291, fabro-server 936, fabro-workflow 1545 all green; PASS fmt + default-features clippy clean on all four touched crates.",
+              "lesson_capture": "mx-c555a3",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5269,
+                "preview": "Implementation complete. Summary of this pass:\n\n**Reconciliation**: the worktree already carried the reconciled PR #121 work plus unstaged follow-up edits that supersede the branch's fix (branch `7a0a"
+              },
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "The reopen brief's git fetch of `fabro/run/01M25K41V4NEWXSA3SVGRHKRXK` produced branch commits (7a0a7db, f051098) whose fixes were partially superseded by an in-progress unstaged worktree state with no journal record explaining it — an interrupted prior pass of run 01M25R832HP left ambiguous reconciliation state. Suggestion: journal the reconciliation decision (reuse vs supersede) as the first action of a re-claim pass so the next interruption is recoverable."
+                  }
+                ],
+                "observations": [
+                  "The PR #121 branch's fix (Runnable-retry inside the Rejected arm + durable-terminal fallback in the delete guard) diverged from the worktree's cleaner shared-helper fix; choosing the shared helper required reading both diffs carefully — the branch's zz_probe_seeded_completed_status debug test in `lib/apps/fabro-cli/tests/it/cmd/rm.rs` is correctly absent from the final tree.",
+                  "rg pattern `pub fn` misses `pub async fn` declarations — lifecycle_events.rs looked empty on first inventory; pattern discipline matters when verifying module interfaces."
+                ]
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 32716,
+                    "output_tokens": 3734,
+                    "reasoning_tokens": 2398,
+                    "cache_read_tokens": 456704,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 191503
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 184182,
+              "tool_time_ms": 245390,
+              "active_time_ms": 429572
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "RE-CLAIM with failed-gate context: a first attempt (run 01M25K41V4NE, PR #121 branch, NOT on base) failed the dogfood-gate on two fabro-cli rm tests. FIRST reconcile with that branch: git fetch origin fabro/run/01M25K41V4NEWXSA3SVGRHKRXK — reuse or supersede its work; the fix is likely a transition-table/completed-predicate adjustment, not a rewrite. Then deliver: - new fork-owned module `lib/components/fabro-workflow/src/operations/lifecycle_events.rs` exposing the run-lifecycle sequence as an interface (request_start / runnable / starting / running / resubmit / terminal_failure); server.rs and test_support become adapters; - one pure transition table (RunStatus x EventBody) -> Result<RunStatus, InvalidTransition> in fabro-types; BOTH reducers consume it (server.rs update_live_run_from_event:3576 and fabro-store run_state.rs RunProjectionReducer:75); live reducer keeps only side effects (map/bus cleanup); - drift arms aligned: Paused{prior_block}/RunUnblocked (server.rs:3610-3616 vs run_state.rs:197-205); - historic shims in run_state.rs (Submitted->Starting / RunFailed fast-forward, run_state.rs:84-112) carry a documented reason comment; - equivalence: property/table test proving both reducers yield the same status for every event sequence; unit tests per transition including cancel-before-starting and failure-before-running; - the fabro-cli rm regression is fixed: targeted `cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors` passes on the final tree (these were the gate failures on PR #121 — rm stopped treating terminal runs as completed); - drift rules: additive fork-owned only, no wire-contract change, no new pub items on AppState, resume.rs gets a minimal adapter edit only; RunSupervisor build-out is OUT OF SCOPE; - gate green via the deterministic tester step (never run the full gate yourself). Cheapest-first verification: targeted nextest on the rm tests, then lifecycle unit tests, then fmt/clippy on touched crates.",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "fabro_runs_list reports PR #121 as state 'merged' while the base branch has none of its work (no lifecycle_events.rs, no squash commit; newest base commit 76ed619 explicitly says the close lives only on the unmerged branch). The in-flight check relies on run/PR projections — a wrongly-'merged' open PR is invisible as in-flight and misleads reconciliation. Evidence: runs list for workflow develop, run 01M25K41V4NEWXSA3SVGRHKRXK, checked 2026-09-10 in run 01M25R832HP615J291N72FHNCS. Fix idea: postlude/post-merge reconciliation should correct PR state, or the projection should re-check against git."
+                  },
+                  {
+                    "text": "Journal fallback for run 01M23RQRCB748R4VRXA2WE6BZ0 (open PR #109) found no journal file at `.fabro/journal/<run_id>.jsonl` — had to recover the in-flight seed (fabro-e702) by fetching the run branch and parsing the .seeds/issues.jsonl diff. This is exactly the known gap of seed fabro-adf7 (failed runs lose stage journals); the prompt's journal fallback silently degrades to nothing."
+                  }
+                ],
+                "observations": [
+                  "In-flight exclusions applied this pass: fabro-e702 (open PR #109, seed recovered via run-branch seeds diff), and self (this run). PR #109 is old (2026-09-09) and still open — a stale in-flight lock on its seed.",
+                  "fabro-3fe4 re-claimed rather than fabro-7627 (also High, listed first): tie-break per observed-failure-class rule — 3fe4 has a concrete gate failure and ~55 min of reusable work on the PR #121 branch; 7627 stays top of the next run's list.",
+                  "The runs-list 'merged' state for PR #121 contradicts base history; the seed's REOPEN CONTEXT (base commit 76ed619) was treated as authoritative. The implementer MUST fetch the PR #121 branch before starting."
+                ]
+              },
+              "last_stage": "planner",
+              "current_seed_title": "Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table",
+              "last_response": "Basis resolves against the current tree (server.rs:3576 reducer, run_state.rs RunProjectionReducer both present). Claimed; brief written.\n\nClaimed a seed:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 4214,
+                "preview": "Basis resolves against the current tree (server.rs:3576 reducer, run_state.rs RunProjectionReducer both present). Claimed; brief written.\n\nClaimed a seed:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next"
+              },
+              "current_seed_id": "fabro-3fe4"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 38467,
+                    "output_tokens": 2707,
+                    "reasoning_tokens": 1833,
+                    "cache_read_tokens": 456704,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 192555
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 120625,
+              "tool_time_ms": 12625,
+              "active_time_ms": 133250
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "node_visits": {
+          "implementer": 1,
           "start": 1,
           "planner": 1
         }
@@ -1135,6 +1344,220 @@
             "category": "other",
             "tokens": 8,
             "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "implementer@1": {
+      "first_event_seq": 127,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-09-10T14:54:35.457715873Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-10T14:47:25.142959476Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 430258,
+        "inference_time_ms": 184182,
+        "tool_time_ms": 245390,
+        "active_time_ms": 429572
+      },
+      "usage": {
+        "input_tokens": 32716,
+        "output_tokens": 3734,
+        "total_tokens": 495552,
+        "reasoning_tokens": 2398,
+        "cache_read_tokens": 456704,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 191503
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 31975,
+        "usage_percent": 3.0493736267089844,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-10T14:54:35.411387985Z",
+        "event_seq": 716,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1184,
+            "usage_percent": 0.1129150390625
+          },
+          {
+            "category": "tools",
+            "tokens": 1500,
+            "usage_percent": 0.1430511474609375
+          },
+          {
+            "category": "memory",
+            "tokens": 5409,
+            "usage_percent": 0.5158424377441406
+          },
+          {
+            "category": "conversation",
+            "tokens": 23875,
+            "usage_percent": 2.276897430419922
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
           }
         ],
         "warnings": []
