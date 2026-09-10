@@ -1,0 +1,78 @@
+diff --git a/.fabro/journal/01M25HCK22PNFPARY8R3YVC9DK.jsonl b/.fabro/journal/01M25HCK22PNFPARY8R3YVC9DK.jsonl
+index 67a7c42..171b7ab 100644
+--- a/.fabro/journal/01M25HCK22PNFPARY8R3YVC9DK.jsonl
++++ b/.fabro/journal/01M25HCK22PNFPARY8R3YVC9DK.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M25HCK22PNFPARY8R3YVC9DK","node":"start","visit":1,"status":"succeeded","ts":"2026-09-10T11:31:38Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M25HCK22PNFPARY8R3YVC9DK","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-10T11:33:19Z","data":{"painpoints":[],"observations":["fabro-d183 names 'step 3' of planner.md but the already-implemented paragraph is an unlabeled paragraph after the numbered list (line 45) — brief annotates the actual location","in-flight check: only this run itself is non-terminal; all other develop runs are terminal with merged/closed PRs, so no exclusions were needed","graph currently has no planner exit edge for an already-landed case; Tracker empty/Blocked/failed edges exist and serve as the pattern for the new edge"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M25HCK22PNFPARY8R3YVC9DK","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-10T11:36:35Z","data":{"painpoints":[],"observations":["The brief named the sd close table row under prompts/planner.md, but that table lives in prompts/project-facts.md and is rendered into planner.md via include (planner.md:26-28 says so explicitly) — edited at the real location; future loop-asset seeds naming prompt anchors should check the include chain.","`dot` is not installed in this environment, so the workflow.fabro render-check fell back to eyeballing the edge block; the new edge is byte-shape-identical to the adjacent Tracker empty edge.","Verified `sd close --reason` exists (`sd close --help`) before baking the command form into the prompt — the flag is real, not invented."]}}
+diff --git a/.fabro/workflows/develop/prompts/planner.md b/.fabro/workflows/develop/prompts/planner.md
+index 3beafdc..aee3f05 100644
+--- a/.fabro/workflows/develop/prompts/planner.md
++++ b/.fabro/workflows/develop/prompts/planner.md
+@@ -42,7 +42,9 @@ The full command table lives in PROJECT_FACTS (tracker) — rendered above by th
+    Journal-observation rule: any journal observation from a prior pass that names required consistency or scope work (e.g. 'keep line X consistent with rule Y') MUST be folded into the brief as an explicit bullet — or explicitly waived in the brief with a one-line reason. Reviewers and the implementer's PASS/FAIL report check bullets, not journals; a requirement that lives only in a journal entry does not exist (run 01M22PCGN4E3X1XGN630MDDH39: a journaled consistency note was skipped and contradictory prompt text shipped through an approving review).
+ 7. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). An unresolved journal observation naming consistency or scope work is itself such a contradiction: it MUST surface in the brief as an explicit bullet (or an explicit one-line waiver), never stay journal-only — see the journal-observation rule in step 6. Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong. When the spec names a heading, anchor, or file path, confirm it exists in the target file before forwarding the brief; when it does not, annotate the ACTUAL location (the real heading name or path) instead of transcribing the spec verbatim. Gate-command criteria are one such contradiction class: any verification criterion in a brief that names the PROJECT_FACTS gate command (`just qualitygate`) OR any equivalent full-gate invocation — the recipe body `nu scripts/qualitygate.nu` (the justfile qualitygate recipe delegates to it) or any byte-equivalent/full-gate substitute naming that script — MUST be rewritten to 'gate green via the deterministic tester step' before the brief ships — the implementer must never run the full gate in any form, not even a byte-equivalent body (consistent with `implementer.md` step 4's gate ban; run 01M23KJM3SM70S2S6QSSEWSJPY: the implementer ran the gate at seq 111-113 and the tester re-ran the byte-identical command at seq 128-129; bypass evidence run 01M23W4S7Q2GNEVPY779M4GMN6: the planner rewrote the banned command into its byte-equivalent body, justfile:128, checkpoint seq 82 — three gate executions on one tree).
+ 
+-If the top candidate looks already implemented (its acceptance criteria appear satisfied in the worktree — often a stale tracker from an earlier run), do NOT close it yourself and do NOT skip it. Claim it normally and mark the brief as verification-only (see below). The normal cycle then proves it: implementer verifies, gate runs, reviewer approves. Only an approved review closes a seed.
++If the top candidate looks already implemented (its acceptance criteria appear satisfied in the worktree — often a stale tracker from an earlier run), apply the two-branch rule (fabro-d183):
++(a) ALREADY LANDED — `git log --grep <seed-id>` shows a fix commit referencing the seed already in base history AND the seed's acceptance criteria hold in the worktree → close it yourself with `sd close <id> --reason "superseded: fix landed in <sha>"` (the one superseded-close exception, sd command table; reason string mandatory) and route the exit label "Already landed". No cycle runs: the fix is proven landed, a verification lap re-proves nothing (run 01M256QJB48JK8BXJE1TVM2HYS burned a whole cycle — journal-and-tracker-only diff, PR #115 — for fix commit 7ae575c already in base). After the close, continue down the `sd ready --assignee fabro --limit 200` candidate list: if another seed remains, claim it and route "Seed claimed"; if none remains, route "Tracker empty".
++(b) Criteria satisfied but NO referencing commit → do NOT close it yourself and do NOT skip it. Claim it normally and mark the brief as verification-only (see below). The normal cycle then proves it: implementer verifies, gate runs, reviewer approves. Only an approved review closes a seed.
+ 
+ If `sd ready --assignee fabro --limit 200` returns nothing and no fabro-assigned seed is in progress for this effort, the FILTERED view is empty — that is a legitimate park, not a broken tracker. Route Tracker empty. NEVER fall back to unassigned seeds and never invent work: while the backlog is unassigned the line does nothing rather than something (FAIL-CLOSED). Assigning backlog seeds is the user's decision (see `docs/agents/issue-tracker.md`), never yours.
+ 
+@@ -72,6 +74,7 @@ Both routes are successes — planning succeeded either way. The label decides w
+ 
+ - `succeeded` + "Seed claimed": a seed is claimed (fresh, re-planned, or verification-only) and its brief is in the context. A verification-only brief says: "The acceptance criteria appear already satisfied. Verify each one against the worktree; make NO changes if all hold." 
+ - `succeeded` + "Tracker empty": the effort is complete — every seed is closed and the goal holds.
++- `succeeded` + "Already landed": the top candidate's fix commit is already in base history and its acceptance criteria hold — the seed was closed via the superseded-close and the run exits without a cycle.
+ 
+ `failed` is reserved for genuine planner errors (cannot read the tracker, invalid routing after retries) and for the cycle-guard Blocked route. Never use `failed` to mean "no more work".
+ 
+@@ -99,6 +102,15 @@ Tracker empty (the goal is achieved, not an error):
+   }
+ }
+ 
++Already landed (the fix landed before the cycle; exit without a lap):
++{
++  "outcome": "succeeded",
++  "preferred_next_label": "Already landed",
++  "context_updates": {
++    "journal": {"painpoints": [], "observations": ["none"]}
++  }
++}
++
+ Blocked (cycle guard fired — review or gate deadlock on one seed; the seed stays open for a human):
+ {
+   "outcome": "failed",
+diff --git a/.fabro/workflows/develop/prompts/project-facts.md b/.fabro/workflows/develop/prompts/project-facts.md
+index 127a610..abac2f0 100644
+--- a/.fabro/workflows/develop/prompts/project-facts.md
++++ b/.fabro/workflows/develop/prompts/project-facts.md
+@@ -36,7 +36,7 @@ in the journal, never silently work around it.
+ | `sd show <id> --format json` | One seed in full (the supported path — never parse `.seeds/issues.jsonl` by hand). |
+ | `sd update <id> --status in_progress --assignee fabro` | Claim (the exact claim form). Takes NO `--format` flag (observed failure, run 01M0T9B7T6: `unknown option '--format'`). |
+ | `sd update <id> --description "<full corrected body>"` | Record a stale-spec correction when the basis RESOLVES but the seed's named path/target/details are wrong (see STALE-BASIS CHECK, step 3) — run it BEFORE the claim. `--description` replaces the body wholesale: re-emit the FULL corrected body including the existing `Basis:` line, appending/amending only the corrected facts. Like the claim form above, takes NO `--format` flag. |
+-| `sd close <id>` | NEVER yours — the deterministic Closeout step closes approved seeds. Do not run it. |
++| `sd close <id>` | NEVER yours — the deterministic Closeout step closes approved seeds — with exactly ONE exception (fabro-d183): the planner's superseded-close `sd close <id> --reason "superseded: fix landed in <sha>"` when a fix commit referencing the seed is already in base history and the acceptance criteria hold (reason string mandatory). Every other close form remains forbidden to every role. |
+ 
+ 
+ - Quality gate: `just qualitygate` — a `qualitygate` recipe in the project
+diff --git a/.fabro/workflows/develop/workflow.fabro b/.fabro/workflows/develop/workflow.fabro
+index e5cbdc7..adc0e5f 100644
+--- a/.fabro/workflows/develop/workflow.fabro
++++ b/.fabro/workflows/develop/workflow.fabro
+@@ -293,6 +293,13 @@ digraph Develop {
+     // implementation with no seed claimed (GRAPH-03, gate red since
+     // the journal-contract prompt). Plain edge: natural completion.
+     planner -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
++    // Already landed (fabro-d183): the planner's claim-time check found a
++    // fix commit referencing the seed already in base history with its
++    // acceptance criteria satisfied — it closes the seed via the
++    // superseded-close and exits here instead of burning a full
++    // verification cycle on a stale tracker row. Plain edge, natural
++    // completion, same family as "Tracker empty" above.
++    planner -> exit [label="Already landed", condition="preferred_label=\"Already landed\""]
+     // Cycle-guard exit (run 01M0SS23MJ): the planner prompt routes Blocked
+     // after the third review/gate cycle on one seed, but the graph had no
+     // matching edge — the guard could never fire. Seed stays open for a
