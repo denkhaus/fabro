@@ -139,9 +139,10 @@ impl NativeToolOptions {
             AgentProfileKind::Kimi => 60_000,
             // Codex's `shell_command` documents a 10s default, which is
             // already fabro's, so GPT-5.6 budgets against the same number.
-            AgentProfileKind::OpenAi | AgentProfileKind::Gemini | AgentProfileKind::Gpt56 => {
-                defaults.default_command_timeout_ms
-            }
+            AgentProfileKind::OpenAi
+            | AgentProfileKind::Gemini
+            | AgentProfileKind::Gpt56
+            | AgentProfileKind::Gpt6 => defaults.default_command_timeout_ms,
         };
         Self {
             default_command_timeout_ms,

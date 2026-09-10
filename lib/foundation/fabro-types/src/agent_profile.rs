@@ -1,8 +1,8 @@
-//! Agent profile vocabulary shared by the catalog policy and the agent.
+//! Agent profile vocabulary shared by the catalog and the agent.
 //!
 //! The catalog records which profile a model should run under in its
-//! `metadata.fabro.agent_profile` entry. This enum is the Rust spelling of
-//! that value.
+//! `metadata.agent.profile` entry, a namespace lithos-llm ships and Pebble
+//! reads too. This enum is the Rust spelling of that value.
 
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString, IntoStaticStr, VariantArray};
@@ -47,12 +47,23 @@ pub enum AgentProfileKind {
     /// per provider, so other models on the `openai` provider keep
     /// [`Self::OpenAi`].
     Gpt56,
+    /// GPT-6 models (Astra), which Codex drives with the same narrow tool
+    /// contract as GPT-5.6. Fabro runs them on the GPT-5.6 harness.
+    Gpt6,
 }
 
 impl AgentProfileKind {
     #[must_use]
     pub fn as_str(self) -> &'static str {
         self.into()
+    }
+
+    /// Whether the profile runs Codex's narrow core tool set (a shell, a file
+    /// editor, and `update_plan`) instead of Fabro's dedicated read,
+    /// discovery, and fetch tools.
+    #[must_use]
+    pub fn uses_codex_core_tools(self) -> bool {
+        matches!(self, Self::Gpt56 | Self::Gpt6)
     }
 }
 
@@ -76,6 +87,9 @@ mod tests {
     fn claude5_and_gpt56_use_their_catalog_spellings() {
         assert_eq!(AgentProfileKind::Claude5.as_str(), "claude-5");
         assert_eq!(AgentProfileKind::Gpt56.as_str(), "gpt56");
+        assert_eq!(AgentProfileKind::Gpt6.as_str(), "gpt6");
+        assert!(AgentProfileKind::Gpt6.uses_codex_core_tools());
+        assert!(!AgentProfileKind::OpenAi.uses_codex_core_tools());
         assert_eq!(AgentProfileKind::OpenAi.as_str(), "openai");
     }
 }

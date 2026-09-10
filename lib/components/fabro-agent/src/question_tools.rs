@@ -194,8 +194,8 @@ pub fn is_question_tool(name: &str) -> bool {
 
 pub fn register_question_tools(profile_kind: AgentProfileKind, registry: &mut ToolRegistry) {
     match profile_kind {
-        // Codex names this tool `request_user_input` for GPT-5.6 too.
-        AgentProfileKind::OpenAi | AgentProfileKind::Gpt56 => {
+        // Codex names this tool `request_user_input` for GPT-5.6 and GPT-6 too.
+        AgentProfileKind::OpenAi | AgentProfileKind::Gpt56 | AgentProfileKind::Gpt6 => {
             registry.register(make_openai_question_tool());
         }
         // Kimi Code names this tool `AskUserQuestion` with the same

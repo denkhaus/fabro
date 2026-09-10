@@ -104,7 +104,7 @@ impl AgentProfileBuilder {
     /// `web_fetch` discard it instead of retaining an unused LLM client.
     #[must_use]
     pub fn with_web_fetch_summarizer(mut self, summarizer: Option<WebFetchSummarizer>) -> Self {
-        if self.profile_kind != AgentProfileKind::Gpt56 {
+        if !self.profile_kind.uses_codex_core_tools() {
             self.summarizer = summarizer;
         }
         self
@@ -115,7 +115,7 @@ impl AgentProfileBuilder {
         let model = self.model.as_str();
         let deps = ProfileDeps {
             options:      self.native_tool_options.clone(),
-            summarizer:   if self.profile_kind == AgentProfileKind::Gpt56 {
+            summarizer:   if self.profile_kind.uses_codex_core_tools() {
                 None
             } else {
                 self.summarizer.clone()
@@ -147,7 +147,7 @@ impl AgentProfileBuilder {
                     .with_provider_id(self.provider_id.clone())
                     .with_catalog(Arc::clone(&self.catalog)),
             ),
-            AgentProfileKind::Gpt56 => Box::new(
+            AgentProfileKind::Gpt56 | AgentProfileKind::Gpt6 => Box::new(
                 Gpt56Profile::with_native_tools(model, &deps)
                     .with_route(self.provider_id.clone(), Arc::clone(&self.catalog)),
             ),

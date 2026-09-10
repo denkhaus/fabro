@@ -544,7 +544,7 @@ async fn run_with_args_and_client_and_catalog_styled(
         &model,
         Arc::clone(&catalog),
     );
-    let profile_builder = if profile_kind == AgentProfileKind::Gpt56 {
+    let profile_builder = if profile_kind.uses_codex_core_tools() {
         profile_builder
     } else {
         profile_builder.with_web_fetch_summarizer(Some(build_summarizer(
