@@ -17134,6 +17134,86 @@ async fn interrupt_terminal_run_returns_run_not_interruptible() {
     assert_eq!(body["errors"][0]["code"], "run_not_interruptible");
 }
 
+/// fabro-3fe4: the live status step is the shared lifecycle table plus the
+/// documented `RunRunnable` scheduling guard — nothing else. No AppState (or
+/// lock surgery) is needed to prove it.
+#[test]
+fn live_status_step_matches_the_shared_table_except_runnable_suppression() {
+    use fabro_types::{LifecycleTransition, RunRunnableSource, apply_lifecycle_event};
+
+    let run_id = fixtures::RUN_1;
+    let runnable = workflow_event::to_run_event(&run_id, &workflow_event::Event::RunRunnable {
+        source: RunRunnableSource::StartRequested,
+        actor:  None,
+    });
+    // Live-only scheduling guard: an injected runnable event never flips
+    // status, no matter the current status.
+    assert_eq!(
+        super::live_lifecycle_status(RunStatus::Submitted, &runnable),
+        Ok(None)
+    );
+    assert_eq!(
+        super::live_lifecycle_status(RunStatus::Runnable, &runnable),
+        Ok(None)
+    );
+
+    let lifecycle_events = vec![
+        workflow_event::to_run_event(&run_id, &workflow_event::Event::RunStarting),
+        workflow_event::to_run_event(&run_id, &workflow_event::Event::RunRunning),
+        workflow_event::to_run_event(&run_id, &workflow_event::Event::WorkflowRunCompleted {
+            timing:               fabro_types::RunTiming::wall_only(1),
+            artifact_count:       0,
+            status:               "succeeded".to_string(),
+            reason:               SuccessReason::Completed,
+            failure:              None,
+            total_usd_micros:     None,
+            final_git_commit_sha: None,
+            final_patch:          None,
+            diff_summary:         None,
+            billing:              None,
+        }),
+        workflow_event::to_run_event(&run_id, &workflow_event::Event::WorkflowRunFailed {
+            failure:              fabro_types::RunFailure {
+                reason: fabro_types::FailureReason::Cancelled,
+                detail: FailureDetail::new(
+                    "cancelled before start",
+                    FailureCategory::Deterministic,
+                ),
+            },
+            timing:               fabro_types::RunTiming::wall_only(1),
+            final_git_commit_sha: None,
+            final_patch:          None,
+            diff_summary:         None,
+            billing:              None,
+        }),
+    ];
+    let statuses = [
+        RunStatus::Submitted,
+        RunStatus::Runnable,
+        RunStatus::Starting,
+        RunStatus::Running,
+        RunStatus::Paused { prior_block: None },
+        RunStatus::Failed {
+            reason: fabro_types::FailureReason::Cancelled,
+        },
+    ];
+
+    for status in statuses {
+        for event in &lifecycle_events {
+            let expected = match apply_lifecycle_event(status, &event.body) {
+                LifecycleTransition::Next(next) => Ok(Some(next)),
+                LifecycleTransition::Rejected(err) => Err(err),
+                LifecycleTransition::NotLifecycle => Ok(None),
+            };
+            assert_eq!(
+                super::live_lifecycle_status(status, event),
+                expected,
+                "live step drifted from the table at {status}"
+            );
+        }
+    }
+}
+
 #[test]
 fn injected_runnable_event_does_not_make_submitted_run_schedulable() {
     let state = test_app_state();
@@ -17168,7 +17248,10 @@ fn injected_runnable_event_does_not_make_submitted_run_schedulable() {
     update_live_run_from_event(&state, run_id, &starting);
 
     let runs = state.runs.lock().expect("runs lock poisoned");
-    assert_eq!(runs.get(&run_id).unwrap().status, RunStatus::Starting);
+    // The shared lifecycle table (fabro-3fe4) rejects the injected
+    // `run.starting`: it would skip `runnable`, so a submitted run stays
+    // submitted instead of becoming schedulable-looking.
+    assert_eq!(runs.get(&run_id).unwrap().status, RunStatus::Submitted);
 }
 
 /// fabro-67e5: a publish-blocked completion keeps the run green

@@ -2,7 +2,6 @@ use std::path::Path;
 
 use super::start::{StartServices, Started, execute_persisted_run};
 use crate::error::Error;
-use crate::event::{Event, append_event_to_sink};
 use crate::outcome::StageOutcome;
 use crate::pipeline::ResumeState;
 use crate::run_status::RunStatus;
@@ -38,12 +37,8 @@ pub async fn resume(run_dir: &Path, services: StartServices) -> Result<Started, 
     let definition_blob = state.spec.definition_blob;
 
     cleanup_resume_artifacts(run_dir);
-    append_event_to_sink(
-        &services.event_sink,
-        &services.run_id,
-        &Event::RunSubmitted { definition_blob },
-    )
-    .await?;
+    super::lifecycle_events::resubmit(&services.event_sink, &services.run_id, definition_blob)
+        .await?;
 
     Box::pin(execute_persisted_run(run_dir, Some(resume_state), services)).await
 }

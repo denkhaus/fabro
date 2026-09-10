@@ -89,15 +89,23 @@ impl RunProjectionReducer for RunProjection {
         };
         let mut state = projection_from_created(first)?;
         for event in rest {
-            // Runs written before the runnable state was introduced can move
-            // directly from submitted to starting. Replay that historical
-            // shape through the equivalent current transition while keeping
-            // live single-event transitions strict.
+            // HISTORIC SHIM (reason, fabro-3fe4): runs written before the
+            // runnable state was introduced move directly from submitted to
+            // starting. Replay that historical shape through the equivalent
+            // current transition (submitted -> runnable -> starting) so the
+            // shared lifecycle table stays strict; live single-event
+            // transitions are never patched.
             if matches!(event.event.body, EventBody::RunStarting(_))
                 && matches!(state.status, RunStatus::Submitted)
             {
                 state.try_apply_status(RunStatus::Runnable, event.event.ts)?;
             }
+            // HISTORIC SHIM (reason, fabro-3fe4): historic failure events can
+            // name states the run never recorded (e.g. `run.failed` arriving
+            // while still submitted, without the intermediate runnable /
+            // starting events the current protocol requires). Fast-forward
+            // through the missing intermediate statuses so replay accepts the
+            // old stream; live appends keep the strict table validation.
             if let EventBody::RunFailed(props) = &event.event.body {
                 let failed = RunStatus::Failed {
                     reason: props.failure.reason,
@@ -125,6 +133,20 @@ impl RunProjectionReducer for RunProjection {
 
         self.last_event_at = ts;
 
+        // Status transitions are owned by the shared lifecycle table
+        // (fabro-3fe4): this reducer keeps only the non-status side effects
+        // and rejects exactly the transitions the table rejects.
+        match fabro_types::apply_lifecycle_event(self.status, &stored.body) {
+            fabro_types::LifecycleTransition::NotLifecycle => {}
+            fabro_types::LifecycleTransition::Next(next) => {
+                if next != self.status {
+                    self.status = next;
+                    self.status_updated_at = ts;
+                }
+            }
+            fabro_types::LifecycleTransition::Rejected(err) => return Err(err.into()),
+        }
+
         match &stored.body {
             EventBody::RunCreated(_) => {
                 return Err(Error::InvalidEvent(
@@ -142,24 +164,15 @@ impl RunProjectionReducer for RunProjection {
                 self.spec.definition_blob = props.definition_blob;
             }
             EventBody::RunStartRequested(props) if props.resume => {
-                self.try_apply_status(RunStatus::Submitted, ts)?;
                 self.conclusion = None;
             }
-            EventBody::RunPending(props) => {
-                self.try_apply_status(
-                    RunStatus::Pending {
-                        reason: props.reason,
-                    },
-                    ts,
-                )?;
-                if props.reason == PendingReason::ApprovalRequired {
-                    self.approval = Some(RunApproval {
-                        state:         RunApprovalState::Pending,
-                        requested_at:  ts,
-                        decided_at:    None,
-                        denial_reason: None,
-                    });
-                }
+            EventBody::RunPending(props) if props.reason == PendingReason::ApprovalRequired => {
+                self.approval = Some(RunApproval {
+                    state:         RunApprovalState::Pending,
+                    requested_at:  ts,
+                    decided_at:    None,
+                    denial_reason: None,
+                });
             }
             EventBody::RunApproved(_) => {
                 if let Some(approval) = &mut self.approval {
@@ -175,42 +188,6 @@ impl RunProjectionReducer for RunProjection {
                     approval.denial_reason.clone_from(&props.reason);
                 }
             }
-            EventBody::RunRunnable(_) => {
-                self.try_apply_status(RunStatus::Runnable, ts)?;
-            }
-            EventBody::RunStarting(_) => {
-                self.try_apply_status(RunStatus::Starting, ts)?;
-            }
-            EventBody::RunRunning(_) => {
-                self.try_apply_status(RunStatus::Running, ts)?;
-            }
-            EventBody::RunBlocked(props) => {
-                let next = if matches!(self.status, RunStatus::Paused { .. }) {
-                    RunStatus::Paused {
-                        prior_block: Some(props.blocked_reason),
-                    }
-                } else {
-                    RunStatus::Blocked {
-                        blocked_reason: props.blocked_reason,
-                    }
-                };
-                self.try_apply_status(next, ts)?;
-            }
-            EventBody::RunUnblocked(_) => {
-                let next = match self.status {
-                    RunStatus::Paused {
-                        prior_block: Some(_),
-                    } => RunStatus::Paused { prior_block: None },
-                    RunStatus::Paused { prior_block: None } => {
-                        RunStatus::Paused { prior_block: None }
-                    }
-                    _ => RunStatus::Running,
-                };
-                self.try_apply_status(next, ts)?;
-            }
-            EventBody::RunRemoving(_) => {
-                self.try_apply_status(RunStatus::Removing, ts)?;
-            }
             EventBody::RunCancelRequested(_) => {
                 self.pending_control = Some(RunControlAction::Cancel);
             }
@@ -220,43 +197,15 @@ impl RunProjectionReducer for RunProjection {
             EventBody::RunUnpauseRequested(_) => {
                 self.pending_control = Some(RunControlAction::Unpause);
             }
-            EventBody::RunPaused(_) => {
-                self.try_apply_status(
-                    RunStatus::Paused {
-                        prior_block: self.status.blocked_reason(),
-                    },
-                    ts,
-                )?;
-                self.pending_control = None;
-            }
-            EventBody::RunUnpaused(_) => {
-                let next = match self.status {
-                    RunStatus::Paused {
-                        prior_block: Some(blocked_reason),
-                    } => RunStatus::Blocked { blocked_reason },
-                    _ => RunStatus::Running,
-                };
-                self.try_apply_status(next, ts)?;
+            EventBody::RunPaused(_) | EventBody::RunUnpaused(_) => {
                 self.pending_control = None;
             }
             EventBody::RunCompleted(props) => {
-                self.try_apply_status(
-                    RunStatus::Succeeded {
-                        reason: props.reason,
-                    },
-                    ts,
-                )?;
                 self.pending_control = None;
                 self.conclusion = Some(conclusion_from_completed(self, props, ts)?);
                 self.pending_interviews.clear();
             }
             EventBody::RunFailed(props) => {
-                self.try_apply_status(
-                    RunStatus::Failed {
-                        reason: props.failure.reason,
-                    },
-                    ts,
-                )?;
                 self.pending_control = None;
                 self.conclusion = Some(conclusion_from_failed(self, props, ts));
                 self.pending_interviews.clear();
@@ -7859,6 +7808,217 @@ mod tests {
                 .apply_event(&root_event(2, retry(LlmRetryPhase::Open)))
                 .unwrap();
             assert!(open_bracket(&state).is_none());
+        }
+    }
+
+    /// fabro-3fe4: the durable reducer and the shared lifecycle transition
+    /// table (`fabro_types::apply_lifecycle_event`) must yield the same
+    /// status for every table-valid event sequence. A deterministic
+    /// xorshift PRNG drives a property test over random sequences: the
+    /// sequence ends where the table rejects (the durable reducer would
+    /// error on the same event), and both folds must agree at every step.
+    mod lifecycle_equivalence {
+        use fabro_types::run_event::{
+            RunApprovedProps, RunBlockedProps, RunCompletedProps, RunControlEffectProps,
+            RunControlRequestedProps, RunDeniedProps, RunFailedProps, RunPendingProps,
+            RunRunnableProps, RunStartRequestedProps, RunStatusEffectProps,
+            RunStatusTransitionProps, RunSubmittedProps, RunTitleUpdatedProps,
+        };
+        use fabro_types::{
+            BlockedReason, EventBody, FailureCategory, FailureDetail, FailureReason,
+            LifecycleTransition, PendingReason, RunControlAction, RunFailure, RunRunnableSource,
+            RunStatus, RunTiming, SuccessReason, apply_lifecycle_event,
+        };
+
+        use super::{RunProjectionReducer, initialized_projection, test_event};
+
+        struct XorShift(u64);
+
+        impl XorShift {
+            fn next(&mut self) -> u64 {
+                let mut x = self.0;
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                self.0 = x;
+                x
+            }
+
+            fn below(&mut self, bound: usize) -> usize {
+                usize::try_from(self.next() % (bound as u64)).expect("modulo stays in range")
+            }
+        }
+
+        fn failed_props(reason: FailureReason) -> RunFailedProps {
+            RunFailedProps {
+                failure:              RunFailure {
+                    reason,
+                    detail: FailureDetail::new("equivalence", FailureCategory::Deterministic),
+                },
+                timing:               RunTiming::default(),
+                final_git_commit_sha: None,
+                final_patch:          None,
+                diff_summary:         None,
+                billing:              None,
+            }
+        }
+
+        fn completed_props(reason: SuccessReason) -> RunCompletedProps {
+            RunCompletedProps {
+                timing: RunTiming::wall_only(1),
+                artifact_count: 0,
+                status: "succeeded".to_string(),
+                reason,
+                failure: None,
+                total_usd_micros: None,
+                final_git_commit_sha: None,
+                final_patch: None,
+                diff_summary: None,
+                billing: None,
+            }
+        }
+
+        fn random_body(rng: &mut XorShift) -> EventBody {
+            let reasons = [
+                FailureReason::Cancelled,
+                FailureReason::LaunchFailed,
+                FailureReason::WorkflowError,
+                FailureReason::Terminated,
+                FailureReason::BootstrapFailed,
+                FailureReason::PublishFailed,
+                FailureReason::ApprovalDenied,
+                FailureReason::ApprovalTimeout,
+            ];
+            match rng.below(17) {
+                0 => EventBody::RunSubmitted(RunSubmittedProps {
+                    definition_blob: None,
+                }),
+                1 => EventBody::RunStartRequested(RunStartRequestedProps { resume: true }),
+                2 => EventBody::RunStartRequested(RunStartRequestedProps { resume: false }),
+                3 => EventBody::RunPending(RunPendingProps {
+                    reason: PendingReason::ApprovalRequired,
+                }),
+                4 => EventBody::RunApproved(RunApprovedProps {}),
+                5 => EventBody::RunDenied(RunDeniedProps { reason: None }),
+                6 => EventBody::RunRunnable(RunRunnableProps {
+                    source: RunRunnableSource::StartRequested,
+                }),
+                7 => EventBody::RunStarting(RunStatusTransitionProps {}),
+                8 => EventBody::RunRunning(RunStatusTransitionProps {}),
+                9 => EventBody::RunBlocked(RunBlockedProps {
+                    blocked_reason: BlockedReason::HumanInputRequired,
+                }),
+                10 => EventBody::RunUnblocked(RunStatusEffectProps {}),
+                11 => EventBody::RunPaused(RunControlEffectProps {}),
+                12 => EventBody::RunUnpaused(RunControlEffectProps {}),
+                13 => EventBody::RunCompleted(completed_props(
+                    [SuccessReason::Completed, SuccessReason::PublishBlocked][rng.below(2)],
+                )),
+                14 => EventBody::RunFailed(failed_props(reasons[rng.below(reasons.len())])),
+                15 => EventBody::RunTitleUpdated(RunTitleUpdatedProps {
+                    title: "equivalence".to_string(),
+                }),
+                _ => EventBody::RunCancelRequested(RunControlRequestedProps {
+                    action: [RunControlAction::Cancel, RunControlAction::Pause][rng.below(2)],
+                }),
+            }
+        }
+
+        #[test]
+        fn durable_reducer_matches_the_shared_table_for_random_event_sequences() {
+            let mut rng = XorShift(0x3fe4_2026_0910_1234);
+            let mut cases_agreeing = 0usize;
+
+            for case in 0..2_000u32 {
+                let mut table_status = RunStatus::Submitted;
+                let mut projection = initialized_projection();
+                let len = 1 + rng.below(16);
+                let len_u32 = u32::try_from(len).expect("sequence length fits u32");
+
+                for seq in 1..=len_u32 {
+                    let body = random_body(&mut rng);
+                    match apply_lifecycle_event(table_status, &body) {
+                        LifecycleTransition::Rejected(_) => break,
+                        LifecycleTransition::Next(next) => {
+                            table_status = next;
+                            projection
+                                .apply_event(&test_event(seq, body, None))
+                                .expect("reducer accepts what the table accepts");
+                        }
+                        LifecycleTransition::NotLifecycle => {
+                            projection
+                                .apply_event(&test_event(seq, body, None))
+                                .expect("reducer accepts non-lifecycle events");
+                        }
+                    }
+                    assert_eq!(
+                        projection.status, table_status,
+                        "case {case} seq {seq}: durable reducer drifted from the table"
+                    );
+                }
+                cases_agreeing += 1;
+            }
+            assert!(cases_agreeing > 0);
+        }
+
+        #[test]
+        fn cancel_before_starting_and_failure_before_running_replay_strictly() {
+            // Cancel-before-starting: submitted -> failed(cancelled).
+            let mut projection = initialized_projection();
+            projection
+                .apply_event(&test_event(
+                    1,
+                    EventBody::RunFailed(failed_props(FailureReason::Cancelled)),
+                    None,
+                ))
+                .unwrap();
+            assert_eq!(projection.status, RunStatus::Failed {
+                reason: FailureReason::Cancelled,
+            });
+
+            // Failure-before-running: runnable -> failed(launch_failed)
+            // without an intervening starting event.
+            let mut projection = initialized_projection();
+            projection
+                .apply_event(&test_event(
+                    1,
+                    EventBody::RunRunnable(RunRunnableProps {
+                        source: RunRunnableSource::StartRequested,
+                    }),
+                    None,
+                ))
+                .unwrap();
+            projection
+                .apply_event(&test_event(
+                    2,
+                    EventBody::RunFailed(failed_props(FailureReason::LaunchFailed)),
+                    None,
+                ))
+                .unwrap();
+            assert_eq!(projection.status, RunStatus::Failed {
+                reason: FailureReason::LaunchFailed,
+            });
+
+            // A post-start failure reason is rejected from runnable.
+            let mut projection = initialized_projection();
+            projection
+                .apply_event(&test_event(
+                    1,
+                    EventBody::RunRunnable(RunRunnableProps {
+                        source: RunRunnableSource::StartRequested,
+                    }),
+                    None,
+                ))
+                .unwrap();
+            let err = projection.apply_event(&test_event(
+                2,
+                EventBody::RunFailed(failed_props(FailureReason::PublishFailed)),
+                None,
+            ));
+            assert!(
+                matches!(err, Err(crate::Error::InvalidTransition(_))),
+                "{err:?}"
+            );
         }
     }
 }
