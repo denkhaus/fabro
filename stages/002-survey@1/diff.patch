@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M265X1PE76AADDVHB5SJ4R7F.jsonl b/.fabro/journal/01M265X1PE76AADDVHB5SJ4R7F.jsonl
+new file mode 100644
+index 000000000..b47992025
+--- /dev/null
++++ b/.fabro/journal/01M265X1PE76AADDVHB5SJ4R7F.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M265X1PE76AADDVHB5SJ4R7F","node":"start","visit":1,"status":"succeeded","ts":"2026-09-10T17:30:30Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M265X1PE76AADDVHB5SJ4R7F","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-10T17:31:54Z","data":{"painpoints":[{"text":"fabro_runs_list output disagrees with on-disk artifacts: listing develop runs shows nothing newer than 2026-09-08 while `.fabro/reviews/develop/` contains revisor reviews dated 2026-09-10 (e.g. 01M25K41V4NEWXSA3SVGRHKRXK.md). Suggest the runs-list tool or its created_since filter be checked for a stale/truncated index so the revisor-backlog signal is not silently wrong."}],"observations":["upstream count 24 (origin/denkhaus..upstream/main), >= 5 MIN threshold -> Merge needed; newest upstream subject: 'Merge pull request #848 from fabro-sh/rust-boundary'","revisor backlog: none visible — newest develop run 01M25K41V4NEWXSA3SVGRHKRXK has a revisor review (2026-09-10 13:04); runs_list created_since=2026-09-10 returned 0 develop runs, though listing appears to omit runs newer than 2026-09-08, so treat backlog as clear-with-mild-ambiguity","next surveyor should expect the merge pass to substantially reset the drift count; after merge, verify the count drops to 0 before routing Work"]}}
