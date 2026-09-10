@@ -710,7 +710,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-10T13:31:29.440406563Z",
-  "last_event_at": "2026-09-10T15:00:48.269600558Z",
+  "last_event_at": "2026-09-10T15:00:55.124356021Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1110,9 +1110,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 733,
       "checkpoint": {
-        "timestamp": "2026-09-10T15:00:48.795537734Z",
+        "timestamp": "2026-09-10T15:00:54.401007190Z",
         "current_node": "tester",
         "completed_nodes": [
           "start",
@@ -1124,20 +1124,253 @@
           "implementer": 3
         },
         "context_values": {
-          "internal.fidelity": "compact",
-          "last_response": "Implementation complete. Summary of this pass:\n\n**Reconciliation**: the worktree already carried the reconciled PR #121 work plus unstaged follow-up edits that supersede the branch's fix (branch `7a0a",
-          "thread.implementer.current_node": "tester",
-          "internal.thread_id": "implementer",
-          "outcome": "succeeded",
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 4214,
+            "preview": "Basis resolves against the current tree (server.rs:3576 reducer, run_state.rs RunProjectionReducer both present). Claimed; brief written.\n\nClaimed a seed:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next"
+          },
           "current_node": "tester",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.inspects": "develop",
+          "internal.retry_count.tester": 0,
+          "internal.seed_cycle_anchor": "fabro-3fe4",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.start": 0,
+          "last_stage": "implementer",
+          "internal.node_visit_count": 1,
+          "journal": {
+            "painpoints": [
+              {
+                "text": "The reopen brief's git fetch of `fabro/run/01M25K41V4NEWXSA3SVGRHKRXK` produced branch commits (7a0a7db, f051098) whose fixes were partially superseded by an in-progress unstaged worktree state with no journal record explaining it — an interrupted prior pass of run 01M25R832HP left ambiguous reconciliation state. Suggestion: journal the reconciliation decision (reuse vs supersede) as the first action of a re-claim pass so the next interruption is recoverable."
+              }
+            ],
+            "observations": [
+              "The PR #121 branch's fix (Runnable-retry inside the Rejected arm + durable-terminal fallback in the delete guard) diverged from the worktree's cleaner shared-helper fix; choosing the shared helper required reading both diffs carefully — the branch's zz_probe_seeded_completed_status debug test in `lib/apps/fabro-cli/tests/it/cmd/rm.rs` is correctly absent from the final tree.",
+              "rg pattern `pub fn` misses `pub async fn` declarations — lifecycle_events.rs looked empty on first inventory; pattern discipline matters when verifying module interfaces."
+            ]
+          },
+          "outcome": "succeeded",
+          "current_seed_title": "Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table",
+          "preferred_label": "Implemented",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5269,
+            "preview": "Implementation complete. Summary of this pass:\n\n**Reconciliation**: the worktree already carried the reconciled PR #121 work plus unstaged follow-up edits that supersede the branch's fix (branch `7a0a"
+          },
+          "failure_class": "",
+          "implementation_summary": "Reconciled with PR #121's branch: kept its transition-table refactor (staged) and superseded its regression hack with a shared `historic_skipped_statuses` fast-forward in `lib/foundation/fabro-types/src/lifecycle.rs` consumed by BOTH the live fold (`server.rs` `live_lifecycle_status`) and the durable replay (`run_state.rs`), fixing the fabro rm completed-run regression; lesson captured as mx-c555a3. Files: lifecycle.rs, lib.rs, run_state.rs, server.rs, server/tests.rs, operations/lifecycle_events.rs, operations/mod.rs, start.rs, resume.rs, test_support.rs. Per-criterion report: PASS lifecycle module interface (six fns, adapters wired); PASS shared pure table consumed by both reducers; PASS Paused/RunUnblocked arms aligned (lifecycle.rs:84-100); PASS documented historic shims; PASS equivalence property test (2000 random sequences) + exhaustive status×event live-step test; PASS per-transition unit tests incl. cancel-before-starting (lifecycle.rs:256) and failure-before-running (lifecycle.rs:293); PASS rm regression fixed (rm_deletes_completed_run + rm_partial_failure_json 2/2); PASS drift rules (additive, no wire change, minimal resume.rs adapter, RunSupervisor out of scope); PASS suites fabro-types 519, fabro-store 291, fabro-server 936, fabro-workflow 1545 all green; PASS fmt + default-features clippy clean on all four touched crates.",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
             "tester": 1
           },
+          "graph.max_node_visits": "40",
+          "thread.implementer.current_node": "tester",
+          "internal.run_id": "01M25R832HP615J291N72FHNCS",
+          "internal.thread_id": "implementer",
+          "thread.start.current_node": "planner",
+          "last_response": "Implementation complete. Summary of this pass:\n\n**Reconciliation**: the worktree already carried the reconciled PR #121 work plus unstaged follow-up edits that supersede the branch's fix (branch `7a0a",
+          "thread.planner.current_node": "implementer",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.implementer": 3,
+          "current_seed_id": "fabro-3fe4",
+          "internal.retry_count.planner": 0,
+          "failure_signature": "",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.rankdir": "LR",
+          "command.output": "blob://sha256/9aec6c6c8bcefc17e8483b9e3045b42442866f01e37320714e2468c10d1675a4",
+          "current_seed_brief": "RE-CLAIM with failed-gate context: a first attempt (run 01M25K41V4NE, PR #121 branch, NOT on base) failed the dogfood-gate on two fabro-cli rm tests. FIRST reconcile with that branch: git fetch origin fabro/run/01M25K41V4NEWXSA3SVGRHKRXK — reuse or supersede its work; the fix is likely a transition-table/completed-predicate adjustment, not a rewrite. Then deliver: - new fork-owned module `lib/components/fabro-workflow/src/operations/lifecycle_events.rs` exposing the run-lifecycle sequence as an interface (request_start / runnable / starting / running / resubmit / terminal_failure); server.rs and test_support become adapters; - one pure transition table (RunStatus x EventBody) -> Result<RunStatus, InvalidTransition> in fabro-types; BOTH reducers consume it (server.rs update_live_run_from_event:3576 and fabro-store run_state.rs RunProjectionReducer:75); live reducer keeps only side effects (map/bus cleanup); - drift arms aligned: Paused{prior_block}/RunUnblocked (server.rs:3610-3616 vs run_state.rs:197-205); - historic shims in run_state.rs (Submitted->Starting / RunFailed fast-forward, run_state.rs:84-112) carry a documented reason comment; - equivalence: property/table test proving both reducers yield the same status for every event sequence; unit tests per transition including cancel-before-starting and failure-before-running; - the fabro-cli rm regression is fixed: targeted `cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors` passes on the final tree (these were the gate failures on PR #121 — rm stopped treating terminal runs as completed); - drift rules: additive fork-owned only, no wire-contract change, no new pub items on AppState, resume.rs gets a minimal adapter edit only; RunSupervisor build-out is OUT OF SCOPE; - gate green via the deterministic tester step (never run the full gate yourself). Cheapest-first verification: targeted nextest on the rm tests, then lifecycle unit tests, then fmt/clippy on touched crates.",
+          "internal.fidelity": "compact",
+          "lesson_capture": "mx-c555a3"
+        },
+        "node_outcomes": {
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_stage": "implementer",
+              "last_response": "Implementation complete. Summary of this pass:\n\n**Reconciliation**: the worktree already carried the reconciled PR #121 work plus unstaged follow-up edits that supersede the branch's fix (branch `7a0a",
+              "implementation_summary": "Reconciled with PR #121's branch: kept its transition-table refactor (staged) and superseded its regression hack with a shared `historic_skipped_statuses` fast-forward in `lib/foundation/fabro-types/src/lifecycle.rs` consumed by BOTH the live fold (`server.rs` `live_lifecycle_status`) and the durable replay (`run_state.rs`), fixing the fabro rm completed-run regression; lesson captured as mx-c555a3. Files: lifecycle.rs, lib.rs, run_state.rs, server.rs, server/tests.rs, operations/lifecycle_events.rs, operations/mod.rs, start.rs, resume.rs, test_support.rs. Per-criterion report: PASS lifecycle module interface (six fns, adapters wired); PASS shared pure table consumed by both reducers; PASS Paused/RunUnblocked arms aligned (lifecycle.rs:84-100); PASS documented historic shims; PASS equivalence property test (2000 random sequences) + exhaustive status×event live-step test; PASS per-transition unit tests incl. cancel-before-starting (lifecycle.rs:256) and failure-before-running (lifecycle.rs:293); PASS rm regression fixed (rm_deletes_completed_run + rm_partial_failure_json 2/2); PASS drift rules (additive, no wire change, minimal resume.rs adapter, RunSupervisor out of scope); PASS suites fabro-types 519, fabro-store 291, fabro-server 936, fabro-workflow 1545 all green; PASS fmt + default-features clippy clean on all four touched crates.",
+              "lesson_capture": "mx-c555a3",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5269,
+                "preview": "Implementation complete. Summary of this pass:\n\n**Reconciliation**: the worktree already carried the reconciled PR #121 work plus unstaged follow-up edits that supersede the branch's fix (branch `7a0a"
+              },
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "The reopen brief's git fetch of `fabro/run/01M25K41V4NEWXSA3SVGRHKRXK` produced branch commits (7a0a7db, f051098) whose fixes were partially superseded by an in-progress unstaged worktree state with no journal record explaining it — an interrupted prior pass of run 01M25R832HP left ambiguous reconciliation state. Suggestion: journal the reconciliation decision (reuse vs supersede) as the first action of a re-claim pass so the next interruption is recoverable."
+                  }
+                ],
+                "observations": [
+                  "The PR #121 branch's fix (Runnable-retry inside the Rejected arm + durable-terminal fallback in the delete guard) diverged from the worktree's cleaner shared-helper fix; choosing the shared helper required reading both diffs carefully — the branch's zz_probe_seeded_completed_status debug test in `lib/apps/fabro-cli/tests/it/cmd/rm.rs` is correctly absent from the final tree.",
+                  "rg pattern `pub fn` misses `pub async fn` declarations — lifecycle_events.rs looked empty on first inventory; pattern discipline matters when verifying module interfaces."
+                ]
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 32716,
+                    "output_tokens": 3734,
+                    "reasoning_tokens": 2398,
+                    "cache_read_tokens": 456704,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 191503
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 184182,
+              "tool_time_ms": 245390,
+              "active_time_ms": 429572
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "RE-CLAIM with failed-gate context: a first attempt (run 01M25K41V4NE, PR #121 branch, NOT on base) failed the dogfood-gate on two fabro-cli rm tests. FIRST reconcile with that branch: git fetch origin fabro/run/01M25K41V4NEWXSA3SVGRHKRXK — reuse or supersede its work; the fix is likely a transition-table/completed-predicate adjustment, not a rewrite. Then deliver: - new fork-owned module `lib/components/fabro-workflow/src/operations/lifecycle_events.rs` exposing the run-lifecycle sequence as an interface (request_start / runnable / starting / running / resubmit / terminal_failure); server.rs and test_support become adapters; - one pure transition table (RunStatus x EventBody) -> Result<RunStatus, InvalidTransition> in fabro-types; BOTH reducers consume it (server.rs update_live_run_from_event:3576 and fabro-store run_state.rs RunProjectionReducer:75); live reducer keeps only side effects (map/bus cleanup); - drift arms aligned: Paused{prior_block}/RunUnblocked (server.rs:3610-3616 vs run_state.rs:197-205); - historic shims in run_state.rs (Submitted->Starting / RunFailed fast-forward, run_state.rs:84-112) carry a documented reason comment; - equivalence: property/table test proving both reducers yield the same status for every event sequence; unit tests per transition including cancel-before-starting and failure-before-running; - the fabro-cli rm regression is fixed: targeted `cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors` passes on the final tree (these were the gate failures on PR #121 — rm stopped treating terminal runs as completed); - drift rules: additive fork-owned only, no wire-contract change, no new pub items on AppState, resume.rs gets a minimal adapter edit only; RunSupervisor build-out is OUT OF SCOPE; - gate green via the deterministic tester step (never run the full gate yourself). Cheapest-first verification: targeted nextest on the rm tests, then lifecycle unit tests, then fmt/clippy on touched crates.",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "fabro_runs_list reports PR #121 as state 'merged' while the base branch has none of its work (no lifecycle_events.rs, no squash commit; newest base commit 76ed619 explicitly says the close lives only on the unmerged branch). The in-flight check relies on run/PR projections — a wrongly-'merged' open PR is invisible as in-flight and misleads reconciliation. Evidence: runs list for workflow develop, run 01M25K41V4NEWXSA3SVGRHKRXK, checked 2026-09-10 in run 01M25R832HP615J291N72FHNCS. Fix idea: postlude/post-merge reconciliation should correct PR state, or the projection should re-check against git."
+                  },
+                  {
+                    "text": "Journal fallback for run 01M23RQRCB748R4VRXA2WE6BZ0 (open PR #109) found no journal file at `.fabro/journal/<run_id>.jsonl` — had to recover the in-flight seed (fabro-e702) by fetching the run branch and parsing the .seeds/issues.jsonl diff. This is exactly the known gap of seed fabro-adf7 (failed runs lose stage journals); the prompt's journal fallback silently degrades to nothing."
+                  }
+                ],
+                "observations": [
+                  "In-flight exclusions applied this pass: fabro-e702 (open PR #109, seed recovered via run-branch seeds diff), and self (this run). PR #109 is old (2026-09-09) and still open — a stale in-flight lock on its seed.",
+                  "fabro-3fe4 re-claimed rather than fabro-7627 (also High, listed first): tie-break per observed-failure-class rule — 3fe4 has a concrete gate failure and ~55 min of reusable work on the PR #121 branch; 7627 stays top of the next run's list.",
+                  "The runs-list 'merged' state for PR #121 contradicts base history; the seed's REOPEN CONTEXT (base commit 76ed619) was treated as authoritative. The implementer MUST fetch the PR #121 branch before starting."
+                ]
+              },
+              "last_stage": "planner",
+              "current_seed_title": "Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table",
+              "last_response": "Basis resolves against the current tree (server.rs:3576 reducer, run_state.rs RunProjectionReducer both present). Claimed; brief written.\n\nClaimed a seed:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 4214,
+                "preview": "Basis resolves against the current tree (server.rs:3576 reducer, run_state.rs RunProjectionReducer both present). Claimed; brief written.\n\nClaimed a seed:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next"
+              },
+              "current_seed_id": "fabro-3fe4"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 38467,
+                    "output_tokens": 2707,
+                    "reasoning_tokens": 1833,
+                    "cache_read_tokens": 456704,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 192555
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 120625,
+              "tool_time_ms": 12625,
+              "active_time_ms": 133250
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/9aec6c6c8bcefc17e8483b9e3045b42442866f01e37320714e2468c10d1675a4"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 366950,
+              "active_time_ms": 366950
+            }
+          }
+        },
+        "next_node_id": "evidence",
+        "git_commit_sha": "fac07778a6d68f6ccf13f676f5a699cdf2d53e2a",
+        "node_visits": {
+          "tester": 1,
+          "implementer": 1,
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl b/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl\nindex 05374d7..4a90900 100644\n--- a/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl\n+++ b/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T13:31:32Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T13:33:46Z\",\"data\":{\"painpoints\":[{\"text\":\"fabro_runs_list reports PR #121 as state 'merged' while the base branch has none of its work (no lifecycle_events.rs, no squash commit; newest base commit 76ed619 explicitly says the close lives only on the unmerged branch). The in-flight check relies on run/PR projections — a wrongly-'merged' open PR is invisible as in-flight and misleads reconciliation. Evidence: runs list for workflow develop, run 01M25K41V4NEWXSA3SVGRHKRXK, checked 2026-09-10 in run 01M25R832HP615J291N72FHNCS. Fix idea: postlude/post-merge reconciliation should correct PR state, or the projection should re-check against git.\"},{\"text\":\"Journal fallback for run 01M23RQRCB748R4VRXA2WE6BZ0 (open PR #109) found no journal file at `.fabro/journal/<run_id>.jsonl` — had to recover the in-flight seed (fabro-e702) by fetching the run branch and parsing the .seeds/issues.jsonl diff. This is exactly the known gap of seed fabro-adf7 (failed runs lose stage journals); the prompt's journal fallback silently degrades to nothing.\"}],\"observations\":[\"In-flight exclusions applied this pass: fabro-e702 (open PR #109, seed recovered via run-branch seeds diff), and self (this run). PR #109 is old (2026-09-09) and still open — a stale in-flight lock on its seed.\",\"fabro-3fe4 re-claimed rather than fabro-7627 (also High, listed first): tie-break per observed-failure-class rule — 3fe4 has a concrete gate failure and ~55 min of reusable work on the PR #121 branch; 7627 stays top of the next run's list.\",\"The runs-list 'merged' state for PR #121 contradicts base history; the seed's REOPEN CONTEXT (base commit 76ed619) was treated as authoritative. The implementer MUST fetch the PR #121 branch before starting.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T14:54:35Z\",\"data\":{\"painpoints\":[{\"text\":\"The reopen brief's git fetch of `fabro/run/01M25K41V4NEWXSA3SVGRHKRXK` produced branch commits (7a0a7db, f051098) whose fixes were partially superseded by an in-progress unstaged worktree state with no journal record explaining it — an interrupted prior pass of run 01M25R832HP left ambiguous reconciliation state. Suggestion: journal the reconciliation decision (reuse vs supersede) as the first action of a re-claim pass so the next interruption is recoverable.\"}],\"observations\":[\"The PR #121 branch's fix (Runnable-retry inside the Rejected arm + durable-terminal fallback in the delete guard) diverged from the worktree's cleaner shared-helper fix; choosing the shared helper required reading both diffs carefully — the branch's zz_probe_seeded_completed_status debug test in `lib/apps/fabro-cli/tests/it/cmd/rm.rs` is correctly absent from the final tree.\",\"rg pattern `pub fn` misses `pub async fn` declarations — lifecycle_events.rs looked empty on first inventory; pattern discipline matters when verifying module interfaces.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T15:00:48Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 13,
+          "additions": 1036,
+          "deletions": 214
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-10T15:00:55.417785154Z",
+        "current_node": "evidence",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence"
+        ],
+        "node_retries": {
+          "implementer": 3
+        },
+        "context_values": {
+          "internal.fidelity": "compact",
+          "last_response": "Implementation complete. Summary of this pass:\n\n**Reconciliation**: the worktree already carried the reconciled PR #121 work plus unstaged follow-up edits that supersede the branch's fix (branch `7a0a",
+          "thread.implementer.current_node": "tester",
+          "internal.thread_id": "tester",
+          "outcome": "succeeded",
+          "internal.retry_count.evidence": 0,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "current_node": "evidence",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1
+          },
           "failure_class": "",
           "internal.run_id": "01M25R832HP615J291N72FHNCS",
+          "thread.tester.current_node": "evidence",
           "thread.planner.current_node": "implementer",
           "preferred_label": "Implemented",
           "current_seed_brief": "RE-CLAIM with failed-gate context: a first attempt (run 01M25K41V4NE, PR #121 branch, NOT on base) failed the dogfood-gate on two fabro-cli rm tests. FIRST reconcile with that branch: git fetch origin fabro/run/01M25K41V4NEWXSA3SVGRHKRXK — reuse or supersede its work; the fix is likely a transition-table/completed-predicate adjustment, not a rewrite. Then deliver: - new fork-owned module `lib/components/fabro-workflow/src/operations/lifecycle_events.rs` exposing the run-lifecycle sequence as an interface (request_start / runnable / starting / running / resubmit / terminal_failure); server.rs and test_support become adapters; - one pure transition table (RunStatus x EventBody) -> Result<RunStatus, InvalidTransition> in fabro-types; BOTH reducers consume it (server.rs update_live_run_from_event:3576 and fabro-store run_state.rs RunProjectionReducer:75); live reducer keeps only side effects (map/bus cleanup); - drift arms aligned: Paused{prior_block}/RunUnblocked (server.rs:3610-3616 vs run_state.rs:197-205); - historic shims in run_state.rs (Submitted->Starting / RunFailed fast-forward, run_state.rs:84-112) carry a documented reason comment; - equivalence: property/table test proving both reducers yield the same status for every event sequence; unit tests per transition including cancel-before-starting and failure-before-running; - the fabro-cli rm regression is fixed: targeted `cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors` passes on the final tree (these were the gate failures on PR #121 — rm stopped treating terminal runs as completed); - drift rules: additive fork-owned only, no wire-contract change, no new pub items on AppState, resume.rs gets a minimal adapter edit only; RunSupervisor build-out is OUT OF SCOPE; - gate green via the deterministic tester step (never run the full gate yourself). Cheapest-first verification: targeted nextest on the rm tests, then lifecycle unit tests, then fmt/clippy on touched crates.",
@@ -1179,7 +1412,7 @@
           },
           "current_seed_title": "Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table",
           "current_seed_id": "fabro-3fe4",
-          "command.output": "blob://sha256/9aec6c6c8bcefc17e8483b9e3045b42442866f01e37320714e2468c10d1675a4",
+          "command.output": "blob://sha256/a7421eb6d4211efc9751a9e91b3cfd2f5a0e87aebcba6a4504e6ad711498dbf5",
           "internal.seed_cycle_anchor": "fabro-3fe4",
           "implementation_summary": "Reconciled with PR #121's branch: kept its transition-table refactor (staged) and superseded its regression hack with a shared `historic_skipped_statuses` fast-forward in `lib/foundation/fabro-types/src/lifecycle.rs` consumed by BOTH the live fold (`server.rs` `live_lifecycle_status`) and the durable replay (`run_state.rs`), fixing the fabro rm completed-run regression; lesson captured as mx-c555a3. Files: lifecycle.rs, lib.rs, run_state.rs, server.rs, server/tests.rs, operations/lifecycle_events.rs, operations/mod.rs, start.rs, resume.rs, test_support.rs. Per-criterion report: PASS lifecycle module interface (six fns, adapters wired); PASS shared pure table consumed by both reducers; PASS Paused/RunUnblocked arms aligned (lifecycle.rs:84-100); PASS documented historic shims; PASS equivalence property test (2000 random sequences) + exhaustive status×event live-step test; PASS per-transition unit tests incl. cancel-before-starting (lifecycle.rs:256) and failure-before-running (lifecycle.rs:293); PASS rm regression fixed (rm_deletes_completed_run + rm_partial_failure_json 2/2); PASS drift rules (additive, no wire change, minimal resume.rs adapter, RunSupervisor out of scope); PASS suites fabro-types 519, fabro-store 291, fabro-server 936, fabro-workflow 1545 all green; PASS fmt + default-features clippy clean on all four touched crates.",
           "last_stage": "implementer",
@@ -1318,11 +1551,26 @@
               "tool_time_ms": 12625,
               "active_time_ms": 133250
             }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/a7421eb6d4211efc9751a9e91b3cfd2f5a0e87aebcba6a4504e6ad711498dbf5"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 695,
+              "active_time_ms": 695
+            }
           }
         },
-        "next_node_id": "evidence",
+        "next_node_id": "reviewer",
         "node_visits": {
           "tester": 1,
+          "evidence": 1,
           "implementer": 1,
           "start": 1,
           "planner": 1
@@ -1869,6 +2117,57 @@
         "inference_time_ms": 0,
         "tool_time_ms": 0,
         "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "evidence@1": {
+      "first_event_seq": 736,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-10T15:00:55.124356021Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/a7421eb6d4211efc9751a9e91b3cfd2f5a0e87aebcba6a4504e6ad711498dbf5",
+        "exit_code": 0,
+        "duration_ms": 695,
+        "termination": "exited",
+        "output_bytes": 70626,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 70626,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-10T15:00:54.413982035Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 701,
+        "inference_time_ms": 0,
+        "tool_time_ms": 695,
+        "active_time_ms": 695
       },
       "usage": {
         "input_tokens": 0,
