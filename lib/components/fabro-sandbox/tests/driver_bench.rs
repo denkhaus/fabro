@@ -35,7 +35,10 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use fabro_sandbox::{DockerSandboxOptions, Sandbox as FabroSandbox, docker_sandbox, local_sandbox};
+use fabro_sandbox::{
+    ProviderAccess, Sandbox as FabroSandbox, SandboxOptions, SandboxProviderKind, local_sandbox,
+    provider_sandbox,
+};
 use sandbox_driver::{
     ExecSpec, GrepOptions, Sandbox as DriverSandbox, SandboxProvider, SandboxSource, SandboxSpec,
     Search,
@@ -363,12 +366,13 @@ async fn agent_tool_call_latency_through_the_driver() {
     host.delete().await.expect("host delete");
 
     // -- Docker, in-process: fabro's driver-backed sandbox vs the bare driver.
-    let fabro_docker = docker_sandbox(
-        DockerSandboxOptions {
-            image: IMAGE.to_owned(),
-            auto_pull: false,
+    let fabro_docker = provider_sandbox(
+        SandboxProviderKind::DOCKER,
+        &ProviderAccess::default(),
+        SandboxOptions {
+            image: Some(IMAGE.to_owned()),
             skip_clone: true,
-            ..DockerSandboxOptions::default()
+            ..SandboxOptions::default()
         },
         None,
         None,

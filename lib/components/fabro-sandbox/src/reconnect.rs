@@ -5,7 +5,7 @@ use fabro_types::{BundledProvider, RunId, RunSandboxInstance};
 
 use crate::driver::ProviderAccess;
 use crate::driver_sandbox::{DriverSandbox, local_sandbox};
-use crate::{SandboxEventCallback, daytona, docker, plugin};
+use crate::{SandboxEventCallback, provider_sandbox};
 
 /// Reconnect to a sandbox from a saved record.
 ///
@@ -46,84 +46,34 @@ pub async fn reconnect_driver_for_run(
     event_callback: Option<SandboxEventCallback>,
 ) -> Result<DriverSandbox> {
     let runtime = &record.runtime;
-    match record.provider.bundled() {
-        // A local sandbox is its working directory: rebuilding the handle
-        // over that directory is the reconnect. The per-process Host
-        // registry holds no state worth attaching to.
-        Some(BundledProvider::Local) => {
-            let mut sandbox = local_sandbox(PathBuf::from(&runtime.working_directory))
-                .await
-                .context("Failed to reconnect local sandbox")?;
-            if let Some(callback) = event_callback {
-                sandbox.set_event_callback(callback);
-            }
-            Ok(sandbox)
-        }
-        Some(BundledProvider::Docker) => {
-            let repo_cloned = runtime
-                .repo_cloned
-                .context("Docker run sandbox missing repo_cloned metadata")?;
-            let mut sandbox = docker::attach_docker(
-                &runtime.id,
-                repo_cloned,
-                runtime.working_directory.clone(),
-                runtime.clone_origin_url.clone(),
-                run_id,
-            )
+    // A local sandbox is its working directory: rebuilding the handle over
+    // that directory is the reconnect. The per-process Host registry holds
+    // no state worth attaching to.
+    let mut sandbox = if record.provider.bundled() == Some(BundledProvider::Local) {
+        local_sandbox(PathBuf::from(&runtime.working_directory))
             .await
-            .context("Failed to reconnect Docker sandbox")?;
-            if let Some(callback) = event_callback {
-                sandbox.set_event_callback(callback);
-            }
-            Ok(sandbox)
-        }
-        Some(BundledProvider::Daytona) => {
-            let repo_cloned = runtime
-                .repo_cloned
-                .context("Daytona run sandbox missing repo_cloned metadata")?;
-            let credentials = access.daytona.clone().context(
-                "Daytona run sandbox cannot be reconnected without DAYTONA_API_KEY in the vault",
-            )?;
-            let mut sandbox = daytona::attach_daytona(
-                &runtime.id,
-                repo_cloned,
-                runtime.working_directory.clone(),
-                runtime.clone_origin_url.clone(),
-                run_id,
-                &credentials,
+            .context("Failed to reconnect local sandbox")?
+    } else {
+        let repo_cloned = runtime.repo_cloned.with_context(|| {
+            format!(
+                "{} run sandbox missing repo_cloned metadata",
+                record.provider
             )
-            .await
-            .context("Failed to reconnect Daytona sandbox")?;
-            if let Some(callback) = event_callback {
-                sandbox.set_event_callback(callback);
-            }
-            Ok(sandbox)
-        }
-        None => {
-            let settings = access.settings_for(&record.provider).with_context(|| {
-                format!(
-                    "sandbox provider `{}` is not configured; add [server.sandbox.providers.{}] to settings.toml",
-                    record.provider, record.provider
-                )
-            })?;
-            let repo_cloned = runtime
-                .repo_cloned
-                .context("run sandbox missing repo_cloned metadata")?;
-            let mut sandbox = plugin::attach_plugin(
-                record.provider.clone(),
-                &settings,
-                &runtime.id,
-                repo_cloned,
-                runtime.working_directory.clone(),
-                runtime.clone_origin_url.clone(),
-                run_id,
-            )
-            .await
-            .with_context(|| format!("Failed to reconnect {} sandbox", record.provider))?;
-            if let Some(callback) = event_callback {
-                sandbox.set_event_callback(callback);
-            }
-            Ok(sandbox)
-        }
+        })?;
+        provider_sandbox::attach_provider_sandbox(
+            record.provider.clone(),
+            access,
+            &runtime.id,
+            repo_cloned,
+            runtime.working_directory.clone(),
+            runtime.clone_origin_url.clone(),
+            run_id,
+        )
+        .await
+        .with_context(|| format!("Failed to reconnect {} sandbox", record.provider))?
+    };
+    if let Some(callback) = event_callback {
+        sandbox.set_event_callback(callback);
     }
+    Ok(sandbox)
 }

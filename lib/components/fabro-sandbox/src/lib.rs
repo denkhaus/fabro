@@ -1,6 +1,5 @@
-pub mod config;
 pub mod error;
-pub mod from_environment;
+pub mod options;
 pub mod provider;
 pub mod sandbox;
 pub mod sandbox_spec;
@@ -28,16 +27,15 @@ pub mod terminal;
 
 mod clone;
 pub mod docker;
-pub mod plugin;
+pub mod provider_sandbox;
 
 pub mod daytona;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 
-pub use daytona::{DaytonaConfig, attach_daytona, daytona_sandbox};
 pub use details::sandbox_details;
-pub use docker::{DockerSandboxOptions, attach_docker, check_docker_daemon, docker_sandbox};
+pub use docker::check_docker_daemon;
 pub use driver::{DaytonaCredentials, ProviderAccess};
 pub use driver_sandbox::{DriverSandbox, local_sandbox};
 pub use error::{Error, Result, default_redacted_output_tail, display_for_log};
@@ -49,11 +47,15 @@ pub use fabro_types::{RunSandboxInstance, SandboxProviderKind};
 pub use git_retry::{
     CredentialContext, GitRetryReason, RetryPlan, classify_failure, retry_git_operation,
 };
-pub use plugin::{PluginSandboxOptions, attach_plugin, plugin_sandbox};
+pub use options::{
+    SandboxOptions, local_working_directory_from_environment, options_from_environment,
+    unresolved_env,
+};
 pub use provider::driver::DriverInventoryProvider;
 pub use provider::{
     LocalSandboxProvider, SandboxLookupError, SandboxProvider, SandboxProviderRegistry,
 };
+pub use provider_sandbox::{attach_provider_sandbox, provider_sandbox};
 pub use push_credentials::RefreshErrorKind;
 pub use reconnect::{
     reconnect, reconnect_driver_for_run, reconnect_for_run, reconnect_for_run_with_callback,
@@ -66,5 +68,8 @@ pub use sandbox::{
     StderrCollector, StdioProcess, StdioProcessHandle, StdioProcessTermination, WalkOptions,
     format_lines_numbered, redacted_output_tail, setup_git_via_exec, shell_quote,
 };
-pub use sandbox_spec::SandboxSpec;
+/// The network policy a [`SandboxOptions`] asks for, re-exported so consumers
+/// building options need no direct driver dependency.
+pub use sandbox_driver::NetworkPolicy;
+pub use sandbox_spec::{ProviderSandboxSpec, SandboxSpec};
 pub use terminal::{DriverTerminalSession, TerminalSession, TerminalSize, open_terminal_for_run};

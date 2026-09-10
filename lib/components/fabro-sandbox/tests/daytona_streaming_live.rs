@@ -3,10 +3,9 @@ mod daytona_streaming_live {
     use std::time::Duration;
 
     use anyhow::{Context, Result, ensure};
-    use fabro_sandbox::daytona::DaytonaConfig;
     use fabro_sandbox::{
-        CommandOutputCallback, DaytonaCredentials, DriverSandbox, ExecStreamingResult, Sandbox,
-        daytona_sandbox,
+        CommandOutputCallback, DaytonaCredentials, DriverSandbox, ExecStreamingResult,
+        ProviderAccess, Sandbox, SandboxOptions, SandboxProviderKind, provider_sandbox,
     };
     use fabro_static::EnvVars;
     use fabro_types::{CommandOutputStream, CommandTermination};
@@ -29,8 +28,10 @@ mod daytona_streaming_live {
         );
 
         let sandbox = Arc::new(
-            daytona_sandbox(
-                DaytonaConfig {
+            provider_sandbox(
+                SandboxProviderKind::DAYTONA,
+                &daytona_access(live_credentials()?),
+                SandboxOptions {
                     skip_clone: true,
                     ..Default::default()
                 },
@@ -40,7 +41,6 @@ mod daytona_streaming_live {
                 None,
                 None,
                 None,
-                &live_credentials()?,
             )
             .await?,
         );
@@ -68,8 +68,10 @@ mod daytona_streaming_live {
             "DAYTONA_API_KEY must be set to run this live smoke test"
         );
 
-        let sandbox = daytona_sandbox(
-            DaytonaConfig {
+        let sandbox = provider_sandbox(
+            SandboxProviderKind::DAYTONA,
+            &daytona_access(live_credentials()?),
+            SandboxOptions {
                 skip_clone: true,
                 ..Default::default()
             },
@@ -79,7 +81,6 @@ mod daytona_streaming_live {
             None,
             None,
             None,
-            &live_credentials()?,
         )
         .await?;
         sandbox.initialize().await?;
@@ -171,13 +172,15 @@ mod daytona_streaming_live {
         );
 
         let run_id: fabro_types::RunId = "01HY0000000000000000000000".parse().unwrap();
-        let sandbox = daytona_sandbox(
-            DaytonaConfig {
+        let sandbox = provider_sandbox(
+            SandboxProviderKind::DAYTONA,
+            &daytona_access(live_credentials()?),
+            SandboxOptions {
                 skip_clone: true,
-                labels: Some(std::collections::HashMap::from([(
+                labels: std::collections::BTreeMap::from([(
                     "team".to_string(),
                     "platform".to_string(),
-                )])),
+                )]),
                 ..Default::default()
             },
             None,
@@ -186,7 +189,6 @@ mod daytona_streaming_live {
             None,
             None,
             None,
-            &live_credentials()?,
         )
         .await?;
 
@@ -228,8 +230,10 @@ mod daytona_streaming_live {
             "DAYTONA_API_KEY must be set to run this live smoke test"
         );
 
-        let sandbox = daytona_sandbox(
-            DaytonaConfig {
+        let sandbox = provider_sandbox(
+            SandboxProviderKind::DAYTONA,
+            &daytona_access(live_credentials()?),
+            SandboxOptions {
                 skip_clone: false,
                 ..Default::default()
             },
@@ -239,7 +243,6 @@ mod daytona_streaming_live {
             None,
             None,
             None,
-            &live_credentials()?,
         )
         .await?;
 
@@ -297,8 +300,10 @@ mod daytona_streaming_live {
             "DAYTONA_API_KEY must be set to run this live glob test"
         );
 
-        let sandbox = daytona_sandbox(
-            DaytonaConfig {
+        let sandbox = provider_sandbox(
+            SandboxProviderKind::DAYTONA,
+            &daytona_access(live_credentials()?),
+            SandboxOptions {
                 skip_clone: true,
                 ..Default::default()
             },
@@ -308,7 +313,6 @@ mod daytona_streaming_live {
             None,
             None,
             None,
-            &live_credentials()?,
         )
         .await?;
 
@@ -563,6 +567,13 @@ mod daytona_streaming_live {
             target:          None,
             http_client:     None,
         })
+    }
+
+    fn daytona_access(credentials: DaytonaCredentials) -> ProviderAccess {
+        ProviderAccess {
+            daytona: Some(credentials),
+            ..ProviderAccess::default()
+        }
     }
 
     async fn wait_for_chunks(

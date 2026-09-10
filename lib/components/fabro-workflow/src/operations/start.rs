@@ -9,13 +9,10 @@ use fabro_interview::{AutoApproveInterviewer, Interviewer};
 use fabro_llm::client::Client as LlmClient;
 use fabro_mcp::config::McpServerSettings;
 use fabro_model::{Catalog, ProviderId};
-use fabro_sandbox::daytona::DaytonaConfig;
-use fabro_sandbox::from_environment::{
-    daytona_config_from_environment, docker_config_from_environment_with_secrets,
-    local_working_directory_from_environment,
+use fabro_sandbox::{
+    DaytonaCredentials, ProviderAccess, ProviderSandboxSpec, SandboxOptions, SandboxSpec,
+    local_working_directory_from_environment, options_from_environment,
 };
-use fabro_sandbox::plugin::plugin_options_from_environment;
-use fabro_sandbox::{DaytonaCredentials, DockerSandboxOptions, SandboxSpec};
 use fabro_static::EnvVars;
 #[cfg(test)]
 use fabro_types::GitRunTarget;
@@ -536,68 +533,27 @@ impl RunSession {
                     SandboxSpec::Local { working_directory }
                 }
             },
-            Some(BundledProvider::Docker) => {
-                let mut config = resolve_docker_config(resolved, secret_lookup)?;
-                config.skip_clone |= clone_source.skip_clone;
-                SandboxSpec::Docker {
-                    config,
-                    github_app: services.github_app.clone(),
-                    run_id: Some(record.run_id),
-                    clone_origin_url: clone_source.origin_url,
-                    clone_branch: clone_source.branch,
-                    clone_tag: clone_source.tag,
-                    clone_commit_sha: clone_source.commit_sha,
-                }
-            }
-            Some(BundledProvider::Daytona) => {
-                let credentials = vault_guard.get(EnvVars::DAYTONA_API_KEY).map(|api_key| {
+            _ => {
+                let daytona = vault_guard.get(EnvVars::DAYTONA_API_KEY).map(|api_key| {
                     DaytonaCredentials::from_api_key(api_key.to_string(), process_env_var)
                 });
-                let mut config = resolve_daytona_config(resolved);
-                config.skip_clone |= clone_source.skip_clone;
-                SandboxSpec::Daytona {
-                    config: Box::new(config),
+                let access = ProviderAccess {
+                    providers: services.sandbox_providers.clone(),
+                    daytona,
+                };
+                let mut options = resolve_sandbox_options(resolved, secret_lookup)?;
+                options.skip_clone |= clone_source.skip_clone;
+                SandboxSpec::Provider(Box::new(ProviderSandboxSpec {
+                    kind: sandbox_provider.clone(),
+                    access,
+                    options,
                     github_app: services.github_app.clone(),
                     run_id: Some(record.run_id),
                     clone_origin_url: clone_source.origin_url,
                     clone_branch: clone_source.branch,
                     clone_tag: clone_source.tag,
                     clone_commit_sha: clone_source.commit_sha,
-                    credentials,
-                }
-            }
-            None => {
-                let settings = services
-                    .sandbox_providers
-                    .get(&sandbox_provider)
-                    .cloned()
-                    .ok_or_else(|| {
-                        Error::engine(format!(
-                            "sandbox provider `{sandbox_provider}` is not configured; add [server.sandbox.providers.{sandbox_provider}] to settings.toml"
-                        ))
-                    })?;
-                let env = resolved
-                    .environment
-                    .resolve_env(secret_lookup)
-                    .map_err(|err| {
-                        Error::engine_with_source("failed to resolve environment variables", err)
-                    })?
-                    .into_iter()
-                    .collect();
-                let mut options =
-                    plugin_options_from_environment(&resolved.environment, &resolved.clone, env);
-                options.skip_clone |= clone_source.skip_clone;
-                SandboxSpec::Plugin {
-                    kind:             sandbox_provider.clone(),
-                    settings:         Box::new(settings),
-                    options:          Box::new(options),
-                    github_app:       services.github_app.clone(),
-                    run_id:           Some(record.run_id),
-                    clone_origin_url: clone_source.origin_url,
-                    clone_branch:     clone_source.branch,
-                    clone_tag:        clone_source.tag,
-                    clone_commit_sha: clone_source.commit_sha,
-                }
+                }))
             }
         };
 
@@ -856,20 +812,20 @@ fn resolve_sandbox_provider(settings: &ResolvedRunSettings) -> SandboxProviderKi
     settings.environment.provider.clone()
 }
 
-fn resolve_daytona_config(settings: &ResolvedRunSettings) -> DaytonaConfig {
-    daytona_config_from_environment(&settings.environment, &settings.clone)
-}
-
-fn resolve_docker_config(
+/// The environment's sandbox options with its variables resolved through
+/// the vault.
+fn resolve_sandbox_options(
     settings: &ResolvedRunSettings,
     secrets_lookup: impl FnMut(&str) -> Option<String>,
-) -> Result<DockerSandboxOptions, Error> {
-    docker_config_from_environment_with_secrets(
-        &settings.environment,
-        &settings.clone,
-        secrets_lookup,
-    )
-    .map_err(|err| Error::engine_with_source("failed to resolve Docker environment config", err))
+) -> Result<SandboxOptions, Error> {
+    let env = settings
+        .environment
+        .resolve_env(secrets_lookup)
+        .map_err(|err| Error::engine_with_source("failed to resolve environment variables", err))?
+        .into_iter()
+        .collect();
+    options_from_environment(&settings.environment, &settings.clone, env)
+        .map_err(|err| Error::engine_with_source("failed to resolve sandbox options", err))
 }
 
 fn resolve_start_llm(
@@ -1620,19 +1576,9 @@ reasoning = false
             ..RunLayer::default()
         });
 
-        assert!(
-            resolve_docker_config(&settings.run, |_| None)
-                .unwrap()
-                .skip_clone
-        );
-        assert!(resolve_daytona_config(&settings.run).skip_clone);
-        assert_eq!(resolve_daytona_config(&settings.run).clone_depth, Some(1));
-        assert_eq!(
-            resolve_docker_config(&settings.run, |_| None)
-                .unwrap()
-                .clone_depth,
-            Some(1)
-        );
+        let options = resolve_sandbox_options(&settings.run, |_| None).unwrap();
+        assert!(options.skip_clone);
+        assert_eq!(options.clone_depth, Some(1));
     }
 
     #[test]
@@ -1645,26 +1591,16 @@ reasoning = false
             ..RunLayer::default()
         });
 
-        assert_eq!(resolve_daytona_config(&settings.run).clone_depth, None);
-        assert_eq!(
-            resolve_docker_config(&settings.run, |_| None)
-                .unwrap()
-                .clone_depth,
-            None
-        );
+        let options = resolve_sandbox_options(&settings.run, |_| None).unwrap();
+        assert_eq!(options.clone_depth, None);
     }
 
     #[test]
     fn clone_providers_default_to_depth_100() {
         let settings = settings_from_run_layer(RunLayer::default());
 
-        assert_eq!(resolve_daytona_config(&settings.run).clone_depth, Some(100));
-        assert_eq!(
-            resolve_docker_config(&settings.run, |_| None)
-                .unwrap()
-                .clone_depth,
-            Some(100)
-        );
+        let options = resolve_sandbox_options(&settings.run, |_| None).unwrap();
+        assert_eq!(options.clone_depth, Some(100));
     }
 
     #[test]
@@ -1989,17 +1925,19 @@ reasoning = false
         assert_eq!(runtime.clone_branch, None);
         assert_eq!(runtime.primary_repo_path, None);
         assert_eq!(runtime.primary_repo_link, None);
-        let SandboxSpec::Docker {
-            config,
+        let SandboxSpec::Provider(spec) = sandbox else {
+            panic!("none target should retain the selected Docker provider");
+        };
+        let ProviderSandboxSpec {
+            kind,
+            options,
             clone_origin_url,
             clone_branch,
             clone_commit_sha,
             ..
-        } = sandbox
-        else {
-            panic!("none target should retain the selected Docker provider");
-        };
-        assert!(config.skip_clone);
+        } = *spec;
+        assert_eq!(kind, SandboxProviderKind::DOCKER);
+        assert!(options.skip_clone);
         assert_eq!(clone_origin_url, None);
         assert_eq!(clone_branch, None);
         assert_eq!(clone_commit_sha, None);
@@ -2056,17 +1994,21 @@ reasoning = false
         assert_eq!(runtime.clone_branch, None);
         assert_eq!(runtime.primary_repo_path, None);
         assert_eq!(runtime.primary_repo_link, None);
-        let SandboxSpec::Daytona {
-            config,
+        let SandboxSpec::Provider(spec) = sandbox else {
+            panic!("none target should retain the selected Daytona provider");
+        };
+        let ProviderSandboxSpec {
+            kind,
+            access,
+            options,
             clone_origin_url,
             clone_branch,
             clone_commit_sha,
             ..
-        } = sandbox
-        else {
-            panic!("none target should retain the selected Daytona provider");
-        };
-        assert!(config.skip_clone);
+        } = *spec;
+        assert_eq!(kind, SandboxProviderKind::DAYTONA);
+        assert!(access.daytona.is_some(), "the vault key reaches the spec");
+        assert!(options.skip_clone);
         assert_eq!(clone_origin_url, None);
         assert_eq!(clone_branch, None);
         assert_eq!(clone_commit_sha, None);
@@ -2447,13 +2389,19 @@ reasoning = false
             ..RunLayer::default()
         });
 
-        let config = resolve_docker_config(&settings.run, |_| None).unwrap();
+        let options = resolve_sandbox_options(&settings.run, |_| None).unwrap();
 
-        assert_eq!(config.image, "ubuntu:24.04");
-        assert_eq!(config.cpu_quota, Some(400_000));
-        assert_eq!(config.memory_limit, Some(2_000_000_000));
-        assert_eq!(config.network_mode.as_deref(), Some("none"));
-        assert_eq!(config.env_vars, vec!["NODE_ENV=test"]);
+        assert_eq!(options.image.as_deref(), Some("ubuntu:24.04"));
+        assert_eq!(options.cpu, Some(4));
+        assert_eq!(options.memory_bytes, Some(2_000_000_000));
+        assert!(matches!(
+            options.network,
+            fabro_sandbox::NetworkPolicy::Block
+        ));
+        assert_eq!(
+            options.env,
+            std::collections::BTreeMap::from([("NODE_ENV".to_string(), "test".to_string())])
+        );
     }
 
     #[test]

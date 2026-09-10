@@ -39,12 +39,6 @@ pub(crate) fn verify_managed(
     Ok(())
 }
 
-pub(crate) fn for_run(run_id: Option<&RunId>) -> HashMap<String, String> {
-    let mut labels = HashMap::new();
-    insert_for_run(&mut labels, run_id);
-    labels
-}
-
 pub(crate) fn merge_for_run(
     user_labels: Option<&HashMap<String, String>>,
     run_id: Option<&RunId>,
@@ -85,7 +79,7 @@ mod tests {
     #[test]
     fn managed_labels_include_run_id_when_present() {
         let run_id: RunId = "01HY0000000000000000000000".parse().unwrap();
-        let labels = for_run(Some(&run_id));
+        let labels = merge_for_run(None, Some(&run_id));
 
         assert_eq!(labels.get(MANAGED_LABEL).map(String::as_str), Some("true"));
         assert_eq!(

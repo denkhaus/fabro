@@ -38,7 +38,7 @@ pub use config::{
 pub use error::{CompactionError, Error, InterruptReason, Result};
 pub use event::Emitter;
 pub use fabro_mcp::config::McpServerSettings;
-pub use fabro_sandbox::{DockerSandboxOptions, docker_sandbox};
+pub use fabro_sandbox::{ProviderAccess, SandboxOptions, SandboxProviderKind, provider_sandbox};
 pub use fabro_types::SteeringMessage;
 pub use history::History;
 pub use local_sandbox::{DriverSandbox, local_sandbox};

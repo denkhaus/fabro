@@ -13754,15 +13754,24 @@ async fn asset_collection_local_sandbox_on_failure() {
 async fn asset_collection_docker_sandbox() {
     let run_dir = tempfile::tempdir().unwrap();
 
-    let config = fabro_agent::DockerSandboxOptions {
-        auto_pull: false,
+    let options = fabro_agent::SandboxOptions {
         skip_clone: true,
         ..Default::default()
     };
     let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(
-        fabro_agent::docker_sandbox(config, None, None, None, None, None, None)
-            .await
-            .expect("Docker not available"),
+        fabro_agent::provider_sandbox(
+            fabro_agent::SandboxProviderKind::DOCKER,
+            &fabro_agent::ProviderAccess::default(),
+            options,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("Docker not available"),
     );
     sandbox.initialize().await.expect("Docker init failed");
 

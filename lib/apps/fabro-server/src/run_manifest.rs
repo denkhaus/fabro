@@ -17,14 +17,11 @@ use fabro_graphviz::graph::{Graph, is_llm_handler_type};
 use fabro_graphviz::render::apply_direction;
 use fabro_llm::model_test::{ModelTestStatus, run_basic_model_probe};
 use fabro_model::{Catalog, ProviderId};
-use fabro_sandbox::daytona::DaytonaConfig;
-use fabro_sandbox::from_environment::{
-    daytona_config_from_environment, docker_config_from_environment,
-    local_working_directory_from_environment,
-};
-use fabro_sandbox::plugin::plugin_options_from_environment;
 use fabro_sandbox::redact::redact_auth_url;
-use fabro_sandbox::{DockerSandboxOptions, ProviderAccess, Sandbox, SandboxSpec};
+use fabro_sandbox::{
+    ProviderAccess, ProviderSandboxSpec, Sandbox, SandboxSpec,
+    local_working_directory_from_environment, options_from_environment, unresolved_env,
+};
 use fabro_static::EnvVars;
 use fabro_types::settings::ModelRef;
 use fabro_types::settings::cli::OutputVerbosity;
@@ -674,14 +671,6 @@ pub(crate) fn effective_sandbox_provider(settings: &RunNamespace) -> SandboxProv
     configured_sandbox_provider(settings).effective_for(settings.execution.mode)
 }
 
-fn resolve_daytona_config(settings: &RunNamespace) -> DaytonaConfig {
-    daytona_config_from_environment(&settings.environment, &settings.clone)
-}
-
-fn resolve_docker_config(settings: &RunNamespace) -> DockerSandboxOptions {
-    docker_config_from_environment(&settings.environment, &settings.clone)
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct GitRemoteRefCheck {
     origin_url: String,
@@ -928,78 +917,32 @@ fn preflight_sandbox_spec(
         .map(|git| fabro_github::normalize_repo_origin_url(&git.origin_url));
     let clone_branch = prepared.git.as_ref().map(|git| git.branch.clone());
 
-    Ok(match sandbox_provider.bundled() {
-        Some(BundledProvider::Local) => {
-            let working_directory = local_working_directory_from_environment(
-                &resolved_run.environment,
-                Some(&prepared.source_directory),
-            )?;
-            SandboxSpec::Local { working_directory }
-        }
-        Some(BundledProvider::Docker) => {
-            let mut config = resolve_docker_config(resolved_run);
-            config.skip_clone = true;
-            SandboxSpec::Docker {
-                config,
-                github_app,
-                run_id: None,
-                clone_origin_url,
-                clone_branch,
-                clone_tag: None,
-                clone_commit_sha: None,
-            }
-        }
-        Some(BundledProvider::Daytona) => {
-            let mut config = resolve_daytona_config(resolved_run);
-            config.skip_clone = true;
-            SandboxSpec::Daytona {
-                config: Box::new(config),
-                github_app,
-                run_id: None,
-                clone_origin_url,
-                clone_branch,
-                clone_tag: None,
-                clone_commit_sha: None,
-                credentials: access.daytona.clone(),
-            }
-        }
-        None => {
-            let settings = access.settings_for(sandbox_provider).ok_or_else(|| {
-                fabro_sandbox::Error::message(format!(
-                    "sandbox provider `{sandbox_provider}` is not configured; add [server.sandbox.providers.{sandbox_provider}] to settings.toml"
-                ))
-            })?;
-            // No vault is available on this path, so a `{{ secrets.* }}` value
-            // keeps its source form, as the Docker preflight does.
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "preflight has no vault; an unresolved secret token is carried in source form"
-            )]
-            let env = resolved_run
-                .environment
-                .env
-                .iter()
-                .map(|(key, value)| (key.clone(), value.as_source()))
-                .collect();
-            let mut options = plugin_options_from_environment(
-                &resolved_run.environment,
-                &resolved_run.clone,
-                env,
-            );
-            options.skip_clone = true;
-            SandboxSpec::Plugin {
-                kind: sandbox_provider.clone(),
-                settings: Box::new(settings),
-                options: Box::new(options),
-                github_app,
-                run_id: None,
-                clone_origin_url,
-                clone_branch,
-                clone_tag: None,
-                clone_commit_sha: None,
-            }
-        }
-    })
+    if sandbox_provider.bundled() == Some(BundledProvider::Local) {
+        let working_directory = local_working_directory_from_environment(
+            &resolved_run.environment,
+            Some(&prepared.source_directory),
+        )?;
+        return Ok(SandboxSpec::Local { working_directory });
+    }
+    // No vault is available on this path, so a `{{ secrets.* }}` value keeps
+    // its source form.
+    let mut options = options_from_environment(
+        &resolved_run.environment,
+        &resolved_run.clone,
+        unresolved_env(&resolved_run.environment),
+    )?;
+    options.skip_clone = true;
+    Ok(SandboxSpec::Provider(Box::new(ProviderSandboxSpec {
+        kind: sandbox_provider.clone(),
+        access: access.clone(),
+        options,
+        github_app,
+        run_id: None,
+        clone_origin_url,
+        clone_branch,
+        clone_tag: None,
+        clone_commit_sha: None,
+    })))
 }
 
 async fn run_sandbox_check(
@@ -2278,18 +2221,14 @@ provider = "local"
         );
 
         match spec {
-            Ok(SandboxSpec::Docker {
-                config,
-                clone_origin_url,
-                clone_branch,
-                ..
-            }) => {
-                assert!(config.skip_clone);
+            Ok(SandboxSpec::Provider(spec)) => {
+                assert_eq!(spec.kind, SandboxProviderKind::DOCKER);
+                assert!(spec.options.skip_clone);
                 assert_eq!(
-                    clone_origin_url.as_deref(),
+                    spec.clone_origin_url.as_deref(),
                     Some("https://github.com/acme/widgets")
                 );
-                assert_eq!(clone_branch.as_deref(), Some("main"));
+                assert_eq!(spec.clone_branch.as_deref(), Some("main"));
             }
             _ => panic!("expected Docker preflight sandbox spec"),
         }

@@ -1,9 +1,11 @@
 //! Docker sandbox behaviour through the sandbox-driver Docker provider.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use fabro_sandbox::{
-    CommandOutputCallback, DockerSandboxOptions, ExecStreamingRequest, Sandbox, docker_sandbox,
+    CommandOutputCallback, ExecStreamingRequest, ProviderAccess, Sandbox, SandboxOptions,
+    SandboxProviderKind, provider_sandbox,
 };
 use tokio::process::Command;
 use tokio::sync::Mutex;
@@ -38,12 +40,13 @@ async fn streaming_timeout_terminates_docker_exec_before_returning() {
         return;
     }
 
-    let sandbox = docker_sandbox(
-        DockerSandboxOptions {
-            image: image.to_string(),
-            auto_pull: false,
+    let sandbox = provider_sandbox(
+        SandboxProviderKind::DOCKER,
+        &ProviderAccess::default(),
+        SandboxOptions {
+            image: Some(image.to_string()),
             skip_clone: true,
-            ..DockerSandboxOptions::default()
+            ..SandboxOptions::default()
         },
         None,
         None,
@@ -110,12 +113,13 @@ async fn streaming_command_receives_exact_stdin_and_eof() {
         return;
     }
 
-    let sandbox = docker_sandbox(
-        DockerSandboxOptions {
-            image: image.to_string(),
-            auto_pull: false,
+    let sandbox = provider_sandbox(
+        SandboxProviderKind::DOCKER,
+        &ProviderAccess::default(),
+        SandboxOptions {
+            image: Some(image.to_string()),
             skip_clone: true,
-            ..DockerSandboxOptions::default()
+            ..SandboxOptions::default()
         },
         None,
         None,
@@ -171,12 +175,13 @@ async fn cloned_docker_sandbox_uses_repos_checkout_and_workspace_symlink() {
         return;
     }
 
-    let sandbox = docker_sandbox(
-        DockerSandboxOptions {
-            image: image.to_string(),
-            auto_pull: false,
+    let sandbox = provider_sandbox(
+        SandboxProviderKind::DOCKER,
+        &ProviderAccess::default(),
+        SandboxOptions {
+            image: Some(image.to_string()),
             skip_clone: false,
-            ..DockerSandboxOptions::default()
+            ..SandboxOptions::default()
         },
         None,
         None,
@@ -236,13 +241,14 @@ async fn docker_runs_clean_bash_through_both_command_paths() {
         return;
     }
 
-    let sandbox = docker_sandbox(
-        DockerSandboxOptions {
-            image: image.to_string(),
-            auto_pull: false,
-            env_vars: vec!["BASH_ENV=/tmp/fabro-bash-env".to_string()],
+    let sandbox = provider_sandbox(
+        SandboxProviderKind::DOCKER,
+        &ProviderAccess::default(),
+        SandboxOptions {
+            image: Some(image.to_string()),
+            env: BTreeMap::from([("BASH_ENV".to_string(), "/tmp/fabro-bash-env".to_string())]),
             skip_clone: true,
-            ..DockerSandboxOptions::default()
+            ..SandboxOptions::default()
         },
         None,
         None,
@@ -330,12 +336,13 @@ async fn docker_glob_matches_patterns_containing_a_path_separator() {
         return;
     }
 
-    let sandbox = docker_sandbox(
-        DockerSandboxOptions {
-            image: image.to_string(),
-            auto_pull: false,
+    let sandbox = provider_sandbox(
+        SandboxProviderKind::DOCKER,
+        &ProviderAccess::default(),
+        SandboxOptions {
+            image: Some(image.to_string()),
             skip_clone: true,
-            ..DockerSandboxOptions::default()
+            ..SandboxOptions::default()
         },
         None,
         None,
@@ -414,12 +421,13 @@ async fn docker_runtime_directory_is_private_and_outside_workspace() {
         return;
     }
 
-    let sandbox = docker_sandbox(
-        DockerSandboxOptions {
-            image: image.to_string(),
-            auto_pull: false,
+    let sandbox = provider_sandbox(
+        SandboxProviderKind::DOCKER,
+        &ProviderAccess::default(),
+        SandboxOptions {
+            image: Some(image.to_string()),
             skip_clone: true,
-            ..DockerSandboxOptions::default()
+            ..SandboxOptions::default()
         },
         None,
         None,

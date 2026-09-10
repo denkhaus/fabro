@@ -160,8 +160,7 @@ pub trait Sandbox: Send + Sync {
 | Type | Description |
 |---|---|
 | `local_sandbox(...)` | Executes directly on the local filesystem through the sandbox driver Host provider. |
-| `docker_sandbox(...)` | Runs inside a Docker container through the sandbox driver. |
-| `daytona_sandbox(...)` | Runs inside a Daytona cloud sandbox through the sandbox driver. |
+| `provider_sandbox(kind, ...)` | Runs on any sandbox driver provider by kind: the bundled `docker` and `daytona` providers in process, or a configured plugin. |
 
 ### Provider profiles
 

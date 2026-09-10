@@ -24,8 +24,10 @@ use std::sync::Arc;
 
 use fabro_agent::Sandbox;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
-use fabro_sandbox::daytona::DaytonaConfig;
-use fabro_sandbox::{DaytonaCredentials, DriverSandbox, ProviderAccess, daytona_sandbox};
+use fabro_sandbox::{
+    DaytonaCredentials, DriverSandbox, ProviderAccess, SandboxOptions, SandboxProviderKind,
+    provider_sandbox,
+};
 use fabro_static::EnvVars;
 use fabro_store::{ArtifactKey, ArtifactStore};
 use fabro_types::{RunId, StageId, WorkflowSettings, parse_blob_ref};
@@ -184,6 +186,13 @@ async fn resolve_checkpoint_text(
 
 /// Live credentials from the process environment, the way the vault would
 /// supply them in production.
+fn daytona_access(credentials: DaytonaCredentials) -> ProviderAccess {
+    ProviderAccess {
+        daytona: Some(credentials),
+        ..ProviderAccess::default()
+    }
+}
+
 fn live_daytona_credentials() -> DaytonaCredentials {
     DaytonaCredentials {
         api_key:         std::env::var(EnvVars::DAYTONA_API_KEY)
@@ -213,15 +222,16 @@ fn test_artifact_store(run_dir: &Path) -> ArtifactStore {
 async fn create_env_with_github_app(
     github_app: Option<fabro_github::GitHubCredentials>,
 ) -> DriverSandbox {
-    daytona_sandbox(
-        DaytonaConfig::default(),
+    provider_sandbox(
+        SandboxProviderKind::DAYTONA,
+        &daytona_access(live_daytona_credentials()),
+        SandboxOptions::default(),
         github_app.as_ref(),
         None,
         None,
         None,
         None,
         None,
-        &live_daytona_credentials(),
     )
     .await
     .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?")
@@ -411,34 +421,28 @@ async fn daytona_full_lifecycle() {
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
 async fn daytona_snapshot_sandbox() {
-    use fabro_sandbox::daytona::DaytonaSnapshotConfig;
-
-    let config = DaytonaConfig {
-        auto_stop_interval: Some(60),
-        snapshot: Some(DaytonaSnapshotConfig {
-            cpu:    Some(2),
-            memory: Some(4),
-            disk:   Some(10),
-            source: fabro_sandbox::daytona::DaytonaSnapshotSource::Dockerfile(
-                fabro_sandbox::daytona::DockerfileSource::Inline(
-                    "FROM ubuntu:22.04\nRUN apt-get update && apt-get install -y ripgrep"
-                        .to_string(),
-                ),
-            ),
-        }),
-        ..DaytonaConfig::default()
+    let options = SandboxOptions {
+        auto_stop: Some(std::time::Duration::from_hours(1)),
+        dockerfile: Some(
+            "FROM ubuntu:22.04\nRUN apt-get update && apt-get install -y ripgrep".to_string(),
+        ),
+        cpu: Some(2),
+        memory_bytes: Some(4_000_000_000),
+        disk_bytes: Some(10_000_000_000),
+        ..SandboxOptions::default()
     };
 
     let creds = load_github_app_credentials();
-    let env = daytona_sandbox(
-        config,
+    let env = provider_sandbox(
+        SandboxProviderKind::DAYTONA,
+        &daytona_access(live_daytona_credentials()),
+        options,
         Some(&creds),
         None,
         None,
         None,
         None,
         None,
-        &live_daytona_credentials(),
     )
     .await
     .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?");
@@ -1544,7 +1548,7 @@ async fn daytona_toolbox_idle_diagnostic() {
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"), live("GITHUB_APP_PRIVATE_KEY"))]
 async fn daytona_cp_upload_download_round_trip() {
     use fabro_sandbox::reconnect::reconnect;
-    use fabro_types::{RunSandboxInstance, SandboxProviderKind};
+    use fabro_types::RunSandboxInstance;
 
     // 1. Create and initialize a real Daytona sandbox
     let env = create_env().await;
@@ -1646,20 +1650,20 @@ async fn daytona_cp_upload_download_round_trip() {
 
 #[fabro_macros::e2e_test(live("DAYTONA_API_KEY"))]
 async fn daytona_computer_use_browser_screenshot() {
-    let config = DaytonaConfig {
-        snapshot: None,
+    let options = SandboxOptions {
         skip_clone: true,
-        ..DaytonaConfig::default()
+        ..SandboxOptions::default()
     };
-    let env = daytona_sandbox(
-        config,
+    let env = provider_sandbox(
+        SandboxProviderKind::DAYTONA,
+        &daytona_access(live_daytona_credentials()),
+        options,
         None,
         None,
         None,
         None,
         None,
         None,
-        &live_daytona_credentials(),
     )
     .await
     .expect("DAYTONA_API_KEY must be set");
@@ -1796,20 +1800,20 @@ async fn daytona_playwright_mcp_sandbox_transport() {
     use fabro_agent::Sandbox;
 
     // Create sandbox from daytona-medium (has Node.js + Chromium)
-    let config = DaytonaConfig {
-        snapshot: None,
+    let options = SandboxOptions {
         skip_clone: true,
-        ..DaytonaConfig::default()
+        ..SandboxOptions::default()
     };
-    let sandbox = daytona_sandbox(
-        config,
+    let sandbox = provider_sandbox(
+        SandboxProviderKind::DAYTONA,
+        &daytona_access(live_daytona_credentials()),
+        options,
         None,
         None,
         None,
         None,
         None,
         None,
-        &live_daytona_credentials(),
     )
     .await
     .expect("DAYTONA_API_KEY must be set");

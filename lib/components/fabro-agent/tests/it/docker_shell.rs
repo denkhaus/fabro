@@ -9,7 +9,7 @@ use fabro_agent::sandbox::Sandbox;
 use fabro_agent::tool_registry::ToolContext;
 use fabro_agent::tools::make_shell_tool;
 use fabro_agent::types::AgentEvent;
-use fabro_agent::{DockerSandboxOptions, Emitter, docker_sandbox};
+use fabro_agent::{Emitter, ProviderAccess, SandboxOptions, SandboxProviderKind, provider_sandbox};
 use fabro_types::CommandTermination;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
@@ -17,12 +17,13 @@ use tokio_util::sync::CancellationToken;
 #[tokio::test]
 #[ignore = "requires real Docker container lifecycle; run explicitly when changing shell tool exec integration"]
 async fn shell_reports_real_docker_process_outcome() {
-    let Ok(sandbox) = docker_sandbox(
-        DockerSandboxOptions {
-            image: "buildpack-deps:noble".to_string(),
-            auto_pull: false,
+    let Ok(sandbox) = provider_sandbox(
+        SandboxProviderKind::DOCKER,
+        &ProviderAccess::default(),
+        SandboxOptions {
+            image: Some("buildpack-deps:noble".to_string()),
             skip_clone: true,
-            ..DockerSandboxOptions::default()
+            ..SandboxOptions::default()
         },
         None,
         None,
