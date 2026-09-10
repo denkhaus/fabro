@@ -78,9 +78,9 @@ Claude Fable 5 is available as an explicit model but is not the default Anthropi
 
 ## Configuring providers and models
 
-Fabro's catalog is the [lithos-llm](https://docs.rs/lithos-llm) built-in catalog with Fabro's policy layer applied. The `[llm]` table in settings is a third layer over both: a lithos catalog overlay that adds providers and models or changes existing entries. Later layers win. Tables merge key by key and every other value replaces. Models are nested under their provider, so two providers can expose the same model id without overwriting each other.
+Fabro's catalog is the [lithos-llm](https://docs.rs/lithos-llm) built-in catalog. The `[llm]` table in settings is a second layer over it: a lithos catalog overlay that adds providers and models or changes existing entries. Later layers win. Tables merge key by key and every other value replaces. Models are nested under their provider, so two providers can expose the same model id without overwriting each other.
 
-Provider and model facts use lithos field names: `adapter`, `codec`, `base_url`, `auth`, `limits`, `capabilities`, `pricing`. Fabro policy lives under `metadata.fabro` on the provider or model: credentials, agent profile, `enabled`, default roles, and display metadata. See [Settings Configuration](/reference/user-configuration#llm) for every key.
+Provider and model facts use lithos field names: `adapter`, `codec`, `base_url`, `auth`, `enabled`, `limits`, `capabilities`, `pricing`, `small_default`, `probe`, `family`, and the cutoffs. The coding harness a model expects lives under `metadata.agent`, a namespace lithos ships and other agents such as Pebble read too. See [Settings Configuration](/reference/user-configuration#llm) for every key.
 
 ```toml title="settings.toml"
 [llm.providers.proxy]
@@ -92,13 +92,12 @@ auth = { type = "bearer" }
 aliases = ["gateway"]
 default_model = "team-code-large"
 
-[llm.providers.proxy.metadata.fabro]
-agent_profile = "anthropic"
-credentials = ["env:ACME_GATEWAY_API_KEY", "vault:ACME_GATEWAY_API_KEY"]
-
-[llm.providers.proxy.metadata.fabro.extra_headers]
+[llm.providers.proxy.default_headers]
 x-portkey-api-key = "{{ secrets.PORTKEY_API_KEY }}"
 x-portkey-config = "@bedrock-prod"
+
+[llm.providers.proxy.metadata.agent]
+profile = "anthropic"
 
 [llm.providers.proxy.models."team-code-large"]
 display_name = "Team Code Large"
@@ -108,12 +107,12 @@ limits = { context_tokens = 200000, max_output_tokens = 32000 }
 capabilities = { text = true, tools = true, reasoning = true, caching = true, reasoning_effort = { low = true, medium = true, high = true } }
 protocol_options = { reasoning_effort_levels = true }
 pricing = { input_usd_micros_per_million = 1500000, output_usd_micros_per_million = 8000000, cached_input_usd_micros_per_million = 300000 }
-
-[llm.providers.proxy.models."team-code-large".metadata.fabro]
 family = "team-code"
 small_default = true
 estimated_output_tps = 80
 ```
+
+The gateway's API key is `PROXY_API_KEY`: lithos derives the secret name from the provider id (upper case, `-` and `.` as `_`, then `_API_KEY`). Store it with `fabro secret set PROXY_API_KEY ...`.
 
 For [LiteLLM](/integrations/litellm), Fabro ships a disabled provider entry. Enable it in settings and declare the models your proxy exposes:
 
@@ -121,8 +120,6 @@ For [LiteLLM](/integrations/litellm), Fabro ships a disabled provider entry. Ena
 [llm.providers.litellm]
 base_url = "http://localhost:4000/v1"
 default_model = "litellm-gpt-5"
-
-[llm.providers.litellm.metadata.fabro]
 enabled = true
 
 [llm.providers.litellm.models."litellm-gpt-5"]
@@ -138,15 +135,15 @@ capabilities = { text = true, tools = true }
 A `provider/model` selector such as `openai/gpt-5.6-sol` pins the provider and names the model by id, alias, or wire id. A bare selector with no provider pin picks the highest-priority ready offering; a separate `provider = "openrouter"` pin selects the OpenRouter offering. Providers with `allow_passthrough = true` also accept `provider/model` selectors for models the catalog does not list.
 </Note>
 
-Model roles are separate: the provider's `default_model` controls normal model selection for workflow execution, while `small_default = true` under `metadata.fabro` marks the provider's small utility model for metadata tasks such as generated run titles. If a provider has no small default, Fabro falls back to that provider's default model.
+Model roles are separate: the provider's `default_model` controls normal model selection for workflow execution, while `small_default = true` on a model row marks the provider's small utility model for metadata tasks such as generated run titles. If a provider has no small default, Fabro falls back to that provider's default model.
 
-Provider auth has two parts. The lithos `auth` scheme says how a credential is sent: `{ type = "bearer" }`, `{ type = "header", name = "x-api-key" }`, `{ type = "headers" }` for providers that take several secret headers, `{ type = "none" }`, or `{ type = "aws" }`. Fabro's `metadata.fabro.credentials` says where the secret comes from, as ordered `env:<NAME>`, `vault:<NAME>`, or `aws_sigv4` refs; the first that resolves wins. Custom headers for any provider go in `metadata.fabro.extra_headers` as literal text or `{{ secrets.NAME }}` tokens. Put credentials in secrets and reference them with `{{ secrets.NAME }}` instead of a bare literal.
+Provider auth has two parts. The lithos `auth` scheme says how a credential is sent: `{ type = "bearer" }`, `{ type = "header", name = "x-api-key" }`, `{ type = "headers" }` for providers that take several secret headers, `{ type = "none" }`, or `{ type = "aws" }`. lithos also says which secret names a provider reads: `OPENAI_API_KEY` for `openai`, `GEMINI_API_KEY` then `GOOGLE_API_KEY` for `gemini`, `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` for `modal`, and `<PROVIDER>_API_KEY` for a provider you define. Fabro looks each name up in the process environment first and the server vault second. Custom headers for any provider go in `default_headers` as literal text or `{{ secrets.NAME }}` tokens; put credentials in secrets and reference them with `{{ secrets.NAME }}` instead of a bare literal.
 
-Workflow runs also add `x-session-id: <run-id>` to every LLM request so compatible gateways can group requests from the same run. An explicitly configured `x-session-id` in provider `extra_headers` takes precedence.
+Workflow runs also add `x-session-id: <run-id>` to every LLM request so compatible gateways can group requests from the same run. An explicitly configured `x-session-id` in provider `default_headers` takes precedence.
 
-Provider `metadata.fabro.agent_profile` defaults from `adapter` and controls profile-specific behavior such as which tools the agent registers, project-memory filenames, CLI/ACP command selection, and native session routing. Valid values are `anthropic`, `openai`, `gemini`, `kimi`, and `gpt56`; model-level values override provider-level values.
+Provider `metadata.agent.profile` defaults from `adapter` and controls profile-specific behavior such as which tools the agent registers, project-memory filenames, CLI/ACP command selection, and native session routing. Valid values are `anthropic`, `claude-5`, `openai`, `gemini`, `kimi`, `gpt56`, and `gpt6`; model-level values override provider-level values.
 
-Two profiles are selected per model rather than per provider, because they follow the model wherever it is served: `kimi` for Kimi models, and `gpt56` for the GPT-5.6 models (Sol, Terra, Luna). The `gpt56` profile uses Codex's narrow core surface — `shell_command`, `apply_patch`, and `update_plan`, plus optional credential-backed `web_search` — instead of fabro's dedicated file-read, discovery, and `web_fetch` tools. On OpenAI-compatible routes that cannot carry the freeform `apply_patch` grammar, it substitutes the JSON-schema `edit_file` tool. Session features may add their own question, skill, or subagent tools separately.
+Three profiles are selected per model rather than per provider, because they follow the model wherever it is served: `claude-5` for Claude 5 models, `kimi` for Kimi models, and `gpt56` for the GPT-5.6 models (Sol, Terra, Luna); `gpt6` for GPT-6 Astra runs on the same harness as `gpt56`. The `gpt56` profile uses Codex's narrow core surface — `shell_command`, `apply_patch`, and `update_plan`, plus optional credential-backed `web_search` — instead of fabro's dedicated file-read, discovery, and `web_fetch` tools. On OpenAI-compatible routes that cannot carry the freeform `apply_patch` grammar, it substitutes the JSON-schema `edit_file` tool. Session features may add their own question, skill, or subagent tools separately.
 
 Costs come from the lithos `pricing` table on each model row. Each token bucket (input, output, reasoning, cache read, cache write) prices at its own rate, with optional long-context and speed tiers. Providers that return an authoritative charge, such as OpenRouter, override the catalog estimate; the billing record says which source it came from.
 
@@ -167,7 +164,7 @@ Fabro ships a built-in [Poolside](/integrations/poolside) provider for Laguna S 
 Fabro ships an [OpenRouter](/integrations/openrouter) provider definition with a curated model catalog, disabled by default. Enable it in settings and store an API key with `fabro provider login --provider openrouter`:
 
 ```toml title="settings.toml"
-[llm.providers.openrouter.metadata.fabro]
+[llm.providers.openrouter]
 enabled = true
 ```
 
@@ -178,8 +175,6 @@ Fabro ships a [Modal](/integrations/modal) provider definition for Kimi K3, disa
 ```toml title="settings.toml"
 [llm.providers.modal]
 base_url = "https://your-endpoint.modal.run/v1"
-
-[llm.providers.modal.metadata.fabro]
 enabled = true
 ```
 
@@ -197,8 +192,6 @@ Fabro ships an [Amazon Bedrock](/integrations/bedrock) provider definition with 
 ```toml title="settings.toml"
 [llm.providers.bedrock]
 base_url = "https://bedrock-runtime.us-east-1.amazonaws.com"
-
-[llm.providers.bedrock.metadata.fabro]
 enabled = true
 ```
 
@@ -207,7 +200,7 @@ enabled = true
 Fabro ships an Ollama provider definition that is disabled by default. Enable it in settings when you want Fabro to route through a local Ollama server:
 
 ```toml title="settings.toml"
-[llm.providers.ollama.metadata.fabro]
+[llm.providers.ollama]
 enabled = true
 ```
 
@@ -219,7 +212,7 @@ When no model or provider is specified, Fabro chooses the default offering on th
 
 | Provider | Default model |
 |---|---|
-| `anthropic` | `claude-sonnet-4-6` |
+| `anthropic` | `claude-sonnet-5` |
 | `openai` | `gpt-5.6-sol` |
 | `gemini` | `gemini-3.5-flash` |
 | `moonshot` | `kimi-k3` |

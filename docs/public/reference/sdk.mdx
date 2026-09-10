@@ -192,7 +192,7 @@ pub trait AgentProfile: Send + Sync {
 }
 ```
 
-Profiles are built with `AgentProfileBuilder::new(kind, provider, model, catalog)`. The `AgentProfileKind` values are `anthropic`, `openai`, `gemini`, `kimi`, and `gpt56`; the catalog's `metadata.fabro.agent_profile` picks one per provider or model.
+Profiles are built with `AgentProfileBuilder::new(kind, provider, model, catalog)`. The `AgentProfileKind` values are `anthropic`, `claude-5`, `openai`, `gemini`, `kimi`, `gpt56`, and `gpt6`; the catalog's `metadata.agent.profile` picks one per provider or model.
 
 ### Events
 

@@ -28,8 +28,6 @@ _version = 1
 
 [llm.providers.bedrock]
 base_url = "https://bedrock-runtime.us-east-1.amazonaws.com"
-
-[llm.providers.bedrock.metadata.fabro]
 enabled = true
 ```
 
@@ -39,7 +37,7 @@ The SigV4 signing region is derived from `base_url` — change it to your Region
 
 Two auth modes, tried in order:
 
-**Bedrock API key** (simplest): store the key and Fabro sends it as a bearer token. The key is read from either `AWS_BEARER_TOKEN_BEDROCK` (AWS's canonical name, also honored by the AWS SDKs and CLI) or `BEDROCK_API_KEY` (Fabro's `<PROVIDER>_API_KEY` convention) — use whichever you prefer.
+**Bedrock API key** (simplest): store the key and Fabro sends it as a bearer token. The key is read from either `AWS_BEARER_TOKEN_BEDROCK` (AWS's canonical name, also honored by the AWS SDKs and CLI) or `BEDROCK_API_KEY` (the `<PROVIDER>_API_KEY` convention) — use whichever you prefer.
 
 ```bash
 fabro secret set AWS_BEARER_TOKEN_BEDROCK bedrock-api-key-...
@@ -49,22 +47,12 @@ fabro secret set BEDROCK_API_KEY bedrock-api-key-...
 
 Runs read the bearer token from the vault only. Workers start from a cleared environment and the bearer token is not on the inherited allowlist, so exporting it in the server's shell has no effect on runs. `fabro exec` and direct `fabro-llm` SDK usage do read it from process env.
 
-**AWS SigV4** (IAM-scoped): with no API key configured, Fabro signs each request using the AWS default credential chain — environment keys, shared profile, EC2/ECS instance roles, IRSA/web identity, SSO. Expiring session credentials refresh automatically. The catalog declares this as the `aws_sigv4` credential source:
+**AWS SigV4** (IAM-scoped): with no API key configured, Fabro signs each request using the AWS default credential chain — environment keys, shared profile, EC2/ECS instance roles, IRSA/web identity, SSO. Expiring session credentials refresh automatically.
 
-```toml
-[llm.providers.bedrock.metadata.fabro]
-credentials = ["env:AWS_BEARER_TOKEN_BEDROCK", "env:BEDROCK_API_KEY", "vault:AWS_BEARER_TOKEN_BEDROCK", "vault:BEDROCK_API_KEY", "aws_sigv4"]
-```
-
-The key resolves from the process environment first (either name), then the server vault (`fabro secret set`), then falls back to SigV4 — so on a server, prefer `secret set`. To select a non-default AWS profile for SigV4, set `AWS_PROFILE` (it, and the rest of the AWS credential-chain variables, are passed through to workflow workers).
+The order is fixed by lithos-llm: `AWS_BEARER_TOKEN_BEDROCK`, then `BEDROCK_API_KEY`, then the AWS default chain. Each name is read from the process environment first and the server vault (`fabro secret set`) second — so on a server, prefer `secret set`. To select a non-default AWS profile for SigV4, set `AWS_PROFILE` (it, and the rest of the AWS credential-chain variables, are passed through to workflow workers).
 
 <Warning>
-**Bearer-vs-SigV4 precedence.** Because the bearer key is tried before SigV4, setting `AWS_BEARER_TOKEN_BEDROCK` makes the `bedrock` (Converse) provider authenticate with that key too — not just the `bedrock-openai` mantle provider below. If your key is valid only for mantle (it lacks `bedrock:InvokeModel*` on the runtime), every Converse model then fails with *"Authentication failed."* To run Converse models on SigV4 while using a mantle-only bearer key for GPT-5.x, pin the Converse provider to SigV4 explicitly:
-
-```toml
-[llm.providers.bedrock.metadata.fabro]
-credentials = ["aws_sigv4"]
-```
+**Bearer-vs-SigV4 precedence.** Because the bearer key is tried before SigV4, setting `AWS_BEARER_TOKEN_BEDROCK` makes the `bedrock` (Converse) provider authenticate with that key too — not just the `bedrock-openai` mantle provider below. If your key is valid only for mantle (it lacks `bedrock:InvokeModel*` on the runtime), every Converse model then fails with *"Authentication failed."* Use a key that covers both surfaces, or keep Converse on SigV4 by leaving both Bedrock secret names unset and enabling only `bedrock`.
 </Warning>
 
 ## Included models
@@ -94,7 +82,7 @@ Not included on this provider: Claude Mythos 5 (Anthropic-Messages-only on `bedr
 GPT-5.5 and GPT-5.4 on Bedrock are served only by the `bedrock-mantle` endpoint's OpenAI Responses API — a different surface than Converse. Fabro ships a companion `bedrock-openai` provider for them: the same AWS account and `AWS_BEARER_TOKEN_BEDROCK` key, pointed at the mantle endpoint over the OpenAI dialect.
 
 ```toml title="settings.toml"
-[llm.providers.bedrock-openai.metadata.fabro]
+[llm.providers.bedrock-openai]
 enabled = true
 # regional: change to https://bedrock-mantle.<region>.api.aws/openai/v1
 ```

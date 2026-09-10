@@ -17,7 +17,7 @@ Fabro runs execute through a Fabro server. Add the provider override to the sett
 ```toml title="settings.toml"
 _version = 1
 
-[llm.providers.openrouter.metadata.fabro]
+[llm.providers.openrouter]
 enabled = true
 ```
 
@@ -127,10 +127,10 @@ OpenRouter's [provider routing preferences](https://openrouter.ai/docs/guides/ro
 
 ## Attribution headers
 
-Fabro does not send OpenRouter's optional attribution headers (`HTTP-Referer`, `X-Title`) by default, so self-hosted installations stay anonymous on OpenRouter's public app leaderboard. Workflow runs do send `x-session-id: <run-id>` for request grouping; an explicit provider `extra_headers` value for that header takes precedence. To opt in to attribution:
+Fabro does not send OpenRouter's optional attribution headers (`HTTP-Referer`, `X-Title`) by default, so self-hosted installations stay anonymous on OpenRouter's public app leaderboard. Workflow runs do send `x-session-id: <run-id>` for request grouping; an explicit provider `default_headers` value for that header takes precedence. To opt in to attribution:
 
 ```toml title="settings.toml"
-[llm.providers.openrouter.metadata.fabro.extra_headers]
+[llm.providers.openrouter.default_headers]
 "HTTP-Referer" = "https://your-site.example"
 "X-Title" = "Your App"
 ```
