@@ -483,7 +483,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-10T11:43:03.154011585Z",
-  "last_event_at": "2026-09-10T11:52:57.877180565Z",
+  "last_event_at": "2026-09-10T11:53:04.265105185Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -905,9 +905,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 201,
       "checkpoint": {
-        "timestamp": "2026-09-10T11:52:58.119865412Z",
+        "timestamp": "2026-09-10T11:53:03.203559803Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -917,61 +917,45 @@
         ],
         "node_retries": {},
         "context_values": {
-          "last_response": "Revision complete for run `01M25HCK22PNFPARY8R3YVC9DK`: dedup searches found no matches for any finding's concrete change, four seeds filed (`fabro-3e48` routing self-check P1, `fabro-d83a` graph-sour",
-          "filed_seed_ids": [
-            "fabro-3e48",
-            "fabro-d83a",
-            "fabro-b659",
-            "fabro-9bf4"
-          ],
-          "internal.fidelity": "compact",
-          "internal.thread_id": "analyze",
-          "last_stage": "file",
-          "internal.retry_count.select": 0,
-          "current_node": "file",
-          "failure_class": "",
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "internal.retry_count.file": 0,
-          "internal.node_visit_count": 1,
+          "graph.max_node_visits": "30",
           "response.select": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.select",
             "chars": 1179,
             "preview": "Selected run `01M25HCK22PNFPARY8R3YVC9DK` (develop, succeeded, PR #119 merged, created 2026-09-10T11:31:29Z): unrevised (no marker at `.fabro/revisions/01M25HCK22PNFPARY8R3YVC9DK.md`), terminal, `sand"
           },
-          "graph.max_node_visits": "30",
+          "revisor_target_run_id": "01M25HCK22PNFPARY8R3YVC9DK",
+          "thread.start.current_node": "select",
+          "current_node": "file",
+          "outcome": "succeeded",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "internal.node_visit_count": 1,
+          "internal.work_dir": "/workspace/fabro",
+          "last_response": "Revision complete for run `01M25HCK22PNFPARY8R3YVC9DK`: dedup searches found no matches for any finding's concrete change, four seeds filed (`fabro-3e48` routing self-check P1, `fabro-d83a` graph-sour",
+          "revisor_target_status": "succeeded",
           "revisor_target_title": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.fidelity": "compact",
+          "internal.retry_count.analyze": 0,
+          "revisor_target_workflow_version": "99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be",
+          "internal.run_id": "01M25J1JHYPYC8RGQ5113W1DVF",
+          "failure_class": "",
+          "internal.retry_count.file": 0,
+          "graph.preamble_budget_kb": "24",
+          "filed_seed_ids": [
+            "fabro-3e48",
+            "fabro-d83a",
+            "fabro-b659",
+            "fabro-9bf4"
+          ],
+          "internal.exit_kind": "natural",
+          "internal.seed_cycle_anchor": "01M25HCK22PNFPARY8R3YVC9DK",
+          "failure_signature": "",
+          "thread.select.current_node": "analyze",
           "seed_cycles": {
             "select": 1,
             "analyze": 1,
             "file": 1
           },
-          "internal.seed_cycle_anchor": "01M25HCK22PNFPARY8R3YVC9DK",
-          "internal.run_id": "01M25J1JHYPYC8RGQ5113W1DVF",
-          "internal.work_dir": "/workspace/fabro",
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "internal.retry_count.start": 0,
-          "outcome": "succeeded",
-          "thread.select.current_node": "analyze",
-          "internal.retry_count.analyze": 0,
-          "preferred_label": "Unrouted outcome (soft retry)",
-          "thread.analyze.current_node": "file",
-          "graph.preamble_budget_kb": "24",
-          "response.analyze": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "chars": 6070,
-            "preview": "{\n  \"outcome\": \"succeeded\",\n  \"context_updates\": {\n    \"revision_findings\": [\n      {\n        \"title\": \"Implementer: add routing-consistency self-check — one route per branch\",\n        \"description\""
-          },
-          "graph.rankdir": "LR",
-          "response.file": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.file",
-            "chars": 1829,
-            "preview": "Revision complete for run `01M25HCK22PNFPARY8R3YVC9DK`: dedup searches found no matches for any finding's concrete change, four seeds filed (`fabro-3e48` routing self-check P1, `fabro-d83a` graph-sour"
-          },
-          "failure_signature": "",
-          "revisor_target_run_id": "01M25HCK22PNFPARY8R3YVC9DK",
           "journal": {
             "painpoints": [
               {
@@ -984,12 +968,14 @@
               "Marker commit is 843eb5048 on branch `fabro/run/01M25J1JHYPYC8RGQ5113W1DVF`; basis pinned at add88af03 per ADR-0015."
             ]
           },
-          "revisor_target_status": "succeeded",
-          "revisor_target_workflow_version": "99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be",
-          "internal.exit_kind": "natural",
-          "thread.start.current_node": "select",
-          "graph.inspects": "develop,merge-upstream",
+          "thread.analyze.current_node": "file",
           "revisor_target_wall": "10.3 min",
+          "graph.inspects": "develop,merge-upstream",
+          "internal.retry_count.start": 0,
+          "last_stage": "file",
+          "preferred_label": "Unrouted outcome (soft retry)",
+          "internal.retry_count.select": 0,
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
           "revision_findings": [
             {
               "title": "Implementer: add routing-consistency self-check — one route per branch",
@@ -1011,69 +997,23 @@
               "description": "Add `graphviz` to the apt-get list in the toolchain Dockerfile (`.fabro/Dockerfile.toolchain`). Grounded: implementer@1 journal — '`dot` is not installed in this environment, so the workflow.fabro render-check fell back to eyeballing the edge block'; loop-asset seeds edit this graph regularly (this run did) and a malformed edge would only surface at the next run's engine parse. Distinct from closed fabro-05d0 (baked `gh` — different package; that saga is unrelated). Caveat already covered by closed fabro-6f6e: inert until the toolchain image rebuilds. Expected effect: mechanical `dot -Tcanon` syntax verification of graph edits at implementer time; eyeball fallback eliminated.",
               "priority": 2
             }
-          ]
+          ],
+          "graph.rankdir": "LR",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 6070,
+            "preview": "{\n  \"outcome\": \"succeeded\",\n  \"context_updates\": {\n    \"revision_findings\": [\n      {\n        \"title\": \"Implementer: add routing-consistency self-check — one route per branch\",\n        \"description\""
+          },
+          "internal.thread_id": "analyze",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 1829,
+            "preview": "Revision complete for run `01M25HCK22PNFPARY8R3YVC9DK`: dedup searches found no matches for any finding's concrete change, four seeds filed (`fabro-3e48` routing self-check P1, `fabro-d83a` graph-sour"
+          }
         },
         "node_outcomes": {
-          "file": {
-            "status": "succeeded",
-            "preferred_label": "Unrouted outcome (soft retry)",
-            "context_updates": {
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "`.fabro/revisions` is fs_hide-bound so write_file/edit_file cannot create the marker; had to fall back to a shell heredoc. Known constraint, but a fresh bookkeeper wastes a tool call discovering it — worth a line in the bookkeeper prompt."
-                  }
-                ],
-                "observations": [
-                  "fabro-9bf4 is capability-affecting (adds `dot` via `.fabro/Dockerfile.toolchain`): filed with labels needs-user,revision, ADR-0019 citation, and 'implementation awaits explicit user approval'; it must NOT be claimed as line work.",
-                  "Dedup guard held: all four themes searched clean; fabro-0586 and fabro-8d4c are cross-referenced as complementary (same file / probe style), closed fabro-05d0 and fabro-6f6e cross-referenced in the graphviz seed — nothing closed, nothing superseded.",
-                  "Marker commit is 843eb5048 on branch `fabro/run/01M25J1JHYPYC8RGQ5113W1DVF`; basis pinned at add88af03 per ADR-0015."
-                ]
-              },
-              "last_stage": "file",
-              "response.file": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.file",
-                "chars": 1829,
-                "preview": "Revision complete for run `01M25HCK22PNFPARY8R3YVC9DK`: dedup searches found no matches for any finding's concrete change, four seeds filed (`fabro-3e48` routing self-check P1, `fabro-d83a` graph-sour"
-              },
-              "last_response": "Revision complete for run `01M25HCK22PNFPARY8R3YVC9DK`: dedup searches found no matches for any finding's concrete change, four seeds filed (`fabro-3e48` routing self-check P1, `fabro-d83a` graph-sour",
-              "filed_seed_ids": [
-                "fabro-3e48",
-                "fabro-d83a",
-                "fabro-b659",
-                "fabro-9bf4"
-              ]
-            },
-            "notes": "Stage completed: file",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 21832,
-                    "output_tokens": 3723,
-                    "reasoning_tokens": 1600,
-                    "cache_read_tokens": 94528,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 78557
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 81956,
-              "tool_time_ms": 1415,
-              "active_time_ms": 83371
-            }
-          },
           "select": {
             "status": "succeeded",
             "preferred_label": "Run selected",
@@ -1206,20 +1146,166 @@
               "tool_time_ms": 207794,
               "active_time_ms": 468126
             }
+          },
+          "file": {
+            "status": "succeeded",
+            "preferred_label": "Unrouted outcome (soft retry)",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "`.fabro/revisions` is fs_hide-bound so write_file/edit_file cannot create the marker; had to fall back to a shell heredoc. Known constraint, but a fresh bookkeeper wastes a tool call discovering it — worth a line in the bookkeeper prompt."
+                  }
+                ],
+                "observations": [
+                  "fabro-9bf4 is capability-affecting (adds `dot` via `.fabro/Dockerfile.toolchain`): filed with labels needs-user,revision, ADR-0019 citation, and 'implementation awaits explicit user approval'; it must NOT be claimed as line work.",
+                  "Dedup guard held: all four themes searched clean; fabro-0586 and fabro-8d4c are cross-referenced as complementary (same file / probe style), closed fabro-05d0 and fabro-6f6e cross-referenced in the graphviz seed — nothing closed, nothing superseded.",
+                  "Marker commit is 843eb5048 on branch `fabro/run/01M25J1JHYPYC8RGQ5113W1DVF`; basis pinned at add88af03 per ADR-0015."
+                ]
+              },
+              "last_stage": "file",
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 1829,
+                "preview": "Revision complete for run `01M25HCK22PNFPARY8R3YVC9DK`: dedup searches found no matches for any finding's concrete change, four seeds filed (`fabro-3e48` routing self-check P1, `fabro-d83a` graph-sour"
+              },
+              "last_response": "Revision complete for run `01M25HCK22PNFPARY8R3YVC9DK`: dedup searches found no matches for any finding's concrete change, four seeds filed (`fabro-3e48` routing self-check P1, `fabro-d83a` graph-sour",
+              "filed_seed_ids": [
+                "fabro-3e48",
+                "fabro-d83a",
+                "fabro-b659",
+                "fabro-9bf4"
+              ]
+            },
+            "notes": "Stage completed: file",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 21832,
+                    "output_tokens": 3723,
+                    "reasoning_tokens": 1600,
+                    "cache_read_tokens": 94528,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 78557
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 81956,
+              "tool_time_ms": 1415,
+              "active_time_ms": 83371
+            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "4b0f465e7b2ed4996002faf817e3d28b8475b94d",
         "node_visits": {
           "start": 1,
-          "select": 1,
           "analyze": 1,
-          "file": 1
+          "file": 1,
+          "select": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M25J1JHYPYC8RGQ5113W1DVF.jsonl b/.fabro/journal/01M25J1JHYPYC8RGQ5113W1DVF.jsonl\nindex 478614cef..aa4cc4251 100644\n--- a/.fabro/journal/01M25J1JHYPYC8RGQ5113W1DVF.jsonl\n+++ b/.fabro/journal/01M25J1JHYPYC8RGQ5113W1DVF.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25J1JHYPYC8RGQ5113W1DVF\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T11:43:05Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25J1JHYPYC8RGQ5113W1DVF\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T11:43:35Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected newest unrevised fresh develop run; 1 develop run stale-evidence (version drift), 2 older unrevised merge-upstream runs remain in backlog\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25J1JHYPYC8RGQ5113W1DVF\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T11:51:29Z\",\"data\":{\"painpoints\":[{\"text\":\"Step 3.5 duplicate check is under-specified in this repo (open seed fabro-1128 already files it): no named base branch, and origin here is the fork denkhaus/fabro whose origin/main PR numbering (#844+) diverges from the loop's PRs (#119), so 'grep seed id in origin/main log' is unreliable; the default 10 s shell timeout also killed the first `git fetch`. Worked around by: seed-close timestamp vs target run closeout ts (exact match 11:41:35Z = this run closed it) plus `git log --all --grep <seed-id>`. Fix idea: implement fabro-1128 (name the base branch, lift the fetch timeout) and prefer the closeout-timestamp + --all-grep method as the primary duplicate signal.\"}],\"observations\":[\"Run verdict: healthy pass, NOT a duplicate — seed fabro-d183 closed at 2026-09-10T11:41:35Z == this run's closeout ts; PR #119 (cb1332c51) is this run's own merge; the only other commit referencing d183 anywhere is the old revisor filing commit 64f7b2aa0 (#93).\",\"Dropped as duplicates of open seeds: 'evidence.nu derive churn counts and diff from the same base' → duplicate_of fabro-43ba (mark no-net-diff churn transient — resolves the exact `.seeds/issues.jsonl +1/-1` symptom) and fabro-1e9f (diff against seed boundary); 'engine render only latest visit per command node' → duplicate_of fabro-699f; 'preamble_budget_kb 24→32' → duplicate_of fabro-8d2c (exact); 'top-N sd ready view' → duplicate_of fabro-c3b4 (exact). Analyst's not-re-recommended fabro-52b4 and fabro-9372 confirmed still open.\",\"Triage evidence for preamble seeds: the 11.3 KB evidence capture was blob-demoted despite being under preamble_inline_max_kb=16 — the aggregate preamble_budget_kb=24 binds first, so fabro-cf3e (inline max 16→32) alone provably would NOT have kept it inline; fabro-8d2c is the binding fix. fabro-35ab's 'to 20 KB' target is stale (graph already at 24) — subsumed by fabro-8d2c; consider closing it as such.\",\"Planner@1 recon firehose confirmed: `sd ready --assignee fabro --limit 200` returned 27.6 KB with stdout_truncated:true — further evidence for open fabro-c3b4.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25J1JHYPYC8RGQ5113W1DVF\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T11:52:58Z\",\"data\":{\"painpoints\":[{\"text\":\"`.fabro/revisions` is fs_hide-bound so write_file/edit_file cannot create the marker; had to fall back to a shell heredoc. Known constraint, but a fresh bookkeeper wastes a tool call discovering it — worth a line in the bookkeeper prompt.\"}],\"observations\":[\"fabro-9bf4 is capability-affecting (adds `dot` via `.fabro/Dockerfile.toolchain`): filed with labels needs-user,revision, ADR-0019 citation, and 'implementation awaits explicit user approval'; it must NOT be claimed as line work.\",\"Dedup guard held: all four themes searched clean; fabro-0586 and fabro-8d4c are cross-referenced as complementary (same file / probe style), closed fabro-05d0 and fabro-6f6e cross-referenced in the graphviz seed — nothing closed, nothing superseded.\",\"Marker commit is 843eb5048 on branch `fabro/run/01M25J1JHYPYC8RGQ5113W1DVF`; basis pinned at add88af03 per ADR-0015.\"]}}\ndiff --git a/.fabro/revisions/01M25HCK22PNFPARY8R3YVC9DK.md b/.fabro/revisions/01M25HCK22PNFPARY8R3YVC9DK.md\nnew file mode 100644\nindex 000000000..c8d4f4155\n--- /dev/null\n+++ b/.fabro/revisions/01M25HCK22PNFPARY8R3YVC9DK.md\n@@ -0,0 +1,29 @@\n+# Revision — run 01M25HCK22PNFPARY8R3YVC9DK\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M25HCK22PNFPARY8R3YVC9DK.md\n+- seeds filed: fabro-3e48 (Implementer: add routing-consistency self-check — one route per branch), fabro-d83a (PROJECT_FACTS: name workflow.fabro as the graph source), fabro-b659 (Add reviewer->implementer 'Changes requested (minor)' edge for single mechanical edits), fabro-9bf4 (Bake graphviz into the develop toolchain image — needs-user, capability-affecting per ADR-0019)\n+- basis: run 01M25HCK22PNFPARY8R3YVC9DK, workflow version 99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be, commit add88af03e7532624d73a287ff9d0225a77343a8\n+- revised_at_commit: add88af03e7532624d73a287ff9d0225a77343a8 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Implementer: add routing-consistency self-check — one route per branch\n+- filed: fabro-3e48 (priority 1)\n+- Change: in `.fabro/workflows/develop/prompts/implementer.md` (Inline verification report section) require a pre-finish re-read of every routing instruction written — each branch must yield exactly ONE route; two routing sentences in one branch is a FAIL, fix before reporting.\n+- Expected effect: label-dead-config contradictions caught at implementer time; saves ~one full review cycle (~126 s wall / ~$0.125 / 5 stage visits per occurrence, as measured on this run's pass-2).\n+\n+### PROJECT_FACTS: name workflow.fabro as the graph source\n+- filed: fabro-d83a (priority 2)\n+- Change: add one line to `.fabro/workflows/develop/prompts/project-facts.md`: 'Graph source: `.fabro/workflows/develop/workflow.fabro` (DOT); `workflow.toml` wires runtime settings only — never probe it for edges.'\n+- Expected effect: ~2 fewer tool calls per fresh claim; planner@1 (100.6 s, $0.117 — costliest stage of this run) burned exactly those two probes on `workflow.toml`. Cross-referenced open fabro-0586 (same file, different content) — complementary, not supersession.\n+\n+### Add reviewer->implementer 'Changes requested (minor)' edge for single mechanical edits\n+- filed: fabro-b659 (priority 2)\n+- Change: add a `reviewer -> implementer` edge labeled 'Changes requested (minor)' (condition `preferred_label=\"Changes requested (minor)\"`) in `.fabro/workflows/develop/workflow.fabro`, with a matching verdict shape in `prompts/reviewer.md` gated on 'feedback is exactly one mechanical edit, fully specified'; everything else keeps the planner hop.\n+- Expected effect: ~30 s and one LLM call saved per minor cycle; this run's one-sentence-deletion fix took a pointless planner hop (31.5 s / $0.036) whose journal admitted it added nothing; also removes re-plan drift risk.\n+\n+### Bake graphviz into the develop toolchain image\n+- filed: fabro-9bf4 (priority 2, labels needs-user,revision — capability-affecting per ADR-0019, implementation awaits explicit user approval)\n+- Change: add `graphviz` to the apt-get list in `.fabro/Dockerfile.toolchain` (engine-mediated, read-only usage: `dot -Tcanon` syntax verification of graph edits).\n+- Expected effect: mechanical syntax verification of `workflow.fabro` edits at implementer time; implementer@1's 'eyeballing the edge block' fallback (`dot` not installed) eliminated. Inert until the toolchain image rebuilds (covered by closed fabro-6f6e). Distinct from closed fabro-05d0 (baked `gh`, different package).\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 0bf9afbd8..0d74d5b3c 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -359,3 +359,7 @@\n {\"id\":\"fabro-d183\",\"title\":\"Planner: exit already-landed seeds before the cycle instead of running a no-op verification lap\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-10T08:41:24.357Z\",\"updatedAt\":\"2026-09-10T11:41:35.388Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 3, make the already-implemented case mechanical: when git log --grep <seed-id> shows a fix commit referencing the seed already in base history AND the acceptance criteria hold, close via sd close --reason \\\"superseded: fix landed in <sha>\\\" and route exit (graph needs a planner exit edge); reserve the verification-only claim for criteria satisfied with NO referencing commit. Expected effect: eliminates a whole ~$0.16, 3.5-min run plus a bookkeeping-only PR per stale tracker row. Grounded: run 01M256QJB48JK8BXJE1TVM2HYS saw fix commit 7ae575c (fabro-afb8) already in base 3f26ab9 at event seq 44, yet ran the full cycle for a 2-file journal-and-tracker-only diff (+8/-1, PR #115). Distinct from fabro-5656 (implementer mid-cycle check) and fabro-ab38 (post-merge sweep): this is the planner's claim-time decision. Basis: run 01M256QJB48JK8BXJE1TVM2HYS, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4d8a1e7f7a4fd74bed2dad41516106a8969a7e0b\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-10T11:41:35.388Z\"}\n {\"id\":\"fabro-b1d3\",\"title\":\"Slack: annotate bookkeeping-only runs in the run.completed payload\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T08:41:36.478Z\",\"updatedAt\":\"2026-09-10T10:13:59.806Z\",\"description\":\"When the run diff touches only .fabro/journal/** and .seeds/**, annotate the Slack run.completed payload (notifications settings or closeout emit site) as bookkeeping-only. Expected effect: humans can triage no-op runs in Slack instead of opening journal-only PRs. Grounded: run 01M256QJB48JK8BXJE1TVM2HYS's PR #115 contained only journal and tracker flips and was indistinguishable from a code PR in the Slack notification. Complements open seed fabro-9f97 (skip PR creation on journal-only diffs), which covers the PR side; this covers the notification side. Basis: run 01M256QJB48JK8BXJE1TVM2HYS, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4d8a1e7f7a4fd74bed2dad41516106a8969a7e0b\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-52b4\",\"title\":\"Reviewer: read-only PROJECT_FACTS subset — drop tracker write commands from the reviewer prompt include\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T08:41:36.581Z\",\"updatedAt\":\"2026-09-10T10:13:59.730Z\",\"description\":\"Render a read-only PROJECT_FACTS subset for .fabro/workflows/develop/prompts/reviewer.md so the reviewer stops receiving the tracker write command table (sd update and sd close) it is forbidden to use. Expected effect: fewer reviewer prompt tokens and a smaller attack surface for rogue tracker writes. Grounded: run 01M256QJB48JK8BXJE1TVM2HYS's reviewer got the full write table plus the full 24,605-byte AGENTS.md (memory ~6k tokens, ~20% of each stage's input). Scope note: per-node memory and AGENTS.md scoping itself is open seed fabro-9588 — this seed covers only the reviewer's PROJECT_FACTS include content. Basis: run 01M256QJB48JK8BXJE1TVM2HYS, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4d8a1e7f7a4fd74bed2dad41516106a8969a7e0b\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-b659\",\"title\":\"Add reviewer->implementer 'Changes requested (minor)' edge for single mechanical edits\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T11:52:10.942Z\",\"updatedAt\":\"2026-09-10T11:52:10.942Z\",\"description\":\"In `.fabro/workflows/develop/workflow.fabro` add a `reviewer -> implementer` edge labeled 'Changes requested (minor)' (condition `preferred_label=\\\"Changes requested (minor)\\\"`), with a matching verdict shape in `prompts/reviewer.md` gated on 'feedback is exactly one mechanical edit, fully specified'; everything else keeps the planner hop.\\n\\nGrounded: the basis run's pass-2 fix was a fully-specified one-sentence deletion, yet routing went reviewer → planner (full re-plan, 31.5 s / $0.036) → implementer; planner@2's own journal admits it added nothing ('brief narrowed to that single edit'). No existing seed adds this edge (searched 'fast path', 'minor changes edge': only unrelated matches).\\n\\nExpected effect: ~30 s and one LLM call saved per minor cycle, and no chance for the re-plan to drift; bounded by the reviewer explicitly tagging the verdict minor.\\n\\nBasis: run 01M25HCK22PNFPARY8R3YVC9DK, workflow version 99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be, commit add88af03e7532624d73a287ff9d0225a77343a8\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-3e48\",\"title\":\"Implementer: add routing-consistency self-check — one route per branch\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-10T11:52:11.067Z\",\"updatedAt\":\"2026-09-10T11:52:11.067Z\",\"description\":\"In `.fabro/workflows/develop/prompts/implementer.md` (Inline verification report section) add: before finishing, re-read every routing instruction written — each branch must yield exactly ONE route; two routing sentences in one branch is a FAIL, fix before reporting.\\n\\nGrounded: implementer@1 of the basis run wrote branch (a) of `.fabro/workflows/develop/prompts/planner.md` with both 'route \\\"Already landed\\\"' and 'continue down the `sd ready` candidate list' sentences, making the new graph edge dead config; reviewer@1 blocked it and the avoidable pass-2 cycle (planner@2+implementer@2+tester@2+evidence@2+reviewer@2) cost ~126 s wall / ~$0.125 / 5 stage visits for a one-sentence deletion. No existing seed covers a routing self-check (searched 'routing self-check', 'one route per branch': no matches).\\n\\nExpected effect: label-dead-config contradictions caught at implementer time, saving ~one full review cycle (~2 min / ~$0.13) per occurrence.\\n\\nBasis: run 01M25HCK22PNFPARY8R3YVC9DK, workflow version 99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be, commit add88af03e7532624d73a287ff9d0225a77343a8\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-d83a\",\"title\":\"PROJECT_FACTS: name workflow.fabro as the graph source\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T11:52:11.104Z\",\"updatedAt\":\"2026-09-10T11:52:11.104Z\",\"description\":\"Add one line to `.fabro/workflows/develop/prompts/project-facts.md`: 'Graph source: `.fabro/workflows/develop/workflow.fabro` (DOT); `workflow.toml` wires runtime settings only — never probe it for edges.'\\n\\nGrounded: planner@1 of the basis run (100.6 s, $0.117 — the costliest stage of that run) burned two probes discovering this: a grep on `workflow.toml` for planner edges (seq 51–53, empty) and a `sed -n '1,120p'` head of `workflow.toml` (seq 57–59) before grepping the real file. Distinct from open fabro-0586 (available-binaries line — same file, different content) and from fabro-8d4c (probe style, not file identity).\\n\\nExpected effect: ~2 fewer tool calls per fresh claim; planners stop probing the wrong file every loop-asset seed.\\n\\nBasis: run 01M25HCK22PNFPARY8R3YVC9DK, workflow version 99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be, commit add88af03e7532624d73a287ff9d0225a77343a8\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-9bf4\",\"title\":\"Bake graphviz into the develop toolchain image\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T11:52:20.414Z\",\"updatedAt\":\"2026-09-10T11:52:20.414Z\",\"description\":\"Add `graphviz` to the apt-get list in the toolchain Dockerfile (`.fabro/Dockerfile.toolchain`).\\n\\nGrounded: implementer@1 of the basis run — '`dot` is not installed in this environment, so the workflow.fabro render-check fell back to eyeballing the edge block'; loop-asset seeds edit this graph regularly (that run did) and a malformed edge would only surface at the next run's engine parse. Distinct from closed fabro-05d0 (baked `gh` — different package; that saga is unrelated). Caveat already covered by closed fabro-6f6e: inert until the toolchain image rebuilds.\\n\\nCAPABILITY-AFFECTING (ADR-0019): this adds a tool (`dot`) to an agent-reachable surface (`.fabro/Dockerfile.toolchain`); implementation awaits explicit user approval. Proposed fix direction is engine-mediated and read-only: install the distro `graphviz` package in the existing toolchain image so implementers can run `dot -Tcanon` as a pure syntax verification of graph edits — no new credentials, no raw clients, no tokens.\\n\\nExpected effect: mechanical `dot -Tcanon` syntax verification of graph edits at implementer time; eyeball fallback eliminated.\\n\\nBasis: run 01M25HCK22PNFPARY8R3YVC9DK, workflow version 99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be, commit add88af03e7532624d73a287ff9d0225a77343a8\",\"labels\":[\"needs-user\",\"revision\"]}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 85,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-10T11:53:03.250712553Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 600435,
+      "inference_time_ms": 366535,
+      "tool_time_ms": 213990,
+      "active_time_ms": 580525
+    },
+    "final_git_commit_sha": "4b0f465e7b2ed4996002faf817e3d28b8475b94d",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 29675,
+          "inference_time_ms": 24247,
+          "tool_time_ms": 4781,
+          "active_time_ms": 29028
+        },
+        "billing_usd_micros": 40116,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 468770,
+          "inference_time_ms": 260332,
+          "tool_time_ms": 207794,
+          "active_time_ms": 468126
+        },
+        "billing_usd_micros": 173889,
+        "retries": 0
+      },
+      {
+        "stage_id": "file",
+        "stage_label": "file",
+        "timing": {
+          "wall_time_ms": 83988,
+          "inference_time_ms": 81956,
+          "tool_time_ms": 1415,
+          "active_time_ms": 83371
+        },
+        "billing_usd_micros": 78557,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 78346,
+      "output_tokens": 10982,
+      "total_tokens": 380357,
+      "reasoning_tokens": 14229,
+      "cache_read_tokens": 276800,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 292562
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M25J1JHYPYC8RGQ5113W1DVF.jsonl b/.fabro/journal/01M25J1JHYPYC8RGQ5113W1DVF.jsonl\nnew file mode 100644\nindex 000000000..aa4cc4251\n--- /dev/null\n+++ b/.fabro/journal/01M25J1JHYPYC8RGQ5113W1DVF.jsonl\n@@ -0,0 +1,4 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25J1JHYPYC8RGQ5113W1DVF\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T11:43:05Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25J1JHYPYC8RGQ5113W1DVF\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T11:43:35Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected newest unrevised fresh develop run; 1 develop run stale-evidence (version drift), 2 older unrevised merge-upstream runs remain in backlog\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25J1JHYPYC8RGQ5113W1DVF\",\"node\":\"analyze\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T11:51:29Z\",\"data\":{\"painpoints\":[{\"text\":\"Step 3.5 duplicate check is under-specified in this repo (open seed fabro-1128 already files it): no named base branch, and origin here is the fork denkhaus/fabro whose origin/main PR numbering (#844+) diverges from the loop's PRs (#119), so 'grep seed id in origin/main log' is unreliable; the default 10 s shell timeout also killed the first `git fetch`. Worked around by: seed-close timestamp vs target run closeout ts (exact match 11:41:35Z = this run closed it) plus `git log --all --grep <seed-id>`. Fix idea: implement fabro-1128 (name the base branch, lift the fetch timeout) and prefer the closeout-timestamp + --all-grep method as the primary duplicate signal.\"}],\"observations\":[\"Run verdict: healthy pass, NOT a duplicate — seed fabro-d183 closed at 2026-09-10T11:41:35Z == this run's closeout ts; PR #119 (cb1332c51) is this run's own merge; the only other commit referencing d183 anywhere is the old revisor filing commit 64f7b2aa0 (#93).\",\"Dropped as duplicates of open seeds: 'evidence.nu derive churn counts and diff from the same base' → duplicate_of fabro-43ba (mark no-net-diff churn transient — resolves the exact `.seeds/issues.jsonl +1/-1` symptom) and fabro-1e9f (diff against seed boundary); 'engine render only latest visit per command node' → duplicate_of fabro-699f; 'preamble_budget_kb 24→32' → duplicate_of fabro-8d2c (exact); 'top-N sd ready view' → duplicate_of fabro-c3b4 (exact). Analyst's not-re-recommended fabro-52b4 and fabro-9372 confirmed still open.\",\"Triage evidence for preamble seeds: the 11.3 KB evidence capture was blob-demoted despite being under preamble_inline_max_kb=16 — the aggregate preamble_budget_kb=24 binds first, so fabro-cf3e (inline max 16→32) alone provably would NOT have kept it inline; fabro-8d2c is the binding fix. fabro-35ab's 'to 20 KB' target is stale (graph already at 24) — subsumed by fabro-8d2c; consider closing it as such.\",\"Planner@1 recon firehose confirmed: `sd ready --assignee fabro --limit 200` returned 27.6 KB with stdout_truncated:true — further evidence for open fabro-c3b4.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25J1JHYPYC8RGQ5113W1DVF\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T11:52:58Z\",\"data\":{\"painpoints\":[{\"text\":\"`.fabro/revisions` is fs_hide-bound so write_file/edit_file cannot create the marker; had to fall back to a shell heredoc. Known constraint, but a fresh bookkeeper wastes a tool call discovering it — worth a line in the bookkeeper prompt.\"}],\"observations\":[\"fabro-9bf4 is capability-affecting (adds `dot` via `.fabro/Dockerfile.toolchain`): filed with labels needs-user,revision, ADR-0019 citation, and 'implementation awaits explicit user approval'; it must NOT be claimed as line work.\",\"Dedup guard held: all four themes searched clean; fabro-0586 and fabro-8d4c are cross-referenced as complementary (same file / probe style), closed fabro-05d0 and fabro-6f6e cross-referenced in the graphviz seed — nothing closed, nothing superseded.\",\"Marker commit is 843eb5048 on branch `fabro/run/01M25J1JHYPYC8RGQ5113W1DVF`; basis pinned at add88af03 per ADR-0015.\"]}}\ndiff --git a/.fabro/reviews/develop/01M25HCK22PNFPARY8R3YVC9DK.md b/.fabro/reviews/develop/01M25HCK22PNFPARY8R3YVC9DK.md\nnew file mode 100644\nindex 000000000..ad3fe3d15\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M25HCK22PNFPARY8R3YVC9DK.md\n@@ -0,0 +1,48 @@\n+# Improve review — run 01M25HCK22PNFPARY8R3YVC9DK\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (10.3 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-10 11:43+0000 by revisor `fabro_ask`\n+\n+---\n+\n+Recommendations for the `develop` workflow, ordered by expected impact. All evidence from this run's events, journals, and conclusion (run `01M25HCK22PNFPARY8R3YVC9DK`, seed `fabro-d183`, 2 review cycles, 604.8 s wall, $0.408, 11 stage executions).\n+\n+---\n+\n+**1. Add a routing-consistency self-check to the Implementer (prompting — highest impact: a full avoidable cycle)**\n+- **What happened:** implementer@1 wrote branch (a) of `.fabro/workflows/develop/prompts/planner.md` with two routing sentences (\"route \\\"Already landed\\\"\" *and* \"continue down the `sd ready` candidate list → Seed claimed/Tracker empty\"), making the new graph edge dead config. Reviewer@1 rejected it; the pass-2 fix was deleting one sentence. That avoidable cycle cost planner@2 + implementer@2 + tester@2 + evidence@2 + reviewer@2 ≈ **126 s wall, ~$0.125, 5 stage visits** (from conclusion stage timings). The brief was unambiguous; the contradiction was implementer improvisation that no self-check caught.\n+- **Change:** one paragraph in `.fabro/workflows/develop/prompts/implementer.md` (Inline verification report section): \"Before finishing, re-read every routing instruction you wrote: each branch must yield exactly ONE route; two routing sentences in one branch is a FAIL — fix it before reporting.\"\n+- **Expected effect:** this failure class (label-dead-config contradictions) is caught at implementer time; saves one full review cycle (~2 min / ~$0.13) per occurrence.\n+\n+**2. Make `evidence.nu` count and diff loop churn from the same base (error handling)**\n+- **What happened:** reviewer@1's journal painpoint (verbatim): the capture \"listed `.seeds/issues.jsonl +1/-1` in the loop-churn counts but included NO diff for it in the loop-work section, and `git diff 698b1e5..HEAD -- .seeds/issues.jsonl` is empty — the churn count and the diffed file set disagree.\" Mechanism: counts are enumerated against the run base (`74aaeda`), the loop-work diff against the per-seed claim base (`698b1e5`, which already contains the claim flip) — two different bases.\n+- **Change:** in `.fabro/workflows/develop/scripts/evidence.nu`, derive the loop-churn file list *and* its diff from the same base (the claim base), or annotate claim-base-committed files as expected churn with zero net diff.\n+- **Expected effect:** the integrity header reconciles with the visible diff; removes a standing trigger for \"counts contradict what is visible\" → Verification-blocked recaptures (each would cost an evidence re-run + full re-review ≈ 45 s / $0.045 here).\n+\n+**3. Dedupe per-visit stage sections and/or raise `preamble_budget_kb` 24→32 (graph/engine design)**\n+- **What happened:** the evidence capture was blob-ref'd on **both** review passes (11.3 KB at cycle 1, 23.6 KB at cycle 2 — visible in reviewer@1/@2 stage prompts), forcing a tool round-trip to page the blob each time. Critically, the 11.3 KB capture was demoted **despite being under the reviewer's `preamble_inline_max_kb=16`** — the aggregate 24 KB graph budget is the binding constraint, so raising the inline max alone (open seed fabro-cf3e) provably would not have helped. Reviewer context usage was ~2% of the 1M window; capacity is not the issue. Reviewer@2's preamble also renders the tester and evidence sections **twice** (once per visit) — the duplication the graph comment already flags as \"engine-side dedup work\".\n+- **Change:** (a) engine preamble renderer: render only the latest visit per command node (earlier visits as one-line summaries); (b) `.fabro/workflows/develop/workflow.fabro` graph attr `preamble_budget_kb=24` → `32` (aligns with open seed fabro-8d2c).\n+- **Expected effect:** evidence stays inline on multi-cycle reviews; ~1 tool call + paging latency saved per review pass; cycle-2 preambles stop growing by re-rendering adjudicated output.\n+\n+**4. Planner recon economy: name the graph file in PROJECT_FACTS + top-N `sd ready` (prompting/tool usage)**\n+- **What happened:** planner@1 (100.6 s, $0.117 — the costliest stage) burned two probes discovering where the graph lives: grep on `workflow.toml` for planner edges returned nothing (seq 51–53), then a `sed -n '1,120p'` head of `workflow.toml` (seq 57–59) before grepping the real file `workflow.fabro`. Its first `sd ready --assignee fabro --limit 200` returned a 27.6 KB firehose (`stdout_truncated: true`) that inference then had to read.\n+- **Change:** (a) one line in `.fabro/workflows/develop/prompts/project-facts.md`: \"Graph source: `.fabro/workflows/develop/workflow.fabro` (DOT); `workflow.toml` wires runtime settings only — never probe it for edges.\" (b) planner.md step 1: pipe `sd ready` through a top-N view (`| sed -n '1,25p'`) and page deeper only on need (aligns with open seeds fabro-55a7 / fabro-c3b4).\n+- **Expected effect:** ~2 fewer tool calls and materially less input to reason over per fresh claim; the 200-seed firehose stops being loaded wholesale every run.\n+\n+**5. Minor-fix fast path: `reviewer -> implementer` edge for single-mechanical-edit feedback (graph design)**\n+- **What happened:** the pass-2 fix was a fully-specified one-sentence deletion, yet routing went reviewer → planner (full re-plan, 31.5 s / $0.036) → implementer → tester → evidence → reviewer. The planner added no information the reviewer's feedback didn't already carry (its own journal: \"brief narrowed to that single edit\").\n+- **Change:** in `.fabro/workflows/develop/workflow.fabro`, add `reviewer -> implementer [label=\"Changes requested (minor)\", condition=\"preferred_label=\\\"Changes requested (minor)\\\"\"]`, with a matching reviewer.md verdict shape gated on \"feedback is exactly one mechanical edit, fully specified\" — everything else keeps the planner hop.\n+- **Expected effect:** ~30 s and one LLM call saved per minor cycle, and no chance for the re-plan to drift; bounded by the reviewer explicitly tagging the verdict minor.\n+\n+**6. Bake `dot` (graphviz) into the toolchain image (error prevention)**\n+- **What happened:** implementer@1's journal: \"`dot` is not installed in this environment, so the workflow.fabro render-check fell back to eyeballing the edge block.\" Loop-asset seeds edit this graph regularly (this run did), and a malformed edge would only surface at the *next* run's engine parse.\n+- **Change:** add `graphviz` to the apt-get list in the toolchain Dockerfile (inline image spec in the workflow settings / `.fabro/Dockerfile.toolchain`).\n+- **Expected effect:** mechanical `dot -Tcanon` syntax verification of graph edits at implementer time; eyeball fallback eliminated.\n+\n+---\n+\n+Not re-recommended (already open as seeds and confirmed by this run, listed for triage priority): reviewer read-only PROJECT_FACTS subset (fabro-52b4 — reviewer@1 again received the full `sd update`/`sd close` write table), `current_seed_id` in the runs_list projection (fabro-9372 — planner again had to fall back to journal greps for in-flight seed ids).\n+\n+One cost note for calibration: the deterministic machinery was cheap where it should be — tester@2 gate ran 5.3 s (\"no crates touched … GATE GREEN\") and evidence@2 0.4 s — so the optimization surface is the LLM stages and their context plumbing, not the gate.\ndiff --git a/.fabro/revisions/01M25HCK22PNFPARY8R3YVC9DK.md b/.fabro/revisions/01M25HCK22PNFPARY8R3YVC9DK.md\nnew file mode 100644\nindex 000000000..c8d4f4155\n--- /dev/null\n+++ b/.fabro/revisions/01M25HCK22PNFPARY8R3YVC9DK.md\n@@ -0,0 +1,29 @@\n+# Revision — run 01M25HCK22PNFPARY8R3YVC9DK\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M25HCK22PNFPARY8R3YVC9DK.md\n+- seeds filed: fabro-3e48 (Implementer: add routing-consistency self-check — one route per branch), fabro-d83a (PROJECT_FACTS: name workflow.fabro as the graph source), fabro-b659 (Add reviewer->implementer 'Changes requested (minor)' edge for single mechanical edits), fabro-9bf4 (Bake graphviz into the develop toolchain image — needs-user, capability-affecting per ADR-0019)\n+- basis: run 01M25HCK22PNFPARY8R3YVC9DK, workflow version 99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be, commit add88af03e7532624d73a287ff9d0225a77343a8\n+- revised_at_commit: add88af03e7532624d73a287ff9d0225a77343a8 (ADR-0015: engine drift signal for later judgement)\n+\n+## Findings\n+\n+### Implementer: add routing-consistency self-check — one route per branch\n+- filed: fabro-3e48 (priority 1)\n+- Change: in `.fabro/workflows/develop/prompts/implementer.md` (Inline verification report section) require a pre-finish re-read of every routing instruction written — each branch must yield exactly ONE route; two routing sentences in one branch is a FAIL, fix before reporting.\n+- Expected effect: label-dead-config contradictions caught at implementer time; saves ~one full review cycle (~126 s wall / ~$0.125 / 5 stage visits per occurrence, as measured on this run's pass-2).\n+\n+### PROJECT_FACTS: name workflow.fabro as the graph source\n+- filed: fabro-d83a (priority 2)\n+- Change: add one line to `.fabro/workflows/develop/prompts/project-facts.md`: 'Graph source: `.fabro/workflows/develop/workflow.fabro` (DOT); `workflow.toml` wires runtime settings only — never probe it for edges.'\n+- Expected effect: ~2 fewer tool calls per fresh claim; planner@1 (100.6 s, $0.117 — costliest stage of this run) burned exactly those two probes on `workflow.toml`. Cross-referenced open fabro-0586 (same file, different content) — complementary, not supersession.\n+\n+### Add reviewer->implementer 'Changes requested (minor)' edge for single mechanical edits\n+- filed: fabro-b659 (priority 2)\n+- Change: add a `reviewer -> implementer` edge labeled 'Changes requested (minor)' (condition `preferred_label=\"Changes requested (minor)\"`) in `.fabro/workflows/develop/workflow.fabro`, with a matching verdict shape in `prompts/reviewer.md` gated on 'feedback is exactly one mechanical edit, fully specified'; everything else keeps the planner hop.\n+- Expected effect: ~30 s and one LLM call saved per minor cycle; this run's one-sentence-deletion fix took a pointless planner hop (31.5 s / $0.036) whose journal admitted it added nothing; also removes re-plan drift risk.\n+\n+### Bake graphviz into the develop toolchain image\n+- filed: fabro-9bf4 (priority 2, labels needs-user,revision — capability-affecting per ADR-0019, implementation awaits explicit user approval)\n+- Change: add `graphviz` to the apt-get list in `.fabro/Dockerfile.toolchain` (engine-mediated, read-only usage: `dot -Tcanon` syntax verification of graph edits).\n+- Expected effect: mechanical syntax verification of `workflow.fabro` edits at implementer time; implementer@1's 'eyeballing the edge block' fallback (`dot` not installed) eliminated. Inert until the toolchain image rebuilds (covered by closed fabro-6f6e). Distinct from closed fabro-05d0 (baked `gh`, different package).\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 0bf9afbd8..0d74d5b3c 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -359,3 +359,7 @@\n {\"id\":\"fabro-d183\",\"title\":\"Planner: exit already-landed seeds before the cycle instead of running a no-op verification lap\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-10T08:41:24.357Z\",\"updatedAt\":\"2026-09-10T11:41:35.388Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 3, make the already-implemented case mechanical: when git log --grep <seed-id> shows a fix commit referencing the seed already in base history AND the acceptance criteria hold, close via sd close --reason \\\"superseded: fix landed in <sha>\\\" and route exit (graph needs a planner exit edge); reserve the verification-only claim for criteria satisfied with NO referencing commit. Expected effect: eliminates a whole ~$0.16, 3.5-min run plus a bookkeeping-only PR per stale tracker row. Grounded: run 01M256QJB48JK8BXJE1TVM2HYS saw fix commit 7ae575c (fabro-afb8) already in base 3f26ab9 at event seq 44, yet ran the full cycle for a 2-file journal-and-tracker-only diff (+8/-1, PR #115). Distinct from fabro-5656 (implementer mid-cycle check) and fabro-ab38 (post-merge sweep): this is the planner's claim-time decision. Basis: run 01M256QJB48JK8BXJE1TVM2HYS, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4d8a1e7f7a4fd74bed2dad41516106a8969a7e0b\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-10T11:41:35.388Z\"}\n {\"id\":\"fabro-b1d3\",\"title\":\"Slack: annotate bookkeeping-only runs in the run.completed payload\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T08:41:36.478Z\",\"updatedAt\":\"2026-09-10T10:13:59.806Z\",\"description\":\"When the run diff touches only .fabro/journal/** and .seeds/**, annotate the Slack run.completed payload (notifications settings or closeout emit site) as bookkeeping-only. Expected effect: humans can triage no-op runs in Slack instead of opening journal-only PRs. Grounded: run 01M256QJB48JK8BXJE1TVM2HYS's PR #115 contained only journal and tracker flips and was indistinguishable from a code PR in the Slack notification. Complements open seed fabro-9f97 (skip PR creation on journal-only diffs), which covers the PR side; this covers the notification side. Basis: run 01M256QJB48JK8BXJE1TVM2HYS, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4d8a1e7f7a4fd74bed2dad41516106a8969a7e0b\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-52b4\",\"title\":\"Reviewer: read-only PROJECT_FACTS subset — drop tracker write commands from the reviewer prompt include\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T08:41:36.581Z\",\"updatedAt\":\"2026-09-10T10:13:59.730Z\",\"description\":\"Render a read-only PROJECT_FACTS subset for .fabro/workflows/develop/prompts/reviewer.md so the reviewer stops receiving the tracker write command table (sd update and sd close) it is forbidden to use. Expected effect: fewer reviewer prompt tokens and a smaller attack surface for rogue tracker writes. Grounded: run 01M256QJB48JK8BXJE1TVM2HYS's reviewer got the full write table plus the full 24,605-byte AGENTS.md (memory ~6k tokens, ~20% of each stage's input). Scope note: per-node memory and AGENTS.md scoping itself is open seed fabro-9588 — this seed covers only the reviewer's PROJECT_FACTS include content. Basis: run 01M256QJB48JK8BXJE1TVM2HYS, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4d8a1e7f7a4fd74bed2dad41516106a8969a7e0b\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-b659\",\"title\":\"Add reviewer->implementer 'Changes requested (minor)' edge for single mechanical edits\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T11:52:10.942Z\",\"updatedAt\":\"2026-09-10T11:52:10.942Z\",\"description\":\"In `.fabro/workflows/develop/workflow.fabro` add a `reviewer -> implementer` edge labeled 'Changes requested (minor)' (condition `preferred_label=\\\"Changes requested (minor)\\\"`), with a matching verdict shape in `prompts/reviewer.md` gated on 'feedback is exactly one mechanical edit, fully specified'; everything else keeps the planner hop.\\n\\nGrounded: the basis run's pass-2 fix was a fully-specified one-sentence deletion, yet routing went reviewer → planner (full re-plan, 31.5 s / $0.036) → implementer; planner@2's own journal admits it added nothing ('brief narrowed to that single edit'). No existing seed adds this edge (searched 'fast path', 'minor changes edge': only unrelated matches).\\n\\nExpected effect: ~30 s and one LLM call saved per minor cycle, and no chance for the re-plan to drift; bounded by the reviewer explicitly tagging the verdict minor.\\n\\nBasis: run 01M25HCK22PNFPARY8R3YVC9DK, workflow version 99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be, commit add88af03e7532624d73a287ff9d0225a77343a8\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-3e48\",\"title\":\"Implementer: add routing-consistency self-check — one route per branch\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-10T11:52:11.067Z\",\"updatedAt\":\"2026-09-10T11:52:11.067Z\",\"description\":\"In `.fabro/workflows/develop/prompts/implementer.md` (Inline verification report section) add: before finishing, re-read every routing instruction written — each branch must yield exactly ONE route; two routing sentences in one branch is a FAIL, fix before reporting.\\n\\nGrounded: implementer@1 of the basis run wrote branch (a) of `.fabro/workflows/develop/prompts/planner.md` with both 'route \\\"Already landed\\\"' and 'continue down the `sd ready` candidate list' sentences, making the new graph edge dead config; reviewer@1 blocked it and the avoidable pass-2 cycle (planner@2+implementer@2+tester@2+evidence@2+reviewer@2) cost ~126 s wall / ~$0.125 / 5 stage visits for a one-sentence deletion. No existing seed covers a routing self-check (searched 'routing self-check', 'one route per branch': no matches).\\n\\nExpected effect: label-dead-config contradictions caught at implementer time, saving ~one full review cycle (~2 min / ~$0.13) per occurrence.\\n\\nBasis: run 01M25HCK22PNFPARY8R3YVC9DK, workflow version 99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be, commit add88af03e7532624d73a287ff9d0225a77343a8\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-d83a\",\"title\":\"PROJECT_FACTS: name workflow.fabro as the graph source\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T11:52:11.104Z\",\"updatedAt\":\"2026-09-10T11:52:11.104Z\",\"description\":\"Add one line to `.fabro/workflows/develop/prompts/project-facts.md`: 'Graph source: `.fabro/workflows/develop/workflow.fabro` (DOT); `workflow.toml` wires runtime settings only — never probe it for edges.'\\n\\nGrounded: planner@1 of the basis run (100.6 s, $0.117 — the costliest stage of that run) burned two probes discovering this: a grep on `workflow.toml` for planner edges (seq 51–53, empty) and a `sed -n '1,120p'` head of `workflow.toml` (seq 57–59) before grepping the real file. Distinct from open fabro-0586 (available-binaries line — same file, different content) and from fabro-8d4c (probe style, not file identity).\\n\\nExpected effect: ~2 fewer tool calls per fresh claim; planners stop probing the wrong file every loop-asset seed.\\n\\nBasis: run 01M25HCK22PNFPARY8R3YVC9DK, workflow version 99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be, commit add88af03e7532624d73a287ff9d0225a77343a8\",\"labels\":[\"revision\"]}\n+{\"id\":\"fabro-9bf4\",\"title\":\"Bake graphviz into the develop toolchain image\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T11:52:20.414Z\",\"updatedAt\":\"2026-09-10T11:52:20.414Z\",\"description\":\"Add `graphviz` to the apt-get list in the toolchain Dockerfile (`.fabro/Dockerfile.toolchain`).\\n\\nGrounded: implementer@1 of the basis run — '`dot` is not installed in this environment, so the workflow.fabro render-check fell back to eyeballing the edge block'; loop-asset seeds edit this graph regularly (that run did) and a malformed edge would only surface at the next run's engine parse. Distinct from closed fabro-05d0 (baked `gh` — different package; that saga is unrelated). Caveat already covered by closed fabro-6f6e: inert until the toolchain image rebuilds.\\n\\nCAPABILITY-AFFECTING (ADR-0019): this adds a tool (`dot`) to an agent-reachable surface (`.fabro/Dockerfile.toolchain`); implementation awaits explicit user approval. Proposed fix direction is engine-mediated and read-only: install the distro `graphviz` package in the existing toolchain image so implementers can run `dot -Tcanon` as a pure syntax verification of graph edits — no new credentials, no raw clients, no tokens.\\n\\nExpected effect: mechanical `dot -Tcanon` syntax verification of graph edits at implementer time; eyeball fallback eliminated.\\n\\nBasis: run 01M25HCK22PNFPARY8R3YVC9DK, workflow version 99e5a7758912f1adc63c1749584b00296293249901eafbd60fa4e0556f75e4be, commit add88af03e7532624d73a287ff9d0225a77343a8\",\"labels\":[\"needs-user\",\"revision\"]}\n",
+      "summary": {
+        "files_changed": 4,
+        "additions": 85,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1823,6 +1909,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 204,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-10T11:53:03.204363129Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-10T11:53:03.204277507Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
