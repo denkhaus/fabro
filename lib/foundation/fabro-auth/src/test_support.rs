@@ -14,20 +14,24 @@ use tokio::sync::RwLock as AsyncRwLock;
 use crate::credential_source::CredentialSource;
 use crate::vault_source::VaultCredentialSource;
 
-/// Fabro's policy layer, checked in under `fabro-llm`. Tests in this crate
-/// need the built-in catalog with `metadata.fabro.credentials` attached.
-pub const FABRO_POLICY_TOML: &str =
-    include_str!("../../../components/fabro-llm/catalog/fabro-policy.toml");
-
-/// The lithos built-in catalog with Fabro's policy layer applied.
+/// The lithos built-in catalog.
 #[must_use]
 pub fn test_catalog() -> Catalog {
     Catalog::builder()
         .with_builtin()
-        .toml_layer("fabro-policy.toml", FABRO_POLICY_TOML)
-        .expect("fabro policy layer should parse")
         .build()
-        .expect("built-in catalog with fabro policy should build")
+        .expect("built-in catalog should build")
+}
+
+/// The built-in catalog with an operator overlay applied.
+#[must_use]
+pub fn test_catalog_with_overlay(overlay: &str) -> Catalog {
+    Catalog::builder()
+        .with_builtin()
+        .overlay_toml(&format!("schema_version = 1\n{overlay}"))
+        .expect("overlay should parse")
+        .build()
+        .expect("built-in catalog with overlay should build")
 }
 
 /// A detached in-memory vault holding no secrets.

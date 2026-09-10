@@ -115,7 +115,7 @@ digraph Example {
 
 ## Direct SDK environment credentials
 
-The built-in Modal provider authenticates with two headers, `Modal-Key` and `Modal-Secret`, read from the vault secrets `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`. `EnvCredentialSource` does not configure Modal automatically because Modal uses two headers instead of one API-key reference.
+The built-in Modal provider authenticates with two headers, `Modal-Key` and `Modal-Secret`, read from the secrets `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`. Direct SDK use reads the same two names from the process environment.
 
 For direct SDK use, enable Modal and set its endpoint URL in the `[llm]` overlay, then build the client with `fabro_llm::build_client` over a `VaultCredentialSource` whose vault holds both secrets. The catalog you pass to the client must be built from the same settings file with `fabro_llm::build_catalog`.
 

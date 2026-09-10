@@ -9,7 +9,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use fabro_types::catalog_policy;
 use lithos_llm::catalog::{Catalog, CatalogProvider, ProviderId};
 use lithos_llm::credentials::{CredentialError, CredentialProvider, Credentials};
 
@@ -50,10 +49,7 @@ pub trait CredentialSource: Send + Sync {
     /// the providers that have material but cannot use it.
     async fn resolve_all(&self, catalog: &Catalog) -> ResolvedCredentials {
         let mut resolved = ResolvedCredentials::default();
-        for provider in catalog.providers() {
-            if !catalog_policy::provider_policy(provider).is_enabled() {
-                continue;
-            }
+        for provider in catalog.providers().filter(|provider| provider.is_enabled()) {
             match self.credentials(provider).await {
                 Ok(_) => resolved.ready.push(provider.id().clone()),
                 Err(ResolveError::NotConfigured(_)) => {}

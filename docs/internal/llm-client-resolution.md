@@ -10,8 +10,7 @@ This document defines how Fabro resolves LLM credentials and constructs `fabro-l
 - Standalone setup and tests that use default settings build a default `Arc<Catalog>` locally, then pass it explicitly.
 - `GenerateParams::new(model, client)` always receives an explicit `Arc<Client>`.
 - When a caller needs diagnostics in runtime request-serving paths, call `source.resolve(catalog)` directly and consume both `credentials` and `auth_issues`.
-- `EnvCredentialSource` is the env-backed source for env-only or no-vault contexts.
-- `VaultCredentialSource` is the normal source for vault-backed runtime contexts.
+- `VaultCredentialSource` is the normal source for vault-backed runtime contexts; `VaultCredentialSource::environment_only()` serves env-only or no-vault contexts.
 
 ## Why
 

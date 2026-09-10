@@ -91,14 +91,14 @@ fn install_llm_provider_ids(catalog: &Catalog) -> Vec<ProviderId> {
 
 fn provider_env_var_label(provider: &ProviderId, catalog: &Catalog) -> String {
     catalog::provider(catalog, provider.as_str())
-        .map(|entry| fabro_auth::env_var_names(entry.provider).join(" / "))
+        .map(|entry| fabro_auth::secret_names(entry.provider).join(" / "))
         .filter(|label| !label.is_empty())
         .unwrap_or_else(|| "API_KEY".to_string())
 }
 
 fn provider_vault_secret_name(provider: &ProviderId, catalog: &Catalog) -> String {
     catalog::provider(catalog, provider.as_str())
-        .and_then(|entry| fabro_auth::expected_vault_secret_name(entry.provider))
+        .and_then(|entry| fabro_auth::expected_secret_name(entry.provider))
         .unwrap_or_else(|| format!("{}_API_KEY", provider.to_string().to_uppercase()))
 }
 

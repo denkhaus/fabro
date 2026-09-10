@@ -7303,7 +7303,7 @@ mod real_llm {
     use std::sync::Arc;
 
     use async_trait::async_trait;
-    use fabro_auth::EnvCredentialSource;
+    use fabro_auth::VaultCredentialSource;
     use fabro_graphviz::graph::Node;
     use fabro_llm::{Client, ClientOptions, Request};
     use fabro_types::WorkflowSettings;
@@ -7398,7 +7398,8 @@ mod real_llm {
         }
 
         fabro_test::require_env("ANTHROPIC_API_KEY")?;
-        let source: Arc<dyn fabro_auth::CredentialSource> = Arc::new(EnvCredentialSource::new());
+        let source: Arc<dyn fabro_auth::CredentialSource> =
+            Arc::new(VaultCredentialSource::environment_only());
         Some(Arc::new(
             fabro_llm::build_client(
                 Catalog::clone(&super::default_catalog()),

@@ -12,7 +12,7 @@ use fabro_agent::{
     AgentEvent, AgentProfile, AgentProfileBuilder, LocalSandbox, OpenAiProfile, Session,
     SessionOptions, SubAgentSupervisor, ToolSecrets, WebFetchSummarizer,
 };
-use fabro_auth::EnvCredentialSource;
+use fabro_auth::VaultCredentialSource;
 use fabro_config::LlmLayer;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::test_support::client_from_env;
@@ -146,7 +146,7 @@ async fn make_client(provider: &Provider, twin: Option<&OpenAiTwinOptions>) -> C
         return make_twin_client(twin.expect("openai twin config should be provided")).await;
     }
 
-    let source = Arc::new(EnvCredentialSource::new());
+    let source = Arc::new(VaultCredentialSource::environment_only());
     fabro_llm::build_client(live_catalog(), source, ClientOptions::standard())
         .await
         .expect("LLM client should build")

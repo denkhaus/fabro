@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use fabro_types::catalog_policy;
 use lithos_llm::catalog::{CatalogProvider, ProviderId};
 
 use crate::context::{AuthContextRequest, AuthContextResponse};
@@ -18,8 +17,8 @@ impl ApiKeyStrategy {
         Self {
             provider_id:   provider.id().clone(),
             display_name:  provider.display_name().to_string(),
-            env_var_names: crate::env_var_names(provider),
-            api_key_url:   catalog_policy::provider_policy(provider).api_key_url,
+            env_var_names: crate::secret_names(provider),
+            api_key_url:   provider.api_key_url().map(str::to_string),
         }
     }
 }

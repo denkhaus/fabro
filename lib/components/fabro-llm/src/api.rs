@@ -102,7 +102,7 @@ fn provider_view(entry: &ProviderEntry<'_>, configured: bool) -> Provider {
         model_count: u32::try_from(catalog::provider_models(provider).len()).unwrap_or(u32::MAX),
         default_model: provider.default_model().map(str::to_string),
         configured,
-        expected_secret_name: fabro_auth::expected_vault_secret_name(provider),
+        expected_secret_name: fabro_auth::expected_secret_name(provider),
     }
 }
 

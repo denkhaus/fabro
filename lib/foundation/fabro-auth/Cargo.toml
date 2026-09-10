@@ -23,7 +23,7 @@ fabro-redact.workspace = true
 fabro-static.workspace = true
 fabro-types = { path = "../fabro-types" }
 fabro-vault = { path = "../fabro-vault" }
-lithos-llm = { workspace = true, features = ["runtime"] }
+lithos-llm = { workspace = true, features = ["runtime", "environment-credentials", "bedrock-aws"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

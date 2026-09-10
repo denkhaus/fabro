@@ -860,7 +860,7 @@ fn install_catalog_provider(provider: &ProviderId) -> Result<&'static CatalogPro
 
 fn provider_secret_name(provider: &ProviderId) -> Result<String, String> {
     let catalog_provider = install_catalog_provider(provider)?;
-    fabro_auth::expected_vault_secret_name(catalog_provider)
+    fabro_auth::expected_secret_name(catalog_provider)
         .ok_or_else(|| format!("provider '{provider}' does not define a vault credential path"))
 }
 

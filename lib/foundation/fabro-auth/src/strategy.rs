@@ -101,7 +101,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_key_strategy_uses_provider_env_names() {
+    async fn api_key_strategy_uses_provider_secret_names() {
         let catalog = test_catalog();
         let provider = catalog.provider("anthropic").unwrap();
         let mut strategy = ApiKeyStrategy::new(provider);

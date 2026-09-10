@@ -30,7 +30,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use fabro_agent::{AgentProfile, AgentProfileBuilder, LocalSandbox, Session, SessionOptions};
-use fabro_auth::EnvCredentialSource;
+use fabro_auth::VaultCredentialSource;
 use fabro_llm::ClientOptions;
 use fabro_types::{AgentProfileKind, provider_ids};
 
@@ -39,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let catalog = Arc::new(fabro_llm::default_catalog());
     let client = fabro_llm::build_client(
         (*catalog).clone(),
-        Arc::new(EnvCredentialSource::new()),
+        Arc::new(VaultCredentialSource::environment_only()),
         ClientOptions::standard(),
     )
     .await?
@@ -325,12 +325,12 @@ serde_json = "1"
 
 ### Quick start
 
-Build a catalog, build a client over a credential source, then send a lithos `Request`. `EnvCredentialSource` reads provider keys such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and `GEMINI_API_KEY` from the process environment.
+Build a catalog, build a client over a credential source, then send a lithos `Request`. `VaultCredentialSource::environment_only()` reads provider keys such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and `GEMINI_API_KEY` from the process environment.
 
 ```rust
 use std::sync::Arc;
 
-use fabro_auth::EnvCredentialSource;
+use fabro_auth::VaultCredentialSource;
 use fabro_llm::{ClientOptions, Request};
 
 #[tokio::main]
@@ -338,7 +338,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let catalog = fabro_llm::default_catalog();
     let built = fabro_llm::build_client(
         catalog,
-        Arc::new(EnvCredentialSource::new()),
+        Arc::new(VaultCredentialSource::environment_only()),
         ClientOptions::standard(),
     )
     .await?;
@@ -378,7 +378,7 @@ The `fabro_llm::catalog` module reads Fabro policy from the catalog: `enabled_pr
 
 `ClientOptions::standard()` turns on the lithos retry middleware (three attempts with short exponential backoff) and local attachment inlining. Add middleware with `with_middleware`, replace a provider's adapter with `with_adapter`, or set `http` to inject a configured HTTP client. `fabro_llm::build_offline_client(catalog, options)` builds a client whose only providers are custom adapters, which is how `fabro exec --server` routes every call through a Fabro server.
 
-Credential sources live in `fabro-auth`: `EnvCredentialSource` for the process environment, `VaultCredentialSource` for a Fabro vault with optional environment fallback, and `SqlVaultCredentialSource` for the server's secret store. Fabro looks up a provider's secret through the `metadata.fabro.credentials` refs on its catalog entry.
+Credential sources live in `fabro-auth`: `VaultCredentialSource` reads a Fabro vault with an optional process-environment fallback (`VaultCredentialSource::environment_only()` for SDK callers with no vault), and `SqlVaultCredentialSource` reads the server's secret store. lithos-llm decides which secret names a provider reads (`OPENAI_API_KEY`, `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`, or `<PROVIDER>_API_KEY` for an operator-defined provider); Fabro's vault is keyed by those same names.
 
 #### Requests and responses
 
