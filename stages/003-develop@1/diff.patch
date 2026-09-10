@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M25R5K62JQWZR0YV8HC88BEQ.jsonl b/.fabro/journal/01M25R5K62JQWZR0YV8HC88BEQ.jsonl
+index 5d9bdcdcd..7ba81e14f 100644
+--- a/.fabro/journal/01M25R5K62JQWZR0YV8HC88BEQ.jsonl
++++ b/.fabro/journal/01M25R5K62JQWZR0YV8HC88BEQ.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M25R5K62JQWZR0YV8HC88BEQ","node":"start","visit":1,"status":"succeeded","ts":"2026-09-10T13:30:21Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M25R5K62JQWZR0YV8HC88BEQ","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-10T13:31:04Z","data":{"painpoints":[],"observations":["upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0' — far below the MIN threshold of 5, route Work","no revisor backlog: review artifacts exist for the two newest completed develop runs (01M25K41V4NEWXSA3SVGRHKRXK at 2026-09-10 12:57, 01M25HCK22PNFPARY8R3YVC9DK at 2026-09-10 11:41), so no unreviewed completed develop runs remain","next surveyor: upstream drift is currently zero, so this pass runs a develop+revisor cycle; re-check the count next pass as nightly upstream releases accumulate"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M25R5K62JQWZR0YV8HC88BEQ","node":"develop","visit":1,"status":"succeeded","ts":"2026-09-10T14:48:01Z","data":{"painpoints":[],"observations":["child 01M25VVK131JTQB3BRBPAV0DWR status failed (cancelled), no PR, no gate wait (child-status routing); retriable cause — next fire retries the seed"]}}
