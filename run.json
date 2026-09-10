@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-10T11:31:36.101721735Z",
-  "last_event_at": "2026-09-10T11:41:29.991679665Z",
+  "last_event_at": "2026-09-10T11:41:35.503308659Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -3010,9 +3010,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 365,
       "checkpoint": {
-        "timestamp": "2026-09-10T11:41:30.254723326Z",
+        "timestamp": "2026-09-10T11:41:34.747223325Z",
         "current_node": "reviewer",
         "completed_nodes": [
           "start",
@@ -3029,6 +3029,302 @@
         ],
         "node_retries": {},
         "context_values": {
+          "internal.thread_id": "evidence",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Verified the pass-2 fix by re-reading the materialized evidence blob and grepping planner.md directly: the 'After the close' sentence is gone, branch (a) routes solely via superseded-close → 'Already landed', and branch (b), the project-facts sd close row, the workflow.fabro edge, and the outcome-contract route are byte-identical to the approved prior pass. Evidence counts (+22/-3 across 4 loop files) reconcile with the visible diff; worktree clean; no capability delta."
+            ]
+          },
+          "current_seed_id": "fabro-d183",
+          "last_stage": "reviewer",
+          "internal.node_visit_count": 2,
+          "thread.tester.current_node": "evidence",
+          "internal.retry_count.tester": 0,
+          "current_node": "reviewer",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2750,
+            "preview": "Re-claimed fabro-d183 (changes_requested cycle 1). The sole fix is the reviewer's finding: branch (a) in planner.md contains a second routing sentence that makes the new \"Already landed\" edge dead. Ev"
+          },
+          "thread.evidence.current_node": "reviewer",
+          "internal.retry_count.start": 0,
+          "internal.run_id": "01M25HCK22PNFPARY8R3YVC9DK",
+          "internal.retry_count.reviewer": 0,
+          "preferred_label": "Approved",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 1758,
+            "preview": "All pass-2 criteria verified:\n\n- **Sentence deleted**: `grep -n 'After the close' planner.md` returns nothing (exit 1) — the contradictory sentence is gone.\n- **Branch (a) intact with sole routing**"
+          },
+          "thread.planner.current_node": "implementer",
+          "failure_signature": "",
+          "lesson_capture": "nothing durable — skipped",
+          "current_seed_brief": "RE-PLAN (review changes_requested, pass 2): apply exactly one fix to the already-landed implementation; everything else meets spec. Review finding: `.fabro/workflows/develop/prompts/planner.md` branch (a) (step 3, 'ALREADY LANDED' paragraph) is self-contradictory — it says 'route the exit label \"Already landed\"' and then, in the same paragraph, 'After the close, continue down the sd ready candidate list: if another seed remains, claim it and route \"Seed claimed\"; if none remains, route \"Tracker empty\".' Under the second sentence the \"Already landed\" label can never fire, making the workflow.fabro edge (line ~302) and the outcome-contract route (planner.md:105-112) dead config. Acceptance criteria: - DELETE the entire sentence 'After the close, continue down the `sd ready --assignee fabro --limit 200` candidate list: if another seed remains, claim it and route \"Seed claimed\"; if none remains, route \"Tracker empty\".' from branch (a) — no other wording changes in that paragraph. - Branch (a)'s sole routing instruction after the deletion: superseded-close, then route \"Already landed\" and exit (the next run's planner picks the next seed). - Leave branch (b), the sd close table row in `.fabro/workflows/develop/prompts/project-facts.md`, the workflow.fabro edge, and the outcome-contract route exactly as they are. - Scope guard: git status shows only the loop-asset files already touched for this seed (`.fabro/workflows/develop/prompts/planner.md` is the only file that should change this pass); no implementer prompt, no sweep, no Rust. Verification cheapest-first: `grep -n 'After the close' .fabro/workflows/develop/prompts/planner.md` returns nothing; `grep -n 'Already landed'` in planner.md still present in branch (a); gate green via the deterministic tester step. Review feedback (verbatim scope): the sentence deletion is the entire deviation; everything else in the prior diff was approved-equivalent.",
+          "internal.retry_count.planner": 0,
+          "review_feedback": "planner.md branch (a) (line 46) is self-contradictory: it first instructs 'route the exit label \"Already landed\"' and then, in the same paragraph, 'After the close, continue down the sd ready candidate list: if another seed remains, claim it and route \"Seed claimed\"; if none remains, route \"Tracker empty\".' Under the second sentence the \"Already landed\" label can never fire, making the new workflow.fabro edge (line 302) and the new outcome-contract route (planner.md:105-112) dead config. The seed spec authorizes only the exit route. Fix: delete the 'After the close, continue down …' sentence entirely so branch (a)'s sole routing instruction is: superseded-close, then route \"Already landed\" and exit (the next run's planner picks the next seed). Everything else in the diff meets the spec and needs no change.",
+          "graph.rankdir": "LR",
+          "internal.fidelity": "summary:high",
+          "internal.seed_cycle_anchor": "fabro-d183",
+          "seed_cycles": {
+            "planner": 2,
+            "implementer": 2,
+            "tester": 2,
+            "evidence": 2,
+            "reviewer": 2
+          },
+          "graph.inspects": "develop",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.implementer": 0,
+          "internal.retry_count.evidence": 0,
+          "failure_class": "",
+          "internal.work_dir": "/workspace/fabro",
+          "outcome": "succeeded",
+          "thread.start.current_node": "planner",
+          "thread.reviewer.current_node": "planner",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 1667,
+            "preview": "All criteria verified. The pass was a single-sentence deletion via a python heredoc through the shell (the fs_hide escape hatch for loop-asset targets) — nothing durable to record.\n\nImplemented:\n{\n "
+          },
+          "last_response": "All pass-2 criteria verified:\n\n- **Sentence deleted**: `grep -n 'After the close' planner.md` returns nothing (exit 1) — the contradictory sentence is gone.\n- **Branch (a) intact with sole routing**",
+          "review_verdict": "approved",
+          "graph.preamble_budget_kb": "24",
+          "thread.implementer.current_node": "tester",
+          "command.output": "blob://sha256/0f0abcef91171d98b0c1fc8b1363b89000d525433358ed7dfc775f0691859b74",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.max_node_visits": "40",
+          "implementation_summary": "Deleted exactly one sentence from branch (a) of `.fabro/workflows/develop/prompts/planner.md` (the 'After the close, continue down the `sd ready` candidate list…' instruction), leaving branch (a)'s sole routing as superseded-close then route \"Already landed\" and exit. Performed via a python3 heredoc through the shell with a uniqueness assertion on the target sentence; diff shows 1 file, 1 line changed. Lesson capture: nothing durable — skipped.\n- PASS - `grep -n 'After the close' .fabro/workflows/develop/prompts/planner.md` returns nothing: sentence deleted from `.fabro/workflows/develop/prompts/planner.md` line 46\n- PASS - 'Already landed' still present in branch (a) with sole routing instruction (superseded-close → route \"Already landed\"): planner.md:46\n- PASS - branch (b), `sd close` table row in `project-facts.md:39`, `workflow.fabro` edge at line 302, and outcome-contract route (planner.md:105-112) untouched: `git status` shows only planner.md modified\n- PASS - scope guard: no implementer prompt, no sweep, no Rust touched: `git diff --stat` = 1 file +1/-1\n- PASS - gate green expected via deterministic tester step: not run here per implementer gate ban; config-only change, no build needed",
+          "current_seed_title": "Planner: exit already-landed seeds before the cycle instead of running a no-op verification lap"
+        },
+        "node_outcomes": {
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/0f0abcef91171d98b0c1fc8b1363b89000d525433358ed7dfc775f0691859b74"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 401,
+              "active_time_ms": 401
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "none"
+                ]
+              },
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 1667,
+                "preview": "All criteria verified. The pass was a single-sentence deletion via a python heredoc through the shell (the fs_hide escape hatch for loop-asset targets) — nothing durable to record.\n\nImplemented:\n{\n "
+              },
+              "last_stage": "implementer",
+              "last_response": "All criteria verified. The pass was a single-sentence deletion via a python heredoc through the shell (the fs_hide escape hatch for loop-asset targets) — nothing durable to record.\n\nImplemented:\n{\n ",
+              "implementation_summary": "Deleted exactly one sentence from branch (a) of `.fabro/workflows/develop/prompts/planner.md` (the 'After the close, continue down the `sd ready` candidate list…' instruction), leaving branch (a)'s sole routing as superseded-close then route \"Already landed\" and exit. Performed via a python3 heredoc through the shell with a uniqueness assertion on the target sentence; diff shows 1 file, 1 line changed. Lesson capture: nothing durable — skipped.\n- PASS - `grep -n 'After the close' .fabro/workflows/develop/prompts/planner.md` returns nothing: sentence deleted from `.fabro/workflows/develop/prompts/planner.md` line 46\n- PASS - 'Already landed' still present in branch (a) with sole routing instruction (superseded-close → route \"Already landed\"): planner.md:46\n- PASS - branch (b), `sd close` table row in `project-facts.md:39`, `workflow.fabro` edge at line 302, and outcome-contract route (planner.md:105-112) untouched: `git status` shows only planner.md modified\n- PASS - scope guard: no implementer prompt, no sweep, no Rust touched: `git diff --stat` = 1 file +1/-1\n- PASS - gate green expected via deterministic tester step: not run here per implementer gate ban; config-only change, no build needed",
+              "lesson_capture": "nothing durable — skipped"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16757,
+                    "output_tokens": 801,
+                    "reasoning_tokens": 292,
+                    "cache_read_tokens": 59904,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 43839
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 44500,
+              "tool_time_ms": 750,
+              "active_time_ms": 45250
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/6a6aa88e48376bd588e37c4a4ca50ef237d01806809b8c9a9775f1785909c11b"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5280,
+              "active_time_ms": 5280
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_stage": "planner",
+              "last_response": "Re-claimed fabro-d183 (changes_requested cycle 1). The sole fix is the reviewer's finding: branch (a) in planner.md contains a second routing sentence that makes the new \"Already landed\" edge dead. Ev",
+              "current_seed_title": "Planner: exit already-landed seeds before the cycle instead of running a no-op verification lap",
+              "current_seed_id": "fabro-d183",
+              "current_seed_brief": "RE-PLAN (review changes_requested, pass 2): apply exactly one fix to the already-landed implementation; everything else meets spec. Review finding: `.fabro/workflows/develop/prompts/planner.md` branch (a) (step 3, 'ALREADY LANDED' paragraph) is self-contradictory — it says 'route the exit label \"Already landed\"' and then, in the same paragraph, 'After the close, continue down the sd ready candidate list: if another seed remains, claim it and route \"Seed claimed\"; if none remains, route \"Tracker empty\".' Under the second sentence the \"Already landed\" label can never fire, making the workflow.fabro edge (line ~302) and the outcome-contract route (planner.md:105-112) dead config. Acceptance criteria: - DELETE the entire sentence 'After the close, continue down the `sd ready --assignee fabro --limit 200` candidate list: if another seed remains, claim it and route \"Seed claimed\"; if none remains, route \"Tracker empty\".' from branch (a) — no other wording changes in that paragraph. - Branch (a)'s sole routing instruction after the deletion: superseded-close, then route \"Already landed\" and exit (the next run's planner picks the next seed). - Leave branch (b), the sd close table row in `.fabro/workflows/develop/prompts/project-facts.md`, the workflow.fabro edge, and the outcome-contract route exactly as they are. - Scope guard: git status shows only the loop-asset files already touched for this seed (`.fabro/workflows/develop/prompts/planner.md` is the only file that should change this pass); no implementer prompt, no sweep, no Rust. Verification cheapest-first: `grep -n 'After the close' .fabro/workflows/develop/prompts/planner.md` returns nothing; `grep -n 'Already landed'` in planner.md still present in branch (a); gate green via the deterministic tester step. Review feedback (verbatim scope): the sentence deletion is the entire deviation; everything else in the prior diff was approved-equivalent.",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2750,
+                "preview": "Re-claimed fabro-d183 (changes_requested cycle 1). The sole fix is the reviewer's finding: branch (a) in planner.md contains a second routing sentence that makes the new \"Already landed\" edge dead. Ev"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Re-claim pass for fabro-d183: review requested deletion of one contradictory routing sentence in planner.md branch (a) that made the new 'Already landed' exit edge unreachable; brief narrowed to that single edit so the pass cannot drift."
+                ]
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 17094,
+                    "output_tokens": 749,
+                    "reasoning_tokens": 96,
+                    "cache_read_tokens": 32064,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 35983
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 30946,
+              "tool_time_ms": 585,
+              "active_time_ms": 31531
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "last_response": "All pass-2 criteria verified:\n\n- **Sentence deleted**: `grep -n 'After the close' planner.md` returns nothing (exit 1) — the contradictory sentence is gone.\n- **Branch (a) intact with sole routing**",
+              "last_stage": "reviewer",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 1758,
+                "preview": "All pass-2 criteria verified:\n\n- **Sentence deleted**: `grep -n 'After the close' planner.md` returns nothing (exit 1) — the contradictory sentence is gone.\n- **Branch (a) intact with sole routing**"
+              },
+              "review_verdict": "approved",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Verified the pass-2 fix by re-reading the materialized evidence blob and grepping planner.md directly: the 'After the close' sentence is gone, branch (a) routes solely via superseded-close → 'Already landed', and branch (b), the project-facts sd close row, the workflow.fabro edge, and the outcome-contract route are byte-identical to the approved prior pass. Evidence counts (+22/-3 across 4 loop files) reconcile with the visible diff; worktree clean; no capability delta."
+                ]
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 21749,
+                    "output_tokens": 639,
+                    "reasoning_tokens": 537,
+                    "cache_read_tokens": 34560,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 44606
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 42991,
+              "tool_time_ms": 225,
+              "active_time_ms": 43216
+            }
+          }
+        },
+        "next_node_id": "closeout",
+        "git_commit_sha": "c09ca59a07ba2c37aaed5e3fe9a660feb4f7132b",
+        "node_visits": {
+          "evidence": 2,
+          "tester": 2,
+          "planner": 2,
+          "start": 1,
+          "reviewer": 2,
+          "implementer": 2
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M25HCK22PNFPARY8R3YVC9DK.jsonl b/.fabro/journal/01M25HCK22PNFPARY8R3YVC9DK.jsonl\nindex f46ac4f..340e69e 100644\n--- a/.fabro/journal/01M25HCK22PNFPARY8R3YVC9DK.jsonl\n+++ b/.fabro/journal/01M25HCK22PNFPARY8R3YVC9DK.jsonl\n@@ -8,3 +8,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25HCK22PNFPARY8R3YVC9DK\",\"node\":\"implementer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-10T11:40:25Z\",\"data\":{\"painpoints\":[],\"observations\":[\"none\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25HCK22PNFPARY8R3YVC9DK\",\"node\":\"tester\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-10T11:40:36Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25HCK22PNFPARY8R3YVC9DK\",\"node\":\"evidence\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-10T11:40:41Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25HCK22PNFPARY8R3YVC9DK\",\"node\":\"reviewer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-10T11:41:30Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified the pass-2 fix by re-reading the materialized evidence blob and grepping planner.md directly: the 'After the close' sentence is gone, branch (a) routes solely via superseded-close → 'Already landed', and branch (b), the project-facts sd close row, the workflow.fabro edge, and the outcome-contract route are byte-identical to the approved prior pass. Evidence counts (+22/-3 across 4 loop files) reconcile with the visible diff; worktree clean; no capability delta.\"]}}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 33,
+          "deletions": 3
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-10T11:41:35.748972440Z",
+        "current_node": "closeout",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout"
+        ],
+        "node_retries": {},
+        "context_values": {
           "last_stage": "reviewer",
           "internal.retry_count.start": 0,
           "response.planner": {
@@ -3037,14 +3333,15 @@
             "chars": 2750,
             "preview": "Re-claimed fabro-d183 (changes_requested cycle 1). The sole fix is the reviewer's finding: branch (a) in planner.md contains a second routing sentence that makes the new \"Already landed\" edge dead. Ev"
           },
-          "internal.thread_id": "evidence",
-          "internal.node_visit_count": 2,
+          "internal.thread_id": "reviewer",
+          "internal.node_visit_count": 1,
           "thread.planner.current_node": "implementer",
           "graph.max_node_visits": "40",
           "implementation_summary": "Deleted exactly one sentence from branch (a) of `.fabro/workflows/develop/prompts/planner.md` (the 'After the close, continue down the `sd ready` candidate list…' instruction), leaving branch (a)'s sole routing as superseded-close then route \"Already landed\" and exit. Performed via a python3 heredoc through the shell with a uniqueness assertion on the target sentence; diff shows 1 file, 1 line changed. Lesson capture: nothing durable — skipped.\n- PASS - `grep -n 'After the close' .fabro/workflows/develop/prompts/planner.md` returns nothing: sentence deleted from `.fabro/workflows/develop/prompts/planner.md` line 46\n- PASS - 'Already landed' still present in branch (a) with sole routing instruction (superseded-close → route \"Already landed\"): planner.md:46\n- PASS - branch (b), `sd close` table row in `project-facts.md:39`, `workflow.fabro` edge at line 302, and outcome-contract route (planner.md:105-112) untouched: `git status` shows only planner.md modified\n- PASS - scope guard: no implementer prompt, no sweep, no Rust touched: `git diff --stat` = 1 file +1/-1\n- PASS - gate green expected via deterministic tester step: not run here per implementer gate ban; config-only change, no build needed",
           "internal.retry_count.implementer": 0,
-          "command.output": "blob://sha256/0f0abcef91171d98b0c1fc8b1363b89000d525433358ed7dfc775f0691859b74",
+          "command.output": "blob://sha256/fac6f0ae995b1ab3f5b4a650d88ff32be4791af9c3a72ca071aa3c362f89f2d5",
           "review_verdict": "approved",
+          "internal.retry_count.closeout": 0,
           "internal.run_id": "01M25HCK22PNFPARY8R3YVC9DK",
           "failure_signature": "",
           "graph.inspects": "develop",
@@ -3059,7 +3356,7 @@
           },
           "thread.start.current_node": "planner",
           "graph.preamble_budget_kb": "24",
-          "current_node": "reviewer",
+          "current_node": "closeout",
           "current_seed_brief": "RE-PLAN (review changes_requested, pass 2): apply exactly one fix to the already-landed implementation; everything else meets spec. Review finding: `.fabro/workflows/develop/prompts/planner.md` branch (a) (step 3, 'ALREADY LANDED' paragraph) is self-contradictory — it says 'route the exit label \"Already landed\"' and then, in the same paragraph, 'After the close, continue down the sd ready candidate list: if another seed remains, claim it and route \"Seed claimed\"; if none remains, route \"Tracker empty\".' Under the second sentence the \"Already landed\" label can never fire, making the workflow.fabro edge (line ~302) and the outcome-contract route (planner.md:105-112) dead config. Acceptance criteria: - DELETE the entire sentence 'After the close, continue down the `sd ready --assignee fabro --limit 200` candidate list: if another seed remains, claim it and route \"Seed claimed\"; if none remains, route \"Tracker empty\".' from branch (a) — no other wording changes in that paragraph. - Branch (a)'s sole routing instruction after the deletion: superseded-close, then route \"Already landed\" and exit (the next run's planner picks the next seed). - Leave branch (b), the sd close table row in `.fabro/workflows/develop/prompts/project-facts.md`, the workflow.fabro edge, and the outcome-contract route exactly as they are. - Scope guard: git status shows only the loop-asset files already touched for this seed (`.fabro/workflows/develop/prompts/planner.md` is the only file that should change this pass); no implementer prompt, no sweep, no Rust. Verification cheapest-first: `grep -n 'After the close' .fabro/workflows/develop/prompts/planner.md` returns nothing; `grep -n 'Already landed'` in planner.md still present in branch (a); gate green via the deterministic tester step. Review feedback (verbatim scope): the sentence deletion is the entire deviation; everything else in the prior diff was approved-equivalent.",
           "lesson_capture": "nothing durable — skipped",
           "thread.implementer.current_node": "tester",
@@ -3077,15 +3374,17 @@
           },
           "graph.cycle_counter_reset_key": "current_seed_id",
           "thread.evidence.current_node": "reviewer",
+          "internal.exit_kind": "natural",
           "seed_cycles": {
             "planner": 2,
             "implementer": 2,
             "tester": 2,
             "evidence": 2,
-            "reviewer": 2
+            "reviewer": 2,
+            "closeout": 1
           },
           "last_response": "All pass-2 criteria verified:\n\n- **Sentence deleted**: `grep -n 'After the close' planner.md` returns nothing (exit 1) — the contradictory sentence is gone.\n- **Branch (a) intact with sole routing**",
-          "thread.reviewer.current_node": "planner",
+          "thread.reviewer.current_node": "closeout",
           "internal.retry_count.reviewer": 0,
           "internal.seed_cycle_anchor": "fabro-d183",
           "response.reviewer": {
@@ -3094,7 +3393,7 @@
             "chars": 1758,
             "preview": "All pass-2 criteria verified:\n\n- **Sentence deleted**: `grep -n 'After the close' planner.md` returns nothing (exit 1) — the contradictory sentence is gone.\n- **Branch (a) intact with sole routing**"
           },
-          "internal.fidelity": "summary:high",
+          "internal.fidelity": "compact",
           "current_seed_title": "Planner: exit already-landed seeds before the cycle instead of running a no-op verification lap",
           "review_feedback": "planner.md branch (a) (line 46) is self-contradictory: it first instructs 'route the exit label \"Already landed\"' and then, in the same paragraph, 'After the close, continue down the sd ready candidate list: if another seed remains, claim it and route \"Seed claimed\"; if none remains, route \"Tracker empty\".' Under the second sentence the \"Already landed\" label can never fire, making the new workflow.fabro edge (line 302) and the new outcome-contract route (planner.md:105-112) dead config. The seed spec authorizes only the exit route. Fix: delete the 'After the close, continue down …' sentence entirely so branch (a)'s sole routing instruction is: superseded-close, then route \"Already landed\" and exit (the next run's planner picks the next seed). Everything else in the diff meets the spec and needs no change.",
           "current_seed_id": "fabro-d183",
@@ -3149,6 +3448,20 @@
               "inference_time_ms": 44500,
               "tool_time_ms": 750,
               "active_time_ms": 45250
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/6a6aa88e48376bd588e37c4a4ca50ef237d01806809b8c9a9775f1785909c11b"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 5280,
+              "active_time_ms": 5280
             }
           },
           "evidence": {
@@ -3214,18 +3527,18 @@
               "active_time_ms": 43216
             }
           },
-          "tester": {
+          "closeout": {
             "status": "succeeded",
             "context_updates": {
-              "command.output": "blob://sha256/6a6aa88e48376bd588e37c4a4ca50ef237d01806809b8c9a9775f1785909c11b"
+              "command.output": "blob://sha256/fac6f0ae995b1ab3f5b4a650d88ff32be4791af9c3a72ca071aa3c362f89f2d5"
             },
-            "notes": "Script completed: just qualitygate",
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
             "usage": null,
             "timing": {
               "wall_time_ms": 0,
               "inference_time_ms": 0,
-              "tool_time_ms": 5280,
-              "active_time_ms": 5280
+              "tool_time_ms": 409,
+              "active_time_ms": 409
             }
           },
           "start": {
@@ -3284,8 +3597,9 @@
             }
           }
         },
-        "next_node_id": "closeout",
+        "next_node_id": "exit",
         "node_visits": {
+          "closeout": 1,
           "start": 1,
           "planner": 2,
           "evidence": 2,
@@ -3323,6 +3637,57 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "closeout@1": {
+      "first_event_seq": 368,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-10T11:41:35.503308659Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/fac6f0ae995b1ab3f5b4a650d88ff32be4791af9c3a72ca071aa3c362f89f2d5",
+        "exit_code": 0,
+        "duration_ms": 409,
+        "termination": "exited",
+        "output_bytes": 58,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 58,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-10T11:41:35.079731915Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 415,
+        "inference_time_ms": 0,
+        "tool_time_ms": 409,
+        "active_time_ms": 409
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "reviewer@1": {
       "first_event_seq": 196,
       "prompt": null,

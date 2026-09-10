@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M25HCK22PNFPARY8R3YVC9DK.jsonl b/.fabro/journal/01M25HCK22PNFPARY8R3YVC9DK.jsonl
+index f46ac4f..340e69e 100644
+--- a/.fabro/journal/01M25HCK22PNFPARY8R3YVC9DK.jsonl
++++ b/.fabro/journal/01M25HCK22PNFPARY8R3YVC9DK.jsonl
+@@ -8,3 +8,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M25HCK22PNFPARY8R3YVC9DK","node":"implementer","visit":2,"status":"succeeded","ts":"2026-09-10T11:40:25Z","data":{"painpoints":[],"observations":["none"]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M25HCK22PNFPARY8R3YVC9DK","node":"tester","visit":2,"status":"succeeded","ts":"2026-09-10T11:40:36Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M25HCK22PNFPARY8R3YVC9DK","node":"evidence","visit":2,"status":"succeeded","ts":"2026-09-10T11:40:41Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M25HCK22PNFPARY8R3YVC9DK","node":"reviewer","visit":2,"status":"succeeded","ts":"2026-09-10T11:41:30Z","data":{"painpoints":[],"observations":["Verified the pass-2 fix by re-reading the materialized evidence blob and grepping planner.md directly: the 'After the close' sentence is gone, branch (a) routes solely via superseded-close → 'Already landed', and branch (b), the project-facts sd close row, the workflow.fabro edge, and the outcome-contract route are byte-identical to the approved prior pass. Evidence counts (+22/-3 across 4 loop files) reconcile with the visible diff; worktree clean; no capability delta."]}}
