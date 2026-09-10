@@ -689,14 +689,184 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M25HCK22PNFPARY8R3YVC9DK",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-09-10T11:31:36.101662380Z",
+    "run_branch": "fabro/run/01M25HCK22PNFPARY8R3YVC9DK",
+    "base_sha": "74aaeda0edb9968cbf33d00596e5e63b321dbe9c"
   },
-  "status_updated_at": "2026-09-10T11:31:29.609591613Z",
-  "last_event_at": "2026-09-10T11:31:35.502119056Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-09-10T11:31:36.101721735Z",
+  "last_event_at": "2026-09-10T11:33:18.858967702Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 19,
+      "checkpoint": {
+        "timestamp": "2026-09-10T11:31:38.349661473Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.work_dir": "/workspace/fabro",
+          "internal.fidelity": "compact",
+          "seed_cycles": {
+            "start": 1
+          },
+          "internal.retry_count.start": 0,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.rankdir": "LR",
+          "graph.preamble_budget_kb": "24",
+          "failure_class": "",
+          "internal.run_id": "01M25HCK22PNFPARY8R3YVC9DK",
+          "internal.node_visit_count": 1,
+          "current_node": "start",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.inspects": "develop",
+          "internal.thread_id": null,
+          "failure_signature": "",
+          "internal.seed_cycle_anchor": "",
+          "graph.max_node_visits": "40",
+          "outcome": "succeeded"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "planner",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-10T11:33:19.102753138Z",
+        "current_node": "planner",
+        "completed_nodes": [
+          "start",
+          "planner"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "last_stage": "planner",
+          "internal.retry_count.start": 0,
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3313,
+            "preview": "Claimed `fabro-d183`. Brief written into context below.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-d183\",\n    \"current_"
+          },
+          "internal.thread_id": "start",
+          "internal.node_visit_count": 1,
+          "graph.max_node_visits": "40",
+          "internal.run_id": "01M25HCK22PNFPARY8R3YVC9DK",
+          "failure_signature": "",
+          "graph.inspects": "develop",
+          "graph.rankdir": "LR",
+          "internal.retry_count.planner": 0,
+          "preferred_label": "Seed claimed",
+          "thread.start.current_node": "planner",
+          "graph.preamble_budget_kb": "24",
+          "current_node": "planner",
+          "current_seed_brief": "Make the develop planner's already-implemented case mechanical so stale tracker rows exit immediately instead of burning a full verification cycle (evidence: run 01M256QJB48JK8BXJE1TVM2HYS ran a whole cycle for seed fabro-afb8 whose fix commit 7ae575c was already in base). All targets are loop assets under `.fabro/workflows/develop/` — fs_hide-bound for FILE TOOLS; edit via shell (sed/python3 heredoc) only.\n\nAcceptance criteria:\n- `prompts/planner.md`: replace the current 'do NOT close it yourself' paragraph (the one beginning 'If the top candidate looks already implemented' at line 45) with a two-branch rule: (a) when `git log --grep <seed-id>` shows a fix commit referencing the seed already in base history AND the seed's acceptance criteria hold in the worktree → close with `sd close <id> --reason \"superseded: fix landed in <sha>\"` and route the new exit label; (b) criteria satisfied but NO referencing commit → keep the existing verification-only claim path unchanged\n- `prompts/planner.md`: update the sd command table row that says `sd close <id>` is 'NEVER yours' to permit exactly this one superseded-close form (reason string mandatory), keeping it forbidden for every other case\n- `prompts/planner.md`: extend the outcome contract with the new route's JSON shape (mirror the Tracker empty shape: `succeeded` + the new label + journal keys; `current_seed_id` not required on that route)\n- `workflow.fabro`: add a planner exit edge for the new label, e.g. `planner -> exit [label=\"Already landed\", condition=\"preferred_label=\\\"Already landed\\\"\"]`, placed next to the existing 'Tracker empty' edge with a brief comment citing fabro-d183\n- The new label string must be used identically in prompt and graph (label contract requires exact match)\n- Scope guard: this is the planner's claim-time decision only — no changes to the implementer prompt (fabro-5656 owns that) or any post-merge sweep (fabro-ab38 owns that)\n- Verification (cheapest first): `grep -n 'Already landed'` both files to confirm prompt/graph agree; `python3 -c` TOML/structure sanity on `workflow.toml` untouched; render-check `workflow.fabro` with `dot -Tcanon` if available, else eyeball the edge block; do NOT run `just qualitygate` or any byte-equivalent full-gate invocation — gate green via the deterministic tester step\n- No Rust code changes expected: `cargo` builds are not part of this seed's verification",
+          "outcome": "succeeded",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "failure_class": "",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "fabro-d183 names 'step 3' of planner.md but the already-implemented paragraph is an unlabeled paragraph after the numbered list (line 45) — brief annotates the actual location",
+              "in-flight check: only this run itself is non-terminal; all other develop runs are terminal with merged/closed PRs, so no exclusions were needed",
+              "graph currently has no planner exit edge for an already-landed case; Tracker empty/Blocked/failed edges exist and serve as the pattern for the new edge"
+            ]
+          },
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "seed_cycles": {
+            "planner": 1
+          },
+          "last_response": "Claimed `fabro-d183`. Brief written into context below.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-d183\",\n    \"current_",
+          "internal.seed_cycle_anchor": "fabro-d183",
+          "internal.fidelity": "compact",
+          "current_seed_title": "Planner: exit already-landed seeds before the cycle instead of running a no-op verification lap",
+          "current_seed_id": "fabro-d183"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Claimed `fabro-d183`. Brief written into context below.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-d183\",\n    \"current_",
+              "current_seed_brief": "Make the develop planner's already-implemented case mechanical so stale tracker rows exit immediately instead of burning a full verification cycle (evidence: run 01M256QJB48JK8BXJE1TVM2HYS ran a whole cycle for seed fabro-afb8 whose fix commit 7ae575c was already in base). All targets are loop assets under `.fabro/workflows/develop/` — fs_hide-bound for FILE TOOLS; edit via shell (sed/python3 heredoc) only.\n\nAcceptance criteria:\n- `prompts/planner.md`: replace the current 'do NOT close it yourself' paragraph (the one beginning 'If the top candidate looks already implemented' at line 45) with a two-branch rule: (a) when `git log --grep <seed-id>` shows a fix commit referencing the seed already in base history AND the seed's acceptance criteria hold in the worktree → close with `sd close <id> --reason \"superseded: fix landed in <sha>\"` and route the new exit label; (b) criteria satisfied but NO referencing commit → keep the existing verification-only claim path unchanged\n- `prompts/planner.md`: update the sd command table row that says `sd close <id>` is 'NEVER yours' to permit exactly this one superseded-close form (reason string mandatory), keeping it forbidden for every other case\n- `prompts/planner.md`: extend the outcome contract with the new route's JSON shape (mirror the Tracker empty shape: `succeeded` + the new label + journal keys; `current_seed_id` not required on that route)\n- `workflow.fabro`: add a planner exit edge for the new label, e.g. `planner -> exit [label=\"Already landed\", condition=\"preferred_label=\\\"Already landed\\\"\"]`, placed next to the existing 'Tracker empty' edge with a brief comment citing fabro-d183\n- The new label string must be used identically in prompt and graph (label contract requires exact match)\n- Scope guard: this is the planner's claim-time decision only — no changes to the implementer prompt (fabro-5656 owns that) or any post-merge sweep (fabro-ab38 owns that)\n- Verification (cheapest first): `grep -n 'Already landed'` both files to confirm prompt/graph agree; `python3 -c` TOML/structure sanity on `workflow.toml` untouched; render-check `workflow.fabro` with `dot -Tcanon` if available, else eyeball the edge block; do NOT run `just qualitygate` or any byte-equivalent full-gate invocation — gate green via the deterministic tester step\n- No Rust code changes expected: `cargo` builds are not part of this seed's verification",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-d183 names 'step 3' of planner.md but the already-implemented paragraph is an unlabeled paragraph after the numbered list (line 45) — brief annotates the actual location",
+                  "in-flight check: only this run itself is non-terminal; all other develop runs are terminal with merged/closed PRs, so no exclusions were needed",
+                  "graph currently has no planner exit edge for an already-landed case; Tracker empty/Blocked/failed edges exist and serve as the pattern for the new edge"
+                ]
+              },
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3313,
+                "preview": "Claimed `fabro-d183`. Brief written into context below.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-d183\",\n    \"current_"
+              },
+              "current_seed_id": "fabro-d183",
+              "current_seed_title": "Planner: exit already-landed seeds before the cycle instead of running a no-op verification lap",
+              "last_stage": "planner"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 34725,
+                    "output_tokens": 1316,
+                    "reasoning_tokens": 917,
+                    "cache_read_tokens": 225152,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 116969
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 93649,
+              "tool_time_ms": 6234,
+              "active_time_ms": 99883
+            }
+          }
+        },
+        "next_node_id": "implementer",
+        "node_visits": {
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -722,5 +892,265 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-10T11:31:38.104432960Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-10T11:31:38.096308203Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "planner@1": {
+      "first_event_seq": 20,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-10T11:33:18.858967702Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-10T11:31:38.358363580Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 100578,
+        "inference_time_ms": 93649,
+        "tool_time_ms": 6234,
+        "active_time_ms": 99883
+      },
+      "usage": {
+        "input_tokens": 34725,
+        "output_tokens": 1316,
+        "total_tokens": 262110,
+        "reasoning_tokens": 917,
+        "cache_read_tokens": 225152,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 116969
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 34487,
+        "usage_percent": 3.2889366149902344,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-10T11:33:18.848702798Z",
+        "event_seq": 81,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1211,
+            "usage_percent": 0.11548995971679688
+          },
+          {
+            "category": "tools",
+            "tokens": 1908,
+            "usage_percent": 0.1819610595703125
+          },
+          {
+            "category": "memory",
+            "tokens": 6345,
+            "usage_percent": 0.6051063537597656
+          },
+          {
+            "category": "conversation",
+            "tokens": 25015,
+            "usage_percent": 2.3856163024902344
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
