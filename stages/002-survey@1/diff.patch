@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M25H9VVJ271RH6K3F3T04Q2R.jsonl b/.fabro/journal/01M25H9VVJ271RH6K3F3T04Q2R.jsonl
+new file mode 100644
+index 000000000..3c3a67d6e
+--- /dev/null
++++ b/.fabro/journal/01M25H9VVJ271RH6K3F3T04Q2R.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M25H9VVJ271RH6K3F3T04Q2R","node":"start","visit":1,"status":"succeeded","ts":"2026-09-10T11:30:18Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M25H9VVJ271RH6K3F3T04Q2R","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-10T11:31:16Z","data":{"painpoints":[],"observations":["upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0'; drift accumulates toward the 5-commit threshold","revisor backlog: 01M25732658J2RFTM6MDM8CPFG (develop run, PR #116 merged, no review artifact in .fabro/reviews/develop/); newest reviewed run is 01M256QJB48JK8BXJE1TVM2HYS"]}}
