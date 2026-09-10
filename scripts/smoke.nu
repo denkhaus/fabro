@@ -92,11 +92,11 @@ def main [port: string = "32276", cli: string = "~/.fabro/bin/fabro"]: nothing -
     # yields the same null-on-missing shape chained with `default`.
     let token = (if ($auth_path | path exists) {
         open $auth_path
-        | get -i servers
+        | get -o servers
         | default {}
-        | get -i $server_key
+        | get -o $server_key
         | default {}
-        | get -i token
+        | get -o token
         | default ""
     } else {
         ""
