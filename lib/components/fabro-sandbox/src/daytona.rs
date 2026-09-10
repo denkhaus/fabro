@@ -800,8 +800,8 @@ mod wire_gate {
                 )
                 .await
                 .expect("layout check");
-            assert!(result.is_success(), "{result:?}");
-            assert!(result.stdout.contains("true"));
+            assert!(result.success(), "{result:?}");
+            assert!(result.stdout_lossy().contains("true"));
             let layout = sandbox.workspace_layout().expect("layout record");
             assert_eq!(
                 layout.primary_repo_path.as_deref(),

@@ -4,8 +4,8 @@ use std::sync::{Arc, LazyLock};
 use std::time::Instant;
 
 use async_trait::async_trait;
-use fabro_agent::RunSandbox;
 use fabro_agent::tool_registry::ToolContext;
+use fabro_agent::{ExecResultExt, RunSandbox};
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{Client, ClientOptions, Request};
@@ -174,7 +174,10 @@ impl HookExecutorImpl {
                 )
                 .await
             {
-                Ok(result) => Self::parse_decision(result.exit_code.unwrap_or(-1), &result.stdout),
+                Ok(result) => Self::parse_decision(
+                    result.program_exit_code().unwrap_or(-1),
+                    &result.stdout_lossy(),
+                ),
                 Err(e) => HookDecision::Block {
                     reason: Some(format!("sandbox exec failed: {e}")),
                 },

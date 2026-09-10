@@ -36,7 +36,7 @@ use fabro_api::types::{
     RunFilesMetaToSha,
 };
 use fabro_sandbox::reconnect::reconnect_for_run;
-use fabro_sandbox::shell_quote;
+use fabro_sandbox::{Termination, shell_quote};
 use fabro_types::RunId;
 use fabro_workflow::sandbox_git::{
     DiffError, DiffNumstat, RawDiffEntry, SubmoduleChange, SymlinkChange, list_changed_files_raw,
@@ -772,13 +772,13 @@ async fn sandbox_git_stdout(
         .exec_command(command, SANDBOX_GIT_TIMEOUT_MS, None, None, None)
         .await
         .map_err(|err| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, err.display_with_causes()))?;
-    if res.is_timed_out() {
+    if res.termination == Termination::TimedOut {
         return Err(transient_503(op, "command timed out"));
     }
-    if !res.is_success() {
-        return Err(transient_503(op, res.stderr.trim()));
+    if !res.success() {
+        return Err(transient_503(op, res.stderr_lossy().trim()));
     }
-    Ok(res.stdout)
+    Ok(res.stdout_lossy())
 }
 
 /// Build the degraded response from the stored terminal diff patch.
@@ -1240,13 +1240,13 @@ async fn resolve_ref_sha_and_time(
         )
         .await
         .map_err(|err| ApiError::new(StatusCode::SERVICE_UNAVAILABLE, err.display_with_causes()))?;
-    if !res.is_success() {
+    if !res.success() {
         return Err(ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "Failed to resolve sandbox git ref.",
         ));
     }
-    parse_head_show_output(&res.stdout).ok_or_else(|| {
+    parse_head_show_output(&res.stdout_lossy()).ok_or_else(|| {
         ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "Sandbox HEAD resolved to an empty value.",
@@ -1704,7 +1704,9 @@ fn count_flags(data: &[FileDiff]) -> (u64, u64, u64, u64) {
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use fabro_types::{CommandTermination, RunId, test_support};
+    use fabro_sandbox::Termination;
+    use fabro_sandbox::test_support::exec_result;
+    use fabro_types::{RunId, test_support};
     use tokio::time::{Duration, sleep};
 
     use super::*;
@@ -1763,13 +1765,7 @@ diff --git a/src/live.rs b/src/live.rs
             } else {
                 return None;
             };
-            Some(fabro_sandbox::ExecResult {
-                stdout,
-                stderr: String::new(),
-                exit_code: Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 0,
-            })
+            Some(exec_result(&stdout, "", Some(0), Termination::Exited, 0))
         });
 
         let body = materialize_working_tree_sandbox_path(
@@ -2874,23 +2870,11 @@ rename to .env.production
     }
 
     fn ok_exec(stdout: &str) -> ExecResult {
-        ExecResult {
-            stdout:      stdout.to_string(),
-            stderr:      String::new(),
-            exit_code:   Some(0),
-            termination: CommandTermination::Exited,
-            duration_ms: 0,
-        }
+        exec_result(stdout, "", Some(0), Termination::Exited, 0)
     }
 
     fn fail_exec(stderr: &str) -> ExecResult {
-        ExecResult {
-            stdout:      String::new(),
-            stderr:      stderr.to_string(),
-            exit_code:   Some(1),
-            termination: CommandTermination::Exited,
-            duration_ms: 0,
-        }
+        exec_result("", stderr, Some(1), Termination::Exited, 0)
     }
 
     #[tokio::test]

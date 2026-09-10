@@ -602,7 +602,7 @@ async fn list_sandbox_services(
             return ApiError::new(StatusCode::CONFLICT, err.display_with_causes()).into_response();
         }
     };
-    if !result.is_success() {
+    if !result.success() {
         return ApiError::new(
             StatusCode::CONFLICT,
             sandbox_service_command_failure_detail(&result),
@@ -610,7 +610,7 @@ async fn list_sandbox_services(
         .into_response();
     }
 
-    let discovery = parse_sandbox_services(&result.stdout, &provider);
+    let discovery = parse_sandbox_services(&result.stdout_lossy(), &provider);
     Json(SandboxServiceListResponse {
         data: discovery.services,
         meta: SandboxServiceListMeta {
@@ -621,11 +621,13 @@ async fn list_sandbox_services(
 }
 
 fn sandbox_service_command_failure_detail(result: &fabro_sandbox::ExecResult) -> String {
-    let stderr = result.stderr.trim();
+    let stderr = result.stderr_lossy();
+    let stderr = stderr.trim();
     if !stderr.is_empty() {
         return stderr.to_string();
     }
-    let stdout = result.stdout.trim();
+    let stdout = result.stdout_lossy();
+    let stdout = stdout.trim();
     if !stdout.is_empty() {
         return stdout.to_string();
     }
@@ -926,6 +928,8 @@ async fn load_run_sandbox_instance(
 #[cfg(test)]
 mod tests {
     use axum::http::{HeaderMap, HeaderValue};
+    use fabro_sandbox::Termination;
+    use fabro_sandbox::test_support::exec_result;
     use futures_util::FutureExt;
 
     use super::*;
@@ -1146,13 +1150,13 @@ FABRO_PROC_NET_TCP /proc/net/tcp6
 
     #[test]
     fn sandbox_service_command_failure_prefers_stderr_then_stdout() {
-        let mut result = fabro_sandbox::ExecResult {
-            stdout:      "stdout detail".to_string(),
-            stderr:      "stderr detail".to_string(),
-            exit_code:   Some(127),
-            termination: fabro_types::CommandTermination::Exited,
-            duration_ms: 10,
-        };
+        let mut result = exec_result(
+            "stdout detail",
+            "stderr detail",
+            Some(127),
+            Termination::Exited,
+            10,
+        );
         assert_eq!(
             sandbox_service_command_failure_detail(&result),
             "stderr detail"

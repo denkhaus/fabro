@@ -5,8 +5,55 @@ use fabro_types::run_event::MAX_RUN_EVENT_BODY_BYTES;
 use serde::Serialize;
 
 use crate::config::SessionOptions;
-use crate::sandbox::OutputCaptureStats;
+use crate::sandbox::{CaptureStats, ExecStreamingResult};
 use crate::tool_permissions::canonical_tool_name;
+
+/// Byte counts for a tool's output: what was observed, what the model sees,
+/// and what was dropped in between. Covers every tool, not only commands;
+/// a command's counts start from the driver's per-stream [`CaptureStats`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OutputCaptureStats {
+    pub observed_bytes: usize,
+    pub retained_bytes: usize,
+    pub omitted_bytes:  usize,
+}
+
+impl OutputCaptureStats {
+    /// Accounting for output that was kept whole.
+    #[must_use]
+    pub fn complete(byte_count: usize) -> Self {
+        Self {
+            observed_bytes: byte_count,
+            retained_bytes: byte_count,
+            omitted_bytes:  0,
+        }
+    }
+
+    /// Both streams of a command run, added together.
+    #[must_use]
+    pub fn from_streaming(streaming: &ExecStreamingResult) -> Self {
+        Self::from(streaming.stdout_capture).combine(Self::from(streaming.stderr_capture))
+    }
+
+    #[must_use]
+    pub fn combine(self, other: Self) -> Self {
+        Self {
+            observed_bytes: self.observed_bytes.saturating_add(other.observed_bytes),
+            retained_bytes: self.retained_bytes.saturating_add(other.retained_bytes),
+            omitted_bytes:  self.omitted_bytes.saturating_add(other.omitted_bytes),
+        }
+    }
+}
+
+impl From<CaptureStats> for OutputCaptureStats {
+    fn from(stats: CaptureStats) -> Self {
+        Self {
+            observed_bytes: stats.observed_bytes,
+            retained_bytes: stats.retained_bytes,
+            omitted_bytes:  stats.omitted_bytes,
+        }
+    }
+}
 
 pub(crate) const MAX_RETAINED_TOOL_OUTPUT_BYTES: usize = 1024 * 1024;
 /// Reserve half the run-event body limit for serialized tool output; the

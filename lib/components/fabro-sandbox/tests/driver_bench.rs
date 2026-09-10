@@ -279,7 +279,7 @@ async fn unpack_fabro(sandbox: &RunSandbox, repo: &Repository) {
         )
         .await
         .expect("unpack exec");
-    assert!(result.is_success(), "unpack failed: {}", result.stderr);
+    assert!(result.success(), "unpack failed: {}", result.stderr_lossy());
 }
 
 async fn unpack_driver(sandbox: &dyn DriverHandle, repo: &Repository) {

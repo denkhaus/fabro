@@ -11,8 +11,8 @@ use fabro_hooks::{HookContext, HookDecision, HookEvent, HookExecutionContext, Ho
 use fabro_llm::credentials::{CredentialProvider, readiness};
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_sandbox::{
-    DaytonaCredentials, GitSetupIntent, ProviderAccess, SandboxSpec, reconnect_for_run_with_events,
-    shell_quote,
+    DaytonaCredentials, ExecResultExt, GitSetupIntent, ProviderAccess, SandboxSpec,
+    reconnect_for_run_with_events, shell_quote,
 };
 use fabro_static::EnvVars;
 use fabro_types::RunSandboxKind;
@@ -672,19 +672,19 @@ pub async fn initialize(
             }
             cancel_token.cancel();
             let duration_ms = crate::millis_u64(cmd_start.elapsed());
-            if !result.is_success() {
-                let exit_code = result.display_exit_code();
+            if !result.success() {
+                let exit_code = result.program_exit_code().unwrap_or(-1);
                 let exec_output_tail = result.default_redacted_output_tail();
+                let stderr = result.stderr_lossy();
                 options.emitter.emit(&Event::SetupFailed {
                     command: command.clone(),
                     index,
                     exit_code,
-                    stderr: result.stderr.clone(),
+                    stderr: stderr.clone(),
                     exec_output_tail,
                 });
                 return Err(Error::engine(format!(
-                    "Setup command failed (exit code {}): {command}\n{}",
-                    exit_code, result.stderr,
+                    "Setup command failed (exit code {exit_code}): {command}\n{stderr}",
                 )));
             }
             let exit_code = result.exit_code.unwrap_or(0);

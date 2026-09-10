@@ -55,10 +55,11 @@ pub use question_tools::{
     OPENAI_REQUEST_USER_INPUT_TOOL, register_question_tools,
 };
 pub use sandbox::{
-    CommandOutputCallback, DirEntry, ExecResult, ExecStreamingRequest, ExecStreamingResult,
-    FileKind, GrepMatch, GrepOptions, OutputCaptureStats, RefreshOutcome, RemoteCredentialAction,
-    RunSandbox, SandboxFile, StderrCollector, StdioProcess, StdioProcessHandle, TokenProvenance,
-    TokenSnapshot, WalkOptions, format_lines_numbered, shell_quote,
+    CaptureStats, DirEntry, ExecControls, ExecResult, ExecResultExt, ExecSpec, ExecStreamingResult,
+    FileKind, GrepMatch, GrepOptions, OutputSink, OutputStream, RefreshOutcome,
+    RemoteCredentialAction, RunSandbox, SandboxFile, StderrTail, StdioProcess, StdioProcessHandle,
+    Termination, TokenProvenance, TokenSnapshot, WalkOptions, command_termination,
+    format_lines_numbered, program_exit_code, shell_quote,
 };
 pub use session::{
     CompletionCoordinator, Session, SessionControlHandle, SessionInputTiming,
@@ -77,7 +78,9 @@ pub use tools::{
     WebFetchSummarizer, make_edit_file_tool, make_glob_tool, make_grep_tool, make_read_file_tool,
     make_shell_tool, make_shell_tool_with_options, make_write_file_tool, register_core_tools,
 };
-pub use truncation::{TruncationMode, truncate_lines, truncate_output, truncate_tool_output};
+pub use truncation::{
+    OutputCaptureStats, TruncationMode, truncate_lines, truncate_output, truncate_tool_output,
+};
 pub use types::{
     AgentEvent, McpToolSummary, MemoryFileSummary, Message, SessionEvent, SessionState,
     SkillActivationSource, SkillSummary,

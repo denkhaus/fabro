@@ -87,7 +87,7 @@ async fn exec_ok(sandbox: &RunSandbox, command: &str) -> Result<(), SharedError>
         .map_err(|err| {
             SharedError::new(anyhow::Error::new(err).context("sandbox git probe command failed"))
         })?;
-    if result.is_success() {
+    if result.success() {
         Ok(())
     } else {
         Err(SharedError::new(anyhow::Error::new(exec_err(

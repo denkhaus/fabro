@@ -18,8 +18,8 @@ pub async fn detect_changed_files(sandbox: &Arc<RunSandbox>) -> Vec<String> {
         .exec_command(&command, 30_000, None, None, None)
         .await
     {
-        if result.is_success() {
-            files.extend(parse_changed_files(&result.stdout));
+        if result.success() {
+            files.extend(parse_changed_files(&result.stdout_lossy()));
         }
     }
 
@@ -50,8 +50,8 @@ pub async fn files_touched_since(
             .await
             .ok()
             .and_then(|result| {
-                let trimmed = result.stdout.trim().to_string();
-                (result.is_success() && !trimmed.is_empty()).then_some(trimmed)
+                let trimmed = result.stdout_lossy().trim().to_string();
+                (result.success() && !trimmed.is_empty()).then_some(trimmed)
             })
     };
 

@@ -897,7 +897,7 @@ impl Session {
             }
         };
 
-        let pid = launch_result.stdout.trim().to_string();
+        let pid = launch_result.stdout_lossy().trim().to_string();
         info!(pid = %pid, port, "MCP server process launched in sandbox");
 
         // Wait for the server to start listening on the port
@@ -929,7 +929,7 @@ impl Session {
             }
         };
 
-        if poll_result.stdout.trim() != "ready" {
+        if poll_result.stdout_lossy().trim() != "ready" {
             // Grab stderr for debugging
             let stderr = sandbox
                 .exec_command(
@@ -940,7 +940,7 @@ impl Session {
                     Some(cancel_token.child_token()),
                 )
                 .await
-                .map(|r| r.stdout)
+                .map(|r| r.stdout_lossy())
                 .unwrap_or_default();
             return Ok(Err(format!(
                 "MCP server did not start listening on port {port} within 30s. stderr:\n{stderr}"
@@ -993,8 +993,8 @@ impl Session {
             )
             .await
             .ok()
-            .filter(fabro_sandbox::ExecResult::is_success)
-            .map(|r| r.stdout.trim().to_string());
+            .filter(fabro_sandbox::ExecResult::success)
+            .map(|r| r.stdout_lossy().trim().to_string());
 
         if cancel_token.is_cancelled() {
             return Err(Error::Interrupted(InterruptReason::Cancelled));
@@ -1013,8 +1013,8 @@ impl Session {
                 )
                 .await
                 .ok()
-                .filter(fabro_sandbox::ExecResult::is_success)
-                .map(|r| r.stdout.trim().to_string())
+                .filter(fabro_sandbox::ExecResult::success)
+                .map(|r| r.stdout_lossy().trim().to_string())
                 .filter(|s| !s.is_empty())
         } else {
             None
@@ -1035,8 +1035,8 @@ impl Session {
                 )
                 .await
                 .ok()
-                .filter(fabro_sandbox::ExecResult::is_success)
-                .map(|r| r.stdout.trim().to_string())
+                .filter(fabro_sandbox::ExecResult::success)
+                .map(|r| r.stdout_lossy().trim().to_string())
                 .filter(|s| !s.is_empty())
         } else {
             None

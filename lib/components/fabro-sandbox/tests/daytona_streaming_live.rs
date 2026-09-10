@@ -4,18 +4,18 @@ mod daytona_streaming_live {
 
     use anyhow::{Context, Result, ensure};
     use fabro_sandbox::{
-        CommandOutputCallback, DaytonaCredentials, ExecStreamingResult, ProviderAccess, RunSandbox,
-        SandboxOptions, SandboxProviderKind, provider_sandbox,
+        DaytonaCredentials, ExecControls, ExecSpec, ExecStreamingResult, OutputSink, OutputStream,
+        ProviderAccess, RunSandbox, SandboxOptions, SandboxProviderKind, Termination,
+        provider_sandbox,
     };
     use fabro_static::EnvVars;
-    use fabro_types::{CommandOutputStream, CommandTermination};
     use tokio::sync::Mutex;
     use tokio::time::{Instant, sleep};
     use tokio_util::sync::CancellationToken;
 
     #[derive(Debug, Clone)]
     struct CapturedChunk {
-        stream: CommandOutputStream,
+        stream: OutputStream,
         text:   String,
     }
 
@@ -100,7 +100,7 @@ mod daytona_streaming_live {
                 &format!("exec_command should run Bash-only syntax: {non_streaming:?}"),
             )?;
             ensure_contains(
-                &non_streaming.stdout,
+                &non_streaming.stdout_lossy(),
                 "two",
                 "exec_command should report the Bash-only result",
             )?;
@@ -112,7 +112,7 @@ mod daytona_streaming_live {
                 &format!("exec_command_streaming should run Bash-only syntax: {streaming:?}"),
             )?;
             ensure_contains(
-                &streaming.result.stdout,
+                &streaming.result.stdout_lossy(),
                 "two",
                 "exec_command_streaming should report the Bash-only result",
             )?;
@@ -133,7 +133,7 @@ mod daytona_streaming_live {
             )?;
             ensure_eq(
                 &stdin_result.result.stdout,
-                &stdin.to_string(),
+                &stdin.as_bytes().to_vec(),
                 "exec_command_streaming should preserve exact stdin bytes",
             )?;
             let stdin_cleanup = sandbox
@@ -147,7 +147,7 @@ mod daytona_streaming_live {
                 )
                 .await?;
             ensure!(
-                stdin_cleanup.is_success(),
+                stdin_cleanup.success(),
                 "Daytona stdin data must stay inert and its temporary file must be deleted: {stdin_cleanup:?}"
             );
 
@@ -272,13 +272,13 @@ mod daytona_streaming_live {
         let cleanup_result = sandbox.cleanup().await.context("clean up Daytona sandbox");
 
         ensure!(
-            result.is_success(),
+            result.success(),
             "layout verification failed: stdout={} stderr={}",
-            result.stdout,
-            result.stderr
+            result.stdout_lossy(),
+            result.stderr_lossy()
         );
         ensure_contains(
-            &result.stdout,
+            &result.stdout_lossy(),
             "true",
             "default cwd should be inside the work tree",
         )?;
@@ -343,10 +343,10 @@ mod daytona_streaming_live {
             )
             .await?;
         ensure!(
-            seed.is_success(),
+            seed.success(),
             "seeding the skills tree failed: stdout={} stderr={}",
-            seed.stdout,
-            seed.stderr
+            seed.stdout_lossy(),
+            seed.stderr_lossy()
         );
 
         // `*/SKILL.md` matches exactly one path segment: only the file one level
@@ -383,21 +383,22 @@ mod daytona_streaming_live {
 
         let live_exec = tokio::spawn(async move {
             sandbox_for_exec
-                .exec_command_streaming(fabro_sandbox::ExecStreamingRequest {
-                    timeout_ms: Some(60_000),
-                    cancel_token: Some(cancel_for_exec),
-                    output_callback: Some(callback),
-                    ..fabro_sandbox::ExecStreamingRequest::new(
-                        "printf 'live-out\\n'; printf 'live-err\\n' >&2; sleep 30",
-                    )
-                })
+                .exec_command_streaming(
+                    ExecSpec::bash("printf 'live-out\\n'; printf 'live-err\\n' >&2; sleep 30")
+                        .timeout(Duration::from_mins(1)),
+                    ExecControls {
+                        term: Some(cancel_for_exec),
+                        sink: Some(callback),
+                        ..ExecControls::default()
+                    },
+                )
                 .await
         });
 
         let saw_live_stdout_and_stderr =
             wait_for_chunks(&chunks, Duration::from_secs(20), |chunks| {
-                contains_chunk(chunks, CommandOutputStream::Stdout, "live-out")
-                    && contains_chunk(chunks, CommandOutputStream::Stderr, "live-err")
+                contains_chunk(chunks, OutputStream::Stdout, "live-out")
+                    && contains_chunk(chunks, OutputStream::Stderr, "live-err")
             })
             .await;
 
@@ -423,16 +424,16 @@ mod daytona_streaming_live {
         );
         ensure_eq(
             &live_result.result.termination,
-            &CommandTermination::Cancelled,
+            &Termination::Cancelled,
             "cancelled command should preserve cancellation termination",
         )?;
         ensure_contains(
-            &live_result.result.stdout,
+            &live_result.result.stdout_lossy(),
             "live-out",
             "cancelled command stdout should preserve partial logs",
         )?;
         ensure_contains(
-            &live_result.result.stderr,
+            &live_result.result.stderr_lossy(),
             "live-err",
             "cancelled command stderr should preserve partial logs",
         )?;
@@ -451,25 +452,25 @@ mod daytona_streaming_live {
         )?;
         ensure_eq(
             &nonzero.result.termination,
-            &CommandTermination::Exited,
+            &Termination::Exited,
             "nonzero command should be represented as a completed process",
         )?;
         ensure_contains(
-            &nonzero.result.stdout,
+            &nonzero.result.stdout_lossy(),
             "exit-out",
             "nonzero command stdout should be captured",
         )?;
         ensure_contains(
-            &nonzero.result.stderr,
+            &nonzero.result.stderr_lossy(),
             "exit-err",
             "nonzero command stderr should be captured",
         )?;
         ensure!(
-            contains_chunk(&nonzero_chunks, CommandOutputStream::Stdout, "exit-out"),
+            contains_chunk(&nonzero_chunks, OutputStream::Stdout, "exit-out"),
             "nonzero command should stream stdout chunks"
         );
         ensure!(
-            contains_chunk(&nonzero_chunks, CommandOutputStream::Stderr, "exit-err"),
+            contains_chunk(&nonzero_chunks, OutputStream::Stderr, "exit-err"),
             "nonzero command should stream stderr chunks"
         );
 
@@ -482,16 +483,16 @@ mod daytona_streaming_live {
         .await?;
         ensure_eq(
             &timed_out.result.termination,
-            &CommandTermination::TimedOut,
+            &Termination::TimedOut,
             "timed-out command should preserve timeout termination",
         )?;
         ensure_contains(
-            &timed_out.result.stdout,
+            &timed_out.result.stdout_lossy(),
             "timeout-out",
             "timed-out command stdout should preserve partial logs",
         )?;
         ensure_contains(
-            &timed_out.result.stderr,
+            &timed_out.result.stderr_lossy(),
             "timeout-err",
             "timed-out command stderr should preserve partial logs",
         )?;
@@ -517,13 +518,15 @@ mod daytona_streaming_live {
     ) -> Result<(ExecStreamingResult, Vec<CapturedChunk>)> {
         let chunks = Arc::new(Mutex::new(Vec::new()));
         let callback = capture_callback(Arc::clone(&chunks));
+        let mut spec = ExecSpec::bash(command).timeout(Duration::from_millis(timeout_ms));
+        if let Some(stdin) = stdin {
+            spec = spec.stdin(stdin);
+        }
         let result = sandbox
-            .exec_command_streaming(fabro_sandbox::ExecStreamingRequest {
-                timeout_ms: Some(timeout_ms),
-                cancel_token,
-                stdin,
-                output_callback: Some(callback),
-                ..fabro_sandbox::ExecStreamingRequest::new(command)
+            .exec_command_streaming(spec, ExecControls {
+                term: cancel_token,
+                sink: Some(callback),
+                ..ExecControls::default()
             })
             .await?;
         let chunks = chunks.lock().await.clone();
@@ -531,7 +534,7 @@ mod daytona_streaming_live {
         Ok((result, chunks))
     }
 
-    fn capture_callback(chunks: Arc<Mutex<Vec<CapturedChunk>>>) -> CommandOutputCallback {
+    fn capture_callback(chunks: Arc<Mutex<Vec<CapturedChunk>>>) -> OutputSink {
         Arc::new(move |stream, bytes| {
             let chunks = Arc::clone(&chunks);
             Box::pin(async move {
@@ -597,7 +600,7 @@ mod daytona_streaming_live {
         }
     }
 
-    fn contains_chunk(chunks: &[CapturedChunk], stream: CommandOutputStream, text: &str) -> bool {
+    fn contains_chunk(chunks: &[CapturedChunk], stream: OutputStream, text: &str) -> bool {
         chunks
             .iter()
             .any(|chunk| chunk.stream == stream && chunk.text.contains(text))

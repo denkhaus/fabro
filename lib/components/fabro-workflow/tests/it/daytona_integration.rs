@@ -286,7 +286,7 @@ async fn daytona_exec_command() {
         .await
         .unwrap();
     assert_eq!(result.exit_code, Some(0));
-    assert!(result.stdout.contains("hello"));
+    assert!(result.stdout_lossy().contains("hello"));
 
     env.cleanup().await.unwrap();
 }
@@ -302,7 +302,7 @@ async fn daytona_exec_command_with_pipe() {
         .await
         .unwrap();
     assert_eq!(result.exit_code, Some(0));
-    assert!(result.stdout.trim().contains('2'));
+    assert!(result.stdout_lossy().trim().contains('2'));
 
     env.cleanup().await.unwrap();
 }
@@ -329,8 +329,11 @@ async fn daytona_exec_command_cancelled() {
         .unwrap();
 
     assert_eq!(result.exit_code, None);
-    assert!(result.is_cancelled());
-    assert_eq!(result.stderr, "Command cancelled");
+    assert!(matches!(
+        result.termination,
+        fabro_sandbox::Termination::Cancelled | fabro_sandbox::Termination::Killed
+    ));
+    assert_eq!(result.stderr_lossy(), "Command cancelled");
 
     env.cleanup().await.unwrap();
 }
@@ -362,8 +365,8 @@ async fn daytona_exec_command_local_timeout() {
         "Command stalled for longer than the local timeout mechanism"
     );
     assert_eq!(result.exit_code, None);
-    assert!(result.is_timed_out());
-    assert_eq!(result.stderr, "Command timed out locally");
+    assert_eq!(result.termination, fabro_sandbox::Termination::TimedOut);
+    assert_eq!(result.stderr_lossy(), "Command timed out locally");
 
     env.cleanup().await.unwrap();
 }
@@ -453,7 +456,7 @@ async fn daytona_snapshot_sandbox() {
         .await
         .unwrap();
     assert_eq!(result.exit_code, Some(0));
-    assert!(result.stdout.contains("ripgrep"));
+    assert!(result.stdout_lossy().contains("ripgrep"));
 
     env.cleanup().await.unwrap();
 }
@@ -668,9 +671,9 @@ async fn setup_daytona_git(sandbox: &RunSandbox) -> (RunId, String, String) {
         sha_result.exit_code,
         Some(0),
         "git rev-parse HEAD failed: {}",
-        sha_result.stderr
+        sha_result.stderr_lossy()
     );
-    let base_sha = sha_result.stdout.trim().to_string();
+    let base_sha = sha_result.stdout_lossy().trim().to_string();
 
     let run_id = RunId::from(Ulid::new());
     let branch_name = format!("fabro/run/{run_id}");
@@ -685,8 +688,8 @@ async fn setup_daytona_git(sandbox: &RunSandbox) -> (RunId, String, String) {
         Some(0),
         "git checkout -b failed (exit {:?}): stdout={} stderr={}",
         checkout_result.exit_code,
-        checkout_result.stdout,
-        checkout_result.stderr
+        checkout_result.stdout_lossy(),
+        checkout_result.stderr_lossy()
     );
 
     (run_id, base_sha, branch_name)
@@ -702,7 +705,7 @@ async fn daytona_git_checkpoint_remote_emits_events() {
     let git_check = env
         .exec_command("git --version", 10_000, None, None, None)
         .await;
-    if git_check.as_ref().map_or(true, |r| !r.is_success()) {
+    if git_check.as_ref().map_or(true, |r| !r.success()) {
         let install = env
             .exec_command(
                 "apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1",
@@ -717,7 +720,7 @@ async fn daytona_git_checkpoint_remote_emits_events() {
             install.exit_code,
             Some(0),
             "git install failed: {}",
-            install.stderr
+            install.stderr_lossy()
         );
     }
 
@@ -852,7 +855,7 @@ async fn daytona_git_checkpoint_with_shadow_branch() {
     let git_check = env
         .exec_command("git --version", 10_000, None, None, None)
         .await;
-    if git_check.as_ref().map_or(true, |r| !r.is_success()) {
+    if git_check.as_ref().map_or(true, |r| !r.success()) {
         let install = env
             .exec_command(
                 "apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1",
@@ -867,7 +870,7 @@ async fn daytona_git_checkpoint_with_shadow_branch() {
             install.exit_code,
             Some(0),
             "git install failed: {}",
-            install.stderr
+            install.stderr_lossy()
         );
     }
 
@@ -948,9 +951,9 @@ async fn daytona_git_checkpoint_with_shadow_branch() {
         )
         .await
         .expect("git show should succeed");
-    assert_eq!(run_json.exit_code, Some(0), "{}", run_json.stderr);
+    assert_eq!(run_json.exit_code, Some(0), "{}", run_json.stderr_lossy());
     let projection: fabro_store::RunProjection =
-        serde_json::from_slice(run_json.stdout.as_bytes()).expect("run.json should parse");
+        serde_json::from_slice(run_json.stdout_lossy().as_bytes()).expect("run.json should parse");
     let checkpoint = projection
         .current_checkpoint()
         .cloned()
@@ -970,7 +973,7 @@ async fn daytona_git_checkpoint_with_shadow_branch() {
         .await
         .expect("git log should succeed");
     assert_eq!(log_result.exit_code, Some(0));
-    let commit_msg = log_result.stdout.trim().to_string();
+    let commit_msg = log_result.stdout_lossy().trim().to_string();
     assert!(
         commit_msg.contains("Fabro-Checkpoint:"),
         "sandbox commit should have Fabro-Checkpoint trailer, got:\n{commit_msg}"
@@ -1174,7 +1177,7 @@ async fn daytona_clone_private_repo_with_github_app_iat() {
         "CLAUDE.md should exist after clone"
     );
     assert!(
-        result.stdout.contains("EXISTS"),
+        result.stdout_lossy().contains("EXISTS"),
         "clone should have populated the workspace"
     );
 
@@ -1182,7 +1185,7 @@ async fn daytona_clone_private_repo_with_github_app_iat() {
     let git_check = env
         .exec_command("git --version", 10_000, None, None, None)
         .await;
-    if git_check.as_ref().map_or(true, |r| !r.is_success()) {
+    if git_check.as_ref().map_or(true, |r| !r.success()) {
         let install = env
             .exec_command(
                 "apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1",
@@ -1197,7 +1200,7 @@ async fn daytona_clone_private_repo_with_github_app_iat() {
             install.exit_code,
             Some(0),
             "git install failed: {}",
-            install.stderr
+            install.stderr_lossy()
         );
     }
 
@@ -1208,9 +1211,9 @@ async fn daytona_clone_private_repo_with_github_app_iat() {
         .unwrap();
     assert_eq!(result.exit_code, Some(0));
     assert!(
-        result.stdout.contains("fabro-sh/fabro"),
+        result.stdout_lossy().contains("fabro-sh/fabro"),
         "origin should point to fabro-sh/fabro, got: {}",
-        result.stdout.trim()
+        result.stdout_lossy().trim()
     );
 
     env.cleanup().await.unwrap();
@@ -1285,7 +1288,7 @@ async fn daytona_git_push_run_branch_to_origin() {
     let git_check = env
         .exec_command("git --version", 10_000, None, None, None)
         .await;
-    if git_check.as_ref().map_or(true, |r| !r.is_success()) {
+    if git_check.as_ref().map_or(true, |r| !r.success()) {
         let install = env
             .exec_command(
                 "apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1",
@@ -1300,7 +1303,7 @@ async fn daytona_git_push_run_branch_to_origin() {
             install.exit_code,
             Some(0),
             "git install failed: {}",
-            install.stderr
+            install.stderr_lossy()
         );
     }
 
@@ -1377,12 +1380,12 @@ async fn daytona_git_push_run_branch_to_origin() {
         ls_result.exit_code,
         Some(0),
         "git ls-remote failed: {}",
-        ls_result.stdout
+        ls_result.stdout_lossy()
     );
     assert!(
-        ls_result.stdout.contains(&branch_name),
+        ls_result.stdout_lossy().contains(&branch_name),
         "run branch should exist on origin after push, got: {}",
-        ls_result.stdout.trim()
+        ls_result.stdout_lossy().trim()
     );
 
     // Clean up the remote branch
@@ -1391,10 +1394,10 @@ async fn daytona_git_push_run_branch_to_origin() {
         .exec_command(&delete_cmd, 30_000, None, None, None)
         .await;
     if let Ok(r) = &delete_result {
-        if !r.is_success() {
+        if !r.success() {
             eprintln!(
                 "Warning: failed to delete remote branch {branch_name}: {}",
-                r.stdout
+                r.stdout_lossy()
             );
         }
     }
@@ -1446,7 +1449,7 @@ async fn daytona_toolbox_idle_diagnostic() {
                 eprintln!(
                     "[t=+{sleep_secs}s] OK exit_code={:?} stdout={}",
                     r.exit_code,
-                    r.stdout.trim()
+                    r.stdout_lossy().trim()
                 );
             }
             Err(e) => {
@@ -1690,9 +1693,9 @@ async fn daytona_computer_use_browser_screenshot() {
         )
         .await
         .unwrap();
-    eprintln!("Browser check: {}", check.stdout.trim());
+    eprintln!("Browser check: {}", check.stdout_lossy().trim());
 
-    if check.stdout.trim() == "NONE" {
+    if check.stdout_lossy().trim() == "NONE" {
         let install_result = env
             .exec_command(
                 "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq chromium 2>&1",
@@ -1703,7 +1706,7 @@ async fn daytona_computer_use_browser_screenshot() {
         eprintln!(
             "Browser install exit_code={:?}, last_line={}",
             install_result.exit_code,
-            install_result.stdout.lines().last().unwrap_or("")
+            install_result.stdout_lossy().lines().last().unwrap_or("")
         );
         assert_eq!(install_result.exit_code, Some(0), "Chromium install failed");
     }
@@ -1718,7 +1721,7 @@ async fn daytona_computer_use_browser_screenshot() {
         )
         .await
         .unwrap();
-    let browser = browser_bin.stdout.trim().to_string();
+    let browser = browser_bin.stdout_lossy().trim().to_string();
     eprintln!("Using browser: {browser}");
 
     // 3. Detect the DISPLAY that computer use started
@@ -1732,7 +1735,7 @@ async fn daytona_computer_use_browser_screenshot() {
         )
         .await
         .unwrap();
-    eprintln!("Xvfb process: {}", display_check.stdout.trim());
+    eprintln!("Xvfb process: {}", display_check.stdout_lossy().trim());
 
     // 4. Launch browser with setsid to fully detach, and log stderr
     let launch_cmd = format!(
@@ -1760,7 +1763,7 @@ async fn daytona_computer_use_browser_screenshot() {
         )
         .await
         .unwrap();
-    eprintln!("Chrome processes:\n{}", ps_check.stdout);
+    eprintln!("Chrome processes:\n{}", ps_check.stdout_lossy());
 
     let stderr_check = env
         .exec_command(
@@ -1772,7 +1775,7 @@ async fn daytona_computer_use_browser_screenshot() {
         )
         .await
         .unwrap();
-    eprintln!("Chrome stderr:\n{}", stderr_check.stdout);
+    eprintln!("Chrome stderr:\n{}", stderr_check.stdout_lossy());
 
     // 5. The desktop is serving: noVNC listens on its port.
     let listening = env
@@ -1786,7 +1789,7 @@ async fn daytona_computer_use_browser_screenshot() {
         .await
         .unwrap();
     assert!(
-        listening.is_success(),
+        listening.success(),
         "noVNC should be reachable inside the sandbox"
     );
 
@@ -1832,7 +1835,7 @@ async fn daytona_playwright_mcp_sandbox_transport() {
         "Install exit_code={:?}, last_lines:\n{}",
         install.exit_code,
         install
-            .stdout
+            .stdout_lossy()
             .lines()
             .rev()
             .take(5)
@@ -1889,7 +1892,7 @@ async fn daytona_playwright_mcp_sandbox_transport() {
                     .exec_command(&launch_script, 30_000, None, None, None)
                     .await
                     .unwrap();
-                eprintln!("MCP server PID: {}", launch_result.stdout.trim());
+                eprintln!("MCP server PID: {}", launch_result.stdout_lossy().trim());
 
                 // Wait for server to listen
                 let poll_cmd = format!(
@@ -1899,9 +1902,9 @@ async fn daytona_playwright_mcp_sandbox_transport() {
                     .exec_command(&poll_cmd, 60_000, None, None, None)
                     .await
                     .unwrap();
-                eprintln!("Server readiness: {}", poll_result.stdout.trim());
+                eprintln!("Server readiness: {}", poll_result.stdout_lossy().trim());
 
-                if poll_result.stdout.trim() != "ready" {
+                if poll_result.stdout_lossy().trim() != "ready" {
                     let stderr = sandbox
                         .exec_command(
                             "cat /tmp/mcp_server_stderr.log 2>/dev/null | tail -20",
@@ -1911,7 +1914,7 @@ async fn daytona_playwright_mcp_sandbox_transport() {
                             None,
                         )
                         .await
-                        .map(|r| r.stdout)
+                        .map(|r| r.stdout_lossy())
                         .unwrap_or_default();
                     panic!("MCP server did not start on port {port}. stderr:\n{stderr}");
                 }

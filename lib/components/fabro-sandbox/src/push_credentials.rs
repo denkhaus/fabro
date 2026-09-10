@@ -14,8 +14,10 @@ use fabro_github::GitHubCredentials;
 use fabro_github::token_source::{InstallationTokenSource, ResolvedToken, TokenSnapshot};
 use fabro_redact::DisplaySafeUrl;
 pub use fabro_types::run_event::GitCredentialRefreshError as RefreshErrorKind;
+use sandbox_driver::Termination;
 use tokio::sync::{Mutex, MutexGuard};
 
+use crate::exec::ExecResultExt;
 use crate::redact;
 use crate::sandbox::{RefreshOutcome, RemoteCredentialAction};
 
@@ -321,11 +323,10 @@ impl CredentialLease<'_> {
                 })
             }
             Err(err) => {
-                if matches!(
-                    &err,
-                    crate::Error::Exec { result, .. }
-                        if result.termination != fabro_types::CommandTermination::Exited
-                ) {
+                if err
+                    .exec_failure()
+                    .is_some_and(|failure| failure.termination() != Termination::Exited)
+                {
                     return Err(err);
                 }
                 tracing::warn!(
@@ -377,7 +378,7 @@ pub(crate) async fn set_auth_url_via_exec(
                 RedactedSetUrlError(message),
             )
         })?;
-    if !result.is_success() {
+    if !result.success() {
         return Err(result.into_exec_error_with_redactor(
             "git remote set-url origin (refresh push credentials)",
             |s| redact::redact_auth_url(s, Some(&auth_url)),

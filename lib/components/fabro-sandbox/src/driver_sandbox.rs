@@ -23,9 +23,10 @@ use fabro_github::token_source::InstallationTokenSource;
 use fabro_types::SandboxProviderKind;
 use fabro_util::workspace_glob::WorkspaceGlob;
 use sandbox_driver::{
-    DirEntry, EventContext, FileKind, GrepMatch, GrepOptions, LifecycleTimers, PtyOptions, PtySize,
-    Sandbox as DriverHandle, SandboxProvider as DriverProvider, SandboxSource,
-    SandboxSpec as DriverSpec, SandboxState, Search as _, WaitOptions, WalkOptions,
+    DirEntry, EventContext, ExecControls, ExecResult, ExecSpec, ExecStreamingResult, FileKind,
+    GrepMatch, GrepOptions, LifecycleTimers, PtyOptions, PtySize, Sandbox as DriverHandle,
+    SandboxProvider as DriverProvider, SandboxSource, SandboxSpec as DriverSpec, SandboxState,
+    Search as _, StdioProcess, WaitOptions, WalkOptions,
 };
 use sandbox_driver_host::HostProvider;
 use tokio::fs;
@@ -71,10 +72,7 @@ pub async fn local_sandbox_with_events(
     Ok(sandbox)
 }
 use crate::exec::{ExplicitEnvPolicy, SandboxExec};
-use crate::sandbox::{
-    self, ExecResult, ExecStreamingRequest, ExecStreamingResult, PushError, PushReport,
-    SandboxFile, SandboxWorkspaceLayout, StdioProcess,
-};
+use crate::sandbox::{self, PushError, PushReport, SandboxFile, SandboxWorkspaceLayout};
 
 /// Where a clone-based provider puts its files: the run works under
 /// `workspace_root`, and repositories check out under `repos_root`.
@@ -799,22 +797,29 @@ impl RunSandbox {
             .await
     }
 
+    /// Runs `spec` under fabro's exec policy, delivering output through
+    /// `controls.sink` as it arrives. Build the spec with
+    /// [`ExecSpec::bash`]; the policy fills the stop grace, the run's
+    /// working directory, and the environment filter where the spec leaves
+    /// them open.
     pub async fn exec_command_streaming(
         &self,
-        request: ExecStreamingRequest<'_>,
+        spec: ExecSpec,
+        controls: ExecControls,
     ) -> crate::Result<ExecStreamingResult> {
-        self.exec()?.run_streaming(request).await
+        self.exec()?.run_streaming(spec, controls).await
     }
 
+    /// Launches a long-lived process with bidirectional stdio. The returned
+    /// handle terminates the process; dropping it does not.
     pub async fn spawn_stdio_process(
         &self,
         command: &str,
         working_dir: Option<&str>,
         env_vars: Option<&HashMap<String, String>>,
-        cancel_token: Option<CancellationToken>,
     ) -> crate::Result<StdioProcess> {
         self.exec()?
-            .spawn_stdio(command, working_dir, env_vars, cancel_token)
+            .spawn_stdio(command, working_dir, env_vars)
             .await
     }
 
@@ -1077,7 +1082,7 @@ impl RunSandbox {
                 .exec_command("git remote get-url origin", 10_000, None, None, None)
                 .await
             {
-                Ok(result) if result.is_success() => true,
+                Ok(result) if result.success() => true,
                 Ok(_) => false,
                 Err(err) => {
                     return Err(PushError {
@@ -1192,12 +1197,12 @@ fn elapsed_ms(started: Instant) -> u64 {
 mod tests {
     use std::sync::Mutex;
 
-    use fabro_types::CommandTermination;
-    use sandbox_driver::{SandboxProvider as _, SandboxSource, SandboxSpec};
+    use sandbox_driver::{SandboxProvider as _, SandboxSource, SandboxSpec, Termination};
     use sandbox_driver_host::HostProvider;
     use tokio::fs;
 
     use super::*;
+    use crate::exec::ExecResultExt;
 
     struct Fixture {
         dir:       tempfile::TempDir,
@@ -1284,15 +1289,15 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(ok.stdout, "hello\nbash\n");
-        assert!(ok.is_success());
+        assert_eq!(ok.stdout_lossy(), "hello\nbash\n");
+        assert!(ok.success());
         let timed_out = f
             .sandbox
             .exec_command("sleep 10", 200, None, None, None)
             .await
             .unwrap();
-        assert_eq!(timed_out.termination, CommandTermination::TimedOut);
-        assert_eq!(timed_out.exit_code, None);
+        assert_eq!(timed_out.termination, Termination::TimedOut);
+        assert_eq!(timed_out.program_exit_code(), None);
     }
 
     #[tokio::test]

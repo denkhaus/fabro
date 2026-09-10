@@ -15,12 +15,13 @@ use std::time::Duration;
 use fabro_github::token_source::ResolvedToken;
 use fabro_redact::DisplaySafeUrl;
 use fabro_types::SandboxProviderKind;
-use sandbox_driver::{Git as _, GitCloneOptions, GitCredentials, Sandbox as DriverHandle};
+use sandbox_driver::{
+    ExecResult, Git as _, GitCloneOptions, GitCredentials, Sandbox as DriverHandle,
+};
 use tokio::time;
 
-use crate::ExecResult;
 use crate::clone_source::{self, GitHubRepoLayout, PinnedRevision};
-use crate::exec::SandboxExec;
+use crate::exec::{ExecResultExt, SandboxExec};
 use crate::git_retry::{self, CredentialContext, GitRetryReason, RetryPlan};
 use crate::push_credentials::PushCredentialState;
 use crate::redact::redact_auth_url;
@@ -169,7 +170,7 @@ pub(crate) async fn clone_github_repo(
             has_app,
         )
         .await?;
-        pin.verify_head(&head.stdout)?;
+        pin.verify_head(&head.stdout_lossy())?;
     }
 
     run_local_step(
@@ -192,7 +193,7 @@ async fn verify_git_available(exec: &SandboxExec<'_>) -> crate::Result<()> {
     let result = exec
         .run("git --version", Some(STEP_TIMEOUT), Some("/"), None, None)
         .await?;
-    if !result.is_success() {
+    if !result.success() {
         return Err(crate::Error::message(
             "The sandbox image must include git for repository clone and git lifecycle \
              operations. Use an image with bash and git, such as buildpack-deps:noble.",
@@ -224,7 +225,7 @@ async fn run_local_step(
         .run(command, Some(remaining), Some("/"), None, None)
         .await
         .map_err(|error| crate::Error::context(format!("{label} transport failed"), error))?;
-    if result.is_success() {
+    if result.success() {
         return Ok(result);
     }
     Err(clone_failure_error(
@@ -275,7 +276,7 @@ async fn embed_origin_credentials(
         )
         .await
     {
-        Ok(result) if result.is_success() => {}
+        Ok(result) if result.success() => {}
         Ok(result) => {
             let err = result
                 .into_exec_error_with_redactor("git remote set-url origin (post-clone)", |s| {

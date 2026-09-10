@@ -9,9 +9,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::config::{ToolAccessPolicy, ToolExposureMode};
 use crate::native_tool::{NativeTool, ToolVocabulary};
-use crate::sandbox::{OutputCaptureStats, RunSandbox};
+use crate::sandbox::RunSandbox;
 use crate::session::ToolEnvProvider;
 use crate::tool_permissions;
+use crate::truncation::OutputCaptureStats;
 use crate::types::AgentEvent;
 
 /// Narrow handle a tool uses to publish typed agent events (e.g. todo

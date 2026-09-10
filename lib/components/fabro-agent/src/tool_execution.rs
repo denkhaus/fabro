@@ -10,11 +10,11 @@ use tracing::debug;
 use crate::config::{SessionOptions, ToolHookCallback, ToolHookDecision};
 use crate::event::{Emitter, SessionBoundEmitter};
 use crate::question_tools::{self, AgentToolRuntime, is_question_tool};
-use crate::sandbox::{OutputCaptureStats, RunSandbox};
+use crate::sandbox::RunSandbox;
 use crate::session::ToolEnvProvider;
 use crate::tool_registry::{AgentEventEmitter, RegisteredTool, ToolContext, ToolRegistry};
 use crate::truncation::{
-    MAX_RETAINED_TOOL_OUTPUT_BYTES, preview_tool_output, serialized_json_bytes,
+    MAX_RETAINED_TOOL_OUTPUT_BYTES, OutputCaptureStats, preview_tool_output, serialized_json_bytes,
     truncate_tool_output,
 };
 use crate::types::AgentEvent;
@@ -672,6 +672,8 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
+    use fabro_sandbox::Termination;
+    use fabro_sandbox::test_support::exec_result;
     use fabro_types::run_event::{AgentToolCompletedProps, MAX_RUN_EVENT_BODY_BYTES};
     use fabro_types::{AgentProfileKind, tool_result_to_json};
     use lithos_llm::types::{ToolCall, ToolDefinition};
@@ -1373,23 +1375,11 @@ mod tests {
     }
 
     fn exited(exit_code: i32) -> fabro_sandbox::ExecResult {
-        fabro_sandbox::ExecResult {
-            stdout:      "out".into(),
-            stderr:      "err".into(),
-            exit_code:   Some(exit_code),
-            termination: fabro_types::CommandTermination::Exited,
-            duration_ms: 12,
-        }
+        exec_result("out", "err", Some(exit_code), Termination::Exited, 12)
     }
 
     fn cancelled() -> fabro_sandbox::ExecResult {
-        fabro_sandbox::ExecResult {
-            stdout:      "out".into(),
-            stderr:      String::new(),
-            exit_code:   None,
-            termination: fabro_types::CommandTermination::Cancelled,
-            duration_ms: 12,
-        }
+        exec_result("out", "", None, Termination::Cancelled, 12)
     }
 
     async fn run_shell_tool(
@@ -1458,13 +1448,13 @@ mod tests {
         let emitter = Emitter::new();
         let mut receiver = emitter.subscribe();
         let result = run_shell_tool(
-            fabro_sandbox::ExecResult {
-                stdout:      "x".repeat(output_len),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: fabro_types::CommandTermination::Exited,
-                duration_ms: 12,
-            },
+            exec_result(
+                &("x".repeat(output_len)),
+                "",
+                Some(0),
+                Termination::Exited,
+                12,
+            ),
             None,
             &emitter,
         )

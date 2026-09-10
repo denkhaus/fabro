@@ -1,8 +1,8 @@
 // Re-export the sandbox types the agent works with from fabro-sandbox.
 pub use fabro_sandbox::{
-    CommandOutputCallback, DirEntry, ExecResult, ExecStreamingRequest, ExecStreamingResult,
-    FileKind, GrepMatch, GrepOptions, OutputCaptureStats, RefreshOutcome, RemoteCredentialAction,
-    RunSandbox, SandboxFile, StderrCollector, StdioProcess, StdioProcessHandle,
-    StdioProcessTermination, TokenProvenance, TokenSnapshot, WalkOptions, format_lines_numbered,
-    shell_quote,
+    CaptureStats, DirEntry, ExecControls, ExecResult, ExecResultExt, ExecSpec, ExecStreamingResult,
+    FileKind, GrepMatch, GrepOptions, OutputSink, OutputStream, RefreshOutcome,
+    RemoteCredentialAction, RunSandbox, SandboxFile, StderrTail, StdioProcess, StdioProcessHandle,
+    Termination, TokenProvenance, TokenSnapshot, WalkOptions, command_termination,
+    format_lines_numbered, program_exit_code, shell_quote,
 };

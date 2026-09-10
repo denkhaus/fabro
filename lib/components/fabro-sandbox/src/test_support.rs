@@ -11,13 +11,31 @@ use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use fabro_types::{CommandTermination, SandboxProviderKind};
-use sandbox_driver::{GrepMatch, PlatformInfo, SandboxState, Termination, WalkedFile};
+use fabro_types::SandboxProviderKind;
+use sandbox_driver::{
+    ExecResult, GrepMatch, PlatformInfo, SandboxState, StderrTail, Termination, WalkedFile,
+};
 pub use sandbox_driver_testing::{ScriptedExec, ScriptedSandbox, ScriptedStdioProcess};
 use tokio::io::DuplexStream;
 
 use crate::driver_sandbox::RunSandbox;
-use crate::sandbox::{ExecResult, SandboxFile, StderrCollector};
+use crate::sandbox::SandboxFile;
+
+/// A driver [`ExecResult`] with the given streams, for scripting a mock
+/// sandbox's answers.
+#[must_use]
+pub fn exec_result(
+    stdout: &str,
+    stderr: &str,
+    exit_code: Option<i32>,
+    termination: Termination,
+    duration_ms: u64,
+) -> ExecResult {
+    let mut result = ExecResult::new(termination, exit_code, Duration::from_millis(duration_ms));
+    result.stdout = stdout.as_bytes().to_vec();
+    result.stderr = stderr.as_bytes().to_vec();
+    result
+}
 
 // --- MockSandbox ---
 
@@ -71,12 +89,11 @@ impl Default for MockSandbox {
     fn default() -> Self {
         Self {
             files:               HashMap::new(),
-            exec_result:         ExecResult {
-                stdout:      "mock output".into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 10,
+            exec_result:         {
+                let mut result =
+                    ExecResult::new(Termination::Exited, Some(0), Duration::from_millis(10));
+                result.stdout = b"mock output".to_vec();
+                result
             },
             exec_error:          None,
             working_dir:         "/work",
@@ -145,17 +162,15 @@ impl MockSandbox {
     ) -> &Self {
         self.driver().scripted_exec().respond_with(move |spec| {
             let command = spec.args.last().map(String::as_str).unwrap_or_default();
-            responder(command).map(|result| driver_result(&result))
+            responder(command)
         });
         self
     }
 
     /// Queues the result for the next command, ahead of `exec_result`.
     /// Results answer in the order they were pushed.
-    pub fn push_exec_result(&self, result: &ExecResult) -> &Self {
-        self.driver()
-            .scripted_exec()
-            .push_result(driver_result(result));
+    pub fn push_exec_result(&self, result: ExecResult) -> &Self {
+        self.driver().scripted_exec().push_result(result);
         self
     }
 
@@ -197,7 +212,7 @@ impl MockSandbox {
         let exec = driver.scripted_exec();
         match &self.exec_error {
             Some(message) => exec.fail_by_default(message.clone()),
-            None => exec.set_default(driver_result(&self.exec_result)),
+            None => exec.set_default(self.exec_result.clone()),
         };
         exec.set_streams_separated(self.streams_separated);
         if let Some(message) = &self.stdio_process_error {
@@ -363,43 +378,22 @@ impl MockSandbox {
     }
 }
 
-/// The driver result fabro's exec policy reads back as `result`.
-fn driver_result(result: &ExecResult) -> sandbox_driver::ExecResult {
-    let termination = match result.termination {
-        CommandTermination::Exited => Termination::Exited,
-        CommandTermination::TimedOut => Termination::TimedOut,
-        CommandTermination::Cancelled => Termination::Cancelled,
-    };
-    let mut driver = sandbox_driver::ExecResult::new(
-        termination,
-        result.exit_code,
-        Duration::from_millis(result.duration_ms),
-    );
-    driver.stdout = result.stdout.clone().into_bytes();
-    driver.stderr = result.stderr.clone().into_bytes();
-    driver
-}
-
 // --- MockStdioProcess ---
 
 /// A stdio process a test drives, over the driver's scripted process.
 ///
 /// The driver closure receives the process's end of standard input, its
-/// end of standard output, and fabro's stderr collector for the process.
+/// end of standard output, and the rolling stderr tail the process reports.
 pub struct MockStdioProcess {
     inner: std::sync::Mutex<Option<ScriptedStdioProcess>>,
 }
 
 impl MockStdioProcess {
     pub fn new(
-        driver: impl FnOnce(DuplexStream, DuplexStream, StderrCollector) + Send + 'static,
+        driver: impl FnOnce(DuplexStream, DuplexStream, StderrTail) + Send + 'static,
     ) -> Self {
         Self {
-            inner: std::sync::Mutex::new(Some(ScriptedStdioProcess::new(
-                move |stdin, stdout, tail| {
-                    driver(stdin, stdout, StderrCollector::from_driver_tail(tail));
-                },
-            ))),
+            inner: std::sync::Mutex::new(Some(ScriptedStdioProcess::new(driver))),
         }
     }
 

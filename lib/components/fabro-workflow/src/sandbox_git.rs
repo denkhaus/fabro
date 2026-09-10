@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use fabro_agent::RunSandbox;
 use fabro_checkpoint::trailer as trailerlink;
 use fabro_checkpoint::trailer::Trailer;
-use fabro_sandbox::shell_quote;
+use fabro_sandbox::{ExecResult, ExecResultExt, Termination, shell_quote};
 use fabro_types::settings::run::RunCheckpointSettings;
 use fabro_util::error::SharedError;
 
@@ -22,24 +22,21 @@ pub struct GitCommandError {
 pub const GIT_REMOTE: &str =
     "git -c maintenance.auto=0 -c gc.auto=0 -c commit.gpgsign=false -c tag.gpgsign=false";
 
-pub(crate) fn exec_err(label: &str, r: fabro_sandbox::ExecResult) -> GitCommandError {
-    if r.is_timed_out() {
-        return GitCommandError {
-            message: format!("{label} timed out after {}ms", r.duration_ms),
-            source:  fabro_sandbox::Error::exec(label, r),
-        };
-    }
-    if r.is_cancelled() {
-        return GitCommandError {
-            message: format!("{label} cancelled after {}ms", r.duration_ms),
-            source:  fabro_sandbox::Error::exec(label, r),
-        };
-    }
-
-    let exit = r.display_exit_code();
+pub(crate) fn exec_err(label: &str, r: ExecResult) -> GitCommandError {
+    let duration_ms = r.duration_ms();
+    let message = match r.termination {
+        Termination::TimedOut => format!("{label} timed out after {duration_ms}ms"),
+        Termination::Cancelled | Termination::Killed => {
+            format!("{label} cancelled after {duration_ms}ms")
+        }
+        _ => format!(
+            "{label} failed (exit {})",
+            r.program_exit_code().unwrap_or(-1)
+        ),
+    };
     GitCommandError {
-        message: format!("{label} failed (exit {exit})"),
-        source:  fabro_sandbox::Error::exec(label, r),
+        message,
+        source: r.into_exec_error(label),
     }
 }
 
@@ -73,7 +70,7 @@ pub async fn git_checkpoint(
         .exec_command(&add_cmd, checkpoint.commit_timeout_ms, None, None, None)
         .await;
     match add_result {
-        Ok(r) if r.is_success() => {}
+        Ok(r) if r.success() => {}
         Ok(r) => return Err(exec_err("git add", r)),
         Err(e) => {
             return Err(GitCommandError {
@@ -129,7 +126,7 @@ pub async fn git_checkpoint(
         .await;
     let _ = sandbox.delete_file(&msg_path).await;
     match commit_result {
-        Ok(r) if r.is_success() => {}
+        Ok(r) if r.success() => {}
         Ok(r) => return Err(exec_err("git commit", r)),
         Err(e) => {
             return Err(GitCommandError {
@@ -144,7 +141,7 @@ pub async fn git_checkpoint(
         .exec_command(&sha_cmd, 10_000, None, None, None)
         .await;
     match sha_result {
-        Ok(r) if r.is_success() => Ok(r.stdout.trim().to_string()),
+        Ok(r) if r.success() => Ok(r.stdout_lossy().trim().to_string()),
         Ok(r) => Err(exec_err("git rev-parse HEAD", r)),
         Err(e) => Err(GitCommandError {
             message: "git rev-parse HEAD failed".to_string(),
@@ -217,7 +214,7 @@ pub(crate) async fn git_diff_with_timeout(
         .exec_command(&cmd, timeout_ms, None, None, None)
         .await
     {
-        Ok(r) if r.is_success() => Ok(r.stdout),
+        Ok(r) if r.success() => Ok(r.stdout_lossy()),
         Ok(r) => Err(exec_err("git diff", r)),
         Err(e) => Err(GitCommandError {
             message: "git diff failed".to_string(),
@@ -367,22 +364,22 @@ pub async fn list_changed_files_raw(
             message: e.display_with_causes(),
         })?;
 
-    if res.is_timed_out() {
+    if res.termination == Termination::TimedOut {
         return Err(DiffError::Transient {
             message: "git diff --raw timed out".to_string(),
         });
     }
-    if !res.is_success() {
+    if !res.success() {
         // An unknown-object / bad-revision error is permanent; everything
         // else we treat as transient so the server can retry safely.
-        let stderr = res.stderr.trim().to_string();
+        let stderr = res.stderr_lossy().trim().to_string();
         if is_permanent_git_error(&stderr) {
             return Err(DiffError::Permanent { message: stderr });
         }
         return Err(DiffError::Transient { message: stderr });
     }
 
-    parse_raw_z(&res.stdout).map_err(|message| DiffError::Permanent { message })
+    parse_raw_z(&res.stdout_lossy()).map_err(|message| DiffError::Permanent { message })
 }
 
 fn is_permanent_git_error(stderr: &str) -> bool {
@@ -570,13 +567,13 @@ pub async fn list_diff_numstat(
             message: e.display_with_causes(),
         })?;
 
-    if res.is_timed_out() {
+    if res.termination == Termination::TimedOut {
         return Err(DiffError::Transient {
             message: "git diff --numstat timed out".to_string(),
         });
     }
-    if !res.is_success() {
-        let stderr = res.stderr.trim().to_string();
+    if !res.success() {
+        let stderr = res.stderr_lossy().trim().to_string();
         if is_permanent_git_error(&stderr) {
             return Err(DiffError::Permanent { message: stderr });
         }
@@ -584,7 +581,7 @@ pub async fn list_diff_numstat(
     }
 
     let mut out = DiffNumstat::default();
-    for line in res.stdout.lines() {
+    for line in res.stdout_lossy().lines() {
         // `-\t-\t<path>` marks binary. Rename lines read `<+>\t<->\t<path> =>
         // <path>` or `<+>\t<->\t{<old> => <new>}`.
         if let Some(rest) = line.strip_prefix("-\t-\t") {
@@ -661,19 +658,22 @@ pub async fn stream_blob_metadata(
             message: e.display_with_causes(),
         })?;
 
-    if res.is_timed_out() {
+    if res.termination == Termination::TimedOut {
         return Err(DiffError::Transient {
             message: "git cat-file --batch-check timed out".to_string(),
         });
     }
-    if !res.is_success() {
+    if !res.success() {
         return Err(DiffError::Transient {
-            message: format!("git cat-file --batch-check failed: {}", res.stderr.trim()),
+            message: format!(
+                "git cat-file --batch-check failed: {}",
+                res.stderr_lossy().trim()
+            ),
         });
     }
 
     let mut metas = Vec::with_capacity(shas.len());
-    for line in res.stdout.lines() {
+    for line in res.stdout_lossy().lines() {
         // Lines: "<sha> <type> <size>" OR "<sha> missing"
         let mut parts = line.split(' ');
         let sha = parts
@@ -728,18 +728,18 @@ pub async fn stream_blobs(
             message: e.display_with_causes(),
         })?;
 
-    if res.is_timed_out() {
+    if res.termination == Termination::TimedOut {
         return Err(DiffError::Transient {
             message: "git cat-file --batch timed out".to_string(),
         });
     }
-    if !res.is_success() {
+    if !res.success() {
         return Err(DiffError::Transient {
-            message: format!("git cat-file --batch failed: {}", res.stderr.trim()),
+            message: format!("git cat-file --batch failed: {}", res.stderr_lossy().trim()),
         });
     }
 
-    parse_batch_output(&res.stdout, shas, size_cap_bytes)
+    parse_batch_output(&res.stdout_lossy(), shas, size_cap_bytes)
         .map_err(|message| DiffError::Permanent { message })
 }
 
@@ -812,9 +812,7 @@ mod tests {
         reason = "These unit tests use the real git CLI to construct sandbox-git fixture repositories and sync-write fixtures to disk."
     )]
 
-    use fabro_agent::ExecResult;
-    use fabro_sandbox::test_support::MockSandbox;
-    use fabro_types::CommandTermination;
+    use fabro_sandbox::test_support::{MockSandbox, exec_result};
 
     use super::*;
 
@@ -822,39 +820,21 @@ mod tests {
     fn scripted(exec_results: &[ExecResult]) -> MockSandbox {
         let sandbox = MockSandbox::default();
         for result in exec_results {
-            sandbox.push_exec_result(result);
+            sandbox.push_exec_result(result.clone());
         }
         sandbox
     }
 
     fn exec_ok() -> ExecResult {
-        ExecResult {
-            stdout:      String::new(),
-            stderr:      String::new(),
-            exit_code:   Some(0),
-            termination: CommandTermination::Exited,
-            duration_ms: 1,
-        }
+        exec_result("", "", Some(0), Termination::Exited, 1)
     }
 
     fn exec_timed_out(duration_ms: u64) -> ExecResult {
-        ExecResult {
-            stdout: String::new(),
-            stderr: String::new(),
-            exit_code: None,
-            termination: CommandTermination::TimedOut,
-            duration_ms,
-        }
+        exec_result("", "", None, Termination::TimedOut, duration_ms)
     }
 
     fn exec_failed(exit_code: i32, stdout: &str, stderr: &str) -> ExecResult {
-        ExecResult {
-            stdout:      stdout.to_string(),
-            stderr:      stderr.to_string(),
-            exit_code:   Some(exit_code),
-            termination: CommandTermination::Exited,
-            duration_ms: 1,
-        }
+        exec_result(stdout, stderr, Some(exit_code), Termination::Exited, 1)
     }
 
     #[test]
@@ -1199,7 +1179,8 @@ mod tests {
             )
             .await
             .unwrap();
-        let staged_files: Vec<&str> = status.stdout.lines().collect();
+        let status_stdout = status.stdout_lossy();
+        let staged_files: Vec<&str> = status_stdout.lines().collect();
         assert!(
             staged_files.contains(&"hello.txt"),
             "expected hello.txt to be staged, got: {staged_files:?}"

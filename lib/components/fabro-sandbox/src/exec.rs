@@ -1,41 +1,40 @@
 //! Fabro's command execution policy over the sandbox-driver [`Exec`] facet.
 //!
+//! The vocabulary is the driver's own: an [`ExecSpec`] and [`ExecControls`]
+//! go in, an [`ExecResult`] or [`ExecStreamingResult`] comes out. This
+//! module adds fabro's policy on the way in and fabro's reading of a result
+//! on the way out.
+//!
 //! A command runs as Bash source under `bash -c` with `BASH_ENV` blanked,
 //! and ends in one of three ways:
 //!
 //! - **timeout**: the spec's timeout fires and the provider runs the stop
 //!   ladder fabro asks for — `TERM`, then `KILL` after
-//!   [`SandboxExec::stop_grace`]. The result reports
-//!   [`CommandTermination::TimedOut`].
+//!   [`SandboxExec::stop_grace`]. The result reports [`Termination::TimedOut`].
 //! - **cancellation**: the caller's [`CancellationToken`] is the `term` stop;
 //!   the provider escalates to `KILL` after the same grace. The result reports
-//!   [`CommandTermination::Cancelled`].
+//!   [`Termination::Cancelled`].
 //! - **exit**: the process ended on its own.
 //!
 //! Output is drained regardless of the retention cap, redacted only when a
-//! tail is rendered for events or logs, and delivered live through the
-//! caller's callback. Explicit environment variables pass through a
-//! fail-closed secret filter under [`ExplicitEnvPolicy::FilterSensitive`],
-//! matching what the Host provider already does for inherited variables.
+//! tail is rendered for events or logs ([`ExecResultExt`]), and delivered
+//! live through the caller's [`sandbox_driver::OutputSink`]. Explicit
+//! environment variables pass through a fail-closed secret filter under
+//! [`ExplicitEnvPolicy::FilterSensitive`], matching what the Host provider
+//! already does for inherited variables.
 
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
-use async_trait::async_trait;
 use fabro_static::EnvVars;
-use fabro_types::{CommandOutputStream, CommandTermination};
+use fabro_types::{CommandTermination, ExecOutputTail};
 use sandbox_driver::{
-    BASH_ENV_VAR, CaptureStats, Exec, ExecControls, ExecSpec, OutputStream, SpawnSpec,
-    StdioProcessHandle as DriverStdioProcessHandle, Termination, TransportError,
+    BASH_ENV_VAR, Exec, ExecControls, ExecFailure, ExecResult, ExecSpec, ExecStreamingResult,
+    SpawnSpec, StdioProcess, Termination,
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::sandbox::{
-    CommandOutputCallback, ExecResult, ExecStreamingRequest, ExecStreamingResult,
-    OutputCaptureStats, StderrCollector, StdioProcess, StdioProcessControl, StdioProcessHandle,
-    StdioProcessTermination,
-};
+use crate::sandbox::{DEFAULT_EXEC_OUTPUT_TAIL_BYTES, redacted_output_tail};
 
 /// Time between `TERM` and `KILL` when fabro stops a command.
 pub const DEFAULT_STOP_GRACE: Duration = Duration::from_secs(2);
@@ -131,7 +130,8 @@ impl<'a> SandboxExec<'a> {
     ///
     /// Equivalent to `bash -c <command>` with a clean, non-login shell: no
     /// `errexit`, no `pipefail`, `BASH_ENV` blanked. A caller that wants
-    /// different semantics writes them into the command.
+    /// different semantics writes them into the command. `None` for
+    /// `timeout` runs without a deadline.
     pub async fn run(
         &self,
         command: &str,
@@ -140,216 +140,198 @@ impl<'a> SandboxExec<'a> {
         env_vars: Option<&HashMap<String, String>>,
         cancel_token: Option<CancellationToken>,
     ) -> crate::Result<ExecResult> {
-        let streaming = self
-            .run_streaming(ExecStreamingRequest {
-                timeout_ms: timeout
-                    .map(|timeout| u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX)),
-                working_dir,
-                env_vars,
-                cancel_token,
-                ..ExecStreamingRequest::new(command)
-            })
-            .await?;
-        Ok(streaming.result)
-    }
-
-    /// Runs Bash source, delivering output through `request.output_callback`
-    /// as it arrives. Same interpreter contract as [`Self::run`].
-    pub async fn run_streaming(
-        &self,
-        request: ExecStreamingRequest<'_>,
-    ) -> crate::Result<ExecStreamingResult> {
-        let ExecStreamingRequest {
-            command,
-            timeout_ms,
-            working_dir,
-            env_vars,
-            cancel_token,
-            stdin,
-            output_callback,
-            stream_output_bytes_cap,
-        } = request;
-
-        let mut spec = ExecSpec::bash(command)
-            .no_timeout()
-            .stop_grace(self.stop_grace);
-        if let Some(timeout_ms) = timeout_ms {
-            spec = spec.timeout(Duration::from_millis(timeout_ms));
+        let mut spec = ExecSpec::bash(command).no_timeout();
+        if let Some(timeout) = timeout {
+            spec = spec.timeout(timeout);
         }
-        if let Some(dir) = working_dir.or(self.working_dir.as_deref()) {
+        if let Some(dir) = working_dir {
             spec = spec.working_dir(dir);
         }
-        for (key, value) in self.explicit_env(env_vars) {
+        for (key, value) in env_vars.into_iter().flatten() {
             spec = spec.env_var(key, value);
         }
-        if let Some(bytes) = stdin {
-            spec = spec.stdin(bytes);
-        }
-
-        // The caller's cancellation is the `term` stop; the provider runs
-        // the grace and the `kill` itself.
         let controls = ExecControls {
-            term:                  cancel_token,
-            kill:                  None,
-            stdin:                 None,
-            sink:                  output_callback.map(adapt_output_callback),
-            retained_output_limit: Some(
-                stream_output_bytes_cap.unwrap_or(DEFAULT_RETAINED_OUTPUT_BYTES),
-            ),
+            term: cancel_token,
+            ..ExecControls::default()
         };
+        Ok(self.run_streaming(spec, controls).await?.result)
+    }
 
-        let streaming = self.exec.run_streaming(&spec, controls).await?;
-
-        let termination = map_termination(streaming.result.termination);
-        let duration_ms = duration_ms(streaming.result.duration);
-        Ok(ExecStreamingResult {
-            result:            ExecResult {
-                stdout: String::from_utf8_lossy(&streaming.result.stdout).into_owned(),
-                stderr: String::from_utf8_lossy(&streaming.result.stderr).into_owned(),
-                exit_code: exit_code_for(termination, streaming.result.exit_code),
-                termination,
-                duration_ms,
-            },
-            streams_separated: streaming.streams_separated,
-            live_streaming:    streaming.live_streaming,
-            stdout_capture:    capture_stats(streaming.stdout_capture),
-            stderr_capture:    capture_stats(streaming.stderr_capture),
-        })
+    /// Runs `spec` under fabro's policy, delivering output through
+    /// `controls.sink` as it arrives.
+    ///
+    /// The policy fills what the spec leaves open: the stop grace, the
+    /// working directory, and the explicit environment filter. The
+    /// caller's `controls.term` is the `term` stop; the provider runs the
+    /// grace and the `kill` itself. Output beyond
+    /// `controls.retained_output_limit` (fabro's default when unset) is
+    /// drained and counted, not kept.
+    pub async fn run_streaming(
+        &self,
+        spec: ExecSpec,
+        mut controls: ExecControls,
+    ) -> crate::Result<ExecStreamingResult> {
+        let spec = self.apply_policy(spec);
+        if controls.retained_output_limit.is_none() {
+            controls.retained_output_limit = Some(DEFAULT_RETAINED_OUTPUT_BYTES);
+        }
+        Ok(self.exec.run_streaming(&spec, controls).await?)
     }
 
     /// Launches a long-lived process with bidirectional stdio.
     ///
     /// `command` is evaluated under the same non-login Bash contract before
-    /// the shell replaces itself with the requested process. Cancelling
-    /// `cancel_token` terminates the process.
+    /// the shell replaces itself with the requested process. The returned
+    /// handle terminates the process; dropping it does not.
     pub async fn spawn_stdio(
         &self,
         command: &str,
         working_dir: Option<&str>,
         env_vars: Option<&HashMap<String, String>>,
-        cancel_token: Option<CancellationToken>,
     ) -> crate::Result<StdioProcess> {
         let mut spec = SpawnSpec::bash(format!("exec {command}"));
         if let Some(dir) = working_dir.or(self.working_dir.as_deref()) {
             spec = spec.working_dir(dir);
         }
-        for (key, value) in self.explicit_env(env_vars) {
+        for (key, value) in env_vars.into_iter().flatten() {
             spec = spec.env_var(key, value);
         }
-        let process = self.exec.spawn_stdio(&spec).await?;
-        let handle = StdioProcessHandle::new(DriverStdioControl {
-            handle: Arc::from(process.handle),
-        });
-        if let Some(token) = cancel_token {
-            let handle = handle.clone();
-            tokio::spawn(async move {
-                token.cancelled().await;
-                if let Err(error) = handle.terminate().await {
-                    tracing::warn!(error = %error, "failed to terminate stdio process on cancel");
-                }
-            });
-        }
-        Ok(StdioProcess {
-            stdin: process.stdin,
-            stdout: process.stdout,
-            stderr: StderrCollector::from_driver_tail(process.stderr_tail),
-            handle,
-        })
+        self.apply_env_policy(&mut spec.env);
+        Ok(self.exec.spawn_stdio(&spec).await?)
     }
 
-    /// The explicit environment after policy: `BASH_ENV` never passes,
-    /// because the Bash helper blanks it and a caller value would override
-    /// that; credential-shaped names pass only under `TrustCaller`.
-    fn explicit_env(&self, env_vars: Option<&HashMap<String, String>>) -> Vec<(String, String)> {
-        let mut entries: Vec<(String, String)> = env_vars
-            .into_iter()
-            .flatten()
-            .filter(|(key, _)| key.as_str() != BASH_ENV_VAR)
-            .filter(|(key, _)| {
-                self.env_policy == ExplicitEnvPolicy::TrustCaller || !is_sensitive_env_var(key)
-            })
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect();
-        entries.sort();
-        entries
+    fn apply_policy(&self, mut spec: ExecSpec) -> ExecSpec {
+        if spec.stop_grace.is_none() {
+            spec.stop_grace = Some(self.stop_grace);
+        }
+        if spec.working_dir.is_none() {
+            spec.working_dir.clone_from(&self.working_dir);
+        }
+        self.apply_env_policy(&mut spec.env);
+        spec
+    }
+
+    /// The explicit environment after policy: credential-shaped names pass
+    /// only under `TrustCaller`, and the Bash helper's `BASH_ENV` blank
+    /// wins over any caller value, so a worker's startup file never runs
+    /// inside a sandboxed `bash -c`.
+    fn apply_env_policy(&self, env: &mut BTreeMap<String, String>) {
+        if self.env_policy == ExplicitEnvPolicy::FilterSensitive {
+            env.retain(|key, _| !is_sensitive_env_var(key));
+        }
+        env.insert(BASH_ENV_VAR.to_string(), String::new());
     }
 }
 
-/// The driver says how the command ended; fabro's vocabulary has two stops.
-/// A timeout is the provider's deadline (the ladder ran for it); a
+/// The driver says how the command ended; fabro's event vocabulary has two
+/// stops. A timeout is the provider's deadline (the ladder ran for it); a
 /// cancelled or killed command was stopped by the caller's token, by a
 /// foreign `kill`, or by a provider-side abort — it did not finish and no
-/// deadline passed.
-fn map_termination(termination: Termination) -> CommandTermination {
+/// deadline passed. `Exited`, or a provider that could not tell, is a
+/// completed process; nothing asserts success here.
+#[must_use]
+pub fn command_termination(termination: Termination) -> CommandTermination {
     match termination {
         Termination::TimedOut => CommandTermination::TimedOut,
         Termination::Cancelled | Termination::Killed => CommandTermination::Cancelled,
-        // `Exited`, or a provider that could not tell how the command ended.
-        // Nothing asserts success here: `exit_code` is whatever was observed
-        // and `is_success` still requires `Some(0)`.
         _ => CommandTermination::Exited,
     }
 }
 
 /// An exit code is only the command's own when it exited on its own. A
 /// stopped command may still report the shell's `128 + signal` (143 for a
-/// trapped `TERM`), which callers must not mistake for a program result.
-fn exit_code_for(termination: CommandTermination, exit_code: Option<i32>) -> Option<i32> {
-    match termination {
+/// trapped `TERM`), which events must not present as a program result.
+#[must_use]
+pub fn program_exit_code(termination: Termination, exit_code: Option<i32>) -> Option<i32> {
+    match command_termination(termination) {
         CommandTermination::Exited => exit_code,
         CommandTermination::TimedOut | CommandTermination::Cancelled => None,
     }
 }
 
-fn capture_stats(stats: CaptureStats) -> OutputCaptureStats {
-    OutputCaptureStats {
-        observed_bytes: stats.observed_bytes,
-        retained_bytes: stats.retained_bytes,
-        omitted_bytes:  stats.omitted_bytes,
-    }
+/// Fabro's reading of a driver [`ExecResult`]: the event-facing numbers,
+/// the redacted output tail, and the failure a non-zero exit is.
+pub trait ExecResultExt {
+    /// The provider's measured run time in whole milliseconds.
+    fn duration_ms(&self) -> u64;
+
+    /// The exit code when the command ended on its own; see
+    /// [`program_exit_code`].
+    fn program_exit_code(&self) -> Option<i32>;
+
+    /// Redacted, sanitized tails of both streams, each bounded to
+    /// `max_bytes_per_stream`. `None` when both streams are empty.
+    fn redacted_output_tail(&self, max_bytes_per_stream: usize) -> Option<ExecOutputTail>;
+
+    /// [`Self::redacted_output_tail`] at fabro's event budget.
+    fn default_redacted_output_tail(&self) -> Option<ExecOutputTail>;
+
+    /// The failure this result is, reported under `label`. The raw output
+    /// stays behind the driver's [`ExecFailure`] accessors; `Display`
+    /// carries only the label and the classified metadata.
+    fn into_exec_error(self, label: impl Into<String>) -> crate::Error;
+
+    /// [`Self::into_exec_error`] with `redactor` applied to both streams
+    /// first, for output that can carry a credentialed URL.
+    fn into_exec_error_with_redactor(
+        self,
+        label: impl Into<String>,
+        redactor: impl Fn(&str) -> String,
+    ) -> crate::Error;
+
+    /// `Ok(self)` for a clean exit, the failure under `label` otherwise.
+    fn into_result(self, label: impl Into<String>) -> crate::Result<ExecResult>;
 }
 
-fn adapt_output_callback(callback: CommandOutputCallback) -> sandbox_driver::OutputSink {
-    Arc::new(move |stream, chunk| {
-        let stream = match stream {
-            OutputStream::Stdout => CommandOutputStream::Stdout,
-            OutputStream::Stderr => CommandOutputStream::Stderr,
-        };
-        let callback = Arc::clone(&callback);
-        Box::pin(async move {
-            callback(stream, chunk).await.map_err(|error| {
-                sandbox_driver::Error::Transport(TransportError::with_source(
-                    "command output callback failed",
-                    error,
-                ))
-            })
-        })
-    })
-}
-
-/// The provider's measured run time in whole milliseconds.
-fn duration_ms(duration: Duration) -> u64 {
-    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
-}
-
-struct DriverStdioControl {
-    handle: Arc<dyn DriverStdioProcessHandle>,
-}
-
-#[async_trait]
-impl StdioProcessControl for DriverStdioControl {
-    async fn terminate(&self) -> crate::Result<()> {
-        self.handle.terminate().await;
-        Ok(())
+impl ExecResultExt for ExecResult {
+    fn duration_ms(&self) -> u64 {
+        u64::try_from(self.duration.as_millis()).unwrap_or(u64::MAX)
     }
 
-    async fn wait(&self) -> crate::Result<StdioProcessTermination> {
-        let (termination, exit_code) = self.handle.wait().await;
-        let termination = map_termination(termination);
-        Ok(StdioProcessTermination {
-            termination,
-            exit_code: exit_code_for(termination, exit_code),
-        })
+    fn program_exit_code(&self) -> Option<i32> {
+        program_exit_code(self.termination, self.exit_code)
+    }
+
+    fn redacted_output_tail(&self, max_bytes_per_stream: usize) -> Option<ExecOutputTail> {
+        redacted_output_tail(
+            &self.stdout_lossy(),
+            &self.stderr_lossy(),
+            max_bytes_per_stream,
+        )
+    }
+
+    fn default_redacted_output_tail(&self) -> Option<ExecOutputTail> {
+        self.redacted_output_tail(DEFAULT_EXEC_OUTPUT_TAIL_BYTES)
+    }
+
+    fn into_exec_error(self, label: impl Into<String>) -> crate::Error {
+        let failure = ExecFailure::new(
+            label,
+            self.termination,
+            self.exit_code,
+            self.stdout,
+            self.stderr,
+        )
+        .with_duration(self.duration);
+        crate::Error::driver_error(failure.into())
+    }
+
+    fn into_exec_error_with_redactor(
+        mut self,
+        label: impl Into<String>,
+        redactor: impl Fn(&str) -> String,
+    ) -> crate::Error {
+        self.stdout = redactor(&self.stdout_lossy()).into_bytes();
+        self.stderr = redactor(&self.stderr_lossy()).into_bytes();
+        self.into_exec_error(label)
+    }
+
+    fn into_result(self, label: impl Into<String>) -> crate::Result<ExecResult> {
+        if self.success() {
+            Ok(self)
+        } else {
+            Err(self.into_exec_error(label))
+        }
     }
 }
 
@@ -358,7 +340,9 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::Instant;
 
-    use sandbox_driver::{SandboxProvider as _, SandboxSource, SandboxSpec};
+    use sandbox_driver::{
+        OutputSink, OutputStream, SandboxProvider as _, SandboxSource, SandboxSpec, TransportError,
+    };
     use sandbox_driver_host::HostProvider;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::{fs, time};
@@ -404,16 +388,30 @@ mod tests {
             .unwrap()
     }
 
+    fn exec_result(
+        stdout: &str,
+        stderr: &str,
+        exit_code: Option<i32>,
+        termination: Termination,
+        duration_ms: u64,
+    ) -> ExecResult {
+        let mut result =
+            ExecResult::new(termination, exit_code, Duration::from_millis(duration_ms));
+        result.stdout = stdout.as_bytes().to_vec();
+        result.stderr = stderr.as_bytes().to_vec();
+        result
+    }
+
     #[tokio::test]
     async fn runs_bash_source_and_reports_exit_code_and_streams() {
         let fixture = HostFixture::new().await;
         let result = run(&fixture, "echo out; echo err >&2; exit 3").await;
-        assert_eq!(result.stdout, "out\n");
-        assert_eq!(result.stderr, "err\n");
+        assert_eq!(result.stdout_lossy(), "out\n");
+        assert_eq!(result.stderr_lossy(), "err\n");
         assert_eq!(result.exit_code, Some(3));
-        assert_eq!(result.termination, CommandTermination::Exited);
-        assert!(!result.is_success());
-        assert!(run(&fixture, "true").await.is_success());
+        assert_eq!(result.termination, Termination::Exited);
+        assert!(!result.success());
+        assert!(run(&fixture, "true").await.success());
     }
 
     #[tokio::test]
@@ -425,7 +423,7 @@ mod tests {
              set -o | grep -E '^(errexit|pipefail)' | awk '{print $2}' | sort -u",
         )
         .await;
-        assert_eq!(result.stdout, "nonlogin\noff\n", "{result:?}");
+        assert_eq!(result.stdout_lossy(), "nonlogin\noff\n", "{result:?}");
     }
 
     #[tokio::test]
@@ -447,7 +445,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(result.stdout, "body\n");
+        assert_eq!(result.stdout_lossy(), "body\n");
     }
 
     #[tokio::test]
@@ -461,16 +459,18 @@ mod tests {
             .exec(ExplicitEnvPolicy::FilterSensitive)
             .run("env", Some(Duration::from_secs(10)), None, Some(&env), None)
             .await
-            .unwrap();
-        assert!(!filtered.stdout.contains("FABRO_WORKER_TOKEN=leaked"));
-        assert!(filtered.stdout.contains("MY_VAR=ok"));
+            .unwrap()
+            .stdout_lossy();
+        assert!(!filtered.contains("FABRO_WORKER_TOKEN=leaked"));
+        assert!(filtered.contains("MY_VAR=ok"));
 
         let trusted = fixture
             .exec(ExplicitEnvPolicy::TrustCaller)
             .run("env", Some(Duration::from_secs(10)), None, Some(&env), None)
             .await
-            .unwrap();
-        assert!(trusted.stdout.contains("FABRO_WORKER_TOKEN=leaked"));
+            .unwrap()
+            .stdout_lossy();
+        assert!(trusted.contains("FABRO_WORKER_TOKEN=leaked"));
     }
 
     #[test]
@@ -505,8 +505,8 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(result.termination, CommandTermination::TimedOut);
-        assert_eq!(result.exit_code, None);
+        assert_eq!(result.termination, Termination::TimedOut);
+        assert_eq!(result.program_exit_code(), None);
         assert!(
             started.elapsed() < Duration::from_secs(5),
             "sleep honours TERM, so KILL should not have been needed"
@@ -529,7 +529,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(result.termination, CommandTermination::TimedOut);
+        assert_eq!(result.termination, Termination::TimedOut);
         let elapsed = started.elapsed();
         assert!(elapsed >= Duration::from_millis(400), "{elapsed:?}");
         assert!(elapsed < Duration::from_secs(5), "{elapsed:?}");
@@ -555,8 +555,8 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(result.termination, CommandTermination::Cancelled);
-        assert_eq!(result.exit_code, None);
+        assert_eq!(result.termination, Termination::Cancelled);
+        assert_eq!(result.program_exit_code(), None);
     }
 
     #[tokio::test]
@@ -564,33 +564,36 @@ mod tests {
         let fixture = HostFixture::new().await;
         let seen = Arc::new(Mutex::new(Vec::<u8>::new()));
         let sink_seen = Arc::clone(&seen);
-        let callback: CommandOutputCallback = Arc::new(move |stream, chunk| {
+        let sink: OutputSink = Arc::new(move |stream, chunk| {
             let seen = Arc::clone(&sink_seen);
             Box::pin(async move {
-                assert_eq!(stream, CommandOutputStream::Stdout);
+                assert_eq!(stream, OutputStream::Stdout);
                 seen.lock().unwrap().extend_from_slice(&chunk);
                 Ok(())
             })
         });
         let streaming = fixture
             .exec(ExplicitEnvPolicy::FilterSensitive)
-            .run_streaming(ExecStreamingRequest {
-                timeout_ms: Some(10_000),
-                output_callback: Some(callback),
-                stream_output_bytes_cap: Some(64),
-                ..ExecStreamingRequest::new("for i in $(seq 1 200); do echo line-$i; done")
-            })
+            .run_streaming(
+                ExecSpec::bash("for i in $(seq 1 200); do echo line-$i; done")
+                    .timeout(Duration::from_secs(10)),
+                ExecControls {
+                    sink: Some(sink),
+                    retained_output_limit: Some(64),
+                    ..ExecControls::default()
+                },
+            )
             .await
             .unwrap();
-        assert!(streaming.result.is_success());
+        assert!(streaming.result.success());
         assert!(streaming.live_streaming);
         assert!(streaming.streams_separated);
         let delivered = seen.lock().unwrap().len();
         assert_eq!(streaming.stdout_capture.observed_bytes, delivered);
         assert!(streaming.stdout_capture.omitted_bytes > 0);
         assert!(streaming.result.stdout.len() <= 64);
-        assert!(streaming.result.stdout.starts_with("line-1\n"));
-        assert!(streaming.result.stdout.ends_with("line-200\n"));
+        assert!(streaming.result.stdout.starts_with(b"line-1\n"));
+        assert!(streaming.result.stdout.ends_with(b"line-200\n"));
     }
 
     #[tokio::test]
@@ -599,34 +602,42 @@ mod tests {
         let stdin = b"first line\n$(touch must-not-run)\nlast line".to_vec();
         let streaming = fixture
             .exec(ExplicitEnvPolicy::FilterSensitive)
-            .run_streaming(ExecStreamingRequest {
-                timeout_ms: Some(10_000),
-                stdin: Some(stdin.clone()),
-                ..ExecStreamingRequest::new("cat; test -e must-not-run && echo RAN")
-            })
+            .run_streaming(
+                ExecSpec::bash("cat; test -e must-not-run && echo RAN")
+                    .timeout(Duration::from_secs(10))
+                    .stdin(stdin.clone()),
+                ExecControls::default(),
+            )
             .await
             .unwrap();
-        assert_eq!(streaming.result.stdout.as_bytes(), stdin.as_slice());
+        assert_eq!(streaming.result.stdout, stdin);
     }
 
     #[tokio::test]
-    async fn a_failing_output_callback_stops_the_command_with_an_error() {
+    async fn a_failing_output_sink_stops_the_command_with_an_error() {
         let fixture = HostFixture::new().await;
-        let callback: CommandOutputCallback =
-            Arc::new(|_, _| Box::pin(async { Err(crate::Error::message("consumer gave up")) }));
+        let sink: OutputSink = Arc::new(|_, _| {
+            Box::pin(async {
+                Err(sandbox_driver::Error::Transport(TransportError::new(
+                    "consumer gave up",
+                )))
+            })
+        });
         let error = fixture
             .exec(ExplicitEnvPolicy::FilterSensitive)
-            .run_streaming(ExecStreamingRequest {
-                timeout_ms: Some(10_000),
-                output_callback: Some(callback),
-                ..ExecStreamingRequest::new("echo hello; sleep 5")
-            })
+            .run_streaming(
+                ExecSpec::bash("echo hello; sleep 5").timeout(Duration::from_secs(10)),
+                ExecControls {
+                    sink: Some(sink),
+                    ..ExecControls::default()
+                },
+            )
             .await
             .map(|streaming| streaming.result.termination);
         // The driver either surfaces the sink failure or reports the command
         // cancelled by it; both keep the consumer's error visible.
         match error {
-            Ok(termination) => assert_eq!(termination, CommandTermination::Cancelled),
+            Ok(termination) => assert_eq!(termination, Termination::Cancelled),
             Err(error) => assert!(error.to_string().contains("consumer gave up"), "{error}"),
         }
     }
@@ -636,7 +647,7 @@ mod tests {
         let fixture = HostFixture::new().await;
         let process = fixture
             .exec(ExplicitEnvPolicy::FilterSensitive)
-            .spawn_stdio("cat", None, None, None)
+            .spawn_stdio("cat", None, None)
             .await
             .unwrap();
         let mut stdin = process.stdin;
@@ -646,52 +657,160 @@ mod tests {
         stdout.read_line(&mut line).await.unwrap();
         assert_eq!(line, "ping\n");
         drop(stdin);
-        let termination = process.handle.wait().await.unwrap();
-        assert_eq!(termination.termination, CommandTermination::Exited);
-        assert_eq!(termination.exit_code, Some(0));
+        let (termination, exit_code) = process.handle.wait().await;
+        assert_eq!(termination, Termination::Exited);
+        assert_eq!(exit_code, Some(0));
     }
 
     #[tokio::test]
-    async fn stdio_process_terminates_on_cancel_and_keeps_a_stderr_tail() {
+    async fn stdio_process_terminates_on_request_and_keeps_a_stderr_tail() {
         let fixture = HostFixture::new().await;
-        let token = CancellationToken::new();
         let process = fixture
             .exec(ExplicitEnvPolicy::FilterSensitive)
-            .spawn_stdio(
-                "sh -c 'echo diag >&2; sleep 30'",
-                None,
-                None,
-                Some(token.clone()),
-            )
+            .spawn_stdio("sh -c 'echo diag >&2; sleep 30'", None, None)
             .await
             .unwrap();
         time::sleep(Duration::from_millis(200)).await;
-        token.cancel();
-        let termination = time::timeout(Duration::from_secs(5), process.handle.wait())
+        process.handle.terminate().await;
+        let (termination, _) = time::timeout(Duration::from_secs(5), process.handle.wait())
             .await
-            .expect("cancel terminates the process")
-            .unwrap();
-        assert_ne!(termination.termination, CommandTermination::Exited);
-        assert_eq!(process.stderr.tail_string().await, "diag\n");
+            .expect("terminate ends the process");
+        assert_ne!(termination, Termination::Exited);
+        assert_eq!(process.stderr_tail.to_string_lossy(), "diag\n");
     }
 
     #[test]
     fn termination_mapping_reads_the_drivers_verdict() {
         assert_eq!(
-            map_termination(Termination::TimedOut),
+            command_termination(Termination::TimedOut),
             CommandTermination::TimedOut
         );
         assert_eq!(
-            map_termination(Termination::Cancelled),
+            command_termination(Termination::Cancelled),
             CommandTermination::Cancelled
         );
         assert_eq!(
-            map_termination(Termination::Killed),
+            command_termination(Termination::Killed),
             CommandTermination::Cancelled
         );
         assert_eq!(
-            map_termination(Termination::Exited),
+            command_termination(Termination::Exited),
             CommandTermination::Exited
+        );
+    }
+
+    #[test]
+    fn program_exit_code_is_the_commands_own_only_when_it_exited() {
+        assert_eq!(program_exit_code(Termination::Exited, Some(3)), Some(3));
+        assert_eq!(program_exit_code(Termination::TimedOut, Some(143)), None);
+        assert_eq!(program_exit_code(Termination::Cancelled, Some(143)), None);
+        assert_eq!(program_exit_code(Termination::Killed, Some(137)), None);
+    }
+
+    #[test]
+    fn into_result_reports_a_failure_under_its_label() {
+        let result = exec_result(
+            "out",
+            "fatal: could not read Username",
+            Some(128),
+            Termination::Exited,
+            42,
+        );
+        let error = result.into_result("git push").unwrap_err();
+        let failure = error.exec_failure().expect("exec failure");
+        assert_eq!(failure.label(), "git push");
+        assert_eq!(failure.exit_code(), Some(128));
+        assert_eq!(failure.duration(), Some(Duration::from_millis(42)));
+        assert!(
+            !error.to_string().contains("could not read Username"),
+            "raw output leaked into Display: {error}"
+        );
+
+        let ok = exec_result("out", "", Some(0), Termination::Exited, 1);
+        assert!(ok.into_result("true").is_ok());
+    }
+
+    #[test]
+    fn redactor_applies_to_stderr_and_stdout() {
+        let result = exec_result(
+            "stdout https://token@example.com",
+            "stderr https://token@example.com",
+            Some(1),
+            Termination::Exited,
+            1,
+        );
+        let error = result.into_exec_error_with_redactor("git set-url", |s| {
+            s.replace("https://token@example.com", "https://****@example.com")
+        });
+        let failure = error.exec_failure().expect("exec failure");
+        assert_eq!(failure.stderr(), b"stderr https://****@example.com");
+        assert_eq!(failure.stdout(), b"stdout https://****@example.com");
+    }
+
+    #[test]
+    fn output_tail_redacts_before_truncating() {
+        let secret = "sk-ant-api03-xK9mZ2vL8nQ5rT1wY4bC7dF0gH3jE6pA";
+        let result = exec_result(
+            &format!("{} {secret} done", "context ".repeat(20)),
+            "",
+            Some(1),
+            Termination::Exited,
+            1,
+        );
+
+        let tail = result
+            .redacted_output_tail(32)
+            .expect("redacted output tail");
+        let stdout = tail.stdout.expect("stdout tail");
+        assert!(stdout.contains("REDACTED"), "{stdout}");
+        assert!(!stdout.contains("F0gH3jE6pA"), "{stdout}");
+        assert!(tail.stdout_truncated);
+    }
+
+    #[test]
+    fn output_tail_sanitizes_terminal_control_sequences() {
+        let result = exec_result(
+            "\u{1b}[31mred\u{1b}[0m \u{1b}]0;window-title\u{7}shown \
+             \u{1b}(Bset \u{1b}Mtwo-byte \u{8}backspace",
+            "",
+            Some(1),
+            Termination::Exited,
+            1,
+        );
+
+        let tail = result
+            .redacted_output_tail(1024)
+            .expect("redacted output tail");
+        let stdout = tail.stdout.expect("stdout tail");
+        assert_eq!(stdout, "red shown set two-byte backspace");
+    }
+
+    #[test]
+    fn default_output_tail_serialized_budget_stays_below_40_kib() {
+        let result = exec_result(
+            &"o".repeat(DEFAULT_EXEC_OUTPUT_TAIL_BYTES + 128),
+            &"e".repeat(DEFAULT_EXEC_OUTPUT_TAIL_BYTES + 128),
+            Some(1),
+            Termination::Exited,
+            1,
+        );
+
+        let tail = result.default_redacted_output_tail().expect("tail present");
+        assert_eq!(
+            tail.stdout.as_deref().map(str::len),
+            Some(DEFAULT_EXEC_OUTPUT_TAIL_BYTES)
+        );
+        assert_eq!(
+            tail.stderr.as_deref().map(str::len),
+            Some(DEFAULT_EXEC_OUTPUT_TAIL_BYTES)
+        );
+        assert!(tail.stdout_truncated);
+        assert!(tail.stderr_truncated);
+        let serialized = serde_json::to_vec(&tail).expect("serialize tail");
+        assert!(
+            serialized.len() < 40 * 1024,
+            "tail JSON was {} bytes",
+            serialized.len()
         );
     }
 }

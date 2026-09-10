@@ -27,7 +27,7 @@ use serde_json::Value;
 use strum::EnumString;
 
 use crate::native_tool::NativeTool;
-use crate::sandbox::{GrepOptions, format_lines_numbered};
+use crate::sandbox::{ExecResultExt, GrepOptions, Termination, format_lines_numbered};
 use crate::tool_registry::{RegisteredTool, ToolSource};
 use crate::tools::{
     DEFAULT_READ_LINES, emit_shell_process_completed, execute_grep, execute_shell_command,
@@ -120,25 +120,27 @@ explicitly asked. Never run commands requiring superuser privileges unless expli
                 let result = &streaming.result;
 
                 let mut out = String::new();
-                if result.is_timed_out() {
-                    out.push_str("Command timed out.\n");
-                } else if result.is_cancelled() {
-                    out.push_str("Command cancelled.\n");
+                match result.termination {
+                    Termination::TimedOut => out.push_str("Command timed out.\n"),
+                    Termination::Cancelled | Termination::Killed => {
+                        out.push_str("Command cancelled.\n");
+                    }
+                    _ => {}
                 }
-                out.push_str(&result.stdout);
+                out.push_str(&result.stdout_lossy());
                 if !result.stderr.is_empty() {
                     if !out.is_empty() {
                         out.push('\n');
                     }
-                    out.push_str(&result.stderr);
+                    out.push_str(&result.stderr_lossy());
                 }
-                if let Some(code) = result.exit_code.filter(|c| *c != 0) {
+                if let Some(code) = result.program_exit_code().filter(|c| *c != 0) {
                     if !out.is_empty() {
                         out.push('\n');
                     }
                     let _ = write!(out, "Command failed with exit code: {code}");
                 }
-                let is_success = result.is_success();
+                let is_success = result.success();
                 let out = retain_shell_output(&ctx, &streaming, out);
                 emit_shell_process_completed(&ctx, streaming).await;
                 if is_success { Ok(out) } else { Err(out) }
@@ -367,11 +369,13 @@ pub fn make_kimi_edit_tool(description: &str) -> RegisteredTool {
 mod tests {
     use std::collections::HashMap;
 
+    use fabro_sandbox::Termination;
+    use fabro_sandbox::test_support::exec_result;
     use serde_json::json;
     use tokio_util::sync::CancellationToken;
 
     use super::*;
-    use crate::sandbox::{ExecResult, RunSandbox};
+    use crate::sandbox::RunSandbox;
     use crate::test_support::MockSandbox;
     use crate::tool_registry::{ToolContext, ToolDefinitionExt};
 
@@ -684,17 +688,9 @@ mod tests {
 
     #[tokio::test]
     async fn bash_reuses_session_env_cwd_and_timeout_rendering() {
-        use fabro_types::CommandTermination;
-
         let tool = make_kimi_bash_tool(60_000, 600_000);
         let env = MockSandbox {
-            exec_result: ExecResult {
-                stdout:      String::new(),
-                stderr:      String::new(),
-                exit_code:   None,
-                termination: CommandTermination::TimedOut,
-                duration_ms: 7_000,
-            },
+            exec_result: exec_result("", "", None, Termination::TimedOut, 7_000),
             ..MockSandbox::default()
         };
         let mut tool_ctx = ctx(env.sandbox());

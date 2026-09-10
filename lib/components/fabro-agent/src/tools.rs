@@ -11,9 +11,12 @@ use lithos_llm::types::ToolDefinition;
 use tokio::task;
 
 use crate::config::NativeToolOptions;
-use crate::sandbox::{ExecStreamingResult, FileKind, GrepOptions};
+use crate::sandbox::{
+    ExecControls, ExecResultExt, ExecSpec, ExecStreamingResult, FileKind, GrepOptions,
+    command_termination,
+};
 use crate::tool_registry::{RegisteredTool, ToolContext, ToolRegistry, ToolSource};
-use crate::truncation::{MAX_RETAINED_TOOL_OUTPUT_BYTES, retain_tool_output};
+use crate::truncation::{MAX_RETAINED_TOOL_OUTPUT_BYTES, OutputCaptureStats, retain_tool_output};
 use crate::types::AgentEvent;
 use crate::web_search::{SearchBackend, make_web_search_tool};
 
@@ -297,15 +300,20 @@ pub(crate) async fn execute_shell_command(
         env_var_count = tool_env.as_ref().map_or(0, std::collections::HashMap::len),
         "Injecting sandbox env vars into tool execution"
     );
+    let mut spec = ExecSpec::bash(command).timeout(std::time::Duration::from_millis(timeout_ms));
+    if let Some(cwd) = cwd {
+        spec = spec.working_dir(cwd);
+    }
+    for (key, value) in tool_env.iter().flatten() {
+        spec = spec.env_var(key, value);
+    }
+    let controls = ExecControls {
+        term: Some(ctx.cancel.clone()),
+        retained_output_limit: Some(MAX_RETAINED_TOOL_OUTPUT_BYTES),
+        ..ExecControls::default()
+    };
     ctx.env
-        .exec_command_streaming(crate::ExecStreamingRequest {
-            timeout_ms: Some(timeout_ms),
-            working_dir: cwd,
-            env_vars: tool_env.as_ref(),
-            cancel_token: Some(ctx.cancel.clone()),
-            stream_output_bytes_cap: Some(MAX_RETAINED_TOOL_OUTPUT_BYTES),
-            ..crate::ExecStreamingRequest::new(command)
-        })
+        .exec_command_streaming(spec, controls)
         .await
         .map_err(|e| format!("{SHELL_NO_PROCESS_RESULT}: {}", e.display_with_causes()))
 }
@@ -320,7 +328,7 @@ pub(crate) async fn run_shell_command(
 ) -> Result<String, String> {
     let streaming = execute_shell_command(ctx, command, timeout_ms, cwd).await?;
     let text = retain_shell_output(ctx, &streaming, render_shell_result(&streaming));
-    let is_success = streaming.result.is_success();
+    let is_success = streaming.result.success();
     emit_shell_process_completed(ctx, streaming).await;
 
     if is_success { Ok(text) } else { Err(text) }
@@ -336,7 +344,7 @@ pub(crate) fn retain_shell_output(
     let retained = retain_tool_output(
         output,
         MAX_RETAINED_TOOL_OUTPUT_BYTES,
-        streaming.output_capture().omitted_bytes,
+        OutputCaptureStats::from_streaming(streaming).omitted_bytes,
     );
     ctx.record_tool_output_stats(retained.stats);
     retained.output
@@ -353,11 +361,11 @@ pub(crate) async fn emit_shell_process_completed(
         return;
     }
 
-    let exit_code = streaming.result.exit_code;
-    let termination = streaming.result.termination;
-    let duration_ms = streaming.result.duration_ms;
+    let exit_code = streaming.result.program_exit_code();
+    let termination = command_termination(streaming.result.termination);
+    let duration_ms = streaming.result.duration_ms();
     let streams_separated = streaming.streams_separated;
-    let output_stats = streaming.output_capture();
+    let output_stats = OutputCaptureStats::from_streaming(&streaming);
     let result = streaming.result;
     let exec_output_tail =
         match task::spawn_blocking(move || result.default_redacted_output_tail()).await {
@@ -389,21 +397,23 @@ fn render_shell_result(streaming: &ExecStreamingResult) -> String {
     let result = &streaming.result;
     let mut output = format!(
         "Termination: {}\nExit code: {}\nDuration: {}ms\n",
-        result.termination.as_str(),
+        command_termination(result.termination).as_str(),
         result
-            .exit_code
+            .program_exit_code()
             .map_or_else(|| "none".to_string(), |code| code.to_string()),
-        result.duration_ms,
+        result.duration_ms(),
     );
+    let stdout = result.stdout_lossy();
+    let stderr = result.stderr_lossy();
     if streaming.streams_separated {
-        if !result.stdout.is_empty() {
-            let _ = write!(output, "stdout:\n{}\n", result.stdout);
+        if !stdout.is_empty() {
+            let _ = write!(output, "stdout:\n{stdout}\n");
         }
-        if !result.stderr.is_empty() {
-            let _ = write!(output, "stderr:\n{}\n", result.stderr);
+        if !stderr.is_empty() {
+            let _ = write!(output, "stderr:\n{stderr}\n");
         }
-    } else if !result.stdout.is_empty() {
-        let _ = write!(output, "output (combined):\n{}\n", result.stdout);
+    } else if !stdout.is_empty() {
+        let _ = write!(output, "output (combined):\n{stdout}\n");
     }
     output
 }
@@ -686,15 +696,15 @@ pub(crate) fn make_web_fetch_tool(summarizer: Option<WebFetchSummarizer>) -> Reg
                     .await
                     .map_err(|e| e.display_with_causes())?;
 
-                if !result.is_success() {
+                if !result.success() {
                     return Err(format!(
                         "curl failed (exit code {}): {}",
-                        result.display_exit_code(),
-                        result.stderr.trim()
+                        result.program_exit_code().unwrap_or(-1),
+                        result.stderr_lossy().trim()
                     ));
                 }
 
-                let mut content = html_to_markdown(&result.stdout);
+                let mut content = html_to_markdown(&result.stdout_lossy());
                 if content.len() > MAX_WEB_FETCH_BYTES {
                     content.truncate(MAX_WEB_FETCH_BYTES);
                     content.push_str("\n\n[Output truncated at 100KB]");
@@ -737,6 +747,8 @@ mod tests {
     use std::collections::HashMap;
 
     use fabro_llm::adapter::ProviderAdapter;
+    use fabro_sandbox::Termination;
+    use fabro_sandbox::test_support::exec_result;
     use fabro_types::CommandTermination;
     use lithos_llm::catalog::{ModelId, builtin};
     use tokio::sync::broadcast;
@@ -1144,13 +1156,13 @@ mod tests {
     #[tokio::test]
     async fn shell_success_returns_ok_with_metadata_and_separate_streams() {
         let tool = make_shell_tool();
-        let env = mock_sandbox_with(ExecResult {
-            stdout:      "hello".into(),
-            stderr:      "a warning".into(),
-            exit_code:   Some(0),
-            termination: CommandTermination::Exited,
-            duration_ms: 10,
-        })
+        let env = mock_sandbox_with(exec_result(
+            "hello",
+            "a warning",
+            Some(0),
+            Termination::Exited,
+            10,
+        ))
         .sandbox();
         let output = (tool.executor)(
             serde_json::json!({"command": "echo hello"}),
@@ -1169,13 +1181,7 @@ mod tests {
     #[tokio::test]
     async fn shell_forwards_command_without_stream_redirection_wrapper() {
         let tool = make_shell_tool();
-        let env = mock_sandbox_with(ExecResult {
-            stdout:      String::new(),
-            stderr:      String::new(),
-            exit_code:   Some(0),
-            termination: CommandTermination::Exited,
-            duration_ms: 1,
-        });
+        let env = mock_sandbox_with(exec_result("", "", Some(0), Termination::Exited, 1));
         let _ = (tool.executor)(
             serde_json::json!({"command": "make test"}),
             shell_context(env.sandbox()),
@@ -1211,13 +1217,7 @@ mod tests {
     async fn shell_nonzero_exit_code() {
         let tool = make_shell_tool();
         let env = MockSandbox {
-            exec_result: ExecResult {
-                stdout:      "error".into(),
-                stderr:      String::new(),
-                exit_code:   Some(1),
-                termination: CommandTermination::Exited,
-                duration_ms: 10,
-            },
+            exec_result: exec_result("error", "", Some(1), Termination::Exited, 10),
             ..Default::default()
         }
         .sandbox();
@@ -1233,13 +1233,13 @@ mod tests {
     #[tokio::test]
     async fn shell_timeout_returns_error_with_partial_output() {
         let tool = make_shell_tool();
-        let env = mock_sandbox_with(ExecResult {
-            stdout:      "partial".into(),
-            stderr:      String::new(),
-            exit_code:   None,
-            termination: CommandTermination::TimedOut,
-            duration_ms: 10000,
-        })
+        let env = mock_sandbox_with(exec_result(
+            "partial",
+            "",
+            None,
+            Termination::TimedOut,
+            10000,
+        ))
         .sandbox();
         let output = (tool.executor)(
             serde_json::json!({"command": "sleep 100"}),
@@ -1256,14 +1256,8 @@ mod tests {
     #[tokio::test]
     async fn shell_cancellation_returns_error_with_partial_output() {
         let tool = make_shell_tool();
-        let env = mock_sandbox_with(ExecResult {
-            stdout:      "partial".into(),
-            stderr:      String::new(),
-            exit_code:   None,
-            termination: CommandTermination::Cancelled,
-            duration_ms: 42,
-        })
-        .sandbox();
+        let env = mock_sandbox_with(exec_result("partial", "", None, Termination::Cancelled, 42))
+            .sandbox();
         let output = (tool.executor)(
             serde_json::json!({"command": "sleep 100"}),
             shell_context(env),
@@ -1312,13 +1306,13 @@ mod tests {
     #[tokio::test]
     async fn shell_emits_process_event_with_typed_outcome_and_redacted_tails() {
         let tool = make_shell_tool();
-        let env = mock_sandbox_with(ExecResult {
-            stdout:      "out".into(),
-            stderr:      "boom key=AKIAYRWQG5EJLPZLBYNP".into(),
-            exit_code:   Some(7),
-            termination: CommandTermination::Exited,
-            duration_ms: 12,
-        })
+        let env = mock_sandbox_with(exec_result(
+            "out",
+            "boom key=AKIAYRWQG5EJLPZLBYNP",
+            Some(7),
+            Termination::Exited,
+            12,
+        ))
         .sandbox();
         let emitter = Emitter::new();
         let mut receiver = emitter.subscribe();
@@ -1360,13 +1354,7 @@ mod tests {
     async fn shell_renders_combined_output_when_streams_are_not_separated() {
         let tool = make_shell_tool();
         let env = MockSandbox {
-            exec_result: ExecResult {
-                stdout:      "interleaved".into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 5,
-            },
+            exec_result: exec_result("interleaved", "", Some(0), Termination::Exited, 5),
             streams_separated: false,
             ..Default::default()
         }
@@ -1402,13 +1390,13 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(stdout.len() > 30_000);
-        let env = mock_sandbox_with(ExecResult {
-            stdout,
-            stderr: "the build failed".into(),
-            exit_code: Some(2),
-            termination: CommandTermination::Exited,
-            duration_ms: 900,
-        })
+        let env = mock_sandbox_with(exec_result(
+            &stdout,
+            "the build failed",
+            Some(2),
+            Termination::Exited,
+            900,
+        ))
         .sandbox();
 
         let output = (tool.executor)(
@@ -1647,13 +1635,7 @@ mod tests {
     async fn web_fetch_passes_tool_env_to_exec_command() {
         let tool = make_web_fetch_tool(None);
         let env = MockSandbox {
-            exec_result: ExecResult {
-                stdout:      "fetched content".into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 100,
-            },
+            exec_result: exec_result("fetched content", "", Some(0), Termination::Exited, 100),
             ..Default::default()
         };
         let env_clone = env.sandbox();
@@ -1797,13 +1779,13 @@ mod tests {
     async fn web_fetch_builds_curl_command() {
         let tool = make_web_fetch_tool(None);
         let env = MockSandbox {
-            exec_result: ExecResult {
-                stdout:      "<html><body><h1>hello</h1></body></html>".into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 100,
-            },
+            exec_result: exec_result(
+                "<html><body><h1>hello</h1></body></html>",
+                "",
+                Some(0),
+                Termination::Exited,
+                100,
+            ),
             ..Default::default()
         };
         let env_clone = env.sandbox();
@@ -1925,13 +1907,7 @@ mod tests {
         let large_content = "x".repeat(150 * 1024);
         let tool = make_web_fetch_tool(None);
         let env = MockSandbox {
-            exec_result: ExecResult {
-                stdout:      large_content,
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 100,
-            },
+            exec_result: exec_result(&large_content, "", Some(0), Termination::Exited, 100),
             ..Default::default()
         }
         .sandbox();
@@ -1957,13 +1933,13 @@ mod tests {
     async fn web_fetch_returns_error_on_nonzero_exit() {
         let tool = make_web_fetch_tool(None);
         let env = MockSandbox {
-            exec_result: ExecResult {
-                stdout:      String::new(),
-                stderr:      "curl: (6) Could not resolve host".into(),
-                exit_code:   Some(6),
-                termination: CommandTermination::Exited,
-                duration_ms: 100,
-            },
+            exec_result: exec_result(
+                "",
+                "curl: (6) Could not resolve host",
+                Some(6),
+                Termination::Exited,
+                100,
+            ),
             ..Default::default()
         }
         .sandbox();
@@ -2006,14 +1982,13 @@ mod tests {
 
         let tool = make_web_fetch_tool(Some(summarizer));
         let env = MockSandbox {
-            exec_result: ExecResult {
-                stdout:      "<html><body><p>Lots of content about Rust...</p></body></html>"
-                    .into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 100,
-            },
+            exec_result: exec_result(
+                "<html><body><p>Lots of content about Rust...</p></body></html>",
+                "",
+                Some(0),
+                Termination::Exited,
+                100,
+            ),
             ..Default::default()
         }
         .sandbox();
@@ -2041,15 +2016,13 @@ mod tests {
     async fn web_fetch_prompt_without_summarizer_returns_content_with_note() {
         let tool = make_web_fetch_tool(None);
         let env = MockSandbox {
-            exec_result: ExecResult {
-                stdout:
-                    "<html><body><p>Rust is a systems programming language.</p></body></html>"
-                        .into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 100,
-            },
+            exec_result: exec_result(
+                "<html><body><p>Rust is a systems programming language.</p></body></html>",
+                "",
+                Some(0),
+                Termination::Exited,
+                100,
+            ),
             ..Default::default()
         }
         .sandbox();
@@ -2105,13 +2078,13 @@ mod tests {
 
         let tool = make_web_fetch_tool(Some(summarizer));
         let env = MockSandbox {
-            exec_result: ExecResult {
-                stdout:      "<html><body><p>Page content</p></body></html>".into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 100,
-            },
+            exec_result: exec_result(
+                "<html><body><p>Page content</p></body></html>",
+                "",
+                Some(0),
+                Termination::Exited,
+                100,
+            ),
             ..Default::default()
         }
         .sandbox();

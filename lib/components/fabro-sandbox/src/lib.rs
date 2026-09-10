@@ -39,7 +39,10 @@ pub use docker::check_docker_daemon;
 pub use driver::{DaytonaCredentials, ProviderAccess};
 pub use driver_sandbox::{RunSandbox, local_sandbox};
 pub use error::{Error, Result, default_redacted_output_tail, display_for_log};
-pub use exec::{ExplicitEnvPolicy, SandboxExec, is_sensitive_env_var};
+pub use exec::{
+    DEFAULT_RETAINED_OUTPUT_BYTES, DEFAULT_STOP_GRACE, ExecResultExt, ExplicitEnvPolicy,
+    SandboxExec, command_termination, is_sensitive_env_var, program_exit_code,
+};
 pub use fabro_github::token_source::{
     InstallationTokenSource, ResolvedToken, TokenProvenance, TokenSnapshot,
 };
@@ -61,15 +64,18 @@ pub use reconnect::{
     reconnect, reconnect_driver_for_run, reconnect_for_run, reconnect_for_run_with_events,
 };
 pub use sandbox::{
-    CommandOutputCallback, DEFAULT_EXEC_OUTPUT_TAIL_BYTES, ExecResult, ExecStreamingRequest,
-    ExecStreamingResult, GitRunInfo, GitSetupIntent, OutputCaptureStats, PushAttempt, PushError,
-    PushReport, RefreshOutcome, RemoteCredentialAction, SandboxFile, SandboxWorkspaceLayout,
-    StderrCollector, StdioProcess, StdioProcessHandle, StdioProcessTermination,
+    DEFAULT_EXEC_OUTPUT_TAIL_BYTES, GitRunInfo, GitSetupIntent, PushAttempt, PushError, PushReport,
+    RefreshOutcome, RemoteCredentialAction, SandboxFile, SandboxWorkspaceLayout,
     format_lines_numbered, redacted_output_tail, setup_git, shell_quote,
 };
-/// Driver types a run sandbox's file and search operations speak, and the
-/// network policy a [`SandboxOptions`] asks for, re-exported so consumers
-/// need no direct driver dependency.
-pub use sandbox_driver::{DirEntry, FileKind, GrepMatch, GrepOptions, NetworkPolicy, WalkOptions};
+/// Driver types a run sandbox speaks: what a command is and how it ended,
+/// what the file and search operations return, and the network policy a
+/// [`SandboxOptions`] asks for. Re-exported so consumers need no direct
+/// driver dependency.
+pub use sandbox_driver::{
+    CaptureStats, DirEntry, ExecControls, ExecFailure, ExecResult, ExecSpec, ExecStreamingResult,
+    FileKind, GrepMatch, GrepOptions, NetworkPolicy, OutputSink, OutputStream, StderrTail,
+    StdioProcess, StdioProcessHandle, Termination, TransportError, WalkOptions,
+};
 pub use sandbox_spec::{ProviderSandboxSpec, SandboxSpec};
 pub use terminal::{DriverTerminalSession, TerminalSession, TerminalSize, open_terminal_for_run};
