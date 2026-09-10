@@ -570,7 +570,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-10T18:30:23.078035796Z",
-  "last_event_at": "2026-09-10T18:31:32.018478230Z",
+  "last_event_at": "2026-09-10T18:32:04.344081319Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -618,9 +618,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 75,
       "checkpoint": {
-        "timestamp": "2026-09-10T18:31:32.211754298Z",
+        "timestamp": "2026-09-10T18:31:37.585093059Z",
         "current_node": "survey",
         "completed_nodes": [
           "start",
@@ -628,17 +628,35 @@
         ],
         "node_retries": {},
         "context_values": {
-          "graph.preamble_budget_kb": "12",
-          "last_stage": "survey",
           "current_node": "survey",
+          "graph.rankdir": "LR",
           "internal.retry_count.survey": 0,
-          "internal.run_id": "01M269AXASPJG4AQ230FTVAF72",
           "internal.thread_id": "start",
-          "graph.cycle_counter_reset_key": "pass_id",
-          "failure_class": "",
-          "last_response": "{\"preferred_next_label\": \"Merge needed\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"Revisor backlog detection requ",
-          "internal.seed_cycle_anchor": "",
+          "last_stage": "survey",
+          "outcome": "succeeded",
+          "failure_signature": "",
           "thread.start.current_node": "survey",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "internal.fidelity": "compact",
+          "internal.retry_count.start": 0,
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "graph.max_node_visits": "12",
+          "failure_class": "",
+          "graph.preamble_budget_kb": "12",
+          "last_response": "{\"preferred_next_label\": \"Merge needed\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"Revisor backlog detection requ",
+          "internal.run_id": "01M269AXASPJG4AQ230FTVAF72",
+          "response.survey": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.survey",
+            "chars": 1466,
+            "preview": "{\"preferred_next_label\": \"Merge needed\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"Revisor backlog detection requ"
+          },
+          "preferred_label": "Merge needed",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1
+          },
           "journal": {
             "painpoints": [
               {
@@ -651,16 +669,140 @@
               "Upstream drift jumped sharply (24 vs typical low single digits); next surveyor after the merge should expect the count to drop to ~0-2 and should not be alarmed by merge-induced history divergence in `git rev-list --count origin/denkhaus..upstream/main` immediately post-merge."
             ]
           },
+          "internal.seed_cycle_anchor": "",
+          "internal.node_visit_count": 1,
+          "internal.work_dir": "/workspace/fabro"
+        },
+        "node_outcomes": {
+          "survey": {
+            "status": "succeeded",
+            "preferred_label": "Merge needed",
+            "context_updates": {
+              "last_response": "{\"preferred_next_label\": \"Merge needed\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"Revisor backlog detection requ",
+              "last_stage": "survey",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Revisor backlog detection requires cross-referencing `.fabro/journal/` run ids against `.fabro/reviews/develop/` files and journal node names (select/analyze = revisor, planner/implementer = develop) because journal records carry no workflow_slug field (`.fabro/journal/*.jsonl` first records expose only run_id/node/status). Evidence: run 01M269AXASPJG4AQ230FTVAF72 survey pass. Fix idea: persist workflow_slug in every journal start record, or store review targets as filenames keyed by the reviewed run id instead of the reviewing run id."
+                  }
+                ],
+                "observations": [
+                  "Upstream count 24 (origin/denkhaus..upstream/main), well past the MIN threshold of 5; newest upstream subject: 'Merge pull request #848 from fabro-sh/rust-boundary'. Route: Merge needed.",
+                  "revisor backlog: 01M25R832HP615J291N72FHNCS — completed develop run (2026-09-10, planner+implementer nodes) with no revisor review artifact; newest revisor review is 01M25K41V4NEWXSA3SVGRHKRXK. Next Work pass should have the revisor burn this down first.",
+                  "Upstream drift jumped sharply (24 vs typical low single digits); next surveyor after the merge should expect the count to drop to ~0-2 and should not be alarmed by merge-induced history divergence in `git rev-list --count origin/denkhaus..upstream/main` immediately post-merge."
+                ]
+              },
+              "response.survey": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.survey",
+                "chars": 1466,
+                "preview": "{\"preferred_next_label\": \"Merge needed\", \"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"Revisor backlog detection requ"
+              }
+            },
+            "notes": "Stage completed: survey",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 34422,
+                    "output_tokens": 1404,
+                    "reasoning_tokens": 474,
+                    "cache_read_tokens": 172288,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 101242
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 44844,
+              "tool_time_ms": 14787,
+              "active_time_ms": 59631
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "merge",
+        "git_commit_sha": "8bf5809d6ff2061ee82829f0341bf1b1d7341e33",
+        "node_visits": {
+          "survey": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M269AXASPJG4AQ230FTVAF72.jsonl b/.fabro/journal/01M269AXASPJG4AQ230FTVAF72.jsonl\nnew file mode 100644\nindex 000000000..8395e295a\n--- /dev/null\n+++ b/.fabro/journal/01M269AXASPJG4AQ230FTVAF72.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M269AXASPJG4AQ230FTVAF72\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T18:30:25Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M269AXASPJG4AQ230FTVAF72\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T18:31:32Z\",\"data\":{\"painpoints\":[{\"text\":\"Revisor backlog detection requires cross-referencing `.fabro/journal/` run ids against `.fabro/reviews/develop/` files and journal node names (select/analyze = revisor, planner/implementer = develop) because journal records carry no workflow_slug field (`.fabro/journal/*.jsonl` first records expose only run_id/node/status). Evidence: run 01M269AXASPJG4AQ230FTVAF72 survey pass. Fix idea: persist workflow_slug in every journal start record, or store review targets as filenames keyed by the reviewed run id instead of the reviewing run id.\"}],\"observations\":[\"Upstream count 24 (origin/denkhaus..upstream/main), well past the MIN threshold of 5; newest upstream subject: 'Merge pull request #848 from fabro-sh/rust-boundary'. Route: Merge needed.\",\"revisor backlog: 01M25R832HP615J291N72FHNCS — completed develop run (2026-09-10, planner+implementer nodes) with no revisor review artifact; newest revisor review is 01M25K41V4NEWXSA3SVGRHKRXK. Next Work pass should have the revisor burn this down first.\",\"Upstream drift jumped sharply (24 vs typical low single digits); next surveyor after the merge should expect the count to drop to ~0-2 and should not be alarmed by merge-induced history divergence in `git rev-list --count origin/denkhaus..upstream/main` immediately post-merge.\"]}}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 2,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-10T18:32:04.363287028Z",
+        "current_node": "merge",
+        "completed_nodes": [
+          "start",
+          "survey",
+          "merge"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.preamble_budget_kb": "12",
+          "last_stage": "merge",
+          "current_node": "merge",
+          "internal.retry_count.survey": 0,
+          "internal.run_id": "01M269AXASPJG4AQ230FTVAF72",
+          "internal.thread_id": "survey",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "failure_class": "deterministic",
+          "last_response": "The child creation is impossible: `fabro_run_create` returns \"Access denied\" on three attempts with the exact prescribed shape. Without a child run id, no wait is possible and the merge leg cannot pro",
+          "internal.retry_count.merge": 0,
+          "internal.seed_cycle_anchor": "",
+          "thread.start.current_node": "survey",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "fabro_run_create returns a bare 'Access denied' with no reason, permitted-workflow list, or scope hint (merge leg, run attempts at 2026-09-10, workflow 'merge-upstream' with workflow_source repo denkhaus/fabro branch denkhaus). Fix idea: include the failing authorization scope (stage identity vs workflow slug vs environment 'toolchain') in the denial payload so the leg can distinguish a transient grant gap from a misaddressed workflow source."
+              }
+            ],
+            "observations": [
+              "Merge leg pass aborted before child creation: 3x 'Access denied' on fabro_run_create for merge-upstream (workflow_source denkhaus/fabro@denkhaus, environment toolchain). Upstream count from survey context remains 24 vs MIN 5, so the merge is still warranted — the next merge leg should retry creation from a fresh pass and, if denial persists, escalate the stage's run-create grant before touching the /merge-upstream manual skill."
+            ]
+          },
           "internal.retry_count.start": 0,
-          "preferred_label": "Merge needed",
-          "failure_signature": "",
+          "preferred_label": "Unrouted merge outcome",
+          "failure_signature": "merge|deterministic|fabro_run_create rejected all attempts with 'access denied' (<n> tries,exact schema: workflow string + workflow_source repo/branch/workflow,environment toolchain,auto_approve). no child run was created,so no terminal or merged wait could be",
+          "internal.exit_kind": "soft",
           "internal.work_dir": "/workspace/fabro",
           "seed_cycles": {
             "start": 1,
-            "survey": 1
+            "survey": 1,
+            "merge": 1
           },
           "graph.rankdir": "LR",
+          "thread.survey.current_node": "merge",
           "graph.inspects": "develop,merge-upstream,revisor",
+          "child_run_id": null,
+          "response.merge": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.merge",
+            "chars": 1751,
+            "preview": "The child creation is impossible: `fabro_run_create` returns \"Access denied\" on three attempts with the exact prescribed shape. Without a child run id, no wait is possible and the merge leg cannot pro"
+          },
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
@@ -670,7 +812,7 @@
           "graph.max_node_visits": "12",
           "internal.fidelity": "compact",
           "internal.node_visit_count": 1,
-          "outcome": "succeeded",
+          "outcome": "failed",
           "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged"
         },
         "node_outcomes": {
@@ -731,12 +873,70 @@
               "tool_time_ms": 14787,
               "active_time_ms": 59631
             }
+          },
+          "merge": {
+            "status": "failed",
+            "preferred_label": "Unrouted merge outcome",
+            "context_updates": {
+              "last_response": "The child creation is impossible: `fabro_run_create` returns \"Access denied\" on three attempts with the exact prescribed shape. Without a child run id, no wait is possible and the merge leg cannot pro",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "fabro_run_create returns a bare 'Access denied' with no reason, permitted-workflow list, or scope hint (merge leg, run attempts at 2026-09-10, workflow 'merge-upstream' with workflow_source repo denkhaus/fabro branch denkhaus). Fix idea: include the failing authorization scope (stage identity vs workflow slug vs environment 'toolchain') in the denial payload so the leg can distinguish a transient grant gap from a misaddressed workflow source."
+                  }
+                ],
+                "observations": [
+                  "Merge leg pass aborted before child creation: 3x 'Access denied' on fabro_run_create for merge-upstream (workflow_source denkhaus/fabro@denkhaus, environment toolchain). Upstream count from survey context remains 24 vs MIN 5, so the merge is still warranted — the next merge leg should retry creation from a fresh pass and, if denial persists, escalate the stage's run-create grant before touching the /merge-upstream manual skill."
+                ]
+              },
+              "child_run_id": null,
+              "last_stage": "merge",
+              "response.merge": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.merge",
+                "chars": 1751,
+                "preview": "The child creation is impossible: `fabro_run_create` returns \"Access denied\" on three attempts with the exact prescribed shape. Without a child run id, no wait is possible and the merge leg cannot pro"
+              }
+            },
+            "notes": "Stage completed: merge",
+            "failure": {
+              "message": "fabro_run_create rejected all attempts with 'Access denied' (3 tries, exact schema: workflow string + workflow_source repo/branch/workflow, environment toolchain, auto_approve). No child run was created, so no terminal or merged wait could be issued. Likely a permissions/environment grant issue for this stage's run-creation scope.",
+              "category": "deterministic"
+            },
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 12136,
+                    "output_tokens": 586,
+                    "reasoning_tokens": 79,
+                    "cache_read_tokens": 35520,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 29145
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 23013,
+              "tool_time_ms": 7,
+              "active_time_ms": 23020
+            }
           }
         },
-        "next_node_id": "merge",
+        "next_node_id": "exit",
         "node_visits": {
           "start": 1,
-          "survey": 1
+          "survey": 1,
+          "merge": 1
         }
       },
       "diff": {}
@@ -1050,6 +1250,270 @@
       },
       "agent_control": "running",
       "state": "succeeded"
+    },
+    "merge@1": {
+      "first_event_seq": 78,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-10T18:31:37.601427039Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "live_inference_ms": 26201,
+      "live_tool_ms": 5,
+      "usage": {
+        "input_tokens": 12136,
+        "output_tokens": 586,
+        "total_tokens": 48321,
+        "reasoning_tokens": 79,
+        "cache_read_tokens": 35520,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 29145
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_create",
+          "description": "Create one or more Fabro workflow runs, optionally under a parent run, starting them by default.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "fabro_run_get",
+          "description": "Read-only inspection of a Fabro run: returns its summary, projection, and pending questions without mutating state.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_wait",
+          "description": "Block until ONE Fabro run reaches a terminal state (until=terminal) or its pull request merges (until=merged). Server-side long-poll, one call up to 3600000ms; a timeout returns reached=timeout with the current status so callers can re-wait. For multi-run fan-in with short bounds use fabro_run_gather instead (ADR-0016).",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": false
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 12056,
+        "usage_percent": 1.149749755859375,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-10T18:32:04.334035028Z",
+        "event_seq": 104,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1188,
+            "usage_percent": 0.1132965087890625
+          },
+          {
+            "category": "tools",
+            "tokens": 2765,
+            "usage_percent": 0.2636909484863281
+          },
+          {
+            "category": "skills",
+            "tokens": 223,
+            "usage_percent": 0.021266937255859375
+          },
+          {
+            "category": "memory",
+            "tokens": 5949,
+            "usage_percent": 0.5673408508300781
+          },
+          {
+            "category": "conversation",
+            "tokens": 1923,
+            "usage_percent": 0.18339157104492188
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "running"
     }
   }
 }
