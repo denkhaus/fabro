@@ -1002,7 +1002,9 @@ impl RunStoreBackend for HttpRunStore {
             async move { client.append_run_event(&run_id, &event).await }
         }))
         .await?;
-        self.apply_acknowledged_event(seq, event).await
+        // Both the sandbox lifecycle and the lithos event shapes grew this
+        // future past clippy's stack budget; box it once at the call.
+        Box::pin(self.apply_acknowledged_event(seq, event)).await
     }
 
     async fn write_blob(&self, data: &[u8]) -> Result<BlobHash> {

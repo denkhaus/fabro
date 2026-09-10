@@ -748,7 +748,6 @@ mod tests {
     use crate::sandbox::*;
     use crate::test_support::MockSandbox;
     use crate::tool_registry::{ToolContext, ToolDefinitionExt};
-    use crate::truncation;
     use crate::types::SessionEvent;
     use crate::web_search::make_web_search_tool_with_api_key;
     use crate::{local_sandbox, truncation};

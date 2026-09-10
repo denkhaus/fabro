@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use fabro_types::PermissionLevel;
 use fabro_types::settings::cli::{CliAuthStrategy, OutputFormat, OutputVerbosity};

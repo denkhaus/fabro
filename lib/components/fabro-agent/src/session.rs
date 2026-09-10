@@ -4980,7 +4980,7 @@ mod tests {
         registry.register(counting_tool("echo", Arc::clone(&executions)));
         let client = make_client_without_retries(provider.clone() as Arc<dyn ProviderAdapter>);
         let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
         let mut rx = session.subscribe();
 
@@ -5014,7 +5014,7 @@ mod tests {
         // `make_client` installs a three-attempt policy with no delay.
         let client = make_client(provider.clone() as Arc<dyn ProviderAdapter>).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
         let mut rx = session.subscribe();
 
@@ -5050,7 +5050,7 @@ mod tests {
         ]));
         let client = make_client(provider.clone() as Arc<dyn ProviderAdapter>).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             replay_retry_policy: test_retry_policy(),
             ..SessionOptions::default()
@@ -5092,7 +5092,7 @@ mod tests {
         ]));
         let client = make_client(provider.clone() as Arc<dyn ProviderAdapter>).await;
         let profile = Arc::new(TestProfile::new());
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let config = SessionOptions {
             replay_retry_policy: RetryPolicy::exponential()
                 .max_attempts(3)
