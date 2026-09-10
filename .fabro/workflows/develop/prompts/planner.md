@@ -42,7 +42,9 @@ The full command table lives in PROJECT_FACTS (tracker) — rendered above by th
    Journal-observation rule: any journal observation from a prior pass that names required consistency or scope work (e.g. 'keep line X consistent with rule Y') MUST be folded into the brief as an explicit bullet — or explicitly waived in the brief with a one-line reason. Reviewers and the implementer's PASS/FAIL report check bullets, not journals; a requirement that lives only in a journal entry does not exist (run 01M22PCGN4E3X1XGN630MDDH39: a journaled consistency note was skipped and contradictory prompt text shipped through an approving review).
 7. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). An unresolved journal observation naming consistency or scope work is itself such a contradiction: it MUST surface in the brief as an explicit bullet (or an explicit one-line waiver), never stay journal-only — see the journal-observation rule in step 6. Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong. When the spec names a heading, anchor, or file path, confirm it exists in the target file before forwarding the brief; when it does not, annotate the ACTUAL location (the real heading name or path) instead of transcribing the spec verbatim. Gate-command criteria are one such contradiction class: any verification criterion in a brief that names the PROJECT_FACTS gate command (`just qualitygate`) OR any equivalent full-gate invocation — the recipe body `nu scripts/qualitygate.nu` (the justfile qualitygate recipe delegates to it) or any byte-equivalent/full-gate substitute naming that script — MUST be rewritten to 'gate green via the deterministic tester step' before the brief ships — the implementer must never run the full gate in any form, not even a byte-equivalent body (consistent with `implementer.md` step 4's gate ban; run 01M23KJM3SM70S2S6QSSEWSJPY: the implementer ran the gate at seq 111-113 and the tester re-ran the byte-identical command at seq 128-129; bypass evidence run 01M23W4S7Q2GNEVPY779M4GMN6: the planner rewrote the banned command into its byte-equivalent body, justfile:128, checkpoint seq 82 — three gate executions on one tree).
 
-If the top candidate looks already implemented (its acceptance criteria appear satisfied in the worktree — often a stale tracker from an earlier run), do NOT close it yourself and do NOT skip it. Claim it normally and mark the brief as verification-only (see below). The normal cycle then proves it: implementer verifies, gate runs, reviewer approves. Only an approved review closes a seed.
+If the top candidate looks already implemented (its acceptance criteria appear satisfied in the worktree — often a stale tracker from an earlier run), apply the two-branch rule (fabro-d183):
+(a) ALREADY LANDED — `git log --grep <seed-id>` shows a fix commit referencing the seed already in base history AND the seed's acceptance criteria hold in the worktree → close it yourself with `sd close <id> --reason "superseded: fix landed in <sha>"` (the one superseded-close exception, sd command table; reason string mandatory) and route the exit label "Already landed". No cycle runs: the fix is proven landed, a verification lap re-proves nothing (run 01M256QJB48JK8BXJE1TVM2HYS burned a whole cycle — journal-and-tracker-only diff, PR #115 — for fix commit 7ae575c already in base). After the close, continue down the `sd ready --assignee fabro --limit 200` candidate list: if another seed remains, claim it and route "Seed claimed"; if none remains, route "Tracker empty".
+(b) Criteria satisfied but NO referencing commit → do NOT close it yourself and do NOT skip it. Claim it normally and mark the brief as verification-only (see below). The normal cycle then proves it: implementer verifies, gate runs, reviewer approves. Only an approved review closes a seed.
 
 If `sd ready --assignee fabro --limit 200` returns nothing and no fabro-assigned seed is in progress for this effort, the FILTERED view is empty — that is a legitimate park, not a broken tracker. Route Tracker empty. NEVER fall back to unassigned seeds and never invent work: while the backlog is unassigned the line does nothing rather than something (FAIL-CLOSED). Assigning backlog seeds is the user's decision (see `docs/agents/issue-tracker.md`), never yours.
 
@@ -72,6 +74,7 @@ Both routes are successes — planning succeeded either way. The label decides w
 
 - `succeeded` + "Seed claimed": a seed is claimed (fresh, re-planned, or verification-only) and its brief is in the context. A verification-only brief says: "The acceptance criteria appear already satisfied. Verify each one against the worktree; make NO changes if all hold." 
 - `succeeded` + "Tracker empty": the effort is complete — every seed is closed and the goal holds.
+- `succeeded` + "Already landed": the top candidate's fix commit is already in base history and its acceptance criteria hold — the seed was closed via the superseded-close and the run exits without a cycle.
 
 `failed` is reserved for genuine planner errors (cannot read the tracker, invalid routing after retries) and for the cycle-guard Blocked route. Never use `failed` to mean "no more work".
 
@@ -95,6 +98,15 @@ Tracker empty (the goal is achieved, not an error):
   "preferred_next_label": "Tracker empty",
   "context_updates": {
     "review_verdict": "",
+    "journal": {"painpoints": [], "observations": ["none"]}
+  }
+}
+
+Already landed (the fix landed before the cycle; exit without a lap):
+{
+  "outcome": "succeeded",
+  "preferred_next_label": "Already landed",
+  "context_updates": {
     "journal": {"painpoints": [], "observations": ["none"]}
   }
 }

@@ -293,6 +293,13 @@ digraph Develop {
     // implementation with no seed claimed (GRAPH-03, gate red since
     // the journal-contract prompt). Plain edge: natural completion.
     planner -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
+    // Already landed (fabro-d183): the planner's claim-time check found a
+    // fix commit referencing the seed already in base history with its
+    // acceptance criteria satisfied — it closes the seed via the
+    // superseded-close and exits here instead of burning a full
+    // verification cycle on a stale tracker row. Plain edge, natural
+    // completion, same family as "Tracker empty" above.
+    planner -> exit [label="Already landed", condition="preferred_label=\"Already landed\""]
     // Cycle-guard exit (run 01M0SS23MJ): the planner prompt routes Blocked
     // after the third review/gate cycle on one seed, but the graph had no
     // matching edge — the guard could never fire. Seed stays open for a
