@@ -276,7 +276,7 @@ fn canonical_eligible(catalog: &Catalog, eligible: &HashSet<ProviderId>) -> Hash
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::provider_ids;
+    use lithos_llm::catalog::builtin;
 
     use super::*;
     use crate::test_support::{test_catalog, test_catalog_with_overlay};
@@ -291,7 +291,7 @@ mod tests {
         let selected =
             resolve_selection(&catalog, Some("sonnet"), None, &eligible(&["anthropic"])).unwrap();
         assert_eq!(selected, SelectedModel {
-            provider: provider_ids::anthropic(),
+            provider: builtin::anthropic(),
             model:    "claude-sonnet-5".to_string(),
         });
     }
@@ -306,7 +306,7 @@ mod tests {
             &eligible(&["openai", "anthropic"]),
         )
         .unwrap();
-        assert_eq!(selected.provider, provider_ids::anthropic());
+        assert_eq!(selected.provider, builtin::anthropic());
         assert_eq!(selected.model, "totally-new-model");
     }
 
@@ -321,7 +321,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(selected, SelectedModel {
-            provider: provider_ids::openai(),
+            provider: builtin::openai(),
             model:    "gpt-5.6-sol".to_string(),
         });
 
@@ -333,7 +333,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(unknown, SelectedModel {
-            provider: provider_ids::openai(),
+            provider: builtin::openai(),
             model:    "brand-new-model".to_string(),
         });
 
@@ -346,7 +346,7 @@ mod tests {
         assert_eq!(
             unavailable,
             Err(ModelSelectionError::ProviderUnavailable {
-                provider: provider_ids::openai(),
+                provider: builtin::openai(),
             })
         );
     }
@@ -373,13 +373,13 @@ mod tests {
         let error = resolve_selection(
             &catalog,
             Some("gpt-5.4"),
-            Some(&provider_ids::openai()),
+            Some(&builtin::openai()),
             &eligible(&["anthropic"]),
         )
         .unwrap_err();
         assert!(matches!(
             error,
-            ModelSelectionError::ProviderUnavailable { provider } if provider == provider_ids::openai()
+            ModelSelectionError::ProviderUnavailable { provider } if provider == builtin::openai()
         ));
     }
 
@@ -389,11 +389,11 @@ mod tests {
         let selected = resolve_selection_with_catalog_fallback(
             &catalog,
             Some("gpt-5.4"),
-            Some(&provider_ids::openai()),
+            Some(&builtin::openai()),
             &eligible(&["anthropic"]),
         )
         .unwrap();
-        assert_eq!(selected.provider, provider_ids::openai());
+        assert_eq!(selected.provider, builtin::openai());
         let error = resolve_selection_with_catalog_fallback(
             &catalog,
             None,

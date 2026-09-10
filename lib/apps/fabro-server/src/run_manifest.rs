@@ -2017,7 +2017,7 @@ enabled = {clone_enabled}
             prepared.settings.clone(),
             validated.graph(),
             test_catalog().as_ref(),
-            &[fabro_types::provider_ids::anthropic()],
+            &[lithos_llm::catalog::builtin::anthropic()],
         )
         .unwrap()
         .run;

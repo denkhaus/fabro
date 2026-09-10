@@ -33,7 +33,7 @@ fn session_detail_round_trips_messages_active_turn_and_last_seq() {
             title: Some("Ask Fabro".to_string()),
             status: SessionStatus::Running,
             model: Some("gpt-5.4".to_string()),
-            provider: Some(fabro_types::provider_ids::openai()),
+            provider: Some(lithos_llm::catalog::builtin::openai()),
             active_turn: Some(SessionTurn {
                 id:         turn_id,
                 started_at: turn_started_at,

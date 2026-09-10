@@ -91,7 +91,8 @@ pub trait AgentProfile: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::{AgentProfileKind, provider_ids};
+    use fabro_types::AgentProfileKind;
+    use lithos_llm::catalog::builtin;
 
     use super::*;
     use crate::test_support::{MockSandbox, TestProfile};
@@ -100,7 +101,7 @@ mod tests {
     fn profile_provider_and_model() {
         let profile = TestProfile::new();
         assert_eq!(profile.profile_kind(), AgentProfileKind::Anthropic);
-        assert_eq!(profile.provider_id(), provider_ids::anthropic());
+        assert_eq!(profile.provider_id(), builtin::anthropic());
         assert_eq!(profile.model(), "mock-model");
     }
 

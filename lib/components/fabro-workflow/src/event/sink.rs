@@ -390,7 +390,7 @@ mod tests {
             event:             fabro_agent::AgentEvent::AssistantMessage {
                 text:            String::new(),
                 model:           ::fabro_types::ModelRef::new(
-                    ::fabro_types::provider_ids::openai(),
+                    ::lithos_llm::catalog::builtin::openai(),
                     ModelId::new("gpt-5.4"),
                 ),
                 usage:           ::fabro_types::TokenCounts::default(),

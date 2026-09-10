@@ -7,8 +7,9 @@ pub use fabro_types::billing_rollup::{
 mod tests {
     use fabro_types::{
         AttrValue, BilledTokenCounts, Graph, ModelId, ModelRef, Node, RunProjection, RunSpec,
-        StageCompletion, StageOutcome, first_event_seq, provider_ids, test_support,
+        StageCompletion, StageOutcome, first_event_seq, test_support,
     };
+    use lithos_llm::catalog::builtin;
 
     use super::billing_rollup_from_projection;
     use crate::test_support::test_usage;
@@ -134,7 +135,7 @@ mod tests {
     #[test]
     fn rollup_keeps_in_flight_stage_usage_unpriced() {
         let mut projection = test_projection();
-        let model = ModelRef::new(provider_ids::openai(), ModelId::new("gpt-5.4"));
+        let model = ModelRef::new(builtin::openai(), ModelId::new("gpt-5.4"));
         let stage = projection.stage_entry("agent", 1, first_event_seq(1));
         stage.started_at = Some(chrono::Utc::now());
         stage.usage = BilledTokenCounts {

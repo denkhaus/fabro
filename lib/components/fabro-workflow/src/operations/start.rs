@@ -1310,9 +1310,10 @@ mod tests {
     };
     use fabro_types::{
         BilledModelUsage, GitContext, ManifestPath, RunTarget, StageTiming, WorkflowSettings,
-        fixtures, provider_ids, test_support,
+        fixtures, test_support,
     };
     use fabro_vault::SecretType;
+    use lithos_llm::catalog::builtin;
     use object_store::memory::InMemory;
 
     use super::*;
@@ -1475,7 +1476,7 @@ mod tests {
             error,
             Error::ModelSelection(fabro_llm::ModelSelectionError::ProviderUnavailable {
                 provider
-            }) if provider == provider_ids::openai()
+            }) if provider == builtin::openai()
         ));
     }
 

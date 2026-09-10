@@ -32,7 +32,8 @@ use std::sync::Arc;
 use fabro_agent::{AgentProfile, AgentProfileBuilder, LocalSandbox, Session, SessionOptions};
 use fabro_auth::VaultCredentialSource;
 use fabro_llm::ClientOptions;
-use fabro_types::{AgentProfileKind, provider_ids};
+use fabro_types::AgentProfileKind;
+use lithos_llm::catalog::builtin;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -48,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let profile: Arc<dyn AgentProfile> = Arc::from(
         AgentProfileBuilder::new(
             AgentProfileKind::Anthropic,
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             "claude-sonnet-4.5",
             Arc::clone(&catalog),
         )

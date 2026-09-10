@@ -523,16 +523,16 @@ pub struct AgentSkillActivatedProps {
 
 #[cfg(test)]
 mod tests {
+    use lithos_llm::catalog::builtin;
     use serde_json::json;
 
     use super::*;
-    use crate::provider_ids;
     use crate::transcript::{
         ContentPart, MessageKind, MessageSource, TranscriptMessage, tool_result_from_json,
     };
 
     fn sample_model_ref() -> ModelRef {
-        ModelRef::new(provider_ids::openai(), "gpt-5".into())
+        ModelRef::new(builtin::openai(), "gpt-5".into())
     }
 
     #[test]

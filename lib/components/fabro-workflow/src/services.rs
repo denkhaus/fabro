@@ -320,7 +320,7 @@ impl EngineServices {
                 None,
                 locations,
                 CancellationToken::new(),
-                fabro_types::provider_ids::anthropic(),
+                lithos_llm::catalog::builtin::anthropic(),
                 "claude-sonnet-4.6".to_string(),
                 Arc::new(StubCredentialSource),
                 Arc::new(fabro_llm::default_catalog()),

@@ -19,10 +19,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use fabro_static::EnvVars;
-use fabro_types::provider_ids;
 use fabro_types::settings::{InterpString, ResolveCtx};
 use fabro_vault::{SecretType, Vault};
-use lithos_llm::catalog::{CatalogProvider, ProviderId};
+use lithos_llm::catalog::{CatalogProvider, ProviderId, builtin};
 use lithos_llm::credentials::{
     ConventionalCredentials, CredentialError, CredentialHeader, CredentialProvider, Credentials,
     HttpAuthentication, HttpCredentials, SecretValue,
@@ -184,7 +183,7 @@ impl VaultCredentialSource {
     ) -> Credentials {
         if let Credentials::Http(http) = &mut credentials {
             http.extra_headers.extend(interpolated);
-            if provider.id().as_str() == provider_ids::OPENAI {
+            if provider.id().as_str() == builtin::ids::OPENAI {
                 for (variable, header) in [
                     (EnvVars::OPENAI_ORG_ID, OPENAI_ORGANIZATION_HEADER),
                     (EnvVars::OPENAI_PROJECT_ID, OPENAI_PROJECT_HEADER),

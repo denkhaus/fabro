@@ -1036,12 +1036,13 @@ impl<'de> Deserialize<'de> for RunEvent {
 
 #[cfg(test)]
 mod tests {
+    use lithos_llm::catalog::builtin;
     use serde_json::json;
 
     use super::*;
     use crate::{
         AuthMethod, BlobHash, CommandTermination, Edge, Graph, IdpIdentity, ModelRef, Node,
-        PendingReason, WorkflowSettings, fixtures, provider_ids, test_support,
+        PendingReason, WorkflowSettings, fixtures, test_support,
     };
 
     fn user_principal(login: &str) -> Principal {
@@ -2364,7 +2365,7 @@ mod tests {
     fn agent_message_omits_context_window_when_absent() {
         let body = EventBody::AgentMessage(AgentMessageProps {
             text:            "ok".to_string(),
-            model:           ModelRef::new(provider_ids::openai(), "gpt-5.4".into()),
+            model:           ModelRef::new(builtin::openai(), "gpt-5.4".into()),
             billing:         BilledTokenCounts::default(),
             cost_source:     None,
             tool_call_count: 0,
@@ -2391,7 +2392,7 @@ mod tests {
     fn agent_message_omits_reasoning_when_absent() {
         let body = EventBody::AgentMessage(AgentMessageProps {
             text:            "ok".to_string(),
-            model:           ModelRef::new(provider_ids::openai(), "gpt-5.4".into()),
+            model:           ModelRef::new(builtin::openai(), "gpt-5.4".into()),
             billing:         BilledTokenCounts::default(),
             cost_source:     None,
             tool_call_count: 0,
@@ -2415,7 +2416,7 @@ mod tests {
     fn agent_message_carries_reasoning_through_canonical_json() {
         let body = EventBody::AgentMessage(AgentMessageProps {
             text:            String::new(),
-            model:           ModelRef::new(provider_ids::openai(), "gpt-5.4".into()),
+            model:           ModelRef::new(builtin::openai(), "gpt-5.4".into()),
             billing:         BilledTokenCounts::default(),
             cost_source:     None,
             tool_call_count: 1,
@@ -2468,7 +2469,7 @@ mod tests {
         };
         let body = EventBody::AgentMessage(AgentMessageProps {
             text:            "ok".to_string(),
-            model:           ModelRef::new(provider_ids::openai(), "gpt-5.4".into()),
+            model:           ModelRef::new(builtin::openai(), "gpt-5.4".into()),
             billing:         BilledTokenCounts::default(),
             cost_source:     None,
             tool_call_count: 0,

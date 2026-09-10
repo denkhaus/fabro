@@ -195,7 +195,8 @@ mod tests {
     use fabro_llm::adapter::{ProviderAdapter, ResolvedCall};
     use fabro_llm::lithos_catalog::AdapterId;
     use fabro_llm::{Error as LlmError, Response, ResponseStream};
-    use fabro_types::{RunId, provider_ids};
+    use fabro_types::RunId;
+    use lithos_llm::catalog::builtin;
     use toml::Value as TomlValue;
 
     use super::*;
@@ -358,7 +359,7 @@ mod tests {
         let title = generate_title_or_current(GenerateTitleInput {
             client,
             model_id: "gpt-5.4".to_string(),
-            provider_id: provider_ids::openai(),
+            provider_id: builtin::openai(),
             prompt: TitlePromptInput {
                 run_id:          &run_id,
                 current_title:   "Current",

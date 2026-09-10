@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use fabro_llm::lithos_catalog::Catalog;
-#[cfg(test)]
-use fabro_types::provider_ids;
 use fabro_types::{AgentProfileKind, ProviderId};
+#[cfg(test)]
+use lithos_llm::catalog::builtin;
 
 pub mod anthropic;
 pub mod claude5;
@@ -701,31 +701,23 @@ mod tests {
         let catalog = Arc::new(test_catalog());
         let env = MockSandbox::linux();
         let cases = [
-            (
-                AgentProfileKind::OpenAi,
-                provider_ids::openai(),
-                "gpt-5.4-mini",
-            ),
+            (AgentProfileKind::OpenAi, builtin::openai(), "gpt-5.4-mini"),
             (
                 AgentProfileKind::Anthropic,
-                provider_ids::anthropic(),
+                builtin::anthropic(),
                 "claude-haiku-4-5",
             ),
             (
                 AgentProfileKind::Gemini,
-                provider_ids::gemini(),
+                builtin::gemini(),
                 "gemini-3-flash-preview",
             ),
             (
                 AgentProfileKind::Claude5,
-                provider_ids::anthropic(),
+                builtin::anthropic(),
                 "claude-sonnet-5",
             ),
-            (
-                AgentProfileKind::Gpt56,
-                provider_ids::openai(),
-                "gpt-5.6-sol",
-            ),
+            (AgentProfileKind::Gpt56, builtin::openai(), "gpt-5.6-sol"),
         ];
 
         for (profile_kind, provider_id, model) in cases {
@@ -782,7 +774,7 @@ mod tests {
     ) {
         let builder = AgentProfileBuilder::new(
             profile_kind,
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             model,
             Arc::new(test_catalog()),
         );

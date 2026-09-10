@@ -19,6 +19,7 @@ fabro-automation = { path = "../../components/fabro-automation" }
 fabro-config = { path = "../fabro-config" }
 fabro-environment.workspace = true
 fabro-types = { path = "../fabro-types" }
+lithos-llm = { workspace = true, features = ["runtime"] }
 progenitor-client = "0.13"
 regress = "0.10"
 reqwest.workspace = true

@@ -2567,7 +2567,7 @@ mod tests {
     #[test]
     fn install_provider_base_url_falls_back_to_catalog_base_url() {
         let state = InstallAppState::for_test("expected");
-        let provider = install_catalog_provider(&fabro_types::provider_ids::openai()).unwrap();
+        let provider = install_catalog_provider(&lithos_llm::catalog::builtin::openai()).unwrap();
 
         assert_eq!(
             provider_base_url_override(&state, provider),
@@ -2578,10 +2578,10 @@ mod tests {
     #[test]
     fn install_provider_base_url_prefers_state_override() {
         let state = InstallAppState::for_test("expected").with_provider_base_url(
-            fabro_types::provider_ids::openai(),
+            lithos_llm::catalog::builtin::openai(),
             "https://proxy.example.com/v1",
         );
-        let provider = install_catalog_provider(&fabro_types::provider_ids::openai()).unwrap();
+        let provider = install_catalog_provider(&lithos_llm::catalog::builtin::openai()).unwrap();
 
         assert_eq!(
             provider_base_url_override(&state, provider),

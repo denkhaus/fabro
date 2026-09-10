@@ -2250,9 +2250,10 @@ mod tests {
     use fabro_llm::{ErrorKind, ResponseStream, RetryPolicy};
     use fabro_types::{
         ContentPart, Cost, CostSource, ReasoningOutput, StageContextWindowCountMethod,
-        ToolDefinition, provider_ids, text_of, tool_result_to_json,
+        ToolDefinition, text_of, tool_result_to_json,
     };
     use futures::stream;
+    use lithos_llm::catalog::builtin;
     use tokio::time::{sleep, timeout};
 
     use super::*;
@@ -2386,7 +2387,7 @@ mod tests {
     impl ScriptedError {
         fn build(&self) -> fabro_llm::Error {
             fabro_llm::Error::new(self.kind.clone(), self.message.clone())
-                .with_provider(provider_ids::anthropic())
+                .with_provider(builtin::anthropic())
                 .with_retry(self.retry)
         }
     }

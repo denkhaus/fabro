@@ -86,8 +86,8 @@ mod tests {
     use std::time::Duration;
 
     use fabro_llm::{ErrorKind, RetryClassification};
-    use fabro_types::provider_ids;
     use fabro_util::error;
+    use lithos_llm::catalog::builtin;
 
     use super::*;
 
@@ -180,7 +180,7 @@ mod tests {
     fn serde_roundtrip_llm_provider() {
         let err = Error::from(ErrorData::from(
             fabro_llm::Error::new(ErrorKind::RateLimit, "too fast")
-                .with_provider(provider_ids::openai())
+                .with_provider(builtin::openai())
                 .with_status(429)
                 .with_retry(RetryClassification::after(Duration::from_secs(2))),
         ));

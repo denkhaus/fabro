@@ -901,7 +901,7 @@ mod tests {
             sandbox: SandboxSpec::Local { working_directory },
             llm: LlmSpec {
                 model:          "test-model".to_string(),
-                provider_id:    fabro_types::provider_ids::anthropic(),
+                provider_id:    lithos_llm::catalog::builtin::anthropic(),
                 fallbacks:      ModelFallbackPolicy::default(),
                 mcp_servers:    Vec::new(),
                 model_controls: RunModelControls::default(),
@@ -1091,7 +1091,7 @@ mod tests {
         assert_eq!(initialized.model, "test-model");
         assert_eq!(
             initialized.engine.run.provider_id,
-            fabro_types::provider_ids::anthropic()
+            lithos_llm::catalog::builtin::anthropic()
         );
         assert!(
             readiness(
@@ -1217,7 +1217,7 @@ mod tests {
         let (_registry, effective_dry_run) = build_registry(
             &LlmSpec {
                 model:          "claude-opus-4-6".to_string(),
-                provider_id:    fabro_types::provider_ids::anthropic(),
+                provider_id:    lithos_llm::catalog::builtin::anthropic(),
                 fallbacks:      ModelFallbackPolicy::default(),
                 mcp_servers:    Vec::new(),
                 model_controls: RunModelControls::default(),
@@ -1344,7 +1344,7 @@ mod tests {
             },
             llm: LlmSpec {
                 model:          "fake-acp".to_string(),
-                provider_id:    fabro_types::provider_ids::openai(),
+                provider_id:    lithos_llm::catalog::builtin::openai(),
                 fallbacks:      ModelFallbackPolicy::default(),
                 mcp_servers:    Vec::new(),
                 model_controls: RunModelControls::default(),
@@ -1447,7 +1447,7 @@ mod tests {
             },
             llm:               LlmSpec {
                 model:          "test-model".to_string(),
-                provider_id:    fabro_types::provider_ids::anthropic(),
+                provider_id:    lithos_llm::catalog::builtin::anthropic(),
                 fallbacks:      ModelFallbackPolicy::default(),
                 mcp_servers:    Vec::new(),
                 model_controls: RunModelControls::default(),
@@ -1589,7 +1589,7 @@ mod tests {
             },
             llm: LlmSpec {
                 model:          "test-model".to_string(),
-                provider_id:    fabro_types::provider_ids::anthropic(),
+                provider_id:    lithos_llm::catalog::builtin::anthropic(),
                 fallbacks:      ModelFallbackPolicy::default(),
                 mcp_servers:    Vec::new(),
                 model_controls: RunModelControls::default(),

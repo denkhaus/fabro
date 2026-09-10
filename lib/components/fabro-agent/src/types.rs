@@ -817,7 +817,8 @@ pub struct SessionEvent {
 #[cfg(test)]
 mod tests {
     use fabro_llm::{ErrorKind, RetryClassification};
-    use fabro_types::{CostSource, ModelId, ProviderId, provider_ids};
+    use fabro_types::{CostSource, ModelId, ProviderId};
+    use lithos_llm::catalog::builtin;
 
     use super::*;
 
@@ -1102,7 +1103,7 @@ mod tests {
         };
         let event = AgentEvent::AssistantMessage {
             text: "Hello".into(),
-            model: ModelRef::new(provider_ids::openai(), ModelId::new("test-model")),
+            model: ModelRef::new(builtin::openai(), ModelId::new("test-model")),
             usage,
             cost: Some(Cost {
                 usd_micros: 125_000,

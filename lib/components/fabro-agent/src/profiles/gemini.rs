@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_types::{AgentProfileKind, ProviderId, provider_ids};
+use fabro_types::{AgentProfileKind, ProviderId};
+use lithos_llm::catalog::builtin;
 
 use super::EnvContext;
 use crate::agent_profile::AgentProfile;
@@ -42,7 +43,7 @@ impl GeminiProfile {
         Self {
             base: BaseProfile {
                 profile_kind: AgentProfileKind::Gemini,
-                provider_id: provider_ids::gemini(),
+                provider_id: builtin::gemini(),
                 model: model.into(),
                 catalog: None,
                 registry,
@@ -108,7 +109,7 @@ mod tests {
     fn gemini_profile_identity() {
         let profile = GeminiProfile::new("gemini-2.0-flash");
         assert_eq!(profile.profile_kind(), AgentProfileKind::Gemini);
-        assert_eq!(profile.provider_id(), provider_ids::gemini());
+        assert_eq!(profile.provider_id(), builtin::gemini());
         assert_eq!(profile.model(), "gemini-2.0-flash");
     }
 

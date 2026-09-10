@@ -57,7 +57,7 @@ fn test_app_with_openai_agent_backend(openai_base_url: String, api_key: String) 
                 Some(Box::new(
                     fabro_workflow::handler::llm::AgentApiBackend::new_with_catalog(
                         OPENAI_AGENT_MODEL.to_string(),
-                        fabro_types::provider_ids::openai(),
+                        lithos_llm::catalog::builtin::openai(),
                         fabro_workflow::model_fallback::ModelFallbackPolicy::default(),
                         Arc::clone(&llm_source),
                         Arc::clone(&steering_hub),

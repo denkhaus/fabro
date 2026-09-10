@@ -1574,7 +1574,7 @@ enabled = true
     #[test]
     fn canonical_session_model_uses_readiness_priority_and_explicit_pins() {
         let catalog = portable_session_catalog();
-        let openai = fabro_types::provider_ids::openai();
+        let openai = lithos_llm::catalog::builtin::openai();
         let openrouter = ProviderId::new("openrouter");
 
         assert_eq!(
@@ -1621,7 +1621,7 @@ enabled = true
     #[test]
     fn canonical_session_model_preserves_unknown_passthrough_on_selected_provider() {
         let catalog = portable_session_catalog();
-        let openai = fabro_types::provider_ids::openai();
+        let openai = lithos_llm::catalog::builtin::openai();
         let openrouter = ProviderId::new("openrouter");
         let both = std::collections::HashSet::from([openai.clone(), openrouter.clone()]);
 
@@ -1641,7 +1641,7 @@ enabled = true
     #[test]
     fn canonical_session_model_passes_through_colon_bearing_model_ids() {
         let catalog = portable_session_catalog();
-        let openai = fabro_types::provider_ids::openai();
+        let openai = lithos_llm::catalog::builtin::openai();
         let openrouter = ProviderId::new("openrouter");
         let both = std::collections::HashSet::from([openai.clone(), openrouter.clone()]);
 
@@ -1666,7 +1666,7 @@ enabled = true
         let catalog = portable_session_catalog();
         let error = canonical_session_model(
             &catalog,
-            &std::collections::HashSet::from([fabro_types::provider_ids::openai()]),
+            &std::collections::HashSet::from([lithos_llm::catalog::builtin::openai()]),
             Some("gpt-56-sol"),
             Some(&ProviderId::new("openrouter")),
         )
@@ -1678,7 +1678,7 @@ enabled = true
     #[test]
     fn canonical_session_model_normalizes_legacy_builtin_selector_before_qualification() {
         let catalog = portable_session_catalog();
-        let openai = fabro_types::provider_ids::openai();
+        let openai = lithos_llm::catalog::builtin::openai();
         let openrouter = ProviderId::new("openrouter");
         let both = std::collections::HashSet::from([openai.clone(), openrouter.clone()]);
 
@@ -1732,7 +1732,7 @@ enabled = true
             &catalog,
             &catalog.enabled_provider_ids().into_iter().collect(),
             Some("openrouter:gpt-56-sol"),
-            Some(&fabro_types::provider_ids::openai()),
+            Some(&lithos_llm::catalog::builtin::openai()),
         )
         .unwrap_err();
 

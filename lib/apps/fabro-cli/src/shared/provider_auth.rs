@@ -20,9 +20,10 @@ use fabro_auth::{
 };
 use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_llm::probe::{self, ApiKeyProbeError, ModelTestStatus};
-use fabro_types::{ProviderId, provider_ids};
+use fabro_types::ProviderId;
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
+use lithos_llm::catalog::builtin;
 use tokio::task::spawn_blocking;
 
 // ---------------------------------------------------------------------------
@@ -184,7 +185,7 @@ async fn read_and_validate_api_key(
 }
 
 pub(crate) async fn pick_auth_method(provider: &ProviderId) -> Result<AuthMethod> {
-    if provider != &provider_ids::openai() {
+    if provider != &builtin::openai() {
         return Ok(AuthMethod::ApiKey);
     }
 
@@ -374,9 +375,9 @@ mod tests {
     fn builtin_api_key_providers_have_key_urls() {
         let catalog = fabro_llm::default_catalog();
         for provider in [
-            provider_ids::anthropic(),
-            provider_ids::openai(),
-            provider_ids::gemini(),
+            builtin::anthropic(),
+            builtin::openai(),
+            builtin::gemini(),
             ProviderId::new("moonshot"),
             ProviderId::new("zai"),
             ProviderId::new("minimax"),
@@ -408,7 +409,7 @@ mod tests {
     #[fabro_macros::e2e_test(live("ANTHROPIC_API_KEY"))]
     async fn validate_api_key_rejects_invalid_key() {
         let result = validate_api_key(
-            &provider_ids::anthropic(),
+            &builtin::anthropic(),
             "sk-invalid-key-12345",
             default_catalog_for_provider_auth(),
         )

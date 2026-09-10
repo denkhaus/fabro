@@ -125,7 +125,8 @@ pub fn format_cost(cost: f64) -> String {
 mod tests {
     use fabro_llm::lithos_catalog::Catalog;
     use fabro_llm::test_support::{test_catalog, test_catalog_with_overlay};
-    use fabro_types::{ModelId, ModelRef, ProviderId, Speed, TokenCounts, UsdMicros, provider_ids};
+    use fabro_types::{ModelId, ModelRef, ProviderId, Speed, TokenCounts, UsdMicros};
+    use lithos_llm::catalog::builtin;
 
     use super::{OutcomeExt, billed_model_usage_from_llm};
 
@@ -149,7 +150,7 @@ mod tests {
         };
         let billed = billed_model_usage_from_llm(
             &catalog(),
-            &model_ref(provider_ids::openai(), "gpt-5.4", None),
+            &model_ref(builtin::openai(), "gpt-5.4", None),
             usage,
         )
         .unwrap();
@@ -169,7 +170,7 @@ mod tests {
         };
         let billed = billed_model_usage_from_llm(
             &catalog(),
-            &model_ref(provider_ids::openai(), "gpt-5.4", None),
+            &model_ref(builtin::openai(), "gpt-5.4", None),
             usage,
         )
         .unwrap()
@@ -199,11 +200,7 @@ mod tests {
         };
         let billed = billed_model_usage_from_llm(
             &catalog(),
-            &model_ref(
-                provider_ids::anthropic(),
-                "claude-opus-5",
-                Some(Speed::Fast),
-            ),
+            &model_ref(builtin::anthropic(), "claude-opus-5", Some(Speed::Fast)),
             usage,
         )
         .unwrap();
@@ -253,7 +250,7 @@ pricing = { input_usd_micros_per_million = 1000000, output_usd_micros_per_millio
     fn passthrough_model_on_known_provider_has_no_cost() {
         let billed = billed_model_usage_from_llm(
             &catalog(),
-            &model_ref(provider_ids::openai(), "brand-new-model", None),
+            &model_ref(builtin::openai(), "brand-new-model", None),
             TokenCounts {
                 input: 10,
                 output: 5,

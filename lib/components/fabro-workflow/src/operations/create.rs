@@ -688,9 +688,10 @@ mod tests {
     use fabro_store::Database;
     use fabro_types::settings::InterpString;
     use fabro_types::settings::run::RunMode;
-    use fabro_types::{EventBody, WorkflowSettings, fixtures, provider_ids, test_support};
+    use fabro_types::{EventBody, WorkflowSettings, fixtures, test_support};
     use fabro_util::error::collect_chain;
     use fabro_validate::Severity;
+    use lithos_llm::catalog::builtin;
     use object_store::local::LocalFileSystem;
     use object_store::memory::InMemory;
 
@@ -2028,19 +2029,19 @@ mod tests {
         }"#;
         let catalog = portable_model_catalog();
         let cases = [
-            (vec![provider_ids::openai()], None, provider_ids::openai()),
+            (vec![builtin::openai()], None, builtin::openai()),
             (
                 vec![ProviderId::new("openrouter")],
                 None,
                 ProviderId::new("openrouter"),
             ),
             (
-                vec![provider_ids::openai(), ProviderId::new("openrouter")],
+                vec![builtin::openai(), ProviderId::new("openrouter")],
                 None,
-                provider_ids::openai(),
+                builtin::openai(),
             ),
             (
-                vec![provider_ids::openai(), ProviderId::new("openrouter")],
+                vec![builtin::openai(), ProviderId::new("openrouter")],
                 Some("openrouter"),
                 ProviderId::new("openrouter"),
             ),

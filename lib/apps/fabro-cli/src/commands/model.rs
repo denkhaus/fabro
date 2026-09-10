@@ -513,9 +513,8 @@ impl Default for ModelsCommand {
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::{
-        ModelControls, ModelCosts, ModelFeatures, ModelLimits, ReasoningEffort, provider_ids,
-    };
+    use fabro_types::{ModelControls, ModelCosts, ModelFeatures, ModelLimits, ReasoningEffort};
+    use lithos_llm::catalog::builtin;
 
     use super::*;
 
@@ -902,7 +901,7 @@ mod tests {
                     .header("Content-Type", "application/json")
                     .body(
                         serde_json::json!({
-                            "data": [test_model_json("test-model", provider_ids::anthropic())],
+                            "data": [test_model_json("test-model", builtin::anthropic())],
                             "meta": { "has_more": false }
                         })
                         .to_string(),
@@ -916,7 +915,7 @@ mod tests {
         mock.assert_async().await;
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].id.as_str(), "test-model");
-        assert_eq!(models[0].provider, provider_ids::anthropic());
+        assert_eq!(models[0].provider, builtin::anthropic());
     }
 
     #[tokio::test]
@@ -933,7 +932,7 @@ mod tests {
                     .header("Content-Type", "application/json")
                     .body(
                         serde_json::json!({
-                            "data": [test_model_json("model-a", provider_ids::anthropic())],
+                            "data": [test_model_json("model-a", builtin::anthropic())],
                             "meta": { "has_more": false }
                         })
                         .to_string(),
@@ -961,12 +960,12 @@ mod tests {
                 then.status(200)
                     .header("Content-Type", "application/json")
                     .body(
-                    serde_json::json!({
-                        "data": [test_model_json("claude-sonnet-4-5", provider_ids::anthropic())],
-                        "meta": { "has_more": false }
-                    })
-                    .to_string(),
-                );
+                        serde_json::json!({
+                            "data": [test_model_json("claude-sonnet-4-5", builtin::anthropic())],
+                            "meta": { "has_more": false }
+                        })
+                        .to_string(),
+                    );
             })
             .await;
 
@@ -991,7 +990,7 @@ mod tests {
                     .header("Content-Type", "application/json")
                     .body(
                         serde_json::json!({
-                            "data": [test_model_json("model-a", provider_ids::anthropic())],
+                            "data": [test_model_json("model-a", builtin::anthropic())],
                             "meta": { "has_more": true }
                         })
                         .to_string(),
@@ -1008,7 +1007,7 @@ mod tests {
                     .header("Content-Type", "application/json")
                     .body(
                         serde_json::json!({
-                            "data": [test_model_json("model-b", provider_ids::openai())],
+                            "data": [test_model_json("model-b", builtin::openai())],
                             "meta": { "has_more": false }
                         })
                         .to_string(),

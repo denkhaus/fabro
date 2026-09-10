@@ -27,7 +27,6 @@ pub mod outcome;
 pub mod pair;
 pub mod parallel;
 pub mod principal;
-pub mod provider_ids;
 pub mod pull_request;
 pub mod repository;
 pub mod run;

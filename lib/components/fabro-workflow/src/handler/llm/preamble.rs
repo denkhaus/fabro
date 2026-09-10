@@ -589,7 +589,8 @@ fn build_summary_preamble(
 #[cfg(test)]
 mod tests {
     use fabro_graphviz::graph::AttrValue;
-    use fabro_types::{ModelId, ModelRef, TokenCounts, provider_ids};
+    use fabro_types::{ModelId, ModelRef, TokenCounts};
+    use lithos_llm::catalog::builtin;
 
     use super::*;
     use crate::outcome::{BilledModelUsage, billed_model_usage_from_llm};
@@ -597,7 +598,7 @@ mod tests {
     fn stage_usage(model: &str, input: u64, output: u64) -> BilledModelUsage {
         billed_model_usage_from_llm(
             &fabro_llm::test_support::test_catalog(),
-            &ModelRef::new(provider_ids::anthropic(), ModelId::new(model)),
+            &ModelRef::new(builtin::anthropic(), ModelId::new(model)),
             TokenCounts {
                 input,
                 output,

@@ -822,7 +822,7 @@ mod tests {
     use fabro_llm::test_support::{
         client_with_adapters, test_catalog as fabro_test_catalog, test_catalog_with_overlay,
     };
-    use fabro_types::provider_ids;
+    use lithos_llm::catalog::builtin;
     use serde_json::json;
 
     use super::*;
@@ -1027,7 +1027,7 @@ profile = "openai"
     #[test]
     fn ensure_provider_registered_reports_missing_credentials() {
         let client = client_with_adapters(Vec::new(), ClientOptions::default());
-        let error = ensure_provider_registered(&client, &provider_ids::anthropic()).unwrap_err();
+        let error = ensure_provider_registered(&client, &builtin::anthropic()).unwrap_err();
         assert_eq!(
             error.to_string(),
             "LLM credentials not configured for provider 'anthropic'"
@@ -1098,9 +1098,9 @@ profile = "openai"
     #[test]
     fn summarizer_model_id_prefers_the_provider_small_default() {
         let catalog = test_catalog();
-        let model_id = summarizer_model_id(&provider_ids::openai(), &catalog, "gpt-5.4");
+        let model_id = summarizer_model_id(&builtin::openai(), &catalog, "gpt-5.4");
 
-        assert_eq!(model_id.provider(), &provider_ids::openai());
+        assert_eq!(model_id.provider(), &builtin::openai());
         assert_eq!(model_id.model().as_str(), "gpt-5.4-mini");
     }
 
@@ -1110,7 +1110,7 @@ profile = "openai"
     fn build_profile_can_register_subagent_tools() {
         let mut profile = AgentProfileBuilder::new(
             AgentProfileKind::Anthropic,
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             "model",
             test_catalog(),
         )

@@ -751,7 +751,8 @@ mod tests {
     /// A stored LLM error of `kind` from the `openai` provider.
     fn sdk_error(kind: ErrorKind, message: &str) -> ErrorData {
         ErrorData::from(
-            fabro_llm::Error::new(kind, message).with_provider(fabro_types::provider_ids::openai()),
+            fabro_llm::Error::new(kind, message)
+                .with_provider(lithos_llm::catalog::builtin::openai()),
         )
     }
 
@@ -759,7 +760,7 @@ mod tests {
     fn transient_error(kind: ErrorKind, message: &str) -> ErrorData {
         ErrorData::from(
             fabro_llm::Error::new(kind, message)
-                .with_provider(fabro_types::provider_ids::openai())
+                .with_provider(lithos_llm::catalog::builtin::openai())
                 .with_retry(RetryClassification::Safe),
         )
     }

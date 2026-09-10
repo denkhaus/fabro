@@ -117,7 +117,7 @@ fn saturating_i64(value: u64) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::provider_ids;
+    use lithos_llm::catalog::builtin;
 
     use super::*;
     use crate::test_support::test_catalog;
@@ -125,17 +125,17 @@ mod tests {
     #[test]
     fn models_are_stamped_with_configured_providers() {
         let catalog = test_catalog();
-        let configured = HashSet::from([provider_ids::openai()]);
+        let configured = HashSet::from([builtin::openai()]);
         let models = models(&catalog, &configured);
         let openai = models
             .iter()
-            .find(|model| model.provider == provider_ids::openai())
+            .find(|model| model.provider == builtin::openai())
             .expect("openai models listed");
         assert!(openai.configured);
         assert!(openai.limits.context_window > 0);
         let anthropic = models
             .iter()
-            .find(|model| model.provider == provider_ids::anthropic())
+            .find(|model| model.provider == builtin::anthropic())
             .expect("anthropic models listed");
         assert!(!anthropic.configured);
         assert!(models.iter().any(|model| model.default));
@@ -145,12 +145,12 @@ mod tests {
     fn providers_skip_stand_ins_and_disabled_entries() {
         let catalog = test_catalog();
         let providers = providers(&catalog, &HashSet::new());
-        assert!(providers.iter().any(|p| p.id == provider_ids::openai()));
+        assert!(providers.iter().any(|p| p.id == builtin::openai()));
         assert!(providers.iter().all(|p| p.id.as_str() != "openai-codex"));
         assert!(providers.iter().all(|p| p.id.as_str() != "ollama"));
         let openai = providers
             .iter()
-            .find(|p| p.id == provider_ids::openai())
+            .find(|p| p.id == builtin::openai())
             .unwrap();
         assert_eq!(
             openai.expected_secret_name.as_deref(),

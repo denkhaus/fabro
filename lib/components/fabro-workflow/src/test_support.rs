@@ -14,7 +14,8 @@ use fabro_llm::test_support::test_catalog;
 use fabro_store::{ArtifactStore, RunProjection, test_support as store_test_support};
 #[cfg(feature = "test-support")]
 use fabro_types::ProviderId;
-use fabro_types::{ModelId, ModelRef, provider_ids};
+use fabro_types::{ModelId, ModelRef};
+use lithos_llm::catalog::builtin;
 use object_store::local::LocalFileSystem;
 
 use crate::artifact_upload::ArtifactSink;
@@ -89,7 +90,7 @@ pub fn test_usage(
     output_tokens: u64,
 ) -> fabro_types::BilledModelUsage {
     let mut usage = fabro_types::BilledModelUsage::new(
-        ModelRef::new(provider_ids::openai(), ModelId::new(model_id)),
+        ModelRef::new(builtin::openai(), ModelId::new(model_id)),
         fabro_types::TokenCounts {
             input: input_tokens,
             output: output_tokens,
@@ -269,7 +270,7 @@ async fn initialized(
                     options.hook_runner,
                     locations,
                     run_options.cancel_token.clone(),
-                    provider_ids::anthropic(),
+                    builtin::anthropic(),
                     "claude-sonnet-4-6".to_string(),
                     options
                         .llm_source

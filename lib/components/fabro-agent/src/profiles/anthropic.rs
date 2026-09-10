@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_types::{AgentProfileKind, ProviderId, provider_ids};
+use fabro_types::{AgentProfileKind, ProviderId};
+use lithos_llm::catalog::builtin;
 
 use super::EnvContext;
 use crate::agent_profile::AgentProfile;
@@ -48,7 +49,7 @@ impl AnthropicProfile {
         Self {
             base: BaseProfile {
                 profile_kind: AgentProfileKind::Anthropic,
-                provider_id: provider_ids::anthropic(),
+                provider_id: builtin::anthropic(),
                 model: model.into(),
                 catalog: None,
                 registry,
@@ -116,7 +117,7 @@ mod tests {
     fn anthropic_profile_identity() {
         let profile = AnthropicProfile::new("claude-sonnet-4-20250514");
         assert_eq!(profile.profile_kind(), AgentProfileKind::Anthropic);
-        assert_eq!(profile.provider_id(), provider_ids::anthropic());
+        assert_eq!(profile.provider_id(), builtin::anthropic());
         assert_eq!(profile.model(), "claude-sonnet-4-20250514");
     }
 

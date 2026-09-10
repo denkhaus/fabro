@@ -1901,12 +1901,13 @@ mod tests {
     use fabro_types::{
         ContentPart, EventEnvelope, FailureReason, Run, RunId, RunLifecycle, RunLinks, RunOrigin,
         RunPairStatusResponse, RunProjection, RunStatus, RunTimestamps, SuccessReason, WorkflowRef,
-        provider_ids, test_support,
+        test_support,
     };
     use fabro_vault::{SecretType, Vault};
     use futures::stream;
     use httpmock::Method::POST;
     use httpmock::MockServer;
+    use lithos_llm::catalog::builtin;
     use tokio::sync::RwLock as AsyncRwLock;
     use tokio_util::sync::CancellationToken;
 
@@ -1932,7 +1933,7 @@ mod tests {
         }
 
         fn provider_id(&self) -> ProviderId {
-            provider_ids::openai()
+            builtin::openai()
         }
 
         fn model(&self) -> &str {
@@ -2250,20 +2251,20 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     fn agent_backend_stores_config() {
         let backend = AgentApiBackend::new(
             "claude-opus-4-6".to_string(),
-            provider_ids::openai(),
+            builtin::openai(),
             ModelFallbackPolicy::default(),
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
         );
         assert_eq!(backend.model, "claude-opus-4-6");
-        assert_eq!(backend.provider_id, provider_ids::openai());
+        assert_eq!(backend.provider_id, builtin::openai());
     }
 
     #[test]
     fn agent_backend_initializes_empty_sessions() {
         let backend = AgentApiBackend::new(
             "claude-opus-4-6".to_string(),
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             ModelFallbackPolicy::default(),
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
@@ -2952,7 +2953,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     fn build_profile_can_register_subagent_tools() {
         let mut profile = AgentProfileBuilder::new(
             AgentProfileKind::Anthropic,
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             "claude-opus-4-6",
             Arc::new(test_catalog()),
         )
@@ -3130,7 +3131,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
             .resolve_provider_context("gpt-5.4", Some("openai"))
             .unwrap();
 
-        assert_eq!(provider.provider_id, provider_ids::openai());
+        assert_eq!(provider.provider_id, builtin::openai());
     }
 
     #[test]
@@ -3175,7 +3176,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     fn api_backend_selects_claude5_profile_for_sonnet5() {
         let backend = AgentApiBackend::new_with_catalog(
             "claude-sonnet-5".to_string(),
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             ModelFallbackPolicy::default(),
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
@@ -3186,7 +3187,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
             .resolve_provider_context("claude-sonnet-5", None)
             .unwrap();
 
-        assert_eq!(provider.provider_id, provider_ids::anthropic());
+        assert_eq!(provider.provider_id, builtin::anthropic());
         assert_eq!(provider.profile_kind, AgentProfileKind::Claude5);
     }
 
@@ -3214,7 +3215,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     fn run_model_controls_apply_when_node_omits_controls() {
         let backend = AgentApiBackend::new(
             "gpt-5.4".to_string(),
-            provider_ids::openai(),
+            builtin::openai(),
             ModelFallbackPolicy::default(),
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
@@ -3235,7 +3236,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     fn node_controls_override_run_model_controls() {
         let backend = AgentApiBackend::new(
             "gpt-5.4".to_string(),
-            provider_ids::openai(),
+            builtin::openai(),
             ModelFallbackPolicy::default(),
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
@@ -3264,7 +3265,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     fn omitted_reasoning_effort_stays_unset() {
         let backend = AgentApiBackend::new(
             "gpt-5.4".to_string(),
-            provider_ids::openai(),
+            builtin::openai(),
             ModelFallbackPolicy::default(),
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
@@ -3332,7 +3333,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         ]));
         let backend = AgentApiBackend::new_with_catalog(
             "claude-fable-5".to_string(),
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             policy,
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
@@ -3340,7 +3341,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         );
         let (mut plan, notices) = backend.fallback_plan(
             "claude-fable-5",
-            &provider_ids::anthropic(),
+            &builtin::anthropic(),
             EffectiveRequestControls::default(),
         );
 
@@ -3375,7 +3376,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
             .unwrap();
         let backend = AgentApiBackend::new(
             "claude-opus-4-6".to_string(),
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             ModelFallbackPolicy::default(),
             Arc::new(VaultCredentialSource::with_env_lookup(
                 Arc::new(AsyncRwLock::new(vault)),
@@ -3390,7 +3391,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
 
         assert_eq!(
             client.available_providers().iter().collect::<Vec<_>>(),
-            vec![&provider_ids::anthropic()]
+            vec![&builtin::anthropic()]
         );
     }
 
@@ -3403,7 +3404,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         )]));
         let backend = AgentApiBackend::new(
             "claude-fable-5".to_string(),
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             fallback_policy,
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
@@ -3440,7 +3441,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
             .unwrap();
         let (mut fallback_plan, notices) = backend.fallback_plan(
             "claude-fable-5",
-            &provider_ids::anthropic(),
+            &builtin::anthropic(),
             EffectiveRequestControls::default(),
         );
         assert!(notices.is_empty());
@@ -3458,7 +3459,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
             .unwrap();
 
         assert_eq!(completion.response.text(), "fallback ok");
-        assert_eq!(completion.model.provider, provider_ids::openai());
+        assert_eq!(completion.model.provider, builtin::openai());
         assert_eq!(completion.model.model_id.as_str(), "gpt-5.5");
         let failover = emitted_failover
             .lock()
@@ -3907,7 +3908,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     async fn api_backend_shutdown_closes_cached_sessions_once() {
         let backend = AgentApiBackend::new(
             "gpt-5.4".to_string(),
-            provider_ids::openai(),
+            builtin::openai(),
             ModelFallbackPolicy::default(),
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
@@ -3940,7 +3941,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         );
         let (fallback_plan, notices) = backend.fallback_plan(
             "gpt-5.4",
-            &provider_ids::openai(),
+            &builtin::openai(),
             EffectiveRequestControls::default(),
         );
         assert!(notices.is_empty());
@@ -4032,7 +4033,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     fn failover_eligible_llm_error() -> ErrorData {
         ErrorData::from(
             fabro_llm::Error::new(ErrorKind::Network, "boom")
-                .with_provider(provider_ids::openai())
+                .with_provider(builtin::openai())
                 .with_retry(RetryClassification::Safe),
         )
     }
@@ -4040,7 +4041,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     fn non_failover_llm_error() -> ErrorData {
         ErrorData::from(
             fabro_llm::Error::new(ErrorKind::InvalidRequest, "bad key")
-                .with_provider(provider_ids::openai())
+                .with_provider(builtin::openai())
                 .with_status(401),
         )
     }
@@ -4050,7 +4051,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
             ErrorKind::ContentFilter,
             "claude-fable-5 refused the request",
         )
-        .with_provider(provider_ids::anthropic())
+        .with_provider(builtin::anthropic())
         .with_provider_code("refusal")
         .with_raw_data(serde_json::json!({
             "stop_reason": "refusal",

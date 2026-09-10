@@ -39,13 +39,14 @@ use fabro_server::serve;
 use fabro_store::ArtifactStore;
 use fabro_types::settings::server::ServerAuthMethod;
 use fabro_types::settings::validate_public_url_with_label;
-use fabro_types::{ProviderId, ServerSettings, provider_ids};
+use fabro_types::{ProviderId, ServerSettings};
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
 use fabro_util::version::FABRO_VERSION;
 use fabro_util::{browser, dev_token, path, session_secret};
 use fabro_vault::SecretType as VaultSecretType;
 use futures::future::BoxFuture;
+use lithos_llm::catalog::builtin;
 use rand::Rng;
 use tokio::net::TcpListener;
 use tokio::process::Command as TokioCommand;
@@ -429,14 +430,14 @@ impl InstallInputSource for InteractiveInstallInputSource {
 
             if use_device_auth {
                 let credential = authenticate_provider_with_method(
-                    provider_ids::openai(),
+                    builtin::openai(),
                     AuthMethod::CodexDevice(codex_oauth_config()),
                     s,
                     printer,
                 )
                 .await?;
                 credentials.push(credential);
-                configured_providers.push(provider_ids::openai());
+                configured_providers.push(builtin::openai());
                 openai_configured = true;
             }
         }
@@ -2698,7 +2699,7 @@ client_id = "client-id"
                 description: None,
             },
             credential_secret_request(&LoginResult::ApiKey {
-                provider: fabro_types::provider_ids::anthropic(),
+                provider: lithos_llm::catalog::builtin::anthropic(),
                 key:      "anthropic-key".to_string(),
             })
             .unwrap(),
@@ -3504,9 +3505,9 @@ root = "{}"
     fn install_llm_providers_come_from_catalog_api_key_providers() {
         let ids = install_llm_provider_ids(&INSTALL_CATALOG);
 
-        assert!(ids.contains(&fabro_types::provider_ids::anthropic()));
-        assert!(ids.contains(&fabro_types::provider_ids::openai()));
-        assert!(ids.contains(&fabro_types::provider_ids::gemini()));
+        assert!(ids.contains(&lithos_llm::catalog::builtin::anthropic()));
+        assert!(ids.contains(&lithos_llm::catalog::builtin::openai()));
+        assert!(ids.contains(&lithos_llm::catalog::builtin::gemini()));
         assert!(ids.contains(&ProviderId::new("moonshot")));
         assert!(ids.contains(&ProviderId::new("zai")));
         assert!(ids.contains(&ProviderId::new("minimax")));
@@ -3531,7 +3532,7 @@ root = "{}"
     #[test]
     fn non_interactive_source_rejects_hidden_args_without_switch() {
         let args = install_args(false, InstallNonInteractiveArgs {
-            llm_provider: Some(fabro_types::provider_ids::anthropic()),
+            llm_provider: Some(lithos_llm::catalog::builtin::anthropic()),
             ..InstallNonInteractiveArgs::default()
         });
         let err = NonInteractiveInstallInputSource::new(&args).unwrap_err();
@@ -3544,7 +3545,7 @@ root = "{}"
     #[test]
     fn non_interactive_source_rejects_conflicting_api_key_inputs() {
         let args = install_args(true, InstallNonInteractiveArgs {
-            llm_provider: Some(fabro_types::provider_ids::anthropic()),
+            llm_provider: Some(lithos_llm::catalog::builtin::anthropic()),
             llm_api_key_stdin: true,
             llm_api_key_env: Some("ANTHROPIC_API_KEY".to_string()),
             github_strategy: Some(InstallGitHubStrategyArg::Token),
@@ -3640,7 +3641,7 @@ root = "{}"
     fn non_interactive_source_rejects_missing_github_strategy() {
         let source = NonInteractiveInstallInputSource {
             args: InstallNonInteractiveArgs {
-                llm_provider: Some(fabro_types::provider_ids::anthropic()),
+                llm_provider: Some(lithos_llm::catalog::builtin::anthropic()),
                 llm_api_key_env: Some("ANTHROPIC_API_KEY".to_string()),
                 github_username: Some("brynary".to_string()),
                 ..InstallNonInteractiveArgs::default()
@@ -3658,7 +3659,7 @@ root = "{}"
     fn non_interactive_source_rejects_missing_github_username_for_new_config() {
         let source = NonInteractiveInstallInputSource {
             args: InstallNonInteractiveArgs {
-                llm_provider: Some(fabro_types::provider_ids::anthropic()),
+                llm_provider: Some(lithos_llm::catalog::builtin::anthropic()),
                 llm_api_key_env: Some("ANTHROPIC_API_KEY".to_string()),
                 github_strategy: Some(InstallGitHubStrategyArg::Token),
                 ..InstallNonInteractiveArgs::default()
@@ -3675,7 +3676,7 @@ root = "{}"
     fn non_interactive_source_allows_keep_existing_settings_without_username() {
         let source = NonInteractiveInstallInputSource {
             args: InstallNonInteractiveArgs {
-                llm_provider: Some(fabro_types::provider_ids::anthropic()),
+                llm_provider: Some(lithos_llm::catalog::builtin::anthropic()),
                 llm_api_key_env: Some("ANTHROPIC_API_KEY".to_string()),
                 github_strategy: Some(InstallGitHubStrategyArg::Token),
                 keep_existing_settings: true,
@@ -3690,7 +3691,7 @@ root = "{}"
     fn non_interactive_source_rejects_missing_github_owner_for_app() {
         let source = NonInteractiveInstallInputSource {
             args: InstallNonInteractiveArgs {
-                llm_provider: Some(fabro_types::provider_ids::anthropic()),
+                llm_provider: Some(lithos_llm::catalog::builtin::anthropic()),
                 llm_api_key_env: Some("ANTHROPIC_API_KEY".to_string()),
                 github_strategy: Some(InstallGitHubStrategyArg::App),
                 ..InstallNonInteractiveArgs::default()
@@ -3709,7 +3710,7 @@ root = "{}"
     fn non_interactive_source_rejects_github_owner_for_token() {
         let source = NonInteractiveInstallInputSource {
             args: InstallNonInteractiveArgs {
-                llm_provider: Some(fabro_types::provider_ids::anthropic()),
+                llm_provider: Some(lithos_llm::catalog::builtin::anthropic()),
                 llm_api_key_env: Some("ANTHROPIC_API_KEY".to_string()),
                 github_strategy: Some(InstallGitHubStrategyArg::Token),
                 github_owner: Some("personal".to_string()),
@@ -3729,7 +3730,7 @@ root = "{}"
     fn non_interactive_source_rejects_github_username_for_app() {
         let source = NonInteractiveInstallInputSource {
             args: InstallNonInteractiveArgs {
-                llm_provider: Some(fabro_types::provider_ids::anthropic()),
+                llm_provider: Some(lithos_llm::catalog::builtin::anthropic()),
                 llm_api_key_env: Some("ANTHROPIC_API_KEY".to_string()),
                 github_strategy: Some(InstallGitHubStrategyArg::App),
                 github_owner: Some("personal".to_string()),
@@ -3749,7 +3750,7 @@ root = "{}"
     fn non_interactive_source_allows_github_app_setup() {
         let source = NonInteractiveInstallInputSource {
             args: InstallNonInteractiveArgs {
-                llm_provider: Some(fabro_types::provider_ids::anthropic()),
+                llm_provider: Some(lithos_llm::catalog::builtin::anthropic()),
                 llm_api_key_env: Some("ANTHROPIC_API_KEY".to_string()),
                 github_strategy: Some(InstallGitHubStrategyArg::App),
                 github_owner: Some("personal".to_string()),
@@ -3764,7 +3765,7 @@ root = "{}"
     async fn non_interactive_source_requires_config_choice_when_settings_exist() {
         let source = NonInteractiveInstallInputSource {
             args: InstallNonInteractiveArgs {
-                llm_provider: Some(fabro_types::provider_ids::anthropic()),
+                llm_provider: Some(lithos_llm::catalog::builtin::anthropic()),
                 llm_api_key_env: Some("ANTHROPIC_API_KEY".to_string()),
                 github_strategy: Some(InstallGitHubStrategyArg::Token),
                 github_username: Some("brynary".to_string()),

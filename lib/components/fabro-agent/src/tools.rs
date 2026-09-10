@@ -732,7 +732,8 @@ mod tests {
     use std::collections::HashMap;
 
     use fabro_llm::adapter::ProviderAdapter;
-    use fabro_types::{CommandTermination, ModelId, provider_ids};
+    use fabro_types::{CommandTermination, ModelId};
+    use lithos_llm::catalog::builtin;
     use tokio::sync::broadcast;
     use tokio_util::sync::CancellationToken;
 
@@ -1978,7 +1979,7 @@ mod tests {
         let client = make_client(provider).await;
         let summarizer = WebFetchSummarizer {
             client,
-            model_id: ModelHandle::new(provider_ids::anthropic(), ModelId::new("mock-model")),
+            model_id: ModelHandle::new(builtin::anthropic(), ModelId::new("mock-model")),
         };
 
         let tool = make_web_fetch_tool(Some(summarizer));
@@ -2075,7 +2076,7 @@ mod tests {
 
         let summarizer = WebFetchSummarizer {
             client,
-            model_id: ModelHandle::new(provider_ids::anthropic(), ModelId::new("target-model")),
+            model_id: ModelHandle::new(builtin::anthropic(), ModelId::new("target-model")),
         };
 
         let tool = make_web_fetch_tool(Some(summarizer));

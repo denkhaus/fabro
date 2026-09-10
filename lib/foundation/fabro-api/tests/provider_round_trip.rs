@@ -1,7 +1,8 @@
 use std::any::{TypeId, type_name};
 
 use fabro_api::types::Provider as ApiProvider;
-use fabro_types::{Provider, ProviderId, provider_ids};
+use fabro_types::{Provider, ProviderId};
+use lithos_llm::catalog::builtin;
 
 #[test]
 fn provider_reuses_canonical_type() {
@@ -11,7 +12,7 @@ fn provider_reuses_canonical_type() {
 #[test]
 fn provider_json_matches_openapi_shape() {
     let provider = Provider {
-        id:                   provider_ids::anthropic(),
+        id:                   builtin::anthropic(),
         display_name:         "Anthropic".to_string(),
         adapter:              "anthropic".to_string(),
         base_url:             "https://api.anthropic.test".to_string(),

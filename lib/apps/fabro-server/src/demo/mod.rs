@@ -1495,7 +1495,7 @@ mod runs {
                 EventBody::AgentMessage(AgentMessageProps {
                     text:            "I'll start by loading the environment configurations for both production and staging to compare them.".into(),
                     model:           fabro_types::ModelRef::new(
-                        fabro_types::provider_ids::anthropic(),
+                        lithos_llm::catalog::builtin::anthropic(),
                         fabro_types::ModelId::new("claude-opus-4.6"),
                     ),
                     billing:         BilledTokenCounts::default(),
@@ -1571,7 +1571,7 @@ mod runs {
                 EventBody::AgentMessage(AgentMessageProps {
                     text:            "I've detected drift in 3 resources between production and staging:\n\n1. **redis.max_connections** — production has 200, staging has 100\n2. **redis.tls** — enabled in production, disabled in staging\n3. **iam.session_duration** — production uses 3600s, staging uses 1800s".into(),
                     model:           fabro_types::ModelRef::new(
-                        fabro_types::provider_ids::anthropic(),
+                        lithos_llm::catalog::builtin::anthropic(),
                         fabro_types::ModelId::new("claude-opus-4.6"),
                     ),
                     billing:         BilledTokenCounts::default(),
@@ -1595,7 +1595,7 @@ mod runs {
                         name: "Detect Drift".into(),
                     },
                     model:      Some(billing_model(
-                        fabro_types::provider_ids::anthropic(),
+                        lithos_llm::catalog::builtin::anthropic(),
                         "claude-opus-4-6",
                     )),
                     billing:    BilledTokenCounts {
@@ -1617,7 +1617,7 @@ mod runs {
                         name: "Propose Changes".into(),
                     },
                     model:      Some(billing_model(
-                        fabro_types::provider_ids::gemini(),
+                        lithos_llm::catalog::builtin::gemini(),
                         "gemini-3.1-pro-preview",
                     )),
                     billing:    BilledTokenCounts {
@@ -1639,7 +1639,7 @@ mod runs {
                         name: "Review Changes".into(),
                     },
                     model:      Some(billing_model(
-                        fabro_types::provider_ids::openai(),
+                        lithos_llm::catalog::builtin::openai(),
                         "gpt-5.3-codex",
                     )),
                     billing:    BilledTokenCounts {
@@ -1661,7 +1661,7 @@ mod runs {
                         name: "Apply Changes".into(),
                     },
                     model:      Some(billing_model(
-                        fabro_types::provider_ids::anthropic(),
+                        lithos_llm::catalog::builtin::anthropic(),
                         "claude-opus-4-6",
                     )),
                     billing:    BilledTokenCounts {
@@ -1700,7 +1700,7 @@ mod runs {
                         total_usd_micros:   Some(1_350_000),
                     },
                     model:   billing_model(
-                        fabro_types::provider_ids::anthropic(),
+                        lithos_llm::catalog::builtin::anthropic(),
                         "claude-opus-4-6",
                     ),
                     stages:  2,
@@ -1716,7 +1716,7 @@ mod runs {
                         total_usd_micros:   Some(720_000),
                     },
                     model:   billing_model(
-                        fabro_types::provider_ids::gemini(),
+                        lithos_llm::catalog::builtin::gemini(),
                         "gemini-3.1-pro-preview",
                     ),
                     stages:  1,
@@ -1731,7 +1731,7 @@ mod runs {
                         total_tokens:       11760,
                         total_usd_micros:   Some(190_000),
                     },
-                    model:   billing_model(fabro_types::provider_ids::openai(), "gpt-5.3-codex"),
+                    model:   billing_model(lithos_llm::catalog::builtin::openai(), "gpt-5.3-codex"),
                     stages:  1,
                 },
             ],
@@ -2108,7 +2108,7 @@ mod billing {
                         total_usd_micros:   Some(12_150_000),
                     },
                     model:   billing_model(
-                        fabro_types::provider_ids::anthropic(),
+                        lithos_llm::catalog::builtin::anthropic(),
                         "claude-opus-4-6",
                     ),
                     stages:  18,
@@ -2124,7 +2124,7 @@ mod billing {
                         total_usd_micros:   Some(6_480_000),
                     },
                     model:   billing_model(
-                        fabro_types::provider_ids::gemini(),
+                        lithos_llm::catalog::builtin::gemini(),
                         "gemini-3.1-pro-preview",
                     ),
                     stages:  9,
@@ -2139,7 +2139,7 @@ mod billing {
                         total_tokens:       105_840,
                         total_usd_micros:   Some(1_710_000),
                     },
-                    model:   billing_model(fabro_types::provider_ids::openai(), "gpt-5.3-codex"),
+                    model:   billing_model(lithos_llm::catalog::builtin::openai(), "gpt-5.3-codex"),
                     stages:  9,
                 },
             ],

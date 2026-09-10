@@ -1463,14 +1463,14 @@ mod tests {
     use ::fabro_types::{
         AutomationRef, EventBody, FailureReason, ModelId, ModelRef, ParallelBranchId, Principal,
         ProviderId, RunNoticeCode, RunNoticeLevel, RunProvenance, StageId, SystemActorKind,
-        TokenCounts as LlmTokenCounts, fixtures, provider_ids, run_event as fabro_types,
-        test_support,
+        TokenCounts as LlmTokenCounts, fixtures, run_event as fabro_types, test_support,
     };
     use chrono::Utc;
     use fabro_agent::{
         AgentEvent, McpToolSummary, MemoryFileSummary, SandboxEvent, SkillActivationSource,
         SkillSummary,
     };
+    use lithos_llm::catalog::builtin;
 
     use super::*;
     use crate::error::Error;
@@ -2522,10 +2522,7 @@ mod tests {
             visit:             1,
             event:             AgentEvent::AssistantMessage {
                 text:            "ok".to_string(),
-                model:           ModelRef::new(
-                    provider_ids::anthropic(),
-                    ModelId::new("claude-sonnet"),
-                ),
+                model:           ModelRef::new(builtin::anthropic(), ModelId::new("claude-sonnet")),
                 usage:           LlmTokenCounts::default(),
                 cost:            None,
                 tool_call_count: 0,
@@ -2644,7 +2641,7 @@ mod tests {
             visit:             1,
             event:             AgentEvent::AssistantMessage {
                 text:            "ok".to_string(),
-                model:           ModelRef::new(provider_ids::openai(), ModelId::new("gpt-5.4")),
+                model:           ModelRef::new(builtin::openai(), ModelId::new("gpt-5.4")),
                 usage:           LlmTokenCounts::default(),
                 cost:            None,
                 tool_call_count: 0,
@@ -2674,7 +2671,7 @@ mod tests {
             visit:             1,
             event:             AgentEvent::AssistantMessage {
                 text:            String::new(),
-                model:           ModelRef::new(provider_ids::openai(), ModelId::new("gpt-5.4")),
+                model:           ModelRef::new(builtin::openai(), ModelId::new("gpt-5.4")),
                 usage:           LlmTokenCounts::default(),
                 cost:            None,
                 tool_call_count: 1,

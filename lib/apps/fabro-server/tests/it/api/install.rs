@@ -1416,7 +1416,7 @@ async fn install_validation_endpoints_validate_credentials_and_github_token() {
     let app = build_install_router(
         InstallAppState::for_test("test-install-token")
             .with_provider_base_url(
-                fabro_types::provider_ids::anthropic(),
+                lithos_llm::catalog::builtin::anthropic(),
                 format!("{}/v1", llm_mock.url("")),
             )
             .with_github_api_base_url(github_mock.url("")),
