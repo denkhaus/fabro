@@ -52,7 +52,7 @@ pub async fn provider_sandbox(
                 .ok_or_else(|| crate::Error::message(MISSING_DAYTONA_CREDENTIALS))?;
             let plan = daytona::create_plan(
                 Arc::clone(&provider),
-                credentials.api_key.clone(),
+                credentials.api_key().to_string(),
                 spec,
                 run_id,
             );

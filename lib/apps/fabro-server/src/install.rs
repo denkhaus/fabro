@@ -1005,13 +1005,12 @@ async fn check_install_daytona_api_key(
     state: &InstallAppState,
     api_key: String,
 ) -> anyhow::Result<daytona::DaytonaKeyCheck> {
-    let credentials = DaytonaCredentials {
-        api_key,
-        api_url: state.upstreams.daytona_api_base_url.clone(),
-        organization_id: state.upstreams.daytona_organization_id.clone(),
-        target: None,
-        http_client: Some(fabro_http::http_client().context("failed to build HTTP client")?),
-    };
+    let credentials = DaytonaCredentials::new(api_key)
+        .with_api_url(state.upstreams.daytona_api_base_url.clone())
+        .with_organization_id(state.upstreams.daytona_organization_id.clone())
+        .with_http_client(Some(
+            fabro_http::http_client().context("failed to build HTTP client")?,
+        ));
     daytona::check_daytona_api_key(&credentials, daytona::DAYTONA_CREDENTIAL_PROBE_TIMEOUT).await
 }
 

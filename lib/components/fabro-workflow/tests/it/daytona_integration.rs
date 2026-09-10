@@ -194,16 +194,8 @@ fn daytona_access(credentials: DaytonaCredentials) -> ProviderAccess {
 }
 
 fn live_daytona_credentials() -> DaytonaCredentials {
-    DaytonaCredentials {
-        api_key:         std::env::var(EnvVars::DAYTONA_API_KEY)
-            .expect("DAYTONA_API_KEY must be set"),
-        api_url:         std::env::var(EnvVars::DAYTONA_API_URL)
-            .or_else(|_| std::env::var(EnvVars::DAYTONA_SERVER_URL))
-            .ok(),
-        organization_id: std::env::var(EnvVars::DAYTONA_ORGANIZATION_ID).ok(),
-        target:          None,
-        http_client:     None,
-    }
+    let api_key = std::env::var(EnvVars::DAYTONA_API_KEY).expect("DAYTONA_API_KEY must be set");
+    DaytonaCredentials::from_api_key(api_key, |name| std::env::var(name).ok())
 }
 
 async fn create_env() -> RunSandbox {

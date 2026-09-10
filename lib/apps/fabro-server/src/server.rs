@@ -1470,15 +1470,8 @@ impl AppState {
     /// the server's HTTP client. The process environment is consulted only
     /// through the configured lookup.
     pub(crate) fn daytona_credentials(&self, api_key: String) -> DaytonaCredentials {
-        DaytonaCredentials {
-            api_key,
-            api_url: self
-                .config_env_lookup(EnvVars::DAYTONA_API_URL)
-                .or_else(|| self.config_env_lookup(EnvVars::DAYTONA_SERVER_URL)),
-            organization_id: self.config_env_lookup(EnvVars::DAYTONA_ORGANIZATION_ID),
-            target: None,
-            http_client: self.http_client().ok(),
-        }
+        DaytonaCredentials::from_api_key(api_key, |name| self.config_env_lookup(name))
+            .with_http_client(self.http_client().ok())
     }
 
     /// Everything a reconnect needs to reach a run's provider: the server's
@@ -2358,14 +2351,8 @@ fn build_sandbox_inventory(
 
     if let Some(daytona) = provider_settings.get(&SandboxProviderKind::DAYTONA) {
         if let Some(api_key) = daytona_api_key.filter(|_| daytona.enabled) {
-            let credentials = DaytonaCredentials {
-                api_key,
-                api_url: env_lookup(EnvVars::DAYTONA_API_URL)
-                    .or_else(|| env_lookup(EnvVars::DAYTONA_SERVER_URL)),
-                organization_id: env_lookup(EnvVars::DAYTONA_ORGANIZATION_ID),
-                target: None,
-                http_client,
-            };
+            let credentials = DaytonaCredentials::from_api_key(api_key, |name| env_lookup(name))
+                .with_http_client(http_client);
             inventory = inventory.with_lazy(
                 SandboxProviderKind::DAYTONA,
                 daytona.clone(),

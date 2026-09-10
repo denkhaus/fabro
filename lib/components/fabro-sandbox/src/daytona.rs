@@ -689,14 +689,9 @@ mod tests {
 
     #[tokio::test]
     async fn credential_probe_reports_configured_timeout() {
-        let credentials = DaytonaCredentials {
-            api_key:         "dtn_test".to_string(),
-            // A non-routable address: the probe cannot finish within the budget.
-            api_url:         Some("http://10.255.255.1:1/api".to_string()),
-            organization_id: None,
-            target:          None,
-            http_client:     None,
-        };
+        // A non-routable address: the probe cannot finish within the budget.
+        let credentials = DaytonaCredentials::new("dtn_test".to_string())
+            .with_api_url(Some("http://10.255.255.1:1/api".to_string()));
         let err = check_daytona_api_key(&credentials, Duration::from_millis(1))
             .await
             .expect_err("probe should time out");
@@ -737,15 +732,9 @@ mod wire_gate {
     )]
     fn live_credentials() -> Option<DaytonaCredentials> {
         let api_key = std::env::var(EnvVars::DAYTONA_API_KEY).ok()?;
-        Some(DaytonaCredentials {
-            api_key,
-            api_url: std::env::var(EnvVars::DAYTONA_API_URL)
-                .or_else(|_| std::env::var(EnvVars::DAYTONA_SERVER_URL))
-                .ok(),
-            organization_id: std::env::var(EnvVars::DAYTONA_ORGANIZATION_ID).ok(),
-            target: None,
-            http_client: None,
-        })
+        Some(DaytonaCredentials::from_api_key(api_key, |name| {
+            std::env::var(name).ok()
+        }))
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

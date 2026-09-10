@@ -38,39 +38,74 @@ pub const PLUGIN_BINARY_PREFIX: &str = "fabro-sandbox";
 /// `User-Agent` fabro presents to remote sandbox control planes.
 pub const USER_AGENT: &str = concat!("fabro-sandbox/", env!("CARGO_PKG_VERSION"));
 
-/// Explicit Daytona credentials. The process environment is never consulted.
+/// Explicit Daytona credentials: the SDK's configuration with the API key
+/// always present and a `Debug` that never prints it. The process
+/// environment is never consulted.
 #[derive(Clone)]
-pub struct DaytonaCredentials {
-    pub api_key:         String,
-    pub api_url:         Option<String>,
-    pub organization_id: Option<String>,
-    pub target:          Option<String>,
-    /// Shared HTTP client; tests pass a no-proxy client here.
-    pub http_client:     Option<reqwest::Client>,
-}
+pub struct DaytonaCredentials(DaytonaConfig);
 
 impl DaytonaCredentials {
+    /// Credentials for `api_key` against Daytona's public control plane,
+    /// presenting fabro's `User-Agent`.
+    #[must_use]
+    pub fn new(api_key: String) -> Self {
+        Self(DaytonaConfig {
+            api_key: Some(api_key),
+            user_agent: Some(USER_AGENT.to_string()),
+            ..DaytonaConfig::default()
+        })
+    }
+
     /// Credentials for a vault API key, with the control-plane URL and
     /// organization taken from `lookup` (server configuration, or the
     /// process environment in a CLI worker). Nothing is read implicitly.
     pub fn from_api_key(api_key: String, lookup: impl Fn(&str) -> Option<String>) -> Self {
-        Self {
-            api_key,
-            api_url: lookup(EnvVars::DAYTONA_API_URL)
-                .or_else(|| lookup(EnvVars::DAYTONA_SERVER_URL)),
-            organization_id: lookup(EnvVars::DAYTONA_ORGANIZATION_ID),
-            target: None,
-            http_client: None,
-        }
+        Self::new(api_key)
+            .with_api_url(
+                lookup(EnvVars::DAYTONA_API_URL).or_else(|| lookup(EnvVars::DAYTONA_SERVER_URL)),
+            )
+            .with_organization_id(lookup(EnvVars::DAYTONA_ORGANIZATION_ID))
+    }
+
+    /// The control-plane URL; Daytona's public API when `None`.
+    #[must_use]
+    pub fn with_api_url(mut self, api_url: Option<String>) -> Self {
+        self.0.api_url = api_url;
+        self
+    }
+
+    #[must_use]
+    pub fn with_organization_id(mut self, organization_id: Option<String>) -> Self {
+        self.0.organization_id = organization_id;
+        self
+    }
+
+    /// A shared HTTP client; tests pass a no-proxy client here.
+    #[must_use]
+    pub fn with_http_client(mut self, http_client: Option<reqwest::Client>) -> Self {
+        self.0.http_client = http_client;
+        self
+    }
+
+    /// The API key, which every constructor sets.
+    #[must_use]
+    pub fn api_key(&self) -> &str {
+        self.0.api_key.as_deref().unwrap_or_default()
+    }
+
+    /// The SDK configuration the driver's Daytona provider connects with.
+    #[must_use]
+    pub fn config(&self) -> &DaytonaConfig {
+        &self.0
     }
 }
 
 impl std::fmt::Debug for DaytonaCredentials {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DaytonaCredentials")
-            .field("api_url", &self.api_url)
-            .field("organization_id", &self.organization_id)
-            .field("target", &self.target)
+            .field("api_url", &self.0.api_url)
+            .field("organization_id", &self.0.organization_id)
+            .field("target", &self.0.target)
             .finish_non_exhaustive()
     }
 }
@@ -187,17 +222,8 @@ pub async fn connect_provider(
                 .daytona
                 .as_ref()
                 .ok_or(ConnectError::MissingDaytonaCredentials)?;
-            let config = DaytonaConfig {
-                api_key:         Some(credentials.api_key.clone()),
-                jwt_token:       None,
-                organization_id: credentials.organization_id.clone(),
-                api_url:         credentials.api_url.clone(),
-                target:          credentials.target.clone(),
-                http_client:     credentials.http_client.clone(),
-                user_agent:      Some(USER_AGENT.to_string()),
-            };
             Arc::new(
-                DaytonaProvider::connect_explicit(config)
+                DaytonaProvider::connect_explicit(credentials.config().clone())
                     .await
                     .map_err(driver)?,
             )
