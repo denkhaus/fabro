@@ -22,7 +22,7 @@ use std::fmt::Write as _;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use fabro_types::ToolDefinition;
+use lithos_llm::types::ToolDefinition;
 use serde_json::Value;
 use strum::EnumString;
 

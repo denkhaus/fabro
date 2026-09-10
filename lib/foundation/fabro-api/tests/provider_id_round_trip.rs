@@ -1,8 +1,7 @@
 use std::any::{TypeId, type_name};
 
 use fabro_api::types::{ModelHandle as ApiModelHandle, ProviderId as ApiProviderId};
-use fabro_types::{ModelHandle, ModelId, ProviderId};
-use lithos_llm::catalog::builtin;
+use lithos_llm::catalog::{ModelHandle, ModelId, ProviderId, builtin};
 use serde_json::json;
 
 #[test]

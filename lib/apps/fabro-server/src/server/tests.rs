@@ -25,17 +25,21 @@ use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::run::{ApprovalMode, EnvironmentProvider};
 use fabro_types::{
     AgentBackend, AttrValue, AuthMethod, BlobHash, CommandTermination, FailureCategory,
-    FailureDetail, GitRunTarget, Graph, InterviewQuestionRecord, ModelId, ModelRef, Node, Outcome,
-    ParallelBranchId, QuestionType, ReasoningEffort, RunId, RunSpec, RunTarget,
-    SandboxProviderKind, Speed, StageContextWindowBreakdownItem, StageContextWindowCategory,
-    StageContextWindowCountMethod, StageContextWindowProjection, StageContextWindowStaleness,
-    StageContextWindowWarning, StageModelUsage, StageTiming, SuccessReason, SystemActorKind,
-    TokenCounts, WorkflowSettings, fixtures, test_support,
+    FailureDetail, GitRunTarget, Graph, InterviewQuestionRecord, ModelRef, Node, Outcome,
+    ParallelBranchId, QuestionType, RunId, RunSpec, RunTarget, SandboxProviderKind,
+    StageContextWindowBreakdownItem, StageContextWindowCategory, StageContextWindowCountMethod,
+    StageContextWindowProjection, StageContextWindowStaleness, StageContextWindowWarning,
+    StageModelUsage, StageTiming, SuccessReason, SystemActorKind, WorkflowSettings, fixtures,
+    test_support,
 };
 use fabro_util::check_report::CheckStatus;
 use fabro_workflow::records::CheckpointExt;
 use httpmock::Method::{GET, POST};
 use httpmock::MockServer;
+use lithos_llm::catalog::ModelId;
+use lithos_llm::types::{
+    ReasoningEffort, ReasoningOutput, Request as LlmRequest, Speed, TokenCounts,
+};
 use serde_json::json;
 use tokio::sync::Notify;
 use tokio_stream::StreamExt as _;
@@ -1903,7 +1907,7 @@ async fn resolve_llm_client_uses_vault_key_without_env_lookup_openai_settings() 
     let response = llm_result
         .client
         .complete(
-            fabro_types::Request::builder()
+            LlmRequest::builder()
                 .model("openai/gpt-5.4")
                 .user("Hello")
                 .build()
@@ -18317,7 +18321,7 @@ async fn attach_stream_replays_agent_message_reasoning() {
                 cost:            None,
                 tool_call_count: 1,
                 context_window:  None,
-                reasoning:       Some(fabro_types::ReasoningOutput::new(
+                reasoning:       Some(ReasoningOutput::new(
                     "inspect the sink first",
                     "read events.rs, then attach",
                 )),

@@ -3,7 +3,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use fabro_types::{AgentToolCategory, AgentToolSource, AgentToolSummary, ToolDefinition};
+use fabro_types::{AgentToolCategory, AgentToolSource, AgentToolSummary};
+use lithos_llm::types::{ToolDefinition, ToolDefinitionKind};
 use tokio_util::sync::CancellationToken;
 
 use crate::config::{ToolAccessPolicy, ToolExposureMode};
@@ -83,14 +84,14 @@ pub trait ToolDefinitionExt {
 impl ToolDefinitionExt for ToolDefinition {
     fn parameters(&self) -> &serde_json::Value {
         match &self.kind {
-            fabro_types::ToolDefinitionKind::Function { input_schema } => input_schema,
+            ToolDefinitionKind::Function { input_schema } => input_schema,
             _ => panic!("custom tool '{}' has no parameter schema", self.name),
         }
     }
 
     fn custom_format(&self) -> Option<&serde_json::Value> {
         match &self.kind {
-            fabro_types::ToolDefinitionKind::Custom { format } => Some(format),
+            ToolDefinitionKind::Custom { format } => Some(format),
             _ => None,
         }
     }

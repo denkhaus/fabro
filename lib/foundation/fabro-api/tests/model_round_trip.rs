@@ -1,8 +1,9 @@
 use std::any::{TypeId, type_name};
 
 use fabro_api::types::{Model as ApiModel, ModelControls as ApiModelControls};
-use fabro_types::{Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits, ReasoningEffort};
+use fabro_types::{Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits};
 use lithos_llm::catalog::builtin;
+use lithos_llm::types::ReasoningEffort;
 
 #[test]
 fn model_reuses_canonical_type() {

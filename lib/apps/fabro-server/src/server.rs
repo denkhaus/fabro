@@ -93,9 +93,8 @@ use fabro_types::settings::server::{
 use fabro_types::{
     AgentBackend, AskFabro, AskFabroUnavailableReason, BilledTokenCounts, BlobHash, EventBody,
     InterviewQuestionRecord, ModelRef, ModelTestMode, PairId, PairMessageId, PairTarget,
-    PendingReason, Principal, ProviderId, PullRequestLink, QuestionType, RunControlAction,
-    RunEvent, RunId, RunRunnableSource, RunStatusKind, SandboxProviderKind, ServerSettings,
-    SessionCapability,
+    PendingReason, Principal, PullRequestLink, QuestionType, RunControlAction, RunEvent, RunId,
+    RunRunnableSource, RunStatusKind, SandboxProviderKind, ServerSettings, SessionCapability,
 };
 use fabro_util::error::{
     SharedError, collect_causes, render_compact_with_causes, render_with_causes,
@@ -116,6 +115,7 @@ use fabro_workflow::run_lookup::{
 use fabro_workflow::run_status::{FailureReason, RunStatus, SuccessReason};
 use fabro_workflow::{Error as WorkflowError, operations, pull_request};
 use futures_util::future::join_all;
+use lithos_llm::catalog::ProviderId;
 use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 use tokio::fs;

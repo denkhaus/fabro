@@ -1759,15 +1759,16 @@ mod tests {
         AgentBackend, AgentControlState, AttrValue, AutomationRef, BilledModelUsage,
         BilledTokenCounts, BlobHash, BlockedReason, Checkpoint, CheckpointRecord,
         CommandTermination, EventBody, FailureCategory, FailureDetail, FailureReason, Graph,
-        McpServerStatus, ModelId, Node, Outcome, ParallelBranchId, PendingReason, PermissionLevel,
-        ProviderId, PullRequestCreationStatus, PullRequestLink, QuestionType, ReasoningEffort,
-        RunApprovalState, RunBillingSummary, RunControlAction, RunDiff, RunEvent, RunSize, RunSpec,
-        RunStatus, Speed, StageContextWindowBreakdownItem, StageContextWindowCategory,
-        StageContextWindowCountMethod, StageContextWindowProjection, StageContextWindowStaleness,
-        StageContextWindowWarning, StageHandler, StageModelUsage, StageOutcome, StageState,
-        StageTiming, SubAgentStatus, SuccessReason, WorkflowSettings, first_event_seq, fixtures,
-        test_support,
+        McpServerStatus, Node, Outcome, ParallelBranchId, PendingReason, PermissionLevel,
+        PullRequestCreationStatus, PullRequestLink, QuestionType, RunApprovalState,
+        RunBillingSummary, RunControlAction, RunDiff, RunEvent, RunSize, RunSpec, RunStatus,
+        StageContextWindowBreakdownItem, StageContextWindowCategory, StageContextWindowCountMethod,
+        StageContextWindowProjection, StageContextWindowStaleness, StageContextWindowWarning,
+        StageHandler, StageModelUsage, StageOutcome, StageState, StageTiming, SubAgentStatus,
+        SuccessReason, WorkflowSettings, first_event_seq, fixtures, test_support,
     };
+    use lithos_llm::catalog::{ModelId, ProviderId};
+    use lithos_llm::types::{ReasoningEffort, Speed};
     use serde_json::json;
 
     use super::{RunProjection, RunProjectionReducer, build_summary};
@@ -1782,9 +1783,8 @@ mod tests {
             AgentLlmFirstOutputProps, AgentLlmRetryProps, AgentLlmStartedProps,
             AgentToolCompletedProps, AgentToolStartedProps,
         };
-        use fabro_types::{
-            LlmOutputKind, LlmRetryPhase, ModelRef, Speed, StageOutcome, StageProjection,
-        };
+        use fabro_types::{LlmOutputKind, LlmRetryPhase, ModelRef, StageOutcome, StageProjection};
+        use lithos_llm::types::Speed;
 
         use super::*;
 
@@ -7565,9 +7565,8 @@ mod tests {
         use fabro_types::run_event::{
             AgentErrorProps, AgentLlmFirstOutputProps, AgentLlmRetryProps, AgentLlmStartedProps,
         };
-        use fabro_types::{
-            LlmOutputKind, LlmRetryPhase, ModelRef, Speed, StageInferenceProjection,
-        };
+        use fabro_types::{LlmOutputKind, LlmRetryPhase, ModelRef, StageInferenceProjection};
+        use lithos_llm::types::Speed;
 
         use super::*;
 

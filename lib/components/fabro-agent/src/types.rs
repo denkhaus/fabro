@@ -3,9 +3,12 @@ use std::time::SystemTime;
 use chrono::{DateTime, Utc};
 use fabro_llm::ErrorData;
 use fabro_types::{
-    CommandTermination, ContentPart, Cost, ExecOutputTail, LlmOutputKind, LlmRetryPhase,
-    Message as LlmMessage, ModelRef, ReasoningOutput, Role, SessionMessage, Speed,
-    StageContextWindowProjection, TokenCounts, ToolCall, ToolResult,
+    CommandTermination, ExecOutputTail, LlmOutputKind, LlmRetryPhase, ModelRef, SessionMessage,
+    StageContextWindowProjection,
+};
+use lithos_llm::types::{
+    ContentPart, Cost, Message as LlmMessage, ReasoningOutput, Role, Speed, TokenCounts, ToolCall,
+    ToolResult,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -817,8 +820,8 @@ pub struct SessionEvent {
 #[cfg(test)]
 mod tests {
     use fabro_llm::{ErrorKind, RetryClassification};
-    use fabro_types::{CostSource, ModelId, ProviderId};
-    use lithos_llm::catalog::builtin;
+    use lithos_llm::catalog::{ModelId, ProviderId, builtin};
+    use lithos_llm::types::CostSource;
 
     use super::*;
 

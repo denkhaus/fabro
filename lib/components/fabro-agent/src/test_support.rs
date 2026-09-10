@@ -10,8 +10,9 @@ use fabro_llm::{
     Client, ClientOptions, Error as LlmError, FinishReason, Request, Response, ResponseStream,
 };
 pub use fabro_sandbox::test_support::{MockSandbox, MutableMockSandbox};
-use fabro_types::{AgentProfileKind, ContentPart, ModelId, ProviderId, TokenCounts, ToolCall};
-use lithos_llm::catalog::builtin;
+use fabro_types::AgentProfileKind;
+use lithos_llm::catalog::{ModelId, ProviderId, builtin};
+use lithos_llm::types::{ContentPart, TokenCounts, ToolCall};
 
 use crate::agent_profile::AgentProfile;
 use crate::config::SessionOptions;
@@ -270,7 +271,7 @@ pub async fn make_session_with_tools_and_config(
 }
 
 pub fn make_echo_tool() -> RegisteredTool {
-    use fabro_types::ToolDefinition;
+    use lithos_llm::types::ToolDefinition;
     RegisteredTool {
         definition: ToolDefinition::function(
             "echo",
@@ -291,7 +292,7 @@ pub fn make_echo_tool() -> RegisteredTool {
 }
 
 pub fn make_error_tool() -> RegisteredTool {
-    use fabro_types::ToolDefinition;
+    use lithos_llm::types::ToolDefinition;
     RegisteredTool {
         definition: ToolDefinition::function(
             "fail_tool",

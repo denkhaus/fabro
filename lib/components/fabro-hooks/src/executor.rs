@@ -11,7 +11,8 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{Client, ClientOptions, Request};
 use fabro_redact::redacted_url_for_log;
 use fabro_types::settings::{InterpString, ResolveCtx, ResolveError};
-use fabro_types::{Message, Role, ToolCall, tool_call_arguments, tool_result_from_json};
+use fabro_types::{tool_call_arguments, tool_result_from_json};
+use lithos_llm::types::{ContentPart, Message, Role, ToolCall};
 use tokio::process::Command as TokioCommand;
 use tokio::time::timeout as tokio_timeout;
 use tokio_util::sync::CancellationToken;
@@ -457,7 +458,7 @@ impl HookExecutorImpl {
                             true,
                         ),
                     };
-                    results.push(fabro_types::ContentPart::ToolResult(result));
+                    results.push(ContentPart::ToolResult(result));
                 }
                 messages.push(Message::new(Role::Tool, results));
             }

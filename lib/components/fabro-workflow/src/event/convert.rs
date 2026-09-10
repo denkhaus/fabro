@@ -1461,16 +1461,17 @@ mod tests {
     use std::collections::BTreeMap;
 
     use ::fabro_types::{
-        AutomationRef, EventBody, FailureReason, ModelId, ModelRef, ParallelBranchId, Principal,
-        ProviderId, RunNoticeCode, RunNoticeLevel, RunProvenance, StageId, SystemActorKind,
-        TokenCounts as LlmTokenCounts, fixtures, run_event as fabro_types, test_support,
+        AutomationRef, EventBody, FailureReason, ModelRef, ParallelBranchId, Principal,
+        RunNoticeCode, RunNoticeLevel, RunProvenance, StageId, SystemActorKind, fixtures,
+        run_event as fabro_types, test_support,
     };
     use chrono::Utc;
     use fabro_agent::{
         AgentEvent, McpToolSummary, MemoryFileSummary, SandboxEvent, SkillActivationSource,
         SkillSummary,
     };
-    use lithos_llm::catalog::builtin;
+    use lithos_llm::catalog::{ModelId, ProviderId, builtin};
+    use lithos_llm::types::{Cost, CostSource, ReasoningOutput, TokenCounts as LlmTokenCounts};
 
     use super::*;
     use crate::error::Error;
@@ -2593,10 +2594,10 @@ mod tests {
                     output: 34,
                     ..LlmTokenCounts::default()
                 },
-                cost:            Some(::fabro_types::Cost {
+                cost:            Some(Cost {
                     usd_micros: 125_000,
 
-                    source: ::fabro_types::CostSource::Provider,
+                    source: CostSource::Provider,
                 }),
                 tool_call_count: 0,
                 context_window:  None,
@@ -2611,10 +2612,7 @@ mod tests {
             panic!("expected agent message body");
         };
         assert_eq!(message.billing.total_usd_micros, Some(125_000));
-        assert_eq!(
-            message.cost_source,
-            Some(::fabro_types::CostSource::Provider)
-        );
+        assert_eq!(message.cost_source, Some(CostSource::Provider));
     }
 
     #[test]
@@ -2676,7 +2674,7 @@ mod tests {
                 cost:            None,
                 tool_call_count: 1,
                 context_window:  None,
-                reasoning:       Some(::fabro_types::ReasoningOutput::new(
+                reasoning:       Some(ReasoningOutput::new(
                     "inspect the conversion first",
                     "read convert.rs, then the sink",
                 )),

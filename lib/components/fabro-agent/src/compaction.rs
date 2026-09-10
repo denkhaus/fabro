@@ -368,7 +368,8 @@ mod tests {
     use fabro_llm::catalog;
     use fabro_llm::lithos_catalog::{Catalog, Offering};
     use fabro_llm::test_support::test_catalog;
-    use fabro_types::{TokenCounts, ToolCall, tool_result_from_json};
+    use fabro_types::tool_result_from_json;
+    use lithos_llm::types::{TokenCounts, ToolCall};
 
     use super::*;
     use crate::event::Emitter;

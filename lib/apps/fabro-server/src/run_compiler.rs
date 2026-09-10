@@ -37,8 +37,8 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_types::settings::interp::{InterpString, ResolveError};
 use fabro_types::settings::run::{McpServerSettings, RunGoal};
 use fabro_types::{
-    AutomationRef, GitContext, ManifestPath, ProviderId, RunId, RunProvenance, RunTarget,
-    WorkflowSettings, WorkflowVersionId,
+    AutomationRef, GitContext, ManifestPath, RunId, RunProvenance, RunTarget, WorkflowSettings,
+    WorkflowVersionId,
 };
 use fabro_util::workspace_glob::{WorkspaceGlob, WorkspaceGlobError};
 use fabro_workflow::Error as WorkflowError;
@@ -47,6 +47,7 @@ use fabro_workflow::operations::{
     CreateRunPersistenceMetadata, MaterializedRun, WorkflowInput,
 };
 use fabro_workflow::workflow_bundle::{BundledWorkflow, WorkflowBundle};
+use lithos_llm::catalog::ProviderId;
 use tokio::task;
 
 /// One project settings source in the acquired source's path namespace.

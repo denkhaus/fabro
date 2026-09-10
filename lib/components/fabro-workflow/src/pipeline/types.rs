@@ -11,9 +11,10 @@ use fabro_template::TemplateContext;
 use fabro_types::settings::run::{
     PullRequestSettings, ResolvedGithubIntegration, RunModelControls,
 };
-use fabro_types::{ManifestPath, ProviderId, RunId, RunProjection};
+use fabro_types::{ManifestPath, RunId, RunProjection};
 use fabro_validate::{Diagnostic, Severity};
 use fabro_vault::Vault;
+use lithos_llm::catalog::ProviderId;
 use tokio::sync::RwLock as AsyncRwLock;
 
 use crate::artifact_upload::ArtifactSink;

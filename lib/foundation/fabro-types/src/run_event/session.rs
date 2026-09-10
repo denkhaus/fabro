@@ -1,7 +1,8 @@
+use lithos_llm::catalog::ProviderId;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{ProviderId, TurnId};
+use crate::TurnId;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunSessionCreatedProps {

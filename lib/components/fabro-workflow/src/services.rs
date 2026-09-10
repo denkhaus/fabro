@@ -10,7 +10,8 @@ use fabro_hooks::{HookContext, HookDecision, HookExecutionContext, HookRunner};
 use fabro_interview::Interviewer;
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_types::{ManifestPath, ProviderId, RunId};
+use fabro_types::{ManifestPath, RunId};
+use lithos_llm::catalog::ProviderId;
 use tokio_util::sync::CancellationToken;
 
 use crate::event::Emitter;

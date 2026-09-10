@@ -16,10 +16,11 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_store::{BlobStore, Database};
 use fabro_template::TemplateContext;
 use fabro_types::{
-    AutomationRef, BlobHash, ForkSourceRef, GitContext, ManifestPath, ProviderId, RunId,
-    RunProvenance, RunTarget, WorkflowSettings, WorkflowVersionId,
+    AutomationRef, BlobHash, ForkSourceRef, GitContext, ManifestPath, RunId, RunProvenance,
+    RunTarget, WorkflowSettings, WorkflowVersionId,
 };
 use fabro_util::json::normalize_json_value;
+use lithos_llm::catalog::ProviderId;
 use tokio::task::spawn_blocking;
 
 use super::source::{ResolveWorkflowInput, WorkflowInput, resolve_workflow};

@@ -3,9 +3,10 @@ use std::collections::HashSet;
 use fabro_graphviz::graph::Graph;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{ModelSelectionError, selection};
+use fabro_types::WorkflowSettings;
 use fabro_types::settings::InterpString;
 use fabro_types::settings::run::RunGoal;
-use fabro_types::{ProviderId, WorkflowSettings};
+use lithos_llm::catalog::ProviderId;
 
 use crate::error::Error;
 

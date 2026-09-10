@@ -24,11 +24,12 @@ use fabro_types::settings::run::{
     RunPrepareSettings as ResolvedRunPrepareSettings,
 };
 use fabro_types::{
-    ManifestPath, ProviderId, RunId, RunRunnableSource, RunSpec, RunTarget, SandboxProviderKind,
+    ManifestPath, RunId, RunRunnableSource, RunSpec, RunTarget, SandboxProviderKind,
     TargetValidationError,
 };
 use fabro_util::error::collect_chain;
 use fabro_vault::Vault;
+use lithos_llm::catalog::ProviderId;
 use tokio::runtime::Handle;
 use tokio::sync::RwLock as AsyncRwLock;
 use tokio::{fs, time};

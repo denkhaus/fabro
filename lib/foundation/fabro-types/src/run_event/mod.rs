@@ -1037,6 +1037,7 @@ impl<'de> Deserialize<'de> for RunEvent {
 #[cfg(test)]
 mod tests {
     use lithos_llm::catalog::builtin;
+    use lithos_llm::types::ReasoningOutput;
     use serde_json::json;
 
     use super::*;
@@ -2423,7 +2424,7 @@ mod tests {
             visit:           1,
             message:         None,
             context_window:  None,
-            reasoning:       Some(crate::ReasoningOutput::new(
+            reasoning:       Some(ReasoningOutput::new(
                 "inspect the implementation first",
                 "read convert.rs, then the sink",
             )),

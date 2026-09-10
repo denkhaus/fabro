@@ -1,7 +1,8 @@
 use fabro_graphviz::graph::{self, Node};
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{ModelSelectionError, catalog, selection};
-use fabro_types::{AgentBackend, AgentProfileKind, ProviderId};
+use fabro_types::{AgentBackend, AgentProfileKind};
+use lithos_llm::catalog::ProviderId;
 
 use crate::error::Error;
 

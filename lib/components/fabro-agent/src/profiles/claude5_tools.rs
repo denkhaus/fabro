@@ -7,8 +7,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use fabro_types::{ToolDefinition, ToolDefinitionKind};
 use fabro_util::error as util_error;
+use lithos_llm::types::{ToolDefinition, ToolDefinitionKind};
 use serde_json::Value;
 use tokio::time;
 

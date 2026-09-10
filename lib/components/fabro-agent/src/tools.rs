@@ -5,8 +5,9 @@ use std::sync::Arc;
 use fabro_llm::{Client, Request};
 #[cfg(test)]
 use fabro_static::EnvVars;
-use fabro_types::{ModelHandle, ToolDefinition};
 use futures::{StreamExt, stream};
+use lithos_llm::catalog::ModelHandle;
+use lithos_llm::types::ToolDefinition;
 use tokio::task;
 
 use crate::config::NativeToolOptions;
@@ -732,8 +733,8 @@ mod tests {
     use std::collections::HashMap;
 
     use fabro_llm::adapter::ProviderAdapter;
-    use fabro_types::{CommandTermination, ModelId};
-    use lithos_llm::catalog::builtin;
+    use fabro_types::CommandTermination;
+    use lithos_llm::catalog::{ModelId, builtin};
     use tokio::sync::broadcast;
     use tokio_util::sync::CancellationToken;
 

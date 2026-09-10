@@ -589,8 +589,9 @@ fn build_summary_preamble(
 #[cfg(test)]
 mod tests {
     use fabro_graphviz::graph::AttrValue;
-    use fabro_types::{ModelId, ModelRef, TokenCounts};
-    use lithos_llm::catalog::builtin;
+    use fabro_types::ModelRef;
+    use lithos_llm::catalog::{ModelId, builtin};
+    use lithos_llm::types::TokenCounts;
 
     use super::*;
     use crate::outcome::{BilledModelUsage, billed_model_usage_from_llm};

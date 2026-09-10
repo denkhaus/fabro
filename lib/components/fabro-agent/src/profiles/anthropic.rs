@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_types::{AgentProfileKind, ProviderId};
-use lithos_llm::catalog::builtin;
+use fabro_types::AgentProfileKind;
+use lithos_llm::catalog::{ProviderId, builtin};
 
 use super::EnvContext;
 use crate::agent_profile::AgentProfile;

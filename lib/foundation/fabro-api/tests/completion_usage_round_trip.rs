@@ -1,7 +1,7 @@
 use std::any::{TypeId, type_name};
 
 use fabro_api::types::CompletionUsage as ApiCompletionUsage;
-use fabro_types::TokenCounts;
+use lithos_llm::types::TokenCounts;
 use serde_json::json;
 
 #[test]

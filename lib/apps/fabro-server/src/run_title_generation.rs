@@ -4,8 +4,9 @@ use std::time::Duration;
 
 use fabro_llm::{Client, Request};
 use fabro_template::{TemplateContext, TemplateError};
-use fabro_types::{Graph, MAX_RUN_TITLE_CHARS, ProviderId, RunId};
+use fabro_types::{Graph, MAX_RUN_TITLE_CHARS, RunId};
 use fabro_util::error;
+use lithos_llm::catalog::ProviderId;
 use serde::Serialize;
 use toml::Value as TomlValue;
 

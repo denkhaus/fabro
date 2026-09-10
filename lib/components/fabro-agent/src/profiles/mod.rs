@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_types::{AgentProfileKind, ProviderId};
+use fabro_types::AgentProfileKind;
+use lithos_llm::catalog::ProviderId;
 #[cfg(test)]
 use lithos_llm::catalog::builtin;
 
@@ -220,7 +221,7 @@ macro_rules! impl_base_profile_accessors {
             self.base.profile_kind
         }
 
-        fn provider_id(&self) -> ::fabro_types::ProviderId {
+        fn provider_id(&self) -> ::lithos_llm::catalog::ProviderId {
             self.base.provider_id.clone()
         }
 
@@ -456,7 +457,7 @@ pub fn build_env_context_block_with(env: &dyn Sandbox, ctx: &EnvContext) -> Stri
 #[cfg(test)]
 mod tests {
     use fabro_llm::test_support::{test_catalog, test_catalog_with_overlay};
-    use fabro_types::ToolDefinition;
+    use lithos_llm::types::ToolDefinition;
     use tokio_util::sync::CancellationToken;
 
     use super::*;

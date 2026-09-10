@@ -5,11 +5,9 @@
 
 use std::collections::HashSet;
 
-use fabro_types::{
-    Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits, Provider, ProviderId,
-    ReasoningEffort,
-};
-use lithos_llm::catalog::{Catalog, CatalogProvider, Offering};
+use fabro_types::{Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits, Provider};
+use lithos_llm::catalog::{Catalog, CatalogProvider, Offering, ProviderId};
+use lithos_llm::types::ReasoningEffort;
 
 const USD_MICROS_PER_USD: f64 = 1_000_000.0;
 

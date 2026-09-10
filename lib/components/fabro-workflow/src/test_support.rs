@@ -12,10 +12,11 @@ use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::test_support::test_catalog;
 use fabro_store::{ArtifactStore, RunProjection, test_support as store_test_support};
+use fabro_types::ModelRef;
 #[cfg(feature = "test-support")]
-use fabro_types::ProviderId;
-use fabro_types::{ModelId, ModelRef};
-use lithos_llm::catalog::builtin;
+use lithos_llm::catalog::ProviderId;
+use lithos_llm::catalog::{ModelId, builtin};
+use lithos_llm::types::TokenCounts;
 use object_store::local::LocalFileSystem;
 
 use crate::artifact_upload::ArtifactSink;
@@ -91,10 +92,10 @@ pub fn test_usage(
 ) -> fabro_types::BilledModelUsage {
     let mut usage = fabro_types::BilledModelUsage::new(
         ModelRef::new(builtin::openai(), ModelId::new(model_id)),
-        fabro_types::TokenCounts {
+        TokenCounts {
             input: input_tokens,
             output: output_tokens,
-            ..fabro_types::TokenCounts::default()
+            ..TokenCounts::default()
         },
         None,
     );

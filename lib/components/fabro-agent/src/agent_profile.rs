@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use fabro_llm::catalog;
 use fabro_llm::lithos_catalog::{Catalog, Offering};
-use fabro_types::{AgentProfileKind, ProviderId, ToolDefinition};
+use fabro_types::AgentProfileKind;
+use lithos_llm::catalog::ProviderId;
+use lithos_llm::types::ToolDefinition;
 
 use crate::profiles::EnvContext;
 use crate::sandbox::Sandbox;

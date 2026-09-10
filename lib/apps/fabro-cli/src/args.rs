@@ -7,10 +7,11 @@ use fabro_agent::cli::AgentArgs;
 use fabro_config::{CliLayer, CliLoggingLayer, CliOutputLayer, CliUpdatesLayer};
 use fabro_server::serve::DEFAULT_TCP_PORT;
 use fabro_static::EnvVars;
-use fabro_types::ReasoningEffort;
 use fabro_types::settings::cli::{OutputFormat, OutputVerbosity};
 use fabro_types::settings::run::MergeStrategy;
 use fabro_util::printer::Printer;
+use lithos_llm::catalog::ProviderId;
+use lithos_llm::types::ReasoningEffort;
 
 pub(crate) const LONG_VERSION: &str = concat!(
     env!("CARGO_PKG_VERSION"),
@@ -836,7 +837,7 @@ pub(crate) struct ProviderLoginArgs {
 
     /// LLM provider to authenticate with
     #[arg(long)]
-    pub(crate) provider: fabro_types::ProviderId,
+    pub(crate) provider: ProviderId,
 
     /// Read an API key from stdin instead of prompting
     #[arg(long)]
@@ -1728,7 +1729,7 @@ pub(crate) struct InstallGithubArgs {
 #[derive(Args, Debug, Clone, Default)]
 pub(crate) struct InstallNonInteractiveArgs {
     #[arg(long, hide = true)]
-    pub(crate) llm_provider: Option<fabro_types::ProviderId>,
+    pub(crate) llm_provider: Option<ProviderId>,
 
     #[arg(long, hide = true)]
     pub(crate) llm_api_key_stdin: bool,

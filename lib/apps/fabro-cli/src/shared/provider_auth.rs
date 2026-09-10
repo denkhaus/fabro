@@ -20,10 +20,9 @@ use fabro_auth::{
 };
 use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_llm::probe::{self, ApiKeyProbeError, ModelTestStatus};
-use fabro_types::ProviderId;
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
-use lithos_llm::catalog::builtin;
+use lithos_llm::catalog::{ProviderId, builtin};
 use tokio::task::spawn_blocking;
 
 // ---------------------------------------------------------------------------

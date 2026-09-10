@@ -20,6 +20,7 @@ fabro-api = { path = "../fabro-api" }
 fabro-http.workspace = true
 fabro-static.workspace = true
 fabro-types = { path = "../fabro-types" }
+lithos-llm = { workspace = true, features = ["runtime"] }
 fabro-util = { path = "../fabro-util" }
 fs2.workspace = true
 futures.workspace = true

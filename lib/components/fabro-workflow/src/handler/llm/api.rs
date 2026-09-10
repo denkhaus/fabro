@@ -18,9 +18,12 @@ use fabro_llm::{Client, ClientOptions, ErrorData, FallbackTarget, Request, Respo
 use fabro_mcp::config::McpServerSettings;
 use fabro_types::settings::run::RunModelControls;
 use fabro_types::{
-    AgentProfileKind, FailoverProps, Message, ModelHandle, ModelId, ModelRef, PermissionLevel,
-    ProviderId, ReasoningEffort, Role, RunId, SessionCapability, Speed, StageId, StageTiming,
-    TokenCounts, ToolDefinition as LlmToolDefinition, UsdMicros, billing,
+    AgentProfileKind, FailoverProps, ModelRef, PermissionLevel, RunId, SessionCapability, StageId,
+    StageTiming, UsdMicros, billing,
+};
+use lithos_llm::catalog::{ModelHandle, ModelId, ProviderId};
+use lithos_llm::types::{
+    Message, ReasoningEffort, Role, Speed, TokenCounts, ToolDefinition as LlmToolDefinition,
 };
 use serde::de::DeserializeOwned;
 use tokio::sync::mpsc;
@@ -1899,7 +1902,7 @@ mod tests {
     use fabro_llm::{ErrorKind, ResponseStream, RetryClassification};
     use fabro_tool::FabroToolBackend;
     use fabro_types::{
-        ContentPart, EventEnvelope, FailureReason, Run, RunId, RunLifecycle, RunLinks, RunOrigin,
+        EventEnvelope, FailureReason, Run, RunId, RunLifecycle, RunLinks, RunOrigin,
         RunPairStatusResponse, RunProjection, RunStatus, RunTimestamps, SuccessReason, WorkflowRef,
         test_support,
     };
@@ -1908,6 +1911,7 @@ mod tests {
     use httpmock::Method::POST;
     use httpmock::MockServer;
     use lithos_llm::catalog::builtin;
+    use lithos_llm::types::ContentPart;
     use tokio::sync::RwLock as AsyncRwLock;
     use tokio_util::sync::CancellationToken;
 

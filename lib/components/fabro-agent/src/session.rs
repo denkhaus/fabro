@@ -11,13 +11,17 @@ use fabro_mcp::config::{McpServerSettings, McpTransport};
 use fabro_mcp::connection_manager::McpConnectionManager;
 use fabro_mcp::http_transport;
 use fabro_types::{
-    AgentProfileKind, AgentToolSummary, LlmOutputKind, LlmRetryPhase, Message as LlmMessage,
-    ModelId, ModelRef, PermissionLevel, Principal, ReasoningEffort, Role, SessionMessage,
-    SessionRecord, Speed, StageContextWindowProjection, SteeringMessage, TokenCounts, ToolCall,
-    ToolChoice, UsdMicros, billing,
+    AgentProfileKind, AgentToolSummary, LlmOutputKind, LlmRetryPhase, ModelRef, PermissionLevel,
+    Principal, SessionMessage, SessionRecord, StageContextWindowProjection, SteeringMessage,
+    UsdMicros, billing,
 };
 use fabro_util::shell;
 use futures::StreamExt;
+use lithos_llm::catalog::{ModelId, ProviderId};
+use lithos_llm::types::{
+    ContentPart, Message as LlmMessage, ReasoningEffort, Role, Speed, TokenCounts, ToolCall,
+    ToolChoice,
+};
 use tokio::sync::{Notify, broadcast};
 use tokio::time;
 use tokio_util::sync::CancellationToken;
@@ -110,9 +114,9 @@ fn first_output_kind(event: &StreamEvent) -> Option<LlmOutputKind> {
         StreamEvent::TextDelta { .. } => Some(LlmOutputKind::Text),
         StreamEvent::ToolCallDelta { .. } => Some(LlmOutputKind::ToolCall),
         StreamEvent::ContentBlockEnd { part, .. } => match part {
-            fabro_types::ContentPart::Text { .. } => Some(LlmOutputKind::Text),
-            fabro_types::ContentPart::Reasoning(_) => Some(LlmOutputKind::Reasoning),
-            fabro_types::ContentPart::ToolCall(_) => Some(LlmOutputKind::ToolCall),
+            ContentPart::Text { .. } => Some(LlmOutputKind::Text),
+            ContentPart::Reasoning(_) => Some(LlmOutputKind::Reasoning),
+            ContentPart::ToolCall(_) => Some(LlmOutputKind::ToolCall),
             _ => None,
         },
         _ => None,
@@ -565,7 +569,7 @@ impl Session {
     }
 
     #[must_use]
-    pub fn provider_id(&self) -> fabro_types::ProviderId {
+    pub fn provider_id(&self) -> ProviderId {
         self.provider_profile.provider_id()
     }
 
@@ -2248,12 +2252,10 @@ mod tests {
         ContentBlockId, ContentBlockKind, OPENAI_COMPAT_REASONING_DETAILS_KIND, ToolCallKind,
     };
     use fabro_llm::{ErrorKind, ResponseStream, RetryPolicy};
-    use fabro_types::{
-        ContentPart, Cost, CostSource, ReasoningOutput, StageContextWindowCountMethod,
-        ToolDefinition, text_of, tool_result_to_json,
-    };
+    use fabro_types::{StageContextWindowCountMethod, text_of, tool_result_to_json};
     use futures::stream;
     use lithos_llm::catalog::builtin;
+    use lithos_llm::types::{ContentPart, Cost, CostSource, ReasoningOutput, ToolDefinition};
     use tokio::time::{sleep, timeout};
 
     use super::*;
@@ -5440,7 +5442,7 @@ mod tests {
 
     #[tokio::test]
     async fn compaction_includes_structured_prompt_and_file_tracking() {
-        use fabro_types::ToolDefinition;
+        use lithos_llm::types::ToolDefinition;
 
         use crate::tool_registry::{RegisteredTool, ToolSource};
 

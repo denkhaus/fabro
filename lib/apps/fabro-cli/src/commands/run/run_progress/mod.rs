@@ -460,12 +460,13 @@ mod tests {
     use fabro_agent::{AgentEvent, SandboxEvent};
     use fabro_types::run_event::CliEnsureCompletedProps;
     use fabro_types::{
-        MetadataSnapshotFailureKind, MetadataSnapshotPhase, ModelId, ModelRef, ParallelBranchId,
-        SandboxProviderKind, StageId, TokenCounts, fixtures,
+        MetadataSnapshotFailureKind, MetadataSnapshotPhase, ModelRef, ParallelBranchId,
+        SandboxProviderKind, StageId, fixtures,
     };
     use fabro_workflow::event::{Event, RunNoticeLevel, to_run_event, to_run_event_at};
     use fabro_workflow::outcome::billed_model_usage_from_llm;
-    use lithos_llm::catalog::builtin;
+    use lithos_llm::catalog::{ModelId, builtin};
+    use lithos_llm::types::TokenCounts;
 
     use super::*;
     use crate::commands::run::run_progress::stage_display::ToolCallStatus;

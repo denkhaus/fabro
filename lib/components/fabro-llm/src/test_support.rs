@@ -7,15 +7,14 @@ use std::time::Duration;
 use async_trait::async_trait;
 use fabro_auth::test_support::env_credential_source;
 use fabro_config::LlmLayer;
-use fabro_types::{ContentPart, ModelId, ProviderId, TokenCounts};
 use futures::stream;
 use lithos_llm::adapter::{ProviderAdapter, ResolvedCall};
-use lithos_llm::catalog::{AdapterId, Catalog};
+use lithos_llm::catalog::{AdapterId, Catalog, ModelId, ProviderId};
 use lithos_llm::client::Client;
 use lithos_llm::middleware::RetryPolicy;
 use lithos_llm::types::{
-    ContentBlockId, ContentBlockKind, Error, FinishReason, Response, ResponseStream, StreamEvent,
-    ToolCallKind,
+    ContentBlockId, ContentBlockKind, ContentPart, Error, FinishReason, Response, ResponseStream,
+    StreamEvent, TokenCounts, ToolCallKind, ToolInput,
 };
 
 use crate::client::{ClientOptions, build_client, build_offline_client};
@@ -94,7 +93,7 @@ pub fn response_to_stream(response: Response) -> ResponseStream {
                         id:   call.id.clone(),
                         name: Some(call.name.clone()),
                         kind: match call.input {
-                            fabro_types::ToolInput::Custom(_) => ToolCallKind::Custom,
+                            ToolInput::Custom(_) => ToolCallKind::Custom,
                             _ => ToolCallKind::Function,
                         },
                     },

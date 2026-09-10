@@ -11,10 +11,10 @@ use fabro_llm::ErrorKind;
 use fabro_llm::gateway::{GatewayAdapter, GatewayError, GatewayTransport};
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_mcp::config::McpServerSettings;
-use fabro_types::ProviderId;
 use fabro_types::settings::cli::OutputFormat as SettingsOutputFormat;
 use fabro_types::settings::run::ResolvedMcpEntry;
 use fabro_util::exit::{self, ErrorExt, ExitClass};
+use lithos_llm::catalog::ProviderId;
 
 use crate::args::ExecArgs;
 use crate::command_context::CommandContext;

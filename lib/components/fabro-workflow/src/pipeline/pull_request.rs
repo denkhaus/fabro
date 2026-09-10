@@ -8,9 +8,11 @@ use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{Client, ClientOptions, Request, selection};
 use fabro_store::RunProjection;
+use fabro_types::PullRequestLink;
 use fabro_types::settings::run::MergeStrategy;
-use fabro_types::{ProviderId, PullRequestLink, Role};
 use fabro_util::text::strip_goal_decoration;
+use lithos_llm::catalog::ProviderId;
+use lithos_llm::types::{Message, Role};
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
 
@@ -405,7 +407,7 @@ async fn build_pr_content_with_client(
     let request = Request::builder()
         .model(model)
         .system(PR_BODY_SYSTEM_PROMPT)
-        .message(fabro_types::Message::text(Role::User, prompt))
+        .message(Message::text(Role::User, prompt))
         .build()
         .map_err(|e| format!("invalid PR content request: {e}"))?;
     let completion = client
@@ -694,12 +696,13 @@ mod tests {
     use fabro_llm::{Response, ResponseStream};
     use fabro_store::Database;
     use fabro_types::{
-        BilledTokenCounts, ContentPart, RunProjection, RunSpec, SuccessReason, TokenCounts,
-        WorkflowSettings, first_event_seq, fixtures, test_support,
+        BilledTokenCounts, RunProjection, RunSpec, SuccessReason, WorkflowSettings,
+        first_event_seq, fixtures, test_support,
     };
     use fabro_vault::{SecretType, Vault};
     use httpmock::Method::{GET, POST};
     use httpmock::MockServer;
+    use lithos_llm::types::{ContentPart, TokenCounts};
     use object_store::memory::InMemory;
     use tokio::sync::RwLock as AsyncRwLock;
 
@@ -802,7 +805,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         let mut options = fabro_llm::ClientOptions::default();
         options
             .adapters
-            .push((fabro_types::ProviderId::new(provider_name), adapter));
+            .push((ProviderId::new(provider_name), adapter));
         Arc::new(
             fabro_llm::build_offline_client(mock_catalog(), options)
                 .expect("mock client should build")

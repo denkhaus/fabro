@@ -387,7 +387,7 @@ Credential sources live in `fabro-auth`: `VaultCredentialSource` reads a Fabro v
 
 ```rust
 use fabro_llm::Request;
-use fabro_types::{Message, Role};
+use lithos_llm::types::{Message, Role};
 
 let request = Request::builder()
     .model("openai/gpt-5.4")
@@ -506,7 +506,7 @@ use std::sync::Arc;
 
 use fabro_llm::ClientOptions;
 use fabro_llm::gateway::GatewayAdapter;
-use fabro_types::ProviderId;
+use lithos_llm::catalog::ProviderId;
 
 let adapter = Arc::new(GatewayAdapter::new(Box::new(my_transport)));
 let built = fabro_llm::build_offline_client(

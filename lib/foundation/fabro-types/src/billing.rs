@@ -7,7 +7,7 @@
 //! grouped under.
 
 use lithos_llm::catalog::{ModelHandle, ModelId, ProviderId};
-pub use lithos_llm::types::{Cost, CostSource, Speed, TokenCounts};
+use lithos_llm::types::{Cost, Speed, TokenCounts};
 use serde::{Deserialize, Serialize};
 
 const USD_MICROS_PER_USD_F64: f64 = 1_000_000.0;
@@ -330,6 +330,7 @@ impl BilledTokenCounts {
 
 #[cfg(test)]
 mod tests {
+    use lithos_llm::types::CostSource;
     use serde_json::json;
 
     use super::*;

@@ -3,9 +3,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use fabro_types::ProviderId;
 use lithos_llm::adapter::ProviderAdapter;
-use lithos_llm::catalog::Catalog;
+use lithos_llm::catalog::{Catalog, ProviderId};
 use lithos_llm::client::{Client, ClientBuildError, ClientBuilder, ProviderBuildIssue};
 use lithos_llm::credentials::{CredentialError, CredentialProvider};
 use lithos_llm::middleware::{

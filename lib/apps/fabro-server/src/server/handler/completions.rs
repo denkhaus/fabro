@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{ModelSelectionError, Request, selection};
-use fabro_types::{Message, Role};
+use lithos_llm::types::{Message, Role};
 
 use super::super::{
     ApiError, AppState, CreateCompletionRequest, IntoResponse, Json, ProviderId, RequiredUser,

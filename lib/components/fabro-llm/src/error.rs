@@ -4,7 +4,7 @@
 //! lithos `Error` and `ErrorData` themselves. What stays here is the loop and
 //! restart detector's signature format, which names Fabro's own categories.
 
-use fabro_types::ProviderId;
+use lithos_llm::catalog::ProviderId;
 use lithos_llm::types::{ErrorData, ErrorKind};
 
 /// A stable `category|provider|detail` string for loop and restart detection.

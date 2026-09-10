@@ -30,8 +30,7 @@ use fabro_types::settings::cli::OutputVerbosity;
 use fabro_types::settings::interp::InterpString;
 use fabro_types::settings::run::{EnvironmentProvider, McpServerSettings, RunGoal, RunNamespace};
 use fabro_types::{
-    ManifestPath, ProviderId, RunId, RunNoticeLevel, SandboxProviderKind, ServerSettings,
-    WorkflowSettings,
+    ManifestPath, RunId, RunNoticeLevel, SandboxProviderKind, ServerSettings, WorkflowSettings,
 };
 use fabro_util::check_report::{CheckDetail, CheckReport, CheckResult, CheckSection, CheckStatus};
 use fabro_validate::Severity;
@@ -44,6 +43,7 @@ use fabro_workflow::pipeline::Validated;
 use fabro_workflow::run_materialization::materialize_run_with_ready_providers;
 use fabro_workflow::workflow_bundle::{BundledWorkflow, ParsedWorkflowConfig, WorkflowBundle};
 use futures_util::stream::{self, StreamExt};
+use lithos_llm::catalog::ProviderId;
 use tokio::process::Command;
 use tokio::time;
 
@@ -1667,8 +1667,8 @@ fn report_to_api(report: &CheckReport) -> types::PreflightCheckReport {
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::ProviderId;
     use fabro_workflow::run_materialization::materialize_run;
+    use lithos_llm::catalog::ProviderId;
 
     use super::*;
 

@@ -99,7 +99,7 @@ fn is_repeating_pattern(signatures: &[u64], pattern_len: usize) -> bool {
 mod tests {
     use std::time::SystemTime;
 
-    use fabro_types::{TokenCounts, ToolCall};
+    use lithos_llm::types::{TokenCounts, ToolCall};
 
     use super::*;
 

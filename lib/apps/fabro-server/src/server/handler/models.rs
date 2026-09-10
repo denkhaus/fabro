@@ -6,7 +6,7 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::probe::{self, ApiKeyProbeError, ModelTestStatus};
 use fabro_llm::{ModelSelectionError, api, selection};
 use fabro_redact::redact_string;
-use fabro_types::ReasoningEffort;
+use lithos_llm::types::ReasoningEffort;
 
 use super::super::{
     ApiError, AppState, FromStr, IntoResponse, Json, MAX_PAGE_OFFSET, ModelTestMode, Path,

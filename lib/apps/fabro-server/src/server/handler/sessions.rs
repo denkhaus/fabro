@@ -36,11 +36,12 @@ use fabro_types::run_event::{
 };
 use fabro_types::settings::ModelRef as SettingsModelRef;
 use fabro_types::{
-    AgentProfileKind, EventBody, EventEnvelope, ProviderId, RunEvent, RunId, SessionDetail,
-    SessionId, ToolDefinition, TurnId,
+    AgentProfileKind, EventBody, EventEnvelope, RunEvent, RunId, SessionDetail, SessionId, TurnId,
 };
 use fabro_workflow::handler::llm::api::register_named_fabro_run_tools;
 use fabro_workflow::services::FabroRunToolServices;
+use lithos_llm::catalog::ProviderId;
+use lithos_llm::types::ToolDefinition;
 use serde_json::Value;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
@@ -1514,7 +1515,8 @@ mod tests {
 
     use fabro_agent::config::ToolAccess;
     use fabro_agent::tool_registry::{RegisteredTool, ToolContext, ToolRegistry, ToolSource};
-    use fabro_types::{ToolCall, ToolDefinition, test_support};
+    use fabro_types::test_support;
+    use lithos_llm::types::{ToolCall, ToolDefinition};
 
     use super::*;
 

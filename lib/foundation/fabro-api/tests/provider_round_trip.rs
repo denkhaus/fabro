@@ -1,8 +1,8 @@
 use std::any::{TypeId, type_name};
 
 use fabro_api::types::Provider as ApiProvider;
-use fabro_types::{Provider, ProviderId};
-use lithos_llm::catalog::builtin;
+use fabro_types::Provider;
+use lithos_llm::catalog::{ProviderId, builtin};
 
 #[test]
 fn provider_reuses_canonical_type() {

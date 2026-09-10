@@ -586,7 +586,7 @@ mod tests {
         ProviderCommand, ProviderNamespace,
     };
     use clap::error::ErrorKind;
-    use lithos_llm::catalog::builtin;
+    use lithos_llm::catalog::{ProviderId, builtin};
     use temp_env::with_var;
     use tokio::runtime::Runtime;
 
@@ -1202,7 +1202,7 @@ destination = "{destination}"
             Commands::Provider(ProviderNamespace {
                 command: ProviderCommand::Login(args),
             }) => {
-                assert_eq!(args.provider, fabro_types::ProviderId::new("bogus"));
+                assert_eq!(args.provider, ProviderId::new("bogus"));
             }
             _ => panic!("expected provider login command"),
         }

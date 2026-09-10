@@ -32,9 +32,7 @@ use fabro_interview::{
 };
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_store::{ArtifactKey, ArtifactStore};
-use fabro_types::{
-    EventBody, ProviderId, RunEvent, RunId, StageId, WorkflowSettings, parse_blob_ref,
-};
+use fabro_types::{EventBody, RunEvent, RunId, StageId, WorkflowSettings, parse_blob_ref};
 use fabro_validate::{Severity, validate, validate_or_raise};
 use fabro_workflow::artifact;
 use fabro_workflow::context::Context;
@@ -62,6 +60,7 @@ use fabro_workflow::test_support::{
 };
 use fabro_workflow::transforms::stylesheet::{apply_stylesheet, parse_stylesheet};
 use fabro_workflow::transforms::{StylesheetApplicationTransform, TemplateTransform, Transform};
+use lithos_llm::catalog::ProviderId;
 use object_store::local::LocalFileSystem;
 use tokio_util::sync::CancellationToken;
 use ulid::Ulid;

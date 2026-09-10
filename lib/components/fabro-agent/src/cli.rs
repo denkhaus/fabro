@@ -18,9 +18,10 @@ use fabro_llm::middleware::{Call, Middleware, Next, Output};
 use fabro_llm::{Client, ClientOptions, Error as LlmError, catalog};
 use fabro_mcp::config::McpServerSettings;
 use fabro_static::EnvVars;
-use fabro_types::{AgentProfileKind, ModelHandle, ModelId, ProviderId};
+use fabro_types::AgentProfileKind;
 use fabro_util::terminal::Styles;
 use fabro_vault::SecretStore;
+use lithos_llm::catalog::{ModelHandle, ModelId, ProviderId};
 use tokio::io::{AsyncWriteExt, stdout};
 use tokio::signal;
 

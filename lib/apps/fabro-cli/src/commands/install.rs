@@ -37,16 +37,16 @@ use fabro_install::{
 use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_server::serve;
 use fabro_store::ArtifactStore;
+use fabro_types::ServerSettings;
 use fabro_types::settings::server::ServerAuthMethod;
 use fabro_types::settings::validate_public_url_with_label;
-use fabro_types::{ProviderId, ServerSettings};
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
 use fabro_util::version::FABRO_VERSION;
 use fabro_util::{browser, dev_token, path, session_secret};
 use fabro_vault::SecretType as VaultSecretType;
 use futures::future::BoxFuture;
-use lithos_llm::catalog::builtin;
+use lithos_llm::catalog::{ProviderId, builtin};
 use rand::Rng;
 use tokio::net::TcpListener;
 use tokio::process::Command as TokioCommand;

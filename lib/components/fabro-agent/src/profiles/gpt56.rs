@@ -17,8 +17,9 @@
 use std::sync::Arc;
 
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_types::{AgentProfileKind, ProviderId, ToolDefinition};
-use lithos_llm::catalog::builtin;
+use fabro_types::AgentProfileKind;
+use lithos_llm::catalog::{ProviderId, builtin};
+use lithos_llm::types::ToolDefinition;
 use serde_json::Value;
 
 use super::EnvContext;

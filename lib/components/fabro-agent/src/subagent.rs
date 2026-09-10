@@ -3,9 +3,10 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, RwLock, Weak};
 use std::time::Duration;
 
-use fabro_types::{INITIAL_SUBAGENT_GENERATION, ToolDefinition};
+use fabro_types::INITIAL_SUBAGENT_GENERATION;
 use fabro_util::error as util_error;
 use futures::future;
+use lithos_llm::types::ToolDefinition;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::{AbortHandle, JoinHandle};
 use tokio::time::{Instant, timeout_at};
@@ -1344,7 +1345,8 @@ pub fn make_close_agent_tool(supervisor: SubAgentSupervisor) -> RegisteredTool {
 #[cfg(test)]
 mod tests {
     use fabro_llm::adapter::ProviderAdapter;
-    use fabro_types::{Role, text_of};
+    use fabro_types::text_of;
+    use lithos_llm::types::Role;
     use tokio::task::yield_now;
     use tokio::time;
 

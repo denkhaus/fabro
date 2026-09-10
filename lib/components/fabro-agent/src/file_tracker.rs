@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-use fabro_types::{ToolCall, ToolResult, tool_call_arguments, tool_result_to_json};
+use fabro_types::{tool_call_arguments, tool_result_to_json};
+use lithos_llm::types::{ToolCall, ToolResult};
 
 use crate::native_tool::NativeTool;
 use crate::tool_permissions::canonical_tool_name;

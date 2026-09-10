@@ -1,5 +1,5 @@
 use fabro_api::types::CreateCompletionRequest;
-use fabro_types::{ReasoningEffort, ResponseFormat, Speed, ToolChoice, ToolDefinitionKind};
+use lithos_llm::types::{ReasoningEffort, ResponseFormat, Speed, ToolChoice, ToolDefinitionKind};
 use serde_json::json;
 
 #[test]

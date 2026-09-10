@@ -5,7 +5,7 @@
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use fabro_types::ToolDefinition;
+use lithos_llm::types::ToolDefinition;
 
 use crate::sandbox::Sandbox;
 use crate::tool_registry::{RegisteredTool, ToolSource};
@@ -502,7 +502,8 @@ pub fn make_apply_patch_tool() -> RegisteredTool {
 mod tests {
     use std::collections::HashMap;
 
-    use fabro_types::{ContentPart, ToolCall, tool_result_to_json};
+    use fabro_types::tool_result_to_json;
+    use lithos_llm::types::{ContentPart, ToolCall};
     use tokio::fs;
     use tokio_util::sync::CancellationToken;
 

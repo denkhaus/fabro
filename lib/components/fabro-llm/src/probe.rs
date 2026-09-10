@@ -4,9 +4,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use fabro_auth::ApiKeyCredentialSource;
-use fabro_types::{ModelTestMode, ProviderId, ReasoningEffort};
-use lithos_llm::catalog::Catalog;
+use fabro_types::ModelTestMode;
+use lithos_llm::catalog::{Catalog, ProviderId};
 use lithos_llm::client::{Client, ProbeOptions, ProbeOutcome};
+use lithos_llm::types::ReasoningEffort;
 use strum::IntoStaticStr;
 
 use crate::client::{ClientOptions, LlmSetupError, build_client};

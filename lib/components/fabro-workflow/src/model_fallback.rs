@@ -3,7 +3,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use fabro_llm::lithos_catalog::{Catalog, Offering};
 use fabro_llm::{FallbackTarget, ModelSelectionError, selection};
 use fabro_types::settings::{ModelRef, ResolvedModelRef};
-use fabro_types::{ProviderId, ReasoningEffort, RunNoticeCode, RunNoticeLevel};
+use fabro_types::{RunNoticeCode, RunNoticeLevel};
+use lithos_llm::catalog::ProviderId;
+use lithos_llm::types::ReasoningEffort;
 
 use crate::Error;
 
@@ -407,7 +409,7 @@ mod tests {
     use fabro_llm::FallbackTarget;
     use fabro_llm::lithos_catalog::Catalog;
     use fabro_llm::test_support::test_catalog_with_overlay;
-    use fabro_types::ProviderId;
+    use lithos_llm::catalog::ProviderId;
 
     use super::{ModelFallbackNotice, resolve_model_fallbacks};
 

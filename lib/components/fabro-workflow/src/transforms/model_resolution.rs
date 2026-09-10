@@ -4,7 +4,7 @@ use std::sync::Arc;
 use fabro_graphviz::graph::{AttrValue, Graph};
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::selection;
-use fabro_types::ProviderId;
+use lithos_llm::catalog::ProviderId;
 
 use super::Transform;
 use crate::error::Error;

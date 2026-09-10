@@ -6,10 +6,10 @@ pub use fabro_types::billing_rollup::{
 #[cfg(test)]
 mod tests {
     use fabro_types::{
-        AttrValue, BilledTokenCounts, Graph, ModelId, ModelRef, Node, RunProjection, RunSpec,
+        AttrValue, BilledTokenCounts, Graph, ModelRef, Node, RunProjection, RunSpec,
         StageCompletion, StageOutcome, first_event_seq, test_support,
     };
-    use lithos_llm::catalog::builtin;
+    use lithos_llm::catalog::{ModelId, builtin};
 
     use super::billing_rollup_from_projection;
     use crate::test_support::test_usage;

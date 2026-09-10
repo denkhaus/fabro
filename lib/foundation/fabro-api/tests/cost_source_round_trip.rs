@@ -1,7 +1,7 @@
 use std::any::{TypeId, type_name};
 
 use fabro_api::types::{CompletionCost as ApiCost, CostSource as ApiCostSource};
-use fabro_types::{Cost, CostSource};
+use lithos_llm::types::{Cost, CostSource};
 use serde_json::json;
 
 #[test]

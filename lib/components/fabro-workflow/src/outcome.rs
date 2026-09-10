@@ -3,7 +3,8 @@ pub use fabro_core::outcome::{
 };
 use fabro_llm::lithos_catalog::Catalog;
 pub use fabro_types::BilledModelUsage;
-use fabro_types::{BilledTokenCounts, ModelRef, TokenCounts};
+use fabro_types::{BilledTokenCounts, ModelRef};
+use lithos_llm::types::TokenCounts;
 
 use crate::error::{Error, FailureSignature, classify_failure_reason};
 
@@ -125,8 +126,9 @@ pub fn format_cost(cost: f64) -> String {
 mod tests {
     use fabro_llm::lithos_catalog::Catalog;
     use fabro_llm::test_support::{test_catalog, test_catalog_with_overlay};
-    use fabro_types::{ModelId, ModelRef, ProviderId, Speed, TokenCounts, UsdMicros};
-    use lithos_llm::catalog::builtin;
+    use fabro_types::{ModelRef, UsdMicros};
+    use lithos_llm::catalog::{ModelId, ProviderId, builtin};
+    use lithos_llm::types::{Speed, TokenCounts};
 
     use super::{OutcomeExt, billed_model_usage_from_llm};
 

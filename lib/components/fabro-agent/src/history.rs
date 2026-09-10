@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
-use fabro_types::{Message as LlmMessage, SessionMessage, TokenCounts};
+use fabro_types::SessionMessage;
+use lithos_llm::types::{Message as LlmMessage, TokenCounts};
 
 use crate::types::Message;
 
@@ -164,9 +165,8 @@ mod tests {
     use std::time::SystemTime;
 
     use fabro_llm::types::OPENAI_REASONING_KIND;
-    use fabro_types::{
-        ContentPart, ReasoningContent, Role, TokenCounts, ToolCall, text_of, tool_result_from_json,
-    };
+    use fabro_types::{text_of, tool_result_from_json};
+    use lithos_llm::types::{ContentPart, ReasoningContent, Role, TokenCounts, ToolCall};
 
     use super::*;
 

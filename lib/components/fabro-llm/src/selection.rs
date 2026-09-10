@@ -19,8 +19,7 @@
 use std::collections::HashSet;
 use std::fmt;
 
-use fabro_types::{ModelId, ProviderId};
-use lithos_llm::catalog::{Catalog, Offering};
+use lithos_llm::catalog::{Catalog, ModelId, Offering, ProviderId};
 use thiserror::Error;
 
 /// A provider/model pair one of the selection functions chose.

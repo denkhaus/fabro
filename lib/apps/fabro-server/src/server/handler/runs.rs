@@ -40,6 +40,7 @@ use fabro_workflow::command_log::{command_log_path, read_json_string_blob, read_
 use fabro_workflow::run_status::RunStatus;
 use fabro_workflow::workflow_bundle::WorkflowBundle;
 use fabro_workflow::{Error as WorkflowError, operations};
+use lithos_llm::catalog::ProviderId;
 use strum::VariantArray as _;
 use tokio::fs;
 use tracing::info;
@@ -1409,7 +1410,7 @@ struct GeneratedTitleTask {
     run_inputs:          std::collections::HashMap<String, toml::Value>,
     client:              LlmClient,
     model_id:            String,
-    provider_id:         fabro_types::ProviderId,
+    provider_id:         ProviderId,
 }
 
 fn spawn_generated_title_task(task: GeneratedTitleTask) {

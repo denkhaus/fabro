@@ -3,7 +3,8 @@ use std::any::{TypeId, type_name};
 use fabro_api::types::{
     ReasoningEffort as ApiReasoningEffort, StageModelUsage as ApiStageModelUsage,
 };
-use fabro_types::{ReasoningEffort, Speed, StageModelUsage};
+use fabro_types::StageModelUsage;
+use lithos_llm::types::{ReasoningEffort, Speed};
 use serde_json::json;
 
 #[test]

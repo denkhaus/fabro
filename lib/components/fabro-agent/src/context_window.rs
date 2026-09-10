@@ -4,10 +4,10 @@ use chrono::Utc;
 use fabro_llm::Request;
 use fabro_llm::estimate::{self, EstimateWarning, TokenEstimate};
 use fabro_types::{
-    Role, StageContextWindowBreakdownItem, StageContextWindowCategory,
-    StageContextWindowCountMethod, StageContextWindowProjection, StageContextWindowStaleness,
-    StageContextWindowWarning, TokenCounts, text_of,
+    StageContextWindowBreakdownItem, StageContextWindowCategory, StageContextWindowCountMethod,
+    StageContextWindowProjection, StageContextWindowStaleness, StageContextWindowWarning, text_of,
 };
+use lithos_llm::types::{Role, TokenCounts};
 
 use crate::memory::MemoryDocument;
 use crate::native_tool::ToolVocabulary;
@@ -372,7 +372,7 @@ fn usage_percent(tokens: u64, denominator: u64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::{Message as LlmMessage, ToolChoice, ToolDefinition};
+    use lithos_llm::types::{Message as LlmMessage, ToolChoice, ToolDefinition};
 
     use super::*;
     use crate::tool_registry::ToolDefinitionWithSource;

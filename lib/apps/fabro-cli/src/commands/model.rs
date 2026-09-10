@@ -2,9 +2,10 @@ use anyhow::{Context, Result, bail};
 use cli_table::format::{Border, Justify, Separator};
 use cli_table::{Cell, CellStruct, Color, Style, Table};
 use fabro_api::types as api_types;
-use fabro_types::{Model, ModelTestMode, ProviderId};
+use fabro_types::{Model, ModelTestMode};
 use fabro_util::terminal::Styles;
 use futures::{StreamExt, stream};
+use lithos_llm::catalog::ProviderId;
 use serde::Serialize;
 
 use crate::args::{ModelListArgs, ModelTestArgs, ModelsCommand};
@@ -513,8 +514,9 @@ impl Default for ModelsCommand {
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::{ModelControls, ModelCosts, ModelFeatures, ModelLimits, ReasoningEffort};
+    use fabro_types::{ModelControls, ModelCosts, ModelFeatures, ModelLimits};
     use lithos_llm::catalog::builtin;
+    use lithos_llm::types::ReasoningEffort;
 
     use super::*;
 

@@ -1,7 +1,8 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use fabro_types::{PermissionLevel, ReasoningEffort, SessionCapability, Speed, StageId};
+use fabro_types::{PermissionLevel, SessionCapability, StageId};
+use lithos_llm::types::{ReasoningEffort, Speed};
 
 use crate::error::Error;
 use crate::event::{Emitter, Event};

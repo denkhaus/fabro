@@ -848,10 +848,11 @@ mod tests {
     use chrono::{TimeZone, Utc};
     use fabro_types::run_event::AgentMessageProps;
     use fabro_types::{
-        BilledTokenCounts, EventEnvelope, Graph, ModelId, ModelRef, PairMessageId, ProviderId,
-        RunEvent, StageId, WorkflowSettings, fixtures, test_support,
+        BilledTokenCounts, EventEnvelope, Graph, ModelRef, PairMessageId, RunEvent, StageId,
+        WorkflowSettings, fixtures, test_support,
     };
     use fabro_workflow::event as workflow_event;
+    use lithos_llm::catalog::{ModelId, ProviderId};
     use tower::ServiceExt;
 
     use super::*;

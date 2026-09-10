@@ -18,8 +18,8 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::test_support::client_from_env;
 use fabro_llm::{Client, ClientOptions, catalog};
 use fabro_test::{EnvVars, TwinScenario, TwinScenarios, TwinToolCall, twin_openai};
-use fabro_types::{ModelHandle, ModelId, ProviderId};
-use lithos_llm::catalog::builtin;
+use lithos_llm::catalog::{ModelHandle, ModelId, ProviderId, builtin};
+use lithos_llm::types::ReasoningEffort;
 
 type Provider = ProviderId;
 
@@ -786,7 +786,7 @@ macro_rules! reasoning_effort_tests {
         async fn $test_name() {
             let tmp = tempfile::tempdir().expect("failed to create tempdir");
             let config = SessionOptions {
-                reasoning_effort: Some(fabro_types::ReasoningEffort::Low),
+                reasoning_effort: Some(ReasoningEffort::Low),
                 ..SessionOptions::default()
             };
             let mut session =

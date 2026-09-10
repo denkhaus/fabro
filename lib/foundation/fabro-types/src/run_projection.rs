@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::num::NonZeroU32;
 
 use chrono::{DateTime, Utc};
+use lithos_llm::types::{ReasoningEffort, Speed};
 use strum::{Display, EnumString, IntoStaticStr};
 
 use crate::run_event::{AgentSessionActivatedProps, StagePromptProps};
@@ -10,9 +11,9 @@ use crate::{
     AgentBackend, AgentMcpToolSummary, AgentSkillActivationSource, AgentSkillSummary,
     AgentToolSummary, BilledTokenCounts, Checkpoint, Conclusion, InterviewQuestionRecord,
     InvalidTransition, LlmOutputKind, ModelRef, ParallelBranchId, PermissionLevel,
-    PullRequestCreation, PullRequestLink, ReasoningEffort, RunApproval, RunControlAction, RunDiff,
-    RunId, RunSandbox, RunSpec, RunStatus, RunTiming, Speed, StageCompletion, StageHandler,
-    StageId, StageState, StageTiming, StartRecord, TodoListProjection, timing,
+    PullRequestCreation, PullRequestLink, RunApproval, RunControlAction, RunDiff, RunId,
+    RunSandbox, RunSpec, RunStatus, RunTiming, StageCompletion, StageHandler, StageId, StageState,
+    StageTiming, StartRecord, TodoListProjection, timing,
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

@@ -65,9 +65,7 @@ pub mod workflow_version_id;
 pub use agent_profile::AgentProfileKind;
 pub use artifact::ArtifactUpload;
 pub use auth::{IdpIdentity, IdpIdentityError};
-pub use billing::{
-    BilledModelUsage, BilledTokenCounts, Cost, CostSource, ModelRef, Speed, TokenCounts, UsdMicros,
-};
+pub use billing::{BilledModelUsage, BilledTokenCounts, ModelRef, UsdMicros};
 pub use blob_hash::BlobHash;
 pub use blob_ref::{format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref};
 pub use catalog_api::{Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits, Provider};
@@ -88,11 +86,6 @@ pub use input_scalar::{
 };
 pub use interview::{
     InterviewQuestionRecord, QuestionType, ReviewTarget, ReviewTargetError, ReviewTargetKind,
-};
-pub use lithos_llm::catalog::{ModelHandle, ModelId, ProviderId};
-pub use lithos_llm::types::{
-    FinishReason, ReasoningEffort, ReasoningOutput, Request, RequestBuildError, RequestBuilder,
-    Response, ResponseFormat, StreamEvent,
 };
 pub use llm_backend::AgentBackend;
 pub use manifest_path::{ManifestPath, ManifestPathParseError};
@@ -197,10 +190,8 @@ pub use system_integrations::{
 pub use timing::{RunTiming, StageTiming};
 pub use todo::{TodoListKind, TodoListProjection, TodoPatch, TodoProjection, TodoStatus};
 pub use transcript::{
-    AudioContent, ContentPart, DocumentContent, ImageContent, MediaSource, Message, MessageId,
-    MessageKind, MessageSource, PairMessageRef, ReasoningContent, Role, ToolCall, ToolCallKind,
-    ToolChoice, ToolDefinition, ToolDefinitionKind, ToolInput, ToolResult, TranscriptMessage,
-    text_of, tool_call_arguments, tool_result_from_json, tool_result_to_json,
+    MessageId, MessageKind, MessageSource, PairMessageRef, TranscriptMessage, text_of,
+    tool_call_arguments, tool_result_from_json, tool_result_to_json,
 };
 pub use variable::{
     CreateVariableRequest, UpdateVariableRequest, Variable, VariableListResponse, is_env_style_name,

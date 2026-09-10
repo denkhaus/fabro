@@ -30,12 +30,10 @@ pub fn event_payload_from_redacted_json(line: &str, run_id: &RunId) -> Result<Ev
 
 #[cfg(test)]
 mod tests {
-    use ::fabro_types::{
-        ModelId, ModelRef, ReasoningOutput, TokenCounts as LlmTokenCounts, fixtures,
-        run_event as fabro_types,
-    };
+    use ::fabro_types::{ModelRef, fixtures, run_event as fabro_types};
     use fabro_agent::AgentEvent;
-    use lithos_llm::catalog::builtin;
+    use lithos_llm::catalog::{ModelId, builtin};
+    use lithos_llm::types::{ReasoningOutput, TokenCounts as LlmTokenCounts};
 
     use super::*;
     use crate::event::{Event, to_run_event};
