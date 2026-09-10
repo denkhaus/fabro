@@ -7,29 +7,31 @@ use fabro_types::{
     SandboxProviderKind, SandboxResources, SandboxState, SandboxTimestamps,
 };
 
-use crate::driver::DaytonaCredentials;
-use crate::{daytona, docker};
+use crate::driver::ProviderAccess;
+use crate::reconnect;
 
 /// Inspect the sandbox identified by `record` and return provider-neutral
 /// details for control-plane display.
 ///
-/// - `local` always returns a minimal record describing the host.
-/// - `docker` describes the managed container through the sandbox driver.
-/// - `daytona` describes the sandbox through the sandbox driver.
+/// `local` always returns a minimal record describing the host; every other
+/// provider is described through the sandbox driver.
 pub async fn sandbox_details(
     record: &RunSandboxInstance,
-    daytona: Option<DaytonaCredentials>,
+    access: &ProviderAccess,
     run_id: Option<RunId>,
 ) -> Result<SandboxDetails> {
-    match record.provider.bundled() {
-        Some(BundledProvider::Local) => Ok(local_details(record)),
-        Some(BundledProvider::Docker) => docker_details(record, run_id).await,
-        Some(BundledProvider::Daytona) => daytona_details(record, daytona, run_id).await,
-        _ => Err(anyhow::anyhow!(
-            "Sandbox provider '{}' has no details implementation",
-            record.provider
-        )),
+    if record.provider.bundled() == Some(BundledProvider::Local) {
+        return Ok(local_details(record));
     }
+    let sandbox = reconnect::reconnect_driver_for_run(record, access, run_id, None).await?;
+    let status = sandbox.handle()?.describe().await.map_err(|err| {
+        anyhow::anyhow!(
+            "Failed to describe {} sandbox '{}': {err}",
+            record.provider,
+            record.runtime.id
+        )
+    })?;
+    Ok(details_from_status(record, &status))
 }
 
 fn local_details(record: &RunSandboxInstance) -> SandboxDetails {
@@ -146,52 +148,6 @@ pub(crate) fn normalize_driver_state(state: sandbox_driver::SandboxState) -> San
         Driver::Error => SandboxState::Error,
         _ => SandboxState::Unknown,
     }
-}
-
-async fn daytona_details(
-    record: &RunSandboxInstance,
-    daytona: Option<DaytonaCredentials>,
-    run_id: Option<RunId>,
-) -> Result<SandboxDetails> {
-    let runtime = &record.runtime;
-    let credentials = daytona.ok_or_else(|| {
-        anyhow::anyhow!("Daytona sandbox details require DAYTONA_API_KEY in the vault")
-    })?;
-    let sandbox = daytona::attach_daytona(
-        &runtime.id,
-        runtime.repo_cloned.unwrap_or(false),
-        runtime.working_directory.clone(),
-        runtime.clone_origin_url.clone(),
-        run_id,
-        &credentials,
-    )
-    .await?;
-    let status = sandbox.handle()?.describe().await.map_err(|err| {
-        anyhow::anyhow!("Failed to describe Daytona sandbox '{}': {err}", runtime.id)
-    })?;
-    Ok(details_from_status(record, &status))
-}
-
-async fn docker_details(
-    record: &RunSandboxInstance,
-    run_id: Option<RunId>,
-) -> Result<SandboxDetails> {
-    let runtime = &record.runtime;
-    let sandbox = docker::attach_docker(
-        &runtime.id,
-        runtime.repo_cloned.unwrap_or(false),
-        runtime.working_directory.clone(),
-        runtime.clone_origin_url.clone(),
-        run_id,
-    )
-    .await?;
-    let status = sandbox.handle()?.describe().await.map_err(|err| {
-        anyhow::anyhow!(
-            "Failed to describe Docker container '{}': {err}",
-            runtime.id
-        )
-    })?;
-    Ok(details_from_status(record, &status))
 }
 
 #[cfg(test)]

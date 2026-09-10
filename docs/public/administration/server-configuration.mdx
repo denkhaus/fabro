@@ -201,8 +201,12 @@ enabled = true
 Any other key names a [sandbox-driver](https://github.com/lithoscomputer/sandbox-driver) plugin:
 an executable that speaks the sandbox-driver JSON-RPC protocol on stdin and stdout. The kind must
 be lowercase ASCII letters, digits, and interior hyphens. The plugin starts with a scrubbed
-environment: only `env` and the ambient variables listed in `inherit_env` reach it. Bundled
-providers reject these plugin keys.
+environment: only `env` and the ambient variables listed in `inherit_env` reach it.
+
+A bundled provider accepts the same plugin keys. Setting any of them runs that provider out of
+process through the driver's executable for the kind (`fabro-sandbox-docker` for `docker`), which
+isolates the server from provider crashes at the cost of a process per connection. Without them
+the bundled provider links in-process.
 
 ```toml title="settings.toml"
 [server.sandbox.providers.e2b]

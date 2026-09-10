@@ -5,7 +5,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
-use fabro_sandbox::{DriverSandbox, TerminalSize, open_terminal_for_run, reconnect_driver_for_run};
+use fabro_sandbox::{
+    DriverSandbox, ProviderAccess, TerminalSize, open_terminal_for_run, reconnect_driver_for_run,
+};
 use fabro_types::{
     RunSandboxInstance, SandboxProviderKind, SandboxServiceDiscoverySource, SandboxServiceListMeta,
 };
@@ -13,9 +15,9 @@ use futures_util::FutureExt;
 use futures_util::future::BoxFuture;
 
 use super::super::{
-    ApiError, AppState, Bytes, DaytonaCredentials, HeaderMap, IntoResponse, Json, NamedTempFile,
-    Path, PreviewUrlRequest, PreviewUrlResponse, Query, RequiredUser, Response, Router, RunId,
-    Sandbox, SandboxDetails, SandboxFileEntry, SandboxFileListResponse, SandboxService,
+    ApiError, AppState, Bytes, HeaderMap, IntoResponse, Json, NamedTempFile, Path,
+    PreviewUrlRequest, PreviewUrlResponse, Query, RequiredUser, Response, Router, RunId, Sandbox,
+    SandboxDetails, SandboxFileEntry, SandboxFileListResponse, SandboxService,
     SandboxServiceListResponse, SshAccessRequest, SshAccessResponse, State, StatusCode,
     VncPreviewResponse, collect_causes, fs, get, octet_stream_response, parse_run_id_path, post,
     reject_if_archived, render_with_causes, sandbox_details,
@@ -98,11 +100,11 @@ async fn retrieve_run_sandbox(
         Ok(record) => record,
         Err(response) => return response,
     };
-    let daytona = match load_daytona_credentials(&state).await {
+    let access = match load_provider_access(&state).await {
         Ok(value) => value,
         Err(response) => return response,
     };
-    match sandbox_details(&record, daytona, Some(id)).await {
+    match sandbox_details(&record, &access, Some(id)).await {
         Ok(details) => Json::<SandboxDetails>(details).into_response(),
         Err(err) => {
             let detail = format!("{err:#}");
@@ -219,7 +221,7 @@ async fn terminal_websocket(mut socket: WebSocket, state: Arc<AppState>, id: Run
             return;
         }
     };
-    let daytona = match load_daytona_credentials(&state).await {
+    let access = match load_provider_access(&state).await {
         Ok(value) => value,
         Err(response) => {
             let _ = socket
@@ -233,7 +235,7 @@ async fn terminal_websocket(mut socket: WebSocket, state: Arc<AppState>, id: Run
         }
     };
     let session =
-        match open_terminal_for_run(&record, daytona, Some(id), TerminalSize::default()).await {
+        match open_terminal_for_run(&record, &access, Some(id), TerminalSize::default()).await {
             Ok(session) => session,
             Err(err) => {
                 let _ = socket
@@ -892,8 +894,8 @@ async fn reconnect_driver_sandbox_instance(
     run_id: &RunId,
     record: &RunSandboxInstance,
 ) -> Result<DriverSandbox, Response> {
-    let daytona = load_daytona_credentials(state).await?;
-    let sandbox = reconnect_driver_for_run(record, daytona, Some(*run_id), None)
+    let access = load_provider_access(state).await?;
+    let sandbox = reconnect_driver_for_run(record, &access, Some(*run_id), None)
         .await
         .map_err(|err| {
             let detail = render_with_causes(&err.to_string(), &collect_causes(err.as_ref()));
@@ -905,10 +907,8 @@ async fn reconnect_driver_sandbox_instance(
     Ok(sandbox)
 }
 
-async fn load_daytona_credentials(
-    state: &AppState,
-) -> Result<Option<DaytonaCredentials>, Response> {
-    state.vault_daytona_credentials().await.map_err(|err| {
+async fn load_provider_access(state: &AppState) -> Result<ProviderAccess, Response> {
+    state.provider_access().await.map_err(|err| {
         tracing::error!(error = ?err, "Loading Daytona API key failed");
         ApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,

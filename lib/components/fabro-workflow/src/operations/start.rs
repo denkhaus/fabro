@@ -14,6 +14,7 @@ use fabro_sandbox::from_environment::{
     daytona_config_from_environment, docker_config_from_environment_with_secrets,
     local_working_directory_from_environment,
 };
+use fabro_sandbox::plugin::plugin_options_from_environment;
 use fabro_sandbox::{DaytonaCredentials, DockerSandboxOptions, SandboxSpec};
 use fabro_static::EnvVars;
 #[cfg(test)]
@@ -23,6 +24,7 @@ use fabro_types::settings::run::{
     ResolvedGithubIntegration, ResolvedMcpEntry, RunMode, RunNamespace as ResolvedRunSettings,
     RunPrepareSettings as ResolvedRunPrepareSettings,
 };
+use fabro_types::settings::server::ServerSandboxProvidersSettings;
 use fabro_types::{
     BundledProvider, ManifestPath, RunId, RunRunnableSource, RunSpec, RunTarget,
     SandboxProviderKind, TargetValidationError,
@@ -91,6 +93,7 @@ struct RunSession {
     workflow_bundle:   Option<Arc<WorkflowBundle>>,
     run_control:       Option<Arc<RunControlState>>,
     vault:             Arc<AsyncRwLock<Vault>>,
+    sandbox_providers: ServerSandboxProvidersSettings,
     catalog:           Arc<Catalog>,
     fabro_run_tools:   Option<FabroRunToolServices>,
 }
@@ -117,6 +120,10 @@ pub struct StartServices {
     /// env. Empty when the github integration requests no token.
     pub github_integration: ResolvedGithubIntegration,
     pub vault:              Arc<AsyncRwLock<Vault>>,
+    /// The server's sandbox provider settings: which kinds are enabled and
+    /// which run as plugins. The worker builds and reattaches sandboxes
+    /// with them.
+    pub sandbox_providers:  ServerSandboxProvidersSettings,
     pub catalog:            Arc<Catalog>,
     pub on_node:            crate::OnNodeCallback,
     pub registry_override:  Option<Arc<HandlerRegistry>>,
@@ -560,9 +567,37 @@ impl RunSession {
                 }
             }
             None => {
-                return Err(Error::engine(format!(
-                    "sandbox provider `{sandbox_provider}` is not bundled; plugin providers are not wired into run start yet"
-                )));
+                let settings = services
+                    .sandbox_providers
+                    .get(&sandbox_provider)
+                    .cloned()
+                    .ok_or_else(|| {
+                        Error::engine(format!(
+                            "sandbox provider `{sandbox_provider}` is not configured; add [server.sandbox.providers.{sandbox_provider}] to settings.toml"
+                        ))
+                    })?;
+                let env = resolved
+                    .environment
+                    .resolve_env(secret_lookup)
+                    .map_err(|err| {
+                        Error::engine_with_source("failed to resolve environment variables", err)
+                    })?
+                    .into_iter()
+                    .collect();
+                let mut options =
+                    plugin_options_from_environment(&resolved.environment, &resolved.clone, env);
+                options.skip_clone |= clone_source.skip_clone;
+                SandboxSpec::Plugin {
+                    kind:             sandbox_provider.clone(),
+                    settings:         Box::new(settings),
+                    options:          Box::new(options),
+                    github_app:       services.github_app.clone(),
+                    run_id:           Some(record.run_id),
+                    clone_origin_url: clone_source.origin_url,
+                    clone_branch:     clone_source.branch,
+                    clone_tag:        clone_source.tag,
+                    clone_commit_sha: clone_source.commit_sha,
+                }
             }
         };
 
@@ -632,6 +667,7 @@ impl RunSession {
             workflow_path,
             workflow_bundle,
             vault: services.vault,
+            sandbox_providers: services.sandbox_providers,
             catalog,
             fabro_run_tools: services.fabro_run_tools,
         })
@@ -1002,6 +1038,7 @@ impl RunSession {
             hooks: self.hooks,
             sandbox_env: self.sandbox_env,
             vault: self.vault,
+            sandbox_providers: self.sandbox_providers,
             git: self.git,
             registry_override: self.registry_override,
             artifact_sink: self.artifact_sink,
@@ -2582,6 +2619,7 @@ reasoning = false
             github_app: None,
             github_integration: ResolvedGithubIntegration::default(),
             vault: Arc::new(AsyncRwLock::new(start_vault(&[]))),
+            sandbox_providers: ServerSandboxProvidersSettings::default(),
             catalog: test_catalog(),
             on_node: None,
             registry_override: Some(registry),

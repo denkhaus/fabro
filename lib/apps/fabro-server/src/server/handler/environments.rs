@@ -9,6 +9,7 @@ use fabro_types::settings::run::{
     DockerfileSource, EnvironmentImageSettings, EnvironmentLifecycleSettings,
     EnvironmentNetworkSettings, EnvironmentResourcesSettings, EnvironmentSettings,
 };
+use fabro_util::error::{collect_chain, render_with_causes};
 use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 
@@ -267,10 +268,17 @@ impl From<EnvironmentStoreError> for ApiError {
             | EnvironmentStoreError::JsonDecode { .. }
             | EnvironmentStoreError::Db { .. }
             | EnvironmentStoreError::RowCountOverflow { .. }
-            | EnvironmentStoreError::Io { .. } => Self::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "environment store operation failed",
-            ),
+            | EnvironmentStoreError::Io { .. } => {
+                // The response hides the cause; the log keeps it.
+                tracing::error!(
+                    error = %render_with_causes(&err.to_string(), &collect_chain(&err)),
+                    "environment store operation failed"
+                );
+                Self::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "environment store operation failed",
+                )
+            }
         }
     }
 }

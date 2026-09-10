@@ -29,7 +29,7 @@ pub use crate::config::{
 pub use crate::driver::DaytonaCredentials;
 use crate::driver::{ProviderConnectOptions, connect_provider};
 use crate::driver_sandbox::{
-    CreatePlan, DriverSandbox, PreparedCreate, RepoWorkspace, WorkspaceLayout,
+    CreatePlan, DriverSandbox, LayoutSource, PreparedCreate, RepoWorkspace, WorkspaceLayout,
 };
 use crate::managed_labels;
 use crate::sandbox::SandboxEvent;
@@ -512,7 +512,7 @@ pub async fn daytona_sandbox(
     credentials: &DaytonaCredentials,
 ) -> crate::Result<DriverSandbox> {
     let workspace = RepoWorkspace::plan(
-        layout(),
+        LayoutSource::Fixed(layout()),
         config.skip_clone,
         clone_origin_url.as_deref(),
         clone_branch.as_deref(),
@@ -571,8 +571,12 @@ pub async fn attach_daytona(
         &status.labels,
         run_id.as_ref(),
     )?;
-    let workspace =
-        RepoWorkspace::attached(layout(), repo_cloned, working_directory, clone_origin_url);
+    let workspace = RepoWorkspace::attached(
+        LayoutSource::Fixed(layout()),
+        repo_cloned,
+        working_directory,
+        clone_origin_url,
+    );
     let sandbox = DriverSandbox::attached(SandboxProviderKind::DAYTONA, handle, workspace);
     if let Some(snapshot) = status.source {
         sandbox.set_snapshot(snapshot);
@@ -867,5 +871,121 @@ mod tests {
             err.to_string(),
             "Daytona credential probe timed out after 1ms"
         );
+    }
+}
+
+/// The git clone contract over the plugin wire against live Daytona.
+///
+/// Host and Docker derive their git facet from `Exec`, so only Daytona
+/// exercises the driver's native clone through the JSON-RPC protocol. The
+/// provider is served over an in-process duplex pipe exactly as a plugin
+/// executable would serve it on stdio.
+#[cfg(test)]
+mod wire_gate {
+    use std::sync::Arc;
+
+    use fabro_static::EnvVars;
+    use fabro_types::SandboxProviderKind;
+    use sandbox_driver::{SandboxProvider, SandboxSource, SandboxSpec as DriverSpec};
+    use sandbox_driver_protocol::{PluginProvider, serve};
+    use tokio::io::{duplex, split};
+
+    use super::*;
+    use crate::Sandbox as _;
+    use crate::driver_sandbox::{DriverSandbox, LayoutSource, RepoWorkspace};
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the live gate takes Daytona credentials from the developer's environment"
+    )]
+    fn live_credentials() -> Option<DaytonaCredentials> {
+        let api_key = std::env::var(EnvVars::DAYTONA_API_KEY).ok()?;
+        Some(DaytonaCredentials {
+            api_key,
+            api_url: std::env::var(EnvVars::DAYTONA_API_URL)
+                .or_else(|_| std::env::var(EnvVars::DAYTONA_SERVER_URL))
+                .ok(),
+            organization_id: std::env::var(EnvVars::DAYTONA_ORGANIZATION_ID).ok(),
+            target: None,
+            http_client: None,
+        })
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore = "requires live Daytona credentials and provisions a sandbox"]
+    async fn native_clone_over_the_wire_lays_out_the_repository() {
+        let credentials = live_credentials().expect("DAYTONA_API_KEY must be set");
+        let in_process = connect(&credentials).await.expect("connect to Daytona");
+
+        let (host_side, plugin_side) = duplex(1024 * 1024);
+        let (host_read, host_write) = split(host_side);
+        let (plugin_read, plugin_write) = split(plugin_side);
+        tokio::spawn(serve(Arc::clone(&in_process), plugin_read, plugin_write));
+        let remote = PluginProvider::connect(host_read, host_write)
+            .await
+            .expect("protocol handshake");
+        assert_eq!(remote.kind().as_str(), "daytona");
+        let remote: Arc<dyn SandboxProvider> = Arc::new(remote);
+
+        let workspace = RepoWorkspace::plan(
+            LayoutSource::Fixed(layout()),
+            false,
+            Some("https://github.com/brynary/rack-test"),
+            None,
+            None,
+            None,
+            Some(100),
+            None,
+        )
+        .expect("clone plan");
+        let snapshot = SnapshotId::try_new(DEFAULT_SNAPSHOT).expect("snapshot id");
+        let spec = DriverSpec::new(SandboxSource::Snapshot { id: snapshot });
+        let spec = driver_spec(&DaytonaConfig::default(), None, &snapshot_id_of(&spec));
+        let sandbox = DriverSandbox::pending(
+            SandboxProviderKind::DAYTONA,
+            remote,
+            spec,
+            Some(DEFAULT_SNAPSHOT.to_string()),
+            workspace,
+        );
+        sandbox
+            .initialize()
+            .await
+            .expect("initialize over the wire");
+
+        let checks = async {
+            assert_eq!(
+                sandbox.working_directory(),
+                "/home/daytona/workspace/rack-test"
+            );
+            let result = sandbox
+                .exec_command(
+                    "test -d /home/daytona/repos/brynary/rack-test/.git && \
+                     test -L /home/daytona/workspace/rack-test && \
+                     git rev-parse --is-inside-work-tree",
+                    30_000,
+                    None,
+                    None,
+                    None,
+                )
+                .await
+                .expect("layout check");
+            assert!(result.is_success(), "{result:?}");
+            assert!(result.stdout.contains("true"));
+            let layout = sandbox.workspace_layout().expect("layout record");
+            assert_eq!(
+                layout.primary_repo_path.as_deref(),
+                Some("/home/daytona/repos/brynary/rack-test")
+            );
+        };
+        checks.await;
+        sandbox.cleanup().await.expect("cleanup");
+    }
+
+    fn snapshot_id_of(spec: &DriverSpec) -> SnapshotId {
+        match &spec.source {
+            SandboxSource::Snapshot { id } => id.clone(),
+            _ => unreachable!("the gate builds a snapshot source"),
+        }
     }
 }

@@ -22,8 +22,9 @@ use fabro_sandbox::from_environment::{
     daytona_config_from_environment, docker_config_from_environment,
     local_working_directory_from_environment,
 };
+use fabro_sandbox::plugin::plugin_options_from_environment;
 use fabro_sandbox::redact::redact_auth_url;
-use fabro_sandbox::{DaytonaCredentials, DockerSandboxOptions, Sandbox, SandboxSpec};
+use fabro_sandbox::{DockerSandboxOptions, ProviderAccess, Sandbox, SandboxSpec};
 use fabro_static::EnvVars;
 use fabro_types::settings::ModelRef;
 use fabro_types::settings::cli::OutputVerbosity;
@@ -484,14 +485,14 @@ async fn build_preflight_report(
         None
     };
 
-    let daytona = state.vault_daytona_credentials().await?;
+    let access = state.provider_access().await?;
     let sandbox_ok = run_sandbox_check(
         &mut checks,
         &sandbox_provider,
         prepared,
         &resolved_run,
         github_app.clone(),
-        daytona,
+        &access,
     )
     .await;
     let repository_access_ok = run_repository_access_check(
@@ -919,7 +920,7 @@ fn preflight_sandbox_spec(
     prepared: &PreparedManifest,
     resolved_run: &RunNamespace,
     github_app: Option<fabro_github::GitHubCredentials>,
-    daytona: Option<DaytonaCredentials>,
+    access: &ProviderAccess,
 ) -> std::result::Result<SandboxSpec, fabro_sandbox::Error> {
     let clone_origin_url = prepared
         .git
@@ -959,13 +960,44 @@ fn preflight_sandbox_spec(
                 clone_branch,
                 clone_tag: None,
                 clone_commit_sha: None,
-                credentials: daytona,
+                credentials: access.daytona.clone(),
             }
         }
         None => {
-            return Err(fabro_sandbox::Error::message(format!(
-                "sandbox provider `{sandbox_provider}` is not bundled; plugin providers are constructed by the server"
-            )));
+            let settings = access.settings_for(sandbox_provider).ok_or_else(|| {
+                fabro_sandbox::Error::message(format!(
+                    "sandbox provider `{sandbox_provider}` is not configured; add [server.sandbox.providers.{sandbox_provider}] to settings.toml"
+                ))
+            })?;
+            // No vault is available on this path, so a `{{ secrets.* }}` value
+            // keeps its source form, as the Docker preflight does.
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "preflight has no vault; an unresolved secret token is carried in source form"
+            )]
+            let env = resolved_run
+                .environment
+                .env
+                .iter()
+                .map(|(key, value)| (key.clone(), value.as_source()))
+                .collect();
+            let mut options = plugin_options_from_environment(
+                &resolved_run.environment,
+                &resolved_run.clone,
+                env,
+            );
+            options.skip_clone = true;
+            SandboxSpec::Plugin {
+                kind: sandbox_provider.clone(),
+                settings: Box::new(settings),
+                options: Box::new(options),
+                github_app,
+                run_id: None,
+                clone_origin_url,
+                clone_branch,
+                clone_tag: None,
+                clone_commit_sha: None,
+            }
         }
     })
 }
@@ -976,14 +1008,14 @@ async fn run_sandbox_check(
     prepared: &PreparedManifest,
     resolved_run: &RunNamespace,
     github_app: Option<fabro_github::GitHubCredentials>,
-    daytona: Option<DaytonaCredentials>,
+    access: &ProviderAccess,
 ) -> bool {
     let spec = match preflight_sandbox_spec(
         sandbox_provider,
         prepared,
         resolved_run,
         github_app.clone(),
-        daytona,
+        access,
     ) {
         Ok(spec) => spec,
         Err(err) => {
@@ -2242,7 +2274,7 @@ provider = "local"
             &prepared,
             &resolved,
             None,
-            None,
+            &ProviderAccess::default(),
         );
 
         match spec {

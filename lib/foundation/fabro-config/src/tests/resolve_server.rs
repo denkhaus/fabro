@@ -285,8 +285,8 @@ E2B_API_URL = "https://api.e2b.example"
 }
 
 #[test]
-fn server_sandbox_rejects_plugin_settings_on_bundled_providers() {
-    let err = ServerSettingsBuilder::from_toml(
+fn server_sandbox_plugin_settings_on_a_bundled_provider_serve_it_out_of_process() {
+    let settings = ServerSettingsBuilder::from_toml(
         r#"
 _version = 1
 
@@ -295,15 +295,33 @@ methods = ["dev-token"]
 
 [server.sandbox.providers.docker]
 path = "/usr/local/bin/fabro-sandbox-docker"
+dev = true
+inherit_env = ["PATH", "DOCKER_HOST"]
 "#,
     )
-    .expect_err("bundled providers take no plugin settings");
+    .expect("bundled providers accept plugin settings");
 
-    assert!(
-        err.to_string()
-            .contains("server.sandbox.providers.docker.path"),
-        "unexpected error: {err}"
+    let providers = &settings.server.sandbox.providers;
+    let docker = providers
+        .get(&SandboxProviderKind::DOCKER)
+        .expect("docker entry");
+    assert!(docker.enabled);
+    let plugin = docker.plugin.as_ref().expect("docker runs as a plugin");
+    assert_eq!(
+        plugin.path.as_deref(),
+        Some("/usr/local/bin/fabro-sandbox-docker")
     );
+    assert!(plugin.dev);
+    assert_eq!(plugin.inherit_env, vec!["PATH", "DOCKER_HOST"]);
+    assert!(
+        providers
+            .get(&SandboxProviderKind::LOCAL)
+            .expect("local entry")
+            .plugin
+            .is_none(),
+        "an entry without plugin keys stays in-process"
+    );
+    assert_eq!(providers.enabled_plugins().count(), 1);
 }
 
 #[test]

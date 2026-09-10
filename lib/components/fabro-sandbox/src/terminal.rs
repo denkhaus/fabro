@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use fabro_types::{BundledProvider, RunId, RunSandboxInstance};
 
-use crate::driver::DaytonaCredentials;
-use crate::{Sandbox, daytona, docker};
+use crate::driver::ProviderAccess;
+use crate::{Sandbox, reconnect};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TerminalSize {
@@ -75,53 +75,18 @@ impl TerminalSession for DriverTerminalSession {
 
 pub async fn open_terminal_for_run(
     record: &RunSandboxInstance,
-    daytona: Option<DaytonaCredentials>,
+    access: &ProviderAccess,
     run_id: Option<RunId>,
     size: TerminalSize,
 ) -> crate::Result<Box<dyn TerminalSession>> {
-    let runtime = &record.runtime;
-
-    match record.provider.bundled() {
-        Some(BundledProvider::Daytona) => {
-            let repo_cloned = runtime.repo_cloned.ok_or_else(|| {
-                crate::Error::message("Daytona run sandbox is missing clone metadata")
-            })?;
-            let credentials = daytona.ok_or_else(|| {
-                crate::Error::message("Daytona terminals require DAYTONA_API_KEY in the vault")
-            })?;
-            let sandbox = daytona::attach_daytona(
-                &runtime.id,
-                repo_cloned,
-                runtime.working_directory.clone(),
-                runtime.clone_origin_url.clone(),
-                run_id,
-                &credentials,
-            )
-            .await?;
-            sandbox.activate().await?;
-            Ok(Box::new(sandbox.open_terminal(size).await?))
-        }
-        Some(BundledProvider::Docker) => {
-            let repo_cloned = runtime.repo_cloned.ok_or_else(|| {
-                crate::Error::message("Docker run sandbox is missing clone metadata")
-            })?;
-            let sandbox = docker::attach_docker(
-                &runtime.id,
-                repo_cloned,
-                runtime.working_directory.clone(),
-                runtime.clone_origin_url.clone(),
-                run_id,
-            )
-            .await?;
-            sandbox.activate().await?;
-            Ok(Box::new(sandbox.open_terminal(size).await?))
-        }
-        Some(BundledProvider::Local) => Err(crate::Error::message(
+    if record.provider.bundled() == Some(BundledProvider::Local) {
+        return Err(crate::Error::message(
             "Local sandboxes do not support embedded terminals",
-        )),
-        None => Err(crate::Error::message(format!(
-            "Sandbox provider '{}' does not support embedded terminals yet",
-            record.provider
-        ))),
+        ));
     }
+    let sandbox = reconnect::reconnect_driver_for_run(record, access, run_id, None)
+        .await
+        .map_err(|err| crate::Error::context_anyhow("Failed to reconnect sandbox", err))?;
+    sandbox.activate().await?;
+    Ok(Box::new(sandbox.open_terminal(size).await?))
 }

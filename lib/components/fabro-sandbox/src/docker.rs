@@ -17,7 +17,7 @@ use sandbox_driver::{
 use sandbox_driver_docker_config::DockerProviderConfig;
 
 use crate::driver::{ProviderConnectOptions, connect_provider};
-use crate::driver_sandbox::{DriverSandbox, RepoWorkspace, WorkspaceLayout};
+use crate::driver_sandbox::{DriverSandbox, LayoutSource, RepoWorkspace, WorkspaceLayout};
 use crate::managed_labels;
 
 pub const WORKING_DIRECTORY: &str = "/workspace";
@@ -140,7 +140,7 @@ pub async fn docker_sandbox(
     clone_commit_sha: Option<String>,
 ) -> crate::Result<DriverSandbox> {
     let workspace = RepoWorkspace::plan(
-        layout(),
+        LayoutSource::Fixed(layout()),
         options.skip_clone,
         clone_origin_url.as_deref(),
         clone_branch.as_deref(),
@@ -191,8 +191,12 @@ pub async fn attach_docker(
         &status.labels,
         run_id.as_ref(),
     )?;
-    let workspace =
-        RepoWorkspace::attached(layout(), repo_cloned, working_directory, clone_origin_url);
+    let workspace = RepoWorkspace::attached(
+        LayoutSource::Fixed(layout()),
+        repo_cloned,
+        working_directory,
+        clone_origin_url,
+    );
     Ok(DriverSandbox::attached(
         SandboxProviderKind::DOCKER,
         handle,

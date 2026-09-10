@@ -27,6 +27,17 @@ pub(crate) const GIT: &str = "git -c maintenance.auto=0 -c gc.auto=0";
 
 pub const DEFAULT_EXEC_OUTPUT_TAIL_BYTES: usize = 8 * 1024;
 
+/// Where a clone-based sandbox put its files, as persisted on the run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SandboxWorkspaceLayout {
+    pub workspace_root:    String,
+    pub repos_root:        String,
+    /// The repository checkout and its link in the workspace, when a
+    /// repository was cloned.
+    pub primary_repo_path: Option<String>,
+    pub primary_repo_link: Option<String>,
+}
+
 /// Information returned when a sandbox sets up git for a workflow run.
 #[derive(Debug, Clone)]
 pub struct GitRunInfo {
@@ -192,6 +203,10 @@ macro_rules! delegate_sandbox {
 
             fn snapshot_info(&self) -> Option<String> {
                 self.$field.snapshot_info()
+            }
+
+            fn workspace_layout(&self) -> Option<$crate::SandboxWorkspaceLayout> {
+                self.$field.workspace_layout()
             }
 
             async fn refresh_push_credentials(&self) -> $crate::Result<$crate::RefreshOutcome> {
@@ -1361,6 +1376,13 @@ pub trait Sandbox: Send + Sync {
     /// Return the provider snapshot used by an initialized sandbox, when the
     /// provider has a snapshot concept.
     fn snapshot_info(&self) -> Option<String> {
+        None
+    }
+
+    /// The clone-based workspace layout of an initialized sandbox, for the
+    /// run record. `None` for a sandbox that works in a designated
+    /// directory.
+    fn workspace_layout(&self) -> Option<SandboxWorkspaceLayout> {
         None
     }
 

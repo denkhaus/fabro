@@ -12,7 +12,7 @@ use fabro_graphviz::graph;
 use fabro_hooks::{HookContext, HookDecision, HookEvent, HookExecutionContext, HookRunner};
 use fabro_model::Catalog;
 use fabro_sandbox::{
-    DaytonaCredentials, GitSetupIntent, SandboxEventCallback, SandboxSpec,
+    DaytonaCredentials, GitSetupIntent, ProviderAccess, SandboxEventCallback, SandboxSpec,
     reconnect_for_run_with_callback, shell_quote,
 };
 use fabro_static::EnvVars;
@@ -432,15 +432,20 @@ pub async fn initialize(
     };
     let attach_existing = attach_instance.is_some();
     let sandbox: Arc<dyn Sandbox> = if let Some(instance) = attach_instance {
-        let daytona = options
-            .vault
-            .read()
-            .await
-            .get(EnvVars::DAYTONA_API_KEY)
-            .map(|api_key| DaytonaCredentials::from_api_key(api_key.to_string(), process_env_var));
+        let access = ProviderAccess {
+            providers: options.sandbox_providers.clone(),
+            daytona:   options
+                .vault
+                .read()
+                .await
+                .get(EnvVars::DAYTONA_API_KEY)
+                .map(|api_key| {
+                    DaytonaCredentials::from_api_key(api_key.to_string(), process_env_var)
+                }),
+        };
         let sandbox = reconnect_for_run_with_callback(
             &instance,
-            daytona,
+            &access,
             Some(options.run_options.run_id),
             Some(Arc::clone(&sandbox_event_callback)),
         )
@@ -943,6 +948,8 @@ mod tests {
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            sandbox_providers:
+                fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
             run_control: None,
             registry_override: None,
@@ -1388,6 +1395,8 @@ mod tests {
                 origin_url:         None,
             },
             vault,
+            sandbox_providers:
+                fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
             run_control: None,
             registry_override: None,
@@ -1491,6 +1500,8 @@ mod tests {
                 origin_url:         None,
             },
             vault:             auth_test_support::empty_vault(),
+            sandbox_providers:
+                fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git:               None,
             run_control:       None,
             registry_override: None,
@@ -1633,6 +1644,8 @@ mod tests {
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            sandbox_providers:
+                fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
             run_control: None,
             registry_override: None,

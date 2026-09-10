@@ -63,8 +63,8 @@ pub async fn local_sandbox(working_directory: impl Into<PathBuf>) -> crate::Resu
 use crate::exec::{ExplicitEnvPolicy, SandboxExec};
 use crate::sandbox::{
     self, DirEntry, ExecResult, ExecStreamingRequest, ExecStreamingResult, GrepOptions, PushError,
-    PushReport, Sandbox, SandboxEvent, SandboxEventCallback, SandboxFile, StdioProcess,
-    WalkOptions,
+    PushReport, Sandbox, SandboxEvent, SandboxEventCallback, SandboxFile, SandboxWorkspaceLayout,
+    StdioProcess, WalkOptions,
 };
 
 /// Where a clone-based provider puts its files: the run works under
@@ -73,6 +73,27 @@ use crate::sandbox::{
 pub(crate) struct WorkspaceLayout {
     pub(crate) workspace_root: String,
     pub(crate) repos_root:     String,
+}
+
+impl WorkspaceLayout {
+    /// The layout for a provider whose working directory fabro does not
+    /// choose: repositories check out beside the workspace contents under
+    /// `.repos`, and the run works in the link the workspace root carries.
+    pub(crate) fn within(working_directory: &str) -> Self {
+        Self {
+            workspace_root: working_directory.to_string(),
+            repos_root:     sandbox::join_sandbox_path(working_directory, ".repos"),
+        }
+    }
+}
+
+/// How a workspace learns its layout.
+pub(crate) enum LayoutSource {
+    /// Fabro fixes the roots before the sandbox exists.
+    Fixed(WorkspaceLayout),
+    /// The roots follow the provider's working directory, known once the
+    /// sandbox exists.
+    ProviderWorkingDirectory,
 }
 
 /// What `initialize` does to the workspace once the sandbox runs.
@@ -88,7 +109,7 @@ enum WorkspacePlan {
 /// Fabro's clone-based workspace on an isolated sandbox: the layout, the
 /// clone it performs, and the GitHub credentials its checkout carries.
 pub(crate) struct RepoWorkspace {
-    layout:              WorkspaceLayout,
+    layout:              OnceLock<WorkspaceLayout>,
     plan:                WorkspacePlan,
     credentials:         PushCredentialState,
     repo_cloned:         OnceLock<bool>,
@@ -110,7 +131,7 @@ impl RepoWorkspace {
         reason = "the clone selectors are validated together by decide_clone"
     )]
     pub(crate) fn plan(
-        layout: WorkspaceLayout,
+        layout: LayoutSource,
         skip_clone: bool,
         clone_origin_url: Option<&str>,
         clone_branch: Option<&str>,
@@ -146,7 +167,7 @@ impl RepoWorkspace {
             }),
         };
         Ok(Self {
-            layout,
+            layout: layout.into_cell(),
             plan,
             credentials,
             repo_cloned: OnceLock::new(),
@@ -160,45 +181,97 @@ impl RepoWorkspace {
     /// record. Pushes from a reattached sandbox use whatever credentials the
     /// checkout's `origin` already carries.
     pub(crate) fn attached(
-        layout: WorkspaceLayout,
+        layout: LayoutSource,
         repo_cloned: bool,
         working_directory: String,
         clone_origin_url: Option<String>,
     ) -> Self {
         let workspace = Self {
-            layout,
-            plan: WorkspacePlan::Attached,
-            credentials: PushCredentialState::new(None),
-            repo_cloned: OnceLock::new(),
-            origin_url: OnceLock::new(),
+            layout:              layout.into_cell(),
+            plan:                WorkspacePlan::Attached,
+            credentials:         PushCredentialState::new(None),
+            repo_cloned:         OnceLock::new(),
+            origin_url:          OnceLock::new(),
             execution_directory: OnceLock::new(),
-            checkout_path: OnceLock::new(),
+            checkout_path:       OnceLock::new(),
         };
         let _ = workspace.repo_cloned.set(repo_cloned);
         let _ = workspace.execution_directory.set(working_directory);
         if repo_cloned {
             if let Some(origin) = clone_origin_url {
-                if let Ok(repo_layout) = clone_source::github_repo_layout(
-                    &origin,
-                    &workspace.layout.workspace_root,
-                    &workspace.layout.repos_root,
-                ) {
-                    let _ = workspace.checkout_path.set(repo_layout.primary_repo_path);
-                }
                 let _ = workspace.origin_url.set(origin);
             }
         }
+        workspace.derive_checkout_path();
         workspace
+    }
+
+    /// Settle a provider-dependent layout from the sandbox's working
+    /// directory. A fixed layout is left alone.
+    fn resolve_layout(&self, provider_working_directory: &str) -> &WorkspaceLayout {
+        let layout = self
+            .layout
+            .get_or_init(|| WorkspaceLayout::within(provider_working_directory));
+        self.derive_checkout_path();
+        layout
+    }
+
+    /// The checkout behind an attached clone, once the layout is known.
+    fn derive_checkout_path(&self) {
+        if self.checkout_path.get().is_some() || !self.repo_cloned() {
+            return;
+        }
+        let (Some(layout), Some(origin)) = (self.layout.get(), self.origin_url.get()) else {
+            return;
+        };
+        if let Ok(repo_layout) =
+            clone_source::github_repo_layout(origin, &layout.workspace_root, &layout.repos_root)
+        {
+            let _ = self.checkout_path.set(repo_layout.primary_repo_path);
+        }
     }
 
     fn repo_cloned(&self) -> bool {
         self.repo_cloned.get().copied().unwrap_or(false)
     }
 
-    fn working_directory(&self) -> &str {
+    fn working_directory(&self) -> Option<&str> {
         self.execution_directory
             .get()
-            .map_or(self.layout.workspace_root.as_str(), String::as_str)
+            .map(String::as_str)
+            .or_else(|| {
+                self.layout
+                    .get()
+                    .map(|layout| layout.workspace_root.as_str())
+            })
+    }
+
+    fn record(&self) -> Option<SandboxWorkspaceLayout> {
+        let layout = self.layout.get()?;
+        let repo = if self.repo_cloned() {
+            self.origin_url.get().and_then(|origin| {
+                clone_source::github_repo_layout(origin, &layout.workspace_root, &layout.repos_root)
+                    .ok()
+            })
+        } else {
+            None
+        };
+        Some(SandboxWorkspaceLayout {
+            workspace_root:    layout.workspace_root.clone(),
+            repos_root:        layout.repos_root.clone(),
+            primary_repo_path: repo.as_ref().map(|repo| repo.primary_repo_path.clone()),
+            primary_repo_link: repo.as_ref().map(|repo| repo.primary_repo_link.clone()),
+        })
+    }
+}
+
+impl LayoutSource {
+    fn into_cell(self) -> OnceLock<WorkspaceLayout> {
+        let cell = OnceLock::new();
+        if let Self::Fixed(layout) = self {
+            let _ = cell.set(layout);
+        }
+        cell
     }
 }
 
@@ -319,6 +392,7 @@ impl DriverSandbox {
         handle: Arc<dyn DriverHandle>,
         workspace: RepoWorkspace,
     ) -> Self {
+        workspace.resolve_layout(handle.working_directory());
         let mut sandbox = Self::new(kind, handle);
         sandbox.workspace = Some(workspace);
         sandbox
@@ -378,11 +452,13 @@ impl DriverSandbox {
     /// resolves relative paths against the sandbox's own working directory,
     /// which sits above a cloned repository's link.
     fn resolve(&self, path: &str) -> String {
-        match &self.workspace {
-            Some(workspace) if workspace.execution_directory.get().is_some() => {
-                sandbox::resolve_path(path, workspace.working_directory())
-            }
-            _ => path.to_string(),
+        match self
+            .workspace
+            .as_ref()
+            .and_then(|workspace| workspace.execution_directory.get())
+        {
+            Some(working_directory) => sandbox::resolve_path(path, working_directory),
+            None => path.to_string(),
         }
     }
 
@@ -446,6 +522,9 @@ impl DriverSandbox {
         let Some(workspace) = &self.workspace else {
             return Ok(());
         };
+        let layout = workspace
+            .resolve_layout(self.handle()?.working_directory())
+            .clone();
         match &workspace.plan {
             WorkspacePlan::Attached => Ok(()),
             WorkspacePlan::Empty(reason) => {
@@ -458,15 +537,18 @@ impl DriverSandbox {
                 }
                 self.handle()?
                     .fs()
-                    .create_dir(&workspace.layout.workspace_root)
+                    .create_dir(&layout.workspace_root)
                     .await
                     .map_err(|error| {
                         crate::Error::context(
-                            format!("Failed to create {}", workspace.layout.workspace_root),
+                            format!("Failed to create {}", layout.workspace_root),
                             error,
                         )
                     })?;
                 let _ = workspace.repo_cloned.set(false);
+                let _ = workspace
+                    .execution_directory
+                    .set(layout.workspace_root.clone());
                 Ok(())
             }
             WorkspacePlan::Clone(plan) => {
@@ -484,8 +566,8 @@ impl DriverSandbox {
                     handle.as_ref(),
                     &exec,
                     plan,
-                    &workspace.layout.workspace_root,
-                    &workspace.layout.repos_root,
+                    &layout.workspace_root,
+                    &layout.repos_root,
                     &workspace.credentials,
                 )
                 .await;
@@ -1021,8 +1103,12 @@ impl Sandbox for DriverSandbox {
     /// The directory the run works in: the cloned repository's link for a
     /// clone-based workspace, the provider's working directory otherwise.
     fn working_directory(&self) -> &str {
-        if let Some(workspace) = &self.workspace {
-            return workspace.working_directory();
+        if let Some(directory) = self
+            .workspace
+            .as_ref()
+            .and_then(RepoWorkspace::working_directory)
+        {
+            return directory;
         }
         self.handle
             .get()
@@ -1064,6 +1150,10 @@ impl Sandbox for DriverSandbox {
 
     fn snapshot_info(&self) -> Option<String> {
         self.snapshot.get().cloned()
+    }
+
+    fn workspace_layout(&self) -> Option<SandboxWorkspaceLayout> {
+        self.workspace.as_ref().and_then(RepoWorkspace::record)
     }
 
     async fn set_autostop_interval(&self, minutes: i32) -> crate::Result<()> {

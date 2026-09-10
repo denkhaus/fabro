@@ -714,11 +714,11 @@ async fn build_agent_session(
     let sandbox_instance = sandbox_record.instance().ok_or_else(|| {
         AskFabroBuildError::SandboxUnavailable(anyhow::anyhow!("run sandbox was not created"))
     })?;
-    let daytona = state
-        .vault_daytona_credentials()
+    let access = state
+        .provider_access()
         .await
         .map_err(|err| AskFabroBuildError::Agent(anyhow::Error::new(err)))?;
-    let sandbox = reconnect_for_run(sandbox_instance, daytona, Some(run_id))
+    let sandbox = reconnect_for_run(sandbox_instance, &access, Some(run_id))
         .await
         .map_err(AskFabroBuildError::SandboxUnavailable)?;
     sandbox

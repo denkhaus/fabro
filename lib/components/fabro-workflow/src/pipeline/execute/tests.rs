@@ -295,6 +295,8 @@ async fn execute_test_run_with_options(
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            sandbox_providers:
+                fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: git_options,
             run_control: None,
             registry_override,
@@ -357,6 +359,8 @@ async fn execute_runs_start_to_exit_and_returns_final_context() {
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            sandbox_providers:
+                fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
             run_control: None,
             registry_override: None,
@@ -496,6 +500,8 @@ async fn resumed_in_flight_node_starts_a_new_stage_execution() {
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            sandbox_providers:
+                fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
             run_control: None,
             registry_override: Some(Arc::new(make_registry())),
@@ -607,6 +613,8 @@ async fn run_with_lifecycle(
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
+            sandbox_providers:
+                fabro_types::settings::server::ServerSandboxProvidersSettings::default(),
             git: None,
             run_control: None,
             registry_override: Some(Arc::new(registry)),

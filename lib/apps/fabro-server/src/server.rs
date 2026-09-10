@@ -68,7 +68,7 @@ use fabro_model::catalog::LlmCatalogSettings;
 use fabro_model::{BilledTokenCounts, Catalog, ModelRef, ModelTestMode, ProviderId};
 use fabro_redact::redact_jsonl_line;
 use fabro_sandbox::details::sandbox_details;
-use fabro_sandbox::driver::{DaytonaCredentials, ProviderConnectOptions};
+use fabro_sandbox::driver::{DaytonaCredentials, ProviderAccess, ProviderConnectOptions};
 use fabro_sandbox::reconnect::reconnect_for_run;
 use fabro_sandbox::{
     DriverInventoryProvider, LocalSandboxProvider, Sandbox, SandboxProvider,
@@ -1487,14 +1487,17 @@ impl AppState {
         }
     }
 
-    /// Daytona credentials from the vault, `None` when no key is stored.
-    pub(crate) async fn vault_daytona_credentials(
-        &self,
-    ) -> Result<Option<DaytonaCredentials>, SecretStoreError> {
-        Ok(self
-            .vault_secret(EnvVars::DAYTONA_API_KEY)
-            .await?
-            .map(|api_key| self.daytona_credentials(api_key)))
+    /// Everything a reconnect needs to reach a run's provider: the server's
+    /// provider settings and the Daytona credentials from the vault (`None`
+    /// when no key is stored).
+    pub(crate) async fn provider_access(&self) -> Result<ProviderAccess, SecretStoreError> {
+        Ok(ProviderAccess {
+            providers: self.server_settings().server.sandbox.providers.clone(),
+            daytona:   self
+                .vault_secret(EnvVars::DAYTONA_API_KEY)
+                .await?
+                .map(|api_key| self.daytona_credentials(api_key)),
+        })
     }
 
     pub(crate) async fn check_daytona_api_key(
@@ -2790,11 +2793,11 @@ async fn delete_run_sandbox_resource(
         }));
     }
 
-    let daytona = state
-        .vault_daytona_credentials()
+    let access = state
+        .provider_access()
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    let sandbox = match reconnect_for_run(&record, daytona, Some(id)).await {
+    let sandbox = match reconnect_for_run(&record, &access, Some(id)).await {
         Ok(sandbox) => sandbox,
         Err(err) if force || delete_started => {
             tracing::warn!(
@@ -4202,6 +4205,7 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
         github_app,
         github_integration,
         vault: Arc::new(AsyncRwLock::new(vault.into_vault())),
+        sandbox_providers: state.server_settings().server.sandbox.providers.clone(),
         catalog: state.catalog(),
         on_node: None,
         registry_override,

@@ -18,7 +18,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use fabro_static::EnvVars;
-use fabro_types::settings::server::{SandboxPluginSettings, ServerSandboxProviderSettings};
+use fabro_types::settings::server::{
+    SandboxPluginSettings, ServerSandboxProviderSettings, ServerSandboxProvidersSettings,
+};
 use fabro_types::{BundledProvider, SandboxProviderKind};
 use sandbox_driver::{
     Capabilities, EventContext, ProviderHealth, ProviderKind, Sandbox, SandboxFilter, SandboxId,
@@ -73,6 +75,37 @@ impl std::fmt::Debug for DaytonaCredentials {
     }
 }
 
+/// What a process needs to reach every provider a run record can name: the
+/// server's provider settings (which kinds are enabled, which run as
+/// plugins) and the Daytona credentials from the vault.
+#[derive(Clone, Debug, Default)]
+pub struct ProviderAccess {
+    pub providers: ServerSandboxProvidersSettings,
+    pub daytona:   Option<DaytonaCredentials>,
+}
+
+impl ProviderAccess {
+    /// The settings entry for `kind`. A bundled kind without an entry is
+    /// enabled with defaults; any other kind must be configured.
+    pub fn settings_for(
+        &self,
+        kind: &SandboxProviderKind,
+    ) -> Option<ServerSandboxProviderSettings> {
+        match self.providers.get(kind) {
+            Some(settings) => Some(settings.clone()),
+            None if kind.bundled().is_some() => Some(ServerSandboxProviderSettings::default()),
+            None => None,
+        }
+    }
+
+    pub fn connect_options(&self) -> ProviderConnectOptions {
+        ProviderConnectOptions {
+            host_registry_root: None,
+            daytona:            self.daytona.clone(),
+        }
+    }
+}
+
 /// Everything besides the settings entry that a provider connection needs.
 #[derive(Clone, Debug, Default)]
 pub struct ProviderConnectOptions {
@@ -121,10 +154,12 @@ pub enum ConnectError {
 
 /// Connects the provider behind `kind`.
 ///
-/// Bundled kinds return the in-process driver provider. Any other kind
-/// launches the plugin named by `settings.plugin` and returns a supervised
-/// handle that relaunches it after a crash for new work only. Disabled
-/// entries are refused here so no caller has to remember the policy check.
+/// Bundled kinds return the in-process driver provider unless their entry
+/// names a plugin executable, in which case the same kind is served out of
+/// process. Any other kind launches the plugin named by `settings.plugin`.
+/// A plugin returns a supervised handle that relaunches it after a crash
+/// for new work only. Disabled entries are refused here so no caller has to
+/// remember the policy check.
 pub async fn connect_provider(
     kind: &SandboxProviderKind,
     settings: &ServerSandboxProviderSettings,
@@ -132,6 +167,12 @@ pub async fn connect_provider(
 ) -> Result<ConnectedProvider, ConnectError> {
     if !settings.enabled {
         return Err(ConnectError::Disabled { kind: kind.clone() });
+    }
+    if let Some(plugin) = &settings.plugin {
+        return Ok(ConnectedProvider {
+            kind:     kind.clone(),
+            provider: Arc::new(PluginBackedProvider::launch(kind, plugin).await?),
+        });
     }
     let driver = |source| ConnectError::Driver {
         kind: kind.clone(),
@@ -167,13 +208,7 @@ pub async fn connect_provider(
                     .map_err(driver)?,
             )
         }
-        None => {
-            let plugin = settings
-                .plugin
-                .as_ref()
-                .ok_or_else(|| ConnectError::MissingPluginSettings { kind: kind.clone() })?;
-            Arc::new(PluginBackedProvider::launch(kind, plugin).await?)
-        }
+        None => return Err(ConnectError::MissingPluginSettings { kind: kind.clone() }),
     };
     Ok(ConnectedProvider {
         kind: kind.clone(),

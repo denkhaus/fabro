@@ -3,12 +3,14 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use fabro_github::GitHubCredentials;
+use fabro_types::settings::server::ServerSandboxProviderSettings;
 use fabro_types::{RunId, RunSandboxInstance, RunSandboxRuntime, SandboxProviderKind};
 
 use crate::daytona::{self, DaytonaConfig};
 use crate::docker::{self, DockerSandboxOptions};
 use crate::driver::DaytonaCredentials;
 use crate::driver_sandbox::local_sandbox;
+use crate::plugin::{self, PluginSandboxOptions};
 use crate::{Sandbox, SandboxEventCallback, clone_source};
 
 /// Options for sandbox initialization and construction.
@@ -38,6 +40,18 @@ pub enum SandboxSpec {
         /// environment.
         credentials:      Option<DaytonaCredentials>,
     },
+    /// A provider served by a sandbox-driver plugin executable.
+    Plugin {
+        kind:             SandboxProviderKind,
+        settings:         Box<ServerSandboxProviderSettings>,
+        options:          Box<PluginSandboxOptions>,
+        github_app:       Option<GitHubCredentials>,
+        run_id:           Option<RunId>,
+        clone_origin_url: Option<String>,
+        clone_branch:     Option<String>,
+        clone_tag:        Option<String>,
+        clone_commit_sha: Option<String>,
+    },
 }
 
 impl SandboxSpec {
@@ -46,15 +60,12 @@ impl SandboxSpec {
             Self::Local { .. } => SandboxProviderKind::LOCAL,
             Self::Docker { .. } => SandboxProviderKind::DOCKER,
             Self::Daytona { .. } => SandboxProviderKind::DAYTONA,
+            Self::Plugin { kind, .. } => kind.clone(),
         }
     }
 
-    pub fn provider_name(&self) -> &'static str {
-        match self {
-            Self::Local { .. } => "local",
-            Self::Docker { .. } => "docker",
-            Self::Daytona { .. } => "daytona",
-        }
+    pub fn provider_name(&self) -> String {
+        self.provider().to_string()
     }
 
     /// Build initialized sandbox metadata for persistence.
@@ -152,6 +163,40 @@ impl SandboxSpec {
                     },
                 }
             }
+            Self::Plugin {
+                options,
+                clone_origin_url,
+                clone_branch,
+                ..
+            } => {
+                let repo_cloned = clone_source::repo_cloned_for_record(
+                    options.skip_clone,
+                    clone_origin_url.as_deref(),
+                );
+                let layout = sandbox.workspace_layout();
+                RunSandboxInstance {
+                    provider: self.provider(),
+                    image:    options.image.clone(),
+                    snapshot: sandbox.snapshot_info(),
+                    runtime:  RunSandboxRuntime {
+                        id,
+                        working_directory,
+                        repo_cloned,
+                        clone_origin_url: clone_source::clean_clone_origin_for_record(
+                            clone_origin_url.as_deref(),
+                        ),
+                        clone_branch: clone_branch.clone(),
+                        workspace_root: layout.as_ref().map(|layout| layout.workspace_root.clone()),
+                        repos_root: layout.as_ref().map(|layout| layout.repos_root.clone()),
+                        primary_repo_path: layout
+                            .as_ref()
+                            .and_then(|layout| layout.primary_repo_path.clone()),
+                        primary_repo_link: layout
+                            .as_ref()
+                            .and_then(|layout| layout.primary_repo_link.clone()),
+                    },
+                }
+            }
             Self::Local { .. } => RunSandboxInstance {
                 provider: self.provider(),
                 image:    None,
@@ -235,6 +280,35 @@ impl SandboxSpec {
                 )
                 .await
                 .context("Failed to create Daytona sandbox")?;
+                if let Some(callback) = event_callback {
+                    sandbox.set_event_callback(callback);
+                }
+                Ok(Arc::new(sandbox))
+            }
+            Self::Plugin {
+                kind,
+                settings,
+                options,
+                github_app,
+                run_id,
+                clone_origin_url,
+                clone_branch,
+                clone_tag,
+                clone_commit_sha,
+            } => {
+                let mut sandbox = plugin::plugin_sandbox(
+                    kind.clone(),
+                    settings,
+                    options.as_ref().clone(),
+                    github_app.as_ref(),
+                    *run_id,
+                    clone_origin_url.clone(),
+                    clone_branch.clone(),
+                    clone_tag.clone(),
+                    clone_commit_sha.clone(),
+                )
+                .await
+                .with_context(|| format!("Failed to create {kind} sandbox"))?;
                 if let Some(callback) = event_callback {
                     sandbox.set_event_callback(callback);
                 }
