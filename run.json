@@ -571,7 +571,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-10T08:30:14.450104686Z",
-  "last_event_at": "2026-09-10T08:48:42.093046932Z",
+  "last_event_at": "2026-09-10T08:48:46.981949950Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -928,9 +928,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 209,
       "checkpoint": {
-        "timestamp": "2026-09-10T08:48:42.103528197Z",
+        "timestamp": "2026-09-10T08:48:46.981613829Z",
         "current_node": "revise",
         "completed_nodes": [
           "start",
@@ -942,47 +942,36 @@
           "revise": 4
         },
         "context_values": {
-          "failure_signature": "revise|transient_infra|api_transient|zai|rate_limited",
-          "internal.retry_count.revise": 4,
-          "internal.thread_id": "develop",
-          "preferred_label": "Develop integrated",
-          "graph.cycle_counter_reset_key": "pass_id",
-          "internal.retry_count.start": 0,
-          "current_node": "revise",
-          "response.survey": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.survey",
-            "chars": 712,
-            "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus..upstr"
-          },
           "internal.exit_kind": "natural",
-          "graph.rankdir": "LR",
-          "thread.start.current_node": "survey",
-          "thread.survey.current_node": "develop",
-          "response.develop": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.develop",
-            "chars": 762,
-            "preview": "PR #116 merged — develop cycle fully integrated.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Develop integrated\", \"context_updates\": {\"child_run_id\": \"01M25732658J2RFTM6MDM8CPFG\", \"journal\": "
-          },
-          "internal.seed_cycle_anchor": "",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "internal.retry_count.develop": 0,
+          "internal.thread_id": "develop",
+          "failure_signature": "revise|transient_infra|api_transient|zai|rate_limited",
+          "child_run_id": "01M25732658J2RFTM6MDM8CPFG",
+          "internal.retry_count.revise": 4,
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
           "seed_cycles": {
             "start": 1,
             "survey": 1,
             "develop": 1,
             "revise": 1
           },
-          "internal.retry_count.survey": 0,
-          "internal.fidelity": "compact",
-          "graph.max_node_visits": "12",
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "thread.develop.current_node": "revise",
           "internal.run_id": "01M257096GRAPXN5N0C82QD142",
+          "response.develop": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.develop",
+            "chars": 762,
+            "preview": "PR #116 merged — develop cycle fully integrated.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Develop integrated\", \"context_updates\": {\"child_run_id\": \"01M25732658J2RFTM6MDM8CPFG\", \"journal\": "
+          },
+          "graph.max_node_visits": "12",
+          "thread.survey.current_node": "develop",
+          "failure_class": "transient_infra",
+          "internal.seed_cycle_anchor": "",
+          "internal.retry_count.develop": 0,
+          "graph.cycle_counter_reset_key": "pass_id",
+          "graph.rankdir": "LR",
           "internal.work_dir": "/workspace/fabro",
-          "internal.node_visit_count": 1,
-          "last_response": "PR #116 merged — develop cycle fully integrated.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Develop integrated\", \"context_updates\": {\"child_run_id\": \"01M25732658J2RFTM6MDM8CPFG\", \"journal\": ",
-          "last_stage": "develop",
+          "internal.retry_count.start": 0,
+          "internal.fidelity": "compact",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -990,72 +979,24 @@
               "planner self-referential prompt edit shipped through review without stale-prompt incident, but open seed fabro-c080 (re-resolve prompts from run branch tip) remains relevant for this class of seeds"
             ]
           },
-          "graph.preamble_budget_kb": "12",
-          "failure_class": "transient_infra",
+          "preferred_label": "Develop integrated",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "response.survey": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.survey",
+            "chars": 712,
+            "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus..upstr"
+          },
+          "last_stage": "develop",
+          "last_response": "PR #116 merged — develop cycle fully integrated.\n\n{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Develop integrated\", \"context_updates\": {\"child_run_id\": \"01M25732658J2RFTM6MDM8CPFG\", \"journal\": ",
+          "thread.start.current_node": "survey",
           "outcome": "failed",
-          "thread.develop.current_node": "revise",
-          "child_run_id": "01M25732658J2RFTM6MDM8CPFG"
+          "graph.preamble_budget_kb": "12",
+          "current_node": "revise",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.survey": 0
         },
         "node_outcomes": {
-          "revise": {
-            "status": "failed",
-            "failure": {
-              "message": "LLM error: Rate limited by zai: Usage limit reached for 5 hour. Your limit will reset at 2026-09-10 18:12:25",
-              "category": "transient_infra",
-              "signature": "api_transient|zai|rate_limited"
-            },
-            "usage": null
-          },
-          "survey": {
-            "status": "succeeded",
-            "preferred_label": "Work",
-            "context_updates": {
-              "last_response": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus..upstr",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0' — drift at zero after recent merges, accumulates toward MIN threshold of 5",
-                  "revisor backlog: 01M256QJB48JK8BXJE1TVM2HYS (develop PR #115 merged 2026-09-10, no review artifact in .fabro/reviews/develop/; newest review covers 01M23W4S7Q2GNEVPY779M4GMN6 / PR #113)",
-                  "next surveyor: nothing unusual in fetch; origin gained new branches (rule-files-sync-733cf9ca, virtual-weaving-firefly) and nightly tags v0.346-348 — no action needed"
-                ]
-              },
-              "response.survey": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.survey",
-                "chars": 712,
-                "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus..upstr"
-              },
-              "last_stage": "survey"
-            },
-            "notes": "Stage completed: survey",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 21241,
-                    "output_tokens": 1046,
-                    "reasoning_tokens": 378,
-                    "cache_read_tokens": 86592,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 58513
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 48026,
-              "tool_time_ms": 11411,
-              "active_time_ms": 59437
-            }
-          },
           "develop": {
             "status": "succeeded",
             "preferred_label": "Develop integrated",
@@ -1109,20 +1050,163 @@
           "start": {
             "status": "succeeded",
             "usage": null
+          },
+          "survey": {
+            "status": "succeeded",
+            "preferred_label": "Work",
+            "context_updates": {
+              "last_response": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus..upstr",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0' — drift at zero after recent merges, accumulates toward MIN threshold of 5",
+                  "revisor backlog: 01M256QJB48JK8BXJE1TVM2HYS (develop PR #115 merged 2026-09-10, no review artifact in .fabro/reviews/develop/; newest review covers 01M23W4S7Q2GNEVPY779M4GMN6 / PR #113)",
+                  "next surveyor: nothing unusual in fetch; origin gained new branches (rule-files-sync-733cf9ca, virtual-weaving-firefly) and nightly tags v0.346-348 — no action needed"
+                ]
+              },
+              "response.survey": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.survey",
+                "chars": 712,
+                "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus..upstr"
+              },
+              "last_stage": "survey"
+            },
+            "notes": "Stage completed: survey",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 21241,
+                    "output_tokens": 1046,
+                    "reasoning_tokens": 378,
+                    "cache_read_tokens": 86592,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 58513
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 48026,
+              "tool_time_ms": 11411,
+              "active_time_ms": 59437
+            }
+          },
+          "revise": {
+            "status": "failed",
+            "failure": {
+              "message": "LLM error: Rate limited by zai: Usage limit reached for 5 hour. Your limit will reset at 2026-09-10 18:12:25",
+              "category": "transient_infra",
+              "signature": "api_transient|zai|rate_limited"
+            },
+            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "dc2bdd37c045ff718f1765917deae086f8441d71",
         "node_visits": {
           "revise": 1,
-          "survey": 1,
           "start": 1,
-          "develop": 1
+          "develop": 1,
+          "survey": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 1,
+          "additions": 3,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-10T08:48:47.038804265Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 1113185,
+      "inference_time_ms": 90966,
+      "tool_time_ms": 232794,
+      "active_time_ms": 323760
+    },
+    "final_git_commit_sha": "dc2bdd37c045ff718f1765917deae086f8441d71",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 60077,
+          "inference_time_ms": 48026,
+          "tool_time_ms": 11411,
+          "active_time_ms": 59437
+        },
+        "billing_usd_micros": 58513,
+        "retries": 0
+      },
+      {
+        "stage_id": "develop",
+        "stage_label": "develop",
+        "timing": {
+          "wall_time_ms": 264960,
+          "inference_time_ms": 42940,
+          "tool_time_ms": 221383,
+          "active_time_ms": 264323
+        },
+        "billing_usd_micros": 198603,
+        "retries": 0
+      },
+      {
+        "stage_id": "revise",
+        "stage_label": "revise",
+        "timing": {
+          "wall_time_ms": 7396,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 3
+      }
+    ],
+    "billing": {
+      "input_tokens": 133705,
+      "output_tokens": 1557,
+      "total_tokens": 370842,
+      "reasoning_tokens": 444,
+      "cache_read_tokens": 235136,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 257116
+    },
+    "total_retries": 3,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M257096GRAPXN5N0C82QD142.jsonl b/.fabro/journal/01M257096GRAPXN5N0C82QD142.jsonl\nnew file mode 100644\nindex 000000000..57072df58\n--- /dev/null\n+++ b/.fabro/journal/01M257096GRAPXN5N0C82QD142.jsonl\n@@ -0,0 +1,3 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M257096GRAPXN5N0C82QD142\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T08:30:17Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M257096GRAPXN5N0C82QD142\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T08:31:17Z\",\"data\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (origin/denkhaus..upstream/main); newest upstream subject: 'Bump version to 0.348.0-nightly.0' — drift at zero after recent merges, accumulates toward MIN threshold of 5\",\"revisor backlog: 01M256QJB48JK8BXJE1TVM2HYS (develop PR #115 merged 2026-09-10, no review artifact in .fabro/reviews/develop/; newest review covers 01M23W4S7Q2GNEVPY779M4GMN6 / PR #113)\",\"next surveyor: nothing unusual in fetch; origin gained new branches (rule-files-sync-733cf9ca, virtual-weaving-firefly) and nightly tags v0.346-348 — no action needed\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M257096GRAPXN5N0C82QD142\",\"node\":\"develop\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T08:35:48Z\",\"data\":{\"painpoints\":[],\"observations\":[\"child 01M25732658J2RFTM6MDM8CPFG (seed fabro-c49c, 'Close the gate-ban equivalence loophole in planner step 7'): succeeded ~3.5 min, seed closed by closeout; PR #116 gate wait outcome merged — revisor backlog now two unreviewed develop runs (01M256QJB48JK8BXJE1TVM2HYS / PR #115, 01M25732658J2RFTM6MDM8CPFG / PR #116)\",\"planner self-referential prompt edit shipped through review without stale-prompt incident, but open seed fabro-c080 (re-resolve prompts from run branch tip) remains relevant for this class of seeds\"]}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 3,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1148,6 +1232,42 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 212,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-10T08:48:46.981949950Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-10T08:48:46.981839649Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "develop@1": {
       "first_event_seq": 71,
       "prompt": null,
@@ -1425,7 +1545,12 @@
       "first_event_seq": 112,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "failed",
+        "notes": null,
+        "failure_reason": "LLM error: Rate limited by zai: Usage limit reached for 5 hour. Your limit will reset at 2026-09-10 18:12:25",
+        "timestamp": "2026-09-10T08:48:42.103275799Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -1440,7 +1565,12 @@
       "started_at": "2026-09-10T08:48:34.696746094Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 6779,
+      "timing": {
+        "wall_time_ms": 7396,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -1633,7 +1763,7 @@
         }
       ],
       "agent_control": "running",
-      "state": "running"
+      "state": "failed"
     },
     "survey@1": {
       "first_event_seq": 20,
