@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M25K41V4NEWXSA3SVGRHKRXK.jsonl b/.fabro/journal/01M25K41V4NEWXSA3SVGRHKRXK.jsonl
+index c57b011..effd58f 100644
+--- a/.fabro/journal/01M25K41V4NEWXSA3SVGRHKRXK.jsonl
++++ b/.fabro/journal/01M25K41V4NEWXSA3SVGRHKRXK.jsonl
+@@ -1,3 +1,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M25K41V4NEWXSA3SVGRHKRXK","node":"start","visit":1,"status":"succeeded","ts":"2026-09-10T12:01:56Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M25K41V4NEWXSA3SVGRHKRXK","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-10T12:04:02Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M25K41V4NEWXSA3SVGRHKRXK","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-10T12:48:00Z","data":{"painpoints":[],"observations":["Resume flow discovery: run.submitted must NOT drive status in the shared table — the resume worker appends run.submitted after the handler already set Runnable; a status write there would force every later run.starting through the historic Submitted->Starting replay shim and would have stranded the live reducer at Submitted.","The pre-existing server test injected_runnable_event_does_not_make_submitted_run_schedulable implicitly depended on the live reducer having no transition validation (injected run.starting flipped Submitted->Starting); its final assertion was updated to Submitted since the shared table now rejects that skip-runnable sequence (lib/apps/fabro-server/src/server/tests.rs)."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M25K41V4NEWXSA3SVGRHKRXK","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-10T12:55:43Z","data":{}}
