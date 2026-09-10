@@ -102,14 +102,14 @@ futures-util = "0.3"
 # git failures, stop grace, snapshot ensure, ownership scope, testing doubles), to
 # move to main on merge. The CI plugin job installs the driver executables at the
 # same rev, read from this file.
-sandbox-driver = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "583b72a82b1ed51bccb8016b227b10b181c1560d" }
-sandbox-driver-protocol = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "583b72a82b1ed51bccb8016b227b10b181c1560d" }
-sandbox-driver-host = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "583b72a82b1ed51bccb8016b227b10b181c1560d" }
-sandbox-driver-docker = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "583b72a82b1ed51bccb8016b227b10b181c1560d" }
-sandbox-driver-docker-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "583b72a82b1ed51bccb8016b227b10b181c1560d" }
-sandbox-driver-daytona = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "583b72a82b1ed51bccb8016b227b10b181c1560d" }
-sandbox-driver-daytona-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "583b72a82b1ed51bccb8016b227b10b181c1560d" }
-sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "583b72a82b1ed51bccb8016b227b10b181c1560d" }
+sandbox-driver = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
+sandbox-driver-protocol = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
+sandbox-driver-host = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
+sandbox-driver-docker = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
+sandbox-driver-docker-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
+sandbox-driver-daytona = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
+sandbox-driver-daytona-config = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
+sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
 sentry = { version = "0.35", default-features = false, features = ["backtrace", "contexts", "ureq", "rustls"] }
 fork = "0.2"
 exec = "0.3"
