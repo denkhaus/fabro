@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M251VFNABCNMA94QDNHYZ5Q7.jsonl b/.fabro/journal/01M251VFNABCNMA94QDNHYZ5Q7.jsonl
+new file mode 100644
+index 000000000..130b0f303
+--- /dev/null
++++ b/.fabro/journal/01M251VFNABCNMA94QDNHYZ5Q7.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M251VFNABCNMA94QDNHYZ5Q7","node":"start","visit":1,"status":"succeeded","ts":"2026-09-10T07:00:17Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M251VFNABCNMA94QDNHYZ5Q7","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-10T07:01:10Z","data":{"painpoints":[],"observations":["upstream count 0 (< 5 threshold, MIN not met); newest upstream subject: 'Bump version to 0.348.0-nightly.0'; routed Work","revisor backlog: none — newest develop run 01M23W4S7Q2GNEVPY779M4GMN6 already revised by revisor run 01M23WKBD1G394W0APEKVQ002N (PR #114); all 22 develop runs paired with a later succeeded revisor run (one failed revisor 01M2395PSPYDC1KZA45Q171BDE was followed by succeeded 01M23C7C5M4725XZRCQWR1V925, so no gap)","next surveyor: this was pass 1 of the serialized line (seed_cycles start 1); a develop+revisor cycle should be the child this pass"]}}

@@ -571,7 +571,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-10T07:00:14.174853304Z",
-  "last_event_at": "2026-09-10T07:01:10.046452037Z",
+  "last_event_at": "2026-09-10T07:01:15.158647517Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -619,9 +619,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 61,
       "checkpoint": {
-        "timestamp": "2026-09-10T07:01:10.251720702Z",
+        "timestamp": "2026-09-10T07:01:15.158247021Z",
         "current_node": "survey",
         "completed_nodes": [
           "start",
@@ -629,7 +629,8 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.thread_id": "start",
+          "graph.preamble_budget_kb": "12",
+          "graph.cycle_counter_reset_key": "pass_id",
           "response.survey": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.survey",
@@ -637,24 +638,20 @@
             "preview": "{\"preferred_next_label\":\"Unrouted survey outcome\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (< 5"
           },
           "outcome": "succeeded",
-          "graph.cycle_counter_reset_key": "pass_id",
-          "graph.max_node_visits": "12",
-          "graph.rankdir": "LR",
-          "internal.retry_count.start": 0,
-          "internal.retry_count.survey": 0,
-          "internal.node_visit_count": 1,
+          "preferred_label": "Unrouted survey outcome",
+          "graph.inspects": "develop,merge-upstream,revisor",
           "internal.exit_kind": "soft",
-          "thread.start.current_node": "survey",
-          "graph.preamble_budget_kb": "12",
-          "failure_signature": "",
-          "seed_cycles": {
-            "start": 1,
-            "survey": 1
-          },
+          "internal.node_visit_count": 1,
+          "graph.rankdir": "LR",
+          "internal.retry_count.survey": 0,
           "internal.fidelity": "compact",
-          "internal.run_id": "01M251VFNABCNMA94QDNHYZ5Q7",
-          "current_node": "survey",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "graph.max_node_visits": "12",
           "failure_class": "",
+          "internal.seed_cycle_anchor": "",
+          "internal.thread_id": "start",
+          "current_node": "survey",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -664,14 +661,21 @@
             ]
           },
           "last_response": "{\"preferred_next_label\":\"Unrouted survey outcome\",\"outcome\":\"succeeded\",\"failure_reason\":\"\",\"suggested_next_ids\":[],\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (< 5",
-          "internal.seed_cycle_anchor": "",
-          "preferred_label": "Unrouted survey outcome",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "internal.work_dir": "/workspace/fabro",
+          "internal.run_id": "01M251VFNABCNMA94QDNHYZ5Q7",
           "last_stage": "survey",
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged"
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1
+          },
+          "thread.start.current_node": "survey",
+          "internal.retry_count.start": 0,
+          "failure_signature": ""
         },
         "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "survey": {
             "status": "succeeded",
             "preferred_label": "Unrouted survey outcome",
@@ -721,22 +725,87 @@
               "tool_time_ms": 13493,
               "active_time_ms": 52368
             }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "e7ddca7d702a8617be694254fa54a80dbc74d114",
         "node_visits": {
-          "start": 1,
-          "survey": 1
+          "survey": 1,
+          "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M251VFNABCNMA94QDNHYZ5Q7.jsonl b/.fabro/journal/01M251VFNABCNMA94QDNHYZ5Q7.jsonl\nnew file mode 100644\nindex 000000000..130b0f303\n--- /dev/null\n+++ b/.fabro/journal/01M251VFNABCNMA94QDNHYZ5Q7.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M251VFNABCNMA94QDNHYZ5Q7\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T07:00:17Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M251VFNABCNMA94QDNHYZ5Q7\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T07:01:10Z\",\"data\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (< 5 threshold, MIN not met); newest upstream subject: 'Bump version to 0.348.0-nightly.0'; routed Work\",\"revisor backlog: none — newest develop run 01M23W4S7Q2GNEVPY779M4GMN6 already revised by revisor run 01M23WKBD1G394W0APEKVQ002N (PR #114); all 22 develop runs paired with a later succeeded revisor run (one failed revisor 01M2395PSPYDC1KZA45Q171BDE was followed by succeeded 01M23C7C5M4725XZRCQWR1V925, so no gap)\",\"next surveyor: this was pass 1 of the serialized line (seed_cycles start 1); a develop+revisor cycle should be the child this pass\"]}}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 2,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-10T07:01:15.185705982Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 61011,
+      "inference_time_ms": 38875,
+      "tool_time_ms": 13493,
+      "active_time_ms": 52368
+    },
+    "failure": {
+      "reason": "soft_stop",
+      "detail": {
+        "message": "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; the next run re-enters autonomously",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "e7ddca7d702a8617be694254fa54a80dbc74d114",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "survey",
+        "stage_label": "survey",
+        "timing": {
+          "wall_time_ms": 53030,
+          "inference_time_ms": 38875,
+          "tool_time_ms": 13493,
+          "active_time_ms": 52368
+        },
+        "billing_usd_micros": 79698,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 37744,
+      "output_tokens": 774,
+      "total_tokens": 124903,
+      "reasoning_tokens": 241,
+      "cache_read_tokens": 86144,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 79698
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M251VFNABCNMA94QDNHYZ5Q7.jsonl b/.fabro/journal/01M251VFNABCNMA94QDNHYZ5Q7.jsonl\nnew file mode 100644\nindex 000000000..130b0f303\n--- /dev/null\n+++ b/.fabro/journal/01M251VFNABCNMA94QDNHYZ5Q7.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M251VFNABCNMA94QDNHYZ5Q7\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T07:00:17Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M251VFNABCNMA94QDNHYZ5Q7\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T07:01:10Z\",\"data\":{\"painpoints\":[],\"observations\":[\"upstream count 0 (< 5 threshold, MIN not met); newest upstream subject: 'Bump version to 0.348.0-nightly.0'; routed Work\",\"revisor backlog: none — newest develop run 01M23W4S7Q2GNEVPY779M4GMN6 already revised by revisor run 01M23WKBD1G394W0APEKVQ002N (PR #114); all 22 develop runs paired with a later succeeded revisor run (one failed revisor 01M2395PSPYDC1KZA45Q171BDE was followed by succeeded 01M23C7C5M4725XZRCQWR1V925, so no gap)\",\"next surveyor: this was pass 1 of the serialized line (seed_cycles start 1); a develop+revisor cycle should be the child this pass\"]}}\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 2,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "soft"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -762,6 +831,42 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 64,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-10T07:01:15.158647517Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-10T07:01:15.158613314Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 16,
       "prompt": null,
