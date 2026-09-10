@@ -162,22 +162,13 @@ pub async fn start(run_dir: &Path, services: StartServices) -> Result<Started, E
         )));
     }
     if matches!(status, RunStatus::Submitted) {
-        append_event_to_sink(
+        super::lifecycle_events::request_start(&services.event_sink, &services.run_id, false, None)
+            .await?;
+        super::lifecycle_events::runnable(
             &services.event_sink,
             &services.run_id,
-            &Event::RunStartRequested {
-                resume: false,
-                actor:  None,
-            },
-        )
-        .await?;
-        append_event_to_sink(
-            &services.event_sink,
-            &services.run_id,
-            &Event::RunRunnable {
-                source: RunRunnableSource::StartRequested,
-                actor:  None,
-            },
+            RunRunnableSource::StartRequested,
+            None,
         )
         .await?;
     }
@@ -208,7 +199,7 @@ pub(super) async fn execute_persisted_run(
         .await;
         return Err(error);
     }
-    if let Err(err) = append_event_to_sink(&event_sink, &run_id, &Event::RunStarting).await {
+    if let Err(err) = super::lifecycle_events::starting(&event_sink, &run_id).await {
         let error = Error::from(err);
         let _ = persist_detached_failure(
             run_id,

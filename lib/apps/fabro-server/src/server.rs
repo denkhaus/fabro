@@ -113,6 +113,7 @@ use fabro_workflow::artifact_upload::ArtifactSink;
 use fabro_workflow::command_log::command_log_path;
 use fabro_workflow::event::{self as workflow_event, Emitter};
 use fabro_workflow::handler::HandlerRegistry;
+use fabro_workflow::operations::lifecycle_events;
 use fabro_workflow::pipeline::Persisted;
 use fabro_workflow::records::Checkpoint;
 use fabro_workflow::run_lookup::{
@@ -3409,16 +3410,14 @@ async fn persist_cancelled_run_status(state: &AppState, run_id: RunId) -> anyhow
         return Ok(());
     }
 
-    let failure_event = workflow_event::Event::workflow_run_failed_from_error(
+    lifecycle_events::terminal_failure(
+        &run_store,
+        &run_id,
         &WorkflowError::Cancelled,
-        fabro_types::RunTiming::default(),
         FailureReason::Cancelled,
-        None,
-        None,
-        None,
-        None,
-    );
-    workflow_event::append_event(&run_store, &run_id, &failure_event).await
+        fabro_types::RunTiming::default(),
+    )
+    .await
 }
 
 async fn finish_cancelled_run_before_execution(state: &Arc<AppState>, run_id: RunId) {
@@ -3463,17 +3462,14 @@ async fn fail_run_before_execution(
 ) {
     match state.stores.runs.open_run(&run_id).await {
         Ok(run_store) => {
-            let failure_event = workflow_event::Event::workflow_run_failed_from_error(
+            if let Err(err) = lifecycle_events::terminal_failure(
+                &run_store,
+                &run_id,
                 &WorkflowError::engine(message.clone()),
-                fabro_types::RunTiming::default(),
                 reason,
-                None,
-                None,
-                None,
-                None,
-            );
-            if let Err(err) =
-                workflow_event::append_event(&run_store, &run_id, &failure_event).await
+                fabro_types::RunTiming::default(),
+            )
+            .await
             {
                 error!(run_id = %run_id, error = %err, "Failed to persist run failure status");
             }
@@ -3573,6 +3569,32 @@ fn fail_managed_run(state: &Arc<AppState>, run_id: RunId, reason: FailureReason,
     cleanup_worker_control_bus_for_run(state.as_ref(), run_id);
 }
 
+/// Live-reducer status step over the shared lifecycle transition table
+/// (fabro-3fe4). `Ok(Some(next))` assigns the next live status; `Ok(None)`
+/// leaves it unchanged (non-lifecycle events and the `RunRunnable`
+/// scheduling guard); `Err` marks a transition the table rejects. Historic
+/// streams that skipped intermediate statuses (e.g. injected
+/// `submitted -> starting` sequences) fast-forward through the shared
+/// `historic_skipped_statuses` helper, the same replay path the durable
+/// projection reducer uses, so both folds stay equivalent.
+fn live_lifecycle_status(
+    current: RunStatus,
+    event: &RunEvent,
+) -> Result<Option<RunStatus>, fabro_types::InvalidTransition> {
+    if matches!(event.body, EventBody::RunRunnable(_)) {
+        return Ok(None);
+    }
+    let mut status = current;
+    for skipped in fabro_types::historic_skipped_statuses(status, &event.body) {
+        status = skipped;
+    }
+    match fabro_types::apply_lifecycle_event(status, &event.body) {
+        fabro_types::LifecycleTransition::Next(next) => Ok(Some(next)),
+        fabro_types::LifecycleTransition::Rejected(err) => Err(err),
+        fabro_types::LifecycleTransition::NotLifecycle => Ok(None),
+    }
+}
+
 fn update_live_run_from_event(state: &AppState, run_id: RunId, event: &RunEvent) {
     use fabro_types::EventBody;
 
@@ -3589,59 +3611,19 @@ fn update_live_run_from_event(state: &AppState, run_id: RunId, event: &RunEvent)
         return;
     }
 
+    // Status transitions are owned by the shared lifecycle table; the live
+    // reducer keeps only its side effects on top (error field, active-stage
+    // map cleanup, worker control bus cleanup).
+    match live_lifecycle_status(managed_run.status, event) {
+        Ok(Some(next)) => managed_run.status = next,
+        Ok(None) => {}
+        Err(err) => {
+            tracing::warn!(run_id = %run_id, error = %err, "Rejecting out-of-order lifecycle event");
+        }
+    }
+
     match &event.body {
-        EventBody::RunSubmitted(_) => managed_run.status = RunStatus::Submitted,
-        EventBody::RunPending(props) => {
-            managed_run.status = RunStatus::Pending {
-                reason: props.reason,
-            };
-        }
-        EventBody::RunStarting(_) => managed_run.status = RunStatus::Starting,
-        EventBody::RunRunning(_) => managed_run.status = RunStatus::Running,
-        EventBody::RunBlocked(props) => {
-            managed_run.status = match managed_run.status {
-                RunStatus::Paused { .. } => RunStatus::Paused {
-                    prior_block: Some(props.blocked_reason),
-                },
-                _ => RunStatus::Blocked {
-                    blocked_reason: props.blocked_reason,
-                },
-            };
-        }
-        EventBody::RunUnblocked(_) => {
-            managed_run.status = match managed_run.status {
-                RunStatus::Paused {
-                    prior_block: Some(_) | None,
-                } => RunStatus::Paused { prior_block: None },
-                _ => RunStatus::Running,
-            };
-        }
-        EventBody::RunPaused(_) => {
-            let prior_block = match managed_run.status {
-                RunStatus::Blocked { blocked_reason } => Some(blocked_reason),
-                RunStatus::Paused { prior_block } => prior_block,
-                _ => None,
-            };
-            managed_run.status = RunStatus::Paused { prior_block };
-        }
-        EventBody::RunUnpaused(_) => {
-            managed_run.status = match managed_run.status {
-                RunStatus::Paused {
-                    prior_block: Some(blocked_reason),
-                } => RunStatus::Blocked { blocked_reason },
-                _ => RunStatus::Running,
-            };
-        }
-        EventBody::RunRemoving(_) => managed_run.status = RunStatus::Removing,
-        EventBody::RunCompleted(_) => {
-            let EventBody::RunCompleted(props) = &event.body else {
-                unreachable!(
-                    "outer match arm already verified event.body is EventBody::RunCompleted"
-                )
-            };
-            managed_run.status = RunStatus::Succeeded {
-                reason: props.reason,
-            };
+        EventBody::RunCompleted(props) => {
             // Publish-blocked completions keep the run green but surface the
             // blocked delivery as the run error so list/detail views render
             // the remediation (fabro-67e5).
@@ -3652,9 +3634,6 @@ fn update_live_run_from_event(state: &AppState, run_id: RunId, event: &RunEvent)
             cleanup_worker_control_bus_for_run(state, run_id);
         }
         EventBody::RunFailed(props) => {
-            managed_run.status = RunStatus::Failed {
-                reason: props.failure.reason,
-            };
             managed_run.error = Some(render_compact_with_causes(
                 &props.failure.detail.message,
                 &props.failure.detail.causes,
