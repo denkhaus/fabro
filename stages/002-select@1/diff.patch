@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M257B996MJNPWPY33MNDAEHP.jsonl b/.fabro/journal/01M257B996MJNPWPY33MNDAEHP.jsonl
+new file mode 100644
+index 0000000..68ae83a
+--- /dev/null
++++ b/.fabro/journal/01M257B996MJNPWPY33MNDAEHP.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M257B996MJNPWPY33MNDAEHP","node":"start","visit":1,"status":"succeeded","ts":"2026-09-10T08:36:09Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M257B996MJNPWPY33MNDAEHP","node":"select","visit":1,"status":"succeeded","ts":"2026-09-10T08:36:42Z","data":{"painpoints":[],"observations":["26 runs listed; 2 unrevised terminal fresh runs remain (01M25732658J2RFTM6MDM8CPFG selected, 01M256QJB48JK8BXJE1TVM2HYS next); 18 develop runs stale-evidence (version drift), 0 sandbox-less, both merge-upstream runs stale-evidence (version 2bf1da4f matches their own baseline but predate develop baseline — recheck per-workflow: merge baseline is 2bf1da4f so both merge runs are fresh-by-version yet older than the selected develop run); 6 already revised fresh"]}}

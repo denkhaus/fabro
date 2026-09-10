@@ -1,0 +1,69 @@
+diff --git a/.fabro/journal/01M257B996MJNPWPY33MNDAEHP.jsonl b/.fabro/journal/01M257B996MJNPWPY33MNDAEHP.jsonl
+index 68ae83ae5..920c3af77 100644
+--- a/.fabro/journal/01M257B996MJNPWPY33MNDAEHP.jsonl
++++ b/.fabro/journal/01M257B996MJNPWPY33MNDAEHP.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M257B996MJNPWPY33MNDAEHP","node":"start","visit":1,"status":"succeeded","ts":"2026-09-10T08:36:09Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M257B996MJNPWPY33MNDAEHP","node":"select","visit":1,"status":"succeeded","ts":"2026-09-10T08:36:42Z","data":{"painpoints":[],"observations":["26 runs listed; 2 unrevised terminal fresh runs remain (01M25732658J2RFTM6MDM8CPFG selected, 01M256QJB48JK8BXJE1TVM2HYS next); 18 develop runs stale-evidence (version drift), 0 sandbox-less, both merge-upstream runs stale-evidence (version 2bf1da4f matches their own baseline but predate develop baseline — recheck per-workflow: merge baseline is 2bf1da4f so both merge runs are fresh-by-version yet older than the selected develop run); 6 already revised fresh"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M257B996MJNPWPY33MNDAEHP","node":"analyze","visit":1,"status":"succeeded","ts":"2026-09-10T08:44:37Z","data":{"painpoints":[{"text":"Revisor Step 3.5 git fetch timed out at the shell's 10 s default and `origin/main` turned out to be the upstream fabro-sh lineage, not the fork base — the duplicate check had to rediscover `denkhaus` as the fork base branch manually. Confirms open seed fabro-1128 (name the base branch explicitly, lift the git fetch shell timeout) is still needed."},{"text":"The revisor node's only outgoing edge label is 'Ask failed (next pass retries)' — a succeeded ask with findings has no matching success edge, so preferred_next_label must be omitted and routing falls to outcome alone. The node graph needs a success edge matching the outcome contract's 'Findings ready'."}],"observations":["Duplicate-run verdict: healthy pass, not a duplicate — seed fabro-c49c closed only by the target run's own PR #116 (commit 4ca86f2) on the denkhaus base branch; the only other fabro-c49c commit (83c14b5e, PR #114) is the filing pass.","Dropped as duplicates of OPEN seeds: analyst rec 1 → fabro-55a7; rec 2 → fabro-652d + fabro-c2ca; rec 3 → fabro-4881 + fabro-a67f; rec 4 → fabro-9372 + fabro-6b58; rec 5 → fabro-d936. The ml-record aside (name the exact-substring-replace pattern as recordable in implementer step 6 examples) dropped as near-duplicate of fabro-96bd (same prompt section, same guidance family).","Review persisted to `.fabro/reviews/develop/01M25732658J2RFTM6MDM8CPFG.md` (8094 bytes, header shape matches manual pipeline). Run economics context for future passes: 191 s wall, $0.163 cost, 142.9 s inference vs 12.1 s tool — ceremony and LLM turns dominate, not tool work.","fabro-c3b4, cited by the analyst as an open top-N-view seed, does not exist in the tracker under any search — analyst-cited seed ids are unverified; fabro-5ff7 (sd show every analyst-cited seed id) remains valid."]}}
+diff --git a/.fabro/reviews/develop/01M25732658J2RFTM6MDM8CPFG.md b/.fabro/reviews/develop/01M25732658J2RFTM6MDM8CPFG.md
+new file mode 100644
+index 000000000..c3a4b5dc4
+--- /dev/null
++++ b/.fabro/reviews/develop/01M25732658J2RFTM6MDM8CPFG.md
+@@ -0,0 +1,55 @@
++# Improve review — run 01M25732658J2RFTM6MDM8CPFG
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: succeeded (3.4 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-10 08:41+0000 by revisor `fabro_ask`
++
++---
++
++All recommendations below are grounded in run 01M25732658J2RFTM6MDM8CPFG (seed fabro-c49c, a one-paragraph Markdown edit in `.fabro/workflows/develop/prompts/planner.md`; total 191 s wall, $0.163 LLM cost, 0 retries, gate green first pass). Sources: run events/checkpoints, conclusion timings, and the stage journal.
++
++## Run economics (why the ranking looks like this)
++
++From the conclusion block: planner 56.9 s / $0.074 (45% of cost), implementer 68.6 s / $0.061 (37%), reviewer 25.8 s / $0.029, all command stages combined 5.5 s / $0. The actual edit was a 171 ms python3 heredoc (event seq 93–94). Nearly all cost is LLM turns and inter-stage ceremony, not tool work (12.1 s tool vs 142.9 s inference).
++
++---
++
++**1. Batch planner reconnaissance into one shell call and cap the `sd ready` firehose — node `planner`, file `.fabro/workflows/develop/prompts/planner.md` (steps 1–4).**
++What happened: the planner spent 5 LLM turns / 50.8 s / $0.074 on candidate selection. Its first call, `sd ready --assignee fabro --limit 200`, dumped a 27,455-byte, 200-line listing into context (seq 32–33); conversation tokens jumped ~5k→12k on that single result. Open seeds fabro-55a7 (batch recon) and fabro-c3b4 (top-N view) already name this exact fix and sat unused in that firehose.
++Change: prompt step 1–4 rewritten to a single batched call — top ~25 lines of `sd ready`, `sd show` of the leading candidate, and the basis greps in one shell invocation.
++Effect: removes 2–3 LLM turns and the 27 KB context blob per pass — measured basis for fabro-55a7 was ~$0.06/pass; on this run's shape expect ~30–40% planner cost reduction (~$0.02–0.03, ~15–20 s every run).
++
++**2. Batch checkpoint pushes and skip metadata snapshots on command stages — engine checkpoint path (open seeds fabro-652d, fabro-c2ca); graph `workflow.fabro` carries the per-stage behavior.**
++What happened: every stage boundary cost ~5 s of ceremony (metadata snapshot ~2 s + commit + push + journal hook): planner→implementer 5.3 s (seq 60→67), implementer→tester 4.9 s, tester→evidence 5.5 s, evidence→reviewer 5.3 s, reviewer→closeout 5.6 s — ≈26.6 s of the 191 s wall (~14%), for a run whose entire diff is 3 files / +9−2 and produces 6 stage commits later squashed into one PR.
++Change: land fabro-652d (push at terminal/soft-exit boundaries instead of every stage) and fabro-c2ca (no metadata snapshot after command nodes — tester/evidence/closeout contributed nothing agent-visible).
++Effect: ~20 s wall (~10%) back per run with no safety loss; run branches stay locally committed per stage.
++
++**3. Gate the implementer's `sd show` re-fetch on brief completeness — file `.fabro/workflows/develop/prompts/implementer.md`, step 1.**
++What happened: the brief already contained the seed description verbatim (planner had just verified it against the tree, journal obs 1), yet step 1's "Re-read the seed requirements from `sd show`" made the implementer re-fetch the identical 1.5 KB JSON (seq 78–80); the following inference turn took 12.5 s. Open seeds fabro-4881 / fabro-a67f target exactly this.
++Change: step 1 becomes "the brief is authoritative when it restates the spec; only `sd show` when the brief omits requirements or carries review feedback."
++Effect: −1 LLM turn, ~10–12 s and ~15–20% of implementer cost per pass; on this run the implementer's 6 tool calls reduce to 4.
++
++**4. Expose `current_seed_id` in the `fabro_runs_list` projection and bound the in-flight check window — engine (open seeds fabro-9372, fabro-6b58); planner prompt step 4 shrinks accordingly.**
++What happened: all 24 develop runs carry the identical generic goal, so the in-flight check made the planner page the full runs list (~4.1 s tool time) and burn a 10.6 s pure-inference turn just to conclude "only my own run is non-terminal" (seq 41–44). The prompt's journal-grep fallback for this case is a per-run shell procedure waiting to fire.
++Change: add the claimed seed id to the runs-list projection (fabro-9372) plus a `created_since` window and self-exclusion (fabro-6b58); delete the fallback paragraph from `planner.md` step 4.
++Effect: the in-flight guard becomes a filter over two fields instead of a reverse-engineering exercise; eliminates the expensive fallback path entirely on busy trackers and closes the ~15-min duplicate-claim window the guard exists for.
++
++**5. Make seeds-cli exit non-zero on errors — `@os-eco/seeds-cli` (open seed fabro-d936).**
++What happened: the claim `sd update fabro-c49c --status in_progress` (seq 51–53) was accepted on a "✓ Updated" stdout line; nothing verified the write. This run's checkpoints show the claim landed, but the same exit-0-on-error behavior that fabro-d936 documents means a silently failed claim would have sent the run into implement→gate→review on an unclaimed seed, only to be caught at closeout.
++Change: land fabro-d936 (non-zero exit + JSON `success:false` on tracker-write errors); then the planner's "judge from JSON success, not exit code" workaround paragraph in PROJECT_FACTS can be retired.
++Effect: tracker writes become trustable at the process level; removes a class of mid-run divergence between tracker state and run context.
++
++**6. Add prompt-file verification to the gate's loop-asset tier — file `scripts/qualitygate.nu`.**
++What happened: the gate ran 4.7 s and printed "no crates touched / loop-asset scripts green / format clean" — zero machine verification of the actual deliverable (a prompt-text edit). Correctness rested entirely on the implementer's ad-hoc greps (seq 99–100) and the reviewer's eyeball; the reviewer's journal note confirms it verified the line manually.
++Change: extend the loop-asset tier (added by fabro-bfe1) with one deterministic check: every path the in-progress seed's spec names that lies under the loop-asset roots must appear in the run diff (empty diff = red).
++Effect: an empty-edit or wrong-file pass bounces at the tester in seconds instead of consuming a review cycle; closes the gap fabro-bfe1 left for non-script loop assets.
++
++**7. Trim planner-only sd command rows from the implementer/reviewer PROJECT_FACTS include — file `.fabro/workflows/develop/prompts/` (factor the PROJECT_FACTS block per role).**
++What happened: the implementer prompt (~13 KB) carries the full claim/close/`--description` command table for operations it is explicitly forbidden to perform ("Do NOT claim, close, or re-status seeds"), plus their failure anecdotes; the reviewer carries the same table for operations it also never performs. Cache hits (193k of 264k tokens) blunt the cost, but the dead weight still pads every non-cached first turn and advertises forbidden commands to the roles least supposed to use them.
++Change: split the include — planner keeps the full table; implementer keeps only `sd show`; reviewer drops the tracker table.
++Effect: ~1–2 KB less prompt per stage and a smaller behavioral surface (fewer "observed failure" anecdotes for actions the role must never take); marginal cost win, mainly a correctness-hygiene win.
++
++---
++
++**What I did not find:** no failures, no retries, no blob-ref detours (evidence capture was 6.8 KB, inline under the 16 KB ceiling), and the churn-only loop-work diff path in `evidence.nu` worked as designed (reviewer journal). The graph's routing (one unconditional + condition edges, unused cycle guards) caused no friction this run — I found no evidence justifying structural graph changes over the turn/ceremony economies above. One minor miss worth noting: the implementer skipped `ml record` ("nothing durable — skipped") despite journaling a genuinely reusable pattern (exact-substring replace with uniqueness assert for single-line ~1900-char paragraphs) — `implementer.md` step 6's examples could name that pattern as recordable.
