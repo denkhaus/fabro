@@ -710,7 +710,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-10T13:31:29.440406563Z",
-  "last_event_at": "2026-09-10T15:02:44.601382591Z",
+  "last_event_at": "2026-09-10T15:02:51.724834361Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1901,9 +1901,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 797,
       "checkpoint": {
-        "timestamp": "2026-09-10T15:02:44.880492329Z",
+        "timestamp": "2026-09-10T15:02:50.451113260Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -1918,18 +1918,32 @@
           "implementer": 3
         },
         "context_values": {
-          "internal.fidelity": "compact",
-          "last_response": "All requirements verified against the complete evidence (blob paged in full via shell), plus one focused test run of my own:\n\n- **Module interface**: `lifecycle_events.rs` exposes exactly `request_sta",
-          "thread.implementer.current_node": "tester",
-          "internal.thread_id": "reviewer",
-          "thread.evidence.current_node": "reviewer",
-          "review_verdict": "approved",
+          "internal.seed_cycle_anchor": "fabro-3fe4",
+          "thread.planner.current_node": "implementer",
+          "graph.rankdir": "LR",
+          "internal.run_id": "01M25R832HP615J291N72FHNCS",
+          "thread.start.current_node": "planner",
           "internal.exit_kind": "natural",
-          "outcome": "succeeded",
-          "internal.retry_count.evidence": 0,
-          "internal.retry_count.reviewer": 0,
-          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
-          "current_node": "closeout",
+          "preferred_label": "Approved",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 4214,
+            "preview": "Basis resolves against the current tree (server.rs:3576 reducer, run_state.rs RunProjectionReducer both present). Claimed; brief written.\n\nClaimed a seed:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next"
+          },
+          "thread.reviewer.current_node": "closeout",
+          "review_verdict": "approved",
+          "internal.thread_id": "reviewer",
+          "thread.implementer.current_node": "tester",
+          "graph.max_node_visits": "40",
+          "failure_signature": "",
+          "implementation_summary": "Reconciled with PR #121's branch: kept its transition-table refactor (staged) and superseded its regression hack with a shared `historic_skipped_statuses` fast-forward in `lib/foundation/fabro-types/src/lifecycle.rs` consumed by BOTH the live fold (`server.rs` `live_lifecycle_status`) and the durable replay (`run_state.rs`), fixing the fabro rm completed-run regression; lesson captured as mx-c555a3. Files: lifecycle.rs, lib.rs, run_state.rs, server.rs, server/tests.rs, operations/lifecycle_events.rs, operations/mod.rs, start.rs, resume.rs, test_support.rs. Per-criterion report: PASS lifecycle module interface (six fns, adapters wired); PASS shared pure table consumed by both reducers; PASS Paused/RunUnblocked arms aligned (lifecycle.rs:84-100); PASS documented historic shims; PASS equivalence property test (2000 random sequences) + exhaustive status×event live-step test; PASS per-transition unit tests incl. cancel-before-starting (lifecycle.rs:256) and failure-before-running (lifecycle.rs:293); PASS rm regression fixed (rm_deletes_completed_run + rm_partial_failure_json 2/2); PASS drift rules (additive, no wire change, minimal resume.rs adapter, RunSupervisor out of scope); PASS suites fabro-types 519, fabro-store 291, fabro-server 936, fabro-workflow 1545 all green; PASS fmt + default-features clippy clean on all four touched crates.",
+          "thread.tester.current_node": "evidence",
+          "internal.retry_count.closeout": 0,
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.tester": 0,
+          "graph.inspects": "develop",
+          "internal.node_visit_count": 1,
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -1938,45 +1952,38 @@
             "reviewer": 1,
             "closeout": 1
           },
-          "internal.retry_count.closeout": 0,
-          "failure_class": "",
-          "internal.run_id": "01M25R832HP615J291N72FHNCS",
-          "thread.tester.current_node": "evidence",
-          "thread.planner.current_node": "implementer",
-          "response.reviewer": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.reviewer",
-            "chars": 3244,
-            "preview": "All requirements verified against the complete evidence (blob paged in full via shell), plus one focused test run of my own:\n\n- **Module interface**: `lifecycle_events.rs` exposes exactly `request_sta"
-          },
-          "preferred_label": "Approved",
-          "current_seed_brief": "RE-CLAIM with failed-gate context: a first attempt (run 01M25K41V4NE, PR #121 branch, NOT on base) failed the dogfood-gate on two fabro-cli rm tests. FIRST reconcile with that branch: git fetch origin fabro/run/01M25K41V4NEWXSA3SVGRHKRXK — reuse or supersede its work; the fix is likely a transition-table/completed-predicate adjustment, not a rewrite. Then deliver: - new fork-owned module `lib/components/fabro-workflow/src/operations/lifecycle_events.rs` exposing the run-lifecycle sequence as an interface (request_start / runnable / starting / running / resubmit / terminal_failure); server.rs and test_support become adapters; - one pure transition table (RunStatus x EventBody) -> Result<RunStatus, InvalidTransition> in fabro-types; BOTH reducers consume it (server.rs update_live_run_from_event:3576 and fabro-store run_state.rs RunProjectionReducer:75); live reducer keeps only side effects (map/bus cleanup); - drift arms aligned: Paused{prior_block}/RunUnblocked (server.rs:3610-3616 vs run_state.rs:197-205); - historic shims in run_state.rs (Submitted->Starting / RunFailed fast-forward, run_state.rs:84-112) carry a documented reason comment; - equivalence: property/table test proving both reducers yield the same status for every event sequence; unit tests per transition including cancel-before-starting and failure-before-running; - the fabro-cli rm regression is fixed: targeted `cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors` passes on the final tree (these were the gate failures on PR #121 — rm stopped treating terminal runs as completed); - drift rules: additive fork-owned only, no wire-contract change, no new pub items on AppState, resume.rs gets a minimal adapter edit only; RunSupervisor build-out is OUT OF SCOPE; - gate green via the deterministic tester step (never run the full gate yourself). Cheapest-first verification: targeted nextest on the rm tests, then lifecycle unit tests, then fmt/clippy on touched crates.",
-          "graph.rankdir": "LR",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 4214,
-            "preview": "Basis resolves against the current tree (server.rs:3576 reducer, run_state.rs RunProjectionReducer both present). Claimed; brief written.\n\nClaimed a seed:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next"
-          },
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "graph.max_node_visits": "40",
-          "internal.retry_count.planner": 0,
-          "graph.preamble_budget_kb": "24",
+          "outcome": "succeeded",
           "lesson_capture": "mx-c555a3",
+          "current_node": "closeout",
+          "last_response": "All requirements verified against the complete evidence (blob paged in full via shell), plus one focused test run of my own:\n\n- **Module interface**: `lifecycle_events.rs` exposes exactly `request_sta",
+          "last_stage": "reviewer",
+          "current_seed_title": "Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table",
+          "internal.fidelity": "compact",
+          "command.output": "blob://sha256/295c4878efdc50218440ebcf0e6ff1f8f03e5369f7c0f478d47c02b935f13fbc",
+          "internal.retry_count.planner": 0,
+          "internal.retry_count.reviewer": 0,
+          "current_seed_brief": "RE-CLAIM with failed-gate context: a first attempt (run 01M25K41V4NE, PR #121 branch, NOT on base) failed the dogfood-gate on two fabro-cli rm tests. FIRST reconcile with that branch: git fetch origin fabro/run/01M25K41V4NEWXSA3SVGRHKRXK — reuse or supersede its work; the fix is likely a transition-table/completed-predicate adjustment, not a rewrite. Then deliver: - new fork-owned module `lib/components/fabro-workflow/src/operations/lifecycle_events.rs` exposing the run-lifecycle sequence as an interface (request_start / runnable / starting / running / resubmit / terminal_failure); server.rs and test_support become adapters; - one pure transition table (RunStatus x EventBody) -> Result<RunStatus, InvalidTransition> in fabro-types; BOTH reducers consume it (server.rs update_live_run_from_event:3576 and fabro-store run_state.rs RunProjectionReducer:75); live reducer keeps only side effects (map/bus cleanup); - drift arms aligned: Paused{prior_block}/RunUnblocked (server.rs:3610-3616 vs run_state.rs:197-205); - historic shims in run_state.rs (Submitted->Starting / RunFailed fast-forward, run_state.rs:84-112) carry a documented reason comment; - equivalence: property/table test proving both reducers yield the same status for every event sequence; unit tests per transition including cancel-before-starting and failure-before-running; - the fabro-cli rm regression is fixed: targeted `cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors` passes on the final tree (these were the gate failures on PR #121 — rm stopped treating terminal runs as completed); - drift rules: additive fork-owned only, no wire-contract change, no new pub items on AppState, resume.rs gets a minimal adapter edit only; RunSupervisor build-out is OUT OF SCOPE; - gate green via the deterministic tester step (never run the full gate yourself). Cheapest-first verification: targeted nextest on the rm tests, then lifecycle unit tests, then fmt/clippy on touched crates.",
+          "graph.preamble_budget_kb": "24",
+          "current_seed_id": "fabro-3fe4",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.implementer": 3,
+          "internal.work_dir": "/workspace/fabro",
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.implementer",
             "chars": 5269,
             "preview": "Implementation complete. Summary of this pass:\n\n**Reconciliation**: the worktree already carried the reconciled PR #121 work plus unstaged follow-up edits that supersede the branch's fix (branch `7a0a"
           },
-          "thread.reviewer.current_node": "closeout",
-          "internal.retry_count.start": 0,
-          "internal.retry_count.implementer": 3,
-          "internal.retry_count.tester": 0,
-          "graph.inspects": "develop",
-          "internal.work_dir": "/workspace/fabro",
-          "failure_signature": "",
-          "thread.start.current_node": "planner",
+          "failure_class": "",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 3244,
+            "preview": "All requirements verified against the complete evidence (blob paged in full via shell), plus one focused test run of my own:\n\n- **Module interface**: `lifecycle_events.rs` exposes exactly `request_sta"
+          },
+          "thread.evidence.current_node": "reviewer",
+          "internal.retry_count.evidence": 0,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "journal": {
             "painpoints": [
               {
@@ -1987,46 +1994,45 @@
               "The quality gate's touched-crate set (fabro-server, fabro-store, fabro-workflow, fabro-types) did not include fabro-cli even though the seed brief explicitly requires the two rm regression tests to pass on the final tree; I ran `cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors` myself — 2/2 PASS. Gate readers relying on the gate alone would have taken the rm fix on trust.",
               "The `RunSubmitted` event no longer drives status in either reducer (documented in the table's protocol notes); this is a deliberate interface clarification, not a silent drop — the resubmit path reaches Submitted via run.start_requested(resume:true)."
             ]
-          },
-          "current_seed_title": "Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table",
-          "current_seed_id": "fabro-3fe4",
-          "command.output": "blob://sha256/295c4878efdc50218440ebcf0e6ff1f8f03e5369f7c0f478d47c02b935f13fbc",
-          "internal.seed_cycle_anchor": "fabro-3fe4",
-          "implementation_summary": "Reconciled with PR #121's branch: kept its transition-table refactor (staged) and superseded its regression hack with a shared `historic_skipped_statuses` fast-forward in `lib/foundation/fabro-types/src/lifecycle.rs` consumed by BOTH the live fold (`server.rs` `live_lifecycle_status`) and the durable replay (`run_state.rs`), fixing the fabro rm completed-run regression; lesson captured as mx-c555a3. Files: lifecycle.rs, lib.rs, run_state.rs, server.rs, server/tests.rs, operations/lifecycle_events.rs, operations/mod.rs, start.rs, resume.rs, test_support.rs. Per-criterion report: PASS lifecycle module interface (six fns, adapters wired); PASS shared pure table consumed by both reducers; PASS Paused/RunUnblocked arms aligned (lifecycle.rs:84-100); PASS documented historic shims; PASS equivalence property test (2000 random sequences) + exhaustive status×event live-step test; PASS per-transition unit tests incl. cancel-before-starting (lifecycle.rs:256) and failure-before-running (lifecycle.rs:293); PASS rm regression fixed (rm_deletes_completed_run + rm_partial_failure_json 2/2); PASS drift rules (additive, no wire change, minimal resume.rs adapter, RunSupervisor out of scope); PASS suites fabro-types 519, fabro-store 291, fabro-server 936, fabro-workflow 1545 all green; PASS fmt + default-features clippy clean on all four touched crates.",
-          "last_stage": "reviewer",
-          "internal.node_visit_count": 1
+          }
         },
         "node_outcomes": {
           "start": {
             "status": "succeeded",
             "usage": null
           },
-          "reviewer": {
+          "planner": {
             "status": "succeeded",
-            "preferred_label": "Approved",
+            "preferred_label": "Seed claimed",
             "context_updates": {
-              "response.reviewer": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.reviewer",
-                "chars": 3244,
-                "preview": "All requirements verified against the complete evidence (blob paged in full via shell), plus one focused test run of my own:\n\n- **Module interface**: `lifecycle_events.rs` exposes exactly `request_sta"
-              },
-              "last_response": "All requirements verified against the complete evidence (blob paged in full via shell), plus one focused test run of my own:\n\n- **Module interface**: `lifecycle_events.rs` exposes exactly `request_sta",
-              "last_stage": "reviewer",
+              "current_seed_brief": "RE-CLAIM with failed-gate context: a first attempt (run 01M25K41V4NE, PR #121 branch, NOT on base) failed the dogfood-gate on two fabro-cli rm tests. FIRST reconcile with that branch: git fetch origin fabro/run/01M25K41V4NEWXSA3SVGRHKRXK — reuse or supersede its work; the fix is likely a transition-table/completed-predicate adjustment, not a rewrite. Then deliver: - new fork-owned module `lib/components/fabro-workflow/src/operations/lifecycle_events.rs` exposing the run-lifecycle sequence as an interface (request_start / runnable / starting / running / resubmit / terminal_failure); server.rs and test_support become adapters; - one pure transition table (RunStatus x EventBody) -> Result<RunStatus, InvalidTransition> in fabro-types; BOTH reducers consume it (server.rs update_live_run_from_event:3576 and fabro-store run_state.rs RunProjectionReducer:75); live reducer keeps only side effects (map/bus cleanup); - drift arms aligned: Paused{prior_block}/RunUnblocked (server.rs:3610-3616 vs run_state.rs:197-205); - historic shims in run_state.rs (Submitted->Starting / RunFailed fast-forward, run_state.rs:84-112) carry a documented reason comment; - equivalence: property/table test proving both reducers yield the same status for every event sequence; unit tests per transition including cancel-before-starting and failure-before-running; - the fabro-cli rm regression is fixed: targeted `cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors` passes on the final tree (these were the gate failures on PR #121 — rm stopped treating terminal runs as completed); - drift rules: additive fork-owned only, no wire-contract change, no new pub items on AppState, resume.rs gets a minimal adapter edit only; RunSupervisor build-out is OUT OF SCOPE; - gate green via the deterministic tester step (never run the full gate yourself). Cheapest-first verification: targeted nextest on the rm tests, then lifecycle unit tests, then fmt/clippy on touched crates.",
               "journal": {
                 "painpoints": [
                   {
-                    "text": "The 70.7 KB evidence blob is a single-line JSON string, so read_file truncates its middle (22 KB omitted) and offset/limit paging by line is useless; I had to page with `nu -c 'open --raw <blob> | str substring a..b'` (run 01M25R832HP). Suggestion: have the evidence script pretty-print the JSON (or write the capture as plain text with real newlines) so read_file offset/limit paging works as the reviewer instructions describe."
+                    "text": "fabro_runs_list reports PR #121 as state 'merged' while the base branch has none of its work (no lifecycle_events.rs, no squash commit; newest base commit 76ed619 explicitly says the close lives only on the unmerged branch). The in-flight check relies on run/PR projections — a wrongly-'merged' open PR is invisible as in-flight and misleads reconciliation. Evidence: runs list for workflow develop, run 01M25K41V4NEWXSA3SVGRHKRXK, checked 2026-09-10 in run 01M25R832HP615J291N72FHNCS. Fix idea: postlude/post-merge reconciliation should correct PR state, or the projection should re-check against git."
+                  },
+                  {
+                    "text": "Journal fallback for run 01M23RQRCB748R4VRXA2WE6BZ0 (open PR #109) found no journal file at `.fabro/journal/<run_id>.jsonl` — had to recover the in-flight seed (fabro-e702) by fetching the run branch and parsing the .seeds/issues.jsonl diff. This is exactly the known gap of seed fabro-adf7 (failed runs lose stage journals); the prompt's journal fallback silently degrades to nothing."
                   }
                 ],
                 "observations": [
-                  "The quality gate's touched-crate set (fabro-server, fabro-store, fabro-workflow, fabro-types) did not include fabro-cli even though the seed brief explicitly requires the two rm regression tests to pass on the final tree; I ran `cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors` myself — 2/2 PASS. Gate readers relying on the gate alone would have taken the rm fix on trust.",
-                  "The `RunSubmitted` event no longer drives status in either reducer (documented in the table's protocol notes); this is a deliberate interface clarification, not a silent drop — the resubmit path reaches Submitted via run.start_requested(resume:true)."
+                  "In-flight exclusions applied this pass: fabro-e702 (open PR #109, seed recovered via run-branch seeds diff), and self (this run). PR #109 is old (2026-09-09) and still open — a stale in-flight lock on its seed.",
+                  "fabro-3fe4 re-claimed rather than fabro-7627 (also High, listed first): tie-break per observed-failure-class rule — 3fe4 has a concrete gate failure and ~55 min of reusable work on the PR #121 branch; 7627 stays top of the next run's list.",
+                  "The runs-list 'merged' state for PR #121 contradicts base history; the seed's REOPEN CONTEXT (base commit 76ed619) was treated as authoritative. The implementer MUST fetch the PR #121 branch before starting."
                 ]
               },
-              "review_verdict": "approved"
+              "last_stage": "planner",
+              "current_seed_title": "Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table",
+              "last_response": "Basis resolves against the current tree (server.rs:3576 reducer, run_state.rs RunProjectionReducer both present). Claimed; brief written.\n\nClaimed a seed:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 4214,
+                "preview": "Basis resolves against the current tree (server.rs:3576 reducer, run_state.rs RunProjectionReducer both present). Claimed; brief written.\n\nClaimed a seed:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next"
+              },
+              "current_seed_id": "fabro-3fe4"
             },
-            "notes": "Stage completed: reviewer",
+            "notes": "Stage completed: planner",
             "usage": {
               "input": {
                 "usage": {
@@ -2035,10 +2041,10 @@
                     "model_id": "glm-5.3"
                   },
                   "tokens": {
-                    "input_tokens": 37932,
-                    "output_tokens": 1202,
-                    "reasoning_tokens": 1624,
-                    "cache_read_tokens": 109824,
+                    "input_tokens": 38467,
+                    "output_tokens": 2707,
+                    "reasoning_tokens": 1833,
+                    "cache_read_tokens": 456704,
                     "cache_write_tokens": 0
                   }
                 },
@@ -2046,13 +2052,27 @@
                   "algorithm": "openai"
                 }
               },
-              "total_usd_micros": 94086
+              "total_usd_micros": 192555
             },
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 63915,
-              "tool_time_ms": 32477,
-              "active_time_ms": 96392
+              "inference_time_ms": 120625,
+              "tool_time_ms": 12625,
+              "active_time_ms": 133250
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/a7421eb6d4211efc9751a9e91b3cfd2f5a0e87aebcba6a4504e6ad711498dbf5"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 695,
+              "active_time_ms": 695
             }
           },
           "implementer": {
@@ -2124,66 +2144,6 @@
               "active_time_ms": 366950
             }
           },
-          "planner": {
-            "status": "succeeded",
-            "preferred_label": "Seed claimed",
-            "context_updates": {
-              "current_seed_brief": "RE-CLAIM with failed-gate context: a first attempt (run 01M25K41V4NE, PR #121 branch, NOT on base) failed the dogfood-gate on two fabro-cli rm tests. FIRST reconcile with that branch: git fetch origin fabro/run/01M25K41V4NEWXSA3SVGRHKRXK — reuse or supersede its work; the fix is likely a transition-table/completed-predicate adjustment, not a rewrite. Then deliver: - new fork-owned module `lib/components/fabro-workflow/src/operations/lifecycle_events.rs` exposing the run-lifecycle sequence as an interface (request_start / runnable / starting / running / resubmit / terminal_failure); server.rs and test_support become adapters; - one pure transition table (RunStatus x EventBody) -> Result<RunStatus, InvalidTransition> in fabro-types; BOTH reducers consume it (server.rs update_live_run_from_event:3576 and fabro-store run_state.rs RunProjectionReducer:75); live reducer keeps only side effects (map/bus cleanup); - drift arms aligned: Paused{prior_block}/RunUnblocked (server.rs:3610-3616 vs run_state.rs:197-205); - historic shims in run_state.rs (Submitted->Starting / RunFailed fast-forward, run_state.rs:84-112) carry a documented reason comment; - equivalence: property/table test proving both reducers yield the same status for every event sequence; unit tests per transition including cancel-before-starting and failure-before-running; - the fabro-cli rm regression is fixed: targeted `cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors` passes on the final tree (these were the gate failures on PR #121 — rm stopped treating terminal runs as completed); - drift rules: additive fork-owned only, no wire-contract change, no new pub items on AppState, resume.rs gets a minimal adapter edit only; RunSupervisor build-out is OUT OF SCOPE; - gate green via the deterministic tester step (never run the full gate yourself). Cheapest-first verification: targeted nextest on the rm tests, then lifecycle unit tests, then fmt/clippy on touched crates.",
-              "journal": {
-                "painpoints": [
-                  {
-                    "text": "fabro_runs_list reports PR #121 as state 'merged' while the base branch has none of its work (no lifecycle_events.rs, no squash commit; newest base commit 76ed619 explicitly says the close lives only on the unmerged branch). The in-flight check relies on run/PR projections — a wrongly-'merged' open PR is invisible as in-flight and misleads reconciliation. Evidence: runs list for workflow develop, run 01M25K41V4NEWXSA3SVGRHKRXK, checked 2026-09-10 in run 01M25R832HP615J291N72FHNCS. Fix idea: postlude/post-merge reconciliation should correct PR state, or the projection should re-check against git."
-                  },
-                  {
-                    "text": "Journal fallback for run 01M23RQRCB748R4VRXA2WE6BZ0 (open PR #109) found no journal file at `.fabro/journal/<run_id>.jsonl` — had to recover the in-flight seed (fabro-e702) by fetching the run branch and parsing the .seeds/issues.jsonl diff. This is exactly the known gap of seed fabro-adf7 (failed runs lose stage journals); the prompt's journal fallback silently degrades to nothing."
-                  }
-                ],
-                "observations": [
-                  "In-flight exclusions applied this pass: fabro-e702 (open PR #109, seed recovered via run-branch seeds diff), and self (this run). PR #109 is old (2026-09-09) and still open — a stale in-flight lock on its seed.",
-                  "fabro-3fe4 re-claimed rather than fabro-7627 (also High, listed first): tie-break per observed-failure-class rule — 3fe4 has a concrete gate failure and ~55 min of reusable work on the PR #121 branch; 7627 stays top of the next run's list.",
-                  "The runs-list 'merged' state for PR #121 contradicts base history; the seed's REOPEN CONTEXT (base commit 76ed619) was treated as authoritative. The implementer MUST fetch the PR #121 branch before starting."
-                ]
-              },
-              "last_stage": "planner",
-              "current_seed_title": "Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table",
-              "last_response": "Basis resolves against the current tree (server.rs:3576 reducer, run_state.rs RunProjectionReducer both present). Claimed; brief written.\n\nClaimed a seed:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next",
-              "response.planner": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.planner",
-                "chars": 4214,
-                "preview": "Basis resolves against the current tree (server.rs:3576 reducer, run_state.rs RunProjectionReducer both present). Claimed; brief written.\n\nClaimed a seed:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next"
-              },
-              "current_seed_id": "fabro-3fe4"
-            },
-            "notes": "Stage completed: planner",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 38467,
-                    "output_tokens": 2707,
-                    "reasoning_tokens": 1833,
-                    "cache_read_tokens": 456704,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 192555
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 120625,
-              "tool_time_ms": 12625,
-              "active_time_ms": 133250
-            }
-          },
           "closeout": {
             "status": "succeeded",
             "context_updates": {
@@ -2198,36 +2158,195 @@
               "active_time_ms": 500
             }
           },
-          "evidence": {
+          "reviewer": {
             "status": "succeeded",
+            "preferred_label": "Approved",
             "context_updates": {
-              "command.output": "blob://sha256/a7421eb6d4211efc9751a9e91b3cfd2f5a0e87aebcba6a4504e6ad711498dbf5"
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 3244,
+                "preview": "All requirements verified against the complete evidence (blob paged in full via shell), plus one focused test run of my own:\n\n- **Module interface**: `lifecycle_events.rs` exposes exactly `request_sta"
+              },
+              "last_response": "All requirements verified against the complete evidence (blob paged in full via shell), plus one focused test run of my own:\n\n- **Module interface**: `lifecycle_events.rs` exposes exactly `request_sta",
+              "last_stage": "reviewer",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "The 70.7 KB evidence blob is a single-line JSON string, so read_file truncates its middle (22 KB omitted) and offset/limit paging by line is useless; I had to page with `nu -c 'open --raw <blob> | str substring a..b'` (run 01M25R832HP). Suggestion: have the evidence script pretty-print the JSON (or write the capture as plain text with real newlines) so read_file offset/limit paging works as the reviewer instructions describe."
+                  }
+                ],
+                "observations": [
+                  "The quality gate's touched-crate set (fabro-server, fabro-store, fabro-workflow, fabro-types) did not include fabro-cli even though the seed brief explicitly requires the two rm regression tests to pass on the final tree; I ran `cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors` myself — 2/2 PASS. Gate readers relying on the gate alone would have taken the rm fix on trust.",
+                  "The `RunSubmitted` event no longer drives status in either reducer (documented in the table's protocol notes); this is a deliberate interface clarification, not a silent drop — the resubmit path reaches Submitted via run.start_requested(resume:true)."
+                ]
+              },
+              "review_verdict": "approved"
             },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-            "usage": null,
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 37932,
+                    "output_tokens": 1202,
+                    "reasoning_tokens": 1624,
+                    "cache_read_tokens": 109824,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 94086
+            },
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 695,
-              "active_time_ms": 695
+              "inference_time_ms": 63915,
+              "tool_time_ms": 32477,
+              "active_time_ms": 96392
             }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "cdb3628a15877d9732cafcbdedd99b7eb3237275",
         "node_visits": {
-          "tester": 1,
           "evidence": 1,
-          "implementer": 1,
           "reviewer": 1,
+          "tester": 1,
+          "planner": 1,
           "closeout": 1,
           "start": 1,
-          "planner": 1
+          "implementer": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl b/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl\nindex 8f4adcb..3cdd163 100644\n--- a/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl\n+++ b/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl\n@@ -4,3 +4,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T15:00:48Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T15:00:55Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T15:02:38Z\",\"data\":{\"painpoints\":[{\"text\":\"The 70.7 KB evidence blob is a single-line JSON string, so read_file truncates its middle (22 KB omitted) and offset/limit paging by line is useless; I had to page with `nu -c 'open --raw <blob> | str substring a..b'` (run 01M25R832HP). Suggestion: have the evidence script pretty-print the JSON (or write the capture as plain text with real newlines) so read_file offset/limit paging works as the reviewer instructions describe.\"}],\"observations\":[\"The quality gate's touched-crate set (fabro-server, fabro-store, fabro-workflow, fabro-types) did not include fabro-cli even though the seed brief explicitly requires the two rm regression tests to pass on the final tree; I ran `cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors` myself — 2/2 PASS. Gate readers relying on the gate alone would have taken the rm fix on trust.\",\"The `RunSubmitted` event no longer drives status in either reducer (documented in the table's protocol notes); this is a deliberate interface clarification, not a silent drop — the resubmit path reaches Submitted via run.start_requested(resume:true).\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T15:02:44Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 6a12f1d..1763cdf 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -351,7 +351,7 @@\n {\"id\":\"fabro-c49c\",\"title\":\"Close the gate-ban equivalence loophole in planner step 7\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T20:14:39.400Z\",\"updatedAt\":\"2026-09-10T08:34:43.824Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 7, extend the gate-command rewrite rule from matching only 'just qualitygate' to also matching its recipe body or equivalent invocation (per PROJECT_FACTS the recipe delegates to 'nu scripts/qualitygate.nu'); the permitted substitute stays gate-green via the deterministic tester step. In run 01M23W4S7Q2GNEVPY779M4GMN6 the planner rewrote the banned command into its byte-equivalent body (checkpoint seq 82, justfile:128), so the implementer and reviewer each ran the full gate on top of the tester — three gate executions on one tree. The prior fix (fabro-f7cf, closed) only matched the literal command name; this is the bypass of that implemented rule, a different mechanism. Expected effect: no redundant full-gate runs; on Rust-touching seeds each avoided run is a cold compile measured at 8-15 min. Cross-references: fabro-f7cf (prior, implemented). Basis: run 01M23W4S7Q2GNEVPY779M4GMN6, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4c8683243f8c295438cf019e2f061f8812fc58db\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-10T08:34:43.824Z\"}\n {\"id\":\"fabro-5e3c\",\"title\":\"Fix hardcoded cwd restore in evidence-smoke.nu\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T20:14:45.326Z\",\"updatedAt\":\"2026-09-09T20:22:22.837Z\",\"description\":\"In scripts/evidence-smoke.nu (~line 60), replace the hardcoded 'cd /workspace/fabro' cwd restore with a captured $env.PWD at script start. The reviewer in run 01M23W4S7Q2GNEVPY779M4GMN6 found this defect (journal seq 296) and approved anyway because the only channel was a full Changes-requested cycle; the smoke was checked into the gate by seed fabro-bfe1's new loop-asset tier and now executes in every future 'just qualitygate', misbehaving in any worktree checkout. Expected effect: the new gate tier stays green outside the canonical checkout path, and the latent break stops executing on every run. Cross-references: fabro-bfe1 (open — added the tier that checked this script into the gate; thematic overlap, not the same change). Basis: run 01M23W4S7Q2GNEVPY779M4GMN6, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4c8683243f8c295438cf019e2f061f8812fc58db\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-afb8\",\"title\":\"smoke.nu uses 'get -o' which nushell 0.101 rejects — weblab deploys fail the smoke recipe although the server is healthy\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-09T20:32:25.962Z\",\"updatedAt\":\"2026-09-10T08:28:33.428Z\",\"assignee\":\"fabro\",\"description\":\"Weblab deploy 2026-09-09 ~20:40Z: 'just up' completed fully (image built, CLI 0.348.0 installed, compose recreated fabro-fabro-1, wait-healthy green twice) but the recipe then FAILED at scripts/smoke.nu:91 with a PARSE error: 'The get command doesn't have flag -o' on 'open $auth_path | get -o servers | default {}'. The weblab HOST nushell is 0.101.0 (just invokes the host nu; the mise nushell 0.115.0 pin lives only in the run toolchain image) while the dev machine that authored/tested smoke.nu runs nu 0.115.0, where get -o/--optional exists. Result: every weblab deploy reports failure while the deployment actually succeeded — the deploy ceremony cannot trust its exit code. Wanted: make smoke.nu (and audit the other nu deploy scripts: wait-healthy.nu, install-cli.nu) compatible with the OLDEST supported host nu, or have the justfile invoke the pinned nushell explicitly. 0.101-compatible form for the failing line: 'get -i servers | default {}' (-i/--ignore-errors exists in 0.101) or a try/catch wrapper. Acceptance: 'nu --ide-check'-level parse of smoke.nu under 0.101 semantics (or a smoke run against a 0.101 host); deploy on weblab exits 0. Basis: weblab ~/deploy-20260909.log tail (parse error + 'Recipe smoke failed'), weblab nu --version 0.101.0, dev-machine nu 0.115.0, manual smoke after the failure (ps ok, auth probe 200, container healthy).\",\"labels\":[\"workflows\"],\"closedAt\":\"2026-09-10T08:28:33.428Z\"}\n-{\"id\":\"fabro-3fe4\",\"title\":\"Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-10T07:14:04.557Z\",\"updatedAt\":\"2026-09-10T13:33:21.615Z\",\"description\":\"Architecture review 2026-09-10 (improve-codebase-architecture, user + agent; walkers: fabro-server, fabro-store/fabro-workflow). Top recommendation, filed unassigned per ADR-0018.\\n\\nPROBLEM: The run-lifecycle event protocol (RunStartRequested -> RunRunnable -> RunStarting -> Running, terminal fails) has no owner. Emitters are spread over operations/start.rs:137-227, operations/resume.rs:36-46, server.rs:3405-3488 (writes terminal events directly), and test_support.rs mark_run_running:112-130 (a second protocol adapter inside tests). The same event stream is folded by TWO reducers with no shared table: server.rs update_live_run_from_event:3576-3740 (no transition validation, RunRunnable suppression, publish-blocked error field) vs fabro-store run_state.rs RunProjectionReducer (try_apply_status + InvalidTransition). The Paused{prior_block}/RunUnblocked arms already drift (server.rs:3610-3616 vs run_state.rs:197-205), and run_state.rs:84-112 patches historic Submitted->Starting / RunFailed fast-forward forms because the protocol was never an interface.\\n\\nWANTED: (1) New fork-owned module fabro-workflow/src/operations/lifecycle_events.rs exposing the sequence as an interface (request_start / runnable / starting / running / resubmit / terminal_failure); server.rs and test_support become adapters. (2) One pure transition table (RunStatus x EventBody) -> Result<RunStatus, InvalidTransition> in fabro-types; BOTH reducers consume it, the live reducer adds only its side effects (map cleanup, bus cleanup).\\n\\nDRIFT RULES (fork of fabro-sh/fabro, upstream merged regularly — conductor pass): the module and table are additive/fork-owned; edits concentrate in already-fork-modified files (server.rs +279, start.rs +107, run_state.rs +34 fork lines); resume.rs is upstream-identical (churn 5/12w) and gets a minimal adapter edit only. No wire-contract change; no new pub items on AppState. Explicitly OUT OF SCOPE: the RunSupervisor full build-out (27 lock sites, ManagedRun) — that is phase 2 behind this seed.\\n\\nACCEPTANCE: equivalence test proving both reducers yield the same status for every event sequence (property test over the table); unit tests per transition incl. cancel-before-starting and failure-before-running; historic shims in run_state.rs carry a documented reason; lifecycle tests run without AppState lock surgery.\\n\\nBASIS: commit bfbe3a6c8 (2026-09-09); walk reports /tmp/arch-walk-server.md (F1/F2), /tmp/arch-walk-store-workflow.md (F2/F8); upstream churn 12w: server.rs 49, start.rs 47, run_state.rs 53, resume.rs 5.\\n\\nREOPEN CONTEXT (integrate, 2026-09-10 13:2x UTC): first implementation attempt (run 01M25K41V4NE, PR #121, 55 min) FAILED the dogfood-gate: fabro-cli::it::cmd::rm::rm_deletes_completed_run and rm_partial_failure_json_includes_removed_and_errors (lib/apps/fabro-cli/tests/it/cmd/rm.rs:284 — errors array expected [01M25QAG0W0V6X2CZAEZG47W8V], got []; rm did not treat the run as completed/deletable). The transition-table refactor changed which terminal states rm counts as completed. The seed stays OPEN on base (the close lives only in PR #121's unmerged branch); a re-claim must first reconcile with #121's branch (git fetch origin fabro/run/01M25K41V4NEWXSA3SVGRHKRXK — reuse or supersede its work) and the fix is likely a transition-table/`completed` predicate adjustment, not a rewrite. Repro on the #121 branch: cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors.\",\"labels\":[\"engine\",\"architecture\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-3fe4\",\"title\":\"Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-10T07:14:04.557Z\",\"updatedAt\":\"2026-09-10T15:02:44.498Z\",\"description\":\"Architecture review 2026-09-10 (improve-codebase-architecture, user + agent; walkers: fabro-server, fabro-store/fabro-workflow). Top recommendation, filed unassigned per ADR-0018.\\n\\nPROBLEM: The run-lifecycle event protocol (RunStartRequested -> RunRunnable -> RunStarting -> Running, terminal fails) has no owner. Emitters are spread over operations/start.rs:137-227, operations/resume.rs:36-46, server.rs:3405-3488 (writes terminal events directly), and test_support.rs mark_run_running:112-130 (a second protocol adapter inside tests). The same event stream is folded by TWO reducers with no shared table: server.rs update_live_run_from_event:3576-3740 (no transition validation, RunRunnable suppression, publish-blocked error field) vs fabro-store run_state.rs RunProjectionReducer (try_apply_status + InvalidTransition). The Paused{prior_block}/RunUnblocked arms already drift (server.rs:3610-3616 vs run_state.rs:197-205), and run_state.rs:84-112 patches historic Submitted->Starting / RunFailed fast-forward forms because the protocol was never an interface.\\n\\nWANTED: (1) New fork-owned module fabro-workflow/src/operations/lifecycle_events.rs exposing the sequence as an interface (request_start / runnable / starting / running / resubmit / terminal_failure); server.rs and test_support become adapters. (2) One pure transition table (RunStatus x EventBody) -> Result<RunStatus, InvalidTransition> in fabro-types; BOTH reducers consume it, the live reducer adds only its side effects (map cleanup, bus cleanup).\\n\\nDRIFT RULES (fork of fabro-sh/fabro, upstream merged regularly — conductor pass): the module and table are additive/fork-owned; edits concentrate in already-fork-modified files (server.rs +279, start.rs +107, run_state.rs +34 fork lines); resume.rs is upstream-identical (churn 5/12w) and gets a minimal adapter edit only. No wire-contract change; no new pub items on AppState. Explicitly OUT OF SCOPE: the RunSupervisor full build-out (27 lock sites, ManagedRun) — that is phase 2 behind this seed.\\n\\nACCEPTANCE: equivalence test proving both reducers yield the same status for every event sequence (property test over the table); unit tests per transition incl. cancel-before-starting and failure-before-running; historic shims in run_state.rs carry a documented reason; lifecycle tests run without AppState lock surgery.\\n\\nBASIS: commit bfbe3a6c8 (2026-09-09); walk reports /tmp/arch-walk-server.md (F1/F2), /tmp/arch-walk-store-workflow.md (F2/F8); upstream churn 12w: server.rs 49, start.rs 47, run_state.rs 53, resume.rs 5.\\n\\nREOPEN CONTEXT (integrate, 2026-09-10 13:2x UTC): first implementation attempt (run 01M25K41V4NE, PR #121, 55 min) FAILED the dogfood-gate: fabro-cli::it::cmd::rm::rm_deletes_completed_run and rm_partial_failure_json_includes_removed_and_errors (lib/apps/fabro-cli/tests/it/cmd/rm.rs:284 — errors array expected [01M25QAG0W0V6X2CZAEZG47W8V], got []; rm did not treat the run as completed/deletable). The transition-table refactor changed which terminal states rm counts as completed. The seed stays OPEN on base (the close lives only in PR #121's unmerged branch); a re-claim must first reconcile with #121's branch (git fetch origin fabro/run/01M25K41V4NEWXSA3SVGRHKRXK — reuse or supersede its work) and the fix is likely a transition-table/`completed` predicate adjustment, not a rewrite. Repro on the #121 branch: cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors.\",\"labels\":[\"engine\",\"architecture\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-10T15:02:44.498Z\"}\n {\"id\":\"fabro-0863\",\"title\":\"Engine: RunCreated constructor at the RunSpec seam — four hand-built sites become one constructor\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T07:14:04.654Z\",\"updatedAt\":\"2026-09-10T10:14:00.029Z\",\"description\":\"Architecture review 2026-09-10 (improve-codebase-architecture). Entry-level companion to the lifecycle-protocol seed; purely mechanical.\\n\\nPROBLEM: Event::RunCreated is hand-assembled at four sites — operations/create.rs:556-585, operations/retry.rs:68-93, operations/fork.rs:158-183, fabro-workflow test_support.rs:206-231 — each serializing settings/graph itself and threading ~24 fields individually. A new mandatory RunCreated field breaks four places; each site re-derives what persist_created_run already knows.\\n\\nWANTED: One constructor at the RunSpec seam, e.g. RunSpec::into_created_event(title, provenance_overrides, retried_from, parent_id, web_url) in fabro-types records.rs (upstream churn there: 0/12w). create/retry/fork/test_support call it with their deltas; serialization lives inside the constructor.\\n\\nDRIFT RULES: additive; exactly one call-site edit each in create.rs (upstream-identical, churn 35/12w) and fork.rs (churn 13/12w) — keep surgical, no reformatting beyond the call.\\n\\nACCEPTANCE: parity check that emitted event bytes are identical before/after (snapshot); a deliberately added mandatory field breaks exactly one place; retry/fork/create test fixtures shrink (no per-site 24-field building).\\n\\nBASIS: commit bfbe3a6c8 (2026-09-09); /tmp/arch-walk-store-workflow.md (F1).\",\"labels\":[\"engine\",\"architecture\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-ab8e\",\"title\":\"Fork footprint: extract fork additions out of upstream-churn hot files (tests.rs, automation_scheduler.rs)\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T07:14:04.741Z\",\"updatedAt\":\"2026-09-10T10:13:59.956Z\",\"description\":\"Architecture review 2026-09-10. Cross-cutting fork-strategy seed — runs alongside the other architecture seeds (lifecycle protocol, typed admission) whose modules are natural extraction targets.\\n\\nPROBLEM: Fork additions live physically inside upstream's hottest files. server/tests.rs carries +2083 fork-added lines while upstream churns it 112 commits/12w (worst ratio in the repo); automation_scheduler.rs is +555/1433 (~40% fork code, churn 13/12w); server.rs +279 (churn 49/12w). Every upstream merge pays conflict hunks on fork lines that have no locality of their own. The target pattern already exists and is proven: server/handler/wait.rs and tests/it/api/run_wait.rs are fork-owned files.\\n\\nWANTED: Move fork-added tests into fork-owned test files; extract fork scheduler/materializer logic into fork-owned modules (prefer interfaces delivered by the lifecycle/admission seeds); upstream files keep only registration and call-site lines. Moves only — no behavior change, no test deletions.\\n\\nACCEPTANCE: fork test count unchanged (moves, verified by count); fork additions greppable from fork-owned files; the next upstream merge shows measurably fewer conflicted hunks in tests.rs and automation_scheduler.rs (record the diff in the close note).\\n\\nBASIS: commit bfbe3a6c8 (2026-09-09); drift data from git diff --numstat upstream/main..HEAD and git log churn on upstream/main (12w); review card K7, /tmp/architecture-review-20260910-090054.html.\",\"labels\":[\"engine\",\"architecture\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-27dc\",\"title\":\"engine: conductor parks at soft exit after Work-routed survey since the 2026-09-09 22:29 deploy - develop leg never starts (line down)\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":0,\"createdAt\":\"2026-09-10T07:41:32.446Z\",\"updatedAt\":\"2026-09-10T12:28:54.497Z\",\"description\":\"LINE DOWN INCIDENT 2026-09-10 07:01-09:30 (line-watch, reproduced twice): after the night deploy (server image built 2026-09-09 22:29 CEST, container started 22:35), every conductor pass parks at the soft exit immediately after a Work-routed survey; the develop leg never starts.\\n\\nEvidence:\\n- Automation-fired pass 01M251VFNABCNMA94QDNHYZ5Q7 (07:00-07:01) and manual repair fire 01M253EWK1X299DRFTAJJHA0MV (07:28-07:29) both: survey stage completes green with correct route decision journaled ('route decision: Work'), then the exit handler completes in 0ms and run.failed fires with reason=soft_stop, kind=soft, category=deterministic (\\\"infrastructure could not finish\\\"). No develop-leg journal entry, no child run created.\\n- stage.completed context_values carry NO preferred_next_label on EITHER the broken passes or the last-known-good pass (20:08 yesterday on the OLD image) - routing reads the structured output elsewhere; do not chase the context key.\\n- Last known-good conductor pass on the previous image: 01M23W3067KQ 20:08-21:10 (develop child 01M23W4S7Q2G created fine, PR #113).\\n- The deployed image contains the 2026-09-09 engine merges: #84 (allow-keys lint), #90/fabro-91ff (overlap guard: run_summary_store + planner/analyze prompts), #96/fabro-de4d (preferred_label edge validation in fabro-validate, new rule routing_fallback_silent), #99/fabro-94e8 (update-branch), #107+#109 (PR postlude). Prime suspects: routing/output-schema handling around de4d and 91ff.\\n- Secondary blocker: the automation breaker (signature park|Conductor|soft_stop, consecutive_count 1, threshold appears to be 1) suppresses the */30 schedule after the first soft_stop - even a one-off park kills the line until the breaker resets.\\n\\nRepro: FABRO_SERVER=http://localhost:32276 just run conductor (twice, deterministic). Also note the local repair path tripped over auth.json URL keying (127.0.0.1 vs localhost entry) - separate papercut.\\n\\nExpected fix: find why the survey->develop edge (condition preferred_label=\\\"Work\\\") is not taken on the new image though the survey emits the route; also revisit the breaker threshold (a single soft_stop should not permanently suppress the schedule without an incident signal).\\n\\nExecution note: filed by line-watch during line-down; the line cannot pick this up itself (chicken-egg) - direct agent repair with user knowledge, or user-led. ROOT CAUSE FOUND (line-watch 10:2x, inspect of 01M253EWK1X): the survey agent's final answer literally set preferred_next_label=\\\"Unrouted survey outcome\\\" (last_response in the stage context: {\\\"preferred_next_label\\\":\\\"Unrouted survey outcome\\\",\\\"outcome\\\":\\\"succeeded\\\",...}) while its journal says 'route decision: Work'. The engine's Edge selected log confirms: from survey to exit label=\\\"Unrouted survey outcome\\\" reason=\\\"preferred_label\\\". fabro-de4d (#96, in the 22:29 image) constrains the routing output_schema enum from the node's outgoing edges - but the survey's outgoing set includes the UNCONDITIONAL safety-net edge (validator rule all_conditional_edges, label \\\"Unrouted survey outcome\\\"), so the fallback became a first-class valid choice and glm-5.3 picks it deterministically (2/2 passes on the new image). FIX DIRECTION: build the preferred_label enum from CONDITIONAL choice edges only (exclude unconditional safety nets and outcome=failed edges) in the de4d schema construction (lib/components/fabro-workflow, routing/output_schema area); optionally also make the model-facing schema description mark the fallback as engine-reserved. The old image worked because the enum was not edge-constrained. FIXED 2026-09-10 10:5x (line-watch direct repair, mandate: line down): lib/components/fabro-workflow/src/handler/structured_output.rs routable_edge_labels now includes conditional edges whose condition routes on preferred_label naming the label (clause walk incl. and/or/not); regression tests cover the conductor-survey shape and composite conditions. Verification: cargo test -p fabro-workflow --lib (2 new tests green, 1326 pass; 4 pipeline failures pre-exist on clean tree - sandbox/env-dependent), clippy + fmt on touched crate green (nightly-2026-04-14). Commit 0373f5c10; deployed via just up.\",\"labels\":[\"engine\",\"workflows\"],\"assignee\":\"agent\",\"closedAt\":\"2026-09-10T12:28:54.497Z\",\"closeReason\":\"superseded: fix landed in 0373f5c10 (routable_edge_labels includes conditional preferred_label edges; regression tests for the conductor-survey shape); verified live — passes 01M256NF09VY (08:24), 01M257096GRA (08:30), 01M25H9VVJ (11:30) all route Work and reach the develop leg after the 10:18 deploy\"}\n",
+        "summary": {
+          "files_changed": 13,
+          "additions": 1039,
+          "deletions": 214
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-10T15:02:50.626715648Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 5482048,
+      "inference_time_ms": 368722,
+      "tool_time_ms": 658637,
+      "active_time_ms": 1027359
+    },
+    "final_git_commit_sha": "cdb3628a15877d9732cafcbdedd99b7eb3237275",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 133962,
+          "inference_time_ms": 120625,
+          "tool_time_ms": 12625,
+          "active_time_ms": 133250
+        },
+        "billing_usd_micros": 192555,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 430258,
+          "inference_time_ms": 184182,
+          "tool_time_ms": 245390,
+          "active_time_ms": 429572
+        },
+        "billing_usd_micros": 191503,
+        "retries": 2
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 367030,
+          "inference_time_ms": 0,
+          "tool_time_ms": 366950,
+          "active_time_ms": 366950
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 701,
+          "inference_time_ms": 0,
+          "tool_time_ms": 695,
+          "active_time_ms": 695
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 97109,
+          "inference_time_ms": 63915,
+          "tool_time_ms": 32477,
+          "active_time_ms": 96392
+        },
+        "billing_usd_micros": 94086,
+        "retries": 0
+      },
+      {
+        "stage_id": "closeout",
+        "stage_label": "closeout",
+        "timing": {
+          "wall_time_ms": 510,
+          "inference_time_ms": 0,
+          "tool_time_ms": 500,
+          "active_time_ms": 500
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 109115,
+      "output_tokens": 7643,
+      "total_tokens": 1145845,
+      "reasoning_tokens": 5855,
+      "cache_read_tokens": 1023232,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 478144
+    },
+    "total_retries": 2,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl b/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl\nnew file mode 100644\nindex 0000000..3cdd163\n--- /dev/null\n+++ b/.fabro/journal/01M25R832HP615J291N72FHNCS.jsonl\n@@ -0,0 +1,7 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T13:31:32Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T13:33:46Z\",\"data\":{\"painpoints\":[{\"text\":\"fabro_runs_list reports PR #121 as state 'merged' while the base branch has none of its work (no lifecycle_events.rs, no squash commit; newest base commit 76ed619 explicitly says the close lives only on the unmerged branch). The in-flight check relies on run/PR projections — a wrongly-'merged' open PR is invisible as in-flight and misleads reconciliation. Evidence: runs list for workflow develop, run 01M25K41V4NEWXSA3SVGRHKRXK, checked 2026-09-10 in run 01M25R832HP615J291N72FHNCS. Fix idea: postlude/post-merge reconciliation should correct PR state, or the projection should re-check against git.\"},{\"text\":\"Journal fallback for run 01M23RQRCB748R4VRXA2WE6BZ0 (open PR #109) found no journal file at `.fabro/journal/<run_id>.jsonl` — had to recover the in-flight seed (fabro-e702) by fetching the run branch and parsing the .seeds/issues.jsonl diff. This is exactly the known gap of seed fabro-adf7 (failed runs lose stage journals); the prompt's journal fallback silently degrades to nothing.\"}],\"observations\":[\"In-flight exclusions applied this pass: fabro-e702 (open PR #109, seed recovered via run-branch seeds diff), and self (this run). PR #109 is old (2026-09-09) and still open — a stale in-flight lock on its seed.\",\"fabro-3fe4 re-claimed rather than fabro-7627 (also High, listed first): tie-break per observed-failure-class rule — 3fe4 has a concrete gate failure and ~55 min of reusable work on the PR #121 branch; 7627 stays top of the next run's list.\",\"The runs-list 'merged' state for PR #121 contradicts base history; the seed's REOPEN CONTEXT (base commit 76ed619) was treated as authoritative. The implementer MUST fetch the PR #121 branch before starting.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T14:54:35Z\",\"data\":{\"painpoints\":[{\"text\":\"The reopen brief's git fetch of `fabro/run/01M25K41V4NEWXSA3SVGRHKRXK` produced branch commits (7a0a7db, f051098) whose fixes were partially superseded by an in-progress unstaged worktree state with no journal record explaining it — an interrupted prior pass of run 01M25R832HP left ambiguous reconciliation state. Suggestion: journal the reconciliation decision (reuse vs supersede) as the first action of a re-claim pass so the next interruption is recoverable.\"}],\"observations\":[\"The PR #121 branch's fix (Runnable-retry inside the Rejected arm + durable-terminal fallback in the delete guard) diverged from the worktree's cleaner shared-helper fix; choosing the shared helper required reading both diffs carefully — the branch's zz_probe_seeded_completed_status debug test in `lib/apps/fabro-cli/tests/it/cmd/rm.rs` is correctly absent from the final tree.\",\"rg pattern `pub fn` misses `pub async fn` declarations — lifecycle_events.rs looked empty on first inventory; pattern discipline matters when verifying module interfaces.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T15:00:48Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T15:00:55Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T15:02:38Z\",\"data\":{\"painpoints\":[{\"text\":\"The 70.7 KB evidence blob is a single-line JSON string, so read_file truncates its middle (22 KB omitted) and offset/limit paging by line is useless; I had to page with `nu -c 'open --raw <blob> | str substring a..b'` (run 01M25R832HP). Suggestion: have the evidence script pretty-print the JSON (or write the capture as plain text with real newlines) so read_file offset/limit paging works as the reviewer instructions describe.\"}],\"observations\":[\"The quality gate's touched-crate set (fabro-server, fabro-store, fabro-workflow, fabro-types) did not include fabro-cli even though the seed brief explicitly requires the two rm regression tests to pass on the final tree; I ran `cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors` myself — 2/2 PASS. Gate readers relying on the gate alone would have taken the rm fix on trust.\",\"The `RunSubmitted` event no longer drives status in either reducer (documented in the table's protocol notes); this is a deliberate interface clarification, not a silent drop — the resubmit path reaches Submitted via run.start_requested(resume:true).\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25R832HP615J291N72FHNCS\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T15:02:44Z\",\"data\":{}}\ndiff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl\nindex e677d3f..db14517 100644\n--- a/.mulch/expertise/engine.jsonl\n+++ b/.mulch/expertise/engine.jsonl\n@@ -53,3 +53,5 @@\n {\"type\":\"decision\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-09T18:46:28.575Z\",\"evidence\":{\"commit\":\"2510041b02b1e609e990cf3058116dde2282b25d\"},\"title\":\"adr-0020-node-tools-reviewer-gated\",\"rationale\":\"User decision 2026-09-09 grill: an engine-side read-only allowlist would split the capability model and make the overall logic harder to explain without removing the trust question; the reviewer is the instance that can best judge 'what the task minimally requires' and must recognize and block unjustified escalations. Run-wide flag remains the only widener for attribute-less stages; new tools stay full ADR-0019 item-4 user decisions.\",\"id\":\"mx-92e1a7\"}\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-09T18:41:55.712Z\",\"evidence\":{\"commit\":\"9a7a3b1a2be24180e4d240d1c089307fd639ca54\"},\"description\":\"resolve_pr_model (lib/components/fabro-workflow/src/operations/start.rs) only falls back to the run model for bare provider tokens / ambiguous refs; a provider-QUALIFIED unknown selector (e.g. zai:nonexistent-model) passes through resolve_selection which echoes the selector as the model id, so the PR-body call would fail at client time instead of falling back to the run model. Found while writing fabro-6a5a tests; documented via resolve_pr_model_falls_back_to_run_model_for_bare_provider.\",\"resolution\":\"Not fixed (out of fabro-6a5a scope): documented via the bare-provider fallback test; the qualified-unknown-selector passthrough is journal-reported for a future seed.\",\"id\":\"mx-232137\"}\n {\"type\":\"decision\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-09T19:35:33.832Z\",\"evidence\":{\"seeds\":\"fabro-c0e5\",\"commit\":\"cbaec07acdaff2408bf340a029f074ff0100c8c0\"},\"title\":\"Mixed-capture evidence: anomaly section for loop paths changed alongside seed work\",\"rationale\":\"PR #109 flipped auto_merge=false across three workflow.toml files and was approved because the evidence capture demoted loop-path changes to counts-only churn whenever seed work existed — the reviewer never saw the diff. Detection is cheaper and safer than classification: fabro-93a7 (spec-named path promotion) and fabro-9d2f (worktree-diff quarantine) stay open separately.\",\"id\":\"mx-b6e12b\"}\n+{\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-10T14:43:40.831Z\",\"evidence\":{\"commit\":\"2a2f189a4cf44f95b03420280c488971156ae8b6\"},\"dir_anchors\":[\"lib/components/fabro-workflow/src/operations\"],\"name\":\"lifecycle-two-reducer-equivalence-via-shared-table\",\"description\":\"Proving server live fold and store RunProjectionReducer agree is done transitively (fabro-3fe4): one pure table fabro_types::apply_lifecycle_event consumed by BOTH, plus two thin equivalence tests (xorshift property test durable-reducer-vs-table in run_state.rs::lifecycle_equivalence, and live_lifecycle_status-vs-table step test in fabro-server server/tests.rs). Live-only guards (RunRunnable ingestion suppression) are documented deviations in the step test, not table arms. Historic pre-table stream shapes (Submitted->Starting jumps, fast-forwarded RunFailed) live in fabro_types::historic_skipped_statuses so the shim has one owner and the table stays strict.\",\"files\":[\"lib/apps/fabro-server/src/server.rs\",\"lib/apps/fabro-server/src/server/tests.rs\",\"lib/components/fabro-store/src/run_state.rs\",\"lib/components/fabro-workflow/src/operations/lifecycle_events.rs\",\"lib/components/fabro-workflow/src/operations/mod.rs\",\"lib/components/fabro-workflow/src/operations/resume.rs\",\"lib/components/fabro-workflow/src/operations/start.rs\",\"lib/components/fabro-workflow/src/test_support.rs\",\"lib/foundation/fabro-types/src/lib.rs\",\"lib/foundation/fabro-types/src/lifecycle.rs\"],\"id\":\"mx-840e1b\"}\n+{\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-10T14:54:14.516Z\",\"evidence\":{\"commit\":\"2a2f189a4cf44f95b03420280c488971156ae8b6\"},\"dir_anchors\":[\"lib/components/fabro-workflow/src/operations\"],\"description\":\"fabro-3fe4 reopen (runs 01M25K41V4NE, 01M25R832HP): making the live reducer strictly apply the shared lifecycle table stranded injected event sequences (submitted + worker-shaped run.starting, RunRunnable suppressed by the scheduling guard) at Submitted, so fabro rm no longer saw terminal runs as completed and failed dogfood-gate. Lesson: when two reducers share one strict table, any per-reducer guard (RunRunnable suppression) must be paired with the shared fast-forward path, or live/durable status drift breaks downstream terminality predicates like requires_force_to_delete.\",\"resolution\":\"Shared helper fabro_types::historic_skipped_statuses consumed by BOTH live_lifecycle_status (server.rs) and RunProjectionReducer (run_state.rs); rm completed-run tests pass on final tree.\",\"id\":\"mx-c555a3\"}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex e94edd6..1763cdf 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -351,7 +351,7 @@\n {\"id\":\"fabro-c49c\",\"title\":\"Close the gate-ban equivalence loophole in planner step 7\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-09T20:14:39.400Z\",\"updatedAt\":\"2026-09-10T08:34:43.824Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 7, extend the gate-command rewrite rule from matching only 'just qualitygate' to also matching its recipe body or equivalent invocation (per PROJECT_FACTS the recipe delegates to 'nu scripts/qualitygate.nu'); the permitted substitute stays gate-green via the deterministic tester step. In run 01M23W4S7Q2GNEVPY779M4GMN6 the planner rewrote the banned command into its byte-equivalent body (checkpoint seq 82, justfile:128), so the implementer and reviewer each ran the full gate on top of the tester — three gate executions on one tree. The prior fix (fabro-f7cf, closed) only matched the literal command name; this is the bypass of that implemented rule, a different mechanism. Expected effect: no redundant full-gate runs; on Rust-touching seeds each avoided run is a cold compile measured at 8-15 min. Cross-references: fabro-f7cf (prior, implemented). Basis: run 01M23W4S7Q2GNEVPY779M4GMN6, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4c8683243f8c295438cf019e2f061f8812fc58db\",\"labels\":[\"revision\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-10T08:34:43.824Z\"}\n {\"id\":\"fabro-5e3c\",\"title\":\"Fix hardcoded cwd restore in evidence-smoke.nu\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-09T20:14:45.326Z\",\"updatedAt\":\"2026-09-09T20:22:22.837Z\",\"description\":\"In scripts/evidence-smoke.nu (~line 60), replace the hardcoded 'cd /workspace/fabro' cwd restore with a captured $env.PWD at script start. The reviewer in run 01M23W4S7Q2GNEVPY779M4GMN6 found this defect (journal seq 296) and approved anyway because the only channel was a full Changes-requested cycle; the smoke was checked into the gate by seed fabro-bfe1's new loop-asset tier and now executes in every future 'just qualitygate', misbehaving in any worktree checkout. Expected effect: the new gate tier stays green outside the canonical checkout path, and the latent break stops executing on every run. Cross-references: fabro-bfe1 (open — added the tier that checked this script into the gate; thematic overlap, not the same change). Basis: run 01M23W4S7Q2GNEVPY779M4GMN6, workflow version 38bab0b8b1faad62aaddb5e68facf6f1c58286169676479d3edbf99d4205b91c, commit 4c8683243f8c295438cf019e2f061f8812fc58db\",\"labels\":[\"revision\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-afb8\",\"title\":\"smoke.nu uses 'get -o' which nushell 0.101 rejects — weblab deploys fail the smoke recipe although the server is healthy\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":1,\"createdAt\":\"2026-09-09T20:32:25.962Z\",\"updatedAt\":\"2026-09-10T08:28:33.428Z\",\"assignee\":\"fabro\",\"description\":\"Weblab deploy 2026-09-09 ~20:40Z: 'just up' completed fully (image built, CLI 0.348.0 installed, compose recreated fabro-fabro-1, wait-healthy green twice) but the recipe then FAILED at scripts/smoke.nu:91 with a PARSE error: 'The get command doesn't have flag -o' on 'open $auth_path | get -o servers | default {}'. The weblab HOST nushell is 0.101.0 (just invokes the host nu; the mise nushell 0.115.0 pin lives only in the run toolchain image) while the dev machine that authored/tested smoke.nu runs nu 0.115.0, where get -o/--optional exists. Result: every weblab deploy reports failure while the deployment actually succeeded — the deploy ceremony cannot trust its exit code. Wanted: make smoke.nu (and audit the other nu deploy scripts: wait-healthy.nu, install-cli.nu) compatible with the OLDEST supported host nu, or have the justfile invoke the pinned nushell explicitly. 0.101-compatible form for the failing line: 'get -i servers | default {}' (-i/--ignore-errors exists in 0.101) or a try/catch wrapper. Acceptance: 'nu --ide-check'-level parse of smoke.nu under 0.101 semantics (or a smoke run against a 0.101 host); deploy on weblab exits 0. Basis: weblab ~/deploy-20260909.log tail (parse error + 'Recipe smoke failed'), weblab nu --version 0.101.0, dev-machine nu 0.115.0, manual smoke after the failure (ps ok, auth probe 200, container healthy).\",\"labels\":[\"workflows\"],\"closedAt\":\"2026-09-10T08:28:33.428Z\"}\n-{\"id\":\"fabro-3fe4\",\"title\":\"Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-10T07:14:04.557Z\",\"updatedAt\":\"2026-09-10T13:19:21.518Z\",\"description\":\"Architecture review 2026-09-10 (improve-codebase-architecture, user + agent; walkers: fabro-server, fabro-store/fabro-workflow). Top recommendation, filed unassigned per ADR-0018.\\n\\nPROBLEM: The run-lifecycle event protocol (RunStartRequested -> RunRunnable -> RunStarting -> Running, terminal fails) has no owner. Emitters are spread over operations/start.rs:137-227, operations/resume.rs:36-46, server.rs:3405-3488 (writes terminal events directly), and test_support.rs mark_run_running:112-130 (a second protocol adapter inside tests). The same event stream is folded by TWO reducers with no shared table: server.rs update_live_run_from_event:3576-3740 (no transition validation, RunRunnable suppression, publish-blocked error field) vs fabro-store run_state.rs RunProjectionReducer (try_apply_status + InvalidTransition). The Paused{prior_block}/RunUnblocked arms already drift (server.rs:3610-3616 vs run_state.rs:197-205), and run_state.rs:84-112 patches historic Submitted->Starting / RunFailed fast-forward forms because the protocol was never an interface.\\n\\nWANTED: (1) New fork-owned module fabro-workflow/src/operations/lifecycle_events.rs exposing the sequence as an interface (request_start / runnable / starting / running / resubmit / terminal_failure); server.rs and test_support become adapters. (2) One pure transition table (RunStatus x EventBody) -> Result<RunStatus, InvalidTransition> in fabro-types; BOTH reducers consume it, the live reducer adds only its side effects (map cleanup, bus cleanup).\\n\\nDRIFT RULES (fork of fabro-sh/fabro, upstream merged regularly — conductor pass): the module and table are additive/fork-owned; edits concentrate in already-fork-modified files (server.rs +279, start.rs +107, run_state.rs +34 fork lines); resume.rs is upstream-identical (churn 5/12w) and gets a minimal adapter edit only. No wire-contract change; no new pub items on AppState. Explicitly OUT OF SCOPE: the RunSupervisor full build-out (27 lock sites, ManagedRun) — that is phase 2 behind this seed.\\n\\nACCEPTANCE: equivalence test proving both reducers yield the same status for every event sequence (property test over the table); unit tests per transition incl. cancel-before-starting and failure-before-running; historic shims in run_state.rs carry a documented reason; lifecycle tests run without AppState lock surgery.\\n\\nBASIS: commit bfbe3a6c8 (2026-09-09); walk reports /tmp/arch-walk-server.md (F1/F2), /tmp/arch-walk-store-workflow.md (F2/F8); upstream churn 12w: server.rs 49, start.rs 47, run_state.rs 53, resume.rs 5.\\n\\nREOPEN CONTEXT (integrate, 2026-09-10 13:2x UTC): first implementation attempt (run 01M25K41V4NE, PR #121, 55 min) FAILED the dogfood-gate: fabro-cli::it::cmd::rm::rm_deletes_completed_run and rm_partial_failure_json_includes_removed_and_errors (lib/apps/fabro-cli/tests/it/cmd/rm.rs:284 — errors array expected [01M25QAG0W0V6X2CZAEZG47W8V], got []; rm did not treat the run as completed/deletable). The transition-table refactor changed which terminal states rm counts as completed. The seed stays OPEN on base (the close lives only in PR #121's unmerged branch); a re-claim must first reconcile with #121's branch (git fetch origin fabro/run/01M25K41V4NEWXSA3SVGRHKRXK — reuse or supersede its work) and the fix is likely a transition-table/`completed` predicate adjustment, not a rewrite. Repro on the #121 branch: cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors.\",\"labels\":[\"engine\",\"architecture\"],\"assignee\":\"fabro\"}\n+{\"id\":\"fabro-3fe4\",\"title\":\"Engine: own the run-lifecycle event protocol — one module + one shared Event-to-Status transition table\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-10T07:14:04.557Z\",\"updatedAt\":\"2026-09-10T15:02:44.498Z\",\"description\":\"Architecture review 2026-09-10 (improve-codebase-architecture, user + agent; walkers: fabro-server, fabro-store/fabro-workflow). Top recommendation, filed unassigned per ADR-0018.\\n\\nPROBLEM: The run-lifecycle event protocol (RunStartRequested -> RunRunnable -> RunStarting -> Running, terminal fails) has no owner. Emitters are spread over operations/start.rs:137-227, operations/resume.rs:36-46, server.rs:3405-3488 (writes terminal events directly), and test_support.rs mark_run_running:112-130 (a second protocol adapter inside tests). The same event stream is folded by TWO reducers with no shared table: server.rs update_live_run_from_event:3576-3740 (no transition validation, RunRunnable suppression, publish-blocked error field) vs fabro-store run_state.rs RunProjectionReducer (try_apply_status + InvalidTransition). The Paused{prior_block}/RunUnblocked arms already drift (server.rs:3610-3616 vs run_state.rs:197-205), and run_state.rs:84-112 patches historic Submitted->Starting / RunFailed fast-forward forms because the protocol was never an interface.\\n\\nWANTED: (1) New fork-owned module fabro-workflow/src/operations/lifecycle_events.rs exposing the sequence as an interface (request_start / runnable / starting / running / resubmit / terminal_failure); server.rs and test_support become adapters. (2) One pure transition table (RunStatus x EventBody) -> Result<RunStatus, InvalidTransition> in fabro-types; BOTH reducers consume it, the live reducer adds only its side effects (map cleanup, bus cleanup).\\n\\nDRIFT RULES (fork of fabro-sh/fabro, upstream merged regularly — conductor pass): the module and table are additive/fork-owned; edits concentrate in already-fork-modified files (server.rs +279, start.rs +107, run_state.rs +34 fork lines); resume.rs is upstream-identical (churn 5/12w) and gets a minimal adapter edit only. No wire-contract change; no new pub items on AppState. Explicitly OUT OF SCOPE: the RunSupervisor full build-out (27 lock sites, ManagedRun) — that is phase 2 behind this seed.\\n\\nACCEPTANCE: equivalence test proving both reducers yield the same status for every event sequence (property test over the table); unit tests per transition incl. cancel-before-starting and failure-before-running; historic shims in run_state.rs carry a documented reason; lifecycle tests run without AppState lock surgery.\\n\\nBASIS: commit bfbe3a6c8 (2026-09-09); walk reports /tmp/arch-walk-server.md (F1/F2), /tmp/arch-walk-store-workflow.md (F2/F8); upstream churn 12w: server.rs 49, start.rs 47, run_state.rs 53, resume.rs 5.\\n\\nREOPEN CONTEXT (integrate, 2026-09-10 13:2x UTC): first implementation attempt (run 01M25K41V4NE, PR #121, 55 min) FAILED the dogfood-gate: fabro-cli::it::cmd::rm::rm_deletes_completed_run and rm_partial_failure_json_includes_removed_and_errors (lib/apps/fabro-cli/tests/it/cmd/rm.rs:284 — errors array expected [01M25QAG0W0V6X2CZAEZG47W8V], got []; rm did not treat the run as completed/deletable). The transition-table refactor changed which terminal states rm counts as completed. The seed stays OPEN on base (the close lives only in PR #121's unmerged branch); a re-claim must first reconcile with #121's branch (git fetch origin fabro/run/01M25K41V4NEWXSA3SVGRHKRXK — reuse or supersede its work) and the fix is likely a transition-table/`completed` predicate adjustment, not a rewrite. Repro on the #121 branch: cargo nextest run -p fabro-cli rm_deletes_completed_run rm_partial_failure_json_includes_removed_and_errors.\",\"labels\":[\"engine\",\"architecture\"],\"assignee\":\"fabro\",\"closedAt\":\"2026-09-10T15:02:44.498Z\"}\n {\"id\":\"fabro-0863\",\"title\":\"Engine: RunCreated constructor at the RunSpec seam — four hand-built sites become one constructor\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T07:14:04.654Z\",\"updatedAt\":\"2026-09-10T10:14:00.029Z\",\"description\":\"Architecture review 2026-09-10 (improve-codebase-architecture). Entry-level companion to the lifecycle-protocol seed; purely mechanical.\\n\\nPROBLEM: Event::RunCreated is hand-assembled at four sites — operations/create.rs:556-585, operations/retry.rs:68-93, operations/fork.rs:158-183, fabro-workflow test_support.rs:206-231 — each serializing settings/graph itself and threading ~24 fields individually. A new mandatory RunCreated field breaks four places; each site re-derives what persist_created_run already knows.\\n\\nWANTED: One constructor at the RunSpec seam, e.g. RunSpec::into_created_event(title, provenance_overrides, retried_from, parent_id, web_url) in fabro-types records.rs (upstream churn there: 0/12w). create/retry/fork/test_support call it with their deltas; serialization lives inside the constructor.\\n\\nDRIFT RULES: additive; exactly one call-site edit each in create.rs (upstream-identical, churn 35/12w) and fork.rs (churn 13/12w) — keep surgical, no reformatting beyond the call.\\n\\nACCEPTANCE: parity check that emitted event bytes are identical before/after (snapshot); a deliberately added mandatory field breaks exactly one place; retry/fork/create test fixtures shrink (no per-site 24-field building).\\n\\nBASIS: commit bfbe3a6c8 (2026-09-09); /tmp/arch-walk-store-workflow.md (F1).\",\"labels\":[\"engine\",\"architecture\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-ab8e\",\"title\":\"Fork footprint: extract fork additions out of upstream-churn hot files (tests.rs, automation_scheduler.rs)\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-10T07:14:04.741Z\",\"updatedAt\":\"2026-09-10T10:13:59.956Z\",\"description\":\"Architecture review 2026-09-10. Cross-cutting fork-strategy seed — runs alongside the other architecture seeds (lifecycle protocol, typed admission) whose modules are natural extraction targets.\\n\\nPROBLEM: Fork additions live physically inside upstream's hottest files. server/tests.rs carries +2083 fork-added lines while upstream churns it 112 commits/12w (worst ratio in the repo); automation_scheduler.rs is +555/1433 (~40% fork code, churn 13/12w); server.rs +279 (churn 49/12w). Every upstream merge pays conflict hunks on fork lines that have no locality of their own. The target pattern already exists and is proven: server/handler/wait.rs and tests/it/api/run_wait.rs are fork-owned files.\\n\\nWANTED: Move fork-added tests into fork-owned test files; extract fork scheduler/materializer logic into fork-owned modules (prefer interfaces delivered by the lifecycle/admission seeds); upstream files keep only registration and call-site lines. Moves only — no behavior change, no test deletions.\\n\\nACCEPTANCE: fork test count unchanged (moves, verified by count); fork additions greppable from fork-owned files; the next upstream merge shows measurably fewer conflicted hunks in tests.rs and automation_scheduler.rs (record the diff in the close note).\\n\\nBASIS: commit bfbe3a6c8 (2026-09-09); drift data from git diff --numstat upstream/main..HEAD and git log churn on upstream/main (12w); review card K7, /tmp/architecture-review-20260910-090054.html.\",\"labels\":[\"engine\",\"architecture\"],\"assignee\":\"fabro\"}\n {\"id\":\"fabro-27dc\",\"title\":\"engine: conductor parks at soft exit after Work-routed survey since the 2026-09-09 22:29 deploy - develop leg never starts (line down)\",\"status\":\"closed\",\"type\":\"bug\",\"priority\":0,\"createdAt\":\"2026-09-10T07:41:32.446Z\",\"updatedAt\":\"2026-09-10T12:28:54.497Z\",\"description\":\"LINE DOWN INCIDENT 2026-09-10 07:01-09:30 (line-watch, reproduced twice): after the night deploy (server image built 2026-09-09 22:29 CEST, container started 22:35), every conductor pass parks at the soft exit immediately after a Work-routed survey; the develop leg never starts.\\n\\nEvidence:\\n- Automation-fired pass 01M251VFNABCNMA94QDNHYZ5Q7 (07:00-07:01) and manual repair fire 01M253EWK1X299DRFTAJJHA0MV (07:28-07:29) both: survey stage completes green with correct route decision journaled ('route decision: Work'), then the exit handler completes in 0ms and run.failed fires with reason=soft_stop, kind=soft, category=deterministic (\\\"infrastructure could not finish\\\"). No develop-leg journal entry, no child run created.\\n- stage.completed context_values carry NO preferred_next_label on EITHER the broken passes or the last-known-good pass (20:08 yesterday on the OLD image) - routing reads the structured output elsewhere; do not chase the context key.\\n- Last known-good conductor pass on the previous image: 01M23W3067KQ 20:08-21:10 (develop child 01M23W4S7Q2G created fine, PR #113).\\n- The deployed image contains the 2026-09-09 engine merges: #84 (allow-keys lint), #90/fabro-91ff (overlap guard: run_summary_store + planner/analyze prompts), #96/fabro-de4d (preferred_label edge validation in fabro-validate, new rule routing_fallback_silent), #99/fabro-94e8 (update-branch), #107+#109 (PR postlude). Prime suspects: routing/output-schema handling around de4d and 91ff.\\n- Secondary blocker: the automation breaker (signature park|Conductor|soft_stop, consecutive_count 1, threshold appears to be 1) suppresses the */30 schedule after the first soft_stop - even a one-off park kills the line until the breaker resets.\\n\\nRepro: FABRO_SERVER=http://localhost:32276 just run conductor (twice, deterministic). Also note the local repair path tripped over auth.json URL keying (127.0.0.1 vs localhost entry) - separate papercut.\\n\\nExpected fix: find why the survey->develop edge (condition preferred_label=\\\"Work\\\") is not taken on the new image though the survey emits the route; also revisit the breaker threshold (a single soft_stop should not permanently suppress the schedule without an incident signal).\\n\\nExecution note: filed by line-watch during line-down; the line cannot pick this up itself (chicken-egg) - direct agent repair with user knowledge, or user-led. ROOT CAUSE FOUND (line-watch 10:2x, inspect of 01M253EWK1X): the survey agent's final answer literally set preferred_next_label=\\\"Unrouted survey outcome\\\" (last_response in the stage context: {\\\"preferred_next_label\\\":\\\"Unrouted survey outcome\\\",\\\"outcome\\\":\\\"succeeded\\\",...}) while its journal says 'route decision: Work'. The engine's Edge selected log confirms: from survey to exit label=\\\"Unrouted survey outcome\\\" reason=\\\"preferred_label\\\". fabro-de4d (#96, in the 22:29 image) constrains the routing output_schema enum from the node's outgoing edges - but the survey's outgoing set includes the UNCONDITIONAL safety-net edge (validator rule all_conditional_edges, label \\\"Unrouted survey outcome\\\"), so the fallback became a first-class valid choice and glm-5.3 picks it deterministically (2/2 passes on the new image). FIX DIRECTION: build the preferred_label enum from CONDITIONAL choice edges only (exclude unconditional safety nets and outcome=failed edges) in the de4d schema construction (lib/components/fabro-workflow, routing/output_schema area); optionally also make the model-facing schema description mark the fallback as engine-reserved. The old image worked because the enum was not edge-constrained. FIXED 2026-09-10 10:5x (line-watch direct repair, mandate: line down): lib/components/fabro-workflow/src/handler/structured_output.rs routable_edge_labels now includes conditional edges whose condition routes on preferred_label naming the label (clause walk incl. and/or/not); regression tests cover the conductor-survey shape and composite conditions. Verification: cargo test -p fabro-workflow --lib (2 new tests green, 1326 pass; 4 pipeline failures pre-exist on clean tree - sandbox/env-dependent), clippy + fmt on touched crate green (nightly-2026-04-14). Commit 0373f5c10; deployed via just up.\",\"labels\":[\"engine\",\"workflows\"],\"assignee\":\"agent\",\"closedAt\":\"2026-09-10T12:28:54.497Z\",\"closeReason\":\"superseded: fix landed in 0373f5c10 (routable_edge_labels includes conditional preferred_label edges; regression tests for the conductor-survey shape); verified live — passes 01M256NF09VY (08:24), 01M257096GRA (08:30), 01M25H9VVJ (11:30) all route Work and reach the develop leg after the 10:18 deploy\"}\ndiff --git a/lib/apps/fabro-server/src/server.rs b/lib/apps/fabro-server/src/server.rs\nindex 88b2ad5..f51e7da 100644\n--- a/lib/apps/fabro-server/src/server.rs\n+++ b/lib/apps/fabro-server/src/server.rs\n@@ -113,6 +113,7 @@ use fabro_workflow::artifact_upload::ArtifactSink;\n use fabro_workflow::command_log::command_log_path;\n use fabro_workflow::event::{self as workflow_event, Emitter};\n use fabro_workflow::handler::HandlerRegistry;\n+use fabro_workflow::operations::lifecycle_events;\n use fabro_workflow::pipeline::Persisted;\n use fabro_workflow::records::Checkpoint;\n use fabro_workflow::run_lookup::{\n@@ -3409,16 +3410,14 @@ async fn persist_cancelled_run_status(state: &AppState, run_id: RunId) -> anyhow\n         return Ok(());\n     }\n \n-    let failure_event = workflow_event::Event::workflow_run_failed_from_error(\n+    lifecycle_events::terminal_failure(\n+        &run_store,\n+        &run_id,\n         &WorkflowError::Cancelled,\n-        fabro_types::RunTiming::default(),\n         FailureReason::Cancelled,\n-        None,\n-        None,\n-        None,\n-        None,\n-    );\n-    workflow_event::append_event(&run_store, &run_id, &failure_event).await\n+        fabro_types::RunTiming::default(),\n+    )\n+    .await\n }\n \n async fn finish_cancelled_run_before_execution(state: &Arc<AppState>, run_id: RunId) {\n@@ -3463,17 +3462,14 @@ async fn fail_run_before_execution(\n ) {\n     match state.stores.runs.open_run(&run_id).await {\n         Ok(run_store) => {\n-            let failure_event = workflow_event::Event::workflow_run_failed_from_error(\n+            if let Err(err) = lifecycle_events::terminal_failure(\n+                &run_store,\n+                &run_id,\n                 &WorkflowError::engine(message.clone()),\n-                fabro_types::RunTiming::default(),\n                 reason,\n-                None,\n-                None,\n-                None,\n-                None,\n-            );\n-            if let Err(err) =\n-                workflow_event::append_event(&run_store, &run_id, &failure_event).await\n+                fabro_types::RunTiming::default(),\n+            )\n+            .await\n             {\n                 error!(run_id = %run_id, error = %err, \"Failed to persist run failure status\");\n             }\n@@ -3573,6 +3569,32 @@ fn fail_managed_run(state: &Arc<AppState>, run_id: RunId, reason: FailureReason,\n     cleanup_worker_control_bus_for_run(state.as_ref(), run_id);\n }\n \n+/// Live-reducer status step over the shared lifecycle transition table\n+/// (fabro-3fe4). `Ok(Some(next))` assigns the next live status; `Ok(None)`\n+/// leaves it unchanged (non-lifecycle events and the `RunRunnable`\n+/// scheduling guard); `Err` marks a transition the table rejects. Historic\n+/// streams that skipped intermediate statuses (e.g. injected\n+/// `submitted -> starting` sequences) fast-forward through the shared\n+/// `historic_skipped_statuses` helper, the same replay path the durable\n+/// projection reducer uses, so both folds stay equivalent.\n+fn live_lifecycle_status(\n+    current: RunStatus,\n+    event: &RunEvent,\n+) -> Result<Option<RunStatus>, fabro_types::InvalidTransition> {\n+    if matches!(event.body, EventBody::RunRunnable(_)) {\n+        return Ok(None);\n+    }\n+    let mut status = current;\n+    for skipped in fabro_types::historic_skipped_statuses(status, &event.body) {\n+        status = skipped;\n+    }\n+    match fabro_types::apply_lifecycle_event(status, &event.body) {\n+        fabro_types::LifecycleTransition::Next(next) => Ok(Some(next)),\n+        fabro_types::LifecycleTransition::Rejected(err) => Err(err),\n+        fabro_types::LifecycleTransition::NotLifecycle => Ok(None),\n+    }\n+}\n+\n fn update_live_run_from_event(state: &AppState, run_id: RunId, event: &RunEvent) {\n     use fabro_types::EventBody;\n \n@@ -3589,59 +3611,19 @@ fn update_live_run_from_event(state: &AppState, run_id: RunId, event: &RunEvent)\n         return;\n     }\n \n-    match &event.body {\n-        EventBody::RunSubmitted(_) => managed_run.status = RunStatus::Submitted,\n-        EventBody::RunPending(props) => {\n-            managed_run.status = RunStatus::Pending {\n-                reason: props.reason,\n-            };\n-        }\n-        EventBody::RunStarting(_) => managed_run.status = RunStatus::Starting,\n-        EventBody::RunRunning(_) => managed_run.status = RunStatus::Running,\n-        EventBody::RunBlocked(props) => {\n-            managed_run.status = match managed_run.status {\n-                RunStatus::Paused { .. } => RunStatus::Paused {\n-                    prior_block: Some(props.blocked_reason),\n-                },\n-                _ => RunStatus::Blocked {\n-                    blocked_reason: props.blocked_reason,\n-                },\n-            };\n-        }\n-        EventBody::RunUnblocked(_) => {\n-            managed_run.status = match managed_run.status {\n-                RunStatus::Paused {\n-                    prior_block: Some(_) | None,\n-                } => RunStatus::Paused { prior_block: None },\n-                _ => RunStatus::Running,\n-            };\n-        }\n-        EventBody::RunPaused(_) => {\n-            let prior_block = match managed_run.status {\n-                RunStatus::Blocked { blocked_reason } => Some(blocked_reason),\n-                RunStatus::Paused { prior_block } => prior_block,\n-                _ => None,\n-            };\n-            managed_run.status = RunStatus::Paused { prior_block };\n-        }\n-        EventBody::RunUnpaused(_) => {\n-            managed_run.status = match managed_run.status {\n-                RunStatus::Paused {\n-                    prior_block: Some(blocked_reason),\n-                } => RunStatus::Blocked { blocked_reason },\n-                _ => RunStatus::Running,\n-            };\n+    // Status transitions are owned by the shared lifecycle table; the live\n+    // reducer keeps only its side effects on top (error field, active-stage\n+    // map cleanup, worker control bus cleanup).\n+    match live_lifecycle_status(managed_run.status, event) {\n+        Ok(Some(next)) => managed_run.status = next,\n+        Ok(None) => {}\n+        Err(err) => {\n+            tracing::warn!(run_id = %run_id, error = %err, \"Rejecting out-of-order lifecycle event\");\n         }\n-        EventBody::RunRemoving(_) => managed_run.status = RunStatus::Removing,\n-        EventBody::RunCompleted(_) => {\n-            let EventBody::RunCompleted(props) = &event.body else {\n-                unreachable!(\n-                    \"outer match arm already verified event.body is EventBody::RunCompleted\"\n-                )\n-            };\n-            managed_run.status = RunStatus::Succeeded {\n-                reason: props.reason,\n-            };\n+    }\n+\n+    match &event.body {\n+        EventBody::RunCompleted(props) => {\n             // Publish-blocked completions keep the run green but surface the\n             // blocked delivery as the run error so list/detail views render\n             // the remediation (fabro-67e5).\n@@ -3652,9 +3634,6 @@ fn update_live_run_from_event(state: &AppState, run_id: RunId, event: &RunEvent)\n             cleanup_worker_control_bus_for_run(state, run_id);\n         }\n         EventBody::RunFailed(props) => {\n-            managed_run.status = RunStatus::Failed {\n-                reason: props.failure.reason,\n-            };\n             managed_run.error = Some(render_compact_with_causes(\n                 &props.failure.detail.message,\n                 &props.failure.detail.causes,\ndiff --git a/lib/apps/fabro-server/src/server/tests.rs b/lib/apps/fabro-server/src/server/tests.rs\nindex cc460d3..161d838 100644\n--- a/lib/apps/fabro-server/src/server/tests.rs\n+++ b/lib/apps/fabro-server/src/server/tests.rs\n@@ -17134,6 +17134,95 @@ async fn interrupt_terminal_run_returns_run_not_interruptible() {\n     assert_eq!(body[\"errors\"][0][\"code\"], \"run_not_interruptible\");\n }\n \n+/// fabro-3fe4: the live status step is the shared lifecycle table plus two\n+/// documented deviations — the `RunRunnable` scheduling guard and the\n+/// shared `historic_skipped_statuses` replay path (the same fast-forward\n+/// the durable projection reducer uses). No AppState (or lock surgery) is\n+/// needed to prove it.\n+#[test]\n+fn live_status_step_matches_the_shared_table_except_runnable_suppression() {\n+    use fabro_types::{LifecycleTransition, RunRunnableSource, apply_lifecycle_event};\n+\n+    let run_id = fixtures::RUN_1;\n+    let runnable = workflow_event::to_run_event(&run_id, &workflow_event::Event::RunRunnable {\n+        source: RunRunnableSource::StartRequested,\n+        actor:  None,\n+    });\n+    // Live-only scheduling guard: an injected runnable event never flips\n+    // status, no matter the current status.\n+    assert_eq!(\n+        super::live_lifecycle_status(RunStatus::Submitted, &runnable),\n+        Ok(None)\n+    );\n+    assert_eq!(\n+        super::live_lifecycle_status(RunStatus::Runnable, &runnable),\n+        Ok(None)\n+    );\n+\n+    let lifecycle_events = vec![\n+        workflow_event::to_run_event(&run_id, &workflow_event::Event::RunStarting),\n+        workflow_event::to_run_event(&run_id, &workflow_event::Event::RunRunning),\n+        workflow_event::to_run_event(&run_id, &workflow_event::Event::WorkflowRunCompleted {\n+            timing:               fabro_types::RunTiming::wall_only(1),\n+            artifact_count:       0,\n+            status:               \"succeeded\".to_string(),\n+            reason:               SuccessReason::Completed,\n+            failure:              None,\n+            total_usd_micros:     None,\n+            final_git_commit_sha: None,\n+            final_patch:          None,\n+            diff_summary:         None,\n+            billing:              None,\n+        }),\n+        workflow_event::to_run_event(&run_id, &workflow_event::Event::WorkflowRunFailed {\n+            failure:              fabro_types::RunFailure {\n+                reason: fabro_types::FailureReason::Cancelled,\n+                detail: FailureDetail::new(\n+                    \"cancelled before start\",\n+                    FailureCategory::Deterministic,\n+                ),\n+            },\n+            timing:               fabro_types::RunTiming::wall_only(1),\n+            final_git_commit_sha: None,\n+            final_patch:          None,\n+            diff_summary:         None,\n+            billing:              None,\n+        }),\n+    ];\n+    let statuses = [\n+        RunStatus::Submitted,\n+        RunStatus::Runnable,\n+        RunStatus::Starting,\n+        RunStatus::Running,\n+        RunStatus::Paused { prior_block: None },\n+        RunStatus::Failed {\n+            reason: fabro_types::FailureReason::Cancelled,\n+        },\n+    ];\n+\n+    for status in statuses {\n+        for event in &lifecycle_events {\n+            // The shared historic fast-forward replays the same intermediate\n+            // statuses the durable reducer replays, so the live fold agrees\n+            // with a full-table fold from the fast-forwarded status.\n+            let mut table_status = status;\n+            for skipped in fabro_types::historic_skipped_statuses(table_status, &event.body) {\n+                table_status = skipped;\n+            }\n+            let expected = match apply_lifecycle_event(table_status, &event.body) {\n+                LifecycleTransition::Next(next) => Ok(Some(next)),\n+                LifecycleTransition::Rejected(err) => Err(err),\n+                LifecycleTransition::NotLifecycle => Ok(None),\n+            };\n+            assert_eq!(\n+                super::live_lifecycle_status(status, event),\n+                expected,\n+                \"live step drifted from the table at {status}\"\n+            );\n+        }\n+    }\n+}\n+\n #[test]\n fn injected_runnable_event_does_not_make_submitted_run_schedulable() {\n     let state = test_app_state();\n@@ -17168,6 +17257,14 @@ fn injected_runnable_event_does_not_make_submitted_run_schedulable() {\n     update_live_run_from_event(&state, run_id, &starting);\n \n     let runs = state.runs.lock().expect(\"runs lock poisoned\");\n+    // The runnable guard keeps scheduling ownership with the lifecycle\n+    // handlers, but a follow-up `run.starting` still advances the live\n+    // status through the shared historic fast-forward (submitted ->\n+    // runnable -> starting) — the same replay the durable projection\n+    // reducer performs, so live and durable folds stay equivalent and\n+    // seeded event sequences reach terminal statuses (fabro-3fe4 reopen:\n+    // the strict rejection stranded injected runs at `submitted` and broke\n+    // `fabro rm` completed-run handling).\n     assert_eq!(runs.get(&run_id).unwrap().status, RunStatus::Starting);\n }\n \ndiff --git a/lib/components/fabro-store/src/run_state.rs b/lib/components/fabro-store/src/run_state.rs\nindex a268f8d..1c6653a 100644\n--- a/lib/components/fabro-store/src/run_state.rs\n+++ b/lib/components/fabro-store/src/run_state.rs\n@@ -16,7 +16,7 @@ use fabro_types::{\n     Run, RunApproval, RunApprovalState, RunBillingSummary, RunControlAction, RunDiff, RunEvent,\n     RunId, RunLifecycle, RunLinks, RunModel, RunOrigin, RunProjection, RunSandbox,\n     RunSandboxFailure, RunSandboxInstance, RunSandboxPlan, RunSandboxRuntime, RunSize, RunSpec,\n-    RunStatus, RunTimestamps, SandboxProviderKind, StageCompletion, StageHandler, StageId,\n+    RunTimestamps, SandboxProviderKind, StageCompletion, StageHandler, StageId,\n     StageInferenceProjection, StageModelUsage, StageOutcome, StageProjection, StageState,\n     StartRecord, SubAgentProjection, SubAgentStatus, TodoListKind, TodoListProjection,\n     TodoProjection, WorkflowRef, billing_rollup, first_event_seq, timing,\n@@ -89,30 +89,14 @@ impl RunProjectionReducer for RunProjection {\n         };\n         let mut state = projection_from_created(first)?;\n         for event in rest {\n-            // Runs written before the runnable state was introduced can move\n-            // directly from submitted to starting. Replay that historical\n-            // shape through the equivalent current transition while keeping\n-            // live single-event transitions strict.\n-            if matches!(event.event.body, EventBody::RunStarting(_))\n-                && matches!(state.status, RunStatus::Submitted)\n-            {\n-                state.try_apply_status(RunStatus::Runnable, event.event.ts)?;\n-            }\n-            if let EventBody::RunFailed(props) = &event.event.body {\n-                let failed = RunStatus::Failed {\n-                    reason: props.failure.reason,\n-                };\n-                if !state.status.can_transition_to(failed) {\n-                    if matches!(\n-                        state.status,\n-                        RunStatus::Submitted | RunStatus::Pending { .. }\n-                    ) {\n-                        state.try_apply_status(RunStatus::Runnable, event.event.ts)?;\n-                    }\n-                    if matches!(state.status, RunStatus::Runnable) {\n-                        state.try_apply_status(RunStatus::Starting, event.event.ts)?;\n-                    }\n-                }\n+            // HISTORIC SHIM (reason, fabro-3fe4): runs written before the\n+            // lifecycle table existed can skip intermediate statuses\n+            // (submitted -> starting, failures naming never-recorded\n+            // states). The shared `historic_skipped_statuses` helper replays\n+            // the missing steps so both reducers converge on the same final\n+            // status; live single-event transitions are never patched.\n+            for skipped in fabro_types::historic_skipped_statuses(state.status, &event.event.body) {\n+                state.try_apply_status(skipped, event.event.ts)?;\n             }\n             state.apply_event(event)?;\n         }\n@@ -125,6 +109,20 @@ impl RunProjectionReducer for RunProjection {\n \n         self.last_event_at = ts;\n \n+        // Status transitions are owned by the shared lifecycle table\n+        // (fabro-3fe4): this reducer keeps only the non-status side effects\n+        // and rejects exactly the transitions the table rejects.\n+        match fabro_types::apply_lifecycle_event(self.status, &stored.body) {\n+            fabro_types::LifecycleTransition::NotLifecycle => {}\n+            fabro_types::LifecycleTransition::Next(next) => {\n+                if next != self.status {\n+                    self.status = next;\n+                    self.status_updated_at = ts;\n+                }\n+            }\n+            fabro_types::LifecycleTransition::Rejected(err) => return Err(err.into()),\n+        }\n+\n         match &stored.body {\n             EventBody::RunCreated(_) => {\n                 return Err(Error::InvalidEvent(\n@@ -142,24 +140,15 @@ impl RunProjectionReducer for RunProjection {\n                 self.spec.definition_blob = props.definition_blob;\n             }\n             EventBody::RunStartRequested(props) if props.resume => {\n-                self.try_apply_status(RunStatus::Submitted, ts)?;\n                 self.conclusion = None;\n             }\n-            EventBody::RunPending(props) => {\n-                self.try_apply_status(\n-                    RunStatus::Pending {\n-                        reason: props.reason,\n-                    },\n-                    ts,\n-                )?;\n-                if props.reason == PendingReason::ApprovalRequired {\n-                    self.approval = Some(RunApproval {\n-                        state:         RunApprovalState::Pending,\n-                        requested_at:  ts,\n-                        decided_at:    None,\n-                        denial_reason: None,\n-                    });\n-                }\n+            EventBody::RunPending(props) if props.reason == PendingReason::ApprovalRequired => {\n+                self.approval = Some(RunApproval {\n+                    state:         RunApprovalState::Pending,\n+                    requested_at:  ts,\n+                    decided_at:    None,\n+                    denial_reason: None,\n+                });\n             }\n             EventBody::RunApproved(_) => {\n                 if let Some(approval) = &mut self.approval {\n@@ -175,42 +164,6 @@ impl RunProjectionReducer for RunProjection {\n                     approval.denial_reason.clone_from(&props.reason);\n                 }\n             }\n-            EventBody::RunRunnable(_) => {\n-                self.try_apply_status(RunStatus::Runnable, ts)?;\n-            }\n-            EventBody::RunStarting(_) => {\n-                self.try_apply_status(RunStatus::Starting, ts)?;\n-            }\n-            EventBody::RunRunning(_) => {\n-                self.try_apply_status(RunStatus::Running, ts)?;\n-            }\n-            EventBody::RunBlocked(props) => {\n-                let next = if matches!(self.status, RunStatus::Paused { .. }) {\n-                    RunStatus::Paused {\n-                        prior_block: Some(props.blocked_reason),\n-                    }\n-                } else {\n-                    RunStatus::Blocked {\n-                        blocked_reason: props.blocked_reason,\n-                    }\n-                };\n-                self.try_apply_status(next, ts)?;\n-            }\n-            EventBody::RunUnblocked(_) => {\n-                let next = match self.status {\n-                    RunStatus::Paused {\n-                        prior_block: Some(_),\n-                    } => RunStatus::Paused { prior_block: None },\n-                    RunStatus::Paused { prior_block: None } => {\n-                        RunStatus::Paused { prior_block: None }\n-                    }\n-                    _ => RunStatus::Running,\n-                };\n-                self.try_apply_status(next, ts)?;\n-            }\n-            EventBody::RunRemoving(_) => {\n-                self.try_apply_status(RunStatus::Removing, ts)?;\n-            }\n             EventBody::RunCancelRequested(_) => {\n                 self.pending_control = Some(RunControlAction::Cancel);\n             }\n@@ -220,43 +173,15 @@ impl RunProjectionReducer for RunProjection {\n             EventBody::RunUnpauseRequested(_) => {\n                 self.pending_control = Some(RunControlAction::Unpause);\n             }\n-            EventBody::RunPaused(_) => {\n-                self.try_apply_status(\n-                    RunStatus::Paused {\n-                        prior_block: self.status.blocked_reason(),\n-                    },\n-                    ts,\n-                )?;\n-                self.pending_control = None;\n-            }\n-            EventBody::RunUnpaused(_) => {\n-                let next = match self.status {\n-                    RunStatus::Paused {\n-                        prior_block: Some(blocked_reason),\n-                    } => RunStatus::Blocked { blocked_reason },\n-                    _ => RunStatus::Running,\n-                };\n-                self.try_apply_status(next, ts)?;\n+            EventBody::RunPaused(_) | EventBody::RunUnpaused(_) => {\n                 self.pending_control = None;\n             }\n             EventBody::RunCompleted(props) => {\n-                self.try_apply_status(\n-                    RunStatus::Succeeded {\n-                        reason: props.reason,\n-                    },\n-                    ts,\n-                )?;\n                 self.pending_control = None;\n                 self.conclusion = Some(conclusion_from_completed(self, props, ts)?);\n                 self.pending_interviews.clear();\n             }\n             EventBody::RunFailed(props) => {\n-                self.try_apply_status(\n-                    RunStatus::Failed {\n-                        reason: props.failure.reason,\n-                    },\n-                    ts,\n-                )?;\n                 self.pending_control = None;\n                 self.conclusion = Some(conclusion_from_failed(self, props, ts));\n                 self.pending_interviews.clear();\n@@ -7861,4 +7786,215 @@ mod tests {\n             assert!(open_bracket(&state).is_none());\n         }\n     }\n+\n+    /// fabro-3fe4: the durable reducer and the shared lifecycle transition\n+    /// table (`fabro_types::apply_lifecycle_event`) must yield the same\n+    /// status for every table-valid event sequence. A deterministic\n+    /// xorshift PRNG drives a property test over random sequences: the\n+    /// sequence ends where the table rejects (the durable reducer would\n+    /// error on the same event), and both folds must agree at every step.\n+    mod lifecycle_equivalence {\n+        use fabro_types::run_event::{\n+            RunApprovedProps, RunBlockedProps, RunCompletedProps, RunControlEffectProps,\n+            RunControlRequestedProps, RunDeniedProps, RunFailedProps, RunPendingProps,\n+            RunRunnableProps, RunStartRequestedProps, RunStatusEffectProps,\n+            RunStatusTransitionProps, RunSubmittedProps, RunTitleUpdatedProps,\n+        };\n+        use fabro_types::{\n+            BlockedReason, EventBody, FailureCategory, FailureDetail, FailureReason,\n+            LifecycleTransition, PendingReason, RunControlAction, RunFailure, RunRunnableSource,\n+            RunStatus, RunTiming, SuccessReason, apply_lifecycle_event,\n+        };\n+\n+        use super::{RunProjectionReducer, initialized_projection, test_event};\n+\n+        struct XorShift(u64);\n+\n+        impl XorShift {\n+            fn next(&mut self) -> u64 {\n+                let mut x = self.0;\n+                x ^= x << 13;\n+                x ^= x >> 7;\n+                x ^= x << 17;\n+                self.0 = x;\n+                x\n+            }\n+\n+            fn below(&mut self, bound: usize) -> usize {\n+                usize::try_from(self.next() % (bound as u64)).expect(\"modulo stays in range\")\n+            }\n+        }\n+\n+        fn failed_props(reason: FailureReason) -> RunFailedProps {\n+            RunFailedProps {\n+                failure:              RunFailure {\n+                    reason,\n+                    detail: FailureDetail::new(\"equivalence\", FailureCategory::Deterministic),\n+                },\n+                timing:               RunTiming::default(),\n+                final_git_commit_sha: None,\n+                final_patch:          None,\n+                diff_summary:         None,\n+                billing:              None,\n+            }\n+        }\n+\n+        fn completed_props(reason: SuccessReason) -> RunCompletedProps {\n+            RunCompletedProps {\n+                timing: RunTiming::wall_only(1),\n+                artifact_count: 0,\n+                status: \"succeeded\".to_string(),\n+                reason,\n+                failure: None,\n+                total_usd_micros: None,\n+                final_git_commit_sha: None,\n+                final_patch: None,\n+                diff_summary: None,\n+                billing: None,\n+            }\n+        }\n+\n+        fn random_body(rng: &mut XorShift) -> EventBody {\n+            let reasons = [\n+                FailureReason::Cancelled,\n+                FailureReason::LaunchFailed,\n+                FailureReason::WorkflowError,\n+                FailureReason::Terminated,\n+                FailureReason::BootstrapFailed,\n+                FailureReason::PublishFailed,\n+                FailureReason::ApprovalDenied,\n+                FailureReason::ApprovalTimeout,\n+            ];\n+            match rng.below(17) {\n+                0 => EventBody::RunSubmitted(RunSubmittedProps {\n+                    definition_blob: None,\n+                }),\n+                1 => EventBody::RunStartRequested(RunStartRequestedProps { resume: true }),\n+                2 => EventBody::RunStartRequested(RunStartRequestedProps { resume: false }),\n+                3 => EventBody::RunPending(RunPendingProps {\n+                    reason: PendingReason::ApprovalRequired,\n+                }),\n+                4 => EventBody::RunApproved(RunApprovedProps {}),\n+                5 => EventBody::RunDenied(RunDeniedProps { reason: None }),\n+                6 => EventBody::RunRunnable(RunRunnableProps {\n+                    source: RunRunnableSource::StartRequested,\n+                }),\n+                7 => EventBody::RunStarting(RunStatusTransitionProps {}),\n+                8 => EventBody::RunRunning(RunStatusTransitionProps {}),\n+                9 => EventBody::RunBlocked(RunBlockedProps {\n+                    blocked_reason: BlockedReason::HumanInputRequired,\n+                }),\n+                10 => EventBody::RunUnblocked(RunStatusEffectProps {}),\n+                11 => EventBody::RunPaused(RunControlEffectProps {}),\n+                12 => EventBody::RunUnpaused(RunControlEffectProps {}),\n+                13 => EventBody::RunCompleted(completed_props(\n+                    [SuccessReason::Completed, SuccessReason::PublishBlocked][rng.below(2)],\n+                )),\n+                14 => EventBody::RunFailed(failed_props(reasons[rng.below(reasons.len())])),\n+                15 => EventBody::RunTitleUpdated(RunTitleUpdatedProps {\n+                    title: \"equivalence\".to_string(),\n+                }),\n+                _ => EventBody::RunCancelRequested(RunControlRequestedProps {\n+                    action: [RunControlAction::Cancel, RunControlAction::Pause][rng.below(2)],\n+                }),\n+            }\n+        }\n+\n+        #[test]\n+        fn durable_reducer_matches_the_shared_table_for_random_event_sequences() {\n+            let mut rng = XorShift(0x3fe4_2026_0910_1234);\n+            let mut cases_agreeing = 0usize;\n+\n+            for case in 0..2_000u32 {\n+                let mut table_status = RunStatus::Submitted;\n+                let mut projection = initialized_projection();\n+                let len = 1 + rng.below(16);\n+                let len_u32 = u32::try_from(len).expect(\"sequence length fits u32\");\n+\n+                for seq in 1..=len_u32 {\n+                    let body = random_body(&mut rng);\n+                    match apply_lifecycle_event(table_status, &body) {\n+                        LifecycleTransition::Rejected(_) => break,\n+                        LifecycleTransition::Next(next) => {\n+                            table_status = next;\n+                            projection\n+                                .apply_event(&test_event(seq, body, None))\n+                                .expect(\"reducer accepts what the table accepts\");\n+                        }\n+                        LifecycleTransition::NotLifecycle => {\n+                            projection\n+                                .apply_event(&test_event(seq, body, None))\n+                                .expect(\"reducer accepts non-lifecycle events\");\n+                        }\n+                    }\n+                    assert_eq!(\n+                        projection.status, table_status,\n+                        \"case {case} seq {seq}: durable reducer drifted from the table\"\n+                    );\n+                }\n+                cases_agreeing += 1;\n+            }\n+            assert!(cases_agreeing > 0);\n+        }\n+\n+        #[test]\n+        fn cancel_before_starting_and_failure_before_running_replay_strictly() {\n+            // Cancel-before-starting: submitted -> failed(cancelled).\n+            let mut projection = initialized_projection();\n+            projection\n+                .apply_event(&test_event(\n+                    1,\n+                    EventBody::RunFailed(failed_props(FailureReason::Cancelled)),\n+                    None,\n+                ))\n+                .unwrap();\n+            assert_eq!(projection.status, RunStatus::Failed {\n+                reason: FailureReason::Cancelled,\n+            });\n+\n+            // Failure-before-running: runnable -> failed(launch_failed)\n+            // without an intervening starting event.\n+            let mut projection = initialized_projection();\n+            projection\n+                .apply_event(&test_event(\n+                    1,\n+                    EventBody::RunRunnable(RunRunnableProps {\n+                        source: RunRunnableSource::StartRequested,\n+                    }),\n+                    None,\n+                ))\n+                .unwrap();\n+            projection\n+                .apply_event(&test_event(\n+                    2,\n+                    EventBody::RunFailed(failed_props(FailureReason::LaunchFailed)),\n+                    None,\n+                ))\n+                .unwrap();\n+            assert_eq!(projection.status, RunStatus::Failed {\n+                reason: FailureReason::LaunchFailed,\n+            });\n+\n+            // A post-start failure reason is rejected from runnable.\n+            let mut projection = initialized_projection();\n+            projection\n+                .apply_event(&test_event(\n+                    1,\n+                    EventBody::RunRunnable(RunRunnableProps {\n+                        source: RunRunnableSource::StartRequested,\n+                    }),\n+                    None,\n+                ))\n+                .unwrap();\n+            let err = projection.apply_event(&test_event(\n+                2,\n+                EventBody::RunFailed(failed_props(FailureReason::PublishFailed)),\n+                None,\n+            ));\n+            assert!(\n+                matches!(err, Err(crate::Error::InvalidTransition(_))),\n+                \"{err:?}\"\n+            );\n+        }\n+    }\n }\ndiff --git a/lib/components/fabro-workflow/src/operations/lifecycle_events.rs b/lib/components/fabro-workflow/src/operations/lifecycle_events.rs\nnew file mode 100644\nindex 0000000..3561fd1\n--- /dev/null\n+++ b/lib/components/fabro-workflow/src/operations/lifecycle_events.rs\n@@ -0,0 +1,70 @@\n+//! Owner of the run-lifecycle event sequence (fabro-3fe4).\n+//!\n+//! The protocol `RunStartRequested -> RunRunnable -> RunStarting -> Running`\n+//! (plus the resubmit and terminal-failure entries) has exactly one emission\n+//! point: this module. Emitters (`operations::start`, `operations::resume`,\n+//! the server's terminal writes, and workflow test support) are adapters over\n+//! these functions; the status semantics of the emitted stream are owned by\n+//! the shared transition table in `fabro_types::apply_lifecycle_event`.\n+\n+use fabro_store::RunDatabase;\n+use fabro_types::{BlobHash, FailureReason, Principal, RunId, RunRunnableSource, RunTiming};\n+\n+use crate::error::Error;\n+use crate::event::{\n+    Event, RunEventPersistenceError, RunEventSink, append_event, append_event_to_sink,\n+};\n+\n+/// Request a start (or resubmission) for a run. `resume: true` re-opens a\n+/// terminal run; `resume: false` is the request marker of a fresh start.\n+pub async fn request_start(\n+    sink: &RunEventSink,\n+    run_id: &RunId,\n+    resume: bool,\n+    actor: Option<Principal>,\n+) -> Result<(), RunEventPersistenceError> {\n+    append_event_to_sink(sink, run_id, &Event::RunStartRequested { resume, actor }).await\n+}\n+\n+/// Mark the run schedulable after a start request or an approval.\n+pub async fn runnable(\n+    sink: &RunEventSink,\n+    run_id: &RunId,\n+    source: RunRunnableSource,\n+    actor: Option<Principal>,\n+) -> Result<(), RunEventPersistenceError> {\n+    append_event_to_sink(sink, run_id, &Event::RunRunnable { source, actor }).await\n+}\n+\n+/// A worker picked the run up and is initializing.\n+pub async fn starting(sink: &RunEventSink, run_id: &RunId) -> Result<(), RunEventPersistenceError> {\n+    append_event_to_sink(sink, run_id, &Event::RunStarting).await\n+}\n+\n+/// The workflow graph began executing.\n+pub async fn running(sink: &RunEventSink, run_id: &RunId) -> Result<(), RunEventPersistenceError> {\n+    append_event_to_sink(sink, run_id, &Event::RunRunning).await\n+}\n+\n+/// Resubmit a run's spec (definition blob) ahead of a resume.\n+pub async fn resubmit(\n+    sink: &RunEventSink,\n+    run_id: &RunId,\n+    definition_blob: Option<BlobHash>,\n+) -> Result<(), RunEventPersistenceError> {\n+    append_event_to_sink(sink, run_id, &Event::RunSubmitted { definition_blob }).await\n+}\n+\n+/// Persist the terminal `run.failed` event for a run that failed outside the\n+/// normal worker pipeline (pre-execution rejection or cancellation).\n+pub async fn terminal_failure(\n+    run_store: &RunDatabase,\n+    run_id: &RunId,\n+    error: &Error,\n+    reason: FailureReason,\n+    timing: RunTiming,\n+) -> anyhow::Result<()> {\n+    let failure_event =\n+        Event::workflow_run_failed_from_error(error, timing, reason, None, None, None, None);\n+    append_event(run_store, run_id, &failure_event).await\n+}\ndiff --git a/lib/components/fabro-workflow/src/operations/mod.rs b/lib/components/fabro-workflow/src/operations/mod.rs\nindex 57ed472..6a954c1 100644\n--- a/lib/components/fabro-workflow/src/operations/mod.rs\n+++ b/lib/components/fabro-workflow/src/operations/mod.rs\n@@ -1,6 +1,7 @@\n mod archive;\n mod create;\n mod fork;\n+pub mod lifecycle_events;\n mod resume;\n mod retry;\n mod rewind;\ndiff --git a/lib/components/fabro-workflow/src/operations/resume.rs b/lib/components/fabro-workflow/src/operations/resume.rs\nindex 466ae5e..b3b2b92 100644\n--- a/lib/components/fabro-workflow/src/operations/resume.rs\n+++ b/lib/components/fabro-workflow/src/operations/resume.rs\n@@ -2,7 +2,6 @@ use std::path::Path;\n \n use super::start::{StartServices, Started, execute_persisted_run};\n use crate::error::Error;\n-use crate::event::{Event, append_event_to_sink};\n use crate::outcome::StageOutcome;\n use crate::pipeline::ResumeState;\n use crate::run_status::RunStatus;\n@@ -38,12 +37,8 @@ pub async fn resume(run_dir: &Path, services: StartServices) -> Result<Started,\n     let definition_blob = state.spec.definition_blob;\n \n     cleanup_resume_artifacts(run_dir);\n-    append_event_to_sink(\n-        &services.event_sink,\n-        &services.run_id,\n-        &Event::RunSubmitted { definition_blob },\n-    )\n-    .await?;\n+    super::lifecycle_events::resubmit(&services.event_sink, &services.run_id, definition_blob)\n+        .await?;\n \n     Box::pin(execute_persisted_run(run_dir, Some(resume_state), services)).await\n }\ndiff --git a/lib/components/fabro-workflow/src/operations/start.rs b/lib/components/fabro-workflow/src/operations/start.rs\nindex 9847f36..4501ac1 100644\n--- a/lib/components/fabro-workflow/src/operations/start.rs\n+++ b/lib/components/fabro-workflow/src/operations/start.rs\n@@ -162,22 +162,13 @@ pub async fn start(run_dir: &Path, services: StartServices) -> Result<Started, E\n         )));\n     }\n     if matches!(status, RunStatus::Submitted) {\n-        append_event_to_sink(\n+        super::lifecycle_events::request_start(&services.event_sink, &services.run_id, false, None)\n+            .await?;\n+        super::lifecycle_events::runnable(\n             &services.event_sink,\n             &services.run_id,\n-            &Event::RunStartRequested {\n-                resume: false,\n-                actor:  None,\n-            },\n-        )\n-        .await?;\n-        append_event_to_sink(\n-            &services.event_sink,\n-            &services.run_id,\n-            &Event::RunRunnable {\n-                source: RunRunnableSource::StartRequested,\n-                actor:  None,\n-            },\n+            RunRunnableSource::StartRequested,\n+            None,\n         )\n         .await?;\n     }\n@@ -208,7 +199,7 @@ pub(super) async fn execute_persisted_run(\n         .await;\n         return Err(error);\n     }\n-    if let Err(err) = append_event_to_sink(&event_sink, &run_id, &Event::RunStarting).await {\n+    if let Err(err) = super::lifecycle_events::starting(&event_sink, &run_id).await {\n         let error = Error::from(err);\n         let _ = persist_detached_failure(\n             run_id,\ndiff --git a/lib/components/fabro-workflow/src/test_support.rs b/lib/components/fabro-workflow/src/test_support.rs\nindex 9baf66d..e7472ae 100644\n--- a/lib/components/fabro-workflow/src/test_support.rs\n+++ b/lib/components/fabro-workflow/src/test_support.rs\n@@ -108,24 +108,28 @@ pub fn test_usage(\n }\n \n /// Append the `RunStartRequested → RunRunnable → RunStarting → RunRunning`\n-/// sequence so subsequent calls observe the run as live.\n+/// sequence so subsequent calls observe the run as live. Adapter over the\n+/// lifecycle event protocol owner (fabro-3fe4).\n pub async fn mark_run_running(run_store: &fabro_store::RunDatabase, run_id: &fabro_types::RunId) {\n-    append_event(run_store, run_id, &Event::RunStartRequested {\n-        resume: false,\n-        actor:  None,\n-    })\n-    .await\n-    .expect(\"seed run.start_requested\");\n-    append_event(run_store, run_id, &Event::RunRunnable {\n-        source: fabro_types::RunRunnableSource::StartRequested,\n-        actor:  None,\n-    })\n+    use crate::event::RunEventSink;\n+    use crate::operations::lifecycle_events;\n+\n+    let sink = RunEventSink::store(run_store.clone());\n+    lifecycle_events::request_start(&sink, run_id, false, None)\n+        .await\n+        .expect(\"seed run.start_requested\");\n+    lifecycle_events::runnable(\n+        &sink,\n+        run_id,\n+        fabro_types::RunRunnableSource::StartRequested,\n+        None,\n+    )\n     .await\n     .expect(\"seed run.runnable\");\n-    append_event(run_store, run_id, &Event::RunStarting)\n+    lifecycle_events::starting(&sink, run_id)\n         .await\n         .expect(\"seed run.starting\");\n-    append_event(run_store, run_id, &Event::RunRunning)\n+    lifecycle_events::running(&sink, run_id)\n         .await\n         .expect(\"seed run.running\");\n }\ndiff --git a/lib/foundation/fabro-types/src/lib.rs b/lib/foundation/fabro-types/src/lib.rs\nindex 39fa5fb..f086767 100644\n--- a/lib/foundation/fabro-types/src/lib.rs\n+++ b/lib/foundation/fabro-types/src/lib.rs\n@@ -18,6 +18,7 @@ pub mod graph;\n mod id;\n mod input_scalar;\n pub mod interview;\n+pub mod lifecycle;\n pub mod llm_backend;\n pub mod manifest_path;\n pub mod mcp_store;\n@@ -90,6 +91,7 @@ pub use input_scalar::{\n pub use interview::{\n     InterviewQuestionRecord, QuestionType, ReviewTarget, ReviewTargetError, ReviewTargetKind,\n };\n+pub use lifecycle::{LifecycleTransition, apply_lifecycle_event, historic_skipped_statuses};\n pub use llm_backend::AgentBackend;\n pub use manifest_path::{ManifestPath, ManifestPathParseError};\n pub use mcp_store::{\ndiff --git a/lib/foundation/fabro-types/src/lifecycle.rs b/lib/foundation/fabro-types/src/lifecycle.rs\nnew file mode 100644\nindex 0000000..b6eafb6\n--- /dev/null\n+++ b/lib/foundation/fabro-types/src/lifecycle.rs\n@@ -0,0 +1,541 @@\n+//! Shared run-lifecycle transition table (fabro-3fe4).\n+//!\n+//! One pure function owns the mapping `(RunStatus, EventBody) -> RunStatus`\n+//! for every event that drives run status. Both reducers — the server's live\n+//! in-memory reducer (`update_live_run_from_event`) and the durable\n+//! projection reducer (`fabro_store::RunProjectionReducer`) — consume this\n+//! table so their status folds cannot drift. Reducers keep only their\n+//! non-status side effects on top of it.\n+\n+use crate::run_event::EventBody;\n+use crate::status::{InvalidTransition, RunStatus};\n+\n+/// Result of applying one event body to a run status.\n+#[derive(Debug, Clone, PartialEq)]\n+pub enum LifecycleTransition {\n+    /// The event does not participate in the run-lifecycle state machine;\n+    /// reducers leave the status untouched.\n+    NotLifecycle,\n+    /// The event is valid for the current status; `RunStatus` is the status\n+    /// after the event (identical to the input for idempotent repeats).\n+    Next(RunStatus),\n+    /// The event cannot follow the current status.\n+    Rejected(InvalidTransition),\n+}\n+\n+/// Intermediate statuses a historic (pre-table) event stream may have\n+/// skipped between `status` and `body`'s target (fabro-3fe4).\n+///\n+/// Runs written before the lifecycle table existed can jump directly from\n+/// `Submitted` to `Starting` (the runnable state was introduced later), and\n+/// historic `run.failed` events can name states the run never recorded.\n+/// Reducers replaying history fast-forward through the missing intermediate\n+/// statuses so both folds converge on the same final status while the table\n+/// itself stays strict for live single-event transitions.\n+#[must_use]\n+pub fn historic_skipped_statuses(status: RunStatus, body: &EventBody) -> Vec<RunStatus> {\n+    let mut skipped = Vec::new();\n+    if matches!(body, EventBody::RunStarting(_)) && matches!(status, RunStatus::Submitted) {\n+        skipped.push(RunStatus::Runnable);\n+    }\n+    if let EventBody::RunFailed(props) = body {\n+        let failed = RunStatus::Failed {\n+            reason: props.failure.reason,\n+        };\n+        if !status.can_transition_to(failed) {\n+            let mut current = status;\n+            if matches!(current, RunStatus::Submitted | RunStatus::Pending { .. }) {\n+                skipped.push(RunStatus::Runnable);\n+                current = RunStatus::Runnable;\n+            }\n+            if matches!(current, RunStatus::Runnable) {\n+                skipped.push(RunStatus::Starting);\n+            }\n+        }\n+    }\n+    skipped\n+}\n+\n+/// Pure transition table for the run-lifecycle event protocol.\n+///\n+/// Validity reuses [`RunStatus::can_transition_to`]; an event whose target\n+/// equals the current status is an idempotent no-op (`Next(current)`),\n+/// mirroring `RunProjection::try_apply_status`.\n+///\n+/// Protocol notes:\n+/// - `run.submitted` carries the definition blob but does not drive status: the\n+///   resubmit flow reaches `Submitted` through `run.start_requested` (`resume:\n+///   true`), and a status write here would force every later `run.starting`\n+///   through the historic `Submitted -> Starting` replay shim.\n+/// - `run.start_requested` with `resume: false` is a request marker only; the\n+///   status change is owned by the following `run.runnable` event.\n+#[must_use]\n+pub fn apply_lifecycle_event(status: RunStatus, body: &EventBody) -> LifecycleTransition {\n+    let target = match body {\n+        EventBody::RunStartRequested(props) if props.resume => Some(RunStatus::Submitted),\n+        EventBody::RunPending(props) => Some(RunStatus::Pending {\n+            reason: props.reason,\n+        }),\n+        EventBody::RunRunnable(_) => Some(RunStatus::Runnable),\n+        EventBody::RunStarting(_) => Some(RunStatus::Starting),\n+        EventBody::RunRunning(_) => Some(RunStatus::Running),\n+        EventBody::RunBlocked(props) => Some(match status {\n+            RunStatus::Paused { .. } => RunStatus::Paused {\n+                prior_block: Some(props.blocked_reason),\n+            },\n+            _ => RunStatus::Blocked {\n+                blocked_reason: props.blocked_reason,\n+            },\n+        }),\n+        EventBody::RunUnblocked(_) => Some(match status {\n+            RunStatus::Paused { .. } => RunStatus::Paused { prior_block: None },\n+            _ => RunStatus::Running,\n+        }),\n+        EventBody::RunRemoving(_) => Some(RunStatus::Removing),\n+        EventBody::RunPaused(_) => Some(RunStatus::Paused {\n+            prior_block: status.blocked_reason(),\n+        }),\n+        EventBody::RunUnpaused(_) => Some(match status {\n+            RunStatus::Paused {\n+                prior_block: Some(blocked_reason),\n+            } => RunStatus::Blocked { blocked_reason },\n+            _ => RunStatus::Running,\n+        }),\n+        EventBody::RunCompleted(props) => Some(RunStatus::Succeeded {\n+            reason: props.reason,\n+        }),\n+        EventBody::RunFailed(props) => Some(RunStatus::Failed {\n+            reason: props.failure.reason,\n+        }),\n+        _ => None,\n+    };\n+\n+    match target {\n+        None => LifecycleTransition::NotLifecycle,\n+        Some(next) if next == status => LifecycleTransition::Next(next),\n+        Some(next) => match status.transition_to(next) {\n+            Ok(next) => LifecycleTransition::Next(next),\n+            Err(err) => LifecycleTransition::Rejected(err),\n+        },\n+    }\n+}\n+\n+#[cfg(test)]\n+mod tests {\n+    use super::*;\n+    use crate::run_event::{\n+        RunApprovedProps, RunBlockedProps, RunCompletedProps, RunControlEffectProps,\n+        RunCreatedProps, RunFailedProps, RunPendingProps, RunRunnableProps, RunStartRequestedProps,\n+        RunStatusEffectProps, RunStatusTransitionProps, RunSubmittedProps,\n+    };\n+    use crate::{\n+        BlockedReason, FailureCategory, FailureDetail, FailureReason, Graph, PendingReason,\n+        RunFailure, RunRunnableSource, RunTiming, SuccessReason, WorkflowSettings, test_support,\n+    };\n+\n+    fn transition_props() -> RunStatusTransitionProps {\n+        RunStatusTransitionProps {}\n+    }\n+\n+    fn effect() -> RunControlEffectProps {\n+        RunControlEffectProps {}\n+    }\n+\n+    fn unblocked() -> RunStatusEffectProps {\n+        RunStatusEffectProps {}\n+    }\n+\n+    fn failed(reason: FailureReason) -> RunFailedProps {\n+        RunFailedProps {\n+            failure:              RunFailure {\n+                reason,\n+                detail: FailureDetail::new(\"table test\", FailureCategory::Deterministic),\n+            },\n+            timing:               RunTiming::default(),\n+            final_git_commit_sha: None,\n+            final_patch:          None,\n+            diff_summary:         None,\n+            billing:              None,\n+        }\n+    }\n+\n+    fn completed(reason: SuccessReason) -> RunCompletedProps {\n+        RunCompletedProps {\n+            timing: RunTiming::wall_only(1),\n+            artifact_count: 0,\n+            status: \"succeeded\".to_string(),\n+            reason,\n+            failure: None,\n+            total_usd_micros: None,\n+            final_git_commit_sha: None,\n+            final_patch: None,\n+            diff_summary: None,\n+            billing: None,\n+        }\n+    }\n+\n+    fn blocked() -> RunBlockedProps {\n+        RunBlockedProps {\n+            blocked_reason: BlockedReason::HumanInputRequired,\n+        }\n+    }\n+\n+    fn next(status: RunStatus, body: &EventBody) -> RunStatus {\n+        match apply_lifecycle_event(status, body) {\n+            LifecycleTransition::Next(next) => next,\n+            other => panic!(\"expected Next, got {other:?} for {status} + {body:?}\"),\n+        }\n+    }\n+\n+    fn rejected(status: RunStatus, body: &EventBody) {\n+        assert!(\n+            matches!(\n+                apply_lifecycle_event(status, body),\n+                LifecycleTransition::Rejected(_)\n+            ),\n+            \"expected Rejected for {status} + {body:?}\"\n+        );\n+    }\n+\n+    #[test]\n+    fn request_start_resubmits_terminal_runs_to_submitted() {\n+        let resume = EventBody::RunStartRequested(RunStartRequestedProps { resume: true });\n+        assert_eq!(\n+            next(\n+                RunStatus::Failed {\n+                    reason: FailureReason::WorkflowError,\n+                },\n+                &resume\n+            ),\n+            RunStatus::Submitted\n+        );\n+        // Fresh (non-resume) start requests are markers only.\n+        let fresh = EventBody::RunStartRequested(RunStartRequestedProps { resume: false });\n+        assert_eq!(\n+            apply_lifecycle_event(RunStatus::Submitted, &fresh),\n+            LifecycleTransition::NotLifecycle\n+        );\n+    }\n+\n+    #[test]\n+    fn runnable_pending_and_starting_advance_in_order() {\n+        let pending = EventBody::RunPending(RunPendingProps {\n+            reason: PendingReason::ApprovalRequired,\n+        });\n+        assert_eq!(next(RunStatus::Submitted, &pending), RunStatus::Pending {\n+            reason: PendingReason::ApprovalRequired,\n+        });\n+        assert_eq!(\n+            next(\n+                RunStatus::Pending {\n+                    reason: PendingReason::ApprovalRequired,\n+                },\n+                &pending\n+            ),\n+            RunStatus::Pending {\n+                reason: PendingReason::ApprovalRequired,\n+            }\n+        );\n+\n+        let runnable = EventBody::RunRunnable(RunRunnableProps {\n+            source: RunRunnableSource::StartRequested,\n+        });\n+        assert_eq!(next(RunStatus::Submitted, &runnable), RunStatus::Runnable);\n+        assert_eq!(\n+            next(\n+                RunStatus::Pending {\n+                    reason: PendingReason::ApprovalRequired,\n+                },\n+                &runnable\n+            ),\n+            RunStatus::Runnable\n+        );\n+\n+        let starting = EventBody::RunStarting(transition_props());\n+        assert_eq!(next(RunStatus::Runnable, &starting), RunStatus::Starting);\n+        // Cancel-before-starting: Submitted and Pending runs can be cancelled\n+        // before any worker reaches Starting.\n+        assert_eq!(\n+            next(\n+                RunStatus::Submitted,\n+                &EventBody::RunFailed(failed(FailureReason::Cancelled))\n+            ),\n+            RunStatus::Failed {\n+                reason: FailureReason::Cancelled,\n+            }\n+        );\n+        assert_eq!(\n+            next(\n+                RunStatus::Pending {\n+                    reason: PendingReason::ApprovalRequired,\n+                },\n+                &EventBody::RunFailed(failed(FailureReason::ApprovalTimeout))\n+            ),\n+            RunStatus::Failed {\n+                reason: FailureReason::ApprovalTimeout,\n+            }\n+        );\n+    }\n+\n+    #[test]\n+    fn submitted_cannot_skip_runnable_to_starting() {\n+        rejected(\n+            RunStatus::Submitted,\n+            &EventBody::RunStarting(transition_props()),\n+        );\n+        rejected(\n+            RunStatus::Submitted,\n+            &EventBody::RunRunning(transition_props()),\n+        );\n+    }\n+\n+    #[test]\n+    fn failure_before_running_is_valid_only_for_pre_start_reasons() {\n+        // Failure-before-running: a worker that dies after being scheduled\n+        // (Runnable) but before appending RunStarting fails the run directly.\n+        assert_eq!(\n+            next(\n+                RunStatus::Runnable,\n+                &EventBody::RunFailed(failed(FailureReason::LaunchFailed))\n+            ),\n+            RunStatus::Failed {\n+                reason: FailureReason::LaunchFailed,\n+            }\n+        );\n+        assert_eq!(\n+            next(\n+                RunStatus::Runnable,\n+                &EventBody::RunFailed(failed(FailureReason::Cancelled))\n+            ),\n+            RunStatus::Failed {\n+                reason: FailureReason::Cancelled,\n+            }\n+        );\n+        // Reasons that imply the run already progressed past Starting are\n+        // rejected from Runnable.\n+        rejected(\n+            RunStatus::Runnable,\n+            &EventBody::RunFailed(failed(FailureReason::SandboxInitFailed)),\n+        );\n+        rejected(\n+            RunStatus::Runnable,\n+            &EventBody::RunFailed(failed(FailureReason::PublishFailed)),\n+        );\n+    }\n+\n+    #[test]\n+    fn running_blocked_pause_and_control_round_trips() {\n+        let starting = EventBody::RunStarting(transition_props());\n+        let running = EventBody::RunRunning(transition_props());\n+        let runnable = RunStatus::Runnable;\n+        assert_eq!(next(runnable, &starting), RunStatus::Starting);\n+        assert_eq!(next(RunStatus::Starting, &running), RunStatus::Running);\n+\n+        assert_eq!(\n+            next(RunStatus::Running, &EventBody::RunBlocked(blocked())),\n+            RunStatus::Blocked {\n+                blocked_reason: BlockedReason::HumanInputRequired,\n+            }\n+        );\n+        assert_eq!(\n+            next(\n+                RunStatus::Blocked {\n+                    blocked_reason: BlockedReason::HumanInputRequired,\n+                },\n+                &EventBody::RunRunning(transition_props())\n+            ),\n+            RunStatus::Running\n+        );\n+\n+        // Pause preserves the prior block; unpaused restores it.\n+        assert_eq!(\n+            next(\n+                RunStatus::Blocked {\n+                    blocked_reason: BlockedReason::HumanInputRequired,\n+                },\n+                &EventBody::RunPaused(effect())\n+            ),\n+            RunStatus::Paused {\n+                prior_block: Some(BlockedReason::HumanInputRequired),\n+            }\n+        );\n+        assert_eq!(\n+            next(\n+                RunStatus::Paused {\n+                    prior_block: Some(BlockedReason::HumanInputRequired),\n+                },\n+                &EventBody::RunUnpaused(effect())\n+            ),\n+            RunStatus::Blocked {\n+                blocked_reason: BlockedReason::HumanInputRequired,\n+            }\n+        );\n+\n+        // Unblocked clears a prior block while paused, otherwise resumes.\n+        assert_eq!(\n+            next(\n+                RunStatus::Paused {\n+                    prior_block: Some(BlockedReason::HumanInputRequired),\n+                },\n+                &EventBody::RunUnblocked(unblocked())\n+            ),\n+            RunStatus::Paused { prior_block: None }\n+        );\n+        assert_eq!(\n+            next(\n+                RunStatus::Blocked {\n+                    blocked_reason: BlockedReason::HumanInputRequired,\n+                },\n+                &EventBody::RunUnblocked(unblocked())\n+            ),\n+            RunStatus::Running\n+        );\n+\n+        // A block arriving while paused refreshes the prior block instead of\n+        // leaving the paused state.\n+        assert_eq!(\n+            next(\n+                RunStatus::Paused { prior_block: None },\n+                &EventBody::RunBlocked(blocked())\n+            ),\n+            RunStatus::Paused {\n+                prior_block: Some(BlockedReason::HumanInputRequired),\n+            }\n+        );\n+    }\n+\n+    #[test]\n+    fn terminal_events_close_active_runs_and_stay_frozen() {\n+        let running = EventBody::RunRunning(transition_props());\n+        let succeeded = EventBody::RunCompleted(completed(SuccessReason::Completed));\n+        assert_eq!(next(RunStatus::Running, &succeeded), RunStatus::Succeeded {\n+            reason: SuccessReason::Completed,\n+        });\n+        assert_eq!(\n+            next(\n+                RunStatus::Starting,\n+                &EventBody::RunFailed(failed(FailureReason::Terminated))\n+            ),\n+            RunStatus::Failed {\n+                reason: FailureReason::Terminated,\n+            }\n+        );\n+\n+        // Terminal statuses are immutable: no lifecycle event moves them\n+        // (Dead remains the deletion escape hatch outside this table's\n+        // lifecycle events).\n+        let terminal = RunStatus::Succeeded {\n+            reason: SuccessReason::Completed,\n+        };\n+        rejected(terminal, &running);\n+        rejected(terminal, &EventBody::RunStarting(transition_props()));\n+        rejected(\n+            RunStatus::Failed {\n+                reason: FailureReason::WorkflowError,\n+            },\n+            &EventBody::RunCompleted(completed(SuccessReason::Completed)),\n+        );\n+    }\n+\n+    #[test]\n+    fn non_lifecycle_events_leave_status_untouched() {\n+        for body in [\n+            EventBody::RunCreated(RunCreatedProps {\n+                title:               None,\n+                settings:            WorkflowSettings::default(),\n+                graph:               Graph::new(\"test\"),\n+                workflow_source:     None,\n+                labels:              std::collections::BTreeMap::new(),\n+                source_directory:    None,\n+                workflow_slug:       None,\n+                workflow_version_id: None,\n+                target:              None,\n+                automation:          None,\n+                provenance:          test_support::test_run_provenance(),\n+                manifest_blob:       None,\n+                spec_blob:           None,\n+                git:                 None,\n+                fork_source_ref:     None,\n+                retried_from:        None,\n+                parent_id:           None,\n+                web_url:             None,\n+            }),\n+            EventBody::RunSubmitted(RunSubmittedProps {\n+                definition_blob: None,\n+            }),\n+            EventBody::RunApproved(RunApprovedProps {}),\n+        ] {\n+            assert_eq!(\n+                apply_lifecycle_event(RunStatus::Running, &body),\n+                LifecycleTransition::NotLifecycle,\n+                \"{body:?}\"\n+            );\n+        }\n+    }\n+\n+    #[test]\n+    fn historic_skipped_statuses_replay_missing_intermediate_steps() {\n+        // Historic submitted -> starting jumps skipped runnable.\n+        assert_eq!(\n+            historic_skipped_statuses(\n+                RunStatus::Submitted,\n+                &EventBody::RunStarting(transition_props()),\n+            ),\n+            vec![RunStatus::Runnable]\n+        );\n+        // Historic failure from submitted without runnable/starting events\n+        // fast-forwards through both intermediate statuses.\n+        assert_eq!(\n+            historic_skipped_statuses(\n+                RunStatus::Submitted,\n+                &EventBody::RunFailed(failed(FailureReason::SandboxInitFailed)),\n+            ),\n+            vec![RunStatus::Runnable, RunStatus::Starting]\n+        );\n+        assert_eq!(\n+            historic_skipped_statuses(\n+                RunStatus::Runnable,\n+                &EventBody::RunFailed(failed(FailureReason::SandboxInitFailed)),\n+            ),\n+            vec![RunStatus::Starting]\n+        );\n+        // Current-protocol streams skip nothing.\n+        assert!(\n+            historic_skipped_statuses(\n+                RunStatus::Runnable,\n+                &EventBody::RunStarting(transition_props()),\n+            )\n+            .is_empty()\n+        );\n+        assert!(\n+            historic_skipped_statuses(\n+                RunStatus::Running,\n+                &EventBody::RunFailed(failed(FailureReason::WorkflowError)),\n+            )\n+            .is_empty()\n+        );\n+        // Failures the table accepts directly from submitted skip nothing.\n+        assert!(\n+            historic_skipped_statuses(\n+                RunStatus::Submitted,\n+                &EventBody::RunFailed(failed(FailureReason::Cancelled)),\n+            )\n+            .is_empty()\n+        );\n+    }\n+\n+    #[test]\n+    fn idempotent_repeats_return_current_status() {\n+        let running = EventBody::RunRunning(transition_props());\n+        assert_eq!(\n+            apply_lifecycle_event(RunStatus::Running, &running),\n+            LifecycleTransition::Next(RunStatus::Running)\n+        );\n+        let removing = EventBody::RunRemoving(transition_props());\n+        // Repeated removal is an idempotent no-op like every repeat.\n+        assert_eq!(\n+            apply_lifecycle_event(RunStatus::Removing, &removing),\n+            LifecycleTransition::Next(RunStatus::Removing)\n+        );\n+    }\n+}\n",
+      "summary": {
+        "files_changed": 13,
+        "additions": 1039,
+        "deletions": 214
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2253,6 +2372,316 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "planner@1": {
+      "first_event_seq": 20,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-10T13:33:46.100138182Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-10T13:31:32.211391858Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 133962,
+        "inference_time_ms": 120625,
+        "tool_time_ms": 12625,
+        "active_time_ms": 133250
+      },
+      "usage": {
+        "input_tokens": 38467,
+        "output_tokens": 2707,
+        "total_tokens": 499711,
+        "reasoning_tokens": 1833,
+        "cache_read_tokens": 456704,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 192555
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 37999,
+        "usage_percent": 3.6238670349121094,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-10T13:33:46.016585087Z",
+        "event_seq": 116,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1268,
+            "usage_percent": 0.1209259033203125
+          },
+          {
+            "category": "tools",
+            "tokens": 1932,
+            "usage_percent": 0.1842498779296875
+          },
+          {
+            "category": "memory",
+            "tokens": 6422,
+            "usage_percent": 0.6124496459960938
+          },
+          {
+            "category": "conversation",
+            "tokens": 28369,
+            "usage_percent": 2.7054786682128906
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-10T13:31:31.808855912Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-10T13:31:31.799612708Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "evidence@1": {
+      "first_event_seq": 736,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-10T15:00:55.124356021Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/a7421eb6d4211efc9751a9e91b3cfd2f5a0e87aebcba6a4504e6ad711498dbf5",
+        "exit_code": 0,
+        "duration_ms": 695,
+        "termination": "exited",
+        "output_bytes": 70626,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 70626,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-10T15:00:54.413982035Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 701,
+        "inference_time_ms": 0,
+        "tool_time_ms": 695,
+        "active_time_ms": 695
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "implementer@1": {
       "first_event_seq": 127,
       "prompt": null,
@@ -2755,229 +3184,6 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "planner@1": {
-      "first_event_seq": 20,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Stage completed: planner",
-        "failure_reason": null,
-        "timestamp": "2026-09-10T13:33:46.100138182Z"
-      },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "low"
-      },
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-10T13:31:32.211391858Z",
-      "handler": "agent",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 133962,
-        "inference_time_ms": 120625,
-        "tool_time_ms": 12625,
-        "active_time_ms": 133250
-      },
-      "usage": {
-        "input_tokens": 38467,
-        "output_tokens": 2707,
-        "total_tokens": 499711,
-        "reasoning_tokens": 1833,
-        "cache_read_tokens": 456704,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 192555
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "fabro_runs_list",
-          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": true
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": true
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 37999,
-        "usage_percent": 3.6238670349121094,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-10T13:33:46.016585087Z",
-        "event_seq": 116,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1268,
-            "usage_percent": 0.1209259033203125
-          },
-          {
-            "category": "tools",
-            "tokens": 1932,
-            "usage_percent": 0.1842498779296875
-          },
-          {
-            "category": "memory",
-            "tokens": 6422,
-            "usage_percent": 0.6124496459960938
-          },
-          {
-            "category": "conversation",
-            "tokens": 28369,
-            "usage_percent": 2.7054786682128906
-          },
-          {
-            "category": "other",
-            "tokens": 8,
-            "usage_percent": 0.000762939453125
-          }
-        ],
-        "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "closeout@1": {
       "first_event_seq": 790,
       "prompt": null,
@@ -3029,15 +3235,15 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "start@1": {
-      "first_event_seq": 16,
+    "exit@1": {
+      "first_event_seq": 800,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
         "notes": null,
         "failure_reason": null,
-        "timestamp": "2026-09-10T13:31:31.808855912Z"
+        "timestamp": "2026-09-10T15:02:50.451585083Z"
       },
       "provider_used": null,
       "diff": null,
@@ -3045,65 +3251,14 @@
       "script_timing": null,
       "parallel_results": null,
       "output": null,
-      "started_at": "2026-09-10T13:31:31.799612708Z",
-      "handler": "start",
+      "started_at": "2026-09-10T15:02:50.451525545Z",
+      "handler": "exit",
       "graph_visit": 1,
       "timing": {
         "wall_time_ms": 0,
         "inference_time_ms": 0,
         "tool_time_ms": 0,
         "active_time_ms": 0
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "evidence@1": {
-      "first_event_seq": 736,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-        "failure_reason": null,
-        "timestamp": "2026-09-10T15:00:55.124356021Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
-        "language": "shell",
-        "timeout_ms": 120000
-      },
-      "script_timing": {
-        "output": "blob://sha256/a7421eb6d4211efc9751a9e91b3cfd2f5a0e87aebcba6a4504e6ad711498dbf5",
-        "exit_code": 0,
-        "duration_ms": 695,
-        "termination": "exited",
-        "output_bytes": 70626,
-        "live_streaming": true
-      },
-      "parallel_results": null,
-      "output": null,
-      "output_bytes": 70626,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-09-10T15:00:54.413982035Z",
-      "handler": "command",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 701,
-        "inference_time_ms": 0,
-        "tool_time_ms": 695,
-        "active_time_ms": 695
       },
       "usage": {
         "input_tokens": 0,
