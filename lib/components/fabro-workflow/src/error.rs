@@ -2,7 +2,7 @@ use std::fmt;
 use std::sync::{Arc, LazyLock};
 
 use fabro_graphviz::Error as GraphvizError;
-use fabro_llm::{ErrorFacts, ErrorKind, LlmError, ModelSelectionError};
+use fabro_llm::{ErrorData, ErrorKind, ModelSelectionError, failure_signature_hint};
 use fabro_template::TemplateError;
 pub use fabro_types::failure_signature::FailureSignature;
 pub use fabro_types::outcome::FailureCategory;
@@ -18,7 +18,7 @@ use crate::outcome::{FailureDetail, Outcome, StageOutcome};
 
 /// Classify an LLM error into a `FailureCategory` based on its structure.
 #[must_use]
-pub fn classify_sdk_error<E: ErrorFacts + ?Sized>(err: &E) -> FailureCategory {
+pub fn classify_sdk_error(err: &ErrorData) -> FailureCategory {
     match err.kind() {
         ErrorKind::RateLimit
         | ErrorKind::Server
@@ -309,7 +309,7 @@ pub enum Error {
     },
 
     #[error("LLM error: {0}")]
-    Llm(LlmError),
+    Llm(Box<ErrorData>),
 
     #[error("Checkpoint error: {0}")]
     Checkpoint(String),
@@ -583,7 +583,7 @@ impl Error {
     #[must_use]
     pub fn failure_signature_hint(&self) -> Option<FailureSignature> {
         match self {
-            Self::Llm(sdk_err) => Some(FailureSignature(sdk_err.failure_signature_hint())),
+            Self::Llm(sdk_err) => Some(FailureSignature(failure_signature_hint(sdk_err))),
             _ => None,
         }
     }
@@ -684,15 +684,15 @@ impl From<std::io::Error> for Error {
     }
 }
 
-impl From<LlmError> for Error {
-    fn from(err: LlmError) -> Self {
-        Self::Llm(err)
+impl From<ErrorData> for Error {
+    fn from(err: ErrorData) -> Self {
+        Self::Llm(Box::new(err))
     }
 }
 
 impl From<fabro_llm::Error> for Error {
     fn from(err: fabro_llm::Error) -> Self {
-        Self::Llm(LlmError::from(err))
+        Self::from(ErrorData::from(err))
     }
 }
 
@@ -749,15 +749,15 @@ mod tests {
     use super::*;
 
     /// A stored LLM error of `kind` from the `openai` provider.
-    fn sdk_error(kind: ErrorKind, message: &str) -> LlmError {
-        LlmError::from(
+    fn sdk_error(kind: ErrorKind, message: &str) -> ErrorData {
+        ErrorData::from(
             fabro_llm::Error::new(kind, message).with_provider(fabro_types::provider_ids::openai()),
         )
     }
 
     /// A transient failure the provider may be asked to repeat.
-    fn transient_error(kind: ErrorKind, message: &str) -> LlmError {
-        LlmError::from(
+    fn transient_error(kind: ErrorKind, message: &str) -> ErrorData {
+        ErrorData::from(
             fabro_llm::Error::new(kind, message)
                 .with_provider(fabro_types::provider_ids::openai())
                 .with_retry(RetryClassification::Safe),
@@ -1157,16 +1157,16 @@ mod tests {
     #[test]
     fn llm_error_display() {
         let sdk_err = transient_error(ErrorKind::Network, "connection refused");
-        let err = Error::Llm(sdk_err);
+        let err = Error::from(sdk_err);
         assert_eq!(err.to_string(), "LLM error: connection refused");
     }
 
     #[test]
     fn llm_error_retryable_delegates_to_sdk() {
-        let retryable = Error::Llm(transient_error(ErrorKind::Network, "timeout"));
+        let retryable = Error::from(transient_error(ErrorKind::Network, "timeout"));
         assert!(retryable.is_retryable());
 
-        let non_retryable = Error::Llm(sdk_error(ErrorKind::Configuration, "bad config"));
+        let non_retryable = Error::from(sdk_error(ErrorKind::Configuration, "bad config"));
         assert!(!non_retryable.is_retryable());
     }
 
@@ -1221,31 +1221,31 @@ mod tests {
 
     #[test]
     fn failure_class_llm_rate_limit() {
-        let err = Error::Llm(transient_error(ErrorKind::RateLimit, "too fast"));
+        let err = Error::from(transient_error(ErrorKind::RateLimit, "too fast"));
         assert_eq!(err.failure_category(), FailureCategory::TransientInfra);
     }
 
     #[test]
     fn failure_class_llm_context_length() {
-        let err = Error::Llm(sdk_error(ErrorKind::ContextLength, "too long"));
+        let err = Error::from(sdk_error(ErrorKind::ContextLength, "too long"));
         assert_eq!(err.failure_category(), FailureCategory::BudgetExhausted);
     }
 
     #[test]
     fn failure_class_llm_auth() {
-        let err = Error::Llm(sdk_error(ErrorKind::Authentication, "bad key"));
+        let err = Error::from(sdk_error(ErrorKind::Authentication, "bad key"));
         assert_eq!(err.failure_category(), FailureCategory::Deterministic);
     }
 
     #[test]
     fn failure_class_llm_abort() {
-        let err = Error::Llm(sdk_error(ErrorKind::Cancelled, "user cancelled"));
+        let err = Error::from(sdk_error(ErrorKind::Cancelled, "user cancelled"));
         assert_eq!(err.failure_category(), FailureCategory::Canceled);
     }
 
     #[test]
     fn failure_class_llm_timeout() {
-        let err = Error::Llm(transient_error(ErrorKind::Timeout, "timed out"));
+        let err = Error::from(transient_error(ErrorKind::Timeout, "timed out"));
         assert_eq!(err.failure_category(), FailureCategory::TransientInfra);
     }
 
@@ -1941,7 +1941,7 @@ mod tests {
 
     #[test]
     fn failure_signature_hint_llm_returns_some() {
-        let err = Error::Llm(sdk_error(ErrorKind::Authentication, "bad key"));
+        let err = Error::from(sdk_error(ErrorKind::Authentication, "bad key"));
         assert_eq!(
             err.failure_signature_hint(),
             Some(FailureSignature(
@@ -1966,7 +1966,7 @@ mod tests {
 
     #[test]
     fn to_fail_outcome_llm_has_class_and_signature() {
-        let err = Error::Llm(sdk_error(ErrorKind::Authentication, "bad key"));
+        let err = Error::from(sdk_error(ErrorKind::Authentication, "bad key"));
         let outcome = err.to_fail_outcome();
         assert_eq!(outcome.status, crate::outcome::StageOutcome::Failed {
             retry_requested: false,
@@ -1993,7 +1993,7 @@ mod tests {
 
     #[test]
     fn to_fail_outcome_includes_error_message_as_reason() {
-        let err = Error::Llm(transient_error(ErrorKind::Network, "connection refused"));
+        let err = Error::from(transient_error(ErrorKind::Network, "connection refused"));
         let outcome = err.to_fail_outcome();
         assert!(
             outcome
@@ -2005,7 +2005,7 @@ mod tests {
 
     #[test]
     fn to_fail_outcome_no_context_updates() {
-        let err = Error::Llm(transient_error(ErrorKind::Network, "refused"));
+        let err = Error::from(transient_error(ErrorKind::Network, "refused"));
         let outcome = err.to_fail_outcome();
         assert!(outcome.context_updates.is_empty());
     }
@@ -2057,7 +2057,7 @@ mod tests {
             Error::engine("engine err"),
             Error::publish("publish err"),
             Error::handler("handler err"),
-            Error::Llm(transient_error(ErrorKind::Network, "refused")),
+            Error::from(transient_error(ErrorKind::Network, "refused")),
             Error::Checkpoint("cp err".into()),
             Error::Stylesheet("style err".into()),
             Error::Io("io err".into()),
@@ -2165,7 +2165,7 @@ mod tests {
 
         // 1. Create SdkError → Error
         let sdk_err = transient_error(ErrorKind::RateLimit, "too fast");
-        let arc_err = Error::Llm(sdk_err);
+        let arc_err = Error::from(sdk_err);
         assert_eq!(arc_err.failure_category(), FailureCategory::TransientInfra);
 
         // 2. Error → Outcome
@@ -2236,7 +2236,7 @@ mod tests {
     fn e2e_serde_stability_agent_error() {
         use fabro_agent::Error as AgentError;
 
-        let err = AgentError::Llm(transient_error(ErrorKind::RateLimit, "too fast"));
+        let err = AgentError::from(transient_error(ErrorKind::RateLimit, "too fast"));
         let json = serde_json::to_string(&err).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["type"], "llm");

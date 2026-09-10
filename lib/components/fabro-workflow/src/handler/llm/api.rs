@@ -12,10 +12,9 @@ use fabro_agent::{
 };
 use fabro_graphviz::graph::{AttrValue, Node};
 use fabro_llm::credentials::CredentialProvider;
-use fabro_llm::error::failover_eligible;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::types::ResponseFormat;
-use fabro_llm::{Client, ClientOptions, FallbackTarget, LlmError, Request, Response};
+use fabro_llm::{Client, ClientOptions, ErrorData, FallbackTarget, Request, Response};
 use fabro_mcp::config::McpServerSettings;
 use fabro_types::settings::run::RunModelControls;
 use fabro_types::{
@@ -110,7 +109,7 @@ enum AgentApiErrorDisposition {
     /// Session was interrupted via cancellation; surface as `Error::Cancelled`.
     Cancelled,
     /// Underlying LLM error eligible for provider failover.
-    FailoverEligible(LlmError),
+    FailoverEligible(ErrorData),
     /// Terminal error; abort the invocation with this workflow `Error`.
     Terminal(Error),
 }
@@ -132,7 +131,7 @@ fn classify_agent_error(err: fabro_agent::Error, allow_failover: bool) -> AgentA
             ))
         }
         fabro_agent::Error::Llm(err) if allow_failover && err.failover_eligible() => {
-            AgentApiErrorDisposition::FailoverEligible(err)
+            AgentApiErrorDisposition::FailoverEligible(*err)
         }
         fabro_agent::Error::Llm(err) => AgentApiErrorDisposition::Terminal(Error::Llm(err)),
         other @ (fabro_agent::Error::SessionClosed
@@ -755,7 +754,7 @@ impl LiveAgentInvocation {
         error: fabro_agent::Error,
         allow_failover: bool,
         emitter: &Arc<Emitter>,
-    ) -> Result<LlmError, Error> {
+    ) -> Result<ErrorData, Error> {
         let disposition = classify_agent_error(error, allow_failover);
         self.abort_and_discard(emitter).await;
         match disposition {
@@ -1197,7 +1196,7 @@ impl AgentApiBackend {
     async fn failover_agent_session(
         &self,
         fallback_plan: &mut FallbackPlan,
-        initial_error: LlmError,
+        initial_error: ErrorData,
         request: &CodergenRunRequest<'_>,
         input: &str,
         stage_scope: &StageScope,
@@ -1205,7 +1204,7 @@ impl AgentApiBackend {
         live: &mut LiveAgentInvocation,
     ) -> Result<(), Error> {
         let emitter = request.emitter;
-        let mut last_error = Error::Llm(initial_error);
+        let mut last_error = Error::from(initial_error);
 
         while fallback_plan.advance() {
             Self::emit_failover(
@@ -1269,7 +1268,7 @@ impl AgentApiBackend {
             begin_session_lifecycle(&live.session, emitter, None);
             if let Err(error) = live.session.initialize().await {
                 let allow_failover = fallback_plan.has_next();
-                last_error = Error::Llm(
+                last_error = Error::from(
                     live.discard_for_error(error, allow_failover, emitter)
                         .await?,
                 );
@@ -1302,7 +1301,7 @@ impl AgentApiBackend {
                 }
                 Err(error) => {
                     let allow_failover = fallback_plan.has_next();
-                    last_error = Error::Llm(
+                    last_error = Error::from(
                         live.discard_for_error(error, allow_failover, emitter)
                             .await?,
                     );
@@ -1431,7 +1430,7 @@ impl AgentApiBackend {
                         .with_speed(route.controls.speed),
                     });
                 }
-                Err(error) if failover_eligible(&error) && plan.has_next() => {
+                Err(error) if error.failover_eligible() && plan.has_next() => {
                     let error_message = error.to_string();
                     plan.advance();
                     Self::emit_failover(node, emitter, stage_scope, plan, &error_message);
@@ -1442,7 +1441,7 @@ impl AgentApiBackend {
                         request.response_format().cloned(),
                     )?;
                 }
-                Err(error) => return Err(Error::Llm(LlmError::from(error))),
+                Err(error) => return Err(Error::from(error)),
             }
         }
     }
@@ -4032,16 +4031,16 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
 
     // --- Bridge guard tests ---
 
-    fn failover_eligible_llm_error() -> LlmError {
-        LlmError::from(
+    fn failover_eligible_llm_error() -> ErrorData {
+        ErrorData::from(
             fabro_llm::Error::new(ErrorKind::Network, "boom")
                 .with_provider(provider_ids::openai())
                 .with_retry(RetryClassification::Safe),
         )
     }
 
-    fn non_failover_llm_error() -> LlmError {
-        LlmError::from(
+    fn non_failover_llm_error() -> ErrorData {
+        ErrorData::from(
             fabro_llm::Error::new(ErrorKind::InvalidRequest, "bad key")
                 .with_provider(provider_ids::openai())
                 .with_status(401),
@@ -4270,7 +4269,7 @@ profile = "anthropic"
 
     #[test]
     fn classify_failover_eligible_llm_returns_failover_when_allowed() {
-        let err = fabro_agent::Error::Llm(failover_eligible_llm_error());
+        let err = fabro_agent::Error::from(failover_eligible_llm_error());
         assert!(matches!(
             classify_agent_error(err, true),
             AgentApiErrorDisposition::FailoverEligible(_)
@@ -4279,7 +4278,7 @@ profile = "anthropic"
 
     #[test]
     fn classify_failover_eligible_llm_returns_terminal_when_not_allowed() {
-        let err = fabro_agent::Error::Llm(failover_eligible_llm_error());
+        let err = fabro_agent::Error::from(failover_eligible_llm_error());
         match classify_agent_error(err, false) {
             AgentApiErrorDisposition::Terminal(Error::Llm(_)) => {}
             _ => panic!("expected Terminal(Error::Llm) when failover disallowed"),
@@ -4288,7 +4287,7 @@ profile = "anthropic"
 
     #[test]
     fn classify_non_failover_eligible_llm_is_terminal_llm() {
-        let err = fabro_agent::Error::Llm(non_failover_llm_error());
+        let err = fabro_agent::Error::from(non_failover_llm_error());
         match classify_agent_error(err, true) {
             AgentApiErrorDisposition::Terminal(Error::Llm(_)) => {}
             _ => panic!("expected Terminal(Error::Llm) for non-failover-eligible LLM error"),
@@ -4297,7 +4296,7 @@ profile = "anthropic"
 
     #[test]
     fn classify_refusal_llm_returns_failover_when_allowed() {
-        let err = fabro_agent::Error::Llm(LlmError::from(refusal_llm_error()));
+        let err = fabro_agent::Error::from(refusal_llm_error());
         assert!(matches!(
             classify_agent_error(err, true),
             AgentApiErrorDisposition::FailoverEligible(_)
@@ -4306,7 +4305,7 @@ profile = "anthropic"
 
     #[test]
     fn classify_refusal_llm_returns_terminal_when_not_allowed() {
-        let err = fabro_agent::Error::Llm(LlmError::from(refusal_llm_error()));
+        let err = fabro_agent::Error::from(refusal_llm_error());
         match classify_agent_error(err, false) {
             AgentApiErrorDisposition::Terminal(Error::Llm(llm_err)) => {
                 assert!(llm_err.to_string().contains("claude-fable-5 refused"));

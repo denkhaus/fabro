@@ -6,7 +6,7 @@ use fabro_github::{self as github_app, ssh_url_to_https};
 use fabro_graphviz::parser;
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_llm::{Client, ClientOptions, Request, selection, structured};
+use fabro_llm::{Client, ClientOptions, Request, selection};
 use fabro_store::RunProjection;
 use fabro_types::settings::run::MergeStrategy;
 use fabro_types::{ProviderId, PullRequestLink, Role};
@@ -408,10 +408,10 @@ async fn build_pr_content_with_client(
         .message(fabro_types::Message::text(Role::User, prompt))
         .build()
         .map_err(|e| format!("invalid PR content request: {e}"))?;
-    let completion =
-        structured::complete_object(&client, request, "pr_content", PR_CONTENT_SCHEMA.clone())
-            .await
-            .map_err(|e| format!("LLM generation failed: {e}"))?;
+    let completion = client
+        .complete_object(request, "pr_content", PR_CONTENT_SCHEMA.clone())
+        .await
+        .map_err(|e| format!("LLM generation failed: {e}"))?;
 
     let generated: PrContent = serde_json::from_value(completion.object)
         .map_err(|e| format!("Failed to deserialize PR content: {e}"))?;

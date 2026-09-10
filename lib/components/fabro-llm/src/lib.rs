@@ -8,28 +8,23 @@
 //! - Fabro's passthrough policy for selections made before a request exists
 //!   ([`selection`]); at request time the lithos resolver enforces `enabled`
 //!   and `stands_in_for` itself;
-//! - constructing a client from a Fabro credential source ([`client`]);
-//! - inlining local file attachments ([`attachments`]);
-//! - normalizing readable reasoning into [`fabro_types::ReasoningOutput`]
-//!   ([`reasoning`]);
-//! - one-shot structured output ([`structured`]);
+//! - constructing a client from a Fabro credential store ([`client`]);
 //! - model and provider probes ([`probe`]), and the API views of the catalog
 //!   ([`api`]);
 //! - the `fabro exec` gateway adapter that speaks to a Fabro server
 //!   ([`gateway`]);
-//! - error classification for retries, failover, and failure signatures
-//!   ([`error`]).
+//! - the failure signature loop detection reads ([`error`]).
+//!
+//! Local-file inlining, structured output, readable-reasoning normalization,
+//! and the retry, auth, and failover predicates are lithos-llm's own.
 
 pub mod api;
-pub mod attachments;
 pub mod catalog;
 pub mod client;
 pub mod error;
 pub mod gateway;
 pub mod probe;
-pub mod reasoning;
 pub mod selection;
-pub mod structured;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 
@@ -38,7 +33,7 @@ pub use client::{
     ClientOptions, FabroClient, LlmSetupError, RetryListener, RetryNotice, build_client,
     build_offline_client, configured_providers,
 };
-pub use error::{ErrorFacts, LlmError};
+pub use error::failure_signature_hint;
 pub use lithos_llm::client::{Client, ClientBuild};
 pub use lithos_llm::middleware::{CallContext, CancellationToken, RetryPolicy, RetryStage};
 pub use lithos_llm::resolver::ModelSelectionError as RouteSelectionError;

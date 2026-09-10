@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use fabro_llm::reasoning;
 use fabro_types::{Message as LlmMessage, SessionMessage, TokenCounts};
 
 use crate::types::Message;
@@ -87,7 +86,7 @@ impl History {
     fn strip_opaque_provider_items(&mut self) {
         for turn in &mut self.turns {
             if let Message::Assistant { provider_parts, .. } = turn {
-                provider_parts.retain(|p| !reasoning::is_opaque_openai(p));
+                provider_parts.retain(|p| !p.is_opaque_openai());
             }
         }
     }
@@ -164,7 +163,7 @@ fn add_tool_result_call_ids<'a>(turns: &'a [Message], call_ids: &mut HashSet<&'a
 mod tests {
     use std::time::SystemTime;
 
-    use fabro_llm::reasoning::OPENAI_REASONING_KIND;
+    use fabro_llm::types::OPENAI_REASONING_KIND;
     use fabro_types::{
         ContentPart, ReasoningContent, Role, TokenCounts, ToolCall, text_of, tool_result_from_json,
     };

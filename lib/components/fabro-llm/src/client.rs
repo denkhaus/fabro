@@ -9,12 +9,9 @@ use lithos_llm::catalog::Catalog;
 use lithos_llm::client::{Client, ClientBuildError, ClientBuilder, ProviderBuildIssue};
 use lithos_llm::credentials::{CredentialError, CredentialProvider};
 use lithos_llm::middleware::{
-    Call, Middleware, Observer, RetryMiddleware, RetryPolicy, RetryStage,
+    Call, InlineLocalFiles, Middleware, Observer, RetryMiddleware, RetryPolicy, RetryStage,
 };
-use lithos_llm::types::Error;
-
-use crate::attachments::InlineLocalAttachments;
-use crate::error::LlmError;
+use lithos_llm::types::{Error, ErrorData};
 
 /// The application name lithos reports to providers that ask, such as the
 /// `originator` header on the OpenAI Codex deployment.
@@ -36,7 +33,7 @@ pub fn default_retry_policy() -> RetryPolicy {
 #[derive(Clone, Debug)]
 pub struct RetryNotice {
     /// The failure that ended the attempt.
-    pub error:   LlmError,
+    pub error:   ErrorData,
     /// The attempt that failed, counted from 1.
     pub attempt: u32,
     /// How long the middleware waits before the next attempt.
@@ -78,7 +75,7 @@ impl Observer for RetryNotifier {
     ) {
         if let Some(listener) = call.context().extensions().get::<RetryListener>() {
             listener.notify(RetryNotice {
-                error: LlmError::from(error),
+                error: ErrorData::from(error),
                 attempt,
                 delay,
                 stage,
@@ -150,7 +147,7 @@ impl ClientOptions {
             builder = builder.middleware(retry_middleware(policy));
         }
         if self.inline_attachments {
-            builder = builder.middleware(InlineLocalAttachments::new());
+            builder = builder.middleware(InlineLocalFiles::new());
         }
         for middleware in self.middleware {
             builder = builder.middleware_arc(middleware);

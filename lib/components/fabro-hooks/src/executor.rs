@@ -8,7 +8,7 @@ use fabro_agent::Sandbox;
 use fabro_agent::tool_registry::ToolContext;
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_llm::{Client, ClientOptions, Request, structured};
+use fabro_llm::{Client, ClientOptions, Request};
 use fabro_redact::redacted_url_for_log;
 use fabro_types::settings::{InterpString, ResolveCtx, ResolveError};
 use fabro_types::{Message, Role, ToolCall, tool_call_arguments, tool_result_from_json};
@@ -320,12 +320,8 @@ impl HookExecutorImpl {
                 }
             };
 
-            match structured::complete_object(
-                &client,
-                request,
-                "hook_response",
-                HOOK_RESPONSE_SCHEMA.clone(),
-            )
+            match client
+                .complete_object(request, "hook_response", HOOK_RESPONSE_SCHEMA.clone())
             .await
             {
                 Ok(completion) => {

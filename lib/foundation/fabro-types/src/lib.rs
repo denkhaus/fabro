@@ -30,7 +30,6 @@ pub mod parallel;
 pub mod principal;
 pub mod provider_ids;
 pub mod pull_request;
-pub mod reasoning;
 pub mod repository;
 pub mod run;
 pub mod run_event;
@@ -95,7 +94,8 @@ pub use interview::{
 };
 pub use lithos_llm::catalog::{ModelHandle, ModelId, ProviderId};
 pub use lithos_llm::types::{
-    FinishReason, Request, RequestBuildError, RequestBuilder, Response, ResponseFormat, StreamEvent,
+    FinishReason, ReasoningOutput, Request, RequestBuildError, RequestBuilder, Response,
+    ResponseFormat, StreamEvent,
 };
 pub use llm_backend::AgentBackend;
 pub use manifest_path::{ManifestPath, ManifestPathParseError};
@@ -125,7 +125,6 @@ pub use pull_request::{
     PullRequestDetailsUnavailableReason, PullRequestGithubDetail, PullRequestLink, PullRequestMeta,
     PullRequestRef, PullRequestResponse, PullRequestTimestamps, PullRequestUser,
 };
-pub use reasoning::ReasoningOutput;
 pub use repository::{
     GitHubRepositorySlug, GitHubRepositorySlugError, RepositoryProvider, RepositoryRef,
     is_valid_git_branch_name, is_valid_git_tag_name, normalize_git_commit_sha,

@@ -1,7 +1,7 @@
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
-use fabro_llm::LlmError;
+use fabro_llm::ErrorData;
 use fabro_types::{
     CommandTermination, ContentPart, Cost, ExecOutputTail, LlmOutputKind, LlmRetryPhase,
     Message as LlmMessage, ModelRef, ReasoningOutput, Role, SessionMessage, Speed,
@@ -401,7 +401,7 @@ pub enum AgentEvent {
         model:      String,
         attempt:    usize,
         delay_secs: f64,
-        error:      LlmError,
+        error:      ErrorData,
         phase:      LlmRetryPhase,
     },
     SubAgentSpawned {
@@ -816,13 +816,13 @@ pub struct SessionEvent {
 
 #[cfg(test)]
 mod tests {
-    use fabro_llm::{ErrorFacts, ErrorKind, RetryClassification};
+    use fabro_llm::{ErrorKind, RetryClassification};
     use fabro_types::{CostSource, ModelId, ProviderId, provider_ids};
 
     use super::*;
 
-    fn network_error(message: &str) -> LlmError {
-        LlmError::from(
+    fn network_error(message: &str) -> ErrorData {
+        ErrorData::from(
             fabro_llm::Error::new(ErrorKind::Network, message)
                 .with_retry(RetryClassification::Safe),
         )
@@ -1152,7 +1152,7 @@ mod tests {
     #[test]
     fn error_event_serde_roundtrip_with_agent_error() {
         let event = AgentEvent::Error {
-            error: Error::Llm(network_error("refused")),
+            error: Error::from(network_error("refused")),
         };
         let json = serde_json::to_string(&event).unwrap();
         let deserialized: AgentEvent = serde_json::from_str(&json).unwrap();
@@ -1172,7 +1172,7 @@ mod tests {
             attempt:    1,
             delay_secs: 2.0,
             phase:      LlmRetryPhase::Open,
-            error:      LlmError::from(
+            error:      ErrorData::from(
                 fabro_llm::Error::new(ErrorKind::RateLimit, "too fast")
                     .with_provider(ProviderId::new("openai"))
                     .with_status(429)

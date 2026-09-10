@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_llm::{ModelSelectionError, Request, selection, structured};
+use fabro_llm::{ModelSelectionError, Request, selection};
 use fabro_types::{Message, Role};
 
 use super::super::{
@@ -138,7 +138,10 @@ async fn create_completion(
     }
 
     if let Some(schema) = req.schema {
-        return match structured::complete_object(&client, request, "output_schema", schema).await {
+        return match client
+            .complete_object(request, "output_schema", schema)
+            .await
+        {
             Ok(completion) => {
                 let mut body = match serde_json::to_value(&completion.response) {
                     Ok(body) => body,

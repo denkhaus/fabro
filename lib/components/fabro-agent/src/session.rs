@@ -4,8 +4,8 @@ use std::time::{Duration, Instant, SystemTime};
 
 use fabro_llm::types::ContentBlockKind;
 use fabro_llm::{
-    CallContext, Client, FinishReason, LlmError, Request, Response, RetryClassification,
-    RetryListener, RetryStage, StreamEvent, reasoning,
+    CallContext, Client, ErrorData, FinishReason, Request, Response, RetryClassification,
+    RetryListener, RetryStage, StreamEvent,
 };
 use fabro_mcp::config::{McpServerSettings, McpTransport};
 use fabro_mcp::connection_manager::McpConnectionManager;
@@ -1138,14 +1138,14 @@ impl Session {
     }
 
     fn emit_llm_error(&mut self, err: fabro_llm::Error) -> Error {
-        let err = LlmError::from(err);
+        let err = ErrorData::from(err);
         self.event_emitter.emit(self.id.clone(), AgentEvent::Error {
-            error: Error::Llm(err.clone()),
+            error: Error::from(err.clone()),
         });
         if err.is_auth_error() {
             self.transition(SessionState::Closed);
         }
-        Error::Llm(err)
+        Error::from(err)
     }
 
     #[must_use]
@@ -1585,11 +1585,11 @@ impl Session {
             let text = response.text();
             let tool_calls: Vec<ToolCall> = response.tool_calls().cloned().collect();
             // Normalize before the response's content moves into history.
-            let reasoning = reasoning::normalize(&response.content);
+            let reasoning = response.reasoning();
             let provider_parts: Vec<_> = response
                 .content
                 .iter()
-                .filter(|part| reasoning::is_provider_part(part))
+                .filter(|part| part.is_replay_material())
                 .cloned()
                 .collect();
             let usage = response.usage;
@@ -1814,7 +1814,7 @@ impl Session {
                     model:      requested_model.model_id.to_string(),
                     attempt:    usize::try_from(replay_attempt).unwrap_or(usize::MAX),
                     delay_secs: delay.as_secs_f64(),
-                    error:      LlmError::from(&error),
+                    error:      ErrorData::from(&error),
                     phase:      LlmRetryPhase::Consume,
                 });
 
@@ -2243,10 +2243,11 @@ mod tests {
     use anyhow::Context as _;
     use fabro_llm::adapter::{ProviderAdapter, ResolvedCall};
     use fabro_llm::lithos_catalog::AdapterId;
-    use fabro_llm::reasoning::OPENAI_COMPAT_REASONING_DETAILS_KIND;
     use fabro_llm::test_support::response_to_stream;
-    use fabro_llm::types::{ContentBlockId, ContentBlockKind, ToolCallKind};
-    use fabro_llm::{ErrorFacts, ErrorKind, ResponseStream, RetryPolicy};
+    use fabro_llm::types::{
+        ContentBlockId, ContentBlockKind, OPENAI_COMPAT_REASONING_DETAILS_KIND, ToolCallKind,
+    };
+    use fabro_llm::{ErrorKind, ResponseStream, RetryPolicy};
     use fabro_types::{
         ContentPart, Cost, CostSource, ReasoningOutput, StageContextWindowCountMethod,
         ToolDefinition, provider_ids, text_of, tool_result_to_json,

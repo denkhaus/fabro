@@ -19,7 +19,6 @@ workspace = true
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
-base64.workspace = true
 bytes.workspace = true
 fabro-auth = { path = "../../foundation/fabro-auth" }
 fabro-config = { path = "../../foundation/fabro-config" }
@@ -28,8 +27,7 @@ fabro-redact.workspace = true
 fabro-static.workspace = true
 fabro-types = { path = "../../foundation/fabro-types" }
 futures.workspace = true
-lithos-llm = { workspace = true, features = ["builtin-catalog", "openai", "anthropic", "gemini", "openai-compatible", "bedrock", "bedrock-aws"] }
-mime_guess = "2"
+lithos-llm = { workspace = true, features = ["builtin-catalog", "openai", "anthropic", "gemini", "openai-compatible", "bedrock", "bedrock-aws", "local-files"] }
 serde.workspace = true
 serde_json.workspace = true
 strum.workspace = true
@@ -45,5 +43,4 @@ fabro-llm = { path = ".", features = ["test-support"] }
 fabro-macros = { path = "../../foundation/fabro-macros" }
 fabro-test = { workspace = true }
 httpmock = "0.8"
-tempfile = "3"
 tokio = { workspace = true, features = ["test-util", "macros"] }

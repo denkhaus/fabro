@@ -7,9 +7,9 @@ use fabro_agent::cli::{
     OutputFormat, diagnostic_client_options, run_with_args_and_client_and_catalog,
     run_with_args_and_source_and_catalog,
 };
+use fabro_llm::ErrorKind;
 use fabro_llm::gateway::{GatewayAdapter, GatewayError, GatewayTransport};
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_llm::{ErrorFacts, ErrorKind};
 use fabro_mcp::config::McpServerSettings;
 use fabro_types::ProviderId;
 use fabro_types::settings::cli::OutputFormat as SettingsOutputFormat;

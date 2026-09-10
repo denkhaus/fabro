@@ -836,7 +836,7 @@ mod tests {
                 attempt:    1,
                 delay_secs: 0.1,
                 phase:      fabro_types::LlmRetryPhase::Consume,
-                error:      fabro_llm::LlmError::from(fabro_llm::Error::new(
+                error:      fabro_llm::ErrorData::from(fabro_llm::Error::new(
                     fabro_llm::ErrorKind::Configuration,
                     "retry",
                 )),
@@ -955,7 +955,7 @@ mod tests {
                 attempt:    2,
                 delay_secs: 1.5,
                 phase:      fabro_types::LlmRetryPhase::Open,
-                error:      fabro_llm::LlmError::from(fabro_llm::Error::new(
+                error:      fabro_llm::ErrorData::from(fabro_llm::Error::new(
                     fabro_llm::ErrorKind::Configuration,
                     "busy",
                 )),
@@ -1319,7 +1319,7 @@ mod tests {
                 attempt:    2,
                 delay_secs: 1.5,
                 phase:      fabro_types::LlmRetryPhase::Open,
-                error:      fabro_llm::LlmError::from(fabro_llm::Error::new(
+                error:      fabro_llm::ErrorData::from(fabro_llm::Error::new(
                     fabro_llm::ErrorKind::Configuration,
                     "busy",
                 )),

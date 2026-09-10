@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use fabro_llm::{Client, Request, structured};
+use fabro_llm::{Client, Request};
 use fabro_template::{TemplateContext, TemplateError};
 use fabro_types::{Graph, MAX_RUN_TITLE_CHARS, ProviderId, RunId};
 use fabro_util::error;
@@ -56,13 +56,10 @@ pub(crate) async fn generate_title_or_current(input: GenerateTitleInput<'_>) -> 
         }
     };
 
-    let completion = match structured::complete_object(
-        &input.client,
-        request,
-        "run_title",
-        title_response_schema(),
-    )
-    .await
+    let completion = match input
+        .client
+        .complete_object(request, "run_title", title_response_schema())
+        .await
     {
         Ok(completion) => completion,
         Err(err) => {
