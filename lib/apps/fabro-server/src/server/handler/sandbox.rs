@@ -6,8 +6,7 @@ use std::time::Duration;
 
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use fabro_sandbox::{
-    FileKind, ProviderAccess, RunSandbox, TerminalSize, open_terminal_for_run,
-    reconnect_driver_for_run,
+    FileKind, ProviderAccess, PtySize, RunSandbox, open_terminal_for_run, reconnect_driver_for_run,
 };
 use fabro_types::{
     RunSandboxInstance, SandboxProviderKind, SandboxServiceDiscoverySource, SandboxServiceListMeta,
@@ -133,7 +132,7 @@ struct SandboxFileParams {
 
 #[derive(Debug, PartialEq, Eq)]
 enum TerminalClientMessage {
-    Resize(TerminalSize),
+    Resize(PtySize),
     Close,
 }
 
@@ -150,7 +149,7 @@ fn parse_terminal_control_message(text: &str) -> Result<TerminalClientMessage, &
     }
     match serde_json::from_str::<TerminalClientControl>(text) {
         Ok(TerminalClientControl::Resize { cols, rows }) if cols > 0 && rows > 0 => {
-            Ok(TerminalClientMessage::Resize(TerminalSize { cols, rows }))
+            Ok(TerminalClientMessage::Resize(PtySize { cols, rows }))
         }
         Ok(TerminalClientControl::Resize { .. }) => {
             Err("Terminal resize dimensions must be greater than zero.")
@@ -235,19 +234,19 @@ async fn terminal_websocket(mut socket: WebSocket, state: Arc<AppState>, id: Run
             return;
         }
     };
-    let session =
-        match open_terminal_for_run(&record, &access, Some(id), TerminalSize::default()).await {
-            Ok(session) => session,
-            Err(err) => {
-                let _ = socket
-                    .send(terminal_server_text(
-                        "error",
-                        Some(&err.display_with_causes()),
-                    ))
-                    .await;
-                return;
-            }
-        };
+    let session = match open_terminal_for_run(&record, &access, Some(id), PtySize::default()).await
+    {
+        Ok(session) => session,
+        Err(err) => {
+            let _ = socket
+                .send(terminal_server_text(
+                    "error",
+                    Some(&err.display_with_causes()),
+                ))
+                .await;
+            return;
+        }
+    };
 
     if socket
         .send(terminal_server_text("ready", None))
@@ -268,7 +267,7 @@ async fn terminal_websocket(mut socket: WebSocket, state: Arc<AppState>, id: Run
                     Ok(WsMessage::Binary(bytes)) => {
                         if let Err(err) = session.write_input(&bytes).await {
                             let _ = socket
-                                .send(terminal_server_text("error", Some(&err.display_with_causes())))
+                                .send(terminal_server_text("error", Some(&fabro_sandbox::display_for_log(&err))))
                                 .await;
                             break;
                         }
@@ -278,7 +277,7 @@ async fn terminal_websocket(mut socket: WebSocket, state: Arc<AppState>, id: Run
                             Ok(TerminalClientMessage::Resize(size)) => {
                                 if let Err(err) = session.resize(size).await {
                                     let _ = socket
-                                        .send(terminal_server_text("error", Some(&err.display_with_causes())))
+                                        .send(terminal_server_text("error", Some(&fabro_sandbox::display_for_log(&err))))
                                         .await;
                                     break;
                                 }
@@ -313,7 +312,7 @@ async fn terminal_websocket(mut socket: WebSocket, state: Arc<AppState>, id: Run
                     }
                     Err(err) => {
                         let _ = socket
-                            .send(terminal_server_text("error", Some(&err.display_with_causes())))
+                            .send(terminal_server_text("error", Some(&fabro_sandbox::display_for_log(&err))))
                             .await;
                         break;
                     }
@@ -322,7 +321,7 @@ async fn terminal_websocket(mut socket: WebSocket, state: Arc<AppState>, id: Run
         }
     }
     if let Err(err) = session.close().await {
-        tracing::warn!(error = %err.display_with_causes(), run_id = %id, "failed to close run terminal session");
+        tracing::warn!(error = %fabro_sandbox::display_for_log(&err), run_id = %id, "failed to close run terminal session");
     }
 }
 
@@ -938,7 +937,7 @@ mod tests {
     fn terminal_control_accepts_resize_and_close() {
         assert_eq!(
             parse_terminal_control_message(r#"{"type":"resize","cols":120,"rows":32}"#),
-            Ok(TerminalClientMessage::Resize(TerminalSize {
+            Ok(TerminalClientMessage::Resize(PtySize {
                 cols: 120,
                 rows: 32,
             }))

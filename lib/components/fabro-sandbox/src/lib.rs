@@ -23,8 +23,6 @@ pub mod exec;
 
 pub mod reconnect;
 
-pub mod terminal;
-
 mod clone;
 pub mod docker;
 pub mod provider_sandbox;
@@ -61,7 +59,8 @@ pub use provider::{
 pub use provider_sandbox::{attach_provider_sandbox, provider_sandbox};
 pub use push_credentials::RefreshErrorKind;
 pub use reconnect::{
-    reconnect, reconnect_driver_for_run, reconnect_for_run, reconnect_for_run_with_events,
+    open_terminal_for_run, reconnect, reconnect_driver_for_run, reconnect_for_run,
+    reconnect_for_run_with_events,
 };
 pub use sandbox::{
     DEFAULT_EXEC_OUTPUT_TAIL_BYTES, GitRunInfo, GitSetupIntent, PushAttempt, PushError, PushReport,
@@ -74,8 +73,7 @@ pub use sandbox::{
 /// driver dependency.
 pub use sandbox_driver::{
     CaptureStats, DirEntry, ExecControls, ExecFailure, ExecResult, ExecSpec, ExecStreamingResult,
-    FileKind, GrepMatch, GrepOptions, NetworkPolicy, OutputSink, OutputStream, StderrTail,
-    StdioProcess, StdioProcessHandle, Termination, TransportError, WalkOptions,
+    FileKind, GrepMatch, GrepOptions, NetworkPolicy, OutputSink, OutputStream, PtySession, PtySize,
+    StderrTail, StdioProcess, StdioProcessHandle, Termination, TransportError, WalkOptions,
 };
 pub use sandbox_spec::{ProviderSandboxSpec, SandboxSpec};
-pub use terminal::{DriverTerminalSession, TerminalSession, TerminalSize, open_terminal_for_run};

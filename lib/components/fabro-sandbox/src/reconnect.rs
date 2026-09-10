@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use fabro_types::{BundledProvider, RunId, RunSandboxInstance};
-use sandbox_driver::EventContext;
+use sandbox_driver::{EventContext, PtySession, PtySize};
 
 use crate::driver::ProviderAccess;
 use crate::driver_sandbox::{RunSandbox, local_sandbox_with_events};
@@ -71,4 +71,25 @@ pub async fn reconnect_driver_for_run(
         .with_context(|| format!("Failed to reconnect {} sandbox", record.provider))?
     };
     Ok(sandbox)
+}
+
+/// Opens an interactive shell in a run's sandbox over the driver's Pty
+/// facet, reconnecting from the run record first. The session is the
+/// driver's own; it is closed by the caller.
+pub async fn open_terminal_for_run(
+    record: &RunSandboxInstance,
+    access: &ProviderAccess,
+    run_id: Option<RunId>,
+    size: PtySize,
+) -> crate::Result<Box<dyn PtySession>> {
+    if record.provider.bundled() == Some(BundledProvider::Local) {
+        return Err(crate::Error::message(
+            "Local sandboxes do not support embedded terminals",
+        ));
+    }
+    let sandbox = reconnect_driver_for_run(record, access, run_id, None)
+        .await
+        .map_err(|err| crate::Error::context_anyhow("Failed to reconnect sandbox", err))?;
+    sandbox.activate().await?;
+    sandbox.open_terminal(size).await
 }

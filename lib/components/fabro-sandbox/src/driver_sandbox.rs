@@ -24,9 +24,9 @@ use fabro_types::SandboxProviderKind;
 use fabro_util::workspace_glob::WorkspaceGlob;
 use sandbox_driver::{
     DirEntry, EventContext, ExecControls, ExecResult, ExecSpec, ExecStreamingResult, FileKind,
-    GrepMatch, GrepOptions, LifecycleTimers, PtyOptions, PtySize, Sandbox as DriverHandle,
-    SandboxProvider as DriverProvider, SandboxSource, SandboxSpec as DriverSpec, SandboxState,
-    Search as _, StdioProcess, WaitOptions, WalkOptions,
+    GrepMatch, GrepOptions, LifecycleTimers, PtyOptions, PtySession, PtySize,
+    Sandbox as DriverHandle, SandboxProvider as DriverProvider, SandboxSource,
+    SandboxSpec as DriverSpec, SandboxState, Search as _, StdioProcess, WaitOptions, WalkOptions,
 };
 use sandbox_driver_host::HostProvider;
 use tokio::fs;
@@ -36,7 +36,6 @@ use tokio_util::sync::CancellationToken;
 use crate::clone::{self, GitHubClone};
 use crate::clone_source::{self, CloneDecision, EmptyWorkspaceReason};
 use crate::push_credentials::{self, PushCredentialState};
-use crate::terminal::{DriverTerminalSession, TerminalSize};
 use crate::{GitRunInfo, GitSetupIntent, RefreshOutcome, RetryPlan};
 
 /// A sandbox on the worker host at `working_directory`, the fabro `local`
@@ -620,7 +619,7 @@ impl RunSandbox {
 
     /// Open an interactive shell in the sandbox's working directory over the
     /// driver's Pty facet.
-    pub async fn open_terminal(&self, size: TerminalSize) -> crate::Result<DriverTerminalSession> {
+    pub async fn open_terminal(&self, size: PtySize) -> crate::Result<Box<dyn PtySession>> {
         let handle = self.handle()?;
         let pty = handle.pty().ok_or_else(|| {
             crate::Error::message(format!(
@@ -629,16 +628,11 @@ impl RunSandbox {
             ))
         })?;
         let mut options = PtyOptions::default();
-        options.size = PtySize {
-            rows: size.rows,
-            cols: size.cols,
-        };
+        options.size = size;
         options.working_dir = Some(self.working_directory().to_string());
-        let session = pty
-            .open(&options)
+        pty.open(&options)
             .await
-            .map_err(|error| crate::Error::context("Failed to open sandbox terminal", error))?;
-        Ok(DriverTerminalSession::new(session))
+            .map_err(|error| crate::Error::context("Failed to open sandbox terminal", error))
     }
 
     /// Ask the sandbox for its platform once; `platform` and `os_version`
