@@ -20,7 +20,7 @@ use fabro_types::settings::run::RunModelControls;
 use fabro_types::{
     AgentProfileKind, FailoverProps, Message, ModelHandle, ModelId, ModelRef, PermissionLevel,
     ProviderId, ReasoningEffort, Role, RunId, SessionCapability, Speed, StageId, StageTiming,
-    TokenCounts, ToolDefinition as LlmToolDefinition, UsdMicros, billing, controls,
+    TokenCounts, ToolDefinition as LlmToolDefinition, UsdMicros, billing,
 };
 use serde::de::DeserializeOwned;
 use tokio::sync::mpsc;
@@ -897,9 +897,7 @@ impl AgentApiBackend {
             return FallbackControls::Usable(requested);
         };
         let capabilities = offering.model.capabilities();
-        let effective_effort = controls::closest_supported_effort(requested_effort, |effort| {
-            capabilities.reasoning_effort(effort).is_supported()
-        });
+        let effective_effort = capabilities.closest_supported_effort(requested_effort);
         match effective_effort {
             Some(effort) => FallbackControls::Usable(EffectiveRequestControls {
                 reasoning_effort: Some(effort),

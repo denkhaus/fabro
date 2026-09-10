@@ -11,7 +11,6 @@ pub mod catalog_api;
 pub mod checkpoint;
 pub mod command_output;
 pub mod conclusion;
-pub mod controls;
 pub mod dense;
 pub mod diff;
 pub mod event_envelope;
@@ -76,7 +75,6 @@ pub use catalog_api::{Model, ModelControls, ModelCosts, ModelFeatures, ModelLimi
 pub use checkpoint::Checkpoint;
 pub use command_output::{CommandOutputStream, CommandTermination};
 pub use conclusion::{Conclusion, StageSummary};
-pub use controls::ReasoningEffort;
 pub use dense::{ServerSettings, UserSettings, WorkflowSettings};
 pub use diff::{DiffStats, DiffSummary, RunDiff};
 pub use event_envelope::EventEnvelope;
@@ -94,8 +92,8 @@ pub use interview::{
 };
 pub use lithos_llm::catalog::{ModelHandle, ModelId, ProviderId};
 pub use lithos_llm::types::{
-    FinishReason, ReasoningOutput, Request, RequestBuildError, RequestBuilder, Response,
-    ResponseFormat, StreamEvent,
+    FinishReason, ReasoningEffort, ReasoningOutput, Request, RequestBuildError, RequestBuilder,
+    Response, ResponseFormat, StreamEvent,
 };
 pub use llm_backend::AgentBackend;
 pub use manifest_path::{ManifestPath, ManifestPathParseError};
