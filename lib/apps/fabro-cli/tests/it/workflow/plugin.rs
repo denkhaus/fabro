@@ -1,12 +1,15 @@
 //! Sandbox providers served by sandbox-driver plugin executables, for the
 //! workflow scenarios.
 //!
-//! The executables come from the `fabro-sandbox` package's `[[bin]]` targets,
-//! which `cargo` places beside the `fabro` binary under test. Each runs under
-//! a kind of the scenario's choosing (`host`, `docker-plugin`): the configured
-//! kind names the plugin, whatever the executable declares. A scenario
-//! configured here runs against its own server so the plugin settings and the
-//! environment it creates never leak into the shared session server.
+//! The executables are the driver's own `sandbox-driver-host` and
+//! `sandbox-driver-docker`, found on `PATH`; CI installs them at the rev the
+//! workspace pins, and a developer installs them with
+//! `cargo install --locked --git https://github.com/lithoscomputer/sandbox-driver --rev <rev> sandbox-driver-host sandbox-driver-docker`.
+//! Each runs under a kind of the scenario's choosing (`host`,
+//! `docker-plugin`): the configured kind names the plugin, whatever the
+//! executable declares. A scenario configured here runs against its own
+//! server so the plugin settings and the environment it creates never leak
+//! into the shared session server.
 
 #![expect(
     clippy::disallowed_methods,
@@ -49,8 +52,8 @@ impl Plugin {
 
     fn executable(self) -> &'static str {
         match self {
-            Self::Host => "fabro-sandbox-host",
-            Self::Docker => "fabro-sandbox-docker",
+            Self::Host => "sandbox-driver-host",
+            Self::Docker => "sandbox-driver-docker",
         }
     }
 
@@ -75,7 +78,8 @@ pub(crate) fn configure(context: &mut TestContext, plugin: Plugin) -> Option<&'s
             plugin.executable()
         );
         eprintln!(
-            "skipping: {} is not built; run `cargo build -p fabro-sandbox --bins`",
+            "skipping: {} is not on PATH; install the sandbox-driver executables at the rev \
+             Cargo.toml pins",
             plugin.executable()
         );
         return None;
@@ -134,11 +138,12 @@ inherit_env = ["PATH", "HOME", "DOCKER_HOST", "DOCKER_CERT_PATH", "DOCKER_TLS_VE
     Some(plugin.environment())
 }
 
-/// The plugin executable `cargo` built beside the `fabro` binary under test.
+/// The driver executable on `PATH`, when installed.
 fn plugin_executable(plugin: Plugin) -> Option<PathBuf> {
-    let fabro = Path::new(env!("CARGO_BIN_EXE_fabro"));
-    let candidate = fabro.with_file_name(plugin.executable());
-    candidate.is_file().then_some(candidate)
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|dir| dir.join(plugin.executable()))
+        .find(|candidate| candidate.is_file())
 }
 
 fn docker_image_available() -> bool {

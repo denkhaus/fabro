@@ -1,21 +1,51 @@
 //! The construction function serves a non-bundled kind through a plugin
 //! executable, and a sandbox created through one plugin generation is
 //! reachable by persisted id from a fresh connection.
+//!
+//! The executable is the driver's own `sandbox-driver-host`, found on `PATH`
+//! (CI installs it at the rev the workspace pins). Without it the tests skip,
+//! unless `FABRO_REQUIRE_SANDBOX_PLUGINS` is set.
+
+#![expect(
+    clippy::disallowed_methods,
+    reason = "the test locates the plugin executable through the process PATH"
+)]
+#![expect(clippy::print_stderr, reason = "a skipped test says why on its stderr")]
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use fabro_sandbox::driver::{ProviderConnectOptions, connect_provider};
 use fabro_types::SandboxProviderKind;
 use fabro_types::settings::server::{SandboxPluginSettings, ServerSandboxProviderSettings};
 use sandbox_driver::{ExecSpec, SandboxId, SandboxSource, SandboxSpec};
 
-const HOST_PLUGIN: &str = env!("CARGO_BIN_EXE_fabro-sandbox-host");
+const HOST_PLUGIN: &str = "sandbox-driver-host";
+const REQUIRE_ENV: &str = "FABRO_REQUIRE_SANDBOX_PLUGINS";
 
-fn host_plugin_settings(registry: &std::path::Path) -> ServerSandboxProviderSettings {
+/// The driver's Host executable on `PATH`, or `None` (after saying so) when
+/// the test should skip.
+fn host_plugin() -> Option<PathBuf> {
+    let found = std::env::var_os("PATH").and_then(|path| {
+        std::env::split_paths(&path)
+            .map(|dir| dir.join(HOST_PLUGIN))
+            .find(|candidate| candidate.is_file())
+    });
+    if found.is_none() {
+        assert!(
+            std::env::var_os(REQUIRE_ENV).is_none(),
+            "{REQUIRE_ENV} is set but {HOST_PLUGIN} is not on PATH"
+        );
+        eprintln!("skipping: {HOST_PLUGIN} is not on PATH");
+    }
+    found
+}
+
+fn host_plugin_settings(executable: &Path, registry: &Path) -> ServerSandboxProviderSettings {
     ServerSandboxProviderSettings {
         enabled: true,
         plugin:  Some(SandboxPluginSettings {
-            path:        Some(HOST_PLUGIN.to_string()),
+            path:        Some(executable.display().to_string()),
             sha256:      None,
             dev:         true,
             args:        Vec::new(),
@@ -30,6 +60,9 @@ fn host_plugin_settings(registry: &std::path::Path) -> ServerSandboxProviderSett
 
 #[tokio::test]
 async fn host_plugin_under_a_non_bundled_kind_creates_and_reattaches_by_persisted_id() {
+    let Some(executable) = host_plugin() else {
+        return;
+    };
     let registry = tempfile::tempdir().expect("registry tempdir");
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let kind = SandboxProviderKind::try_new("host").expect("host is a valid kind");
@@ -38,7 +71,7 @@ async fn host_plugin_under_a_non_bundled_kind_creates_and_reattaches_by_persiste
         None,
         "host is not one of fabro's bundled kinds"
     );
-    let settings = host_plugin_settings(registry.path());
+    let settings = host_plugin_settings(&executable, registry.path());
 
     let persisted_id: SandboxId = {
         let connected = connect_provider(&kind, &settings, &ProviderConnectOptions::default())
@@ -94,11 +127,14 @@ async fn host_plugin_under_a_non_bundled_kind_creates_and_reattaches_by_persiste
 /// plugin's own declared kind is information, not a gate.
 #[tokio::test]
 async fn the_configured_kind_names_the_plugin_whatever_it_declares() {
+    let Some(executable) = host_plugin() else {
+        return;
+    };
     let registry = tempfile::tempdir().expect("registry tempdir");
     let kind = SandboxProviderKind::try_new("host-alias").expect("valid kind");
     let connected = connect_provider(
         &kind,
-        &host_plugin_settings(registry.path()),
+        &host_plugin_settings(&executable, registry.path()),
         &ProviderConnectOptions::default(),
     )
     .await
