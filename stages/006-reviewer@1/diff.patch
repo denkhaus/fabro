@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M256QJB48JK8BXJE1TVM2HYS.jsonl b/.fabro/journal/01M256QJB48JK8BXJE1TVM2HYS.jsonl
+index 21e1464..d2d7fa1 100644
+--- a/.fabro/journal/01M256QJB48JK8BXJE1TVM2HYS.jsonl
++++ b/.fabro/journal/01M256QJB48JK8BXJE1TVM2HYS.jsonl
+@@ -3,3 +3,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M256QJB48JK8BXJE1TVM2HYS","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-10T08:27:19Z","data":{"painpoints":[],"observations":["scripts/smoke.nu line 89 contains the literal string 'get -o' inside an explanatory comment; any gate or check grepping the file for 'get -o' will false-positive even though the code is 0.101-safe — string-level acceptance criteria on this file should exclude comment lines (run 01M256QJB48JK8BXJE1TVM2HYS, seed fabro-afb8)"]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M256QJB48JK8BXJE1TVM2HYS","node":"tester","visit":1,"status":"succeeded","ts":"2026-09-10T08:27:29Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M256QJB48JK8BXJE1TVM2HYS","node":"evidence","visit":1,"status":"succeeded","ts":"2026-09-10T08:27:34Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M256QJB48JK8BXJE1TVM2HYS","node":"reviewer","visit":1,"status":"succeeded","ts":"2026-09-10T08:28:28Z","data":{"painpoints":[],"observations":["Verification-only seed: all four criteria re-verified with read-only tools (grep of smoke.nu/wait-healthy.nu/install-cli.nu, nu --ide-check exit 0, git show 7ae575c). The lone 'get -o' string in smoke.nu is a code comment at line 89 — parse-inert, and arguably valuable as it documents the 0.101 constraint. The verification-pass pattern (fix landed pre-claim in 7ae575c, implementer changed nothing) worked cleanly; evidence header's seed-work=0 matched reality."]}}
