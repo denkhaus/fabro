@@ -52,10 +52,7 @@ pub use options::{
     SandboxOptions, local_working_directory_from_environment, options_from_environment,
     unresolved_env,
 };
-pub use provider::driver::DriverInventoryProvider;
-pub use provider::{
-    LocalSandboxProvider, SandboxLookupError, SandboxProvider, SandboxProviderRegistry,
-};
+pub use provider::{SandboxInventory, SandboxLookupError};
 pub use provider_sandbox::{attach_provider_sandbox, provider_sandbox};
 pub use push_credentials::RefreshErrorKind;
 pub use reconnect::{

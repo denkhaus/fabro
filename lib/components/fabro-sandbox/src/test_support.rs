@@ -15,10 +15,14 @@ use fabro_types::SandboxProviderKind;
 use sandbox_driver::{
     ExecResult, GrepMatch, PlatformInfo, SandboxState, StderrTail, Termination, WalkedFile,
 };
-pub use sandbox_driver_testing::{ScriptedExec, ScriptedSandbox, ScriptedStdioProcess};
+pub use sandbox_driver_testing::{
+    ScriptedExec, ScriptedProvider, ScriptedSandbox, ScriptedStdioProcess,
+};
 use tokio::io::DuplexStream;
 
+use crate::driver::ConnectedProvider;
 use crate::driver_sandbox::RunSandbox;
+use crate::managed_labels::{MANAGED_LABEL, MANAGED_LABEL_VALUE};
 use crate::sandbox::SandboxFile;
 
 /// A driver [`ExecResult`] with the given streams, for scripting a mock
@@ -418,98 +422,32 @@ impl MockStdioProcess {
     }
 }
 
-// --- FakeSandboxProvider ---
+// --- Inventory doubles ---
 
-pub use fake_provider::{FakeGet, FakeList, FakeSandboxProvider, fake_registry, fake_sandbox_info};
+/// A running scripted sandbox carrying fabro's managed label, so an owned
+/// inventory lists it and attaches to it.
+#[must_use]
+pub fn managed_scripted_sandbox(id: &str) -> Arc<ScriptedSandbox> {
+    Arc::new(
+        ScriptedSandbox::with_id_and_working_dir(id, "/work")
+            .state(SandboxState::Running)
+            .label(MANAGED_LABEL, MANAGED_LABEL_VALUE),
+    )
+}
 
-mod fake_provider {
-    use std::collections::BTreeMap;
-    use std::sync::Arc;
-
-    use async_trait::async_trait;
-    use fabro_types::{
-        SandboxInfo, SandboxNetwork, SandboxProviderKind, SandboxResources, SandboxState,
-        SandboxTimestamps,
-    };
-
-    use crate::provider::{SandboxProvider, SandboxProviderRegistry};
-
-    #[derive(Clone)]
-    pub enum FakeList {
-        Ok(Vec<SandboxInfo>),
-        Err(&'static str),
+/// A connected inventory provider of `kind` holding `sandboxes`, over the
+/// driver's scripted provider.
+#[must_use]
+pub fn scripted_inventory_provider(
+    kind: SandboxProviderKind,
+    sandboxes: Vec<Arc<ScriptedSandbox>>,
+) -> ConnectedProvider {
+    let provider = ScriptedProvider::new(kind.as_str());
+    for sandbox in sandboxes {
+        provider.register(sandbox);
     }
-
-    #[derive(Clone)]
-    pub enum FakeGet {
-        Found(Box<SandboxInfo>),
-        Missing,
-        Err(&'static str),
-    }
-
-    pub struct FakeSandboxProvider {
-        kind: SandboxProviderKind,
-        list: FakeList,
-        get:  FakeGet,
-    }
-
-    impl FakeSandboxProvider {
-        pub fn new(kind: SandboxProviderKind, list: FakeList, get: FakeGet) -> Self {
-            Self { kind, list, get }
-        }
-    }
-
-    #[async_trait]
-    impl SandboxProvider for FakeSandboxProvider {
-        fn kind(&self) -> SandboxProviderKind {
-            self.kind.clone()
-        }
-
-        async fn list(&self) -> crate::Result<Vec<SandboxInfo>> {
-            match &self.list {
-                FakeList::Ok(sandboxes) => Ok(sandboxes.clone()),
-                FakeList::Err(message) => Err(crate::Error::message(*message)),
-            }
-        }
-
-        async fn get(&self, _id: &str) -> crate::Result<Option<SandboxInfo>> {
-            match &self.get {
-                FakeGet::Found(sandbox) => Ok(Some((**sandbox).clone())),
-                FakeGet::Missing => Ok(None),
-                FakeGet::Err(message) => Err(crate::Error::message(*message)),
-            }
-        }
-
-        async fn delete(&self, _id: &str) -> crate::Result<()> {
-            Ok(())
-        }
-    }
-
-    pub fn fake_registry(providers: Vec<FakeSandboxProvider>) -> SandboxProviderRegistry {
-        SandboxProviderRegistry::new(
-            providers
-                .into_iter()
-                .map(|provider| Arc::new(provider) as Arc<dyn SandboxProvider>)
-                .collect(),
-        )
-    }
-
-    pub fn fake_sandbox_info(provider: SandboxProviderKind, id: &str) -> SandboxInfo {
-        SandboxInfo {
-            provider,
-            id: id.to_string(),
-            display_name: None,
-            state: SandboxState::Running,
-            native_state: None,
-            image: None,
-            snapshot: None,
-            region: None,
-            web_url: None,
-            working_directory: None,
-            resources: SandboxResources::default(),
-            network: SandboxNetwork::unknown(),
-            labels: BTreeMap::new(),
-            timestamps: SandboxTimestamps::default(),
-        }
+    ConnectedProvider {
+        kind,
+        provider: Arc::new(provider),
     }
 }
