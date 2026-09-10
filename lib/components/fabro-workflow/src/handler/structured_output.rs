@@ -34,11 +34,12 @@ const QUOTED_ROUTING_STATUS_FIELDS: &[&str] = &[
 /// repair turns don't recompile the schema on every iteration.
 #[derive(Debug, Clone)]
 pub(crate) enum OutputSchemaKind {
-    /// Labels of the node's unconditional outgoing edges — the values a
-    /// `preferred_label`/`preferred_next_label` may routing-match (mirrors the
-    /// preferred-label loop in `graph::routing::select_edge`). Empty when no
-    /// edge information is available, in which case the label stays free-form
-    /// (fabro-de4d).
+    /// Labels of the node's preferred-label-routable outgoing edges:
+    /// unconditional labels (matched by the preferred-label loop in
+    /// `graph::routing::select_edge`) plus labels of conditional edges whose
+    /// condition routes on `preferred_label` naming that label (matched by
+    /// the condition evaluator, fabro-27dc). Empty when no edge information
+    /// is available, in which case the label stays free-form (fabro-de4d).
     Routing { allowed_labels: Vec<String> },
     JsonSchema {
         schema:    Value,
@@ -662,13 +663,53 @@ fn contains_routing_field(obj: &serde_json::Map<String, Value>) -> bool {
 /// labels are not part of the allowed vocabulary.
 #[must_use]
 pub(crate) fn routable_edge_labels(graph: &Graph, node_id: &str) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
     graph
         .outgoing_edges(node_id)
         .into_iter()
-        .filter(|edge| edge.condition().is_none_or(str::is_empty))
-        .filter_map(|edge| edge.label().map(str::to_owned))
-        .filter(|label| !label.trim().is_empty())
+        .filter_map(|edge| {
+            let label = edge.label().map(|l| l.trim().to_owned())?;
+            if label.is_empty() {
+                return None;
+            }
+            // Unconditional edges: `select_edge` matches preferred_label
+            // against their labels directly. Conditional edges: routable when
+            // the condition itself routes on preferred_label naming this
+            // label (the condition evaluator matches those first, fabro-27dc).
+            let routed = match edge.condition() {
+                Some(cond) if !cond.trim().is_empty() => {
+                    condition_routes_preferred_label(cond, &label)
+                }
+                _ => true,
+            };
+            routed.then_some(label).filter(|l| seen.insert(l.clone()))
+        })
         .collect()
+}
+
+/// True when the condition expression contains a `preferred_label = <label>`
+/// clause — `select_edge` routes such edges through the condition evaluator
+/// when the outcome names that label, so the label is a valid
+/// `preferred_next_label` choice even though the edge is conditional
+/// (fabro-27dc: the conductor graph routes exclusively this way).
+fn condition_routes_preferred_label(condition: &str, label: &str) -> bool {
+    use fabro_graphviz::condition::{Clause, ConditionExpr, Op, parse_condition_expr};
+
+    fn expr_routes(expr: &ConditionExpr, label: &str) -> bool {
+        match expr {
+            ConditionExpr::Clause(Clause { key, op, value }) => {
+                key.trim() == "preferred_label"
+                    && matches!(op, Op::Eq)
+                    && normalize_label(value) == normalize_label(label)
+            }
+            ConditionExpr::Not(inner) => expr_routes(inner, label),
+            ConditionExpr::And(parts) | ConditionExpr::Or(parts) => {
+                parts.iter().any(|part| expr_routes(part, label))
+            }
+        }
+    }
+
+    parse_condition_expr(condition).is_ok_and(|parsed| expr_routes(&parsed, label))
 }
 
 /// Fail the OUTPUT (not the run) when `preferred_next_label` is not one of the
@@ -1050,14 +1091,105 @@ mod tests {
 
         let parsed = parse_node_output_schema(&graph, &node).unwrap();
 
-        // Only the unconditional edge's label is routable: select_edge never
-        // matches preferred_label against a conditional edge.
+        // The unconditional edge's label is routable (preferred-label loop);
+        // the outcome=failed conditional edge does not route on
+        // preferred_label, so its label stays excluded (fabro-27dc).
         match parsed {
             Some(OutputSchemaKind::Routing { allowed_labels }) => {
                 assert_eq!(allowed_labels, vec!["Approve".to_string()]);
             }
             other => panic!("expected routing schema, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn routable_labels_include_preferred_label_condition_edges() {
+        // Regression shape of fabro-27dc (conductor survey): real choice
+        // edges carry `preferred_label="..."` conditions; the only
+        // unconditional edge is the safety net. Before the fix the allowed
+        // list contained ONLY the fallback label, so the routing validation
+        // forced every survey answer into "Unrouted survey outcome" and the
+        // line parked.
+        let mut graph = fabro_graphviz::graph::Graph::new("test");
+        graph
+            .nodes
+            .insert("survey".to_string(), Node::new("survey"));
+        graph
+            .nodes
+            .insert("develop".to_string(), Node::new("develop"));
+        graph.nodes.insert("exit".to_string(), Node::new("exit"));
+        let mut work = fabro_graphviz::graph::Edge::new("survey", "develop");
+        work.attrs
+            .insert("label".to_string(), AttrValue::String("Work".to_string()));
+        work.attrs.insert(
+            "condition".to_string(),
+            AttrValue::String("preferred_label=\"Work\"".to_string()),
+        );
+        graph.edges.push(work);
+        let mut failed = fabro_graphviz::graph::Edge::new("survey", "exit");
+        failed.attrs.insert(
+            "label".to_string(),
+            AttrValue::String("Survey failed".to_string()),
+        );
+        failed.attrs.insert(
+            "condition".to_string(),
+            AttrValue::String("outcome=failed".to_string()),
+        );
+        graph.edges.push(failed);
+        let mut safety_net = fabro_graphviz::graph::Edge::new("survey", "exit");
+        safety_net.attrs.insert(
+            "label".to_string(),
+            AttrValue::String("Unrouted survey outcome".to_string()),
+        );
+        graph.edges.push(safety_net);
+
+        let labels = routable_edge_labels(&graph, "survey");
+
+        assert_eq!(labels, vec![
+            "Work".to_string(),
+            "Unrouted survey outcome".to_string()
+        ]);
+    }
+
+    #[test]
+    fn routable_labels_include_composite_preferred_label_conditions() {
+        let mut graph = fabro_graphviz::graph::Graph::new("test");
+        graph.nodes.insert("gate".to_string(), Node::new("gate"));
+        graph.nodes.insert("next".to_string(), Node::new("next"));
+        graph.nodes.insert("other".to_string(), Node::new("other"));
+        let mut composite = fabro_graphviz::graph::Edge::new("gate", "next");
+        composite.attrs.insert(
+            "label".to_string(),
+            AttrValue::String("Proceed".to_string()),
+        );
+        composite.attrs.insert(
+            "condition".to_string(),
+            AttrValue::String("preferred_label=\"Proceed\" && outcome=succeeded".to_string()),
+        );
+        graph.edges.push(composite);
+        let mut other_label = fabro_graphviz::graph::Edge::new("gate", "other");
+        other_label.attrs.insert(
+            "label".to_string(),
+            AttrValue::String("Elsewhere".to_string()),
+        );
+        other_label.attrs.insert(
+            "condition".to_string(),
+            AttrValue::String("preferred_label=\"Elsewhere\"".to_string()),
+        );
+        graph.edges.push(other_label);
+        let mut mismatched = fabro_graphviz::graph::Edge::new("gate", "other");
+        mismatched
+            .attrs
+            .insert("label".to_string(), AttrValue::String("Wrong".to_string()));
+        mismatched.attrs.insert(
+            "condition".to_string(),
+            AttrValue::String("preferred_label=\"Elsewhere\"".to_string()),
+        );
+        graph.edges.push(mismatched);
+
+        let labels = routable_edge_labels(&graph, "gate");
+
+        assert_eq!(labels, vec!["Proceed".to_string(), "Elsewhere".to_string()]);
     }
 
     #[test]
