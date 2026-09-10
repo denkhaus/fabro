@@ -1644,8 +1644,8 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(sandbox.stop_count(), 1);
-        assert_eq!(sandbox.delete_count(), 0);
+        assert_eq!(sandbox.driver().stop_count(), 1);
+        assert_eq!(sandbox.driver().delete_count(), 0);
     }
 
     #[tokio::test]
@@ -1678,8 +1678,8 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(sandbox.stop_count(), 0);
-        assert_eq!(sandbox.delete_count(), 0);
+        assert_eq!(sandbox.driver().stop_count(), 0);
+        assert_eq!(sandbox.driver().delete_count(), 0);
     }
 
     #[tokio::test]

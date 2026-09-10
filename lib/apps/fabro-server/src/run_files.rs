@@ -1781,7 +1781,7 @@ diff --git a/src/live.rs b/src/live.rs
         assert_eq!(body.meta.source, RunFilesMetaSource::Sandbox);
         assert_eq!(body.meta.scope, RunFilesMetaScope::Uncommitted);
         assert_eq!(body.data.len(), 1);
-        let commands = sandbox.captured_commands();
+        let commands = sandbox.driver().scripted_exec().commands();
         assert_eq!(commands.len(), 2);
         assert!(commands[0].contains(" show -s --format="));
         assert!(commands[1].contains(" diff --patch --find-renames=50% HEAD"));

@@ -1,9 +1,11 @@
 //! Test doubles for fabro's sandbox layer.
 //!
-//! [`MockSandbox`] is a configuration and a recorder over the sandbox
-//! driver's scripted double: a test writes down the files, the command
-//! answer, and the failures it wants, takes a [`RunSandbox`] from it, and
-//! reads back what the code under test ran or wrote. Nothing here fakes
+//! [`MockSandbox`] is a configuration over the sandbox driver's scripted
+//! double: a test writes down the files, the command answer, and the
+//! failures it wants, and takes a [`RunSandbox`] from it. What the code
+//! under test ran or wrote is read back from the driver double itself,
+//! through [`MockSandbox::driver`]; the few accessors here convert what a
+//! spec records into the shape fabro's tests assert on. Nothing here fakes
 //! fabro's own logic; every call goes through the real `RunSandbox` and
 //! fabro's exec policy, down to the scripted driver.
 
@@ -171,13 +173,6 @@ impl MockSandbox {
         self
     }
 
-    /// Queues the result for the next command, ahead of `exec_result`.
-    /// Results answer in the order they were pushed.
-    pub fn push_exec_result(&self, result: ExecResult) -> &Self {
-        self.driver().scripted_exec().push_result(result);
-        self
-    }
-
     fn built(&self) -> &Built {
         self.built.get_or_init(|| {
             let driver = Arc::new(self.build_driver());
@@ -259,17 +254,12 @@ impl MockSandbox {
             .unwrap_or_default()
     }
 
-    /// The Bash source of every command run so far, in order.
-    pub fn captured_commands(&self) -> Vec<String> {
-        self.recorded()
-            .iter()
-            .map(|spec| spec.args.last().cloned().unwrap_or_default())
-            .collect()
-    }
-
-    /// The last command's Bash source.
+    /// The last command's Bash source. Every command, in order, is
+    /// `driver().scripted_exec().commands()`.
     pub fn captured_command(&self) -> Option<String> {
-        self.captured_commands().pop()
+        self.recorded()
+            .last()
+            .and_then(|spec| spec.args.last().cloned())
     }
 
     /// The last command's timeout in milliseconds.
@@ -289,23 +279,6 @@ impl MockSandbox {
             .collect()
     }
 
-    /// Whether each command was given the run's cancellation to stop on,
-    /// in order.
-    pub fn captured_term_stops(&self) -> Vec<bool> {
-        self.built
-            .get()
-            .map(|built| built.driver.scripted_exec().term_stops())
-            .unwrap_or_default()
-    }
-
-    /// The working directory of every command, in order.
-    pub fn captured_working_dirs(&self) -> Vec<Option<String>> {
-        self.recorded()
-            .iter()
-            .map(|spec| spec.working_dir.clone())
-            .collect()
-    }
-
     /// The explicit variables of the last command as the caller passed them.
     /// The exec policy's own `BASH_ENV` blank is not the caller's.
     pub fn captured_env_vars(&self) -> Option<HashMap<String, String>> {
@@ -316,13 +289,6 @@ impl MockSandbox {
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect()
         })
-    }
-
-    /// The bytes the last streaming command was fed on standard input.
-    pub fn captured_stdin(&self) -> Option<Vec<u8>> {
-        self.built
-            .get()
-            .and_then(|built| built.driver.scripted_exec().captured_stdin().pop())
     }
 
     /// Every file written so far as `(path, content)`, in order.
@@ -339,46 +305,6 @@ impl MockSandbox {
                     .collect()
             })
             .unwrap_or_default()
-    }
-
-    /// Every file deleted so far by absolute path, in order.
-    pub fn deleted_files(&self) -> Vec<String> {
-        self.built
-            .get()
-            .map(|built| built.driver.memory_fs().deletes())
-            .unwrap_or_default()
-    }
-
-    /// How many times the code under test asked whether a path exists.
-    pub fn exists_calls(&self) -> usize {
-        self.built
-            .get()
-            .map_or(0, |built| built.driver.memory_fs().exists_calls())
-    }
-
-    pub fn start_count(&self) -> u32 {
-        self.built
-            .get()
-            .map_or(0, |built| built.driver.start_count())
-    }
-
-    pub fn stop_count(&self) -> u32 {
-        self.built
-            .get()
-            .map_or(0, |built| built.driver.stop_count())
-    }
-
-    pub fn delete_count(&self) -> u32 {
-        self.built
-            .get()
-            .map_or(0, |built| built.driver.delete_count())
-    }
-
-    /// How many walks the code under test ran.
-    pub fn walk_files_was_called(&self) -> bool {
-        self.built
-            .get()
-            .is_some_and(|built| built.driver.scripted_search().walk_calls() > 0)
     }
 }
 

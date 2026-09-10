@@ -1072,7 +1072,7 @@ mod tests {
             .await
             .expect("git identity should configure");
 
-        let commands = sandbox.captured_commands();
+        let commands = sandbox.driver().scripted_exec().commands();
         assert_eq!(commands, vec![
             "git config --local user.name 'Fabro Bot' && git config --local user.email \
              fabro-bot@example.com"

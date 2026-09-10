@@ -820,7 +820,7 @@ mod tests {
     fn scripted(exec_results: &[ExecResult]) -> MockSandbox {
         let sandbox = MockSandbox::default();
         for result in exec_results {
-            sandbox.push_exec_result(result.clone());
+            sandbox.driver().scripted_exec().push_result(result.clone());
         }
         sandbox
     }
@@ -993,10 +993,10 @@ mod tests {
         );
         assert_ne!(write_paths[0], write_paths[1]);
 
-        let delete_paths = sandbox.deleted_files();
+        let delete_paths = sandbox.driver().memory_fs().deletes();
         assert_eq!(delete_paths, write_paths);
 
-        let commands = sandbox.captured_commands();
+        let commands = sandbox.driver().scripted_exec().commands();
         let commit_commands = commands
             .iter()
             .filter(|command| command.contains(" commit "))
@@ -1078,7 +1078,7 @@ mod tests {
         .await
         .expect("checkpoint should succeed");
 
-        let commands = sandbox.captured_commands();
+        let commands = sandbox.driver().scripted_exec().commands();
         let commit_cmd = commands
             .iter()
             .find(|c| c.contains(" commit "))
@@ -1105,7 +1105,7 @@ mod tests {
         .await
         .expect("checkpoint should succeed");
 
-        let commands = sandbox.captured_commands();
+        let commands = sandbox.driver().scripted_exec().commands();
         let commit_cmd = commands
             .iter()
             .find(|c| c.contains(" commit "))

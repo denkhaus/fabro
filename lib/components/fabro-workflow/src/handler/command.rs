@@ -1466,7 +1466,7 @@ mod tests {
 
         assert_eq!(outcome.status, StageOutcome::Succeeded);
         assert_eq!(
-            mock.captured_stdin(),
+            mock.driver().scripted_exec().captured_stdin().pop(),
             Some(serde_json::to_vec(&parallel_results).unwrap())
         );
         assert!(
@@ -1502,7 +1502,11 @@ mod tests {
 
         assert_eq!(outcome.status, StageOutcome::Succeeded);
         assert_eq!(
-            mock.captured_stdin().as_deref(),
+            mock.driver()
+                .scripted_exec()
+                .captured_stdin()
+                .pop()
+                .as_deref(),
             Some(b"first\nlast".as_slice())
         );
     }
@@ -1776,7 +1780,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(spy.captured_term_stops(), vec![true]);
+        assert_eq!(spy.driver().scripted_exec().term_stops(), vec![true]);
     }
 
     #[tokio::test]

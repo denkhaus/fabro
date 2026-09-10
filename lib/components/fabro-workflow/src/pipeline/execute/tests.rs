@@ -942,10 +942,10 @@ async fn execute_reactivates_sandbox_after_a_stage_can_leave_it_stopped() {
     .unwrap();
 
     assert_eq!(outcome.status, StageOutcome::Succeeded);
-    assert_eq!(sandbox.stop_count(), 1);
-    assert!(sandbox.walk_files_was_called());
+    assert_eq!(sandbox.driver().stop_count(), 1);
+    assert!(sandbox.driver().scripted_search().walk_calls() > 0);
     assert_eq!(
-        sandbox.start_count(),
+        sandbox.driver().start_count(),
         1,
         "the stopped sandbox is started again before the walk"
     );

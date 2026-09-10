@@ -706,7 +706,15 @@ mod tests {
 
         assert!(output.starts_with("Command timed out.\n"), "{output}");
         assert_eq!(env.captured_timeout(), Some(7_000));
-        assert_eq!(env.captured_working_dirs(), vec![Some("/repo".to_string())]);
+        assert_eq!(
+            env.driver()
+                .scripted_exec()
+                .recorded()
+                .iter()
+                .map(|spec| spec.working_dir.clone())
+                .collect::<Vec<_>>(),
+            vec![Some("/repo".to_string())]
+        );
         assert_eq!(env.captured_env_vars(), Some(tool_env));
         assert_eq!(env.captured_command().as_deref(), Some("echo $TOKEN"));
     }
