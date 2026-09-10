@@ -698,7 +698,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-10T08:31:37.956446043Z",
-  "last_event_at": "2026-09-10T08:33:51.187823275Z",
+  "last_event_at": "2026-09-10T08:34:00.811977742Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -875,14 +875,205 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 121,
       "checkpoint": {
-        "timestamp": "2026-09-10T08:33:51.401591992Z",
+        "timestamp": "2026-09-10T08:33:56.118831735Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
           "planner",
           "implementer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_signature": "",
+          "graph.preamble_budget_kb": "24",
+          "outcome": "succeeded",
+          "implementation_summary": "Extended the step-7 gate-ban rule in `.fabro/workflows/develop/prompts/planner.md` (line 43) via shell python3 edit: the contradiction-class rule now matches the literal `just qualitygate` AND equivalent full-gate invocations — the recipe body `nu scripts/qualitygate.nu` (verified against justfile:128) plus any byte-equivalent/full-gate substitute naming that script — all rewritten to 'gate green via the deterministic tester step'; original citation 01M23KJM3SM70S2S6QSSEWSJPY preserved, bypass run 01M23W4S7Q2GNEVPY779M4GMN6 added as motivation. Lesson capture: nothing durable — skipped. Per-criterion: PASS rule covers `nu scripts/qualitygate.nu` + equivalents (grep line 43); PASS rewrite target unchanged; PASS original citation preserved (1 occurrence); PASS bypass run cited with justfile:128/seq-82 detail (1 occurrence); PASS diff confined to planner.md (git diff --stat 1 file); PASS python3 sanity — no duplicated paragraph, structure intact; PASS no gate run by implementer.",
+          "internal.fidelity": "summary:high",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "planner.md step 7 paragraph is a single ~1900-char line, so line-targeted sed edits are risky; a python3 exact-substring replace with a uniqueness assert was the safe mechanical route (fabro-c49c, run 01M25732658J2RFTM6MDM8CPFG)."
+            ]
+          },
+          "internal.run_id": "01M25732658J2RFTM6MDM8CPFG",
+          "graph.rankdir": "LR",
+          "current_seed_title": "Close the gate-ban equivalence loophole in planner step 7",
+          "internal.retry_count.planner": 0,
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.node_visit_count": 1,
+          "last_stage": "implementer",
+          "current_seed_brief": "Markdown-only edit in `.fabro/workflows/develop/prompts/planner.md` (fs_hide path: edit via shell sed/python3, verify via shell grep — file tools fail on it). Acceptance criteria:\n- step 7 gate-command rule (current single paragraph at planner.md line 43, begins 'Gate-command criteria are one such contradiction class') extended so the match covers not only the literal `just qualitygate` but also equivalent invocations: the recipe body `nu scripts/qualitygate.nu` (justfile qualitygate recipe delegates to it) and any byte-equivalent/full-gate substitute naming that script\n- the rewrite target for all matched forms stays 'gate green via the deterministic tester step'; the implementer must never run the full gate in any form\n- the existing run citation (01M23KJM3SM70S2S6QSSEWSJPY) is preserved; the bypass evidence run 01M23W4S7Q2GNEVPY779M4GMN6 (planner rewrote the banned command into its byte-equivalent body, justfile:128, checkpoint seq 82 — three gate executions on one tree) is cited as motivation\n- no behavioral change outside planner.md step 7; do not touch the justfile or qualitygate script\n- verification cheapest-first: shell grep that the extended rule mentions `nu scripts/qualitygate.nu` and 'equivalent'; `python3 -c` TOML/text sanity that planner.md parses as plain text with no duplicated paragraph; no Rust changes so crate builds are unaffected\n- gate green via the deterministic tester step (never run the full gate yourself)",
+          "internal.retry_count.implementer": 0,
+          "preferred_label": "Implemented",
+          "thread.planner.current_node": "implementer",
+          "internal.work_dir": "/workspace/fabro",
+          "failure_class": "",
+          "internal.retry_count.start": 0,
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3259,
+            "preview": "Implementation complete. The change is a single-paragraph extension in `.fabro/workflows/develop/prompts/planner.md` step 7 (line 43), made via a shell python3 heredoc (fs_hide path): the gate-command"
+          },
+          "graph.inspects": "develop",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2419,
+            "preview": "Claimed fabro-c49c: extend the planner step 7 gate-command rewrite rule to cover equivalent invocations of the gate, closing the byte-equivalent-body bypass observed in run 01M23W4S7Q2GNEVPY779M4GMN6."
+          },
+          "last_response": "Implementation complete. The change is a single-paragraph extension in `.fabro/workflows/develop/prompts/planner.md` step 7 (line 43), made via a shell python3 heredoc (fs_hide path): the gate-command",
+          "graph.max_node_visits": "40",
+          "internal.thread_id": "planner",
+          "internal.seed_cycle_anchor": "fabro-c49c",
+          "thread.start.current_node": "planner",
+          "lesson_capture": "nothing durable — skipped",
+          "current_seed_id": "fabro-c49c",
+          "current_node": "implementer"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "planner.md step 7 paragraph is a single ~1900-char line, so line-targeted sed edits are risky; a python3 exact-substring replace with a uniqueness assert was the safe mechanical route (fabro-c49c, run 01M25732658J2RFTM6MDM8CPFG)."
+                ]
+              },
+              "lesson_capture": "nothing durable — skipped",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3259,
+                "preview": "Implementation complete. The change is a single-paragraph extension in `.fabro/workflows/develop/prompts/planner.md` step 7 (line 43), made via a shell python3 heredoc (fs_hide path): the gate-command"
+              },
+              "last_response": "Implementation complete. The change is a single-paragraph extension in `.fabro/workflows/develop/prompts/planner.md` step 7 (line 43), made via a shell python3 heredoc (fs_hide path): the gate-command",
+              "last_stage": "implementer",
+              "implementation_summary": "Extended the step-7 gate-ban rule in `.fabro/workflows/develop/prompts/planner.md` (line 43) via shell python3 edit: the contradiction-class rule now matches the literal `just qualitygate` AND equivalent full-gate invocations — the recipe body `nu scripts/qualitygate.nu` (verified against justfile:128) plus any byte-equivalent/full-gate substitute naming that script — all rewritten to 'gate green via the deterministic tester step'; original citation 01M23KJM3SM70S2S6QSSEWSJPY preserved, bypass run 01M23W4S7Q2GNEVPY779M4GMN6 added as motivation. Lesson capture: nothing durable — skipped. Per-criterion: PASS rule covers `nu scripts/qualitygate.nu` + equivalents (grep line 43); PASS rewrite target unchanged; PASS original citation preserved (1 occurrence); PASS bypass run cited with justfile:128/seq-82 detail (1 occurrence); PASS diff confined to planner.md (git diff --stat 1 file); PASS python3 sanity — no duplicated paragraph, structure intact; PASS no gate run by implementer."
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19105,
+                    "output_tokens": 1947,
+                    "reasoning_tokens": 793,
+                    "cache_read_tokens": 83584,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 60527
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 67016,
+              "tool_time_ms": 963,
+              "active_time_ms": 67979
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_stage": "planner",
+              "current_seed_title": "Close the gate-ban equivalence loophole in planner step 7",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2419,
+                "preview": "Claimed fabro-c49c: extend the planner step 7 gate-command rewrite rule to cover equivalent invocations of the gate, closing the byte-equivalent-body bypass observed in run 01M23W4S7Q2GNEVPY779M4GMN6."
+              },
+              "current_seed_brief": "Markdown-only edit in `.fabro/workflows/develop/prompts/planner.md` (fs_hide path: edit via shell sed/python3, verify via shell grep — file tools fail on it). Acceptance criteria:\n- step 7 gate-command rule (current single paragraph at planner.md line 43, begins 'Gate-command criteria are one such contradiction class') extended so the match covers not only the literal `just qualitygate` but also equivalent invocations: the recipe body `nu scripts/qualitygate.nu` (justfile qualitygate recipe delegates to it) and any byte-equivalent/full-gate substitute naming that script\n- the rewrite target for all matched forms stays 'gate green via the deterministic tester step'; the implementer must never run the full gate in any form\n- the existing run citation (01M23KJM3SM70S2S6QSSEWSJPY) is preserved; the bypass evidence run 01M23W4S7Q2GNEVPY779M4GMN6 (planner rewrote the banned command into its byte-equivalent body, justfile:128, checkpoint seq 82 — three gate executions on one tree) is cited as motivation\n- no behavioral change outside planner.md step 7; do not touch the justfile or qualitygate script\n- verification cheapest-first: shell grep that the extended rule mentions `nu scripts/qualitygate.nu` and 'equivalent'; `python3 -c` TOML/text sanity that planner.md parses as plain text with no duplicated paragraph; no Rust changes so crate builds are unaffected\n- gate green via the deterministic tester step (never run the full gate yourself)",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-c49c basis verified against current tree: planner.md line 43 carries the fabro-f7cf literal-only rule and justfile qualitygate delegates to nu scripts/qualitygate.nu — bypass mechanism confirmed live",
+                  "in-flight check clean: only non-terminal develop run is this run itself; all 23 others terminal (PRs merged/closed)",
+                  "planner.md step 7 is a single dense paragraph; implementer should edit inside that paragraph, not append a new one"
+                ]
+              },
+              "last_response": "Claimed fabro-c49c: extend the planner step 7 gate-command rewrite rule to cover equivalent invocations of the gate, closing the byte-equivalent-body bypass observed in run 01M23W4S7Q2GNEVPY779M4GMN6.",
+              "current_seed_id": "fabro-c49c"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 30919,
+                    "output_tokens": 864,
+                    "reasoning_tokens": 432,
+                    "cache_read_tokens": 95296,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 73760
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 50840,
+              "tool_time_ms": 5441,
+              "active_time_ms": 56281
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "1fe9d73e92e2cacd09772a40dd9df9b557af0a0f",
+        "node_visits": {
+          "planner": 1,
+          "start": 1,
+          "implementer": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M25732658J2RFTM6MDM8CPFG.jsonl b/.fabro/journal/01M25732658J2RFTM6MDM8CPFG.jsonl\nindex d5897b6..8012108 100644\n--- a/.fabro/journal/01M25732658J2RFTM6MDM8CPFG.jsonl\n+++ b/.fabro/journal/01M25732658J2RFTM6MDM8CPFG.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25732658J2RFTM6MDM8CPFG\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T08:31:40Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25732658J2RFTM6MDM8CPFG\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T08:32:37Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-c49c basis verified against current tree: planner.md line 43 carries the fabro-f7cf literal-only rule and justfile qualitygate delegates to nu scripts/qualitygate.nu — bypass mechanism confirmed live\",\"in-flight check clean: only non-terminal develop run is this run itself; all 23 others terminal (PRs merged/closed)\",\"planner.md step 7 is a single dense paragraph; implementer should edit inside that paragraph, not append a new one\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M25732658J2RFTM6MDM8CPFG\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-10T08:33:51Z\",\"data\":{\"painpoints\":[],\"observations\":[\"planner.md step 7 paragraph is a single ~1900-char line, so line-targeted sed edits are risky; a python3 exact-substring replace with a uniqueness assert was the safe mechanical route (fabro-c49c, run 01M25732658J2RFTM6MDM8CPFG).\"]}}\ndiff --git a/.fabro/workflows/develop/prompts/planner.md b/.fabro/workflows/develop/prompts/planner.md\nindex b8e6ed3..3beafdc 100644\n--- a/.fabro/workflows/develop/prompts/planner.md\n+++ b/.fabro/workflows/develop/prompts/planner.md\n@@ -40,7 +40,7 @@ The full command table lives in PROJECT_FACTS (tracker) — rendered above by th\n    Order verification commands cheapest-first: parse-level checks (e.g. `python3` TOML parse) before build-level checks (`cargo build`/`cargo run`), so briefs stop listing the expensive option first.\n \n    Journal-observation rule: any journal observation from a prior pass that names required consistency or scope work (e.g. 'keep line X consistent with rule Y') MUST be folded into the brief as an explicit bullet — or explicitly waived in the brief with a one-line reason. Reviewers and the implementer's PASS/FAIL report check bullets, not journals; a requirement that lives only in a journal entry does not exist (run 01M22PCGN4E3X1XGN630MDDH39: a journaled consistency note was skipped and contradictory prompt text shipped through an approving review).\n-7. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). An unresolved journal observation naming consistency or scope work is itself such a contradiction: it MUST surface in the brief as an explicit bullet (or an explicit one-line waiver), never stay journal-only — see the journal-observation rule in step 6. Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong. When the spec names a heading, anchor, or file path, confirm it exists in the target file before forwarding the brief; when it does not, annotate the ACTUAL location (the real heading name or path) instead of transcribing the spec verbatim. Gate-command criteria are one such contradiction class: any verification criterion in a brief that names the PROJECT_FACTS gate command (`just qualitygate`) MUST be rewritten to 'gate green via the deterministic tester step' before the brief ships — the implementer must never run the full gate itself (consistent with `implementer.md` step 4's gate ban; run 01M23KJM3SM70S2S6QSSEWSJPY: the implementer ran the gate at seq 111-113 and the tester re-ran the byte-identical command at seq 128-129).\n+7. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). An unresolved journal observation naming consistency or scope work is itself such a contradiction: it MUST surface in the brief as an explicit bullet (or an explicit one-line waiver), never stay journal-only — see the journal-observation rule in step 6. Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong. When the spec names a heading, anchor, or file path, confirm it exists in the target file before forwarding the brief; when it does not, annotate the ACTUAL location (the real heading name or path) instead of transcribing the spec verbatim. Gate-command criteria are one such contradiction class: any verification criterion in a brief that names the PROJECT_FACTS gate command (`just qualitygate`) OR any equivalent full-gate invocation — the recipe body `nu scripts/qualitygate.nu` (the justfile qualitygate recipe delegates to it) or any byte-equivalent/full-gate substitute naming that script — MUST be rewritten to 'gate green via the deterministic tester step' before the brief ships — the implementer must never run the full gate in any form, not even a byte-equivalent body (consistent with `implementer.md` step 4's gate ban; run 01M23KJM3SM70S2S6QSSEWSJPY: the implementer ran the gate at seq 111-113 and the tester re-ran the byte-identical command at seq 128-129; bypass evidence run 01M23W4S7Q2GNEVPY779M4GMN6: the planner rewrote the banned command into its byte-equivalent body, justfile:128, checkpoint seq 82 — three gate executions on one tree).\n \n If the top candidate looks already implemented (its acceptance criteria appear satisfied in the worktree — often a stale tracker from an earlier run), do NOT close it yourself and do NOT skip it. Claim it normally and mark the brief as verification-only (see below). The normal cycle then proves it: implementer verifies, gate runs, reviewer approves. Only an approved review closes a seed.\n \n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 5,
+          "deletions": 2
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-10T08:34:01.052596758Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
         ],
         "node_retries": {},
         "context_values": {
@@ -894,9 +1085,10 @@
             "preview": "Claimed fabro-c49c: extend the planner step 7 gate-command rewrite rule to cover equivalent invocations of the gate, closing the byte-equivalent-body bypass observed in run 01M23W4S7Q2GNEVPY779M4GMN6."
           },
           "internal.run_id": "01M25732658J2RFTM6MDM8CPFG",
-          "current_node": "implementer",
+          "current_node": "tester",
           "last_stage": "implementer",
-          "internal.fidelity": "summary:high",
+          "command.output": "blob://sha256/6a6aa88e48376bd588e37c4a4ca50ef237d01806809b8c9a9775f1785909c11b",
+          "internal.fidelity": "compact",
           "internal.work_dir": "/workspace/fabro",
           "graph.rankdir": "LR",
           "graph.cycle_counter_reset_key": "current_seed_id",
@@ -911,13 +1103,16 @@
           },
           "failure_signature": "",
           "failure_class": "",
+          "thread.implementer.current_node": "tester",
           "current_seed_title": "Close the gate-ban equivalence loophole in planner step 7",
           "current_seed_brief": "Markdown-only edit in `.fabro/workflows/develop/prompts/planner.md` (fs_hide path: edit via shell sed/python3, verify via shell grep — file tools fail on it). Acceptance criteria:\n- step 7 gate-command rule (current single paragraph at planner.md line 43, begins 'Gate-command criteria are one such contradiction class') extended so the match covers not only the literal `just qualitygate` but also equivalent invocations: the recipe body `nu scripts/qualitygate.nu` (justfile qualitygate recipe delegates to it) and any byte-equivalent/full-gate substitute naming that script\n- the rewrite target for all matched forms stays 'gate green via the deterministic tester step'; the implementer must never run the full gate in any form\n- the existing run citation (01M23KJM3SM70S2S6QSSEWSJPY) is preserved; the bypass evidence run 01M23W4S7Q2GNEVPY779M4GMN6 (planner rewrote the banned command into its byte-equivalent body, justfile:128, checkpoint seq 82 — three gate executions on one tree) is cited as motivation\n- no behavioral change outside planner.md step 7; do not touch the justfile or qualitygate script\n- verification cheapest-first: shell grep that the extended rule mentions `nu scripts/qualitygate.nu` and 'equivalent'; `python3 -c` TOML/text sanity that planner.md parses as plain text with no duplicated paragraph; no Rust changes so crate builds are unaffected\n- gate green via the deterministic tester step (never run the full gate yourself)",
-          "internal.thread_id": "planner",
+          "internal.thread_id": "implementer",
+          "internal.retry_count.tester": 0,
           "graph.preamble_budget_kb": "24",
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
           "lesson_capture": "nothing durable — skipped",
           "journal": {
@@ -939,6 +1134,20 @@
           "internal.node_visit_count": 1
         },
         "node_outcomes": {
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/6a6aa88e48376bd588e37c4a4ca50ef237d01806809b8c9a9775f1785909c11b"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 4670,
+              "active_time_ms": 4670
+            }
+          },
           "implementer": {
             "status": "succeeded",
             "preferred_label": "Implemented",
@@ -1047,11 +1256,12 @@
             "usage": null
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
-          "planner": 1,
           "implementer": 1,
-          "start": 1
+          "start": 1,
+          "tester": 1,
+          "planner": 1
         }
       },
       "diff": {}
@@ -1306,6 +1516,42 @@
       "agent_control": "running",
       "state": "succeeded"
     },
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-10T08:31:40.165894130Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-10T08:31:40.157813914Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "implementer@1": {
       "first_event_seq": 67,
       "prompt": null,
@@ -1520,30 +1766,45 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "start@1": {
-      "first_event_seq": 16,
+    "tester@1": {
+      "first_event_seq": 124,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": null,
+        "notes": "Script completed: just qualitygate",
         "failure_reason": null,
-        "timestamp": "2026-09-10T08:31:40.165894130Z"
+        "timestamp": "2026-09-10T08:34:00.811977742Z"
       },
       "provider_used": null,
       "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/6a6aa88e48376bd588e37c4a4ca50ef237d01806809b8c9a9775f1785909c11b",
+        "exit_code": 0,
+        "duration_ms": 4670,
+        "termination": "exited",
+        "output_bytes": 157,
+        "live_streaming": true
+      },
       "parallel_results": null,
       "output": null,
-      "started_at": "2026-09-10T08:31:40.157813914Z",
-      "handler": "start",
+      "output_bytes": 157,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-10T08:33:56.129652726Z",
+      "handler": "command",
       "graph_visit": 1,
       "timing": {
-        "wall_time_ms": 0,
+        "wall_time_ms": 4673,
         "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
+        "tool_time_ms": 4670,
+        "active_time_ms": 4670
       },
       "usage": {
         "input_tokens": 0,
