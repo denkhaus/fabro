@@ -9,9 +9,10 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Context as _;
 use clap::{Args, Parser};
-use fabro_auth::{CredentialSource, SqlVaultCredentialSource};
+use fabro_auth::SqlVaultCredentialSource;
 use fabro_config::Storage;
 use fabro_config::user::default_storage_dir;
+use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::middleware::{Call, Middleware, Next, Output};
 use fabro_llm::{Client, ClientOptions, Error as LlmError, catalog};
@@ -244,7 +245,7 @@ fn resolve_provider_id(
     catalog::canonical_provider_id(catalog, requested.as_str()).unwrap_or(requested)
 }
 
-async fn standalone_llm_source() -> anyhow::Result<Arc<dyn CredentialSource>> {
+async fn standalone_llm_source() -> anyhow::Result<Arc<dyn CredentialProvider>> {
     let storage = Storage::new(default_storage_dir());
     let store = SecretStore::open(storage.sqlite_path(), storage.secrets_path())
         .await
@@ -455,7 +456,7 @@ pub async fn run_with_args(
 )]
 pub async fn run_with_args_and_source_and_catalog(
     args: AgentArgs,
-    llm_source: Arc<dyn CredentialSource>,
+    llm_source: Arc<dyn CredentialProvider>,
     mcp_servers: Vec<McpServerSettings>,
     catalog: Arc<Catalog>,
 ) -> anyhow::Result<()> {

@@ -2,8 +2,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
 use anyhow::{Context as _, Result, bail};
-use fabro_auth::{CredentialSource, SqlVaultCredentialSource};
+use fabro_auth::SqlVaultCredentialSource;
 use fabro_config::{CliLayer, Storage, load_llm_overlay};
+use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_types::UserSettings;
 use fabro_types::settings::RunNamespace;
@@ -44,7 +45,7 @@ pub(crate) struct CommandContext {
     run_settings_key_presence: RunSettingsKeyPresence,
     server_mode: ServerMode,
     server: OnceCell<Arc<Client>>,
-    llm_source: OnceCell<Arc<dyn CredentialSource>>,
+    llm_source: OnceCell<Arc<dyn CredentialProvider>>,
     catalog: OnceLock<Arc<Catalog>>,
 }
 
@@ -163,7 +164,7 @@ impl CommandContext {
         Ok(Arc::clone(client))
     }
 
-    pub(crate) async fn llm_source(&self) -> Result<Arc<dyn CredentialSource>> {
+    pub(crate) async fn llm_source(&self) -> Result<Arc<dyn CredentialProvider>> {
         let storage_dir = self.storage_dir.clone();
 
         let source = self
@@ -173,9 +174,9 @@ impl CommandContext {
                 let store = SecretStore::open(storage.sqlite_path(), storage.secrets_path())
                     .await
                     .context("opening the Fabro secret store")?;
-                let source: Arc<dyn CredentialSource> =
+                let source: Arc<dyn CredentialProvider> =
                     Arc::new(SqlVaultCredentialSource::new(Arc::new(store)));
-                Ok::<Arc<dyn CredentialSource>, anyhow::Error>(source)
+                Ok::<Arc<dyn CredentialProvider>, anyhow::Error>(source)
             })
             .await?;
 

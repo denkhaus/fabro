@@ -7395,7 +7395,7 @@ mod real_llm {
         }
 
         fabro_test::require_env("ANTHROPIC_API_KEY")?;
-        let source: Arc<dyn fabro_auth::CredentialSource> =
+        let source: Arc<dyn fabro_llm::credentials::CredentialProvider> =
             Arc::new(VaultCredentialSource::environment_only());
         Some(Arc::new(
             fabro_llm::build_client(
@@ -8081,7 +8081,8 @@ fn openai_responses_payload(text: &str) -> serde_json::Value {
 #[tokio::test]
 async fn workflow_run_with_vault_only_openai_codex_builds_pr_body() {
     use chrono::Utc;
-    use fabro_auth::{CredentialSource, VaultCredentialSource};
+    use fabro_auth::VaultCredentialSource;
+    use fabro_llm::credentials::CredentialProvider;
     use fabro_types::Conclusion;
     use fabro_vault::{SecretType, Vault};
     use httpmock::Method::POST;
@@ -8138,7 +8139,7 @@ async fn workflow_run_with_vault_only_openai_codex_builds_pr_body() {
             None,
         )
         .unwrap();
-    let llm_source: Arc<dyn CredentialSource> = Arc::new(VaultCredentialSource::new(Arc::new(
+    let llm_source: Arc<dyn CredentialProvider> = Arc::new(VaultCredentialSource::new(Arc::new(
         AsyncRwLock::new(vault),
     )));
     // Use catalog settings to override base_url instead of env var

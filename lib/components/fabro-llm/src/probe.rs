@@ -120,10 +120,7 @@ pub async fn probe_provider_with_api_key(
         .iter()
         .find(|(candidate, _)| candidate == &provider_id)
     {
-        return Ok(ModelTestOutcome::error(fabro_auth::auth_issue_message(
-            &provider_id,
-            issue,
-        )));
+        return Ok(ModelTestOutcome::error(issue.to_string()));
     }
     Ok(run_basic_probe(&built.client, &selector, timeout).await)
 }

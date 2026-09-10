@@ -1,8 +1,16 @@
+//! Fabro's credential stores and login flows over lithos-llm.
+//!
+//! Every store implements the lithos [`CredentialProvider`] trait, so the
+//! client, `credentials::readiness`, and `ClientBuilder::build_ready` read
+//! them directly. What is Fabro's own: the vault and the SQL secret store as
+//! the place secrets live, the Codex OAuth login and refresh, and the
+//! `{{ secrets.NAME }}` interpolation of a provider's `default_headers`.
+//!
+//! [`CredentialProvider`]: lithos_llm::credentials::CredentialProvider
+
 mod api_key_source;
 mod context;
 mod credential;
-mod credential_source;
-mod error;
 mod extra_headers_source;
 mod refresh;
 mod secrets;
@@ -18,8 +26,6 @@ pub mod strategies;
 pub use api_key_source::ApiKeyCredentialSource;
 pub use context::{AuthContextRequest, AuthContextResponse};
 pub use credential::{OAuthConfig, OAuthCredential, OAuthTokens};
-pub use credential_source::{CredentialSource, ResolvedCredentials, lithos_credentials};
-pub use error::{ResolveError, auth_issue_message};
 pub use extra_headers_source::ExtraHeadersCredentialSource;
 pub use refresh::refresh_oauth_credential;
 pub use secrets::{accepts_api_key, expected_secret_name, secret_names};

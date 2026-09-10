@@ -37,7 +37,7 @@ pub mod test_support;
 pub use catalog::{build_catalog, default_catalog};
 pub use client::{
     ClientOptions, FabroClient, LlmSetupError, RetryListener, RetryNotice, build_client,
-    build_offline_client,
+    build_offline_client, configured_providers,
 };
 pub use error::{ErrorFacts, LlmError};
 pub use lithos_llm::client::{Client, ClientBuild};

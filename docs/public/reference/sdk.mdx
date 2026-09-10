@@ -374,7 +374,7 @@ The `fabro_llm::catalog` module reads Fabro policy from the catalog: `enabled_pr
 
 ### Client
 
-`fabro_llm::build_client(catalog, source, options)` returns a `FabroClient`: the lithos `Client`, the providers that are ready, the providers whose credentials could not be used, and the providers lithos could not build an adapter for. Credentials are read from the `CredentialSource` on every provider attempt, so a refreshed OAuth token is picked up without rebuilding the client.
+`fabro_llm::build_client(catalog, credentials, options)` takes any lithos `CredentialProvider` and returns a `FabroClient`: the lithos `Client`, the providers that are ready, the providers whose credentials could not be used, and the providers lithos could not build an adapter for. Credentials are read from the provider on every attempt, so a refreshed OAuth token is picked up without rebuilding the client.
 
 `ClientOptions::standard()` turns on the lithos retry middleware (three attempts with short exponential backoff) and local attachment inlining. Add middleware with `with_middleware`, replace a provider's adapter with `with_adapter`, or set `http` to inject a configured HTTP client. `fabro_llm::build_offline_client(catalog, options)` builds a client whose only providers are custom adapters, which is how `fabro exec --server` routes every call through a Fabro server.
 

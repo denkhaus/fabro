@@ -9,14 +9,14 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use fabro_vault::Vault;
-use lithos_llm::catalog::{Catalog, CatalogProvider, ProviderId};
-use lithos_llm::credentials::{ConventionalCredentials, CredentialProvider, Credentials};
+use lithos_llm::catalog::{CatalogProvider, ProviderId};
+use lithos_llm::credentials::{
+    ConventionalCredentials, CredentialError, CredentialProvider, Credentials,
+};
 use tokio::sync::RwLock as AsyncRwLock;
 
-use crate::credential_source::CredentialSource;
-use crate::error::ResolveError;
 use crate::secrets::expected_secret_name;
-use crate::vault_source::{auth_scheme_name, interpolated_headers, resolve_error};
+use crate::vault_source::interpolated_headers;
 
 pub struct ApiKeyCredentialSource {
     provider: ProviderId,
@@ -61,19 +61,17 @@ pub(crate) async fn credentials_for_api_key(
     provider: &CatalogProvider,
     key: String,
     vault: &Vault,
-) -> Result<Credentials, ResolveError> {
+) -> Result<Credentials, CredentialError> {
     let Some(name) = expected_secret_name(provider) else {
-        return Err(ResolveError::SchemeMismatch {
+        return Err(CredentialError::SchemeMismatch {
             provider: provider.id().clone(),
-            scheme:   auth_scheme_name(provider.auth()).to_string(),
         });
     };
     let interpolated = interpolated_headers(vault, provider)?;
     let mut credentials = ConventionalCredentials::new()
         .with_lookup(move |candidate| (candidate == name).then(|| key.clone()))
         .credentials(provider)
-        .await
-        .map_err(|err| resolve_error(provider, &err))?;
+        .await?;
     if let Credentials::Http(http) = &mut credentials {
         http.extra_headers.extend(interpolated);
     }
@@ -81,21 +79,22 @@ pub(crate) async fn credentials_for_api_key(
 }
 
 #[async_trait]
-impl CredentialSource for ApiKeyCredentialSource {
-    async fn credentials(&self, provider: &CatalogProvider) -> Result<Credentials, ResolveError> {
+impl CredentialProvider for ApiKeyCredentialSource {
+    async fn credentials(
+        &self,
+        provider: &CatalogProvider,
+    ) -> Result<Credentials, CredentialError> {
         if provider.id() != &self.provider {
-            return Err(ResolveError::NotConfigured(provider.id().clone()));
+            return Err(CredentialError::NotConfigured {
+                provider: provider.id().clone(),
+            });
         }
         let vault = self.vault.read().await.clone();
         credentials_for_api_key(provider, self.key.clone(), &vault).await
     }
 
-    async fn configured_providers(&self, catalog: &Catalog) -> Vec<ProviderId> {
-        catalog
-            .provider(self.provider.as_str())
-            .ok()
-            .map(|provider| vec![provider.id().clone()])
-            .unwrap_or_default()
+    async fn is_configured(&self, provider: &CatalogProvider) -> bool {
+        provider.id() == &self.provider
     }
 }
 

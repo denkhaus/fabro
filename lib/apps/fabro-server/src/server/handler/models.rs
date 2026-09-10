@@ -11,8 +11,7 @@ use fabro_types::ReasoningEffort;
 use super::super::{
     ApiError, AppState, FromStr, IntoResponse, Json, MAX_PAGE_OFFSET, ModelTestMode, Path,
     ProviderCredentialTestRequest, ProviderCredentialTestResponse, ProviderId, ProviderList, Query,
-    RequiredUser, Response, Router, State, StatusCode, auth_issue_message, default_page_limit,
-    error, get, post,
+    RequiredUser, Response, Router, State, StatusCode, default_page_limit, error, get, post,
 };
 use crate::diagnostics;
 
@@ -251,7 +250,7 @@ async fn test_model(
         .iter()
         .find(|(provider, _)| provider == &provider_id)
     {
-        return ApiError::bad_request(auth_issue_message(&provider_id, issue)).into_response();
+        return ApiError::bad_request(issue.to_string()).into_response();
     }
     if !llm_result.has_provider(&provider_id) {
         return Json(serde_json::json!({

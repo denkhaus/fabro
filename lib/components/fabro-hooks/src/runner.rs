@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use fabro_agent::Sandbox;
-use fabro_auth::CredentialSource;
 #[cfg(test)]
 use fabro_auth::test_support;
+use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 
 use crate::config::{HookDefinition, HookSettings};
@@ -16,7 +16,7 @@ use crate::types::{HookContext, HookDecision, HookExecutionContext};
 pub struct HookRunner {
     config:            HookSettings,
     executor:          Arc<dyn HookExecutor>,
-    llm_source:        Arc<dyn CredentialSource>,
+    llm_source:        Arc<dyn CredentialProvider>,
     catalog:           Arc<Catalog>,
     /// Pre-compiled regexes keyed by matcher pattern string.
     compiled_matchers: HashMap<String, regex::Regex>,
@@ -26,7 +26,7 @@ impl HookRunner {
     #[must_use]
     pub fn new(
         config: HookSettings,
-        llm_source: Arc<dyn CredentialSource>,
+        llm_source: Arc<dyn CredentialProvider>,
         catalog: Arc<Catalog>,
     ) -> Self {
         let compiled_matchers = Self::compile_matchers(&config);
@@ -256,7 +256,7 @@ mod tests {
             _context: &HookContext,
             _sandbox: Arc<dyn Sandbox>,
             _execution_context: &HookExecutionContext,
-            _llm_source: Arc<dyn CredentialSource>,
+            _llm_source: Arc<dyn CredentialProvider>,
             _catalog: Arc<Catalog>,
         ) -> HookResult {
             HookResult {
@@ -277,7 +277,7 @@ mod tests {
         HookContext::new(event, fixtures::RUN_1, "test-wf".into())
     }
 
-    fn test_llm_source() -> Arc<dyn CredentialSource> {
+    fn test_llm_source() -> Arc<dyn CredentialProvider> {
         test_support::vault_only_credential_source()
     }
 

@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use fabro_auth::{CredentialSource, VaultCredentialSource};
+use fabro_auth::VaultCredentialSource;
 use fabro_interview::{AutoApproveInterviewer, Interviewer};
+use fabro_llm::credentials::readiness;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_mcp::config::McpServerSettings;
 use fabro_sandbox::daytona::DaytonaConfig;
@@ -746,11 +747,8 @@ async fn configured_providers_for_start(
     vault: &Arc<AsyncRwLock<Vault>>,
     catalog: Arc<Catalog>,
 ) -> Vec<ProviderId> {
-    let source: Arc<dyn CredentialSource> = Arc::new(VaultCredentialSource::with_env_lookup(
-        Arc::clone(vault),
-        process_env_var,
-    ));
-    source.resolve_all(catalog.as_ref()).await.ready
+    let source = VaultCredentialSource::with_env_lookup(Arc::clone(vault), process_env_var);
+    readiness(catalog.enabled_providers(), &source).await.ready
 }
 
 fn git_checkpoint_options_from_start(

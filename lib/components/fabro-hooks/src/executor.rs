@@ -6,7 +6,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use fabro_agent::Sandbox;
 use fabro_agent::tool_registry::ToolContext;
-use fabro_auth::CredentialSource;
+use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{Client, ClientOptions, Request, structured};
 use fabro_redact::redacted_url_for_log;
@@ -48,7 +48,7 @@ pub trait HookExecutor: Send + Sync {
         context: &HookContext,
         sandbox: Arc<dyn Sandbox>,
         execution_context: &HookExecutionContext,
-        llm_source: Arc<dyn CredentialSource>,
+        llm_source: Arc<dyn CredentialProvider>,
         catalog: Arc<Catalog>,
     ) -> HookResult;
 }
@@ -281,7 +281,7 @@ impl HookExecutorImpl {
         prompt: &InterpString,
         model: Option<&InterpString>,
         context: &HookContext,
-        llm_source: Arc<dyn CredentialSource>,
+        llm_source: Arc<dyn CredentialProvider>,
         catalog: Arc<Catalog>,
     ) -> HookDecision {
         let (prompt, model) = match Self::resolve_prompt_and_model(prompt, model) {
@@ -361,7 +361,7 @@ impl HookExecutorImpl {
         max_tool_rounds: Option<u32>,
         context: &HookContext,
         sandbox: Arc<dyn Sandbox>,
-        llm_source: Arc<dyn CredentialSource>,
+        llm_source: Arc<dyn CredentialProvider>,
         catalog: Arc<Catalog>,
     ) -> HookDecision {
         let (prompt, model) = match Self::resolve_prompt_and_model(prompt, model) {
@@ -476,7 +476,7 @@ impl HookExecutorImpl {
     /// serve, with standard retries.
     async fn build_client(
         catalog: Arc<Catalog>,
-        llm_source: Arc<dyn CredentialSource>,
+        llm_source: Arc<dyn CredentialProvider>,
     ) -> Result<Client, fabro_llm::LlmSetupError> {
         fabro_llm::build_client(
             Catalog::clone(&catalog),
@@ -662,7 +662,7 @@ impl HookExecutor for HookExecutorImpl {
         context: &HookContext,
         sandbox: Arc<dyn Sandbox>,
         execution_context: &HookExecutionContext,
-        llm_source: Arc<dyn CredentialSource>,
+        llm_source: Arc<dyn CredentialProvider>,
         catalog: Arc<Catalog>,
     ) -> HookResult {
         use std::sync::OnceLock;
@@ -761,7 +761,8 @@ impl HookExecutor for HookExecutorImpl {
 
 #[cfg(test)]
 mod tests {
-    use fabro_auth::{CredentialSource, test_support};
+    use fabro_auth::test_support;
+    use fabro_llm::credentials::CredentialProvider;
     use fabro_types::fixtures;
     use fabro_types::settings::ResolveErrorKind;
 
@@ -779,7 +780,7 @@ mod tests {
         ))
     }
 
-    fn test_llm_source() -> Arc<dyn CredentialSource> {
+    fn test_llm_source() -> Arc<dyn CredentialProvider> {
         test_support::vault_only_credential_source()
     }
 

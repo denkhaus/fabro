@@ -1813,22 +1813,18 @@ async fn resolve_llm_client_ignores_env_lookup_provider_tokens() {
 struct FailingCredentialSource;
 
 #[async_trait::async_trait]
-impl CredentialSource for FailingCredentialSource {
+impl CredentialProvider for FailingCredentialSource {
     async fn credentials(
         &self,
         provider: &fabro_llm::lithos_catalog::CatalogProvider,
-    ) -> Result<fabro_llm::credentials::Credentials, fabro_auth::ResolveError> {
-        Err(fabro_auth::ResolveError::NotConfigured(
-            provider.id().clone(),
-        ))
+    ) -> Result<fabro_llm::credentials::Credentials, fabro_llm::credentials::CredentialError> {
+        Err(fabro_llm::credentials::CredentialError::NotConfigured {
+            provider: provider.id().clone(),
+        })
     }
 
-    async fn configured_providers(
-        &self,
-        catalog: &fabro_llm::lithos_catalog::Catalog,
-    ) -> Vec<fabro_types::ProviderId> {
-        let _ = catalog;
-        Vec::new()
+    async fn is_configured(&self, _provider: &fabro_llm::lithos_catalog::CatalogProvider) -> bool {
+        false
     }
 }
 
@@ -1864,14 +1860,9 @@ async fn llm_source_configured_providers_reads_openai_token_from_vault() {
         .await
         .unwrap();
 
-    let catalog = state.catalog();
-    assert_eq!(
-        state
-            .llm_source
-            .configured_providers(catalog.as_ref())
-            .await,
-        vec![fabro_types::provider_ids::openai()]
-    );
+    assert_eq!(state.configured_llm_provider_ids().await, vec![
+        fabro_types::provider_ids::openai()
+    ]);
 }
 
 #[tokio::test]

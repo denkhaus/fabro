@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use fabro_api::types;
-use fabro_auth::auth_issue_message;
 use fabro_config::parse::SettingsSource;
 use fabro_config::{
     CliLayer, CliOutputLayer, EnvironmentLayer, MergeMap, RunLayer, SettingsLayer,
@@ -1112,7 +1111,7 @@ async fn run_llm_check(
                         status:      CheckStatus::Warning,
                         summary:     model_id.clone(),
                         details:     vec![CheckDetail::new(format!("Provider: {provider_name}"))],
-                        remediation: Some(auth_issue_message(&provider_id, issue)),
+                        remediation: Some(issue.to_string()),
                     }));
                 } else if let Some(issue) = registration_issues
                     .iter()

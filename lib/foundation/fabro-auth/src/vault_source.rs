@@ -14,6 +14,7 @@
 //!   never reaches the wire;
 //! - OpenAI organization and project headers from the environment.
 
+use std::error::Error as StdError;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -21,7 +22,7 @@ use fabro_static::EnvVars;
 use fabro_types::provider_ids;
 use fabro_types::settings::{InterpString, ResolveCtx};
 use fabro_vault::{SecretType, Vault};
-use lithos_llm::catalog::{AuthScheme, Catalog, CatalogProvider, ProviderId};
+use lithos_llm::catalog::{CatalogProvider, ProviderId};
 use lithos_llm::credentials::{
     ConventionalCredentials, CredentialError, CredentialHeader, CredentialProvider, Credentials,
     HttpAuthentication, HttpCredentials, SecretValue,
@@ -30,8 +31,6 @@ use tokio::sync::RwLock as AsyncRwLock;
 use tokio::task::spawn_blocking;
 
 use crate::credential::OAuthCredential;
-use crate::credential_source::CredentialSource;
-use crate::error::ResolveError;
 use crate::refresh::refresh_oauth_credential;
 use crate::secrets::oauth_secret_name;
 use crate::vault_ext::{VaultLookupError, vault_get_oauth, vault_set_oauth, vault_token_lookup};
@@ -106,7 +105,7 @@ impl VaultCredentialSource {
         &self,
         provider: &CatalogProvider,
         vault: &Vault,
-    ) -> Result<Option<Credentials>, ResolveError> {
+    ) -> Result<Option<Credentials>, CredentialError> {
         let Some(name) = oauth_secret_name(provider.id()) else {
             return Ok(None);
         };
@@ -124,13 +123,20 @@ impl VaultCredentialSource {
             .expect("entry is present");
         let credential = if credential.needs_refresh() {
             if credential.tokens.refresh_token.is_none() {
-                return Err(ResolveError::RefreshTokenMissing(provider.id().clone()));
+                return Err(unusable(
+                    provider.id(),
+                    "requires re-authentication: refresh token missing",
+                    None,
+                ));
             }
             let refreshed = refresh_oauth_credential(&credential)
                 .await
-                .map_err(|source| ResolveError::RefreshFailed {
-                    provider: provider.id().clone(),
-                    source,
+                .map_err(|source| {
+                    unusable(
+                        provider.id(),
+                        format!("requires re-authentication: {source}"),
+                        Some(source.into()),
+                    )
                 })?;
             self.persist_oauth(provider.id(), name, &refreshed).await?;
             refreshed
@@ -145,13 +151,16 @@ impl VaultCredentialSource {
         provider: &ProviderId,
         name: &str,
         refreshed: &OAuthCredential,
-    ) -> Result<(), ResolveError> {
+    ) -> Result<(), CredentialError> {
         let refreshed = refreshed.clone();
         let name = name.to_string();
         let vault = Arc::clone(&self.vault);
-        let failed = |source| ResolveError::RefreshFailed {
-            provider: provider.clone(),
-            source,
+        let failed = |source: anyhow::Error| {
+            unusable(
+                provider,
+                format!("the refreshed token could not be stored: {source}"),
+                Some(source.into()),
+            )
         };
         spawn_blocking(move || {
             let mut vault = vault.blocking_write();
@@ -204,30 +213,25 @@ impl std::fmt::Debug for VaultCredentialSource {
 }
 
 #[async_trait]
-impl CredentialSource for VaultCredentialSource {
-    async fn credentials(&self, provider: &CatalogProvider) -> Result<Credentials, ResolveError> {
+impl CredentialProvider for VaultCredentialSource {
+    async fn credentials(
+        &self,
+        provider: &CatalogProvider,
+    ) -> Result<Credentials, CredentialError> {
         let vault = self.snapshot().await;
         let interpolated = interpolated_headers(&vault, provider)?;
         if let Some(oauth) = self.oauth_credentials(provider, &vault).await? {
             return Ok(self.decorate(provider, oauth, interpolated));
         }
-        let credentials = self
-            .conventional(&vault)
-            .credentials(provider)
-            .await
-            .map_err(|err| resolve_error(provider, &err))?;
+        let credentials = self.conventional(&vault).credentials(provider).await?;
         Ok(self.decorate(provider, credentials, interpolated))
     }
 
-    async fn configured_providers(&self, catalog: &Catalog) -> Vec<ProviderId> {
+    /// Presence without refresh: an OAuth entry under the provider's name, or
+    /// a conventional secret that resolves.
+    async fn is_configured(&self, provider: &CatalogProvider) -> bool {
         let vault = self.snapshot().await;
-        let mut configured = Vec::new();
-        for provider in catalog.providers().filter(|provider| provider.is_enabled()) {
-            if self.has_credential_material(&vault, provider).await {
-                configured.push(provider.id().clone());
-            }
-        }
-        configured
+        self.has_credential_material(&vault, provider).await
     }
 }
 
@@ -254,7 +258,7 @@ fn oauth_bearer(credential: &OAuthCredential) -> Credentials {
 pub(crate) fn interpolated_headers(
     vault: &Vault,
     provider: &CatalogProvider,
-) -> Result<Vec<CredentialHeader>, ResolveError> {
+) -> Result<Vec<CredentialHeader>, CredentialError> {
     let mut ctx =
         ResolveCtx::new().with_secrets(|secret_name| vault_token_lookup(vault, secret_name));
     provider
@@ -263,55 +267,42 @@ pub(crate) fn interpolated_headers(
         .map(|(name, source)| (name, InterpString::parse(source)))
         .filter(|(_, template)| !template.is_literal())
         .map(|(name, template)| {
-            let value =
-                template
-                    .resolve_with(&mut ctx)
-                    .map_err(|source| ResolveError::Interpolation {
-                        provider: provider.id().clone(),
-                        source,
-                    })?;
+            let value = template.resolve_with(&mut ctx).map_err(|source| {
+                unusable(
+                    provider.id(),
+                    format!("header interpolation failed: {source}"),
+                    Some(Box::new(source)),
+                )
+            })?;
             Ok(CredentialHeader::new(name.clone(), SecretValue::new(value)))
         })
         .collect()
 }
 
-pub(crate) fn auth_scheme_name(scheme: &AuthScheme) -> &'static str {
-    match scheme {
-        AuthScheme::None => "none",
-        AuthScheme::Bearer { .. } => "bearer",
-        AuthScheme::Header { .. } => "header",
-        AuthScheme::Headers => "headers",
-        AuthScheme::Aws { .. } => "aws",
-        AuthScheme::BedrockBearer => "bedrock_bearer",
-        _ => "unknown",
+/// Material is present but cannot be used. `reason` is the operator-facing
+/// line and must not carry secret content.
+pub(crate) fn unusable(
+    provider: &ProviderId,
+    reason: impl Into<String>,
+    source: Option<Box<dyn StdError + Send + Sync + 'static>>,
+) -> CredentialError {
+    CredentialError::Unusable {
+        provider: provider.clone(),
+        reason: reason.into(),
+        source,
     }
 }
 
-/// Maps a lithos lookup failure onto Fabro's vocabulary. A missing secret is
-/// not an issue to report; the provider is simply not configured.
-pub(crate) fn resolve_error(provider: &CatalogProvider, err: &CredentialError) -> ResolveError {
-    match err {
-        CredentialError::SchemeMismatch { .. } => ResolveError::SchemeMismatch {
-            provider: provider.id().clone(),
-            scheme:   auth_scheme_name(provider.auth()).to_string(),
-        },
-        _ => ResolveError::NotConfigured(provider.id().clone()),
-    }
-}
-
-fn vault_lookup_error(provider: &ProviderId, name: &str, err: VaultLookupError) -> ResolveError {
-    match err {
-        VaultLookupError::SchemaMismatch { actual, .. } => ResolveError::VaultSchemaMismatch {
-            provider: provider.clone(),
-            name: name.to_string(),
-            actual,
-        },
-        VaultLookupError::DecodeFailed { source, .. } => ResolveError::VaultDecodeFailed {
-            provider: provider.clone(),
-            name: name.to_string(),
-            source,
-        },
-    }
+fn vault_lookup_error(provider: &ProviderId, name: &str, err: VaultLookupError) -> CredentialError {
+    let reason = match &err {
+        VaultLookupError::SchemaMismatch { actual, .. } => {
+            format!("vault credential '{name}' has schema {actual:?}, expected Token or Oauth")
+        }
+        VaultLookupError::DecodeFailed { .. } => {
+            format!("vault credential '{name}' is not valid OAuth JSON")
+        }
+    };
+    unusable(provider, reason, Some(Box::new(err)))
 }
 
 #[cfg(test)]
@@ -322,12 +313,13 @@ mod tests {
     use httpmock::Method::POST;
     use httpmock::MockServer;
     use lithos_llm::catalog::Catalog;
+    use lithos_llm::credentials::readiness;
 
     use super::*;
+    use crate::OPENAI_CODEX_VAULT_SECRET_NAME;
     use crate::credential::{OAuthConfig, OAuthTokens};
     use crate::test_support::{test_catalog, test_catalog_with_overlay};
     use crate::vault_ext::vault_set_token;
-    use crate::{OPENAI_CODEX_VAULT_SECRET_NAME, auth_issue_message};
 
     fn oauth_credential(token_url: String, expires_at: chrono::DateTime<Utc>) -> OAuthCredential {
         OAuthCredential {
@@ -488,7 +480,10 @@ api_model = "large"
             .credentials(catalog.provider("gateway").unwrap())
             .await
             .unwrap_err();
-        assert!(matches!(err, ResolveError::Interpolation { .. }), "{err}");
+        assert!(
+            matches!(&err, CredentialError::Unusable { reason, .. } if reason.contains("header interpolation failed")),
+            "{err}"
+        );
         assert!(!err.to_string().contains("gw-key"));
     }
 
@@ -565,10 +560,8 @@ api_model = "large"
             .credentials(catalog.provider("anthropic").unwrap())
             .await
             .unwrap_err();
-        assert!(matches!(
-            err,
-            ResolveError::NotConfigured(provider) if provider.as_str() == "anthropic"
-        ));
+        assert!(err.is_not_configured(), "{err}");
+        assert_eq!(err.provider().as_str(), "anthropic");
     }
 
     #[tokio::test]
@@ -578,10 +571,13 @@ api_model = "large"
         let source = source_with(vault, |_| None);
         let catalog = test_catalog();
         let modal = catalog.provider("modal").unwrap();
-        assert!(matches!(
-            source.credentials(modal).await.unwrap_err(),
-            ResolveError::NotConfigured(_)
-        ));
+        assert!(
+            source
+                .credentials(modal)
+                .await
+                .unwrap_err()
+                .is_not_configured()
+        );
 
         let mut vault = empty_vault();
         vault_set_token(&mut vault, "MODAL_TOKEN_ID", "wk-test").unwrap();
@@ -590,6 +586,16 @@ api_model = "large"
         let credentials = source.credentials(modal).await.unwrap();
         assert_eq!(header_value(&credentials, "Modal-Key"), Some("wk-test"));
         assert_eq!(header_value(&credentials, "Modal-Secret"), Some("ws-test"));
+    }
+
+    async fn configured(source: &VaultCredentialSource, catalog: &Catalog) -> Vec<ProviderId> {
+        let mut ids = Vec::new();
+        for provider in catalog.enabled_providers() {
+            if source.is_configured(provider).await {
+                ids.push(provider.id().clone());
+            }
+        }
+        ids
     }
 
     #[tokio::test]
@@ -609,7 +615,7 @@ api_model = "large"
             (name == "ANTHROPIC_API_KEY").then(|| "env".to_string())
         });
         let catalog = test_catalog();
-        let configured = source.configured_providers(&catalog).await;
+        let configured = configured(&source, &catalog).await;
         assert!(configured.contains(&ProviderId::new("openai")));
         assert!(configured.contains(&ProviderId::new("anthropic")));
         assert!(configured.contains(&ProviderId::new("openai-codex")));
@@ -632,13 +638,16 @@ api_model = "large"
         .unwrap();
         vault_set_token(&mut vault, "ANTHROPIC_API_KEY", "anthropic-key").unwrap();
         let source = source_with(vault, |_| None);
-        let resolved = source.resolve_all(&test_catalog()).await;
+        let catalog = test_catalog();
+        let resolved = readiness(catalog.enabled_providers(), &source).await;
         assert_eq!(resolved.ready, vec![ProviderId::new("anthropic")]);
-        assert_eq!(resolved.auth_issues.len(), 1);
-        assert!(matches!(
-            &resolved.auth_issues[0].1,
-            ResolveError::RefreshFailed { provider, .. } if provider.as_str() == "openai-codex"
-        ));
+        assert_eq!(resolved.issues.len(), 1);
+        let (provider, issue) = &resolved.issues[0];
+        assert_eq!(provider.as_str(), "openai-codex");
+        assert!(
+            issue.to_string().contains("requires re-authentication"),
+            "{issue}"
+        );
     }
 
     #[tokio::test]
@@ -646,10 +655,10 @@ api_model = "large"
         let catalog = test_catalog();
         let vault_only =
             VaultCredentialSource::vault_only(Arc::new(AsyncRwLock::new(empty_vault())));
-        assert!(vault_only.configured_providers(&catalog).await.is_empty());
-        let resolved = vault_only.resolve_all(&catalog).await;
+        assert!(configured(&vault_only, &catalog).await.is_empty());
+        let resolved = readiness(catalog.enabled_providers(), &vault_only).await;
         assert!(resolved.ready.is_empty());
-        assert!(resolved.auth_issues.is_empty());
+        assert!(resolved.issues.is_empty());
     }
 
     #[tokio::test]
@@ -722,10 +731,9 @@ api_model = "large"
             .credentials(catalog.provider("openai-codex").unwrap())
             .await
             .unwrap_err();
-        assert!(matches!(err, ResolveError::RefreshTokenMissing(_)));
         assert_eq!(
-            auth_issue_message(&ProviderId::new("openai-codex"), &err),
-            "openai-codex requires re-authentication: refresh token missing"
+            err.to_string(),
+            "credentials for provider openai-codex cannot be used: requires re-authentication: refresh token missing"
         );
     }
 }

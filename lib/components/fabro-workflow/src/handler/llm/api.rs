@@ -10,8 +10,8 @@ use fabro_agent::{
     Sandbox, Session, SessionOptions, SessionShutdownReason, StaticEnvProvider, ToolEnvProvider,
     ToolSecrets, WebFetchSummarizer, canonical_tool_name, register_question_tools,
 };
-use fabro_auth::CredentialSource;
 use fabro_graphviz::graph::{AttrValue, Node};
+use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::error::failover_eligible;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::types::ResponseFormat;
@@ -638,7 +638,7 @@ pub struct AgentApiBackend {
     mcp_servers:          Vec<McpServerSettings>,
     tool_secrets:         ToolSecrets,
     run_model_controls:   RunModelControls,
-    source:               Arc<dyn CredentialSource>,
+    source:               Arc<dyn CredentialProvider>,
     steering_hub:         Arc<SteeringHub>,
     catalog:              Arc<Catalog>,
     fabro_run_tools:      Option<FabroRunToolServices>,
@@ -784,7 +784,7 @@ impl AgentApiBackend {
         model: String,
         provider_id: impl Into<ProviderId>,
         fallbacks: ModelFallbackPolicy,
-        source: Arc<dyn CredentialSource>,
+        source: Arc<dyn CredentialProvider>,
         steering_hub: Arc<SteeringHub>,
     ) -> Self {
         let catalog = Arc::new(fabro_llm::default_catalog());
@@ -803,7 +803,7 @@ impl AgentApiBackend {
         model: String,
         provider_id: ProviderId,
         fallbacks: ModelFallbackPolicy,
-        source: Arc<dyn CredentialSource>,
+        source: Arc<dyn CredentialProvider>,
         steering_hub: Arc<SteeringHub>,
         catalog: Arc<Catalog>,
     ) -> Self {
@@ -1051,7 +1051,7 @@ impl AgentApiBackend {
         controls: EffectiveRequestControls,
         node: &Node,
         sandbox: &Arc<dyn Sandbox>,
-        source: Arc<dyn CredentialSource>,
+        source: Arc<dyn CredentialProvider>,
         catalog: Arc<Catalog>,
         tool_env: Option<&Arc<dyn ToolEnvProvider>>,
         tool_hooks: Option<Arc<dyn fabro_agent::ToolHookCallback>>,
@@ -1453,7 +1453,7 @@ impl AgentApiBackend {
 /// Build the LLM client a stage session dispatches through.
 async fn build_llm_client(
     catalog: &Arc<Catalog>,
-    source: Arc<dyn CredentialSource>,
+    source: Arc<dyn CredentialProvider>,
 ) -> Result<Client, Error> {
     fabro_llm::build_client(Catalog::clone(catalog), source, ClientOptions::standard())
         .await

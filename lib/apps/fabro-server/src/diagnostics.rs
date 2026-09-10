@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use fabro_auth::auth_issue_message;
 use fabro_http::Response;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::probe::{self, ModelTestStatus};
@@ -219,7 +218,7 @@ pub(crate) async fn test_llm_providers(state: &AppState) -> anyhow::Result<Provi
             .auth_issues
             .iter()
             .find(|(issue_provider, _)| issue_provider == &provider)
-            .map(|(_, issue)| redact_string(&auth_issue_message(&provider, issue)));
+            .map(|(_, issue)| redact_string(&issue.to_string()));
         let registration_issue = result
             .build_issues
             .iter()
@@ -242,7 +241,7 @@ async fn probe_single_provider(
     registration_issue: Option<String>,
 ) -> ProviderProbeResult {
     if let Some(message) = auth_issue {
-        // `auth_issue_message` already embeds the provider's display name, so the
+        // The credential error already names the provider, so the
         // diagnostics detail uses the message as-is rather than re-prefixing.
         return provider_probe_error(provider, None, message.clone(), Some(message));
     }

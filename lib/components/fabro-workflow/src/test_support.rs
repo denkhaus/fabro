@@ -5,10 +5,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use fabro_agent::Sandbox;
-use fabro_auth::{CredentialSource, test_support as auth_test_support};
+use fabro_auth::test_support as auth_test_support;
 use fabro_graphviz::graph::Graph as GvGraph;
 use fabro_interview::AutoApproveInterviewer;
 use fabro_llm::catalog;
+use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::test_support::test_catalog;
 use fabro_store::{ArtifactStore, RunProjection, test_support as store_test_support};
@@ -145,7 +146,7 @@ struct InitializedOptions {
     hook_runner: Option<Arc<fabro_hooks::HookRunner>>,
     env:         HashMap<String, String>,
     checkpoint:  Option<Checkpoint>,
-    llm_source:  Option<Arc<dyn CredentialSource>>,
+    llm_source:  Option<Arc<dyn CredentialProvider>>,
 }
 
 struct InitializedState {
@@ -481,7 +482,7 @@ pub async fn run_graph_with_state_and_llm_source(
     sandbox: Arc<dyn Sandbox>,
     graph: &GvGraph,
     run_options: &RunOptions,
-    llm_source: Arc<dyn CredentialSource>,
+    llm_source: Arc<dyn CredentialProvider>,
 ) -> Result<(Outcome, RunProjection)> {
     let initialized = initialized(
         registry,
@@ -576,7 +577,7 @@ impl WorkflowRunner {
         &self,
         graph: &GvGraph,
         run_options: &RunOptions,
-        llm_source: Arc<dyn CredentialSource>,
+        llm_source: Arc<dyn CredentialProvider>,
     ) -> Result<(Outcome, RunProjection)> {
         let registry = self
             .registry
