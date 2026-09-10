@@ -94,7 +94,7 @@ insta = "1"
 fabro-test = { path = "lib/foundation/fabro-test" }
 # Provider-neutral LLM catalog and client. Pinned to a revision until 0.x is
 # published to crates.io.
-lithos-llm = { git = "https://github.com/lithoscomputer/lithos-llm", rev = "38ccb14f08c56382e4af3888704de2f0951c910a", default-features = false }
+lithos-llm = { git = "https://github.com/lithoscomputer/lithos-llm", rev = "ba2f4184e3db9a37f36aa650ce4b7c5f3376b109", default-features = false }
 # Deterministic OpenAI twin used by twin-mode E2E tests; the same revision
 # lithos-llm verifies its codecs against.
 twin-openai = { git = "https://github.com/lithoscomputer/twins", rev = "ca45f0e50a6716d716aa2f638ca3cf767e88f613" }
