@@ -17134,6 +17134,95 @@ async fn interrupt_terminal_run_returns_run_not_interruptible() {
     assert_eq!(body["errors"][0]["code"], "run_not_interruptible");
 }
 
+/// fabro-3fe4: the live status step is the shared lifecycle table plus two
+/// documented deviations — the `RunRunnable` scheduling guard and the
+/// shared `historic_skipped_statuses` replay path (the same fast-forward
+/// the durable projection reducer uses). No AppState (or lock surgery) is
+/// needed to prove it.
+#[test]
+fn live_status_step_matches_the_shared_table_except_runnable_suppression() {
+    use fabro_types::{LifecycleTransition, RunRunnableSource, apply_lifecycle_event};
+
+    let run_id = fixtures::RUN_1;
+    let runnable = workflow_event::to_run_event(&run_id, &workflow_event::Event::RunRunnable {
+        source: RunRunnableSource::StartRequested,
+        actor:  None,
+    });
+    // Live-only scheduling guard: an injected runnable event never flips
+    // status, no matter the current status.
+    assert_eq!(
+        super::live_lifecycle_status(RunStatus::Submitted, &runnable),
+        Ok(None)
+    );
+    assert_eq!(
+        super::live_lifecycle_status(RunStatus::Runnable, &runnable),
+        Ok(None)
+    );
+
+    let lifecycle_events = vec![
+        workflow_event::to_run_event(&run_id, &workflow_event::Event::RunStarting),
+        workflow_event::to_run_event(&run_id, &workflow_event::Event::RunRunning),
+        workflow_event::to_run_event(&run_id, &workflow_event::Event::WorkflowRunCompleted {
+            timing:               fabro_types::RunTiming::wall_only(1),
+            artifact_count:       0,
+            status:               "succeeded".to_string(),
+            reason:               SuccessReason::Completed,
+            failure:              None,
+            total_usd_micros:     None,
+            final_git_commit_sha: None,
+            final_patch:          None,
+            diff_summary:         None,
+            billing:              None,
+        }),
+        workflow_event::to_run_event(&run_id, &workflow_event::Event::WorkflowRunFailed {
+            failure:              fabro_types::RunFailure {
+                reason: fabro_types::FailureReason::Cancelled,
+                detail: FailureDetail::new(
+                    "cancelled before start",
+                    FailureCategory::Deterministic,
+                ),
+            },
+            timing:               fabro_types::RunTiming::wall_only(1),
+            final_git_commit_sha: None,
+            final_patch:          None,
+            diff_summary:         None,
+            billing:              None,
+        }),
+    ];
+    let statuses = [
+        RunStatus::Submitted,
+        RunStatus::Runnable,
+        RunStatus::Starting,
+        RunStatus::Running,
+        RunStatus::Paused { prior_block: None },
+        RunStatus::Failed {
+            reason: fabro_types::FailureReason::Cancelled,
+        },
+    ];
+
+    for status in statuses {
+        for event in &lifecycle_events {
+            // The shared historic fast-forward replays the same intermediate
+            // statuses the durable reducer replays, so the live fold agrees
+            // with a full-table fold from the fast-forwarded status.
+            let mut table_status = status;
+            for skipped in fabro_types::historic_skipped_statuses(table_status, &event.body) {
+                table_status = skipped;
+            }
+            let expected = match apply_lifecycle_event(table_status, &event.body) {
+                LifecycleTransition::Next(next) => Ok(Some(next)),
+                LifecycleTransition::Rejected(err) => Err(err),
+                LifecycleTransition::NotLifecycle => Ok(None),
+            };
+            assert_eq!(
+                super::live_lifecycle_status(status, event),
+                expected,
+                "live step drifted from the table at {status}"
+            );
+        }
+    }
+}
+
 #[test]
 fn injected_runnable_event_does_not_make_submitted_run_schedulable() {
     let state = test_app_state();
@@ -17168,6 +17257,14 @@ fn injected_runnable_event_does_not_make_submitted_run_schedulable() {
     update_live_run_from_event(&state, run_id, &starting);
 
     let runs = state.runs.lock().expect("runs lock poisoned");
+    // The runnable guard keeps scheduling ownership with the lifecycle
+    // handlers, but a follow-up `run.starting` still advances the live
+    // status through the shared historic fast-forward (submitted ->
+    // runnable -> starting) — the same replay the durable projection
+    // reducer performs, so live and durable folds stay equivalent and
+    // seeded event sequences reach terminal statuses (fabro-3fe4 reopen:
+    // the strict rejection stranded injected runs at `submitted` and broke
+    // `fabro rm` completed-run handling).
     assert_eq!(runs.get(&run_id).unwrap().status, RunStatus::Starting);
 }
 

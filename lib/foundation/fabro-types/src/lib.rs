@@ -18,6 +18,7 @@ pub mod graph;
 mod id;
 mod input_scalar;
 pub mod interview;
+pub mod lifecycle;
 pub mod llm_backend;
 pub mod manifest_path;
 pub mod mcp_store;
@@ -90,6 +91,7 @@ pub use input_scalar::{
 pub use interview::{
     InterviewQuestionRecord, QuestionType, ReviewTarget, ReviewTargetError, ReviewTargetKind,
 };
+pub use lifecycle::{LifecycleTransition, apply_lifecycle_event, historic_skipped_statuses};
 pub use llm_backend::AgentBackend;
 pub use manifest_path::{ManifestPath, ManifestPathParseError};
 pub use mcp_store::{

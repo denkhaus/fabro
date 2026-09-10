@@ -108,24 +108,28 @@ pub fn test_usage(
 }
 
 /// Append the `RunStartRequested → RunRunnable → RunStarting → RunRunning`
-/// sequence so subsequent calls observe the run as live.
+/// sequence so subsequent calls observe the run as live. Adapter over the
+/// lifecycle event protocol owner (fabro-3fe4).
 pub async fn mark_run_running(run_store: &fabro_store::RunDatabase, run_id: &fabro_types::RunId) {
-    append_event(run_store, run_id, &Event::RunStartRequested {
-        resume: false,
-        actor:  None,
-    })
-    .await
-    .expect("seed run.start_requested");
-    append_event(run_store, run_id, &Event::RunRunnable {
-        source: fabro_types::RunRunnableSource::StartRequested,
-        actor:  None,
-    })
+    use crate::event::RunEventSink;
+    use crate::operations::lifecycle_events;
+
+    let sink = RunEventSink::store(run_store.clone());
+    lifecycle_events::request_start(&sink, run_id, false, None)
+        .await
+        .expect("seed run.start_requested");
+    lifecycle_events::runnable(
+        &sink,
+        run_id,
+        fabro_types::RunRunnableSource::StartRequested,
+        None,
+    )
     .await
     .expect("seed run.runnable");
-    append_event(run_store, run_id, &Event::RunStarting)
+    lifecycle_events::starting(&sink, run_id)
         .await
         .expect("seed run.starting");
-    append_event(run_store, run_id, &Event::RunRunning)
+    lifecycle_events::running(&sink, run_id)
         .await
         .expect("seed run.running");
 }

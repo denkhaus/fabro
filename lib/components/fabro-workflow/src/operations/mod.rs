@@ -1,6 +1,7 @@
 mod archive;
 mod create;
 mod fork;
+pub mod lifecycle_events;
 mod resume;
 mod retry;
 mod rewind;
