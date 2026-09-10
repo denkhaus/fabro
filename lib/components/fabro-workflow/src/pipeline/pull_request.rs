@@ -782,9 +782,8 @@ base_url = "http://mock.invalid/v1"
 auth = { type = "bearer" }
 allow_passthrough = true
 
-[providers.mock.metadata.fabro]
-agent_profile = "openai"
-credentials = ["env:MOCK_API_KEY"]
+[providers.mock.metadata.agent]
+profile = "openai"
 
 [providers.mock.models.mock-model]
 display_name = "Mock Model"

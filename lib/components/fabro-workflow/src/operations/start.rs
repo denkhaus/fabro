@@ -1454,9 +1454,8 @@ mod tests {
             [providers.openrouter]
             priority = 25
             default_model = "gpt-5.6-sol"
-            
-            [providers.openrouter.metadata.fabro]
             enabled = true
+            
             "#,
         )
     }
@@ -1493,9 +1492,8 @@ mod tests {
             auth = { type = "bearer" }
             default_model = "acme-claude"
             
-            [providers.acme.metadata.fabro]
-            agent_profile = "openai"
-            credentials = ["env:ACME_API_KEY"]
+            [providers.acme.metadata.agent]
+            profile = "openai"
             
             [providers.acme.models.acme-claude]
             display_name = "Acme Claude"
@@ -1503,10 +1501,10 @@ mod tests {
             api_model = "acme-claude"
             limits = { context_tokens = 1000, max_output_tokens = 500 }
             capabilities = { text = true, tools = true }
-            
-            [providers.acme.models.acme-claude.metadata.fabro]
             family = "claude"
-            agent_profile = "anthropic"
+            
+            [providers.acme.models.acme-claude.metadata.agent]
+            profile = "anthropic"
             "#,
         );
         let mut settings = ResolvedRunSettings::default();

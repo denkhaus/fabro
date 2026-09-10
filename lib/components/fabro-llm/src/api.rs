@@ -1,7 +1,7 @@
 //! API projections of the catalog for `GET /models` and `GET /providers`.
 //!
-//! Every row is a lithos catalog entry plus its Fabro policy, stamped with
-//! whether the caller holds credential material for the provider.
+//! Every row is a lithos catalog entry stamped with whether the caller holds
+//! credential material for the provider.
 
 use std::collections::HashSet;
 
@@ -9,9 +9,9 @@ use fabro_types::controls::REASONING_EFFORTS;
 use fabro_types::{
     Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits, Provider, ProviderId,
 };
-use lithos_llm::catalog::Catalog;
+use lithos_llm::catalog::{Catalog, CatalogProvider};
 
-use crate::catalog::{self, ModelEntry, ProviderEntry};
+use crate::catalog::{self, ModelEntry};
 
 const USD_MICROS_PER_USD: f64 = 1_000_000.0;
 
@@ -29,7 +29,7 @@ pub fn models(catalog: &Catalog, configured: &HashSet<ProviderId>) -> Vec<Model>
 pub fn providers(catalog: &Catalog, configured: &HashSet<ProviderId>) -> Vec<Provider> {
     catalog::listed_providers(catalog)
         .iter()
-        .map(|entry| provider_view(entry, configured.contains(entry.provider.id())))
+        .map(|provider| provider_view(provider, configured.contains(provider.id())))
         .collect()
 }
 
@@ -41,11 +41,9 @@ fn model_view(entry: &ModelEntry<'_>, configured: bool) -> Model {
     Model {
         id: model.id().clone(),
         provider: entry.provider.id().clone(),
-        family: entry
-            .policy
-            .family
-            .clone()
-            .unwrap_or_else(|| model.id().to_string()),
+        family: model
+            .family()
+            .map_or_else(|| model.id().to_string(), str::to_string),
         display_name: model.display_name().to_string(),
         limits: ModelLimits {
             context_window: limits.map_or(0, |limits| saturating_i64(limits.context_tokens)),
@@ -54,8 +52,8 @@ fn model_view(entry: &ModelEntry<'_>, configured: bool) -> Model {
                 .filter(|tokens| *tokens > 0)
                 .map(saturating_i64),
         },
-        training: entry.policy.training.clone(),
-        knowledge_cutoff: entry.policy.knowledge_cutoff.clone(),
+        training: model.training_cutoff().map(str::to_string),
+        knowledge_cutoff: model.knowledge_cutoff().map(str::to_string),
         features: ModelFeatures {
             tools:        capabilities.tools().is_supported(),
             vision:       capabilities.images().is_supported(),
@@ -81,22 +79,21 @@ fn model_view(entry: &ModelEntry<'_>, configured: bool) -> Model {
                 .and_then(|pricing| pricing.cached_input_usd_micros_per_million)
                 .map(usd_per_million),
         },
-        estimated_output_tps: entry.policy.estimated_output_tps,
+        estimated_output_tps: model.estimated_output_tps(),
         aliases: model.aliases().to_vec(),
         default: entry.provider.default_model() == Some(model.id().as_str()),
-        small_default: entry.policy.small_default,
+        small_default: model.is_small_default(),
         configured,
     }
 }
 
-fn provider_view(entry: &ProviderEntry<'_>, configured: bool) -> Provider {
-    let provider = entry.provider;
+fn provider_view(provider: &CatalogProvider, configured: bool) -> Provider {
     Provider {
         id: provider.id().clone(),
         display_name: provider.display_name().to_string(),
         adapter: provider.adapter().as_str().to_string(),
         base_url: provider.base_url().to_string(),
-        api_key_url: entry.policy.api_key_url.clone(),
+        api_key_url: provider.api_key_url().map(str::to_string),
         priority: provider.priority(),
         aliases: provider.aliases().to_vec(),
         model_count: u32::try_from(catalog::provider_models(provider).len()).unwrap_or(u32::MAX),

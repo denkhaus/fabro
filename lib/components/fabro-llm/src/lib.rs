@@ -3,8 +3,9 @@
 //! lithos owns the LLM vocabulary, the provider catalog, the wire codecs, and
 //! the client. This crate adds what is specific to Fabro:
 //!
-//! - building the catalog from lithos built-ins, Fabro's policy layer, and the
-//!   operator `[llm]` overlay ([`catalog`]);
+//! - building the catalog from the lithos built-ins and the operator `[llm]`
+//!   overlay, and the catalog queries Fabro's dispatch boundaries share
+//!   ([`catalog`]);
 //! - Fabro's passthrough policy for selections made before a request exists
 //!   ([`selection`]); at request time the lithos resolver enforces `enabled`
 //!   and `stands_in_for` itself;
@@ -33,7 +34,7 @@ pub mod structured;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 
-pub use catalog::{FABRO_POLICY_TOML, build_catalog, default_catalog};
+pub use catalog::{build_catalog, default_catalog};
 pub use client::{
     ClientOptions, FabroClient, LlmSetupError, RetryListener, RetryNotice, build_client,
     build_offline_client,

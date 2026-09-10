@@ -83,22 +83,22 @@ fn supports_install_api_key(provider: &CatalogProvider) -> bool {
 
 fn install_llm_provider_ids(catalog: &Catalog) -> Vec<ProviderId> {
     catalog::listed_providers(catalog)
-        .iter()
-        .filter(|entry| supports_install_api_key(entry.provider))
-        .map(|entry| entry.provider.id().clone())
+        .into_iter()
+        .filter(|provider| supports_install_api_key(provider))
+        .map(|provider| provider.id().clone())
         .collect()
 }
 
 fn provider_env_var_label(provider: &ProviderId, catalog: &Catalog) -> String {
     catalog::provider(catalog, provider.as_str())
-        .map(|entry| fabro_auth::secret_names(entry.provider).join(" / "))
+        .map(|provider| fabro_auth::secret_names(provider).join(" / "))
         .filter(|label| !label.is_empty())
         .unwrap_or_else(|| "API_KEY".to_string())
 }
 
 fn provider_vault_secret_name(provider: &ProviderId, catalog: &Catalog) -> String {
     catalog::provider(catalog, provider.as_str())
-        .and_then(|entry| fabro_auth::expected_secret_name(entry.provider))
+        .and_then(fabro_auth::expected_secret_name)
         .unwrap_or_else(|| format!("{}_API_KEY", provider.to_string().to_uppercase()))
 }
 

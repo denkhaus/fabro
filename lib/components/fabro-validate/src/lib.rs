@@ -221,9 +221,8 @@ base_url = "https://api.venice.ai/api/v1"
 auth = { type = "bearer" }
 default_model = "venice-large"
 
-[providers.acme-venice.metadata.fabro]
-agent_profile = "openai"
-credentials = ["env:VENICE_API_KEY"]
+[providers.acme-venice.metadata.agent]
+profile = "openai"
 
 [providers.acme-venice.models.venice-large]
 display_name = "Venice Large"

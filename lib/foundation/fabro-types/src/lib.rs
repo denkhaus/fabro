@@ -8,7 +8,6 @@ pub mod billing_rollup;
 pub mod blob_hash;
 pub mod blob_ref;
 pub mod catalog_api;
-pub mod catalog_policy;
 pub mod checkpoint;
 pub mod command_output;
 pub mod conclusion;
@@ -75,7 +74,6 @@ pub use billing::{
 pub use blob_hash::BlobHash;
 pub use blob_ref::{format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref};
 pub use catalog_api::{Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits, Provider};
-pub use catalog_policy::{ModelPolicy, ProviderPolicy};
 pub use checkpoint::Checkpoint;
 pub use command_output::{CommandOutputStream, CommandTermination};
 pub use conclusion::{Conclusion, StageSummary};

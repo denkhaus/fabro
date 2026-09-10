@@ -425,8 +425,8 @@ fn cli_client_options(args: &AgentArgs, styles: &'static Styles) -> ClientOption
     }
 }
 
-/// The catalog the standalone agent runs against: lithos built-ins, Fabro
-/// policy, and the operator's `[llm]` overlay from the active settings file.
+/// The catalog the standalone agent runs against: the lithos built-ins and
+/// the operator's `[llm]` overlay from the active settings file.
 #[expect(
     clippy::disallowed_methods,
     reason = "Standalone agent honors OPENAI_BASE_URL from the process environment."
@@ -958,19 +958,18 @@ base_url = "https://example.invalid/v1"
 auth = { type = "bearer" }
 default_model = "acme-aws-claude"
 
-[providers.acme-aws.metadata.fabro]
-agent_profile = "openai"
-credentials = ["env:ACME_API_KEY"]
+[providers.acme-aws.metadata.agent]
+profile = "openai"
 
 [providers.acme-aws.models.acme-aws-claude]
 display_name = "Acme AWS Claude"
 api_model = "acme-aws-claude"
 limits = { context_tokens = 1000, max_output_tokens = 500 }
 capabilities = { text = true, tools = true }
-
-[providers.acme-aws.models.acme-aws-claude.metadata.fabro]
 family = "claude"
-agent_profile = "anthropic"
+
+[providers.acme-aws.models.acme-aws-claude.metadata.agent]
+profile = "anthropic"
 "#;
 
     /// The same provider with no models, so its default comes from the
@@ -984,9 +983,8 @@ base_url = "https://example.invalid/v1"
 auth = { type = "bearer" }
 allow_passthrough = true
 
-[providers.acme-aws.metadata.fabro]
-agent_profile = "openai"
-credentials = ["env:ACME_API_KEY"]
+[providers.acme-aws.metadata.agent]
+profile = "openai"
 "#;
 
     fn acme_catalog() -> Catalog {

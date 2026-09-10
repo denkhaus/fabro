@@ -13,8 +13,8 @@
 //! - No selector picks the default offering (of the pinned provider, when one
 //!   is given).
 //!
-//! Only enabled providers and models take part. Disabled ones are invisible
-//! here, exactly as they are to the client's resolver.
+//! Only enabled providers take part. Disabled ones are invisible here,
+//! exactly as they are to the lithos resolver at request time.
 
 use std::collections::HashSet;
 use std::fmt;
@@ -115,7 +115,7 @@ pub fn ready_provider(
     }
 }
 
-/// Finds `selector` as an enabled model on an enabled provider.
+/// Finds `selector` as a model on an enabled provider.
 pub fn resolve_on_provider<'a>(
     catalog: &'a Catalog,
     provider: &ProviderId,
@@ -182,9 +182,9 @@ pub fn select_default<'a>(
     let eligible = canonical_eligible(catalog, eligible);
     let providers_with_defaults: Vec<_> = catalog::enabled_providers(catalog)
         .into_iter()
-        .filter_map(|entry| {
-            catalog::default_model(catalog, entry.provider.id().as_str())
-                .map(|model| (entry.provider.id().clone(), model))
+        .filter_map(|provider| {
+            catalog::default_model(catalog, provider.id().as_str())
+                .map(|model| (provider.id().clone(), model))
         })
         .collect();
     providers_with_defaults
@@ -350,8 +350,7 @@ mod tests {
 
     #[test]
     fn slash_selector_with_a_non_provider_prefix_matches_api_ids_on_a_pinned_provider() {
-        let catalog =
-            test_catalog_with_overlay("[providers.openrouter.metadata.fabro]\nenabled = true\n");
+        let catalog = test_catalog_with_overlay("[providers.openrouter]\nenabled = true\n");
         let selected = resolve_selection(
             &catalog,
             Some("openai/gpt-5.6-sol"),
@@ -409,8 +408,7 @@ mod tests {
             select(&catalog, "gpt-5.4", None, &eligible(&["openrouter"])),
             Err(ModelSelectionError::NoEligibleOffering { .. })
         ));
-        let enabled =
-            test_catalog_with_overlay("[providers.openrouter.metadata.fabro]\nenabled = true\n");
+        let enabled = test_catalog_with_overlay("[providers.openrouter]\nenabled = true\n");
         let entry = select(&enabled, "gpt-5.4", None, &eligible(&["openrouter"])).unwrap();
         assert_eq!(entry.provider.id(), &ProviderId::new("openrouter"));
     }

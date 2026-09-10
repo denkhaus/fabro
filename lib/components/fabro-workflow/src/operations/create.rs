@@ -746,9 +746,8 @@ mod tests {
             [providers.openrouter]
             priority = 25
             default_model = "gpt-5.6-sol"
-            
-            [providers.openrouter.metadata.fabro]
             enabled = true
+            
             "#,
         ))
     }

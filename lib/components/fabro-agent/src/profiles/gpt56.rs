@@ -237,7 +237,7 @@ mod tests {
     /// OpenRouter ships disabled in the built-in catalog.
     fn catalog_with_openrouter() -> Arc<Catalog> {
         Arc::new(test_catalog_with_overlay(
-            "[providers.openrouter.metadata.fabro]
+            "[providers.openrouter]
 enabled = true
 ",
         ))

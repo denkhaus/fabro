@@ -846,14 +846,14 @@ async fn put_install_llm(
 }
 
 fn install_catalog_provider(provider: &ProviderId) -> Result<&'static CatalogProvider, String> {
-    let entry = llm_catalog::provider(&INSTALL_CATALOG, provider.as_str())
+    let catalog_provider = llm_catalog::provider(&INSTALL_CATALOG, provider.as_str())
         .ok_or_else(|| format!("provider '{provider}' is not configured in the model catalog"))?;
-    if fabro_auth::accepts_api_key(entry.provider) {
-        Ok(entry.provider)
+    if fabro_auth::accepts_api_key(catalog_provider) {
+        Ok(catalog_provider)
     } else {
         Err(format!(
             "provider '{}' does not define an API-key credential path",
-            entry.provider.id()
+            catalog_provider.id()
         ))
     }
 }

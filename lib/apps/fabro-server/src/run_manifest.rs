@@ -1763,7 +1763,7 @@ mod tests {
 
     fn openrouter_catalog() -> Catalog {
         fabro_llm::test_support::test_catalog_with_overlay(
-            "[providers.openrouter.metadata.fabro]\nenabled = true\n",
+            "[providers.openrouter]\nenabled = true\n",
         )
     }
 
@@ -1883,9 +1883,8 @@ base_url = "{moonshot_url}"
 
 [providers.openrouter]
 base_url = "{openrouter_url}"
-
-[providers.openrouter.metadata.fabro]
 enabled = true
+
 "#
             ))
             .vault_entries([
@@ -3029,9 +3028,8 @@ base_url = "https://api.acme.test/v1"
 auth = { type = "bearer" }
 default_model = "acme-large"
 
-[providers.acme.metadata.fabro]
-agent_profile = "openai"
-credentials = ["env:ACME_API_KEY"]
+[providers.acme.metadata.agent]
+profile = "openai"
 
 [providers.acme.models."acme-large"]
 display_name = "Acme Large"

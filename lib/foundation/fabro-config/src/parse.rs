@@ -295,22 +295,21 @@ mod tests {
     #[test]
     fn llm_overlay_merges_across_layers() {
         let higher = r#"
-[llm.providers.openai.models."gpt-5.4".metadata.fabro]
+[llm.providers.openai.models."gpt-5.4"]
 small_default = true
 "#
         .parse::<SettingsLayer>()
         .unwrap();
         let lower = r#"
-[llm.providers.openai.models."gpt-5.4".metadata.fabro]
+[llm.providers.openai.models."gpt-5.4"]
 probe = true
 "#
         .parse::<SettingsLayer>()
         .unwrap();
         let merged = crate::Combine::combine(higher, lower);
-        let fabro =
-            &merged.llm.unwrap().0["providers"]["openai"]["models"]["gpt-5.4"]["metadata"]["fabro"];
-        assert_eq!(fabro["small_default"].as_bool(), Some(true));
-        assert_eq!(fabro["probe"].as_bool(), Some(true));
+        let model = &merged.llm.unwrap().0["providers"]["openai"]["models"]["gpt-5.4"];
+        assert_eq!(model["small_default"].as_bool(), Some(true));
+        assert_eq!(model["probe"].as_bool(), Some(true));
     }
 
     #[test]

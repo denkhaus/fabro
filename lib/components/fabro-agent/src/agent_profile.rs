@@ -40,7 +40,7 @@ pub trait AgentProfile: Send + Sync {
 
     fn knowledge_cutoff(&self) -> Option<String> {
         self.catalog_model()
-            .and_then(|entry| entry.policy.knowledge_cutoff)
+            .and_then(|entry| entry.model.knowledge_cutoff().map(str::to_string))
     }
 
     /// The catalog row for this profile's route, when the catalog knows it.

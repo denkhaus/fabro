@@ -2672,9 +2672,8 @@ base_url = {base_url}
 auth = {{ type = "bearer" }}
 default_model = "compact-model"
 
-[providers.compact.metadata.fabro]
-agent_profile = "openai"
-credentials = ["env:COMPACT_API_KEY"]
+[providers.compact.metadata.agent]
+profile = "openai"
 
 [providers.compact.models.compact-model]
 display_name = "Compact Model"
@@ -2834,8 +2833,6 @@ async fn workflow_persists_authoritative_openrouter_cost_for_agent_stage() {
         &format!(
             "[providers.openrouter]
 base_url = {}
-
-[providers.openrouter.metadata.fabro]
 enabled = true
 ",
             toml::Value::String(server.base_url()),

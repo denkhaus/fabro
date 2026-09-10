@@ -8,7 +8,7 @@ use fabro_llm::test_support::test_catalog;
 fn profile_context_window_matches_catalog_for_default_models() {
     let catalog = Arc::new(test_catalog());
     for provider in catalog::listed_providers(&catalog) {
-        let provider_id = provider.provider.id().clone();
+        let provider_id = provider.id().clone();
         let Some(default) = catalog::default_model(&catalog, provider_id.as_str()) else {
             // Deployment-defined providers (LiteLLM, Modal, Ollama) carry no
             // built-in default model.

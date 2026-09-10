@@ -2,17 +2,14 @@
 //!
 //! Operator model catalog overrides. The table uses the lithos-llm catalog
 //! schema verbatim, minus `schema_version`, and is applied as an overlay layer
-//! on top of the lithos built-in catalog and Fabro's policy layer:
+//! on top of the lithos built-in catalog:
 //!
 //! ```toml
-//! [llm.providers.moonshot]
+//! [llm.providers.openrouter]
 //! priority = 60
-//!
-//! [llm.providers.moonshot.metadata.fabro]
 //! enabled = true
-//! credentials = ["env:MOONSHOT_API_KEY", "vault:MOONSHOT_API_KEY"]
 //!
-//! [llm.providers.moonshot.models."kimi-k2.5".metadata.fabro]
+//! [llm.providers.openrouter.models."kimi-k2.5"]
 //! small_default = true
 //! ```
 //!
@@ -83,7 +80,6 @@ mod tests {
             r"
 [providers.acme]
 priority = 10
-[providers.acme.metadata.fabro]
 enabled = false
 ",
         );
@@ -92,19 +88,19 @@ enabled = false
 [providers.acme]
 priority = 5
 base_url = "https://acme.test"
-[providers.acme.metadata.fabro]
 enabled = true
-small_default = true
+[providers.acme.metadata.agent]
+profile = "openai"
 "#,
         );
         let merged = higher.combine(lower).0;
         let acme = &merged["providers"]["acme"];
         assert_eq!(acme["priority"].as_integer(), Some(10));
         assert_eq!(acme["base_url"].as_str(), Some("https://acme.test"));
-        assert_eq!(acme["metadata"]["fabro"]["enabled"].as_bool(), Some(false));
+        assert_eq!(acme["enabled"].as_bool(), Some(false));
         assert_eq!(
-            acme["metadata"]["fabro"]["small_default"].as_bool(),
-            Some(true)
+            acme["metadata"]["agent"]["profile"].as_str(),
+            Some("openai")
         );
     }
 

@@ -323,7 +323,10 @@ fn openai_responses_payload(text: &str) -> serde_json::Value {
 
 /// An operator-defined OpenAI-compatible provider `acme` offering one model,
 /// `acme-large`, with `credential` (`env:NAME` or `vault:NAME`).
-fn acme_overlay(base_url: &str, credential: &str) -> String {
+/// An operator-defined provider. Its API key is `ACME_API_KEY`, the name
+/// lithos derives from the provider id, whether it lives in the vault or the
+/// environment.
+fn acme_overlay(base_url: &str) -> String {
     format!(
         r#"
 [providers.acme]
@@ -335,21 +338,18 @@ auth = {{ type = "bearer" }}
 priority = 120
 default_model = "acme-large"
 
-[providers.acme.metadata.fabro]
-agent_profile = "openai"
-credentials = [{credential}]
+[providers.acme.metadata.agent]
+profile = "openai"
 
 [providers.acme.models."acme-large"]
 display_name = "Acme Large"
 api_model = "acme-large"
 limits = {{ context_tokens = 128000, max_output_tokens = 8192 }}
 capabilities = {{ text = true, tools = true }}
-
-[providers.acme.models."acme-large".metadata.fabro]
 probe = true
+
 "#,
         base_url = toml::Value::String(base_url.to_string()),
-        credential = toml::Value::String(credential.to_string()),
     )
 }
 
@@ -5591,10 +5591,7 @@ async fn validate_endpoint_returns_workflow_summary_without_preflight_checks() {
 #[tokio::test]
 async fn validate_endpoint_uses_app_state_catalog_for_model_diagnostics() {
     let state = TestAppStateBuilder::new()
-        .llm_overlay_toml(&acme_overlay(
-            "https://api.acme.test/v1",
-            "env:ACME_API_KEY",
-        ))
+        .llm_overlay_toml(&acme_overlay("https://api.acme.test/v1"))
         .build();
     let app = crate::test_support::build_test_router(state);
     let dot = r#"digraph Test {
@@ -8826,9 +8823,8 @@ auth = {{ type = "bearer" }}
 priority = 120
 default_model = "portable-model"
 
-[providers.direct.metadata.fabro]
-agent_profile = "openai"
-credentials = ["vault:DIRECT_API_KEY"]
+[providers.direct.metadata.agent]
+profile = "openai"
 
 [providers.direct.models.portable-model]
 display_name = "Portable (direct)"
@@ -8846,9 +8842,8 @@ auth = {{ type = "bearer" }}
 priority = 110
 default_model = "portable-model"
 
-[providers.aggregator.metadata.fabro]
-agent_profile = "openai"
-credentials = ["vault:AGGREGATOR_API_KEY"]
+[providers.aggregator.metadata.agent]
+profile = "openai"
 
 [providers.aggregator.models.portable-model]
 display_name = "Portable (aggregator)"
@@ -9011,9 +9006,8 @@ auth = {{ type = "bearer" }}
 priority = 120
 default_model = "acme-reasoner"
 
-[providers.acme.metadata.fabro]
-agent_profile = "openai"
-credentials = ["vault:ACME_API_KEY"]
+[providers.acme.metadata.agent]
+profile = "openai"
 
 [providers.acme.models.acme-reasoner]
 display_name = "Acme Reasoner"
@@ -9080,7 +9074,7 @@ async fn test_provider_credentials_uses_app_state_catalog() {
                 "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
             }));
     });
-    let overlay = acme_overlay(&upstream.base_url(), "vault:ACME_API_KEY");
+    let overlay = acme_overlay(&upstream.base_url());
     let state = TestAppStateBuilder::new()
         .runtime_settings(default_test_server_settings(), RunLayer::default())
         .max_concurrent_runs(5)
@@ -9200,7 +9194,7 @@ async fn list_models_marks_configured_true_when_provider_has_credential_material
 
 #[tokio::test]
 async fn list_models_marks_configured_false_when_provider_cannot_register() {
-    let overlay = acme_overlay("https://api.acme.test/v1", "env:ACME_API_KEY");
+    let overlay = acme_overlay("https://api.acme.test/v1");
     let state = TestAppStateBuilder::new()
         .runtime_settings(default_test_server_settings(), RunLayer::default())
         .max_concurrent_runs(5)
@@ -9270,7 +9264,7 @@ async fn list_models_unknown_provider_returns_empty_page() {
 
 #[tokio::test]
 async fn list_models_uses_app_state_catalog_overrides() {
-    let overlay = acme_overlay("https://api.acme.test/v1", "env:ACME_API_KEY");
+    let overlay = acme_overlay("https://api.acme.test/v1");
     let state = TestAppStateBuilder::new()
         .llm_overlay_toml(&overlay)
         .build();
@@ -9338,9 +9332,7 @@ async fn list_providers_marks_configured_per_provider_and_omits_secrets() {
     // this exact provider, not merely be populated.
     let catalog = state_test_catalog();
     let expected_model_count = fabro_llm::catalog::provider_models(
-        fabro_llm::catalog::provider(&catalog, "anthropic")
-            .expect("anthropic should be listed")
-            .provider,
+        fabro_llm::catalog::provider(&catalog, "anthropic").expect("anthropic should be listed"),
     )
     .len();
     assert_eq!(
@@ -9557,7 +9549,7 @@ async fn test_providers_auth_issue_returns_error_without_upstream_call() {
 async fn test_providers_registration_issue_returns_error_without_probe() {
     // An adapter lithos does not ship cannot be built, so the provider is
     // configured (it has a vault key) yet unavailable.
-    let overlay = acme_overlay("https://api.acme.test/v1", "vault:ACME_API_KEY").replace(
+    let overlay = acme_overlay("https://api.acme.test/v1").replace(
         "adapter = \"openai-compatible\"",
         "adapter = \"not-an-adapter\"",
     );
@@ -9639,16 +9631,11 @@ auth = {{ type = "bearer" }}
 priority = 50
 default_model = "zeta-probe"
 
-[providers.zeta.metadata.fabro]
-credentials = ["vault:ZETA_API_KEY"]
-
 [providers.zeta.models.zeta-probe]
 display_name = "Zeta Probe"
 api_model = "zeta-probe"
 limits = {{ context_tokens = 128000, max_output_tokens = 8192 }}
 capabilities = {{ text = true, tools = true }}
-
-[providers.zeta.models.zeta-probe.metadata.fabro]
 probe = true
 
 [providers.alpha]
@@ -9660,17 +9647,13 @@ auth = {{ type = "bearer" }}
 priority = 40
 default_model = "alpha-probe"
 
-[providers.alpha.metadata.fabro]
-credentials = ["vault:ALPHA_API_KEY"]
-
 [providers.alpha.models.alpha-probe]
 display_name = "Alpha Probe"
 api_model = "alpha-probe"
 limits = {{ context_tokens = 128000, max_output_tokens = 8192 }}
 capabilities = {{ text = true, tools = true }}
-
-[providers.alpha.models.alpha-probe.metadata.fabro]
 probe = true
+
 "#,
         base_url = toml::Value::String(server.base_url()),
     );
@@ -18678,7 +18661,7 @@ async fn create_completion_default_model_uses_app_state_catalog() {
             .header("content-type", "application/json")
             .json_body(json!({"error": {"message": "expected test failure"}}));
     });
-    let overlay = acme_overlay(&upstream.base_url(), "vault:ACME_API_KEY");
+    let overlay = acme_overlay(&upstream.base_url());
     let state = TestAppStateBuilder::new()
         .llm_overlay_toml(&overlay)
         .vault_entries([("ACME_API_KEY", "acme-test-key")])

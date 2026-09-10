@@ -168,7 +168,7 @@ async fn make_twin_client(twin: &OpenAiTwinOptions) -> Client {
 /// resolves the OpenAI-compatible codec the twin speaks.
 fn litellm_twin_overlay(base_url: &str) -> String {
     format!(
-        "[providers.litellm]\nbase_url = {}\n\n[providers.litellm.metadata.fabro]\nenabled = true\n",
+        "[providers.litellm]\nbase_url = {}\nenabled = true\n",
         toml::Value::String(base_url.to_string())
     )
 }

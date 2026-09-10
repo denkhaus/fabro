@@ -172,7 +172,7 @@ mod tests {
     /// selectable. Enable it the way they would, to observe gateway routing.
     fn catalog_with_openrouter() -> Arc<Catalog> {
         Arc::new(test_catalog_with_overlay(
-            "[providers.openrouter.metadata.fabro]
+            "[providers.openrouter]
 enabled = true
 ",
         ))

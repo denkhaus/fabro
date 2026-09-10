@@ -1,20 +1,22 @@
-//! Catalog construction and Fabro-policy queries.
+//! Catalog construction and the queries Fabro's dispatch boundaries share.
 //!
-//! Layer order is fixed: lithos built-ins, then Fabro's policy layer, then the
-//! operator's `[llm]` overlay. Every query here reads Fabro policy from the
-//! `metadata.fabro` namespace and never bypasses `enabled`.
+//! Layer order is fixed: lithos built-ins, then the operator's `[llm]`
+//! overlay. Provider and model facts, `enabled`, `stands_in_for`,
+//! `small_default`, and `probe` are lithos core fields. The agent harness a
+//! model expects lives in the shared `metadata.agent` namespace, which Pebble
+//! reads too. Every query here skips disabled providers.
 
 use std::collections::{BTreeMap, HashSet};
 
 use fabro_config::LlmLayer;
 use fabro_static::EnvVars;
-use fabro_types::catalog_policy::{self, ModelPolicy, ProviderPolicy};
 use fabro_types::{AgentProfileKind, Cost, ModelId, ModelRef, ProviderId, TokenCounts};
-use lithos_llm::catalog::{Catalog, CatalogError, CatalogModel, CatalogProvider};
+use lithos_llm::catalog::{Catalog, CatalogError, CatalogModel, CatalogProvider, Metadata};
 use lithos_llm::resolver::ResolvedRoute;
+use serde::Deserialize;
 
-/// Fabro's policy layer, applied above the lithos built-ins.
-pub const FABRO_POLICY_TOML: &str = include_str!("../catalog/fabro-policy.toml");
+/// The metadata namespace agent harnesses read.
+const AGENT_METADATA_NAMESPACE: &str = "agent";
 
 /// Builds the effective catalog.
 ///
@@ -25,9 +27,7 @@ pub fn build_catalog(
     overlay: &LlmLayer,
     env_lookup: &dyn Fn(&str) -> Option<String>,
 ) -> Result<Catalog, CatalogError> {
-    let mut builder = Catalog::builder()
-        .with_builtin()
-        .toml_layer("fabro-policy.toml", FABRO_POLICY_TOML)?;
+    let mut builder = Catalog::builder().with_builtin();
     if !overlay.is_empty() {
         let mut document = overlay.to_overlay_toml();
         document.insert_str(0, "schema_version = 1\n");
@@ -43,50 +43,78 @@ pub fn build_catalog(
     builder.build()
 }
 
-/// A provider with its Fabro policy attached.
-#[derive(Debug, Clone)]
-pub struct ProviderEntry<'a> {
-    pub provider: &'a CatalogProvider,
-    pub policy:   ProviderPolicy,
-}
-
-/// A model with its Fabro policy attached.
-#[derive(Debug, Clone)]
-pub struct ModelEntry<'a> {
-    pub provider: &'a CatalogProvider,
-    pub model:    &'a CatalogModel,
-    pub policy:   ModelPolicy,
-}
-
-impl ModelEntry<'_> {
-    /// Whether requests to this model reason when no effort is requested.
-    ///
-    /// Fabro policy can state it outright. Otherwise a model that supports
-    /// reasoning and takes named effort levels reasons by default, while one
-    /// that needs an explicit thinking budget does not.
-    #[must_use]
-    pub fn reasons_by_default(&self) -> bool {
-        self.policy.reasoning_by_default.unwrap_or_else(|| {
-            self.model.capabilities().reasoning().is_supported()
-                && self.model.protocol_options().reasoning_effort_levels
-        })
-    }
-
-    #[must_use]
-    pub fn agent_profile(&self) -> AgentProfileKind {
-        catalog_policy::effective_agent_profile(self.provider, self.model)
-    }
-}
-
-/// The catalog with no operator overlay: lithos built-ins plus Fabro policy.
+/// The catalog with no operator overlay: the lithos built-ins.
 ///
 /// Used where no settings file is in play, such as the standalone hook
 /// runner. Servers and the CLI build from the operator's `[llm]` overlay
 /// with [`build_catalog`] instead.
 #[must_use]
 pub fn default_catalog() -> Catalog {
-    build_catalog(&LlmLayer::default(), &|_| None)
-        .expect("the built-in catalog and Fabro policy layer always build")
+    build_catalog(&LlmLayer::default(), &|_| None).expect("the built-in catalog always builds")
+}
+
+/// A model on the provider that offers it.
+#[derive(Debug, Clone)]
+pub struct ModelEntry<'a> {
+    pub provider: &'a CatalogProvider,
+    pub model:    &'a CatalogModel,
+}
+
+impl ModelEntry<'_> {
+    /// Whether requests to this model reason when no effort is requested.
+    ///
+    /// The catalog can state it outright under `metadata.agent`. Otherwise a
+    /// model that supports reasoning and takes named effort levels reasons by
+    /// default, while one that needs an explicit thinking budget does not.
+    #[must_use]
+    pub fn reasons_by_default(&self) -> bool {
+        agent_metadata(self.model.metadata())
+            .reasoning_by_default
+            .or(agent_metadata(self.provider.metadata()).reasoning_by_default)
+            .unwrap_or_else(|| {
+                self.model.capabilities().reasoning().is_supported()
+                    && self.model.protocol_options().reasoning_effort_levels
+            })
+    }
+
+    /// The agent harness this model runs under: the model's own answer, then
+    /// the provider's, then the profile implied by the provider's adapter.
+    #[must_use]
+    pub fn agent_profile(&self) -> AgentProfileKind {
+        agent_metadata(self.model.metadata())
+            .profile
+            .unwrap_or_else(|| provider_agent_profile(self.provider))
+    }
+}
+
+/// The `metadata.agent` namespace on a catalog entry. Malformed metadata
+/// falls back to the defaults; the lithos built-ins are validated in lithos.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct AgentMetadata {
+    profile:              Option<AgentProfileKind>,
+    reasoning_by_default: Option<bool>,
+}
+
+fn agent_metadata(metadata: &Metadata) -> AgentMetadata {
+    metadata
+        .namespace::<AgentMetadata>(AGENT_METADATA_NAMESPACE)
+        .ok()
+        .flatten()
+        .unwrap_or_default()
+}
+
+/// The agent profile a provider's models run under unless a model row says
+/// otherwise: the provider's `metadata.agent.profile`, else the profile
+/// implied by its wire protocol.
+fn provider_agent_profile(provider: &CatalogProvider) -> AgentProfileKind {
+    agent_metadata(provider.metadata())
+        .profile
+        .unwrap_or_else(|| match provider.adapter().as_str() {
+            "anthropic" | "bedrock" => AgentProfileKind::Anthropic,
+            "gemini" => AgentProfileKind::Gemini,
+            _ => AgentProfileKind::OpenAi,
+        })
 }
 
 /// Estimates the catalog cost of `usage` on `model`, when the catalog prices
@@ -101,21 +129,16 @@ pub fn estimate_cost(catalog: &Catalog, model: &ModelRef, usage: TokenCounts) ->
 
 /// Enabled providers, highest priority first, ties broken by id.
 #[must_use]
-pub fn enabled_providers(catalog: &Catalog) -> Vec<ProviderEntry<'_>> {
+pub fn enabled_providers(catalog: &Catalog) -> Vec<&CatalogProvider> {
     let mut providers: Vec<_> = catalog
         .providers()
-        .map(|provider| ProviderEntry {
-            provider,
-            policy: catalog_policy::provider_policy(provider),
-        })
-        .filter(|entry| entry.policy.is_enabled())
+        .filter(|provider| provider.is_enabled())
         .collect();
     providers.sort_by(|left, right| {
         right
-            .provider
             .priority()
-            .cmp(&left.provider.priority())
-            .then_with(|| left.provider.id().cmp(right.provider.id()))
+            .cmp(&left.priority())
+            .then_with(|| left.id().cmp(right.id()))
     });
     providers
 }
@@ -123,10 +146,10 @@ pub fn enabled_providers(catalog: &Catalog) -> Vec<ProviderEntry<'_>> {
 /// Enabled providers that Fabro lists to operators. Stand-in providers such
 /// as `openai-codex` route requests but are not offerings of their own.
 #[must_use]
-pub fn listed_providers(catalog: &Catalog) -> Vec<ProviderEntry<'_>> {
+pub fn listed_providers(catalog: &Catalog) -> Vec<&CatalogProvider> {
     enabled_providers(catalog)
         .into_iter()
-        .filter(|entry| entry.policy.stands_in_for.is_none())
+        .filter(|provider| provider.stands_in_for().is_none())
         .collect()
 }
 
@@ -135,82 +158,70 @@ pub fn listed_providers(catalog: &Catalog) -> Vec<ProviderEntry<'_>> {
 pub fn enabled_provider_ids(catalog: &Catalog) -> HashSet<ProviderId> {
     enabled_providers(catalog)
         .into_iter()
-        .map(|entry| entry.provider.id().clone())
+        .map(|provider| provider.id().clone())
         .collect()
 }
 
 /// Looks up an enabled provider by id or alias.
 #[must_use]
-pub fn provider<'a>(catalog: &'a Catalog, selector: &str) -> Option<ProviderEntry<'a>> {
-    let provider = catalog.provider(selector).ok()?;
-    let policy = catalog_policy::provider_policy(provider);
-    policy
-        .is_enabled()
-        .then_some(ProviderEntry { provider, policy })
+pub fn provider<'a>(catalog: &'a Catalog, selector: &str) -> Option<&'a CatalogProvider> {
+    catalog
+        .provider(selector)
+        .ok()
+        .filter(|provider| provider.is_enabled())
 }
 
 /// Canonicalizes a provider id or alias to its catalog id, when enabled.
 #[must_use]
 pub fn canonical_provider_id(catalog: &Catalog, selector: &str) -> Option<ProviderId> {
-    provider(catalog, selector).map(|entry| entry.provider.id().clone())
+    provider(catalog, selector).map(|provider| provider.id().clone())
 }
 
-/// Enabled models of an enabled provider, in catalog order.
+/// The models of a provider, in catalog order.
 #[must_use]
 pub fn provider_models(provider: &CatalogProvider) -> Vec<ModelEntry<'_>> {
     provider
         .models()
-        .map(|model| ModelEntry {
-            provider,
-            model,
-            policy: catalog_policy::model_policy(model),
-        })
-        .filter(|entry| entry.policy.is_enabled())
+        .map(|model| ModelEntry { provider, model })
         .collect()
 }
 
-/// Every enabled model across listed providers, provider priority order.
+/// Every model across listed providers, provider priority order.
 #[must_use]
 pub fn models(catalog: &Catalog) -> Vec<ModelEntry<'_>> {
     listed_providers(catalog)
         .into_iter()
-        .flat_map(|entry| provider_models(entry.provider))
+        .flat_map(provider_models)
         .collect()
 }
 
-/// Finds an enabled model on an enabled provider by id, alias, or wire id.
+/// Finds a model on an enabled provider by id, alias, or wire id.
 #[must_use]
 pub fn model_on_provider<'a>(
     catalog: &'a Catalog,
     provider_selector: &str,
     model_selector: &str,
 ) -> Option<ModelEntry<'a>> {
-    let entry = provider(catalog, provider_selector)?;
+    let provider = provider(catalog, provider_selector)?;
     // lithos matches ids and aliases. The provider's wire id (an aggregator's
     // `vendor/model`) is accepted too, so a selector copied from the
     // provider's own listing lands on the catalog row instead of passing
     // through unknown.
-    let model = entry.provider.model(model_selector).or_else(|| {
-        entry
-            .provider
+    let model = provider.model(model_selector).or_else(|| {
+        provider
             .models()
             .find(|model| model.api_model() == model_selector)
     })?;
-    let policy = catalog_policy::model_policy(model);
-    policy.is_enabled().then_some(ModelEntry {
-        provider: entry.provider,
-        model,
-        policy,
-    })
+    Some(ModelEntry { provider, model })
 }
 
-/// Enabled models matching `selector` by id or alias, ordered like lithos
-/// selection: exact ids before aliases, then provider priority.
+/// Models matching `selector` by id or alias, ordered like lithos selection:
+/// exact ids before aliases, then provider priority.
 #[must_use]
 pub fn models_matching<'a>(catalog: &'a Catalog, selector: &str) -> Vec<ModelEntry<'a>> {
     let mut matches: Vec<_> = enabled_providers(catalog)
         .into_iter()
-        .flat_map(|entry| provider_models(entry.provider))
+        .flat_map(provider_models)
         .filter(|entry| {
             entry.model.id().as_str() == selector
                 || entry.model.aliases().iter().any(|alias| alias == selector)
@@ -220,7 +231,7 @@ pub fn models_matching<'a>(catalog: &'a Catalog, selector: &str) -> Vec<ModelEnt
     matches
 }
 
-/// Whether `selector` names an enabled model on any enabled provider.
+/// Whether `selector` names a model on any enabled provider.
 #[must_use]
 pub fn is_model_selector(catalog: &Catalog, selector: &str) -> bool {
     !models_matching(catalog, selector).is_empty()
@@ -232,22 +243,22 @@ pub fn is_provider_selector(catalog: &Catalog, selector: &str) -> bool {
     provider(catalog, selector).is_some()
 }
 
-/// The enabled default model of an enabled provider.
+/// The default model of an enabled provider.
 #[must_use]
 pub fn default_model<'a>(catalog: &'a Catalog, provider_selector: &str) -> Option<ModelEntry<'a>> {
-    let entry = provider(catalog, provider_selector)?;
-    let default = entry.provider.default_model()?;
-    model_on_provider(catalog, entry.provider.id().as_str(), default)
+    let provider = provider(catalog, provider_selector)?;
+    let default = provider.default_model()?;
+    model_on_provider(catalog, provider.id().as_str(), default)
 }
 
 /// The model Fabro probes a provider with: the `probe` model, else the
 /// provider default.
 #[must_use]
 pub fn probe_model<'a>(catalog: &'a Catalog, provider_selector: &str) -> Option<ModelEntry<'a>> {
-    let entry = provider(catalog, provider_selector)?;
-    provider_models(entry.provider)
+    let provider = provider(catalog, provider_selector)?;
+    provider_models(provider)
         .into_iter()
-        .find(|model| model.policy.probe)
+        .find(|entry| entry.model.is_probe())
         .or_else(|| default_model(catalog, provider_selector))
 }
 
@@ -262,9 +273,9 @@ pub fn default_for_ready<'a>(
     let providers = enabled_providers(catalog);
     providers
         .iter()
-        .filter(|entry| ready.contains(entry.provider.id()))
+        .filter(|provider| ready.contains(provider.id()))
         .chain(providers.iter())
-        .find_map(|entry| default_model(catalog, entry.provider.id().as_str()))
+        .find_map(|provider| default_model(catalog, provider.id().as_str()))
 }
 
 /// The small utility model across `ready` providers: the first
@@ -274,12 +285,11 @@ pub fn small_default_for_ready<'a>(
     catalog: &'a Catalog,
     ready: &HashSet<ProviderId>,
 ) -> Option<ModelEntry<'a>> {
-    let providers = enabled_providers(catalog);
-    providers
-        .iter()
-        .filter(|entry| ready.contains(entry.provider.id()))
-        .flat_map(|entry| provider_models(entry.provider))
-        .find(|model| model.policy.small_default)
+    enabled_providers(catalog)
+        .into_iter()
+        .filter(|provider| ready.contains(provider.id()))
+        .flat_map(provider_models)
+        .find(|entry| entry.model.is_small_default())
         .or_else(|| default_for_ready(catalog, ready))
 }
 
@@ -306,14 +316,11 @@ pub fn agent_profile(
     provider_selector: &str,
     model_selector: Option<&str>,
 ) -> Option<AgentProfileKind> {
-    let entry = provider(catalog, provider_selector)?;
-    let model = model_selector.and_then(|selector| entry.provider.model(selector));
+    let provider = provider(catalog, provider_selector)?;
+    let model = model_selector.and_then(|selector| provider.model(selector));
     Some(match model {
-        Some(model) => catalog_policy::effective_agent_profile(entry.provider, model),
-        None => entry
-            .policy
-            .agent_profile
-            .unwrap_or_else(|| catalog_policy::default_agent_profile(entry.provider)),
+        Some(model) => ModelEntry { provider, model }.agent_profile(),
+        None => provider_agent_profile(provider),
     })
 }
 
@@ -331,7 +338,7 @@ pub fn closest_model<'a>(
         .pricing()
         .and_then(|pricing| pricing.input_usd_micros_per_million)
         .unwrap_or(0);
-    provider_models(target.provider)
+    provider_models(target)
         .into_iter()
         .filter(|entry| {
             let caps = entry.model.capabilities();
@@ -354,12 +361,12 @@ pub fn closest_model<'a>(
 pub fn model_ids_by_provider(catalog: &Catalog) -> BTreeMap<ProviderId, Vec<ModelId>> {
     listed_providers(catalog)
         .into_iter()
-        .map(|entry| {
+        .map(|provider| {
             (
-                entry.provider.id().clone(),
-                provider_models(entry.provider)
+                provider.id().clone(),
+                provider_models(provider)
                     .into_iter()
-                    .map(|model| model.model.id().clone())
+                    .map(|entry| entry.model.id().clone())
                     .collect(),
             )
         })
@@ -372,11 +379,11 @@ mod tests {
     use crate::test_support::test_catalog;
 
     #[test]
-    fn policy_layer_builds_over_the_builtins() {
+    fn builtins_ship_fabro_defaults() {
         let catalog = test_catalog();
         let ids: Vec<_> = enabled_providers(&catalog)
             .iter()
-            .map(|entry| entry.provider.id().to_string())
+            .map(|provider| provider.id().to_string())
             .collect();
         assert_eq!(ids[0], "anthropic");
         assert!(ids.contains(&"openai".to_string()));
@@ -387,7 +394,7 @@ mod tests {
         assert!(
             !listed_providers(&catalog)
                 .iter()
-                .any(|entry| entry.provider.id().as_str() == "openai-codex"),
+                .any(|provider| provider.id().as_str() == "openai-codex"),
             "stand-in providers are not listed"
         );
     }
@@ -399,7 +406,6 @@ mod tests {
                 r"
 [providers.openai]
 priority = 500
-[providers.openai.metadata.fabro]
 enabled = false
 ",
             )
@@ -410,7 +416,7 @@ enabled = false
         assert_eq!(
             catalog.provider("openai").unwrap().priority(),
             500,
-            "overlay values win over the policy layer"
+            "overlay values win over the built-ins"
         );
     }
 
@@ -427,7 +433,7 @@ enabled = false
     }
 
     #[test]
-    fn probe_and_small_default_follow_policy() {
+    fn probe_and_small_default_follow_the_catalog() {
         let catalog = test_catalog();
         assert_eq!(
             probe_model(&catalog, "openai").unwrap().model.id().as_str(),
@@ -488,11 +494,41 @@ enabled = false
         );
         assert_eq!(
             agent_profile(&catalog, "moonshot", None),
+            Some(AgentProfileKind::Kimi),
+            "a passthrough model on Moonshot takes the provider's Kimi profile"
+        );
+        assert_eq!(
+            agent_profile(&catalog, "deepseek", None),
             Some(AgentProfileKind::OpenAi)
+        );
+        assert_eq!(
+            agent_profile(&catalog, "openrouter", None),
+            None,
+            "disabled providers have no profile to offer"
         );
         assert_eq!(
             agent_profile(&catalog, "moonshot", Some("kimi-k3")),
             Some(AgentProfileKind::Kimi)
+        );
+        assert_eq!(
+            agent_profile(&catalog, "openai", Some("gpt-6-astra")),
+            Some(AgentProfileKind::Gpt6)
+        );
+        assert_eq!(
+            agent_profile(&catalog, "anthropic", Some("claude-sonnet-4.5")),
+            Some(AgentProfileKind::Anthropic)
+        );
+    }
+
+    #[test]
+    fn reasoning_by_default_reads_agent_metadata_then_capabilities() {
+        let catalog = test_catalog();
+        let kimi = model_on_provider(&catalog, "moonshot", "kimi-k2.5").unwrap();
+        assert!(kimi.reasons_by_default(), "the catalog row says so");
+        let sonnet = model_on_provider(&catalog, "anthropic", "claude-sonnet-4.5").unwrap();
+        assert!(
+            !sonnet.reasons_by_default(),
+            "a thinking-budget model reasons only when asked"
         );
     }
 }

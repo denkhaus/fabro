@@ -909,13 +909,13 @@ fn api_model_on_eligible(
     eligible: &std::collections::HashSet<ProviderId>,
 ) -> Option<(ProviderId, String)> {
     catalog::enabled_providers(catalog)
-        .iter()
-        .filter(|entry| eligible.contains(entry.provider.id()))
-        .find_map(|entry| {
-            catalog::provider_models(entry.provider)
+        .into_iter()
+        .filter(|provider| eligible.contains(provider.id()))
+        .find_map(|provider| {
+            catalog::provider_models(provider)
                 .into_iter()
                 .find(|model| model.model.api_model() == api_model)
-                .map(|model| (entry.provider.id().clone(), model.model.id().to_string()))
+                .map(|model| (provider.id().clone(), model.model.id().to_string()))
         })
 }
 
@@ -1554,9 +1554,8 @@ default_model = "gpt-5.6-sol"
 
 [providers.openrouter]
 default_model = "gpt-5.6-sol"
-
-[providers.openrouter.metadata.fabro]
 enabled = true
+
 "#,
         )
     }

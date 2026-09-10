@@ -2065,7 +2065,9 @@ mod tests {
     }
 
     /// An OpenAI-compatible mock provider served by `server`, with one model.
-    fn mock_provider_overlay(provider: &str, model: &str, base_url: &str, env_var: &str) -> String {
+    /// Its API key is the name lithos derives from the provider id, such as
+    /// `MOCK_API_KEY`.
+    fn mock_provider_overlay(provider: &str, model: &str, base_url: &str) -> String {
         format!(
             r#"
 [providers.{provider}]
@@ -2076,9 +2078,8 @@ base_url = {base_url}
 auth = {{ type = "bearer" }}
 default_model = "{model}"
 
-[providers.{provider}.metadata.fabro]
-agent_profile = "openai"
-credentials = ["env:{env_var}"]
+[providers.{provider}.metadata.agent]
+profile = "openai"
 
 [providers.{provider}.models.{model}]
 display_name = "{model}"
@@ -2095,7 +2096,6 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
             "mock",
             "mock-model",
             &server.base_url(),
-            "MOCK_API_KEY",
         )))
     }
 
@@ -2103,7 +2103,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     /// would so their models become fallback targets.
     fn enabled_fallback_catalog() -> Arc<Catalog> {
         Arc::new(test_catalog_with_overlay(
-            "[providers.modal.metadata.fabro]\nenabled = true\n\n[providers.openrouter.metadata.fabro]\nenabled = true\n",
+            "[providers.modal]\nenabled = true\n\n[providers.openrouter]\nenabled = true\n",
         ))
     }
 
@@ -2132,13 +2132,11 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
                 "primary",
                 "test-model",
                 &format!("{}/primary", server.base_url()),
-                "PRIMARY_API_KEY",
             ),
             mock_provider_overlay(
                 "fallback",
                 "test-model",
                 &format!("{}/fallback", server.base_url()),
-                "FALLBACK_API_KEY",
             ),
         );
         let catalog = Arc::new(test_catalog_with_overlay(&overlay));
@@ -4073,7 +4071,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         }))
     }
 
-    const OPENROUTER_ENABLED: &str = "[providers.openrouter.metadata.fabro]\nenabled = true\n";
+    const OPENROUTER_ENABLED: &str = "[providers.openrouter]\nenabled = true\n";
 
     /// An operator-defined OpenAI-compatible provider whose models take the
     /// provider's `openai` agent profile.
@@ -4086,19 +4084,17 @@ base_url = "https://api.acme.test/v1"
 auth = { type = "bearer" }
 default_model = "acme-llama"
 
-[providers.acme.metadata.fabro]
-agent_profile = "openai"
-credentials = ["env:ACME_API_KEY"]
+[providers.acme.metadata.agent]
+profile = "openai"
 
 [providers.acme.models.acme-llama]
 display_name = "Acme Llama"
 api_model = "acme-llama"
 limits = { context_tokens = 131072, max_output_tokens = 8192 }
 capabilities = { text = true, tools = true }
-
-[providers.acme.models.acme-llama.metadata.fabro]
 family = "llama"
-training = "2026-01"
+training_cutoff = "2026-01"
+
 "#;
 
     /// The same provider serving a Claude model that overrides the profile.
@@ -4111,9 +4107,8 @@ base_url = "https://api.acme.test/v1"
 auth = { type = "bearer" }
 default_model = "acme-claude"
 
-[providers.acme.metadata.fabro]
-agent_profile = "openai"
-credentials = ["env:ACME_API_KEY"]
+[providers.acme.metadata.agent]
+profile = "openai"
 
 [providers.acme.models.acme-claude]
 display_name = "Acme Claude"
@@ -4121,11 +4116,11 @@ aliases = ["ac"]
 api_model = "acme-claude"
 limits = { context_tokens = 131072, max_output_tokens = 8192 }
 capabilities = { text = true, tools = true }
-
-[providers.acme.models.acme-claude.metadata.fabro]
 family = "claude"
-training = "2026-01"
-agent_profile = "anthropic"
+training_cutoff = "2026-01"
+
+[providers.acme.models.acme-claude.metadata.agent]
+profile = "anthropic"
 "#;
 
     #[tokio::test]

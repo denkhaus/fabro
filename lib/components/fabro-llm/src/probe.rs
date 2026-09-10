@@ -104,10 +104,10 @@ pub async fn probe_provider_with_api_key(
     api_key: String,
     timeout: Duration,
 ) -> Result<ModelTestOutcome, ApiKeyProbeError> {
-    let entry = catalog::provider(&catalog, provider.as_str())
+    let catalog_provider = catalog::provider(&catalog, provider.as_str())
         .ok_or_else(|| ApiKeyProbeError::UnknownProvider(provider.to_string()))?;
-    let provider_id = entry.provider.id().clone();
-    if !fabro_auth::accepts_api_key(entry.provider) {
+    let provider_id = catalog_provider.id().clone();
+    if !fabro_auth::accepts_api_key(catalog_provider) {
         return Err(ApiKeyProbeError::NoApiKeyPath(provider_id));
     }
     let model = catalog::probe_model(&catalog, provider_id.as_str())

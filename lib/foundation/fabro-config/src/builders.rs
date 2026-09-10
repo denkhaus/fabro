@@ -693,10 +693,7 @@ adapter = "openai-compatible"
 codec = "openai-chat"
 base_url = "https://api.acme.test/v1"
 auth = { type = "bearer" }
-
-[llm.providers.acme.metadata.fabro]
 enabled = true
-credentials = ["env:ACME_API_KEY"]
 
 [llm.providers.acme.models."acme-large"]
 display_name = "Acme Large"
@@ -710,7 +707,7 @@ api_model = "acme-large"
         let overlay = settings.llm_overlay.0;
         let acme = &overlay["providers"]["acme"];
         assert_eq!(acme["display_name"].as_str(), Some("Acme"));
-        assert_eq!(acme["metadata"]["fabro"]["enabled"].as_bool(), Some(true));
+        assert_eq!(acme["enabled"].as_bool(), Some(true));
         assert_eq!(
             acme["models"]["acme-large"]["api_model"].as_str(),
             Some("acme-large")

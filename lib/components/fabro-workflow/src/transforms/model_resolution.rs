@@ -174,9 +174,8 @@ auth = { type = "bearer" }
 priority = 200
 default_model = "venice-large"
 
-[providers.acme-venice.metadata.fabro]
-agent_profile = "openai"
-credentials = ["env:VENICE_API_KEY"]
+[providers.acme-venice.metadata.agent]
+profile = "openai"
 
 [providers.acme-venice.models.venice-large]
 display_name = "Venice Large"
@@ -355,7 +354,7 @@ capabilities = { text = true, tools = true }
     #[test]
     fn fallback_resolution_keeps_ready_preference_for_unpinned_nodes() {
         let catalog = Arc::new(test_catalog_with_overlay(
-            "[providers.openrouter.metadata.fabro]\nenabled = true\n",
+            "[providers.openrouter]\nenabled = true\n",
         ));
         let mut graph = Graph::new("test");
         let mut portable = Node::new("portable");

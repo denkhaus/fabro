@@ -467,7 +467,7 @@ mod tests {
 
     /// OpenRouter ships disabled, so an operator opts in before its models are
     /// selectable.
-    const OPENROUTER_ENABLED: &str = "[providers.openrouter.metadata.fabro]\nenabled = true\n";
+    const OPENROUTER_ENABLED: &str = "[providers.openrouter]\nenabled = true\n";
 
     fn native_tool_options(
         profile_kind: AgentProfileKind,

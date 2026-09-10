@@ -405,7 +405,7 @@ mod tests {
     }
 
     fn openrouter_catalog() -> Catalog {
-        test_catalog_with_overlay("[providers.openrouter.metadata.fabro]\nenabled = true\n")
+        test_catalog_with_overlay("[providers.openrouter]\nenabled = true\n")
     }
 
     #[test]
@@ -508,7 +508,7 @@ mod tests {
     #[test]
     fn resolves_the_requested_production_policy_as_independent_chains() {
         let catalog = test_catalog_with_overlay(
-            "[providers.modal.metadata.fabro]\nenabled = true\n\n[providers.openrouter.metadata.fabro]\nenabled = true\n",
+            "[providers.modal]\nenabled = true\n\n[providers.openrouter]\nenabled = true\n",
         );
         let eligible = [
             ProviderId::new("modal"),

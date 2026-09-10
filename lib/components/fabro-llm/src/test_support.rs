@@ -20,7 +20,7 @@ use lithos_llm::types::{
 
 use crate::client::{ClientOptions, build_client, build_offline_client};
 
-/// The lithos built-in catalog with Fabro's policy layer applied.
+/// The lithos built-in catalog, as Fabro ships it.
 #[must_use]
 pub fn test_catalog() -> Catalog {
     crate::build_catalog(&LlmLayer::default(), &|_| None).expect("test catalog should build")

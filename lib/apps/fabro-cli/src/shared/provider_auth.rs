@@ -61,7 +61,7 @@ fn default_catalog_for_provider_auth() -> Arc<Catalog> {
 pub(crate) fn provider_display_name(provider: &ProviderId, catalog: &Catalog) -> String {
     catalog::provider(catalog, provider.as_str()).map_or_else(
         || provider.to_string(),
-        |entry| entry.provider.display_name().to_string(),
+        |provider| provider.display_name().to_string(),
     )
 }
 
@@ -69,14 +69,14 @@ fn api_key_catalog_provider<'a>(
     provider: &ProviderId,
     catalog: &'a Catalog,
 ) -> Result<&'a CatalogProvider> {
-    let entry = catalog::provider(catalog, provider.as_str())
+    let provider = catalog::provider(catalog, provider.as_str())
         .with_context(|| format!("provider '{provider}' is not configured in the model catalog"))?;
     anyhow::ensure!(
-        fabro_auth::accepts_api_key(entry.provider),
+        fabro_auth::accepts_api_key(provider),
         "provider '{}' does not define an API-key credential path",
-        entry.provider.id()
+        provider.id()
     );
-    Ok(entry.provider)
+    Ok(provider)
 }
 
 pub(crate) async fn validate_api_key(
@@ -368,8 +368,6 @@ async fn await_user_response_from_source(
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::catalog_policy;
-
     use super::*;
 
     #[test]
@@ -385,8 +383,7 @@ mod tests {
             ProviderId::new("inception"),
         ] {
             let provider = api_key_catalog_provider(&provider, &catalog).unwrap();
-            let policy = catalog_policy::provider_policy(provider);
-            let url = policy.api_key_url.as_deref().unwrap_or_default();
+            let url = provider.api_key_url().unwrap_or_default();
             assert!(!url.is_empty(), "{} has empty URL", provider.id());
             assert!(url.starts_with("https://"), "{} URL: {url}", provider.id());
         }

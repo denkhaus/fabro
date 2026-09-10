@@ -39,7 +39,7 @@ pub(super) fn check_provider_known(
     }
     let valid: Vec<String> = catalog::listed_providers(catalog)
         .iter()
-        .map(|entry| entry.provider.id().to_string())
+        .map(|provider| provider.id().to_string())
         .collect();
     let valid_str = valid.join(", ");
     Some(Diagnostic {
