@@ -36,7 +36,7 @@ in the journal, never silently work around it.
 | `sd show <id> --format json` | One seed in full (the supported path — never parse `.seeds/issues.jsonl` by hand). |
 | `sd update <id> --status in_progress --assignee fabro` | Claim (the exact claim form). Takes NO `--format` flag (observed failure, run 01M0T9B7T6: `unknown option '--format'`). |
 | `sd update <id> --description "<full corrected body>"` | Record a stale-spec correction when the basis RESOLVES but the seed's named path/target/details are wrong (see STALE-BASIS CHECK, step 3) — run it BEFORE the claim. `--description` replaces the body wholesale: re-emit the FULL corrected body including the existing `Basis:` line, appending/amending only the corrected facts. Like the claim form above, takes NO `--format` flag. |
-| `sd close <id>` | NEVER yours — the deterministic Closeout step closes approved seeds. Do not run it. |
+| `sd close <id>` | NEVER yours — the deterministic Closeout step closes approved seeds — with exactly ONE exception (fabro-d183): the planner's superseded-close `sd close <id> --reason "superseded: fix landed in <sha>"` when a fix commit referencing the seed is already in base history and the acceptance criteria hold (reason string mandatory). Every other close form remains forbidden to every role. |
 
 
 - Quality gate: `just qualitygate` — a `qualitygate` recipe in the project
