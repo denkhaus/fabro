@@ -19,8 +19,6 @@ use sandbox_driver::{
     Capabilities, NetworkPolicy, Resources, SandboxSource, SandboxSpec as DriverSpec,
 };
 
-use crate::managed_labels;
-
 /// What an environment asks of a sandbox, provider-neutral.
 #[derive(Clone, Debug, Default)]
 pub struct SandboxOptions {
@@ -159,9 +157,9 @@ pub fn local_working_directory_from_environment(
 
 /// The driver spec every provider starts from: the environment's source
 /// (an image, a Dockerfile, or a managed directory when it names
-/// neither), the run's name and labels, the variables, resources, and
-/// network policy. A bundled provider's overlay adjusts what its backend
-/// needs.
+/// neither), the run's name, the environment's labels, variables,
+/// resources, and network policy. A bundled provider's overlay adjusts
+/// what its backend needs, and the ownership scope adds fabro's labels.
 pub(crate) fn base_spec(options: &SandboxOptions, run_id: Option<&RunId>) -> DriverSpec {
     let source = match (&options.image, &options.dockerfile) {
         (Some(reference), _) => SandboxSource::Image {
@@ -178,17 +176,9 @@ pub(crate) fn base_spec(options: &SandboxOptions, run_id: Option<&RunId>) -> Dri
     if let Some(run_id) = run_id {
         spec = spec.name(run_name(run_id));
     }
-    let user_labels: std::collections::HashMap<String, String> = options
-        .labels
-        .iter()
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect();
-    let mut labels: Vec<(String, String)> =
-        managed_labels::merge_for_run(Some(&user_labels), run_id)
-            .into_iter()
-            .collect();
-    labels.sort();
-    for (key, value) in labels {
+    // The environment's labels; fabro's ownership labels are stamped by the
+    // ownership scope the provider is connected through.
+    for (key, value) in &options.labels {
         spec = spec.label(key, value);
     }
     for (key, value) in &options.env {
@@ -279,13 +269,9 @@ mod tests {
             spec.labels.get("team").map(String::as_str),
             Some("platform")
         );
-        assert_eq!(
-            spec.labels.get("sh.fabro.managed").map(String::as_str),
-            Some("true")
-        );
-        assert_eq!(
-            spec.labels.get("sh.fabro.run_id").map(String::as_str),
-            Some("01HY0000000000000000000000")
+        assert!(
+            !spec.labels.contains_key("sh.fabro.managed"),
+            "ownership labels come from the scope, not the environment"
         );
         assert!(matches!(spec.network, NetworkPolicy::AllowAll));
     }
@@ -319,7 +305,6 @@ mod tests {
         assert_eq!(spec.resources.memory_mb, Some(3815));
         assert!(matches!(spec.network, NetworkPolicy::Block));
         assert!(spec.name.is_none());
-        assert!(!spec.labels.contains_key("sh.fabro.run_id"));
     }
 
     #[test]

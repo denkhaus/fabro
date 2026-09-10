@@ -17,8 +17,7 @@ use fabro_types::settings::server::ServerSandboxProviderSettings;
 use fabro_types::{RunId, SandboxProviderKind};
 use sandbox_driver::{
     HealthStatus, LifecycleTimers, Resources, SandboxProvider, SandboxSource,
-    SandboxSpec as DriverSpec, SnapshotFilter, SnapshotId, SnapshotProvider, SnapshotSource,
-    SnapshotSpec, SnapshotState,
+    SandboxSpec as DriverSpec, SnapshotId, SnapshotSource, SnapshotSpec,
 };
 use tokio::time;
 
@@ -333,57 +332,21 @@ async fn ensure_snapshot(
     provider: &dyn SandboxProvider,
     api_key: &str,
     inputs: &SnapshotInputs<'_>,
-    emit: &(dyn Fn(SandboxEvent) + Send + Sync),
 ) -> crate::Result<(SnapshotId, String)> {
     let name = snapshot_identity::snapshot_name(api_key, inputs)?;
     let snapshots = provider.snapshots().ok_or_else(|| {
         crate::Error::message("The Daytona provider does not expose snapshot management")
     })?;
-    let mut filter = SnapshotFilter::default();
-    filter.name = Some(name.clone());
-    let existing = snapshots
-        .list(&filter)
+    let id = snapshots
+        .ensure(
+            &snapshot_spec(&name, inputs),
+            DAYTONA_SNAPSHOT_ACTIVE_TIMEOUT,
+            None,
+        )
         .await
         .map_err(|error| {
-            crate::Error::context(format!("Failed to look up snapshot '{name}'"), error)
-        })?
-        .into_iter()
-        .find(|status| status.name.as_deref() == Some(name.as_str()));
-    let id = if let Some(status) = existing {
-        match status.state {
-            SnapshotState::Active => return Ok((status.id, name)),
-            SnapshotState::Error => {
-                return Err(crate::Error::message(format!(
-                    "Snapshot '{name}' is in an error state: {}",
-                    status.error_reason.unwrap_or_default()
-                )));
-            }
-            SnapshotState::Inactive => {
-                emit(SandboxEvent::SnapshotCreating { name: name.clone() });
-                snapshots
-                    .activate(&status.id, None)
-                    .await
-                    .map_err(|error| {
-                        crate::Error::context(
-                            format!("Failed to activate snapshot '{name}'"),
-                            error,
-                        )
-                    })?;
-                status.id
-            }
-            _ => {
-                emit(SandboxEvent::SnapshotCreating { name: name.clone() });
-                status.id
-            }
-        }
-    } else {
-        emit(SandboxEvent::SnapshotCreating { name: name.clone() });
-        let spec = snapshot_spec(&name, inputs);
-        snapshots.create(&spec, None).await.map_err(|error| {
-            crate::Error::context(format!("Failed to create snapshot '{name}'"), error)
-        })?
-    };
-    wait_for_active_snapshot(snapshots, &id, &name).await?;
+            crate::Error::context(format!("Failed to ensure snapshot '{name}'"), error)
+        })?;
     Ok((id, name))
 }
 
@@ -407,37 +370,6 @@ fn snapshot_spec(name: &str, inputs: &SnapshotInputs<'_>) -> SnapshotSpec {
         .and_then(|gb| u64::try_from(gb).ok())
         .map(|gb| gb * 1024);
     SnapshotSpec::new(source).name(name).resources(resources)
-}
-
-/// Polls a snapshot until it is active, with exponential back-off, or fails
-/// when it errors or the budget runs out.
-async fn wait_for_active_snapshot(
-    snapshots: &dyn SnapshotProvider,
-    id: &SnapshotId,
-    name: &str,
-) -> crate::Result<()> {
-    let mut delay = Duration::from_secs(2);
-    let max_delay = Duration::from_secs(30);
-    let deadline = time::Instant::now() + DAYTONA_SNAPSHOT_ACTIVE_TIMEOUT;
-    while time::Instant::now() < deadline {
-        time::sleep(delay).await;
-        let status = snapshots.get(id).await.map_err(|error| {
-            crate::Error::context(format!("Failed to poll snapshot '{name}'"), error)
-        })?;
-        match status.state {
-            SnapshotState::Active => return Ok(()),
-            SnapshotState::Error | SnapshotState::Deleting => {
-                return Err(crate::Error::message(format!(
-                    "Snapshot '{name}' failed: {}",
-                    status.error_reason.unwrap_or_default()
-                )));
-            }
-            _ => delay = (delay * 2).min(max_delay),
-        }
-    }
-    Err(crate::Error::message(format!(
-        "Timed out waiting for snapshot '{name}' to become active"
-    )))
 }
 
 /// Prepares a Daytona create: the snapshot first, then the spec naming it.
@@ -477,8 +409,11 @@ impl CreatePlan for DaytonaCreatePlan {
         let (snapshot_id, snapshot_name) = match snapshot_inputs(&self.options) {
             Some(inputs) => {
                 let started = time::Instant::now();
-                let result =
-                    ensure_snapshot(self.provider.as_ref(), &self.api_key, &inputs, emit).await;
+                // The driver finds, activates, builds, or waits for the
+                // snapshot as needed; fabro reports the step around it.
+                let name = snapshot_identity::snapshot_name(&self.api_key, &inputs)?;
+                emit(SandboxEvent::SnapshotCreating { name });
+                let result = ensure_snapshot(self.provider.as_ref(), &self.api_key, &inputs).await;
                 match result {
                     Ok((id, name)) => {
                         emit(SandboxEvent::SnapshotReady {
@@ -594,14 +529,9 @@ mod tests {
             Some("fabro-01HY0000000000000000000000")
         );
         assert_eq!(spec.working_directory.as_deref(), Some(WORKING_DIRECTORY));
-        assert_eq!(
-            spec.labels.get("sh.fabro.managed").map(String::as_str),
-            Some("true")
-        );
-        assert_eq!(
-            spec.labels.get("sh.fabro.run_id").map(String::as_str),
-            Some("01HY0000000000000000000000")
-        );
+        // Fabro's ownership labels are stamped by the scope the provider is
+        // connected through, not by the spec.
+        assert!(!spec.labels.contains_key("sh.fabro.managed"));
         assert_eq!(
             spec.labels.get("team").map(String::as_str),
             Some("platform")
@@ -634,7 +564,6 @@ mod tests {
         );
         assert!(matches!(explicit.network, NetworkPolicy::Block));
         assert!(explicit.name.is_none());
-        assert!(!explicit.labels.contains_key("sh.fabro.run_id"));
 
         let options = SandboxOptions {
             auto_stop: Some(Duration::ZERO),

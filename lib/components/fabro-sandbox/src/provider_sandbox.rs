@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use fabro_github::GitHubCredentials;
 use fabro_types::{BundledProvider, RunId, SandboxProviderKind};
-use sandbox_driver::{SandboxId, SandboxProvider};
+use sandbox_driver::{OwnedProvider, SandboxId, SandboxProvider};
 
 use crate::driver::{ProviderAccess, connect_provider};
 use crate::driver_sandbox::{DriverSandbox, LayoutSource, RepoWorkspace};
@@ -49,7 +49,7 @@ pub async fn provider_sandbox(
         options.clone_depth,
         github_app,
     )?;
-    let provider = connect(&kind, access).await?;
+    let provider = connect(&kind, access, run_id.as_ref()).await?;
     let base = options::base_spec(&options, run_id.as_ref());
     Ok(match kind.bundled() {
         Some(BundledProvider::Docker) => {
@@ -88,7 +88,8 @@ pub async fn provider_sandbox(
 /// The sandbox must carry fabro's managed label and, when a run id is
 /// known, the matching run label: the provider shares its backend with
 /// every other application, and fabro never operates on a sandbox it did
-/// not create.
+/// not create. The ownership scope the provider is connected through
+/// refuses anything else.
 pub async fn attach_provider_sandbox(
     kind: SandboxProviderKind,
     access: &ProviderAccess,
@@ -98,7 +99,7 @@ pub async fn attach_provider_sandbox(
     clone_origin_url: Option<String>,
     run_id: Option<RunId>,
 ) -> crate::Result<DriverSandbox> {
-    let provider = connect(&kind, access).await?;
+    let provider = connect(&kind, access, run_id.as_ref()).await?;
     let id = SandboxId::try_new(sandbox_id)
         .map_err(|error| crate::Error::context(format!("Invalid {kind} sandbox id"), error))?;
     let handle = provider.attach(&id, None).await.map_err(|error| {
@@ -108,7 +109,6 @@ pub async fn attach_provider_sandbox(
         )
     })?;
     let status = handle.describe().await?;
-    managed_labels::verify_managed(&kind, sandbox_id, &status.labels, run_id.as_ref())?;
     let workspace = RepoWorkspace::attached(
         layout_source(&kind),
         repo_cloned,
@@ -151,14 +151,18 @@ pub(crate) fn layout_source(kind: &SandboxProviderKind) -> LayoutSource {
 pub(crate) async fn connect_bundled_docker(
     access: &ProviderAccess,
 ) -> crate::Result<Arc<dyn SandboxProvider>> {
-    connect(&SandboxProviderKind::DOCKER, access).await
+    connect(&SandboxProviderKind::DOCKER, access, None).await
 }
 
 const MISSING_DAYTONA_CREDENTIALS: &str = "Daytona sandboxes require DAYTONA_API_KEY in the vault; run `fabro secret set DAYTONA_API_KEY`";
 
+/// The provider for `kind`, scoped to the sandboxes fabro owns — narrowed to
+/// one run when `run_id` is known — so creates carry fabro's labels and
+/// attaches to anything else are refused.
 async fn connect(
     kind: &SandboxProviderKind,
     access: &ProviderAccess,
+    run_id: Option<&RunId>,
 ) -> crate::Result<Arc<dyn SandboxProvider>> {
     if kind.bundled() == Some(BundledProvider::Daytona) && access.daytona.is_none() {
         return Err(crate::Error::message(MISSING_DAYTONA_CREDENTIALS));
@@ -168,10 +172,13 @@ async fn connect(
             "sandbox provider `{kind}` is not configured; add [server.sandbox.providers.{kind}] to settings.toml"
         ))
     })?;
-    connect_provider(kind, &settings, &access.connect_options())
+    let connected = connect_provider(kind, &settings, &access.connect_options())
         .await
-        .map(|connected| connected.provider)
         .map_err(|error| {
             crate::Error::context(format!("Failed to connect to the {kind} provider"), error)
-        })
+        })?;
+    Ok(Arc::new(OwnedProvider::new(
+        connected.provider,
+        managed_labels::ownership(run_id),
+    )))
 }

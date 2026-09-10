@@ -107,13 +107,9 @@ mod tests {
             Some("fabro-run-01HY0000000000000000000000")
         );
         assert_eq!(spec.working_directory.as_deref(), Some(WORKING_DIRECTORY));
-        assert_eq!(
-            spec.labels.get("sh.fabro.managed").map(String::as_str),
-            Some("true")
-        );
-        assert_eq!(
-            spec.labels.get("sh.fabro.run_id").map(String::as_str),
-            Some("01HY0000000000000000000000")
+        assert!(
+            !spec.labels.contains_key("sh.fabro.managed"),
+            "ownership labels come from the scope the provider is connected through"
         );
         assert_eq!(spec.env.get("FOO").map(String::as_str), Some("bar"));
         assert_eq!(spec.resources.cpu_cores, Some(2));
@@ -132,6 +128,5 @@ mod tests {
             SandboxSource::Image { reference } if reference == DEFAULT_IMAGE
         ));
         assert!(spec.name.is_none());
-        assert!(!spec.labels.contains_key("sh.fabro.run_id"));
     }
 }

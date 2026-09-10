@@ -1,15 +1,15 @@
 //! Fabro's command execution policy over the sandbox-driver [`Exec`] facet.
 //!
-//! The driver sends signals; fabro decides when. A command runs as Bash
-//! source under `bash -c` with `BASH_ENV` blanked, and ends in one of three
-//! ways fabro controls:
+//! A command runs as Bash source under `bash -c` with `BASH_ENV` blanked,
+//! and ends in one of three ways:
 //!
-//! - **timeout**: fabro's own timer fires, the process group gets `TERM`, and
-//!   after [`SandboxExec::stop_grace`] it gets `KILL`. The result reports
-//!   [`CommandTermination::TimedOut`]. The driver's hard timeout is disabled so
-//!   the graceful ladder always runs first.
-//! - **cancellation**: the caller's [`CancellationToken`] runs the same ladder
-//!   and reports [`CommandTermination::Cancelled`].
+//! - **timeout**: the spec's timeout fires and the provider runs the stop
+//!   ladder fabro asks for — `TERM`, then `KILL` after
+//!   [`SandboxExec::stop_grace`]. The result reports
+//!   [`CommandTermination::TimedOut`].
+//! - **cancellation**: the caller's [`CancellationToken`] is the `term` stop;
+//!   the provider escalates to `KILL` after the same grace. The result reports
+//!   [`CommandTermination::Cancelled`].
 //! - **exit**: the process ended on its own.
 //!
 //! Output is drained regardless of the retention cap, redacted only when a
@@ -19,9 +19,7 @@
 //! matching what the Host provider already does for inherited variables.
 
 use std::collections::HashMap;
-use std::future;
-use std::pin::pin;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -31,7 +29,6 @@ use sandbox_driver::{
     BASH_ENV_VAR, CaptureStats, Exec, ExecControls, ExecSpec, OutputStream, SpawnSpec,
     StdioProcessHandle as DriverStdioProcessHandle, Termination, TransportError,
 };
-use tokio::time;
 use tokio_util::sync::CancellationToken;
 
 use crate::sandbox::{
@@ -117,7 +114,8 @@ impl<'a> SandboxExec<'a> {
         self
     }
 
-    /// Time between `TERM` and `KILL` when a command is stopped.
+    /// Time between `TERM` and `KILL` when a command is stopped; the
+    /// provider runs the ladder.
     #[must_use]
     pub fn with_stop_grace(mut self, stop_grace: Duration) -> Self {
         self.stop_grace = stop_grace;
@@ -173,7 +171,12 @@ impl<'a> SandboxExec<'a> {
         } = request;
         let started = Instant::now();
 
-        let mut spec = ExecSpec::bash(command).no_timeout();
+        let mut spec = ExecSpec::bash(command)
+            .no_timeout()
+            .stop_grace(self.stop_grace);
+        if let Some(timeout_ms) = timeout_ms {
+            spec = spec.timeout(Duration::from_millis(timeout_ms));
+        }
         if let Some(dir) = working_dir.or(self.working_dir.as_deref()) {
             spec = spec.working_dir(dir);
         }
@@ -184,10 +187,11 @@ impl<'a> SandboxExec<'a> {
             spec = spec.stdin(bytes);
         }
 
-        let ladder = StopLadder::new(self.stop_grace);
+        // The caller's cancellation is the `term` stop; the provider runs
+        // the grace and the `kill` itself.
         let controls = ExecControls {
-            term:                  Some(ladder.term.clone()),
-            kill:                  Some(ladder.kill.clone()),
+            term:                  cancel_token,
+            kill:                  None,
             stdin:                 None,
             sink:                  output_callback.map(adapt_output_callback),
             retained_output_limit: Some(
@@ -195,17 +199,9 @@ impl<'a> SandboxExec<'a> {
             ),
         };
 
-        let mut escalation =
-            pin!(ladder.drive(timeout_ms.map(Duration::from_millis), cancel_token));
-        let mut running = pin!(self.exec.run_streaming(&spec, controls));
-        let streaming = loop {
-            tokio::select! {
-                result = &mut running => break result?,
-                () = &mut escalation => {}
-            }
-        };
+        let streaming = self.exec.run_streaming(&spec, controls).await?;
 
-        let termination = map_termination(streaming.result.termination, ladder.cause());
+        let termination = map_termination(streaming.result.termination);
         let duration_ms = elapsed_ms(started);
         Ok(ExecStreamingResult {
             result:            ExecResult {
@@ -280,76 +276,15 @@ impl<'a> SandboxExec<'a> {
     }
 }
 
-/// Why fabro stopped a command, recorded when the ladder starts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StopCause {
-    TimedOut,
-    Cancelled,
-}
-
-/// The TERM, grace, KILL escalation. Fabro fires `term`, waits `grace`,
-/// then fires `kill`; the provider only delivers the signals.
-struct StopLadder {
-    term:  CancellationToken,
-    kill:  CancellationToken,
-    grace: Duration,
-    cause: Mutex<Option<StopCause>>,
-}
-
-impl StopLadder {
-    fn new(grace: Duration) -> Self {
-        Self {
-            term: CancellationToken::new(),
-            kill: CancellationToken::new(),
-            grace,
-            cause: Mutex::new(None),
-        }
-    }
-
-    fn cause(&self) -> Option<StopCause> {
-        *self.cause.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    /// Waits for the timeout or the caller's cancellation, runs the ladder,
-    /// then never resolves so it can sit in a `select!` beside the command.
-    async fn drive(&self, timeout: Option<Duration>, cancel_token: Option<CancellationToken>) {
-        let cause = tokio::select! {
-            () = sleep_or_never(timeout) => StopCause::TimedOut,
-            () = cancelled_or_never(cancel_token.as_ref()) => StopCause::Cancelled,
-        };
-        *self.cause.lock().unwrap_or_else(PoisonError::into_inner) = Some(cause);
-        self.term.cancel();
-        time::sleep(self.grace).await;
-        self.kill.cancel();
-        future::pending::<()>().await;
-    }
-}
-
-async fn sleep_or_never(timeout: Option<Duration>) {
-    match timeout {
-        Some(timeout) => time::sleep(timeout).await,
-        None => future::pending().await,
-    }
-}
-
-async fn cancelled_or_never(token: Option<&CancellationToken>) {
-    match token {
-        Some(token) => token.cancelled().await,
-        None => future::pending().await,
-    }
-}
-
-/// The driver reports which signal ended the command; fabro reports why it
-/// sent it. A stop the driver saw without fabro asking for one (a foreign
-/// `kill`, a provider-side abort) reads as cancelled: the command did not
-/// finish and fabro did not time it out.
-fn map_termination(termination: Termination, cause: Option<StopCause>) -> CommandTermination {
+/// The driver says how the command ended; fabro's vocabulary has two stops.
+/// A timeout is the provider's deadline (the ladder ran for it); a
+/// cancelled or killed command was stopped by the caller's token, by a
+/// foreign `kill`, or by a provider-side abort — it did not finish and no
+/// deadline passed.
+fn map_termination(termination: Termination) -> CommandTermination {
     match termination {
         Termination::TimedOut => CommandTermination::TimedOut,
-        Termination::Cancelled | Termination::Killed => match cause {
-            Some(StopCause::TimedOut) => CommandTermination::TimedOut,
-            Some(StopCause::Cancelled) | None => CommandTermination::Cancelled,
-        },
+        Termination::Cancelled | Termination::Killed => CommandTermination::Cancelled,
         // `Exited`, or a provider that could not tell how the command ended.
         // Nothing asserts success here: `exit_code` is whatever was observed
         // and `is_success` still requires `Some(0)`.
@@ -410,7 +345,7 @@ impl StdioProcessControl for DriverStdioControl {
 
     async fn wait(&self) -> crate::Result<StdioProcessTermination> {
         let (termination, exit_code) = self.handle.wait().await;
-        let termination = map_termination(termination, None);
+        let termination = map_termination(termination);
         Ok(StdioProcessTermination {
             termination,
             exit_code: exit_code_for(termination, exit_code),
@@ -420,12 +355,12 @@ impl StdioProcessControl for DriverStdioControl {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     use sandbox_driver::{SandboxProvider as _, SandboxSource, SandboxSpec};
     use sandbox_driver_host::HostProvider;
-    use tokio::fs;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::{fs, time};
 
     use super::*;
 
@@ -740,21 +675,21 @@ mod tests {
     }
 
     #[test]
-    fn termination_mapping_reports_fabro_intent_over_driver_signal() {
+    fn termination_mapping_reads_the_drivers_verdict() {
         assert_eq!(
-            map_termination(Termination::Killed, Some(StopCause::TimedOut)),
+            map_termination(Termination::TimedOut),
             CommandTermination::TimedOut
         );
         assert_eq!(
-            map_termination(Termination::Cancelled, Some(StopCause::Cancelled)),
+            map_termination(Termination::Cancelled),
             CommandTermination::Cancelled
         );
         assert_eq!(
-            map_termination(Termination::Killed, None),
+            map_termination(Termination::Killed),
             CommandTermination::Cancelled
         );
         assert_eq!(
-            map_termination(Termination::Exited, Some(StopCause::TimedOut)),
+            map_termination(Termination::Exited),
             CommandTermination::Exited
         );
     }

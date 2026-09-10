@@ -14,11 +14,10 @@
     reason = "This integration test stages sandbox fixtures with sync std::fs."
 )]
 
-use fabro_sandbox::ProviderAccess;
 use fabro_sandbox::reconnect::reconnect;
+use fabro_sandbox::{ProviderAccess, Sandbox as _, SandboxOptions, provider_sandbox};
 use fabro_types::{RunSandboxInstance, RunSandboxRuntime, SandboxProviderKind};
 
-const DOCKER_MANAGED_LABEL: &str = "sh.fabro.managed";
 const DOCKER_CP_IMAGE: &str = "buildpack-deps:noble";
 
 // ---------------------------------------------------------------------------
@@ -176,38 +175,41 @@ impl Drop for DockerCpContainer {
     }
 }
 
-fn docker_cp_container() -> DockerCpContainer {
+/// A container the driver created, so a reconnect by id finds it: the
+/// driver attaches only to containers carrying its own label, the way
+/// fabro's ownership scope attaches only to those carrying fabro's.
+async fn docker_cp_container() -> DockerCpContainer {
     if let Ok(id) = std::env::var("FABRO_DOCKER_CP_CONTAINER") {
         return DockerCpContainer { id, cleanup: false };
     }
 
     ensure_docker_image(DOCKER_CP_IMAGE);
-    let output = std::process::Command::new("docker")
-        .args([
-            "run",
-            "-d",
-            "--label",
-            &format!("{DOCKER_MANAGED_LABEL}=true"),
-            "--workdir",
-            "/workspace",
-            DOCKER_CP_IMAGE,
-            "sh",
-            "-c",
-            "mkdir -p /workspace && sleep 300",
-        ])
-        .output()
-        .expect("docker run should execute");
+    let sandbox = provider_sandbox(
+        SandboxProviderKind::DOCKER,
+        &ProviderAccess::default(),
+        SandboxOptions {
+            image: Some(DOCKER_CP_IMAGE.to_string()),
+            skip_clone: true,
+            ..SandboxOptions::default()
+        },
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("docker sandbox should construct");
+    sandbox
+        .initialize()
+        .await
+        .expect("docker sandbox should initialize");
+    let id = sandbox.sandbox_info();
     assert!(
-        output.status.success(),
-        "docker run failed\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
+        !id.is_empty(),
+        "the docker sandbox should have a container id"
     );
-    let id = String::from_utf8(output.stdout)
-        .expect("docker run stdout should be UTF-8")
-        .trim()
-        .to_string();
-    assert!(!id.is_empty(), "docker run should return a container id");
     DockerCpContainer { id, cleanup: true }
 }
 
@@ -235,7 +237,7 @@ fn ensure_docker_image(image: &str) {
 #[tokio::test]
 #[ignore] // requires Docker daemon
 async fn docker_cp_upload_download_round_trip() {
-    let container = docker_cp_container();
+    let container = docker_cp_container().await;
     let scratch = tempfile::tempdir().unwrap();
 
     let record = docker_record(&container.id);
@@ -266,7 +268,7 @@ async fn docker_cp_upload_download_round_trip() {
 #[tokio::test]
 #[ignore] // requires Docker daemon
 async fn docker_cp_binary_round_trip() {
-    let container = docker_cp_container();
+    let container = docker_cp_container().await;
     let scratch = tempfile::tempdir().unwrap();
 
     let record = docker_record(&container.id);
@@ -295,7 +297,7 @@ async fn docker_cp_binary_round_trip() {
 #[tokio::test]
 #[ignore] // requires Docker daemon
 async fn docker_cp_creates_parent_dirs() {
-    let container = docker_cp_container();
+    let container = docker_cp_container().await;
     let scratch = tempfile::tempdir().unwrap();
 
     let record = docker_record(&container.id);

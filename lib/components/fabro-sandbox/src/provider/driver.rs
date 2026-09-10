@@ -3,21 +3,24 @@
 //! Lists and looks up the sandboxes fabro created, identified by fabro's
 //! own `sh.fabro.managed` label. The driver marks every sandbox it creates
 //! with its own label too, but that covers every application on the same
-//! daemon or account; fabro filters on its label and refuses to delete a
-//! sandbox that does not carry it.
+//! daemon or account; the provider is connected through the driver's
+//! ownership scope, which lists only fabro's sandboxes and refuses to
+//! attach to or delete any other.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use fabro_types::settings::server::ServerSandboxProviderSettings;
 use fabro_types::{SandboxInfo, SandboxProviderKind};
-use sandbox_driver::{SandboxFilter, SandboxId, SandboxProvider as DriverProvider};
+use sandbox_driver::{
+    Error as DriverError, OwnedProvider, SandboxFilter, SandboxId,
+    SandboxProvider as DriverProvider,
+};
 use tokio::sync::OnceCell;
 
 use super::SandboxProvider;
-use crate::details;
 use crate::driver::{ConnectedProvider, ProviderConnectOptions, connect_provider};
-use crate::managed_labels::{self, MANAGED_LABEL, MANAGED_LABEL_VALUE};
+use crate::{details, managed_labels};
 
 /// How the driver provider behind the inventory is obtained.
 enum Connection {
@@ -44,7 +47,7 @@ impl DriverInventoryProvider {
     pub fn new(connected: ConnectedProvider) -> Self {
         Self {
             kind:       connected.kind,
-            connection: Connection::Connected(connected.provider),
+            connection: Connection::Connected(owned(connected.provider)),
         }
     }
 
@@ -74,7 +77,7 @@ impl DriverInventoryProvider {
                     .get_or_try_init(|| async {
                         connect_provider(&self.kind, &lazy.settings, &lazy.options)
                             .await
-                            .map(|connected| connected.provider)
+                            .map(|connected| owned(connected.provider))
                             .map_err(|error| {
                                 crate::Error::context(
                                     format!("Failed to connect to the {} provider", self.kind),
@@ -87,14 +90,6 @@ impl DriverInventoryProvider {
         }
     }
 
-    fn managed_filter() -> SandboxFilter {
-        let mut filter = SandboxFilter::default();
-        filter
-            .labels
-            .insert(MANAGED_LABEL.to_string(), MANAGED_LABEL_VALUE.to_string());
-        filter
-    }
-
     async fn describe_managed(
         &self,
         id: &str,
@@ -105,7 +100,9 @@ impl DriverInventoryProvider {
         };
         let handle = match self.provider().await?.attach(&sandbox_id, None).await {
             Ok(handle) => handle,
-            Err(sandbox_driver::Error::NotFound { .. }) => return Ok(None),
+            // Unknown to the provider, or not fabro's: neither is in the
+            // inventory.
+            Err(DriverError::NotFound { .. } | DriverError::NotOwned { .. }) => return Ok(None),
             Err(error) => {
                 return Err(crate::Error::context(
                     format!("Failed to look up {} sandbox '{id}'", self.kind),
@@ -119,13 +116,19 @@ impl DriverInventoryProvider {
                 error,
             )
         })?;
-        if status.state == sandbox_driver::SandboxState::Deleted
-            || !managed_labels::is_managed(&status.labels)
-        {
+        if status.state == sandbox_driver::SandboxState::Deleted {
             return Ok(None);
         }
         Ok(Some(status))
     }
+}
+
+/// The provider narrowed to fabro's sandboxes.
+fn owned(provider: Arc<dyn DriverProvider>) -> Arc<dyn DriverProvider> {
+    Arc::new(OwnedProvider::new(
+        provider,
+        managed_labels::ownership(None),
+    ))
 }
 
 #[async_trait]
@@ -138,16 +141,13 @@ impl SandboxProvider for DriverInventoryProvider {
         let statuses = self
             .provider()
             .await?
-            .list(&Self::managed_filter())
+            .list(&SandboxFilter::default())
             .await
             .map_err(|error| {
                 crate::Error::context(format!("Failed to list {} sandboxes", self.kind), error)
             })?;
         Ok(statuses
             .iter()
-            // The filter is a request; a provider that cannot filter on
-            // labels returns everything, so the label is checked again.
-            .filter(|status| managed_labels::is_managed(&status.labels))
             .map(|status| details::info_from_status(&self.kind, status))
             .collect())
     }
@@ -160,33 +160,25 @@ impl SandboxProvider for DriverInventoryProvider {
     }
 
     async fn delete(&self, id: &str) -> crate::Result<()> {
-        let Some(status) = self.describe_managed(id).await? else {
-            // Missing, already deleted, or not fabro's: the first two are
-            // idempotent successes and the third must never be deleted here,
-            // so distinguish them for the caller.
-            if let Ok(sandbox_id) = SandboxId::try_new(id) {
-                if let Ok(handle) = self.provider().await?.attach(&sandbox_id, None).await {
-                    let status = handle.describe().await?;
-                    if status.state != sandbox_driver::SandboxState::Deleted {
-                        return Err(crate::Error::message(format!(
-                            "Refusing to delete {} sandbox '{id}' because it is missing label {MANAGED_LABEL}={MANAGED_LABEL_VALUE}",
-                            self.kind
-                        )));
-                    }
-                }
-            }
+        // Missing or already deleted is an idempotent success; the scope
+        // refuses a sandbox that is not fabro's, which must never be
+        // deleted here.
+        let Ok(sandbox_id) = SandboxId::try_new(id) else {
             return Ok(());
         };
-        self.provider()
-            .await?
-            .delete(&status.id, None)
-            .await
-            .map_err(|error| {
-                crate::Error::context(
-                    format!("Failed to delete {} sandbox '{id}'", self.kind),
-                    error,
-                )
-            })
+        match self.provider().await?.delete(&sandbox_id, None).await {
+            Ok(()) => Ok(()),
+            Err(DriverError::NotOwned { .. }) => Err(crate::Error::message(format!(
+                "Refusing to delete {} sandbox '{id}' because it is missing label {}={}",
+                self.kind,
+                managed_labels::MANAGED_LABEL,
+                managed_labels::MANAGED_LABEL_VALUE
+            ))),
+            Err(error) => Err(crate::Error::context(
+                format!("Failed to delete {} sandbox '{id}'", self.kind),
+                error,
+            )),
+        }
     }
 }
 
@@ -211,7 +203,8 @@ mod tests {
         let (inventory, host) = inventory();
         let ours = host
             .create(
-                &SandboxSpec::new(SandboxSource::HostDirectory).label(MANAGED_LABEL, "true"),
+                &SandboxSpec::new(SandboxSource::HostDirectory)
+                    .label(managed_labels::MANAGED_LABEL, "true"),
                 None,
             )
             .await

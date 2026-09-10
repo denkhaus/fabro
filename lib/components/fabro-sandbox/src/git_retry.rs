@@ -13,6 +13,9 @@
 //! Retries reuse the same token on purpose. Replication of a given token only
 //! makes progress, so each attempt strictly improves the odds, while
 //! re-minting would restart the replication clock.
+//!
+//! The driver classifies what a failure was ([`GitFailureKind`]); this module
+//! decides what the class means for the credentials in hand.
 
 use std::future::Future;
 use std::time::Duration;
@@ -24,6 +27,7 @@ use fabro_github::token_source::{REFRESH_MARGIN, TokenProvenance};
 use fabro_types::SandboxProviderKind;
 pub use fabro_types::run_event::GitPushRetryReason as GitRetryReason;
 use fabro_util::backoff::BackoffPolicy;
+use sandbox_driver::GitFailureKind;
 use tokio::time;
 
 /// How long after its mint a token is presumed to still be replicating to
@@ -82,95 +86,43 @@ impl CredentialContext {
     }
 }
 
-/// Message fragments that mean the operation failed on infrastructure.
-///
-/// These are safe to retry whether or not the operation was authenticated.
-const TRANSIENT_HINTS: &[&str] = &[
-    "could not resolve host",
-    "temporary failure in name resolution",
-    "connection refused",
-    "connection reset",
-    "connection timed out",
-    "timed out",
-    "network is unreachable",
-    "no route to host",
-    "tls handshake",
-    "early eof",
-    "rpc failed",
-    "unexpected disconnect",
-    "the remote end hung up unexpectedly",
-    "index-pack failed",
-    "service unavailable",
-    "gateway timeout",
-    "too many requests",
-    "rate limit",
-];
-
-/// Message fragments GitHub uses when a token is not yet visible.
-///
-/// Only meaningful when the operation carried credentials. The same lag
-/// surfaces as 404 or as an auth failure depending on which endpoint answers
-/// first.
-const TOKEN_REPLICATION_HINTS: &[&str] = &[
-    "repository not found",
-    "authentication failed",
-    "invalid username or password",
-    "bad credentials",
-    // git CLI over HTTP.
-    "the requested url returned error: 401",
-    "the requested url returned error: 403",
-    "the requested url returned error: 404",
-    // libgit2 (the run-metadata writer pushes through git2).
-    "unexpected http status code: 401",
-    "unexpected http status code: 403",
-    "unexpected http status code: 404",
-];
-
 /// Whether a failure message has the 404/auth-failure shape GitHub produces
 /// for both token-replication lag and a drifted or missing embedded token.
 pub(crate) fn matches_auth_failure_hints(message: &str) -> bool {
-    let lower = message.to_ascii_lowercase();
-    TOKEN_REPLICATION_HINTS
-        .iter()
-        .any(|hint| lower.contains(hint))
+    GitFailureKind::from_message(message) == GitFailureKind::AuthRejected
 }
 
 pub(crate) fn output_matches_auth_failure_hints(stderr: &str, stdout: &str) -> bool {
-    matches_auth_failure_hints(stderr) || matches_auth_failure_hints(stdout)
+    GitFailureKind::from_output(stderr.as_bytes(), stdout.as_bytes())
+        == GitFailureKind::AuthRejected
 }
 
-/// Classify a failed git operation by its rendered message.
+/// What a classified git failure means for retrying with these credentials.
 ///
-/// `cred` gates the reading of 404/auth-failure messages: a fresh App token
-/// retries as replication lag, a mature one as transient infrastructure, and
-/// a static credential (or none) fails fast because waiting cannot make it
-/// valid.
-pub(crate) fn classify_message(message: &str, cred: CredentialContext) -> GitMessageClass {
-    let lower = message.to_ascii_lowercase();
-
-    if TRANSIENT_HINTS.iter().any(|hint| lower.contains(hint)) {
-        return GitMessageClass::Retry(GitRetryReason::TransientInfra);
-    }
-    if TOKEN_REPLICATION_HINTS
-        .iter()
-        .any(|hint| lower.contains(hint))
-    {
-        return match cred {
+/// The driver reads the failure; fabro decides. A remote that could not
+/// be reached is retried whatever the credential. A rejected credential
+/// is retried only while a just-minted App token may still be replicating
+/// (`FreshApp`), retried as a service blip for a mature App token, and
+/// fails fast for a static credential or none, because waiting cannot make
+/// those valid. Every other class is permanent.
+pub(crate) fn decide(kind: GitFailureKind, cred: CredentialContext) -> GitMessageClass {
+    match kind {
+        GitFailureKind::RemoteUnavailable => GitMessageClass::Retry(GitRetryReason::TransientInfra),
+        GitFailureKind::AuthRejected => match cred {
             CredentialContext::FreshApp => GitMessageClass::Retry(GitRetryReason::TokenReplication),
             CredentialContext::MatureApp => GitMessageClass::Retry(GitRetryReason::TransientInfra),
             CredentialContext::Static | CredentialContext::None => GitMessageClass::Permanent,
-        };
+        },
+        GitFailureKind::AccessDenied
+        | GitFailureKind::RefNotFound
+        | GitFailureKind::TargetExists => GitMessageClass::Permanent,
+        _ => GitMessageClass::Unknown,
     }
-    let permanent = lower.contains("could not read username")
-        || lower.contains("terminal prompts disabled")
-        || lower.contains("permission denied")
-        || (lower.contains("permission to") && lower.contains("denied"))
-        || (lower.contains("destination path") && lower.contains("already exists"))
-        || (lower.contains("remote branch") && lower.contains("not found"));
-    if permanent {
-        return GitMessageClass::Permanent;
-    }
-    GitMessageClass::Unknown
+}
+
+/// Classify a failed git operation by its rendered message.
+pub(crate) fn classify_message(message: &str, cred: CredentialContext) -> GitMessageClass {
+    decide(GitFailureKind::from_message(message), cred)
 }
 
 pub(crate) fn classify_output(
@@ -178,12 +130,10 @@ pub(crate) fn classify_output(
     stdout: &str,
     cred: CredentialContext,
 ) -> GitMessageClass {
-    let by_stderr = classify_message(stderr, cred);
-    if by_stderr == GitMessageClass::Unknown {
-        classify_message(stdout, cred)
-    } else {
-        by_stderr
-    }
+    decide(
+        GitFailureKind::from_output(stderr.as_bytes(), stdout.as_bytes()),
+        cred,
+    )
 }
 
 /// Classify a rendered git failure message, returning the retry reason when
@@ -196,33 +146,17 @@ pub fn classify_failure(message: &str, cred: CredentialContext) -> Option<GitRet
 
 /// Classify a sandbox-driver git failure.
 ///
-/// A command the driver ran surfaces as [`sandbox_driver::Error::Exec`] with
-/// the git output attached, and is classified like fabro's own exec output.
-/// A provider-side failure carries a message and a retryability hint. An
-/// operation whose outcome is unknown (a transport break, a timeout, an
-/// incomplete operation) is never retried: replaying it could overlap a
-/// clone that is still running.
+/// The driver classifies every git failure it produces; fabro only decides
+/// what the class means for these credentials. An operation whose outcome
+/// is unknown (a transport break, a timeout, an incomplete operation) is
+/// never retried: replaying it could overlap a clone that is still running.
 #[must_use]
 pub(crate) fn classify_driver_failure(
     error: &sandbox_driver::Error,
     cred: CredentialContext,
 ) -> Option<GitRetryReason> {
     match error {
-        sandbox_driver::Error::Exec(failure) => classify_output(
-            &String::from_utf8_lossy(failure.stderr()),
-            &String::from_utf8_lossy(failure.stdout()),
-            cred,
-        )
-        .retry_reason(),
-        sandbox_driver::Error::Provider(provider) => {
-            match classify_message(&provider.message, cred) {
-                GitMessageClass::Retry(reason) => Some(reason),
-                GitMessageClass::Permanent => None,
-                GitMessageClass::Unknown => {
-                    provider.retryable.then_some(GitRetryReason::TransientInfra)
-                }
-            }
-        }
+        sandbox_driver::Error::Git(failure) => decide(failure.kind(), cred).retry_reason(),
         sandbox_driver::Error::RateLimited { .. } | sandbox_driver::Error::Overloaded { .. } => {
             Some(GitRetryReason::TransientInfra)
         }

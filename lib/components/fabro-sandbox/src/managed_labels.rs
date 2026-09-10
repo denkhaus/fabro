@@ -1,63 +1,32 @@
-use std::collections::{BTreeMap, HashMap};
+//! The labels that mark a sandbox as fabro's.
+//!
+//! Providers share a daemon or an organization with every other
+//! application, so a persisted id is trusted only when the sandbox behind
+//! it still carries fabro's labels. The driver's ownership scope stamps them
+//! on every sandbox fabro creates, narrows every listing to them, and
+//! refuses to attach to or delete a sandbox without them; this module only
+//! says which labels those are.
 
-use fabro_types::{RunId, SandboxProviderKind};
+use fabro_types::RunId;
+use sandbox_driver::Ownership;
 
 pub(crate) const MANAGED_LABEL: &str = "sh.fabro.managed";
 pub(crate) const MANAGED_LABEL_VALUE: &str = "true";
 pub(crate) const RUN_ID_LABEL: &str = "sh.fabro.run_id";
 
-/// True when the provided label map carries the Fabro managed sentinel.
-pub(crate) fn is_managed(labels: &BTreeMap<String, String>) -> bool {
-    labels.get(MANAGED_LABEL).map(String::as_str) == Some(MANAGED_LABEL_VALUE)
-}
-
-/// Refuses a sandbox fabro did not create, or one created for another run.
-///
-/// Providers share a daemon or an organization with every other
-/// application, so a persisted id is trusted only when the sandbox behind
-/// it still carries fabro's labels.
-pub(crate) fn verify_managed(
-    kind: &SandboxProviderKind,
-    sandbox_id: &str,
-    labels: &BTreeMap<String, String>,
-    run_id: Option<&RunId>,
-) -> crate::Result<()> {
-    if !is_managed(labels) {
-        return Err(crate::Error::message(format!(
-            "Refusing to operate on {kind} sandbox '{sandbox_id}' because it is missing label {MANAGED_LABEL}={MANAGED_LABEL_VALUE}"
-        )));
-    }
-    if let Some(run_id) = run_id {
-        let actual = labels.get(RUN_ID_LABEL).map(String::as_str);
-        let expected = run_id.to_string();
-        if actual != Some(expected.as_str()) {
-            return Err(crate::Error::message(format!(
-                "Refusing to operate on {kind} sandbox '{sandbox_id}' because label {RUN_ID_LABEL}={actual:?} does not match run {run_id}"
-            )));
-        }
-    }
-    Ok(())
-}
-
-pub(crate) fn merge_for_run(
-    user_labels: Option<&HashMap<String, String>>,
-    run_id: Option<&RunId>,
-) -> HashMap<String, String> {
-    let mut labels = user_labels.cloned().unwrap_or_default();
-    insert_for_run(&mut labels, run_id);
-    labels
-}
-
-fn insert_for_run(labels: &mut HashMap<String, String>, run_id: Option<&RunId>) {
-    labels.insert(MANAGED_LABEL.to_string(), MANAGED_LABEL_VALUE.to_string());
-    if let Some(run_id) = run_id {
-        labels.insert(RUN_ID_LABEL.to_string(), run_id.to_string());
+/// Fabro's ownership of a sandbox: everything fabro manages, narrowed to
+/// one run when `run_id` is known.
+pub(crate) fn ownership(run_id: Option<&RunId>) -> Ownership {
+    let ownership = Ownership::label(MANAGED_LABEL, MANAGED_LABEL_VALUE);
+    match run_id {
+        Some(run_id) => ownership.and_label(RUN_ID_LABEL, run_id.to_string()),
+        None => ownership,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
 
     use fabro_types::RunId;
 
@@ -77,47 +46,28 @@ mod tests {
     }
 
     #[test]
-    fn managed_labels_include_run_id_when_present() {
+    fn ownership_requires_fabro_and_the_run_when_known() {
         let run_id: RunId = "01HY0000000000000000000000".parse().unwrap();
-        let labels = merge_for_run(None, Some(&run_id));
+        let mut labels = BTreeMap::new();
+        assert!(!ownership(None).owns(&labels));
+        labels.insert(MANAGED_LABEL.to_string(), "true".to_string());
+        assert!(ownership(None).owns(&labels));
+        assert!(!ownership(Some(&run_id)).owns(&labels));
+        labels.insert(RUN_ID_LABEL.to_string(), run_id.to_string());
+        assert!(ownership(Some(&run_id)).owns(&labels));
 
-        assert_eq!(labels.get(MANAGED_LABEL).map(String::as_str), Some("true"));
-        assert_eq!(
-            labels.get(RUN_ID_LABEL).map(String::as_str),
-            Some("01HY0000000000000000000000")
-        );
-        assert!(is_managed(&labels.clone().into_iter().collect()));
-    }
-
-    #[test]
-    fn managed_labels_override_reserved_user_labels() {
-        let run_id: RunId = "01HY0000000000000000000000".parse().unwrap();
-        let user_labels = HashMap::from([
+        // Stamping overrides whatever a caller put under the reserved keys.
+        let mut given = BTreeMap::from([
             ("team".to_string(), "platform".to_string()),
             (MANAGED_LABEL.to_string(), "false".to_string()),
             (RUN_ID_LABEL.to_string(), "wrong".to_string()),
         ]);
-
-        let labels = merge_for_run(Some(&user_labels), Some(&run_id));
-
-        assert_eq!(labels.get("team").map(String::as_str), Some("platform"));
-        assert_eq!(labels.get(MANAGED_LABEL).map(String::as_str), Some("true"));
+        ownership(Some(&run_id)).stamp(&mut given);
+        assert_eq!(given.get("team").map(String::as_str), Some("platform"));
+        assert_eq!(given.get(MANAGED_LABEL).map(String::as_str), Some("true"));
         assert_eq!(
-            labels.get(RUN_ID_LABEL).map(String::as_str),
+            given.get(RUN_ID_LABEL).map(String::as_str),
             Some("01HY0000000000000000000000")
         );
-    }
-
-    #[test]
-    fn verify_managed_requires_fabro_ownership_and_matching_run() {
-        let run_id: RunId = "01HY0000000000000000000000".parse().unwrap();
-        let kind = SandboxProviderKind::DOCKER;
-        let mut labels = BTreeMap::new();
-        assert!(verify_managed(&kind, "c1", &labels, None).is_err());
-        labels.insert(MANAGED_LABEL.to_string(), "true".to_string());
-        assert!(verify_managed(&kind, "c1", &labels, None).is_ok());
-        assert!(verify_managed(&kind, "c1", &labels, Some(&run_id)).is_err());
-        labels.insert(RUN_ID_LABEL.to_string(), run_id.to_string());
-        assert!(verify_managed(&kind, "c1", &labels, Some(&run_id)).is_ok());
     }
 }
