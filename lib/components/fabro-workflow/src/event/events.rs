@@ -4,13 +4,12 @@ use ::fabro_types::{
     AutomationRef, BilledTokenCounts, BlobHash, BlockedReason, CommandTermination, DiffSummary,
     FailureReason, ForkSourceRef, GitContext, PairId, PairMessageId, PairSystemMessageKind,
     PairTarget, ParallelBranchId, ParallelBranchResult, PendingReason, PermissionLevel, Principal,
-    PullRequestCreationId, PullRequestLink, ReviewTarget, RunFailure, RunId, RunNoticeLevel,
-    RunPairEndedReason, RunPairFailedReason, RunProvenance, RunRunnableSource, RunTarget,
-    RunTiming, SandboxProviderKind, StageId, StageOutcome, StageTiming, SuccessReason,
-    WorkflowVersionId, run_event as fabro_types,
+    PullRequestCreationId, PullRequestLink, ReasoningEffort, ReviewTarget, RunFailure, RunId,
+    RunNoticeLevel, RunPairEndedReason, RunPairFailedReason, RunProvenance, RunRunnableSource,
+    RunTarget, RunTiming, SandboxProviderKind, Speed, StageId, StageOutcome, StageTiming,
+    SuccessReason, WorkflowVersionId, run_event as fabro_types,
 };
 use fabro_agent::{AgentEvent, SandboxEvent};
-use fabro_model::{ReasoningEffort, Speed};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, run_failure_from_error};

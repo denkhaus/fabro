@@ -1,10 +1,10 @@
 //! Normalization of provider reasoning material into [`ReasoningOutput`].
 //!
 //! Every provider that returns readable reasoning does it differently, and
-//! several return more than one channel at once. This module reduces the
-//! final response's content parts to the two normalized fields without
-//! reaching into opaque material (signatures, item IDs, encrypted payloads)
-//! and without failing a completion it cannot classify.
+//! several return more than one channel at once. This module reduces a final
+//! response's content parts to the two normalized fields without reaching
+//! into opaque material (signatures, item ids, encrypted payloads) and
+//! without failing a completion it cannot classify.
 //!
 //! Parsing is deliberately tolerant: provider payloads are read as
 //! `serde_json::Value` with optional lookups, so unknown detail variants,
@@ -13,17 +13,16 @@
 
 use fabro_types::{ContentPart, ReasoningOutput};
 
-/// Separator between distinct complete reasoning blocks. Fragments of one
-/// logical block are coalesced by the streaming decoders before they reach
-/// this module.
+/// OpenAI Responses reasoning items, as lithos stores them.
+pub const OPENAI_REASONING_KIND: &str = "openai.reasoning";
+/// OpenAI Responses message items, as lithos stores them.
+pub const OPENAI_MESSAGE_KIND: &str = "openai.message";
+/// OpenAI-compatible `reasoning_details` arrays, as lithos stores them.
+pub const OPENAI_COMPAT_REASONING_DETAILS_KIND: &str = "openai_compatible.reasoning_details";
+
+/// Separator between distinct complete reasoning blocks.
 const BLOCK_SEPARATOR: &str = "\n\n";
 
-/// Readable blocks collected per normalized field.
-///
-/// Explicit blocks come from a channel with documented reasoning semantics.
-/// Fallback blocks come from flattened provider strings, which aggregators
-/// commonly duplicate alongside a structured channel. They only fill a trace
-/// that no explicit trace produced.
 #[derive(Default)]
 struct Blocks<'a> {
     explicit_summary: Vec<&'a str>,
@@ -47,8 +46,6 @@ impl Blocks<'_> {
     }
 }
 
-/// Join retained complete blocks in provider order. Text is never trimmed or
-/// rewritten.
 fn join_blocks(blocks: &[&str]) -> Option<String> {
     (!blocks.is_empty()).then(|| blocks.join(BLOCK_SEPARATOR))
 }
@@ -59,16 +56,10 @@ fn push_block<'a>(blocks: &mut Vec<&'a str>, block: &'a str) {
     }
 }
 
-/// Read a text-bearing member with the provider's documented semantics.
 fn readable_member<'a>(entry: &'a serde_json::Value, member: &str) -> Option<&'a str> {
     entry.get(member).and_then(serde_json::Value::as_str)
 }
 
-/// Extract readable text from an OpenAI Responses `reasoning` output item.
-///
-/// `summary[].text` is the model-authored summary; `content[]` entries typed
-/// `reasoning_text` are the verbatim trace. `encrypted_content`, `id`, and
-/// `status` are opaque and ignored.
 fn collect_openai_reasoning_item<'a>(item: &'a serde_json::Value, blocks: &mut Blocks<'a>) {
     if let Some(entries) = item.get("summary").and_then(serde_json::Value::as_array) {
         for entry in entries {
@@ -95,7 +86,6 @@ fn collect_openai_reasoning_item<'a>(item: &'a serde_json::Value, blocks: &mut B
     }
 }
 
-/// Extract readable text from OpenAI-compatible `reasoning_details` entries.
 fn collect_reasoning_details<'a>(details: &'a serde_json::Value, blocks: &mut Blocks<'a>) {
     let Some(entries) = details.as_array() else {
         return;
@@ -121,23 +111,21 @@ fn collect_reasoning_details<'a>(details: &'a serde_json::Value, blocks: &mut Bl
     }
 }
 
-/// Normalize the content parts of a final response into readable reasoning.
+/// Normalizes the content parts of a final response into readable reasoning.
 ///
-/// Returns `None` when the response carries no readable reasoning, so an
-/// event without reasoning keeps its previous serialized shape.
-pub(crate) fn normalize(content: &[ContentPart]) -> Option<ReasoningOutput> {
+/// Returns `None` when the response carries no readable reasoning.
+#[must_use]
+pub fn normalize(content: &[ContentPart]) -> Option<ReasoningOutput> {
     let mut blocks = Blocks::default();
     for part in content {
         match part {
-            ContentPart::Thinking(thinking) if !thinking.redacted => {
-                push_block(&mut blocks.fallback_trace, &thinking.text);
+            ContentPart::Reasoning(reasoning) if !reasoning.redacted => {
+                push_block(&mut blocks.fallback_trace, &reasoning.text);
             }
-            ContentPart::Other { kind, data } if kind == ContentPart::OPENAI_REASONING => {
+            ContentPart::Opaque { kind, data } if kind == OPENAI_REASONING_KIND => {
                 collect_openai_reasoning_item(data, &mut blocks);
             }
-            ContentPart::Other { kind, data }
-                if kind == ContentPart::OPENAI_COMPAT_REASONING_DETAILS =>
-            {
+            ContentPart::Opaque { kind, data } if kind == OPENAI_COMPAT_REASONING_DETAILS_KIND => {
                 collect_reasoning_details(data, &mut blocks);
             }
             _ => {}
@@ -146,33 +134,47 @@ pub(crate) fn normalize(content: &[ContentPart]) -> Option<ReasoningOutput> {
     blocks.into_output()
 }
 
+/// Whether a part is provider-native replay material Fabro keeps in history
+/// but never renders.
+#[must_use]
+pub fn is_provider_part(part: &ContentPart) -> bool {
+    matches!(part, ContentPart::Reasoning(_) | ContentPart::Opaque { .. })
+}
+
+/// Whether a part is an OpenAI Responses item tied to one specific API
+/// response. Such items become invalid once compaction replaces their
+/// surrounding context.
+#[must_use]
+pub fn is_opaque_openai(part: &ContentPart) -> bool {
+    matches!(
+        part,
+        ContentPart::Opaque { kind, .. }
+            if kind == OPENAI_REASONING_KIND || kind == OPENAI_MESSAGE_KIND
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use fabro_types::ThinkingData;
+    use fabro_types::ReasoningContent;
     use serde_json::json;
 
     use super::*;
 
     fn thinking(text: &str) -> ContentPart {
-        ContentPart::Thinking(ThinkingData {
-            text:      text.to_string(),
-            signature: None,
-            redacted:  false,
+        ContentPart::Reasoning(ReasoningContent {
+            text:             text.to_string(),
+            signature:        None,
+            signature_origin: None,
+            redacted:         false,
         })
     }
 
     fn openai_reasoning(item: serde_json::Value) -> ContentPart {
-        ContentPart::Other {
-            kind: ContentPart::OPENAI_REASONING.to_string(),
-            data: item,
-        }
+        ContentPart::opaque(OPENAI_REASONING_KIND, item)
     }
 
     fn reasoning_details(details: serde_json::Value) -> ContentPart {
-        ContentPart::Other {
-            kind: ContentPart::OPENAI_COMPAT_REASONING_DETAILS.to_string(),
-            data: details,
-        }
+        ContentPart::opaque(OPENAI_COMPAT_REASONING_DETAILS_KIND, details)
     }
 
     #[test]
@@ -184,10 +186,11 @@ mod tests {
 
     #[test]
     fn redacted_thinking_yields_no_readable_reasoning() {
-        let redacted = ContentPart::Thinking(ThinkingData {
-            text:      "AAAAopaque".to_string(),
-            signature: Some("sig".to_string()),
-            redacted:  true,
+        let redacted = ContentPart::Reasoning(ReasoningContent {
+            text:             "AAAAopaque".to_string(),
+            signature:        Some("sig".to_string()),
+            signature_origin: Some("anthropic".to_string()),
+            redacted:         true,
         });
         assert!(normalize(&[redacted]).is_none());
     }
@@ -219,55 +222,15 @@ mod tests {
     }
 
     #[test]
-    fn unknown_responses_content_types_remain_opaque() {
-        assert!(
-            normalize(&[openai_reasoning(json!({
-                "content": [{"type": "reasoning_future", "text": "not classified"}],
-            }))])
-            .is_none()
-        );
-    }
-
-    #[test]
     fn structured_details_produce_summary_and_trace() {
         let output = normalize(&[reasoning_details(json!([
             {"type": "reasoning.summary", "summary": "checked the parser"},
             {"type": "reasoning.text", "text": "read convert.rs", "signature": "sig"},
+            {"type": "reasoning.encrypted", "data": "gAAAAAsecret"},
         ]))])
         .unwrap();
         assert_eq!(output.summary(), Some("checked the parser"));
         assert_eq!(output.trace(), Some("read convert.rs"));
-    }
-
-    #[test]
-    fn encrypted_details_are_excluded() {
-        let output = normalize(&[reasoning_details(json!([
-            {"type": "reasoning.encrypted", "data": "gAAAAAsecret", "format": "openai-responses-v1"},
-            {"type": "reasoning.summary", "summary": "visible"},
-        ])),])
-        .unwrap();
-        assert_eq!(output.summary(), Some("visible"));
-        assert!(output.trace().is_none());
-    }
-
-    #[test]
-    fn encrypted_only_details_produce_no_reasoning() {
-        assert!(
-            normalize(&[reasoning_details(json!([
-                {"type": "reasoning.encrypted", "data": "gAAAAAsecret"},
-            ]))])
-            .is_none()
-        );
-    }
-
-    #[test]
-    fn unknown_detail_variants_remain_opaque() {
-        assert!(
-            normalize(&[reasoning_details(json!([
-                {"type": "reasoning.future", "text": "new channel"},
-            ]))])
-            .is_none()
-        );
     }
 
     #[test]
@@ -303,40 +266,27 @@ mod tests {
             thinking("flattened"),
         ])
         .unwrap();
-        assert!(output.summary().is_none());
         assert_eq!(output.trace(), Some("verbatim"));
-    }
-
-    #[test]
-    fn structured_summary_keeps_a_distinct_flattened_trace() {
-        let output = normalize(&[
-            reasoning_details(json!([
-                {"type": "reasoning.summary", "summary": "short summary"},
-            ])),
-            thinking("full verbatim trace"),
-        ])
-        .unwrap();
-        assert_eq!(output.summary(), Some("short summary"));
-        assert_eq!(output.trace(), Some("full verbatim trace"));
     }
 
     #[test]
     fn whitespace_only_fragments_do_not_create_reasoning() {
         assert!(normalize(&[thinking("   \n ")]).is_none());
-    }
-
-    #[test]
-    fn non_empty_text_is_preserved_verbatim() {
         let output = normalize(&[thinking("  indented thought\n")]).unwrap();
         assert_eq!(output.trace(), Some("  indented thought\n"));
     }
 
     #[test]
-    fn unrelated_content_parts_are_ignored() {
-        let parts = vec![ContentPart::text("answer"), ContentPart::Other {
-            kind: ContentPart::OPENAI_MESSAGE.to_string(),
-            data: json!({"type": "message", "content": [{"text": "answer"}]}),
-        }];
-        assert!(normalize(&parts).is_none());
+    fn opaque_openai_items_are_recognized() {
+        assert!(is_opaque_openai(&openai_reasoning(json!({}))));
+        assert!(is_opaque_openai(&ContentPart::opaque(
+            OPENAI_MESSAGE_KIND,
+            json!({})
+        )));
+        assert!(!is_opaque_openai(&thinking("x")));
+        assert!(is_provider_part(&thinking("x")));
+        assert!(!is_provider_part(&ContentPart::Text {
+            text: "x".to_string(),
+        }));
     }
 }

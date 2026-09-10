@@ -1,8 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use fabro_model::{ReasoningEffort, Speed};
-use fabro_types::{PermissionLevel, SessionCapability, StageId};
+use fabro_types::{PermissionLevel, ReasoningEffort, SessionCapability, Speed, StageId};
 
 use crate::error::Error;
 use crate::event::{Emitter, Event};

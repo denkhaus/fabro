@@ -4,14 +4,14 @@ use std::sync::Arc;
 
 use fabro_graphviz::graph::Graph;
 use fabro_interview::Interviewer;
+use fabro_llm::lithos_catalog::Catalog;
 use fabro_mcp::config::McpServerSettings;
-use fabro_model::{Catalog, ProviderId};
 use fabro_sandbox::SandboxSpec;
 use fabro_template::TemplateContext;
 use fabro_types::settings::run::{
     PullRequestSettings, ResolvedGithubIntegration, RunModelControls,
 };
-use fabro_types::{ManifestPath, RunId, RunProjection};
+use fabro_types::{ManifestPath, ProviderId, RunId, RunProjection};
 use fabro_validate::{Diagnostic, Severity};
 use fabro_vault::Vault;
 use tokio::sync::RwLock as AsyncRwLock;

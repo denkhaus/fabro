@@ -1,14 +1,17 @@
 extern crate self as fabro_types;
 
+pub mod agent_profile;
 pub mod artifact;
 pub mod auth;
 pub mod billing;
 pub mod billing_rollup;
 pub mod blob_hash;
 pub mod blob_ref;
+pub mod catalog_api;
 pub mod checkpoint;
 pub mod command_output;
 pub mod conclusion;
+pub mod controls;
 pub mod dense;
 pub mod diff;
 pub mod event_envelope;
@@ -20,10 +23,12 @@ pub mod interview;
 pub mod llm_backend;
 pub mod manifest_path;
 pub mod mcp_store;
+pub mod model_test;
 pub mod outcome;
 pub mod pair;
 pub mod parallel;
 pub mod principal;
+pub mod provider_ids;
 pub mod pull_request;
 pub mod reasoning;
 pub mod repository;
@@ -60,23 +65,22 @@ pub mod workflow_path;
 pub mod workflow_version;
 pub mod workflow_version_id;
 
+pub use agent_profile::AgentProfileKind;
 pub use artifact::ArtifactUpload;
 pub use auth::{IdpIdentity, IdpIdentityError};
 pub use billing::{
-    AnthropicBillingFacts, AnthropicModelPricing, BilledModelUsage, BilledTokenCounts,
-    GeminiBillingFacts, GeminiModelPricing, GeminiStoragePricing, GeminiStorageSegment,
-    ModelBillingFacts, ModelBillingInput, ModelPricing, ModelPricingPolicy, ModelRef, ModelUsage,
-    OpenAiBillingFacts, OpenAiModelPricing, PricePerMTok, Speed, TokenCounts, UsdMicros,
+    BilledModelUsage, BilledTokenCounts, Cost, CostSource, ModelRef, Speed, TokenCounts, UsdMicros,
 };
 pub use blob_hash::BlobHash;
 pub use blob_ref::{format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref};
+pub use catalog_api::{Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits, Provider};
 pub use checkpoint::Checkpoint;
 pub use command_output::{CommandOutputStream, CommandTermination};
 pub use conclusion::{Conclusion, StageSummary};
+pub use controls::ReasoningEffort;
 pub use dense::{ServerSettings, UserSettings, WorkflowSettings};
 pub use diff::{DiffStats, DiffSummary, RunDiff};
 pub use event_envelope::EventEnvelope;
-pub use fabro_model::ReasoningEffort;
 pub use failure_signature::FailureSignature;
 pub use graph::{
     AttrValue, AttributeScope, ContextKeyAttr, Edge, Graph, KNOWN_HANDLER_TYPES, Node, OnFailure,
@@ -89,6 +93,10 @@ pub use input_scalar::{
 pub use interview::{
     InterviewQuestionRecord, QuestionType, ReviewTarget, ReviewTargetError, ReviewTargetKind,
 };
+pub use lithos_llm::catalog::{ModelHandle, ModelId, ProviderId};
+pub use lithos_llm::types::{
+    FinishReason, Request, RequestBuildError, RequestBuilder, Response, ResponseFormat, StreamEvent,
+};
 pub use llm_backend::AgentBackend;
 pub use manifest_path::{ManifestPath, ManifestPathParseError};
 pub use mcp_store::{
@@ -96,6 +104,7 @@ pub use mcp_store::{
     McpServerRevisionParseError, McpServerValidationError, McpServerView, McpTransportView,
     validate_mcp_server_fields,
 };
+pub use model_test::ModelTestMode;
 pub use outcome::{
     FailureCategory, FailureDetail, NodeResult, Outcome, OutcomeMeta, StageOutcome, StageState,
 };
@@ -192,8 +201,10 @@ pub use system_integrations::{
 pub use timing::{RunTiming, StageTiming};
 pub use todo::{TodoListKind, TodoListProjection, TodoPatch, TodoProjection, TodoStatus};
 pub use transcript::{
-    AudioData, ContentPart, DocumentData, ImageData, Message, MessageId, MessageKind,
-    MessageSource, PairMessageRef, Role, ThinkingData, ToolCall, ToolResult, TranscriptMessage,
+    AudioContent, ContentPart, DocumentContent, ImageContent, MediaSource, Message, MessageId,
+    MessageKind, MessageSource, PairMessageRef, ReasoningContent, Role, ToolCall, ToolCallKind,
+    ToolChoice, ToolDefinition, ToolDefinitionKind, ToolInput, ToolResult, TranscriptMessage,
+    text_of, tool_call_arguments, tool_result_from_json, tool_result_to_json,
 };
 pub use variable::{
     CreateVariableRequest, UpdateVariableRequest, Variable, VariableListResponse, is_env_style_name,

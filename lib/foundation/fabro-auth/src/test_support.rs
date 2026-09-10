@@ -1,4 +1,4 @@
-//! Test-only credential sources.
+//! Test-only credential sources and catalogs.
 //!
 //! Feature-gated so they never link into production builds. Production code
 //! resolves credentials through [`VaultCredentialSource`] over a real vault;
@@ -8,10 +8,31 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use fabro_vault::Vault;
+use lithos_llm::catalog::Catalog;
 use tokio::sync::RwLock as AsyncRwLock;
 
 use crate::credential_source::CredentialSource;
 use crate::vault_source::VaultCredentialSource;
+
+/// The lithos built-in catalog.
+#[must_use]
+pub fn test_catalog() -> Catalog {
+    Catalog::builder()
+        .with_builtin()
+        .build()
+        .expect("built-in catalog should build")
+}
+
+/// The built-in catalog with an operator overlay applied.
+#[must_use]
+pub fn test_catalog_with_overlay(overlay: &str) -> Catalog {
+    Catalog::builder()
+        .with_builtin()
+        .overlay_toml(&format!("schema_version = 1\n{overlay}"))
+        .expect("overlay should parse")
+        .build()
+        .expect("built-in catalog with overlay should build")
+}
 
 /// A detached in-memory vault holding no secrets.
 #[must_use]

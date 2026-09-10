@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use fabro_model::{AgentProfileKind, Catalog, ProviderId};
+use fabro_llm::lithos_catalog::Catalog;
+use fabro_types::{AgentProfileKind, ProviderId, provider_ids};
 
 use super::EnvContext;
 use crate::agent_profile::AgentProfile;
@@ -41,7 +42,7 @@ impl GeminiProfile {
         Self {
             base: BaseProfile {
                 profile_kind: AgentProfileKind::Gemini,
-                provider_id: ProviderId::gemini(),
+                provider_id: provider_ids::gemini(),
                 model: model.into(),
                 catalog: None,
                 registry,
@@ -93,19 +94,21 @@ impl AgentProfile for GeminiProfile {
 mod tests {
     use std::sync::Arc;
 
+    use fabro_llm::test_support::test_catalog as fabro_test_catalog;
+
     use super::*;
     use crate::subagent::{SessionFactory, SubAgentSupervisor};
     use crate::test_support::MockSandbox;
 
     fn test_catalog() -> Arc<Catalog> {
-        Arc::new(Catalog::from_builtin().unwrap())
+        Arc::new(fabro_test_catalog())
     }
 
     #[test]
     fn gemini_profile_identity() {
         let profile = GeminiProfile::new("gemini-2.0-flash");
         assert_eq!(profile.profile_kind(), AgentProfileKind::Gemini);
-        assert_eq!(profile.provider_id(), ProviderId::gemini());
+        assert_eq!(profile.provider_id(), provider_ids::gemini());
         assert_eq!(profile.model(), "gemini-2.0-flash");
     }
 

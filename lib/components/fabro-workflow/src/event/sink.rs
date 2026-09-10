@@ -296,7 +296,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use ::fabro_types::{Graph, RunNoticeLevel, WorkflowSettings, fixtures};
+    use ::fabro_types::{Graph, ModelId, RunNoticeLevel, WorkflowSettings, fixtures};
     use fabro_types::test_support;
     use tokio::sync::Mutex as AsyncMutex;
 
@@ -389,14 +389,12 @@ mod tests {
             visit:             1,
             event:             fabro_agent::AgentEvent::AssistantMessage {
                 text:            String::new(),
-                model:           fabro_model::ModelRef {
-                    provider: fabro_model::ProviderId::openai(),
-                    model_id: "gpt-5.4".into(),
-                    speed:    None,
-                },
-                usage:           fabro_llm::types::TokenCounts::default(),
-                cost_usd:        None,
-                cost_source:     None,
+                model:           ::fabro_types::ModelRef::new(
+                    ::fabro_types::provider_ids::openai(),
+                    ModelId::new("gpt-5.4"),
+                ),
+                usage:           ::fabro_types::TokenCounts::default(),
+                cost:            None,
                 tool_call_count: 1,
                 context_window:  None,
                 reasoning:       Some(::fabro_types::ReasoningOutput::new(

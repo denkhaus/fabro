@@ -3,8 +3,7 @@ use std::any::{TypeId, type_name};
 use fabro_api::types::{
     ReasoningEffort as ApiReasoningEffort, StageModelUsage as ApiStageModelUsage,
 };
-use fabro_model::{ReasoningEffort, Speed};
-use fabro_types::StageModelUsage;
+use fabro_types::{ReasoningEffort, Speed, StageModelUsage};
 use serde_json::json;
 
 #[test]
@@ -15,10 +14,11 @@ fn reasoning_effort_reuses_canonical_type() {
 #[test]
 fn reasoning_effort_round_trips_openapi_values() {
     for (value, effort) in [
+        ("minimal", ReasoningEffort::Minimal),
         ("low", ReasoningEffort::Low),
         ("medium", ReasoningEffort::Medium),
         ("high", ReasoningEffort::High),
-        ("xhigh", ReasoningEffort::XHigh),
+        ("xhigh", ReasoningEffort::Xhigh),
         ("max", ReasoningEffort::Max),
     ] {
         assert_eq!(

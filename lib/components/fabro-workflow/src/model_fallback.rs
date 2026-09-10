@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use fabro_model::{
-    Catalog, FallbackTarget, Model, ModelSelectionError, ProviderId, ReasoningEffort,
-};
+use fabro_llm::catalog::ModelEntry;
+use fabro_llm::lithos_catalog::Catalog;
+use fabro_llm::{FallbackTarget, ModelSelectionError, catalog, selection};
 use fabro_types::settings::{ModelRef, ResolvedModelRef};
-use fabro_types::{RunNoticeCode, RunNoticeLevel};
+use fabro_types::{ProviderId, ReasoningEffort, RunNoticeCode, RunNoticeLevel};
 
 use crate::Error;
 
@@ -31,7 +31,7 @@ impl ModelFallbackPolicy {
         provider: &ProviderId,
         model: &str,
     ) -> Option<&'a [FallbackTarget]> {
-        self.chain_for_canonical(&catalog.canonical_model_id(provider, model))
+        self.chain_for_canonical(&catalog::canonical_model_id(catalog, provider, model))
     }
 
     /// Look up a chain by an already-canonicalized requested model ID.
@@ -179,9 +179,11 @@ impl ModelFallbackNotice {
                 requested_model,
                 target,
                 requested_effort,
-            } => format!(
-                "Model fallback `{target}` for requested model `{requested_model}` was skipped because it has no reasoning level near `{requested_effort}`."
-            ),
+            } => {
+                format!(
+                    "Model fallback `{target}` for requested model `{requested_model}` was skipped because it has no reasoning level near `{requested_effort}`."
+                )
+            }
             Self::ChainEmpty { requested_model } => format!(
                 "No usable model fallbacks remain for requested model `{requested_model}` after filtering its configured candidates."
             ),
@@ -205,8 +207,12 @@ pub fn resolve_model_fallbacks(
 
     for (raw_key, references) in configured {
         require_bare_model_key(catalog, raw_key)?;
-        let selected =
-            catalog.resolve_selection_with_catalog_fallback(Some(raw_key), None, &eligible)?;
+        let selected = selection::resolve_selection_with_catalog_fallback(
+            catalog,
+            Some(raw_key),
+            None,
+            &eligible,
+        )?;
         let requested_model = selected.model;
 
         if let Some(previous) =
@@ -218,7 +224,8 @@ pub fn resolve_model_fallbacks(
         }
 
         let primary = FallbackTarget::new(&selected.provider, &requested_model);
-        let primary_model = catalog.get_on_provider(&selected.provider, &requested_model);
+        let primary_model =
+            catalog::model_on_provider(catalog, selected.provider.as_str(), &requested_model);
         let mut targets = Vec::new();
 
         for model_ref in references {
@@ -226,7 +233,7 @@ pub fn resolve_model_fallbacks(
                 catalog,
                 &requested_model,
                 &primary,
-                primary_model,
+                primary_model.as_ref(),
                 &eligible,
                 model_ref,
             )? {
@@ -292,7 +299,7 @@ fn resolve_fallback_candidate(
     catalog: &Catalog,
     requested_model: &str,
     primary: &FallbackTarget,
-    primary_model: Option<&Model>,
+    primary_model: Option<&ModelEntry<'_>>,
     eligible: &HashSet<ProviderId>,
     model_ref: &ModelRef,
 ) -> Result<FallbackCandidate, Error> {
@@ -300,7 +307,7 @@ fn resolve_fallback_candidate(
 
     Ok(match model_ref.resolve(catalog)? {
         ResolvedModelRef::Provider(provider_name) => {
-            let provider = catalog.provider_id(&provider_name)?;
+            let provider = selection::require_provider(catalog, &provider_name)?;
             if !eligible.contains(&provider) {
                 return Ok(FallbackCandidate::Skipped(
                     ModelFallbackNotice::ProviderUnconfigured {
@@ -319,8 +326,10 @@ fn resolve_fallback_candidate(
                     },
                 ));
             };
-            match catalog.closest(&provider, primary_model) {
-                Some(model) => FallbackCandidate::Target(FallbackTarget::new(provider, &model.id)),
+            match catalog::closest_model(catalog, provider.as_str(), primary_model.model) {
+                Some(entry) => {
+                    FallbackCandidate::Target(FallbackTarget::new(provider, entry.model.id()))
+                }
                 None => FallbackCandidate::Skipped(ModelFallbackNotice::NoCompatibleModel {
                     requested_model: requested_model.to_string(),
                     reference,
@@ -332,7 +341,7 @@ fn resolve_fallback_candidate(
             provider: Some(provider_name),
             selector,
         } => {
-            let provider = catalog.provider_id(&provider_name)?;
+            let provider = selection::require_provider(catalog, &provider_name)?;
             if !eligible.contains(&provider) {
                 return Ok(FallbackCandidate::Skipped(
                     ModelFallbackNotice::ProviderUnconfigured {
@@ -342,10 +351,11 @@ fn resolve_fallback_candidate(
                     },
                 ));
             }
-            match catalog.resolve_on_provider(&provider, &selector) {
-                Ok(info) => {
-                    FallbackCandidate::Target(FallbackTarget::new(&info.provider, &info.id))
-                }
+            match selection::resolve_on_provider(catalog, &provider, &selector) {
+                Ok(entry) => FallbackCandidate::Target(FallbackTarget::new(
+                    entry.provider.id(),
+                    entry.model.id(),
+                )),
                 Err(ModelSelectionError::UnknownSelectorOnProvider { .. }) => {
                     FallbackCandidate::Target(FallbackTarget::new(provider, selector))
                 }
@@ -355,8 +365,11 @@ fn resolve_fallback_candidate(
         ResolvedModelRef::Model {
             provider: None,
             selector,
-        } => match catalog.select(&selector, None, eligible) {
-            Ok(info) => FallbackCandidate::Target(FallbackTarget::new(&info.provider, &info.id)),
+        } => match selection::select(catalog, &selector, None, eligible) {
+            Ok(entry) => FallbackCandidate::Target(FallbackTarget::new(
+                entry.provider.id(),
+                entry.model.id(),
+            )),
             Err(ModelSelectionError::NoEligibleOffering { providers, .. }) => {
                 FallbackCandidate::Skipped(ModelFallbackNotice::NoConfiguredOffering {
                     requested_model: requested_model.to_string(),
@@ -376,7 +389,10 @@ fn resolve_fallback_candidate(
 mod tests {
     use std::collections::BTreeMap;
 
-    use fabro_model::{Catalog, FallbackTarget, ProviderId};
+    use fabro_llm::FallbackTarget;
+    use fabro_llm::lithos_catalog::Catalog;
+    use fabro_llm::test_support::test_catalog_with_overlay;
+    use fabro_types::ProviderId;
 
     use super::{ModelFallbackNotice, resolve_model_fallbacks};
 
@@ -388,14 +404,7 @@ mod tests {
     }
 
     fn openrouter_catalog() -> Catalog {
-        let overrides = toml::from_str(
-            r"
-[providers.openrouter]
-enabled = true
-",
-        )
-        .expect("catalog override should parse");
-        Catalog::from_builtin_with_overrides(&overrides).expect("catalog should build")
+        test_catalog_with_overlay("[providers.openrouter]\nenabled = true\n")
     }
 
     #[test]
@@ -497,19 +506,9 @@ enabled = true
 
     #[test]
     fn resolves_the_requested_production_policy_as_independent_chains() {
-        let catalog = {
-            let overrides = toml::from_str(
-                r"
-[providers.modal]
-enabled = true
-
-[providers.openrouter]
-enabled = true
-",
-            )
-            .expect("catalog override should parse");
-            Catalog::from_builtin_with_overrides(&overrides).expect("catalog should build")
-        };
+        let catalog = test_catalog_with_overlay(
+            "[providers.modal]\nenabled = true\n\n[providers.openrouter]\nenabled = true\n",
+        );
         let eligible = [
             ProviderId::new("modal"),
             ProviderId::new("moonshot"),

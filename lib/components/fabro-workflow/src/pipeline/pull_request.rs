@@ -5,12 +5,11 @@ use std::time::Duration;
 use fabro_auth::CredentialSource;
 use fabro_github::{self as github_app, ssh_url_to_https};
 use fabro_graphviz::parser;
-use fabro_llm::client::Client;
-use fabro_llm::generate::{GenerateParams, generate_object};
-use fabro_model::{Catalog, ProviderId};
+use fabro_llm::lithos_catalog::Catalog;
+use fabro_llm::{Client, ClientOptions, Request, selection, structured};
 use fabro_store::RunProjection;
-use fabro_types::PullRequestLink;
 use fabro_types::settings::run::MergeStrategy;
+use fabro_types::{ProviderId, PullRequestLink, Role};
 use fabro_util::text::strip_goal_decoration;
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
@@ -72,10 +71,10 @@ fn truncation_caps(
     eligible: &HashSet<ProviderId>,
     catalog: &Catalog,
 ) -> TruncationCaps {
-    let ctx = catalog
-        .select(model, None, eligible)
+    let ctx = selection::select(catalog, model, None, eligible)
         .ok()
-        .and_then(|m| usize::try_from(m.context_window()).ok())
+        .and_then(|entry| entry.model.limits())
+        .and_then(|limits| usize::try_from(limits.context_tokens).ok())
         .unwrap_or(UNKNOWN_MODEL_CTX);
 
     truncation_caps_for_context_window(ctx)
@@ -334,14 +333,19 @@ pub async fn build_pr_content(
     goal: &str,
     model: &str,
     run_store: &RunStoreHandle,
-    llm_source: &dyn CredentialSource,
+    llm_source: Arc<dyn CredentialSource>,
     catalog: Arc<Catalog>,
     conclusion: Option<&Conclusion>,
     run_state: Option<&RunProjection>,
 ) -> Result<PrContent, String> {
-    let client = Client::from_source(llm_source, Arc::clone(&catalog))
-        .await
-        .map_err(|e| format!("Failed to create LLM client: {e}"))?;
+    let client = fabro_llm::build_client(
+        Catalog::clone(&catalog),
+        llm_source,
+        ClientOptions::standard(),
+    )
+    .await
+    .map_err(|e| format!("Failed to create LLM client: {e}"))?
+    .client;
 
     build_pr_content_with_client(
         diff,
@@ -385,7 +389,7 @@ async fn build_pr_content_with_client(
     let run_spec = run_state.map(|state| state.spec.clone());
     let dot_source = run_state.and_then(|state| state.spec.graph_source.clone());
 
-    let eligible = client.provider_ids();
+    let eligible = client.available_providers().iter().cloned().collect();
     let caps = truncation_caps(model, &eligible, catalog);
     let truncated_diff = truncate_chars(diff, caps.diff);
 
@@ -398,18 +402,18 @@ async fn build_pr_content_with_client(
         format!("Goal: {goal}\n\nDiff:\n```\n{truncated_diff}\n```")
     };
 
-    let params = GenerateParams::new(model, client)
+    let request = Request::builder()
+        .model(model)
         .system(PR_BODY_SYSTEM_PROMPT)
-        .prompt(prompt);
+        .message(fabro_types::Message::text(Role::User, prompt))
+        .build()
+        .map_err(|e| format!("invalid PR content request: {e}"))?;
+    let completion =
+        structured::complete_object(&client, request, "pr_content", PR_CONTENT_SCHEMA.clone())
+            .await
+            .map_err(|e| format!("LLM generation failed: {e}"))?;
 
-    let result = generate_object(params, PR_CONTENT_SCHEMA.clone())
-        .await
-        .map_err(|e| format!("LLM generation failed: {e}"))?;
-
-    let output = result
-        .output
-        .ok_or_else(|| "LLM generation returned no structured output".to_string())?;
-    let generated: PrContent = serde_json::from_value(output)
+    let generated: PrContent = serde_json::from_value(completion.object)
         .map_err(|e| format!("Failed to deserialize PR content: {e}"))?;
 
     let title = if generated.title.trim().is_empty() {
@@ -458,7 +462,7 @@ pub struct OpenPullRequestRequest<'a> {
     pub draft:             bool,
     pub auto_merge:        Option<AutoMergeOptions>,
     pub run_store:         &'a RunStoreHandle,
-    pub llm_source:        &'a dyn CredentialSource,
+    pub llm_source:        Arc<dyn CredentialSource>,
     pub catalog:           Arc<Catalog>,
     pub conclusion:        Option<&'a Conclusion>,
     pub run_state:         Option<&'a RunProjection>,
@@ -612,7 +616,7 @@ pub async fn open_pull_request(
         req.goal,
         req.model,
         req.run_store,
-        req.llm_source,
+        Arc::clone(&req.llm_source),
         Arc::clone(&req.catalog),
         req.conclusion,
         req.run_state,
@@ -684,18 +688,15 @@ mod tests {
     use chrono::Utc;
     use fabro_auth::{CredentialSource, VaultCredentialSource};
     use fabro_graphviz::graph::Graph;
-    use fabro_llm::Error as LlmError;
-    use fabro_llm::client::Client;
-    use fabro_llm::provider::{ProviderAdapter, StreamEventStream};
-    use fabro_llm::types::{FinishReason, Message, Request, Response, StreamEvent, TokenCounts};
-    use fabro_model::catalog::{LlmCatalogSettings, ProviderCatalogSettings};
+    use fabro_llm::adapter::{ProviderAdapter, ResolvedCall};
+    use fabro_llm::lithos_catalog::AdapterId;
+    use fabro_llm::{Response, ResponseStream};
     use fabro_store::Database;
     use fabro_types::{
-        BilledTokenCounts, RunProjection, RunSpec, SuccessReason, WorkflowSettings,
-        first_event_seq, fixtures, test_support,
+        BilledTokenCounts, ContentPart, RunProjection, RunSpec, SuccessReason, TokenCounts,
+        WorkflowSettings, first_event_seq, fixtures, test_support,
     };
     use fabro_vault::{SecretType, Vault};
-    use futures::stream;
     use httpmock::Method::{GET, POST};
     use httpmock::MockServer;
     use object_store::memory::InMemory;
@@ -705,77 +706,53 @@ mod tests {
     use crate::event::{Event, append_event};
     use crate::records::StageSummary;
 
+    /// Answers every completion with one fixed text, attributed to the route
+    /// that was asked.
     struct MockProvider {
-        name:          String,
+        id:            AdapterId,
         response_text: String,
     }
 
     impl MockProvider {
-        fn new(name: &str, text: &str) -> Self {
+        fn new(text: &str) -> Self {
             Self {
-                name:          name.to_string(),
+                id:            AdapterId::new("mock"),
                 response_text: text.to_string(),
             }
+        }
+
+        fn response(&self, call: &ResolvedCall) -> Response {
+            let handle = call.route().handle();
+            let mut response =
+                Response::new(handle.provider().clone(), handle.model().clone(), vec![
+                    ContentPart::Text {
+                        text: self.response_text.clone(),
+                    },
+                ]);
+            response.id = Some("resp_1".to_string());
+            response.usage = TokenCounts {
+                input: 10,
+                output: 20,
+                ..TokenCounts::default()
+            };
+            response
         }
     }
 
     #[async_trait::async_trait]
     impl ProviderAdapter for MockProvider {
-        fn name(&self) -> &str {
-            &self.name
+        fn id(&self) -> &AdapterId {
+            &self.id
         }
 
-        async fn complete(&self, _request: &Request) -> Result<Response, LlmError> {
-            Ok(Response {
-                id:            "resp_1".into(),
-                model:         "mock-model".into(),
-                provider:      "mock".into(),
-                message:       Message::assistant(&self.response_text),
-                finish_reason: FinishReason::Stop,
-                usage:         TokenCounts {
-                    input_tokens: 10,
-                    output_tokens: 20,
-                    ..Default::default()
-                },
-                raw:           None,
-                warnings:      vec![],
-                rate_limit:    None,
-                cost_usd:      None,
-                cost_source:   None,
-            })
+        async fn complete(&self, call: &ResolvedCall) -> Result<Response, fabro_llm::Error> {
+            Ok(self.response(call))
         }
 
-        async fn stream(&self, _request: &Request) -> Result<StreamEventStream, LlmError> {
-            let text = self.response_text.clone();
-            let events = vec![
-                Ok(StreamEvent::text_delta(&text, Some("t1".into()))),
-                Ok(StreamEvent::finish(
-                    FinishReason::Stop,
-                    TokenCounts {
-                        input_tokens: 10,
-                        output_tokens: 20,
-                        ..Default::default()
-                    },
-                    Response {
-                        id:            "resp_1".into(),
-                        model:         "mock-model".into(),
-                        provider:      "mock".into(),
-                        message:       Message::assistant(&text),
-                        finish_reason: FinishReason::Stop,
-                        usage:         TokenCounts {
-                            input_tokens: 10,
-                            output_tokens: 20,
-                            ..Default::default()
-                        },
-                        raw:           None,
-                        warnings:      vec![],
-                        rate_limit:    None,
-                        cost_usd:      None,
-                        cost_source:   None,
-                    },
-                )),
-            ];
-            Ok(Box::pin(stream::iter(events)))
+        async fn stream(&self, call: &ResolvedCall) -> Result<ResponseStream, fabro_llm::Error> {
+            Ok(fabro_llm::test_support::response_to_stream(
+                self.response(call),
+            ))
         }
     }
 
@@ -789,30 +766,47 @@ mod tests {
     }
 
     fn test_catalog_with_provider_base_url(provider: &str, base_url: &str) -> Arc<Catalog> {
-        let mut settings = LlmCatalogSettings::default();
-        settings
-            .providers
-            .insert(provider.to_string(), ProviderCatalogSettings {
-                base_url: Some(base_url.to_string()),
-                ..ProviderCatalogSettings::default()
-            });
-        Arc::new(
-            Catalog::from_builtin_with_overrides(&settings)
-                .expect("catalog with custom base_url should build"),
+        Arc::new(fabro_llm::test_support::test_catalog_with_provider_base_url(provider, base_url))
+    }
+
+    /// The catalog every mock-backed test resolves against: the built-ins plus
+    /// a `mock` provider that passes any model name through.
+    fn mock_catalog() -> Catalog {
+        fabro_llm::test_support::test_catalog_with_overlay(
+            r#"
+[providers.mock]
+display_name = "Mock"
+adapter = "openai-compatible"
+codec = "openai-chat"
+base_url = "http://mock.invalid/v1"
+auth = { type = "bearer" }
+allow_passthrough = true
+
+[providers.mock.metadata.agent]
+profile = "openai"
+
+[providers.mock.models.mock-model]
+display_name = "Mock Model"
+api_model = "mock-model"
+limits = { context_tokens = 8192, max_output_tokens = 1024 }
+capabilities = { text = true, tools = true, response_format = { json_object = true, json_schema = true } }
+"#,
         )
     }
 
+    /// A client over [`mock_catalog`] whose `provider_name` answers with
+    /// `text`.
     fn explicit_client(provider_name: &str, text: &str) -> Arc<Client> {
-        let mut providers: HashMap<String, Arc<dyn ProviderAdapter>> = HashMap::new();
-        providers.insert(
-            provider_name.to_string(),
-            Arc::new(MockProvider::new(provider_name, text)),
-        );
-        Arc::new(Client::new(
-            providers,
-            Some(provider_name.to_string()),
-            vec![],
-        ))
+        let adapter: Arc<dyn ProviderAdapter> = Arc::new(MockProvider::new(text));
+        let mut options = fabro_llm::ClientOptions::default();
+        options
+            .adapters
+            .push((fabro_types::ProviderId::new(provider_name), adapter));
+        Arc::new(
+            fabro_llm::build_offline_client(mock_catalog(), options)
+                .expect("mock client should build")
+                .client,
+        )
     }
 
     fn test_projection() -> RunProjection {
@@ -1074,7 +1068,7 @@ mod tests {
             "Implement feature",
             "mock-model",
             &run_store.clone().into(),
-            Catalog::builtin(),
+            &mock_catalog(),
             Some(&make_test_conclusion()),
             None,
             explicit_client(
@@ -1148,7 +1142,7 @@ mod tests {
             "Implement feature",
             "mock-model",
             &run_store.clone().into(),
-            Catalog::builtin(),
+            &mock_catalog(),
             Some(&make_test_conclusion()),
             None,
             explicit_client(
@@ -1246,7 +1240,7 @@ mod tests {
             "Implement feature",
             "mock-model",
             &run_store.clone().into(),
-            Catalog::builtin(),
+            &mock_catalog(),
             Some(&make_test_conclusion()),
             None,
             explicit_client(
@@ -1271,7 +1265,7 @@ mod tests {
             "Implement feature",
             "gpt-5.4",
             &run_store.clone().into(),
-            Catalog::builtin(),
+            &mock_catalog(),
             Some(&make_test_conclusion()),
             None,
             explicit_client(
@@ -1329,7 +1323,7 @@ mod tests {
             "Implement feature",
             "gpt-5.4",
             &run_store_handle,
-            llm_source.as_ref(),
+            llm_source,
             catalog,
             Some(&make_test_conclusion()),
             None,
@@ -1490,8 +1484,8 @@ mod tests {
         assert_eq!(
             truncation_caps(
                 "unknown-model",
-                &Catalog::builtin().all_provider_ids(),
-                Catalog::builtin(),
+                &fabro_llm::catalog::enabled_provider_ids(&mock_catalog()),
+                &mock_catalog(),
             ),
             TruncationCaps {
                 diff: 80_000,
@@ -1517,7 +1511,7 @@ mod tests {
             draft:             false,
             auto_merge:        None,
             run_store:         &harness.run_store,
-            llm_source:        harness.llm_source.as_ref(),
+            llm_source:        Arc::clone(&harness.llm_source),
             catalog:           harness.catalog.clone(),
             conclusion:        None,
             run_state:         None,
@@ -1556,7 +1550,7 @@ mod tests {
             "Implement feature",
             "mock-model",
             &run_store.clone().into(),
-            Catalog::builtin(),
+            &mock_catalog(),
             Some(&make_test_conclusion()),
             None,
             explicit_client("mock", &payload),
@@ -1579,7 +1573,7 @@ mod tests {
             "## Plan:",
             "mock-model",
             &run_store.clone().into(),
-            Catalog::builtin(),
+            &mock_catalog(),
             Some(&make_test_conclusion()),
             None,
             explicit_client("mock", &payload),
@@ -1669,7 +1663,7 @@ mod tests {
             "Implement feature",
             "mock-model",
             &run_store.clone().into(),
-            Catalog::builtin(),
+            &mock_catalog(),
             Some(&make_test_conclusion()),
             None,
             explicit_client("mock", &payload),
@@ -1945,7 +1939,7 @@ mod tests {
             draft: false,
             auto_merge: None,
             run_store: &harness.run_store,
-            llm_source: harness.llm_source.as_ref(),
+            llm_source: Arc::clone(&harness.llm_source),
             catalog: harness.catalog.clone(),
             conclusion: None,
             run_state: None,
@@ -1993,7 +1987,7 @@ mod tests {
             draft: false,
             auto_merge: None,
             run_store: &harness.run_store,
-            llm_source: harness.llm_source.as_ref(),
+            llm_source: Arc::clone(&harness.llm_source),
             catalog: harness.catalog.clone(),
             conclusion: None,
             run_state: None,
@@ -2030,7 +2024,7 @@ mod tests {
             draft: false,
             auto_merge: None,
             run_store: &harness.run_store,
-            llm_source: harness.llm_source.as_ref(),
+            llm_source: Arc::clone(&harness.llm_source),
             catalog: harness.catalog.clone(),
             conclusion: None,
             run_state: None,

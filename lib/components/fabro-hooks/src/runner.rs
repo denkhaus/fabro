@@ -5,7 +5,7 @@ use fabro_agent::Sandbox;
 use fabro_auth::CredentialSource;
 #[cfg(test)]
 use fabro_auth::test_support;
-use fabro_model::Catalog;
+use fabro_llm::lithos_catalog::Catalog;
 
 use crate::config::{HookDefinition, HookSettings};
 use crate::executor::{HookExecutor, HookExecutorImpl};
@@ -47,7 +47,7 @@ impl HookRunner {
             config,
             executor,
             llm_source: test_support::vault_only_credential_source(),
-            catalog: Arc::new(Catalog::from_builtin().expect("default catalog should build")),
+            catalog: Arc::new(fabro_llm::default_catalog()),
             compiled_matchers,
         }
     }
@@ -158,7 +158,7 @@ impl HookRunner {
                     context,
                     sandbox.clone(),
                     execution_context,
-                    self.llm_source.as_ref(),
+                    Arc::clone(&self.llm_source),
                     Arc::clone(&self.catalog),
                 )
                 .await;
@@ -213,7 +213,7 @@ impl HookRunner {
                     context,
                     sandbox.clone(),
                     execution_context,
-                    self.llm_source.as_ref(),
+                    Arc::clone(&self.llm_source),
                     Arc::clone(&self.catalog),
                 )
                 .await;
@@ -256,7 +256,7 @@ mod tests {
             _context: &HookContext,
             _sandbox: Arc<dyn Sandbox>,
             _execution_context: &HookExecutionContext,
-            _llm_source: &dyn CredentialSource,
+            _llm_source: Arc<dyn CredentialSource>,
             _catalog: Arc<Catalog>,
         ) -> HookResult {
             HookResult {
@@ -282,7 +282,7 @@ mod tests {
     }
 
     fn test_catalog() -> Arc<Catalog> {
-        Arc::new(Catalog::from_builtin().expect("default catalog should build"))
+        Arc::new(fabro_llm::default_catalog())
     }
 
     fn make_hook(event: HookEvent, name: &str) -> HookDefinition {

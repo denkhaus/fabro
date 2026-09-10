@@ -1,4 +1,4 @@
-use fabro_llm::Error as LlmError;
+use fabro_llm::LlmError;
 
 /// Why a session was interrupted.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -33,6 +33,8 @@ pub enum CompactionError {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum Error {
+    /// A provider call failed. Carries lithos's stored error projection so
+    /// the failure stays cloneable and serializable.
     #[error("LLM error: {0}")]
     Llm(#[from] LlmError),
 
@@ -52,21 +54,40 @@ pub enum Error {
     Interrupted(InterruptReason),
 }
 
+impl From<fabro_llm::Error> for Error {
+    fn from(error: fabro_llm::Error) -> Self {
+        Self::Llm(LlmError::from(error))
+    }
+}
+
+impl From<fabro_llm::Error> for CompactionError {
+    fn from(error: fabro_llm::Error) -> Self {
+        Self::Llm(LlmError::from(error))
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(test)]
 mod tests {
-    use fabro_llm::{ProviderErrorDetail, ProviderErrorKind};
+    use std::time::Duration;
+
+    use fabro_llm::{ErrorFacts, ErrorKind, RetryClassification};
+    use fabro_types::provider_ids;
     use fabro_util::error;
 
     use super::*;
 
+    fn network_error(message: &str) -> LlmError {
+        LlmError::from(
+            fabro_llm::Error::new(ErrorKind::Network, message)
+                .with_retry(RetryClassification::Safe),
+        )
+    }
+
     #[test]
     fn agent_error_from_sdk_error() {
-        let sdk_err = LlmError::Network {
-            message: "connection refused".into(),
-            source:  None,
-        };
+        let sdk_err = network_error("connection refused");
         let agent_err = Error::from(sdk_err);
         assert!(matches!(agent_err, Error::Llm(_)));
         assert!(agent_err.to_string().contains("connection refused"));
@@ -74,10 +95,7 @@ mod tests {
 
     #[test]
     fn compaction_error_preserves_llm_source_chain() {
-        let err = Error::Compaction(CompactionError::Llm(LlmError::Network {
-            message: "connection refused".into(),
-            source:  None,
-        }));
+        let err = Error::Compaction(CompactionError::Llm(network_error("connection refused")));
 
         let chain = error::collect_chain(&err);
 
@@ -139,10 +157,7 @@ mod tests {
 
     #[test]
     fn serde_roundtrip_llm_network() {
-        let err = Error::Llm(LlmError::Network {
-            message: "connection refused".into(),
-            source:  None,
-        });
+        let err = Error::Llm(network_error("connection refused"));
         let json = serde_json::to_string(&err).unwrap();
         let deserialized: Error = serde_json::from_str(&json).unwrap();
         assert_eq!(err.to_string(), deserialized.to_string());
@@ -150,20 +165,21 @@ mod tests {
 
     #[test]
     fn serde_roundtrip_llm_provider() {
-        let err = Error::Llm(LlmError::Provider {
-            kind:   ProviderErrorKind::RateLimit,
-            detail: Box::new(ProviderErrorDetail {
-                message:     "too fast".into(),
-                provider:    "openai".into(),
-                status_code: Some(429),
-                error_code:  None,
-                retry_after: Some(2.0),
-                raw:         None,
-            }),
-        });
+        let err = Error::Llm(LlmError::from(
+            fabro_llm::Error::new(ErrorKind::RateLimit, "too fast")
+                .with_provider(provider_ids::openai())
+                .with_status(429)
+                .with_retry(RetryClassification::after(Duration::from_secs(2))),
+        ));
         let json = serde_json::to_string(&err).unwrap();
         let deserialized: Error = serde_json::from_str(&json).unwrap();
         assert_eq!(err.to_string(), deserialized.to_string());
+        let Error::Llm(decoded) = deserialized else {
+            panic!("expected an LLM error");
+        };
+        assert_eq!(decoded.kind(), ErrorKind::RateLimit);
+        assert_eq!(decoded.status(), Some(429));
+        assert_eq!(decoded.retry_after(), Some(Duration::from_secs(2)));
     }
 
     #[test]
@@ -213,10 +229,7 @@ mod tests {
     #[test]
     fn clone_all_variants() {
         let errors: Vec<Error> = vec![
-            Error::Llm(LlmError::Network {
-                message: "refused".into(),
-                source:  None,
-            }),
+            Error::Llm(network_error("refused")),
             Error::Compaction(CompactionError::EmptySummary {
                 summarized_turn_count: 3,
             }),
@@ -234,10 +247,7 @@ mod tests {
 
     #[test]
     fn serde_tag_format_llm() {
-        let err = Error::Llm(LlmError::Network {
-            message: "refused".into(),
-            source:  None,
-        });
+        let err = Error::Llm(network_error("refused"));
         let json = serde_json::to_string(&err).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["type"], "llm");

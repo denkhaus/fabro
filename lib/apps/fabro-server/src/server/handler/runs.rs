@@ -21,7 +21,7 @@ use fabro_api::types::{
 use fabro_config::{CliLayer, RunLayer, Storage, project};
 use fabro_environment::{DEFAULT_ENVIRONMENT_ID, EnvironmentId};
 use fabro_interview::AnswerSubmission;
-use fabro_llm::client::Client as LlmClient;
+use fabro_llm::{Client as LlmClient, catalog};
 use fabro_manifest::RunOverrideInput;
 use fabro_static::EnvVars;
 use fabro_store::{
@@ -953,18 +953,23 @@ async fn finalize_created_run(
             let workflow = run_title_generation::workflow_summary(&run_spec.graph);
             let run_inputs = run_spec.settings.run.inputs.clone();
             let title_catalog = state.catalog();
-            let title_model = title_catalog.small_default_for_configured_ids(&ready_provider_ids);
-            spawn_generated_title_task(GeneratedTitleTask {
-                state: Arc::clone(&state),
-                run_id: created.run_id,
-                deterministic_title,
-                workflow_target: title_generation_target.to_string(),
-                workflow,
-                run_inputs,
-                client: llm_result.client,
-                model_id: title_model.id.to_string(),
-                provider_id: title_model.provider.clone(),
-            });
+            let ready = ready_provider_ids
+                .iter()
+                .cloned()
+                .collect::<std::collections::HashSet<_>>();
+            if let Some(title_model) = catalog::small_default_for_ready(&title_catalog, &ready) {
+                spawn_generated_title_task(GeneratedTitleTask {
+                    state: Arc::clone(&state),
+                    run_id: created.run_id,
+                    deterministic_title,
+                    workflow_target: title_generation_target.to_string(),
+                    workflow,
+                    run_inputs,
+                    client: llm_result.client,
+                    model_id: title_model.model.id().to_string(),
+                    provider_id: title_model.provider.id().clone(),
+                });
+            }
         }
     }
     style.log_created(created.run_id);
@@ -1408,7 +1413,7 @@ struct GeneratedTitleTask {
     run_inputs:          std::collections::HashMap<String, toml::Value>,
     client:              LlmClient,
     model_id:            String,
-    provider_id:         fabro_model::ProviderId,
+    provider_id:         fabro_types::ProviderId,
 }
 
 fn spawn_generated_title_task(task: GeneratedTitleTask) {

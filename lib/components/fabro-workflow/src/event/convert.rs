@@ -1,9 +1,8 @@
 use ::fabro_types::{
-    EventBody, RunControlAction, RunEvent, RunId, StageOutcome, run_event as fabro_types,
+    EventBody, RunControlAction, RunEvent, RunId, StageOutcome, UsdMicros, run_event as fabro_types,
 };
 use chrono::Utc;
 use fabro_agent::{AgentEvent, SandboxEvent, SkillActivationSource};
-use fabro_model::UsdMicros;
 use uuid::Uuid;
 
 use super::Event;
@@ -658,19 +657,18 @@ fn event_body_from_event(event: &Event) -> EventBody {
                 text,
                 model,
                 usage,
-                cost_usd,
-                cost_source,
+                cost,
                 tool_call_count,
                 context_window,
                 reasoning,
             } => {
-                let billing = billed_token_counts_from_llm(usage)
-                    .with_reported_cost(cost_usd.map(UsdMicros::from_usd));
+                let billing = billed_token_counts_from_llm(*usage)
+                    .with_reported_cost(cost.as_ref().map(UsdMicros::from_cost));
                 EventBody::AgentMessage(fabro_types::AgentMessageProps {
                     text: text.clone(),
                     model: model.clone(),
                     billing,
-                    cost_source: *cost_source,
+                    cost_source: cost.map(|cost| cost.source),
                     tool_call_count: *tool_call_count,
                     visit: *visit,
                     message: None,
@@ -1463,17 +1461,16 @@ mod tests {
     use std::collections::BTreeMap;
 
     use ::fabro_types::{
-        AutomationRef, EventBody, FailureReason, ParallelBranchId, Principal, RunNoticeCode,
-        RunNoticeLevel, RunProvenance, StageId, SystemActorKind, fixtures,
-        run_event as fabro_types, test_support,
+        AutomationRef, EventBody, FailureReason, ModelId, ModelRef, ParallelBranchId, Principal,
+        ProviderId, RunNoticeCode, RunNoticeLevel, RunProvenance, StageId, SystemActorKind,
+        TokenCounts as LlmTokenCounts, fixtures, provider_ids, run_event as fabro_types,
+        test_support,
     };
     use chrono::Utc;
     use fabro_agent::{
         AgentEvent, McpToolSummary, MemoryFileSummary, SandboxEvent, SkillActivationSource,
         SkillSummary,
     };
-    use fabro_llm::types::TokenCounts as LlmTokenCounts;
-    use fabro_model::{ModelRef, ProviderId};
 
     use super::*;
     use crate::error::Error;
@@ -2525,14 +2522,12 @@ mod tests {
             visit:             1,
             event:             AgentEvent::AssistantMessage {
                 text:            "ok".to_string(),
-                model:           ModelRef {
-                    provider: ProviderId::anthropic(),
-                    model_id: "claude-sonnet".into(),
-                    speed:    None,
-                },
+                model:           ModelRef::new(
+                    provider_ids::anthropic(),
+                    ModelId::new("claude-sonnet"),
+                ),
                 usage:           LlmTokenCounts::default(),
-                cost_usd:        None,
-                cost_source:     None,
+                cost:            None,
                 tool_call_count: 0,
                 context_window:  None,
                 reasoning:       None,
@@ -2556,18 +2551,16 @@ mod tests {
             visit:             1,
             event:             AgentEvent::AssistantMessage {
                 text:            "ok".to_string(),
-                model:           ModelRef {
-                    provider: ProviderId::new("custom_proxy"),
-                    model_id: "proxy-model".into(),
-                    speed:    None,
-                },
+                model:           ModelRef::new(
+                    ProviderId::new("custom_proxy"),
+                    ModelId::new("proxy-model"),
+                ),
                 usage:           LlmTokenCounts {
-                    input_tokens: 12,
-                    output_tokens: 34,
+                    input: 12,
+                    output: 34,
                     ..LlmTokenCounts::default()
                 },
-                cost_usd:        None,
-                cost_source:     None,
+                cost:            None,
                 tool_call_count: 0,
                 context_window:  None,
                 reasoning:       None,
@@ -2581,7 +2574,7 @@ mod tests {
             panic!("expected agent message body");
         };
         assert_eq!(message.model.provider, ProviderId::new("custom_proxy"));
-        assert_eq!(message.model.model_id, "proxy-model");
+        assert_eq!(message.model.model_id.as_str(), "proxy-model");
         assert_eq!(message.billing.input_tokens, 12);
         assert_eq!(message.billing.output_tokens, 34);
         assert_eq!(message.billing.total_usd_micros, None);
@@ -2594,18 +2587,20 @@ mod tests {
             visit:             1,
             event:             AgentEvent::AssistantMessage {
                 text:            "ok".to_string(),
-                model:           ModelRef {
-                    provider: ProviderId::new("openrouter"),
-                    model_id: "openai/gpt-5.4".into(),
-                    speed:    None,
-                },
+                model:           ModelRef::new(
+                    ProviderId::new("openrouter"),
+                    ModelId::new("openai/gpt-5.4"),
+                ),
                 usage:           LlmTokenCounts {
-                    input_tokens: 12,
-                    output_tokens: 34,
+                    input: 12,
+                    output: 34,
                     ..LlmTokenCounts::default()
                 },
-                cost_usd:        Some(0.125),
-                cost_source:     Some(fabro_model::CostSource::Authoritative),
+                cost:            Some(::fabro_types::Cost {
+                    usd_micros: 125_000,
+
+                    source: ::fabro_types::CostSource::Provider,
+                }),
                 tool_call_count: 0,
                 context_window:  None,
                 reasoning:       None,
@@ -2621,7 +2616,7 @@ mod tests {
         assert_eq!(message.billing.total_usd_micros, Some(125_000));
         assert_eq!(
             message.cost_source,
-            Some(fabro_model::CostSource::Authoritative)
+            Some(::fabro_types::CostSource::Provider)
         );
     }
 
@@ -2649,14 +2644,9 @@ mod tests {
             visit:             1,
             event:             AgentEvent::AssistantMessage {
                 text:            "ok".to_string(),
-                model:           ModelRef {
-                    provider: ProviderId::openai(),
-                    model_id: "gpt-5.4".into(),
-                    speed:    None,
-                },
+                model:           ModelRef::new(provider_ids::openai(), ModelId::new("gpt-5.4")),
                 usage:           LlmTokenCounts::default(),
-                cost_usd:        None,
-                cost_source:     None,
+                cost:            None,
                 tool_call_count: 0,
                 context_window:  Some(context_window),
                 reasoning:       None,
@@ -2684,14 +2674,9 @@ mod tests {
             visit:             1,
             event:             AgentEvent::AssistantMessage {
                 text:            String::new(),
-                model:           ModelRef {
-                    provider: ProviderId::openai(),
-                    model_id: "gpt-5.4".into(),
-                    speed:    None,
-                },
+                model:           ModelRef::new(provider_ids::openai(), ModelId::new("gpt-5.4")),
                 usage:           LlmTokenCounts::default(),
-                cost_usd:        None,
-                cost_source:     None,
+                cost:            None,
                 tool_call_count: 1,
                 context_window:  None,
                 reasoning:       Some(::fabro_types::ReasoningOutput::new(

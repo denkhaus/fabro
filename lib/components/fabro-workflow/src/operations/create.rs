@@ -12,12 +12,12 @@ use std::sync::Arc;
 
 use fabro_config::Storage;
 use fabro_graphviz::graph::{AttrValue, Graph};
-use fabro_model::{Catalog, ProviderId};
+use fabro_llm::lithos_catalog::Catalog;
 use fabro_store::{BlobStore, Database};
 use fabro_template::TemplateContext;
 use fabro_types::{
-    AutomationRef, BlobHash, ForkSourceRef, GitContext, ManifestPath, RunId, RunProvenance,
-    RunTarget, WorkflowSettings, WorkflowVersionId,
+    AutomationRef, BlobHash, ForkSourceRef, GitContext, ManifestPath, ProviderId, RunId,
+    RunProvenance, RunTarget, WorkflowSettings, WorkflowVersionId,
 };
 use fabro_util::json::normalize_json_value;
 use tokio::task::spawn_blocking;
@@ -688,7 +688,7 @@ mod tests {
     use fabro_store::Database;
     use fabro_types::settings::InterpString;
     use fabro_types::settings::run::RunMode;
-    use fabro_types::{EventBody, WorkflowSettings, fixtures, test_support};
+    use fabro_types::{EventBody, WorkflowSettings, fixtures, provider_ids, test_support};
     use fabro_util::error::collect_chain;
     use fabro_validate::Severity;
     use object_store::local::LocalFileSystem;
@@ -731,60 +731,31 @@ mod tests {
     }
 
     fn test_catalog() -> Arc<Catalog> {
-        Arc::new(Catalog::from_builtin().unwrap())
+        Arc::new(fabro_llm::test_support::test_catalog())
     }
 
+    /// OpenAI and OpenRouter both offering GPT-5.6 Sol as their default, so a
+    /// portable selector resolves to whichever provider is ready.
     fn portable_model_catalog() -> Arc<Catalog> {
-        let settings: fabro_model::catalog::LlmCatalogSettings = toml::from_str(
+        Arc::new(fabro_llm::test_support::test_catalog_with_overlay(
             r#"
-[providers.openai]
-display_name = "OpenAI"
-adapter = "openai"
-agent_profile = "openai"
-priority = 90
-
-[providers.openai.models."gpt-5.6-sol"]
-display_name = "GPT-5.6 Sol"
-family = "gpt-5"
-aliases = ["gpt-56-sol"]
-default = true
-
-[providers.openai.models."gpt-5.6-sol".limits]
-context_window = 1000
-
-[providers.openai.models."gpt-5.6-sol".features]
-tools = true
-vision = false
-reasoning = false
-
-[providers.openrouter]
-display_name = "OpenRouter"
-adapter = "openai_compatible"
-agent_profile = "openai"
-priority = 25
-
-[providers.openrouter.models."gpt-5.6-sol"]
-api_id = "openai/gpt-5.6-sol"
-display_name = "GPT-5.6 Sol (via OpenRouter)"
-family = "gpt-5"
-aliases = ["gpt-56-sol"]
-default = true
-
-[providers.openrouter.models."gpt-5.6-sol".limits]
-context_window = 1000
-
-[providers.openrouter.models."gpt-5.6-sol".features]
-tools = true
-vision = false
-reasoning = false
-"#,
-        )
-        .unwrap();
-        Arc::new(Catalog::from_settings(&settings).unwrap())
+            [providers.openai]
+            priority = 90
+            default_model = "gpt-5.6-sol"
+            
+            [providers.openrouter]
+            priority = 25
+            default_model = "gpt-5.6-sol"
+            enabled = true
+            
+            "#,
+        ))
     }
 
     fn test_provider_ids() -> Vec<ProviderId> {
-        Catalog::builtin().all_provider_ids().into_iter().collect()
+        fabro_llm::catalog::enabled_provider_ids(&fabro_llm::test_support::test_catalog())
+            .into_iter()
+            .collect()
     }
 
     fn compile_input(request: &CreateRunInput) -> CreateRunCompileInput {
@@ -2056,25 +2027,25 @@ reasoning = false
         }"#;
         let catalog = portable_model_catalog();
         let cases = [
-            (vec![ProviderId::openai()], None, ProviderId::openai()),
+            (vec![provider_ids::openai()], None, provider_ids::openai()),
             (
                 vec![ProviderId::new("openrouter")],
                 None,
                 ProviderId::new("openrouter"),
             ),
             (
-                vec![ProviderId::openai(), ProviderId::new("openrouter")],
+                vec![provider_ids::openai(), ProviderId::new("openrouter")],
                 None,
-                ProviderId::openai(),
+                provider_ids::openai(),
             ),
             (
-                vec![ProviderId::openai(), ProviderId::new("openrouter")],
+                vec![provider_ids::openai(), ProviderId::new("openrouter")],
                 Some("openrouter"),
                 ProviderId::new("openrouter"),
             ),
         ];
 
-        for selector in ["gpt-56-sol", "openai/gpt-5.6-sol"] {
+        for selector in ["gpt-56-sol", "gpt-5.6"] {
             for (ready, explicit_provider, expected_provider) in &cases {
                 let dir = tempfile::tempdir().unwrap();
                 let mut settings = test_default_settings();

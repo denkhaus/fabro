@@ -2,7 +2,7 @@ use anyhow::{Context, Result, bail};
 use cli_table::format::{Border, Justify, Separator};
 use cli_table::{Cell, CellStruct, Color, Style, Table};
 use fabro_api::types as api_types;
-use fabro_model::{Model, ModelTestMode, ProviderId};
+use fabro_types::{Model, ModelTestMode, ProviderId};
 use fabro_util::terminal::Styles;
 use futures::{StreamExt, stream};
 use serde::Serialize;
@@ -46,7 +46,7 @@ struct CompletedModelTest {
 }
 
 fn model_matches_selector(model: &Model, selector: &str) -> bool {
-    model.id == selector || model.aliases.iter().any(|alias| alias == selector)
+    model.id.as_str() == selector || model.aliases.iter().any(|alias| alias == selector)
 }
 
 fn find_model_by_id_or_alias(
@@ -363,7 +363,7 @@ async fn test_models_via_server(
 
         for info in &unconfigured {
             skipped += 1;
-            let provider_name = info.provider.display_name();
+            let provider_name = info.provider.to_string();
             if !skipped_providers.contains(&provider_name) {
                 skipped_providers.push(provider_name);
             }
@@ -513,9 +513,8 @@ impl Default for ModelsCommand {
 
 #[cfg(test)]
 mod tests {
-    use fabro_model::{
-        ModelControls, ModelCosts, ModelFeatures, ModelLimits, ReasoningEffort,
-        ReasoningEffortFeature,
+    use fabro_types::{
+        ModelControls, ModelCosts, ModelFeatures, ModelLimits, ReasoningEffort, provider_ids,
     };
 
     use super::*;
@@ -537,13 +536,11 @@ mod tests {
             training: None,
             knowledge_cutoff: None,
             features: ModelFeatures {
-                tools:                     true,
-                vision:                    false,
-                reasoning:                 false,
-                reasoning_effort:          ReasoningEffortFeature::None,
-                prompt_cache:              false,
-                cache_control_breakpoints: false,
-                sampling_params:           true,
+                tools:        true,
+                vision:       false,
+                reasoning:    false,
+                prompt_cache: false,
+                sampling:     true,
             },
             controls: ModelControls::default(),
             costs: ModelCosts {
@@ -573,13 +570,11 @@ mod tests {
             training:             None,
             knowledge_cutoff:     None,
             features:             ModelFeatures {
-                tools:                     true,
-                vision:                    false,
-                reasoning:                 false,
-                reasoning_effort:          ReasoningEffortFeature::None,
-                prompt_cache:              false,
-                cache_control_breakpoints: false,
-                sampling_params:           true,
+                tools:        true,
+                vision:       false,
+                reasoning:    false,
+                prompt_cache: false,
+                sampling:     true,
             },
             controls:             ModelControls::default(),
             costs:                ModelCosts {
@@ -907,7 +902,7 @@ mod tests {
                     .header("Content-Type", "application/json")
                     .body(
                         serde_json::json!({
-                            "data": [test_model_json("test-model", ProviderId::anthropic())],
+                            "data": [test_model_json("test-model", provider_ids::anthropic())],
                             "meta": { "has_more": false }
                         })
                         .to_string(),
@@ -920,8 +915,8 @@ mod tests {
 
         mock.assert_async().await;
         assert_eq!(models.len(), 1);
-        assert_eq!(models[0].id, "test-model");
-        assert_eq!(models[0].provider, ProviderId::anthropic());
+        assert_eq!(models[0].id.as_str(), "test-model");
+        assert_eq!(models[0].provider, provider_ids::anthropic());
     }
 
     #[tokio::test]
@@ -938,7 +933,7 @@ mod tests {
                     .header("Content-Type", "application/json")
                     .body(
                         serde_json::json!({
-                            "data": [test_model_json("model-a", ProviderId::anthropic())],
+                            "data": [test_model_json("model-a", provider_ids::anthropic())],
                             "meta": { "has_more": false }
                         })
                         .to_string(),
@@ -950,7 +945,7 @@ mod tests {
         let models = client.list_models(Some("anthropic"), None).await.unwrap();
 
         assert_eq!(models.len(), 1);
-        assert_eq!(models[0].id, "model-a");
+        assert_eq!(models[0].id.as_str(), "model-a");
     }
 
     #[tokio::test]
@@ -966,12 +961,12 @@ mod tests {
                 then.status(200)
                     .header("Content-Type", "application/json")
                     .body(
-                        serde_json::json!({
-                            "data": [test_model_json("claude-sonnet-4-5", ProviderId::anthropic())],
-                            "meta": { "has_more": false }
-                        })
-                        .to_string(),
-                    );
+                    serde_json::json!({
+                        "data": [test_model_json("claude-sonnet-4-5", provider_ids::anthropic())],
+                        "meta": { "has_more": false }
+                    })
+                    .to_string(),
+                );
             })
             .await;
 
@@ -980,7 +975,7 @@ mod tests {
 
         mock.assert_async().await;
         assert_eq!(models.len(), 1);
-        assert_eq!(models[0].id, "claude-sonnet-4-5");
+        assert_eq!(models[0].id.as_str(), "claude-sonnet-4-5");
     }
 
     #[tokio::test]
@@ -996,7 +991,7 @@ mod tests {
                     .header("Content-Type", "application/json")
                     .body(
                         serde_json::json!({
-                            "data": [test_model_json("model-a", ProviderId::anthropic())],
+                            "data": [test_model_json("model-a", provider_ids::anthropic())],
                             "meta": { "has_more": true }
                         })
                         .to_string(),
@@ -1013,7 +1008,7 @@ mod tests {
                     .header("Content-Type", "application/json")
                     .body(
                         serde_json::json!({
-                            "data": [test_model_json("model-b", ProviderId::openai())],
+                            "data": [test_model_json("model-b", provider_ids::openai())],
                             "meta": { "has_more": false }
                         })
                         .to_string(),
@@ -1027,8 +1022,8 @@ mod tests {
         first_page.assert_async().await;
         second_page.assert_async().await;
         assert_eq!(models.len(), 2);
-        assert_eq!(models[0].id, "model-a");
-        assert_eq!(models[1].id, "model-b");
+        assert_eq!(models[0].id.as_str(), "model-a");
+        assert_eq!(models[1].id.as_str(), "model-b");
     }
 
     #[tokio::test]

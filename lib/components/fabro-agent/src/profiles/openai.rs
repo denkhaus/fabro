@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use fabro_model::{AgentProfileKind, Catalog, ProviderId};
+use fabro_llm::lithos_catalog::Catalog;
+use fabro_types::{AgentProfileKind, ProviderId, provider_ids};
 
 use super::EnvContext;
 use crate::agent_profile::AgentProfile;
@@ -42,7 +43,7 @@ impl OpenAiProfile {
         Self {
             base: BaseProfile {
                 profile_kind: AgentProfileKind::OpenAi,
-                provider_id: ProviderId::openai(),
+                provider_id: provider_ids::openai(),
                 model: model.into(),
                 catalog: None,
                 registry,
@@ -101,19 +102,22 @@ impl AgentProfile for OpenAiProfile {
 mod tests {
     use std::sync::Arc;
 
+    use fabro_llm::test_support::test_catalog as fabro_test_catalog;
+
     use super::*;
     use crate::subagent::{SessionFactory, SubAgentSupervisor};
     use crate::test_support::MockSandbox;
+    use crate::tool_registry::ToolDefinitionExt;
 
     fn test_catalog() -> Arc<Catalog> {
-        Arc::new(Catalog::from_builtin().unwrap())
+        Arc::new(fabro_test_catalog())
     }
 
     #[test]
     fn openai_profile_identity() {
         let profile = OpenAiProfile::new("o3-mini");
         assert_eq!(profile.profile_kind(), AgentProfileKind::OpenAi);
-        assert_eq!(profile.provider_id(), ProviderId::openai());
+        assert_eq!(profile.provider_id(), provider_ids::openai());
         assert_eq!(profile.model(), "o3-mini");
     }
 
@@ -249,10 +253,11 @@ mod tests {
 
         let edit_file = profile.tool_registry().get("edit_file").unwrap();
         assert!(!edit_file.definition.is_custom());
-        assert_eq!(edit_file.definition.parameters["type"], "object");
+        assert_eq!(edit_file.definition.parameters()["type"], "object");
         for definition in profile.tool_registry().definitions() {
             assert_eq!(
-                definition.parameters["type"], "object",
+                definition.parameters()["type"],
+                "object",
                 "tool '{}' must use an object parameter schema",
                 definition.name
             );
