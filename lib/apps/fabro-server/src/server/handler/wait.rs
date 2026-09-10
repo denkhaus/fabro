@@ -120,6 +120,67 @@ async fn wait_until_terminal(state: &AppState, id: &RunId, deadline: Instant) ->
     }
 }
 
+/// Evidence-based stuck-gate verdict (fabro-ee5d).
+///
+/// `mergeable_state: blocked` alone is NOT a stuck signal: required checks
+/// that are still queued or running also report `blocked`, so a young gate
+/// is indistinguishable from a failing one by state alone (observed
+/// 2026-09-10: PR #121 misrouted "Gate stuck" 56 seconds after creation
+/// with the dogfood gate pending). A gate counts as stuck only on positive
+/// failure evidence:
+///
+/// * `dirty` — a merge conflict is structural, no check run can clear it;
+/// * a `blocked` state plus at least one check run whose conclusion is a
+///   failure (`failure`, `timed_out`, `action_required`, `cancelled`).
+///
+/// Everything else — pending/queued/running checks, `unknown` (GitHub still
+/// computing), `unstable`, `behind`, or a failed check-runs fetch (no
+/// evidence either way) — stays young and keeps polling until the deadline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum GateVerdict {
+    /// Failure evidence: re-waiting will not clear it (fabro-bde4).
+    Stuck,
+    /// Checks still running or no failure evidence: keep polling.
+    Young,
+}
+
+fn gate_verdict(
+    mergeable_state: Option<&str>,
+    checks: Option<&[fabro_github::CheckRunSnapshot]>,
+) -> GateVerdict {
+    let Some(state) = mergeable_state.map(str::to_ascii_lowercase) else {
+        return GateVerdict::Young;
+    };
+    match state.as_str() {
+        // A merge conflict is structural: stuck regardless of checks.
+        "dirty" => GateVerdict::Stuck,
+        "blocked" => {
+            let Some(checks) = checks else {
+                // No check evidence (fetch failed or none listed): the safe
+                // direction is to keep waiting; the deadline still bounds the
+                // wait and callers treat `timeout` as re-wait.
+                return GateVerdict::Young;
+            };
+            let failing = checks.iter().any(|check| {
+                matches!(
+                    check
+                        .conclusion
+                        .as_deref()
+                        .map(str::to_ascii_lowercase)
+                        .as_deref(),
+                    Some("failure" | "timed_out" | "action_required" | "cancelled")
+                )
+            });
+            if failing {
+                GateVerdict::Stuck
+            } else {
+                GateVerdict::Young
+            }
+        }
+        _ => GateVerdict::Young,
+    }
+}
+
 /// Poll the store and the GitHub pull request until the PR merges, the run
 /// fails hard, the PR closes without merging, the PR's merge gate stays
 /// blocked, or the deadline expires.
@@ -184,14 +245,46 @@ async fn wait_until_merged(
                             Some(ctx.record.clone()),
                         );
                     }
-                    // An open PR whose mergeable_state stays dirty/blocked
-                    // across consecutive polls is a stuck merge gate (failed
-                    // required checks or an unmergeable base). `None` and
-                    // "unknown" mean GitHub is still computing and never
-                    // count (fabro-bde4).
-                    if detail.mergeable_state.as_deref().is_some_and(|state| {
+                    // Evidence-based stuck-gate detection (fabro-ee5d): a
+                    // dirty/blocked mergeable_state sustained across
+                    // consecutive polls counts only when the check runs
+                    // prove failure (or the state is a structural `dirty`
+                    // conflict). A blocked state with checks still
+                    // queued/running is a YOUNG gate — keep polling until
+                    // the deadline instead of striking (fabro-bde4 kept the
+                    // bde4 semantics: re-waiting a proven-stuck gate will
+                    // not clear it).
+                    let dirty_or_blocked = detail.mergeable_state.as_deref().is_some_and(|state| {
                         state.eq_ignore_ascii_case("dirty") || state.eq_ignore_ascii_case("blocked")
-                    }) {
+                    });
+                    let verdict = if dirty_or_blocked {
+                        let checks = match timeout(
+                            GITHUB_CALL_TIMEOUT,
+                            fabro_github::list_check_runs_for_ref(
+                                &github,
+                                &ctx.owner,
+                                &ctx.repo,
+                                &detail.head.ref_name,
+                            ),
+                        )
+                        .await
+                        {
+                            Ok(Ok(checks)) => Some(checks),
+                            Ok(Err(err)) => {
+                                tracing::warn!(
+                                    run_id = %id,
+                                    error = %err,
+                                    "Check-run fetch failed during blocked-gate verdict;                                      treating gate as young (no failure evidence)"
+                                );
+                                None
+                            }
+                            Err(_) => None,
+                        };
+                        gate_verdict(detail.mergeable_state.as_deref(), checks.as_deref())
+                    } else {
+                        GateVerdict::Young
+                    };
+                    if verdict == GateVerdict::Stuck {
                         blocked_streak = blocked_streak.saturating_add(1);
                         if blocked_streak >= BLOCKED_POLL_THRESHOLD {
                             return wait_result(
@@ -286,4 +379,74 @@ fn wait_result(
         }),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use fabro_github::CheckRunSnapshot;
+
+    use super::{GateVerdict, gate_verdict};
+
+    fn check(conclusion: Option<&str>) -> CheckRunSnapshot {
+        CheckRunSnapshot {
+            name:       "dogfood-gate".to_string(),
+            status:     Some("completed".to_string()),
+            conclusion: conclusion.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn dirty_state_is_structurally_stuck() {
+        assert_eq!(gate_verdict(Some("dirty"), None), GateVerdict::Stuck);
+        // Even with all checks green a conflict cannot clear itself.
+        assert_eq!(
+            gate_verdict(Some("DIRTY"), Some(&[check(Some("success"))])),
+            GateVerdict::Stuck
+        );
+    }
+
+    #[test]
+    fn blocked_with_failing_check_is_stuck() {
+        for conclusion in ["failure", "timed_out", "action_required", "cancelled"] {
+            assert_eq!(
+                gate_verdict(
+                    Some("blocked"),
+                    Some(&[check(Some("success")), check(Some(conclusion))])
+                ),
+                GateVerdict::Stuck,
+                "conclusion {conclusion} must be failure evidence"
+            );
+        }
+    }
+
+    #[test]
+    fn blocked_with_only_young_checks_stays_young() {
+        // fabro-ee5d regression: a young gate reports `blocked` while the
+        // required checks are queued or running (PR #121, 2026-09-10).
+        assert_eq!(gate_verdict(Some("blocked"), Some(&[])), GateVerdict::Young);
+        assert_eq!(
+            gate_verdict(Some("blocked"), Some(&[check(None)])),
+            GateVerdict::Young,
+            "a run with no conclusion yet is still executing"
+        );
+        assert_eq!(
+            gate_verdict(Some("blocked"), Some(&[check(Some("success"))])),
+            GateVerdict::Young
+        );
+    }
+
+    #[test]
+    fn blocked_without_check_evidence_stays_young() {
+        // Check-runs fetch failed: no evidence either way, keep waiting.
+        assert_eq!(gate_verdict(Some("blocked"), None), GateVerdict::Young);
+    }
+
+    #[test]
+    fn computing_and_unstable_states_are_young() {
+        assert_eq!(gate_verdict(None, None), GateVerdict::Young);
+        assert_eq!(gate_verdict(Some("unknown"), None), GateVerdict::Young);
+        assert_eq!(gate_verdict(Some("unstable"), None), GateVerdict::Young);
+        assert_eq!(gate_verdict(Some("behind"), None), GateVerdict::Young);
+        assert_eq!(gate_verdict(Some("clean"), None), GateVerdict::Young);
+    }
 }

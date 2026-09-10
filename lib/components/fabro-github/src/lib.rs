@@ -1579,6 +1579,95 @@ pub async fn get_pull_request_with_client(
         .context("Failed to parse pull request response")?)
 }
 
+/// One check-run observation for a PR head ref (name, status, conclusion).
+/// `status` is the run state (`queued`, `in_progress`, `completed`), and
+/// `conclusion` is set once the run completes (`success`, `failure`, ...).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct CheckRunSnapshot {
+    pub name:       String,
+    pub status:     Option<String>,
+    pub conclusion: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CheckRunsResponse {
+    #[serde(default)]
+    check_runs: Vec<CheckRunSnapshot>,
+}
+
+/// List the check runs for a commit reference (SHA, branch name, or tag).
+///
+/// Used by the merged-wait gate verdict (fabro-ee5d): `mergeable_state`
+/// alone cannot distinguish a young gate (required checks still queued or
+/// running report `blocked`) from a failing one — the check conclusions are
+/// the evidence.
+pub async fn list_check_runs_for_ref(
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    git_ref: &str,
+) -> Result<Vec<CheckRunSnapshot>, PullRequestApiError> {
+    let client = ctx.http_client()?;
+    list_check_runs_for_ref_with_client(&client, ctx, owner, repo, git_ref).await
+}
+
+pub async fn list_check_runs_for_ref_with_client(
+    client: &impl HttpClient,
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    git_ref: &str,
+) -> Result<Vec<CheckRunSnapshot>, PullRequestApiError> {
+    tracing::debug!(owner, repo, git_ref, "Fetching check runs");
+
+    let token = ctx
+        .creds
+        .resolve_bearer_token(
+            client,
+            owner,
+            repo,
+            ctx.base_url,
+            serde_json::json!({ "contents": "read", "pull_requests": "read" }),
+        )
+        .await?;
+
+    let url = format!(
+        "{}/repos/{owner}/{repo}/commits/{git_ref}/check-runs",
+        ctx.base_url
+    );
+    let auth = format!("Bearer {token}");
+    let resp = client
+        .request(HttpMethod::Get, &url, &github_headers(&auth), None)
+        .await
+        .context("Failed to fetch check runs")?;
+
+    match resp.status {
+        200 => {}
+        // A ref with no check runs (or a not-yet-created commit ref) is not
+        // an error for the gate verdict: it is simply no failure evidence.
+        404 => return Ok(Vec::new()),
+        401 | 403 => {
+            return Err(anyhow!(
+                "Authentication failed fetching check runs ({})",
+                resp.status
+            )
+            .into());
+        }
+        status => {
+            return Err(anyhow!(
+                "Unexpected status {status} fetching check runs: {}",
+                resp.text()
+            )
+            .into());
+        }
+    }
+
+    Ok(resp
+        .json::<CheckRunsResponse>()
+        .context("Failed to parse check runs response")?
+        .check_runs)
+}
+
 /// Merge a pull request.
 pub async fn merge_pull_request(
     ctx: &GitHubContext<'_>,

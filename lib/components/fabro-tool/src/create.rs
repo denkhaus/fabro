@@ -416,6 +416,49 @@ pub struct CreateRunOptions {
     pub forced_parent_id: Option<RunId>,
 }
 
+/// Structural serialization guard (fabro-8ee1): a parent run must not gain
+/// a second child of the same workflow while a sibling is still
+/// non-terminal. Prompt prose alone proved violable twice (2026-09-05:
+/// recreate after an approval_required start error; 2026-09-10: recreate
+/// after a wait-timeout produced a duplicate develop child and a failed
+/// pass), so the create call itself fails with the existing child named —
+/// the only legal continuation is waiting on that child.
+async fn reject_duplicate_active_child(
+    backend: &dyn FabroToolBackend,
+    parent_run_id: RunId,
+    workflow: &str,
+) -> ToolResult<()> {
+    let children = backend
+        .list_store_runs_by_parent(parent_run_id)
+        .await
+        .map_err(|err| ToolError::from_anyhow(&err))?;
+    let wanted = workflow.trim().to_ascii_lowercase();
+    // Local workflow specs may name a path ("develop/workflow.fabro");
+    // compare its file stem as an additional key.
+    let stem = Path::new(workflow)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .map(str::to_ascii_lowercase);
+    for child in &children {
+        let child_keys = [
+            child.workflow.slug.as_deref(),
+            child.workflow.name.as_deref(),
+            child.workflow.graph_name.as_deref(),
+        ];
+        let same_workflow = child_keys
+            .iter()
+            .filter_map(|key| key.map(str::to_ascii_lowercase))
+            .any(|key| key == wanted || stem.as_ref().is_some_and(|stem| key == *stem));
+        if same_workflow && !child.lifecycle.status.is_terminal() {
+            return Err(ToolError::message(format!(
+                "duplicate child rejected (fabro-8ee1): parent run {parent_run_id} already has                  non-terminal child {} of workflow {workflow} — wait on it with fabro_run_wait                  instead of creating a sibling",
+                child.id
+            )));
+        }
+    }
+    Ok(())
+}
+
 pub async fn create_runs(
     backend: Arc<dyn FabroToolBackend>,
     base_cwd: &Path,
@@ -453,6 +496,9 @@ pub async fn create_runs_with_options(
         } else {
             None
         };
+        if let Some(parent_run_id) = parent_id {
+            reject_duplicate_active_child(backend.as_ref(), parent_run_id, &spec.workflow).await?;
+        }
         let run_id = backend
             .create_run_from_spec(&spec, &cwd, user_settings_path, parent_id)
             .await
@@ -737,6 +783,7 @@ mod tests {
             child_id,
             parent_id,
             created_parent_ids: Mutex::new(Vec::new()),
+            children_by_parent: Vec::new(),
             resolved_selectors: Mutex::new(Vec::new()),
             started_run_ids: Mutex::new(Vec::new()),
             start_error: None,
@@ -790,6 +837,7 @@ mod tests {
             child_id,
             parent_id,
             created_parent_ids: Mutex::new(Vec::new()),
+            children_by_parent: Vec::new(),
             resolved_selectors: Mutex::new(Vec::new()),
             started_run_ids: Mutex::new(Vec::new()),
             start_error: None,
@@ -842,6 +890,7 @@ mod tests {
             child_id,
             parent_id,
             created_parent_ids: Mutex::new(Vec::new()),
+            children_by_parent: Vec::new(),
             resolved_selectors: Mutex::new(Vec::new()),
             started_run_ids: Mutex::new(Vec::new()),
             start_error: None,
@@ -899,6 +948,7 @@ mod tests {
             child_id,
             parent_id,
             created_parent_ids: Mutex::new(Vec::new()),
+            children_by_parent: Vec::new(),
             resolved_selectors: Mutex::new(Vec::new()),
             started_run_ids: Mutex::new(Vec::new()),
             start_error: None,
@@ -974,6 +1024,7 @@ mod tests {
             child_id,
             parent_id,
             created_parent_ids: Mutex::new(Vec::new()),
+            children_by_parent: Vec::new(),
             resolved_selectors: Mutex::new(Vec::new()),
             started_run_ids: Mutex::new(Vec::new()),
             start_error: Some("approval_required (409)".to_string()),
@@ -1013,6 +1064,7 @@ mod tests {
             child_id,
             parent_id,
             created_parent_ids: Mutex::new(Vec::new()),
+            children_by_parent: Vec::new(),
             resolved_selectors: Mutex::new(Vec::new()),
             started_run_ids: Mutex::new(Vec::new()),
             start_error: None,
@@ -1049,6 +1101,7 @@ mod tests {
             child_id,
             parent_id,
             created_parent_ids: Mutex::new(Vec::new()),
+            children_by_parent: Vec::new(),
             resolved_selectors: Mutex::new(Vec::new()),
             started_run_ids: Mutex::new(Vec::new()),
             start_error: Some("approval_required (409)".to_string()),
@@ -1144,6 +1197,7 @@ mod tests {
 
     struct MockCreateBackend {
         child_id:           RunId,
+        children_by_parent: Vec<Run>,
         parent_id:          RunId,
         created_parent_ids: Mutex<Vec<Option<RunId>>>,
         resolved_selectors: Mutex<Vec<String>>,
@@ -1275,7 +1329,7 @@ mod tests {
         }
 
         async fn list_store_runs_by_parent(&self, _parent_id: RunId) -> anyhow::Result<Vec<Run>> {
-            unreachable!()
+            Ok(self.children_by_parent.clone())
         }
 
         async fn link_run_parent(
@@ -1327,5 +1381,179 @@ mod tests {
         ) -> anyhow::Result<()> {
             unreachable!()
         }
+    }
+
+    #[tokio::test]
+    async fn create_rejects_duplicate_active_child_of_same_workflow() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let settings = temp.path().join("settings.toml");
+        let child_id = run_id("01KRBZW5C00000000000000001");
+        let parent_id = run_id("01KRBZW4DW0000000000000002");
+        let sibling = run_id("01KRBZW5A00000000000000003");
+        let backend = Arc::new(MockCreateBackend {
+            child_id,
+            parent_id,
+            children_by_parent: vec![run(sibling, Some(parent_id), 0)],
+            created_parent_ids: Mutex::new(Vec::new()),
+            resolved_selectors: Mutex::new(Vec::new()),
+            started_run_ids: Mutex::new(Vec::new()),
+            start_error: None,
+            retrieve_error: None,
+        });
+        let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
+            runs: vec![CreateRunSpecInput::Spec(Box::new(CreateRunSpec {
+                workflow:         "simple.fabro".to_string(),
+                workflow_source:  None,
+                cwd:              None,
+                parent_id:        None,
+                goal:             None,
+                goal_file:        None,
+                inputs:           HashMap::new(),
+                labels:           HashMap::new(),
+                dry_run:          None,
+                auto_approve:     None,
+                model:            None,
+                provider:         None,
+                environment:      None,
+                preserve_sandbox: None,
+                start:            None,
+            }))],
+        })
+        .expect("spec should validate");
+
+        let err = create_runs_with_options(
+            backend.clone(),
+            temp.path(),
+            &settings,
+            params,
+            CreateRunOptions {
+                forced_parent_id: Some(parent_id),
+            },
+        )
+        .await
+        .expect_err("duplicate active child must be rejected");
+
+        let message = err.to_string();
+        assert!(message.contains("duplicate child rejected"), "{message}");
+        assert!(message.contains(&sibling.to_string()), "{message}");
+        assert!(
+            backend.created_parent_ids.lock().unwrap().is_empty(),
+            "no run may be created when the guard rejects"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_allows_terminal_sibling_of_same_workflow() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let settings = temp.path().join("settings.toml");
+        let child_id = run_id("01KRBZW5C00000000000000001");
+        let parent_id = run_id("01KRBZW4DW0000000000000002");
+        let sibling = run_id("01KRBZW5A00000000000000003");
+        let backend = Arc::new(MockCreateBackend {
+            child_id,
+            parent_id,
+            children_by_parent: vec![run_with_status(
+                sibling,
+                Some(parent_id),
+                0,
+                RunStatus::Succeeded {
+                    reason: fabro_types::SuccessReason::Completed,
+                },
+            )],
+            created_parent_ids: Mutex::new(Vec::new()),
+            resolved_selectors: Mutex::new(Vec::new()),
+            started_run_ids: Mutex::new(Vec::new()),
+            start_error: None,
+            retrieve_error: None,
+        });
+        let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
+            runs: vec![CreateRunSpecInput::Spec(Box::new(CreateRunSpec {
+                workflow:         "simple.fabro".to_string(),
+                workflow_source:  None,
+                cwd:              None,
+                parent_id:        None,
+                goal:             None,
+                goal_file:        None,
+                inputs:           HashMap::new(),
+                labels:           HashMap::new(),
+                dry_run:          None,
+                auto_approve:     None,
+                model:            None,
+                provider:         None,
+                environment:      None,
+                preserve_sandbox: None,
+                start:            None,
+            }))],
+        })
+        .expect("spec should validate");
+
+        let result = create_runs_with_options(
+            backend.clone(),
+            temp.path(),
+            &settings,
+            params,
+            CreateRunOptions {
+                forced_parent_id: Some(parent_id),
+            },
+        )
+        .await
+        .expect("terminal sibling must not block a fresh child");
+
+        assert_eq!(result.runs[0].run_id, child_id.to_string());
+    }
+
+    #[tokio::test]
+    async fn create_allows_active_sibling_of_different_workflow() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let settings = temp.path().join("settings.toml");
+        let child_id = run_id("01KRBZW5C00000000000000001");
+        let parent_id = run_id("01KRBZW4DW0000000000000002");
+        let mut sibling_run = run(run_id("01KRBZW5A00000000000000003"), Some(parent_id), 0);
+        sibling_run.workflow.slug = Some("revisor".to_string());
+        sibling_run.workflow.name = Some("Revisor".to_string());
+        let backend = Arc::new(MockCreateBackend {
+            child_id,
+            parent_id,
+            children_by_parent: vec![sibling_run],
+            created_parent_ids: Mutex::new(Vec::new()),
+            resolved_selectors: Mutex::new(Vec::new()),
+            started_run_ids: Mutex::new(Vec::new()),
+            start_error: None,
+            retrieve_error: None,
+        });
+        let params = ValidatedCreateRuns::try_from(FabroRunCreateParams {
+            runs: vec![CreateRunSpecInput::Spec(Box::new(CreateRunSpec {
+                workflow:         "develop".to_string(),
+                workflow_source:  None,
+                cwd:              None,
+                parent_id:        None,
+                goal:             None,
+                goal_file:        None,
+                inputs:           HashMap::new(),
+                labels:           HashMap::new(),
+                dry_run:          None,
+                auto_approve:     None,
+                model:            None,
+                provider:         None,
+                environment:      None,
+                preserve_sandbox: None,
+                start:            None,
+            }))],
+        })
+        .expect("spec should validate");
+
+        let result = create_runs_with_options(
+            backend.clone(),
+            temp.path(),
+            &settings,
+            params,
+            CreateRunOptions {
+                forced_parent_id: Some(parent_id),
+            },
+        )
+        .await
+        .expect("a running revisor sibling must not block a develop child");
+
+        assert_eq!(result.runs[0].run_id, child_id.to_string());
     }
 }
