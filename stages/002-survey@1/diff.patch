@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M253EWK1X299DRFTAJJHA0MV.jsonl b/.fabro/journal/01M253EWK1X299DRFTAJJHA0MV.jsonl
+new file mode 100644
+index 000000000..f4043e858
+--- /dev/null
++++ b/.fabro/journal/01M253EWK1X299DRFTAJJHA0MV.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M253EWK1X299DRFTAJJHA0MV","node":"start","visit":1,"status":"succeeded","ts":"2026-09-10T07:28:17Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M253EWK1X299DRFTAJJHA0MV","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-10T07:29:42Z","data":{"painpoints":[{"text":"git fetch --prune on both remotes emits hundreds of '[new branch]' lines that can truncate tool output before the count line; run the rev-list count in a separate command or use git fetch --quiet to keep the signal visible (this pass, run 01M253EWK1X299DRFTAJJHA0MV)"}],"observations":["route decision: Work — upstream count 0 (< 5 MIN threshold); newest upstream/main subject: 'Bump version to 0.348.0-nightly.0'; origin/denkhaus is current with upstream/main, so drift does not accumulate this pass","revisor backlog: none — newest revisor run 01M23WKBD1G394W0APEKVQ002N (PR #114, merged) already reviews newest develop run 01M23W4S7Q2GNEVPY779M4GMN6 (PR #113, merged), confirmed via its journal","next surveyor: route is Work — one develop+revisor cycle; revisit merge threshold when upstream/main accumulates >= 5 commits over origin/denkhaus"]}}
