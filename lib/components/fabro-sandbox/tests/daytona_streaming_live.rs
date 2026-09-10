@@ -171,7 +171,9 @@ mod daytona_streaming_live {
             "DAYTONA_API_KEY must be set to run this live smoke test"
         );
 
-        let run_id: fabro_types::RunId = "01HY0000000000000000000000".parse().unwrap();
+        // A fresh id per run: a fixed one would collide with a sandbox an
+        // interrupted earlier run left behind.
+        let run_id = fabro_types::RunId::new();
         let sandbox = provider_sandbox(
             SandboxProviderKind::DAYTONA,
             &daytona_access(live_credentials()?),
@@ -209,7 +211,7 @@ mod daytona_streaming_live {
         )?;
         ensure_eq(
             &labels.get("sh.fabro.run_id").map(String::as_str),
-            &Some("01HY0000000000000000000000"),
+            &Some(run_id.to_string().as_str()),
             "Daytona should accept and return the run id label",
         )?;
         ensure_eq(
