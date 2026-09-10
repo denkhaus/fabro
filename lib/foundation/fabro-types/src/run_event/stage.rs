@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
+use lithos_llm::types::{ReasoningEffort, Speed};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::ExecOutputTail;
 use crate::{
-    BilledModelUsage, DiffSummary, FailureDetail, Outcome, ReasoningEffort, Speed, StageId,
-    StageOutcome, StageTiming,
+    BilledModelUsage, DiffSummary, FailureDetail, Outcome, StageId, StageOutcome, StageTiming,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

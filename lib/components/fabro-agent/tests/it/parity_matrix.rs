@@ -18,7 +18,8 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::test_support::client_from_env;
 use fabro_llm::{Client, ClientOptions, catalog};
 use fabro_test::{EnvVars, TwinScenario, TwinScenarios, TwinToolCall, twin_openai};
-use fabro_types::{ModelHandle, ModelId, ProviderId, provider_ids};
+use lithos_llm::catalog::{ModelHandle, ModelId, ProviderId, builtin};
+use lithos_llm::types::ReasoningEffort;
 
 type Provider = ProviderId;
 
@@ -30,11 +31,11 @@ struct OpenAiTwinOptions {
 
 fn summarizer_model_id(provider: &Provider) -> ModelHandle {
     let (provider, model) = match provider.as_str() {
-        provider_ids::OPENAI | "moonshot" | "zai" | "minimax" | "inception" => {
-            (provider_ids::openai(), "gpt-5.4-mini")
+        builtin::ids::OPENAI | "moonshot" | "zai" | "minimax" | "inception" => {
+            (builtin::openai(), "gpt-5.4-mini")
         }
-        provider_ids::GEMINI => (provider_ids::gemini(), "gemini-3-flash-preview"),
-        provider_ids::ANTHROPIC => (provider_ids::anthropic(), "claude-haiku-4.5"),
+        builtin::ids::GEMINI => (builtin::gemini(), "gemini-3-flash-preview"),
+        builtin::ids::ANTHROPIC => (builtin::anthropic(), "claude-haiku-4.5"),
         other => panic!("unexpected provider {other}"),
     };
     ModelHandle::new(provider, ModelId::new(model))
@@ -142,7 +143,7 @@ fn twin_catalog(base_url: &str, overlay: &str) -> Catalog {
 }
 
 async fn make_client(provider: &Provider, twin: Option<&OpenAiTwinOptions>) -> Client {
-    if provider == &provider_ids::openai() && fabro_test::TestMode::from_env().is_twin() {
+    if provider == &builtin::openai() && fabro_test::TestMode::from_env().is_twin() {
         return make_twin_client(twin.expect("openai twin config should be provided")).await;
     }
 
@@ -261,7 +262,7 @@ macro_rules! openai_twin_provider_test {
                         .await;
                 }
                 let mut session = make_session(
-                    provider_ids::openai(),
+                    builtin::openai(),
                     "gpt-5.4-mini",
                     tmp.path(),
                     ToolSecrets::default(),
@@ -278,14 +279,14 @@ macro_rules! provider_tests {
     ($scenario:ident) => {
         provider_test!(
             $scenario,
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             "claude-haiku-4.5",
             anthropic,
             keys = ["ANTHROPIC_API_KEY"]
         );
         provider_test!(
             $scenario,
-            provider_ids::gemini(),
+            builtin::gemini(),
             "gemini-3-flash-preview",
             gemini,
             keys = ["GEMINI_API_KEY"]
@@ -406,21 +407,21 @@ provider_tests!(subagent_spawn);
 
 provider_test!(
     web_fetch,
-    provider_ids::anthropic(),
+    builtin::anthropic(),
     "claude-haiku-4-5",
     anthropic,
     keys = ["ANTHROPIC_API_KEY"]
 );
 provider_test!(
     web_fetch,
-    provider_ids::openai(),
+    builtin::openai(),
     "gpt-5.4-mini",
     openai,
     keys = ["OPENAI_API_KEY"]
 );
 provider_test!(
     web_fetch,
-    provider_ids::gemini(),
+    builtin::gemini(),
     "gemini-3-flash-preview",
     gemini,
     keys = ["GEMINI_API_KEY"]
@@ -457,19 +458,19 @@ provider_test!(
 );
 
 web_search_provider_test!(
-    provider_ids::anthropic(),
+    builtin::anthropic(),
     "claude-haiku-4-5",
     anthropic,
     keys = ["ANTHROPIC_API_KEY", "BRAVE_SEARCH_API_KEY"]
 );
 web_search_provider_test!(
-    provider_ids::openai(),
+    builtin::openai(),
     "gpt-5.4-mini",
     openai,
     keys = ["OPENAI_API_KEY", "BRAVE_SEARCH_API_KEY"]
 );
 web_search_provider_test!(
-    provider_ids::gemini(),
+    builtin::gemini(),
     "gemini-3-flash-preview",
     gemini,
     keys = ["GEMINI_API_KEY", "BRAVE_SEARCH_API_KEY"]
@@ -518,14 +519,14 @@ macro_rules! non_openai_provider_tests {
     ($scenario:ident) => {
         provider_test!(
             $scenario,
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             "claude-haiku-4.5",
             anthropic,
             keys = ["ANTHROPIC_API_KEY"]
         );
         provider_test!(
             $scenario,
-            provider_ids::gemini(),
+            builtin::gemini(),
             "gemini-3-flash-preview",
             gemini,
             keys = ["GEMINI_API_KEY"]
@@ -785,7 +786,7 @@ macro_rules! reasoning_effort_tests {
         async fn $test_name() {
             let tmp = tempfile::tempdir().expect("failed to create tempdir");
             let config = SessionOptions {
-                reasoning_effort: Some(fabro_types::ReasoningEffort::Low),
+                reasoning_effort: Some(ReasoningEffort::Low),
                 ..SessionOptions::default()
             };
             let mut session =
@@ -800,7 +801,7 @@ macro_rules! reasoning_effort_tests {
 }
 
 reasoning_effort_tests!(
-    provider_ids::anthropic(),
+    builtin::anthropic(),
     "claude-haiku-4.5",
     anthropic_reasoning_effort,
     keys = ["ANTHROPIC_API_KEY"]
@@ -808,7 +809,7 @@ reasoning_effort_tests!(
 // gpt-5-mini does not support the reasoning.effort parameter, so no OpenAI
 // test.
 reasoning_effort_tests!(
-    provider_ids::gemini(),
+    builtin::gemini(),
     "gemini-3-flash-preview",
     gemini_reasoning_effort,
     keys = ["GEMINI_API_KEY"]
@@ -878,19 +879,19 @@ macro_rules! loop_detection_tests {
 }
 
 loop_detection_tests!(
-    provider_ids::anthropic(),
+    builtin::anthropic(),
     "claude-haiku-4-5",
     anthropic_loop_detection,
     keys = ["ANTHROPIC_API_KEY"]
 );
 loop_detection_tests!(
-    provider_ids::openai(),
+    builtin::openai(),
     "gpt-5.4-mini",
     openai_loop_detection,
     keys = ["OPENAI_API_KEY"]
 );
 loop_detection_tests!(
-    provider_ids::gemini(),
+    builtin::gemini(),
     "gemini-3-flash-preview",
     gemini_loop_detection,
     keys = ["GEMINI_API_KEY"]

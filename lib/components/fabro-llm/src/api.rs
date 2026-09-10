@@ -5,35 +5,34 @@
 
 use std::collections::HashSet;
 
-use fabro_types::{
-    Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits, Provider, ProviderId,
-    ReasoningEffort,
-};
-use lithos_llm::catalog::{Catalog, CatalogProvider};
-
-use crate::catalog::{self, ModelEntry};
+use fabro_types::{Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits, Provider};
+use lithos_llm::catalog::{Catalog, CatalogProvider, Offering, ProviderId};
+use lithos_llm::types::ReasoningEffort;
 
 const USD_MICROS_PER_USD: f64 = 1_000_000.0;
 
 /// Every enabled model on every listed provider, provider priority order.
 #[must_use]
 pub fn models(catalog: &Catalog, configured: &HashSet<ProviderId>) -> Vec<Model> {
-    catalog::models(catalog)
-        .iter()
-        .map(|entry| model_view(entry, configured.contains(entry.provider.id())))
+    catalog
+        .listed_providers()
+        .into_iter()
+        .flat_map(CatalogProvider::offerings)
+        .map(|offering| model_view(&offering, configured.contains(offering.provider.id())))
         .collect()
 }
 
 /// Every listed provider, priority order.
 #[must_use]
 pub fn providers(catalog: &Catalog, configured: &HashSet<ProviderId>) -> Vec<Provider> {
-    catalog::listed_providers(catalog)
-        .iter()
+    catalog
+        .listed_providers()
+        .into_iter()
         .map(|provider| provider_view(provider, configured.contains(provider.id())))
         .collect()
 }
 
-fn model_view(entry: &ModelEntry<'_>, configured: bool) -> Model {
+fn model_view(entry: &Offering<'_>, configured: bool) -> Model {
     let model = entry.model;
     let capabilities = model.capabilities();
     let pricing = model.pricing();
@@ -95,7 +94,7 @@ fn provider_view(provider: &CatalogProvider, configured: bool) -> Provider {
         api_key_url: provider.api_key_url().map(str::to_string),
         priority: provider.priority(),
         aliases: provider.aliases().to_vec(),
-        model_count: u32::try_from(catalog::provider_models(provider).len()).unwrap_or(u32::MAX),
+        model_count: u32::try_from(provider.offerings().len()).unwrap_or(u32::MAX),
         default_model: provider.default_model().map(str::to_string),
         configured,
         expected_secret_name: fabro_auth::expected_secret_name(provider),
@@ -116,7 +115,7 @@ fn saturating_i64(value: u64) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::provider_ids;
+    use lithos_llm::catalog::builtin;
 
     use super::*;
     use crate::test_support::test_catalog;
@@ -124,17 +123,17 @@ mod tests {
     #[test]
     fn models_are_stamped_with_configured_providers() {
         let catalog = test_catalog();
-        let configured = HashSet::from([provider_ids::openai()]);
+        let configured = HashSet::from([builtin::openai()]);
         let models = models(&catalog, &configured);
         let openai = models
             .iter()
-            .find(|model| model.provider == provider_ids::openai())
+            .find(|model| model.provider == builtin::openai())
             .expect("openai models listed");
         assert!(openai.configured);
         assert!(openai.limits.context_window > 0);
         let anthropic = models
             .iter()
-            .find(|model| model.provider == provider_ids::anthropic())
+            .find(|model| model.provider == builtin::anthropic())
             .expect("anthropic models listed");
         assert!(!anthropic.configured);
         assert!(models.iter().any(|model| model.default));
@@ -144,12 +143,12 @@ mod tests {
     fn providers_skip_stand_ins_and_disabled_entries() {
         let catalog = test_catalog();
         let providers = providers(&catalog, &HashSet::new());
-        assert!(providers.iter().any(|p| p.id == provider_ids::openai()));
+        assert!(providers.iter().any(|p| p.id == builtin::openai()));
         assert!(providers.iter().all(|p| p.id.as_str() != "openai-codex"));
         assert!(providers.iter().all(|p| p.id.as_str() != "ollama"));
         let openai = providers
             .iter()
-            .find(|p| p.id == provider_ids::openai())
+            .find(|p| p.id == builtin::openai())
             .unwrap();
         assert_eq!(
             openai.expected_secret_name.as_deref(),

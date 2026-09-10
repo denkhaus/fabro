@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use fabro_mcp::connection_manager::{McpConnectionManager, call_result_to_string};
-use fabro_types::ToolDefinition;
+use lithos_llm::types::ToolDefinition;
 
 use crate::tool_registry::{RegisteredTool, ToolSource};
 

@@ -1,10 +1,10 @@
 pub use fabro_core::outcome::{
     FailureCategory, FailureDetail, OutcomeMeta, StageOutcome, StageState,
 };
-use fabro_llm::catalog;
 use fabro_llm::lithos_catalog::Catalog;
 pub use fabro_types::BilledModelUsage;
-use fabro_types::{BilledTokenCounts, ModelRef, TokenCounts};
+use fabro_types::{BilledTokenCounts, ModelRef};
+use lithos_llm::types::TokenCounts;
 
 use crate::error::{Error, FailureSignature, classify_failure_reason};
 
@@ -19,13 +19,13 @@ pub fn billed_model_usage_from_llm(
     model: &ModelRef,
     usage: TokenCounts,
 ) -> Result<BilledModelUsage, Error> {
-    if catalog::provider(catalog, model.provider.as_str()).is_none() {
+    if catalog.enabled_provider(model.provider.as_str()).is_none() {
         return Err(Error::Precondition(format!(
             "Provider \"{}\" is not configured",
             model.provider
         )));
     }
-    let cost = catalog::estimate_cost(catalog, model, usage);
+    let cost = catalog.estimate_cost(&model.handle(), usage, model.speed);
     Ok(BilledModelUsage::new(model.clone(), usage, cost))
 }
 
@@ -126,7 +126,9 @@ pub fn format_cost(cost: f64) -> String {
 mod tests {
     use fabro_llm::lithos_catalog::Catalog;
     use fabro_llm::test_support::{test_catalog, test_catalog_with_overlay};
-    use fabro_types::{ModelId, ModelRef, ProviderId, Speed, TokenCounts, UsdMicros, provider_ids};
+    use fabro_types::{ModelRef, UsdMicros};
+    use lithos_llm::catalog::{ModelId, ProviderId, builtin};
+    use lithos_llm::types::{Speed, TokenCounts};
 
     use super::{OutcomeExt, billed_model_usage_from_llm};
 
@@ -150,7 +152,7 @@ mod tests {
         };
         let billed = billed_model_usage_from_llm(
             &catalog(),
-            &model_ref(provider_ids::openai(), "gpt-5.4", None),
+            &model_ref(builtin::openai(), "gpt-5.4", None),
             usage,
         )
         .unwrap();
@@ -170,7 +172,7 @@ mod tests {
         };
         let billed = billed_model_usage_from_llm(
             &catalog(),
-            &model_ref(provider_ids::openai(), "gpt-5.4", None),
+            &model_ref(builtin::openai(), "gpt-5.4", None),
             usage,
         )
         .unwrap()
@@ -200,11 +202,7 @@ mod tests {
         };
         let billed = billed_model_usage_from_llm(
             &catalog(),
-            &model_ref(
-                provider_ids::anthropic(),
-                "claude-opus-5",
-                Some(Speed::Fast),
-            ),
+            &model_ref(builtin::anthropic(), "claude-opus-5", Some(Speed::Fast)),
             usage,
         )
         .unwrap();
@@ -254,7 +252,7 @@ pricing = { input_usd_micros_per_million = 1000000, output_usd_micros_per_millio
     fn passthrough_model_on_known_provider_has_no_cost() {
         let billed = billed_model_usage_from_llm(
             &catalog(),
-            &model_ref(provider_ids::openai(), "brand-new-model", None),
+            &model_ref(builtin::openai(), "brand-new-model", None),
             TokenCounts {
                 input: 10,
                 output: 5,

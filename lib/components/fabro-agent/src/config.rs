@@ -5,7 +5,8 @@ use std::time::Duration;
 use fabro_llm::RetryPolicy;
 use fabro_llm::client::default_retry_policy;
 use fabro_mcp::config::McpServerSettings;
-use fabro_types::{AgentProfileKind, PermissionLevel, ReasoningEffort, Speed};
+use fabro_types::{AgentProfileKind, PermissionLevel};
+use lithos_llm::types::{ReasoningEffort, Speed};
 
 /// Callback invoked before each tool execution. Return `Ok(())` to allow,
 /// `Err(message)` to deny with the given message.

@@ -12,7 +12,8 @@ use std::fmt::Write;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use fabro_types::{TodoListKind, TodoProjection, TodoStatus, TodoUpdatedProps, ToolDefinition};
+use fabro_types::{TodoListKind, TodoProjection, TodoStatus, TodoUpdatedProps};
+use lithos_llm::types::ToolDefinition;
 use serde_json::Value;
 use strum::{EnumString, IntoStaticStr};
 

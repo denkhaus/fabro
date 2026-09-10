@@ -13,13 +13,15 @@ use fabro_http::multipart::{Form, Part};
 use fabro_types::settings::run::MergeStrategy;
 use fabro_types::{
     ArtifactUpload, BlobHash, EventEnvelope, Model, ModelTestMode, PairId, PairMessageRecord,
-    PairMessageRequest, PairRecord, PairStartRequest, PairTranscriptResponse, ProviderId,
-    ReasoningEffort, Run, RunEvent, RunEventDetailResponse, RunId, RunPairStatusResponse,
-    RunProjection, SessionId, SessionRecord, StageId, WorkflowVersion, WorkflowVersionId,
+    PairMessageRequest, PairRecord, PairStartRequest, PairTranscriptResponse, Run, RunEvent,
+    RunEventDetailResponse, RunId, RunPairStatusResponse, RunProjection, SessionId, SessionRecord,
+    StageId, WorkflowVersion, WorkflowVersionId,
 };
 use fabro_util::exit::{ErrorExt, ExitClass};
 use futures::future::BoxFuture;
 use futures::{Stream, StreamExt};
+use lithos_llm::catalog::ProviderId;
+use lithos_llm::types::ReasoningEffort;
 use serde::{Deserialize, Serialize};
 use tokio::fs::File;
 use tokio::sync::Mutex;

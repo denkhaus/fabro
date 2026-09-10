@@ -4,12 +4,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use fabro_auth::ApiKeyCredentialSource;
-use fabro_types::{ModelTestMode, ProviderId, ReasoningEffort};
-use lithos_llm::catalog::Catalog;
+use fabro_types::ModelTestMode;
+use lithos_llm::catalog::{Catalog, ProviderId};
 use lithos_llm::client::{Client, ProbeOptions, ProbeOutcome};
+use lithos_llm::types::ReasoningEffort;
 use strum::IntoStaticStr;
 
-use crate::catalog;
 use crate::client::{ClientOptions, LlmSetupError, build_client};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr)]
@@ -104,13 +104,15 @@ pub async fn probe_provider_with_api_key(
     api_key: String,
     timeout: Duration,
 ) -> Result<ModelTestOutcome, ApiKeyProbeError> {
-    let catalog_provider = catalog::provider(&catalog, provider.as_str())
+    let catalog_provider = catalog
+        .enabled_provider(provider.as_str())
         .ok_or_else(|| ApiKeyProbeError::UnknownProvider(provider.to_string()))?;
     let provider_id = catalog_provider.id().clone();
     if !fabro_auth::accepts_api_key(catalog_provider) {
         return Err(ApiKeyProbeError::NoApiKeyPath(provider_id));
     }
-    let model = catalog::probe_model(&catalog, provider_id.as_str())
+    let model = catalog_provider
+        .probe_offering()
         .ok_or_else(|| ApiKeyProbeError::NoProbeModel(provider_id.clone()))?;
     let selector = format!("{provider_id}/{}", model.model.id());
     let source = Arc::new(ApiKeyCredentialSource::new(provider_id.clone(), api_key));
@@ -120,10 +122,7 @@ pub async fn probe_provider_with_api_key(
         .iter()
         .find(|(candidate, _)| candidate == &provider_id)
     {
-        return Ok(ModelTestOutcome::error(fabro_auth::auth_issue_message(
-            &provider_id,
-            issue,
-        )));
+        return Ok(ModelTestOutcome::error(issue.to_string()));
     }
     Ok(run_basic_probe(&built.client, &selector, timeout).await)
 }

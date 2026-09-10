@@ -44,6 +44,7 @@ fabro-proc = { path = "../../foundation/fabro-proc" }
 fabro-template = { path = "../../foundation/fabro-template" }
 fabro-tool = { path = "../../components/fabro-tool" }
 fabro-types = { path = "../../foundation/fabro-types" }
+lithos-llm = { workspace = true, features = ["runtime"] }
 fabro-util = { path = "../../foundation/fabro-util" }
 fabro-api = { path = "../../foundation/fabro-api" }
 fabro-client = { path = "../../foundation/fabro-client" }

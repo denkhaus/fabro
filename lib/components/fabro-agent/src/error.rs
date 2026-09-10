@@ -1,4 +1,4 @@
-use fabro_llm::LlmError;
+use fabro_llm::ErrorData;
 
 /// Why a session was interrupted.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -21,7 +21,7 @@ impl std::fmt::Display for InterruptReason {
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum CompactionError {
     #[error("summary request failed: {0}")]
-    Llm(#[source] LlmError),
+    Llm(#[source] Box<ErrorData>),
 
     #[error(
         "generated summary was empty after trimming; refused to replace \
@@ -34,9 +34,10 @@ pub enum CompactionError {
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum Error {
     /// A provider call failed. Carries lithos's stored error projection so
-    /// the failure stays cloneable and serializable.
+    /// the failure stays cloneable and serializable. Boxed because the
+    /// projection is large and every other variant is small.
     #[error("LLM error: {0}")]
-    Llm(#[from] LlmError),
+    Llm(Box<ErrorData>),
 
     #[error("Context compaction failed: {0}")]
     Compaction(#[from] CompactionError),
@@ -54,15 +55,27 @@ pub enum Error {
     Interrupted(InterruptReason),
 }
 
+impl From<ErrorData> for Error {
+    fn from(error: ErrorData) -> Self {
+        Self::Llm(Box::new(error))
+    }
+}
+
 impl From<fabro_llm::Error> for Error {
     fn from(error: fabro_llm::Error) -> Self {
-        Self::Llm(LlmError::from(error))
+        Self::from(ErrorData::from(error))
+    }
+}
+
+impl From<ErrorData> for CompactionError {
+    fn from(error: ErrorData) -> Self {
+        Self::Llm(Box::new(error))
     }
 }
 
 impl From<fabro_llm::Error> for CompactionError {
     fn from(error: fabro_llm::Error) -> Self {
-        Self::Llm(LlmError::from(error))
+        Self::from(ErrorData::from(error))
     }
 }
 
@@ -72,14 +85,14 @@ pub type Result<T> = std::result::Result<T, Error>;
 mod tests {
     use std::time::Duration;
 
-    use fabro_llm::{ErrorFacts, ErrorKind, RetryClassification};
-    use fabro_types::provider_ids;
+    use fabro_llm::{ErrorKind, RetryClassification};
     use fabro_util::error;
+    use lithos_llm::catalog::builtin;
 
     use super::*;
 
-    fn network_error(message: &str) -> LlmError {
-        LlmError::from(
+    fn network_error(message: &str) -> ErrorData {
+        ErrorData::from(
             fabro_llm::Error::new(ErrorKind::Network, message)
                 .with_retry(RetryClassification::Safe),
         )
@@ -95,7 +108,7 @@ mod tests {
 
     #[test]
     fn compaction_error_preserves_llm_source_chain() {
-        let err = Error::Compaction(CompactionError::Llm(network_error("connection refused")));
+        let err = Error::Compaction(CompactionError::from(network_error("connection refused")));
 
         let chain = error::collect_chain(&err);
 
@@ -157,7 +170,7 @@ mod tests {
 
     #[test]
     fn serde_roundtrip_llm_network() {
-        let err = Error::Llm(network_error("connection refused"));
+        let err = Error::from(network_error("connection refused"));
         let json = serde_json::to_string(&err).unwrap();
         let deserialized: Error = serde_json::from_str(&json).unwrap();
         assert_eq!(err.to_string(), deserialized.to_string());
@@ -165,9 +178,9 @@ mod tests {
 
     #[test]
     fn serde_roundtrip_llm_provider() {
-        let err = Error::Llm(LlmError::from(
+        let err = Error::from(ErrorData::from(
             fabro_llm::Error::new(ErrorKind::RateLimit, "too fast")
-                .with_provider(provider_ids::openai())
+                .with_provider(builtin::openai())
                 .with_status(429)
                 .with_retry(RetryClassification::after(Duration::from_secs(2))),
         ));
@@ -229,7 +242,7 @@ mod tests {
     #[test]
     fn clone_all_variants() {
         let errors: Vec<Error> = vec![
-            Error::Llm(network_error("refused")),
+            Error::from(network_error("refused")),
             Error::Compaction(CompactionError::EmptySummary {
                 summarized_turn_count: 3,
             }),
@@ -247,7 +260,7 @@ mod tests {
 
     #[test]
     fn serde_tag_format_llm() {
-        let err = Error::Llm(network_error("refused"));
+        let err = Error::from(network_error("refused"));
         let json = serde_json::to_string(&err).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["type"], "llm");

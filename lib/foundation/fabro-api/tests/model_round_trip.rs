@@ -1,9 +1,9 @@
 use std::any::{TypeId, type_name};
 
 use fabro_api::types::{Model as ApiModel, ModelControls as ApiModelControls};
-use fabro_types::{
-    Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits, ReasoningEffort, provider_ids,
-};
+use fabro_types::{Model, ModelControls, ModelCosts, ModelFeatures, ModelLimits};
+use lithos_llm::catalog::builtin;
+use lithos_llm::types::ReasoningEffort;
 
 #[test]
 fn model_reuses_canonical_type() {
@@ -15,7 +15,7 @@ fn model_reuses_canonical_type() {
 fn model_json_matches_openapi_shape() {
     let model = Model {
         id:                   "claude-opus-4.7".into(),
-        provider:             provider_ids::anthropic(),
+        provider:             builtin::anthropic(),
         family:               "claude-4".to_string(),
         display_name:         "Claude Opus 4.7".to_string(),
         limits:               ModelLimits {

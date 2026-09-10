@@ -9,17 +9,19 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Context as _;
 use clap::{Args, Parser};
-use fabro_auth::{CredentialSource, SqlVaultCredentialSource};
+use fabro_auth::SqlVaultCredentialSource;
 use fabro_config::Storage;
 use fabro_config::user::default_storage_dir;
-use fabro_llm::lithos_catalog::Catalog;
+use fabro_llm::credentials::CredentialProvider;
+use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_llm::middleware::{Call, Middleware, Next, Output};
 use fabro_llm::{Client, ClientOptions, Error as LlmError, catalog};
 use fabro_mcp::config::McpServerSettings;
 use fabro_static::EnvVars;
-use fabro_types::{AgentProfileKind, ModelHandle, ModelId, ProviderId};
+use fabro_types::AgentProfileKind;
 use fabro_util::terminal::Styles;
 use fabro_vault::SecretStore;
+use lithos_llm::catalog::{ModelHandle, ModelId, ProviderId};
 use tokio::io::{AsyncWriteExt, stdout};
 use tokio::signal;
 
@@ -192,14 +194,18 @@ fn summarizer_model_id(
     catalog: &Catalog,
     selected_model: &str,
 ) -> ModelHandle {
-    let model =
-        catalog::small_default_for_ready(catalog, &std::iter::once(provider_id.clone()).collect())
-            .filter(|entry| entry.provider.id() == provider_id)
-            .or_else(|| catalog::default_model(catalog, provider_id.as_str()))
-            .map_or_else(
-                || selected_model.to_string(),
-                |entry| entry.model.id().to_string(),
-            );
+    let model = catalog
+        .small_default_for([provider_id])
+        .filter(|entry| entry.provider.id() == provider_id)
+        .or_else(|| {
+            catalog
+                .enabled_provider(provider_id.as_str())?
+                .default_offering()
+        })
+        .map_or_else(
+            || selected_model.to_string(),
+            |entry| entry.model.id().to_string(),
+        );
     ModelHandle::new(provider_id.clone(), ModelId::new(model))
 }
 
@@ -226,12 +232,12 @@ fn resolve_provider_id(
 ) -> ProviderId {
     if args.provider.is_some() {
         let requested = parse_provider(args);
-        return catalog::canonical_provider_id(catalog, requested.as_str()).unwrap_or(requested);
+        return canonical_provider_id(catalog, &requested);
     }
     if let Some(model_id) = args.model.as_deref() {
         // A bare model selector picks the highest-priority eligible provider
         // offering it, matching how the client resolves the request.
-        let matches = catalog::models_matching(catalog, model_id);
+        let matches = catalog.offerings_matching(model_id);
         if let Some(entry) = matches
             .iter()
             .find(|entry| eligible_providers.contains(entry.provider.id()))
@@ -241,10 +247,18 @@ fn resolve_provider_id(
         }
     }
     let requested = parse_provider(args);
-    catalog::canonical_provider_id(catalog, requested.as_str()).unwrap_or(requested)
+    canonical_provider_id(catalog, &requested)
 }
 
-async fn standalone_llm_source() -> anyhow::Result<Arc<dyn CredentialSource>> {
+/// The catalog id for `requested`, resolving aliases; the request itself when
+/// the catalog does not know it, so the error names what the caller typed.
+fn canonical_provider_id(catalog: &Catalog, requested: &ProviderId) -> ProviderId {
+    catalog
+        .enabled_provider(requested.as_str())
+        .map_or_else(|| requested.clone(), |provider| provider.id().clone())
+}
+
+async fn standalone_llm_source() -> anyhow::Result<Arc<dyn CredentialProvider>> {
     let storage = Storage::new(default_storage_dir());
     let store = SecretStore::open(storage.sqlite_path(), storage.secrets_path())
         .await
@@ -455,7 +469,7 @@ pub async fn run_with_args(
 )]
 pub async fn run_with_args_and_source_and_catalog(
     args: AgentArgs,
-    llm_source: Arc<dyn CredentialSource>,
+    llm_source: Arc<dyn CredentialProvider>,
     mcp_servers: Vec<McpServerSettings>,
     catalog: Arc<Catalog>,
 ) -> anyhow::Result<()> {
@@ -527,7 +541,9 @@ async fn run_with_args_and_client_and_catalog_styled(
     let model = if let Some(model) = args.model.clone() {
         model
     } else {
-        catalog::default_model(&catalog, provider_id.as_str())
+        catalog
+            .enabled_provider(provider_id.as_str())
+            .and_then(CatalogProvider::default_offering)
             .map(|entry| entry.model.id().to_string())
             .ok_or_else(|| {
                 anyhow::anyhow!(
@@ -807,7 +823,7 @@ mod tests {
     use fabro_llm::test_support::{
         client_with_adapters, test_catalog as fabro_test_catalog, test_catalog_with_overlay,
     };
-    use fabro_types::provider_ids;
+    use lithos_llm::catalog::builtin;
     use serde_json::json;
 
     use super::*;
@@ -942,6 +958,10 @@ mod tests {
         assert!(approval_fn("shell", &json!({})).is_ok());
     }
 
+    fn enabled_ids(catalog: &Catalog) -> std::collections::HashSet<ProviderId> {
+        catalog.enabled_provider_ids().into_iter().collect()
+    }
+
     fn test_catalog() -> Arc<Catalog> {
         Arc::new(fabro_test_catalog())
     }
@@ -1008,7 +1028,7 @@ profile = "openai"
     #[test]
     fn ensure_provider_registered_reports_missing_credentials() {
         let client = client_with_adapters(Vec::new(), ClientOptions::default());
-        let error = ensure_provider_registered(&client, &provider_ids::anthropic()).unwrap_err();
+        let error = ensure_provider_registered(&client, &builtin::anthropic()).unwrap_err();
         assert_eq!(
             error.to_string(),
             "LLM credentials not configured for provider 'anthropic'"
@@ -1034,7 +1054,7 @@ profile = "openai"
         let args = args_with(None, Some("acme-aws-claude"));
 
         assert_eq!(
-            resolve_provider_id(&catalog, &args, &catalog::enabled_provider_ids(&catalog)),
+            resolve_provider_id(&catalog, &args, &enabled_ids(&catalog)),
             ProviderId::new("acme-aws")
         );
     }
@@ -1045,7 +1065,7 @@ profile = "openai"
         let args = args_with(Some("br"), None);
 
         assert_eq!(
-            resolve_provider_id(&catalog, &args, &catalog::enabled_provider_ids(&catalog)),
+            resolve_provider_id(&catalog, &args, &enabled_ids(&catalog)),
             ProviderId::new("acme-aws")
         );
     }
@@ -1079,9 +1099,9 @@ profile = "openai"
     #[test]
     fn summarizer_model_id_prefers_the_provider_small_default() {
         let catalog = test_catalog();
-        let model_id = summarizer_model_id(&provider_ids::openai(), &catalog, "gpt-5.4");
+        let model_id = summarizer_model_id(&builtin::openai(), &catalog, "gpt-5.4");
 
-        assert_eq!(model_id.provider(), &provider_ids::openai());
+        assert_eq!(model_id.provider(), &builtin::openai());
         assert_eq!(model_id.model().as_str(), "gpt-5.4-mini");
     }
 
@@ -1091,7 +1111,7 @@ profile = "openai"
     fn build_profile_can_register_subagent_tools() {
         let mut profile = AgentProfileBuilder::new(
             AgentProfileKind::Anthropic,
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             "model",
             test_catalog(),
         )

@@ -25,14 +25,15 @@ use fabro_api::types::{
 use fabro_types::{
     ActivatedSkill, AgentControlState, AgentMcpToolSummary, AgentSkillActivationSource,
     AgentSkillSummary, AgentToolCategory, AgentToolSource, AgentToolSummary,
-    AgentToolsAvailableProps, LlmOutputKind, McpServerProjection, McpServerStatus, ModelId,
-    ModelRef, ParallelBranchId, ParallelBranchResult, PermissionLevel, ProviderId,
-    SkillsProjection, Speed, StageContextWindow, StageContextWindowBreakdownItem,
-    StageContextWindowCategory, StageContextWindowCountMethod, StageContextWindowProjection,
-    StageContextWindowStaleness, StageContextWindowUnavailableReason, StageContextWindowWarning,
-    StageId, StageInferenceProjection, StageProjection, StageToolBatchProjection,
-    SubAgentProjection, SubAgentStatus, TodoListKind, TodoListProjection,
+    AgentToolsAvailableProps, LlmOutputKind, McpServerProjection, McpServerStatus, ModelRef,
+    ParallelBranchId, ParallelBranchResult, PermissionLevel, SkillsProjection, StageContextWindow,
+    StageContextWindowBreakdownItem, StageContextWindowCategory, StageContextWindowCountMethod,
+    StageContextWindowProjection, StageContextWindowStaleness, StageContextWindowUnavailableReason,
+    StageContextWindowWarning, StageId, StageInferenceProjection, StageProjection,
+    StageToolBatchProjection, SubAgentProjection, SubAgentStatus, TodoListKind, TodoListProjection,
 };
+use lithos_llm::catalog::{ModelId, ProviderId};
+use lithos_llm::types::Speed;
 use serde_json::json;
 
 #[test]

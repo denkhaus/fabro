@@ -1,10 +1,11 @@
 use fabro_graphviz::graph::Graph;
 use fabro_graphviz::parser;
 use fabro_llm::test_support::test_catalog;
+use fabro_types::WorkflowSettings;
 use fabro_types::settings::InterpString;
 use fabro_types::settings::run::{PullRequestSettings, RunGoal, RunModelSettings, RunNamespace};
-use fabro_types::{WorkflowSettings, provider_ids};
 use fabro_workflow::run_materialization::materialize_run;
+use lithos_llm::catalog::builtin;
 
 fn graph(source: &str) -> Graph {
     parser::parse(source).expect("graph should parse")
@@ -35,7 +36,7 @@ fn materialize_run_applies_graph_and_catalog_defaults() {
     };
 
     let materialized = materialize_run(settings, &graph(source), &test_catalog(), &[
-        provider_ids::anthropic(),
+        builtin::anthropic(),
     ])
     .unwrap();
     let resolved = &materialized.run;
@@ -62,7 +63,7 @@ fn materialize_run_uses_configured_provider_defaults() {
         WorkflowSettings::default(),
         &graph(source),
         &test_catalog(),
-        &[provider_ids::openai()],
+        &[builtin::openai()],
     )
     .unwrap();
     let resolved = &materialized.run;

@@ -265,7 +265,7 @@ async fn execute_test_run_with_options(
             },
             llm: LlmSpec {
                 model:          "test-model".to_string(),
-                provider_id:    fabro_types::provider_ids::anthropic(),
+                provider_id:    lithos_llm::catalog::builtin::anthropic(),
                 fallbacks:      ModelFallbackPolicy::default(),
                 mcp_servers:    Vec::new(),
                 model_controls: RunModelControls::default(),
@@ -325,7 +325,7 @@ async fn execute_runs_start_to_exit_and_returns_final_context() {
             },
             llm: LlmSpec {
                 model:          "test-model".to_string(),
-                provider_id:    fabro_types::provider_ids::anthropic(),
+                provider_id:    lithos_llm::catalog::builtin::anthropic(),
                 fallbacks:      ModelFallbackPolicy::default(),
                 mcp_servers:    Vec::new(),
                 model_controls: RunModelControls::default(),
@@ -466,7 +466,7 @@ async fn resumed_in_flight_node_starts_a_new_stage_execution() {
             },
             llm: LlmSpec {
                 model:          "test-model".to_string(),
-                provider_id:    fabro_types::provider_ids::anthropic(),
+                provider_id:    lithos_llm::catalog::builtin::anthropic(),
                 fallbacks:      ModelFallbackPolicy::default(),
                 mcp_servers:    Vec::new(),
                 model_controls: RunModelControls::default(),
@@ -580,7 +580,7 @@ async fn run_with_lifecycle(
             },
             llm: LlmSpec {
                 model:          "test-model".to_string(),
-                provider_id:    fabro_types::provider_ids::anthropic(),
+                provider_id:    lithos_llm::catalog::builtin::anthropic(),
                 fallbacks:      ModelFallbackPolicy::default(),
                 mcp_servers:    Vec::new(),
                 model_controls: RunModelControls::default(),

@@ -24,19 +24,19 @@ use fabro_install::{
     write_github_app_settings, write_object_store_settings, write_sandbox_settings,
     write_token_settings,
 };
-use fabro_llm::catalog as llm_catalog;
 use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_llm::probe::{self, ApiKeyProbeError, ModelTestStatus};
 use fabro_sandbox::daytona;
 use fabro_static::EnvVars;
 use fabro_store::ArtifactStore;
+use fabro_types::ServerSettings;
 use fabro_types::settings::run::EnvironmentProvider;
 use fabro_types::settings::server::ObjectStoreSettings;
 use fabro_types::settings::{is_wildcard_host, validate_public_url_with_label};
-use fabro_types::{ProviderId, ServerSettings};
 use fabro_util::version::FABRO_VERSION;
 use fabro_util::{Home, session_secret};
 use fabro_vault::SecretType as VaultSecretType;
+use lithos_llm::catalog::ProviderId;
 use object_store::aws::resolve_bucket_region;
 use object_store::path::Path as ObjectStorePath;
 use object_store::{ClientOptions, RetryConfig};
@@ -846,7 +846,8 @@ async fn put_install_llm(
 }
 
 fn install_catalog_provider(provider: &ProviderId) -> Result<&'static CatalogProvider, String> {
-    let catalog_provider = llm_catalog::provider(&INSTALL_CATALOG, provider.as_str())
+    let catalog_provider = INSTALL_CATALOG
+        .enabled_provider(provider.as_str())
         .ok_or_else(|| format!("provider '{provider}' is not configured in the model catalog"))?;
     if fabro_auth::accepts_api_key(catalog_provider) {
         Ok(catalog_provider)
@@ -2567,7 +2568,7 @@ mod tests {
     #[test]
     fn install_provider_base_url_falls_back_to_catalog_base_url() {
         let state = InstallAppState::for_test("expected");
-        let provider = install_catalog_provider(&fabro_types::provider_ids::openai()).unwrap();
+        let provider = install_catalog_provider(&lithos_llm::catalog::builtin::openai()).unwrap();
 
         assert_eq!(
             provider_base_url_override(&state, provider),
@@ -2578,10 +2579,10 @@ mod tests {
     #[test]
     fn install_provider_base_url_prefers_state_override() {
         let state = InstallAppState::for_test("expected").with_provider_base_url(
-            fabro_types::provider_ids::openai(),
+            lithos_llm::catalog::builtin::openai(),
             "https://proxy.example.com/v1",
         );
-        let provider = install_catalog_provider(&fabro_types::provider_ids::openai()).unwrap();
+        let provider = install_catalog_provider(&lithos_llm::catalog::builtin::openai()).unwrap();
 
         assert_eq!(
             provider_base_url_override(&state, provider),

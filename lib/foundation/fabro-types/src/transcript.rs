@@ -7,11 +7,7 @@
 //! around lithos content parts.
 
 use chrono::{DateTime, Utc};
-pub use lithos_llm::types::{
-    AudioContent, ContentPart, DocumentContent, ImageContent, MediaSource, Message,
-    ReasoningContent, Role, TokenCounts, ToolArgumentError, ToolArguments, ToolCall, ToolCallKind,
-    ToolChoice, ToolDefinition, ToolDefinitionKind, ToolInput, ToolResult, UnknownContent,
-};
+use lithos_llm::types::{ContentPart, TokenCounts, ToolCall, ToolResult};
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString, IntoStaticStr};
 

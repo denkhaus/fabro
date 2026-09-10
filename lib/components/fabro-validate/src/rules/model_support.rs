@@ -1,4 +1,3 @@
-use fabro_llm::catalog;
 use fabro_llm::lithos_catalog::Catalog;
 
 use crate::{Diagnostic, Severity};
@@ -10,7 +9,7 @@ pub(super) fn check_model_known(
     context: &str,
     node_id: Option<String>,
 ) -> Option<Diagnostic> {
-    if catalog::is_model_selector(catalog, model) {
+    if catalog.is_model_selector(model) {
         return None;
     }
     Some(Diagnostic {
@@ -34,10 +33,11 @@ pub(super) fn check_provider_known(
     context: &str,
     node_id: Option<String>,
 ) -> Option<Diagnostic> {
-    if catalog::is_provider_selector(catalog, provider) {
+    if catalog.enabled_provider(provider).is_some() {
         return None;
     }
-    let valid: Vec<String> = catalog::listed_providers(catalog)
+    let valid: Vec<String> = catalog
+        .listed_providers()
         .iter()
         .map(|provider| provider.id().to_string())
         .collect();

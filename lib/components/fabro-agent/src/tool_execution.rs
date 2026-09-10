@@ -1,8 +1,9 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use fabro_types::{ToolCall, ToolInput, ToolResult, tool_call_arguments, tool_result_from_json};
+use fabro_types::{tool_call_arguments, tool_result_from_json};
 use futures::future;
+use lithos_llm::types::{ContentPart, ToolCall, ToolDefinitionKind, ToolInput, ToolResult};
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
 
@@ -507,7 +508,7 @@ fn retain_tool_result(
     previous_stats: Option<OutputCaptureStats>,
 ) -> RetainedToolResult {
     let output_stats = match result.content.as_mut_slice() {
-        [fabro_types::ContentPart::Text { text: output }] => {
+        [ContentPart::Text { text: output }] => {
             let previously_omitted = previous_stats.map_or(0, |stats| stats.omitted_bytes);
             let previewed =
                 preview_tool_output(output, MAX_RETAINED_TOOL_OUTPUT_BYTES, previously_omitted);
@@ -565,9 +566,7 @@ async fn execute_one_tool(
                 _ => tool_call_arguments(tc),
             };
             if matches!(tc.input, ToolInput::Function(_)) {
-                if let fabro_types::ToolDefinitionKind::Function { input_schema } =
-                    &tool.definition.kind
-                {
+                if let ToolDefinitionKind::Function { input_schema } = &tool.definition.kind {
                     if let Err(validation_error) = validate_tool_args(input_schema, &arguments) {
                         return ExecutedToolResult {
                             result:       error_result(&tc.id, validation_error),
@@ -622,9 +621,11 @@ fn truncate_tool_result(
     config: &SessionOptions,
 ) -> ToolResult {
     let content = match result.content.as_slice() {
-        [fabro_types::ContentPart::Text { text }] => vec![fabro_types::ContentPart::Text {
-            text: truncate_tool_output(text, tool_name, config),
-        }],
+        [ContentPart::Text { text }] => {
+            vec![ContentPart::Text {
+                text: truncate_tool_output(text, tool_name, config),
+            }]
+        }
         other => other.to_vec(),
     };
 
@@ -672,7 +673,8 @@ mod tests {
 
     use async_trait::async_trait;
     use fabro_types::run_event::{AgentToolCompletedProps, MAX_RUN_EVENT_BODY_BYTES};
-    use fabro_types::{AgentProfileKind, ToolCall, ToolDefinition, tool_result_to_json};
+    use fabro_types::{AgentProfileKind, tool_result_to_json};
+    use lithos_llm::types::{ToolCall, ToolDefinition};
     use tokio::sync::broadcast;
 
     use super::*;

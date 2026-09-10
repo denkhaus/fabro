@@ -4,9 +4,9 @@
 //! lithos catalog plus Fabro policy, stamped per request with whether the
 //! server holds credentials for each provider.
 
+use lithos_llm::catalog::{ModelId, ProviderId};
+use lithos_llm::types::ReasoningEffort;
 use serde::{Deserialize, Serialize};
-
-use crate::{ModelId, ProviderId, ReasoningEffort};
 
 /// Token limits for a model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

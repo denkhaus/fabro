@@ -9,9 +9,9 @@ use std::sync::Arc;
 
 use fabro_vault::Vault;
 use lithos_llm::catalog::Catalog;
+use lithos_llm::credentials::CredentialProvider;
 use tokio::sync::RwLock as AsyncRwLock;
 
-use crate::credential_source::CredentialSource;
 use crate::vault_source::VaultCredentialSource;
 
 /// The lithos built-in catalog.
@@ -45,7 +45,7 @@ pub fn empty_vault() -> Arc<AsyncRwLock<Vault>> {
 /// Tests that inject fake provider keys use this instead of reading the real
 /// process environment, which would make them order-dependent.
 #[must_use]
-pub fn env_credential_source<F>(env_lookup: F) -> Arc<dyn CredentialSource>
+pub fn env_credential_source<F>(env_lookup: F) -> Arc<dyn CredentialProvider>
 where
     F: Fn(&str) -> Option<String> + Send + Sync + 'static,
 {
@@ -57,6 +57,6 @@ where
 
 /// A vault-backed source over an empty vault with no process-env fallback.
 #[must_use]
-pub fn vault_only_credential_source() -> Arc<dyn CredentialSource> {
+pub fn vault_only_credential_source() -> Arc<dyn CredentialProvider> {
     Arc::new(VaultCredentialSource::vault_only(empty_vault()))
 }

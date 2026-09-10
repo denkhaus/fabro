@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_types::{AgentProfileKind, ProviderId, provider_ids};
+use fabro_types::AgentProfileKind;
+use lithos_llm::catalog::{ProviderId, builtin};
 
 use super::EnvContext;
 use crate::agent_profile::AgentProfile;
@@ -43,7 +44,7 @@ impl OpenAiProfile {
         Self {
             base: BaseProfile {
                 profile_kind: AgentProfileKind::OpenAi,
-                provider_id: provider_ids::openai(),
+                provider_id: builtin::openai(),
                 model: model.into(),
                 catalog: None,
                 registry,
@@ -117,7 +118,7 @@ mod tests {
     fn openai_profile_identity() {
         let profile = OpenAiProfile::new("o3-mini");
         assert_eq!(profile.profile_kind(), AgentProfileKind::OpenAi);
-        assert_eq!(profile.provider_id(), provider_ids::openai());
+        assert_eq!(profile.provider_id(), builtin::openai());
         assert_eq!(profile.model(), "o3-mini");
     }
 

@@ -43,6 +43,7 @@ fabro-core = { path = "../../foundation/fabro-core" }
 fabro-store = { path = "../fabro-store" }
 fabro-static.workspace = true
 fabro-types = { path = "../../foundation/fabro-types" }
+lithos-llm = { workspace = true, features = ["runtime"] }
 fabro-http.workspace = true
 thiserror.workspace = true
 strum.workspace = true

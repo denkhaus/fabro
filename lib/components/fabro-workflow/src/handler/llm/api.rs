@@ -10,18 +10,20 @@ use fabro_agent::{
     Sandbox, Session, SessionOptions, SessionShutdownReason, StaticEnvProvider, ToolEnvProvider,
     ToolSecrets, WebFetchSummarizer, canonical_tool_name, register_question_tools,
 };
-use fabro_auth::CredentialSource;
 use fabro_graphviz::graph::{AttrValue, Node};
-use fabro_llm::error::failover_eligible;
+use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::types::ResponseFormat;
-use fabro_llm::{Client, ClientOptions, FallbackTarget, LlmError, Request, Response, catalog};
+use fabro_llm::{Client, ClientOptions, ErrorData, FallbackTarget, Request, Response};
 use fabro_mcp::config::McpServerSettings;
 use fabro_types::settings::run::RunModelControls;
 use fabro_types::{
-    AgentProfileKind, FailoverProps, Message, ModelHandle, ModelId, ModelRef, PermissionLevel,
-    ProviderId, ReasoningEffort, Role, RunId, SessionCapability, Speed, StageId, StageTiming,
-    TokenCounts, ToolDefinition as LlmToolDefinition, UsdMicros, billing, controls,
+    AgentProfileKind, FailoverProps, ModelRef, PermissionLevel, RunId, SessionCapability, StageId,
+    StageTiming, UsdMicros, billing,
+};
+use lithos_llm::catalog::{ModelHandle, ModelId, ProviderId};
+use lithos_llm::types::{
+    Message, ReasoningEffort, Role, Speed, TokenCounts, ToolDefinition as LlmToolDefinition,
 };
 use serde::de::DeserializeOwned;
 use tokio::sync::mpsc;
@@ -40,7 +42,7 @@ use crate::context::WorkflowContext;
 use crate::context::keys::Fidelity;
 use crate::error::Error;
 use crate::event::{Emitter, Event, StageScope};
-use crate::model_fallback::{ModelFallbackNotice, ModelFallbackPolicy};
+use crate::model_fallback::{ModelFallbackNotice, ModelFallbackPolicy, canonical_model_id};
 use crate::outcome::billed_model_usage_from_llm;
 use crate::services::FabroRunToolServices;
 use crate::steering_hub::{ActiveControlHandle, SteeringHub};
@@ -110,7 +112,7 @@ enum AgentApiErrorDisposition {
     /// Session was interrupted via cancellation; surface as `Error::Cancelled`.
     Cancelled,
     /// Underlying LLM error eligible for provider failover.
-    FailoverEligible(LlmError),
+    FailoverEligible(ErrorData),
     /// Terminal error; abort the invocation with this workflow `Error`.
     Terminal(Error),
 }
@@ -132,7 +134,7 @@ fn classify_agent_error(err: fabro_agent::Error, allow_failover: bool) -> AgentA
             ))
         }
         fabro_agent::Error::Llm(err) if allow_failover && err.failover_eligible() => {
-            AgentApiErrorDisposition::FailoverEligible(err)
+            AgentApiErrorDisposition::FailoverEligible(*err)
         }
         fabro_agent::Error::Llm(err) => AgentApiErrorDisposition::Terminal(Error::Llm(err)),
         other @ (fabro_agent::Error::SessionClosed
@@ -638,7 +640,7 @@ pub struct AgentApiBackend {
     mcp_servers:          Vec<McpServerSettings>,
     tool_secrets:         ToolSecrets,
     run_model_controls:   RunModelControls,
-    source:               Arc<dyn CredentialSource>,
+    source:               Arc<dyn CredentialProvider>,
     steering_hub:         Arc<SteeringHub>,
     catalog:              Arc<Catalog>,
     fabro_run_tools:      Option<FabroRunToolServices>,
@@ -755,7 +757,7 @@ impl LiveAgentInvocation {
         error: fabro_agent::Error,
         allow_failover: bool,
         emitter: &Arc<Emitter>,
-    ) -> Result<LlmError, Error> {
+    ) -> Result<ErrorData, Error> {
         let disposition = classify_agent_error(error, allow_failover);
         self.abort_and_discard(emitter).await;
         match disposition {
@@ -784,7 +786,7 @@ impl AgentApiBackend {
         model: String,
         provider_id: impl Into<ProviderId>,
         fallbacks: ModelFallbackPolicy,
-        source: Arc<dyn CredentialSource>,
+        source: Arc<dyn CredentialProvider>,
         steering_hub: Arc<SteeringHub>,
     ) -> Self {
         let catalog = Arc::new(fabro_llm::default_catalog());
@@ -803,7 +805,7 @@ impl AgentApiBackend {
         model: String,
         provider_id: ProviderId,
         fallbacks: ModelFallbackPolicy,
-        source: Arc<dyn CredentialSource>,
+        source: Arc<dyn CredentialProvider>,
         steering_hub: Arc<SteeringHub>,
         catalog: Arc<Catalog>,
     ) -> Self {
@@ -888,19 +890,17 @@ impl AgentApiBackend {
         let Some(requested_effort) = requested.reasoning_effort else {
             return FallbackControls::Usable(requested);
         };
-        let Some(offering) = catalog::model_on_provider(
-            &self.catalog,
-            target.provider.as_str(),
-            target.model.as_str(),
-        ) else {
+        let Some(offering) = self
+            .catalog
+            .enabled_provider(target.provider.as_str())
+            .and_then(|provider| provider.offering(target.model.as_str()))
+        else {
             // A catalog-unknown passthrough target has no advertised controls.
             // Preserve the request and let the provider validate it.
             return FallbackControls::Usable(requested);
         };
         let capabilities = offering.model.capabilities();
-        let effective_effort = controls::closest_supported_effort(requested_effort, |effort| {
-            capabilities.reasoning_effort(effort).is_supported()
-        });
+        let effective_effort = capabilities.closest_supported_effort(requested_effort);
         match effective_effort {
             Some(effort) => FallbackControls::Usable(EffectiveRequestControls {
                 reasoning_effort: Some(effort),
@@ -925,7 +925,7 @@ impl AgentApiBackend {
         provider: &ProviderId,
         requested_controls: EffectiveRequestControls,
     ) -> (FallbackPlan, Vec<ModelFallbackNotice>) {
-        let primary_model = catalog::canonical_model_id(&self.catalog, provider, model);
+        let primary_model = canonical_model_id(&self.catalog, provider, model);
         let original = LlmRoute {
             target:   FallbackTarget::new(provider, &primary_model),
             controls: requested_controls,
@@ -1051,7 +1051,7 @@ impl AgentApiBackend {
         controls: EffectiveRequestControls,
         node: &Node,
         sandbox: &Arc<dyn Sandbox>,
-        source: Arc<dyn CredentialSource>,
+        source: Arc<dyn CredentialProvider>,
         catalog: Arc<Catalog>,
         tool_env: Option<&Arc<dyn ToolEnvProvider>>,
         tool_hooks: Option<Arc<dyn fabro_agent::ToolHookCallback>>,
@@ -1197,7 +1197,7 @@ impl AgentApiBackend {
     async fn failover_agent_session(
         &self,
         fallback_plan: &mut FallbackPlan,
-        initial_error: LlmError,
+        initial_error: ErrorData,
         request: &CodergenRunRequest<'_>,
         input: &str,
         stage_scope: &StageScope,
@@ -1205,7 +1205,7 @@ impl AgentApiBackend {
         live: &mut LiveAgentInvocation,
     ) -> Result<(), Error> {
         let emitter = request.emitter;
-        let mut last_error = Error::Llm(initial_error);
+        let mut last_error = Error::from(initial_error);
 
         while fallback_plan.advance() {
             Self::emit_failover(
@@ -1269,7 +1269,7 @@ impl AgentApiBackend {
             begin_session_lifecycle(&live.session, emitter, None);
             if let Err(error) = live.session.initialize().await {
                 let allow_failover = fallback_plan.has_next();
-                last_error = Error::Llm(
+                last_error = Error::from(
                     live.discard_for_error(error, allow_failover, emitter)
                         .await?,
                 );
@@ -1302,7 +1302,7 @@ impl AgentApiBackend {
                 }
                 Err(error) => {
                     let allow_failover = fallback_plan.has_next();
-                    last_error = Error::Llm(
+                    last_error = Error::from(
                         live.discard_for_error(error, allow_failover, emitter)
                             .await?,
                     );
@@ -1371,13 +1371,11 @@ impl AgentApiBackend {
 
     fn route_max_tokens(&self, node: &Node, route: &LlmRoute) -> Option<u32> {
         node_max_output_tokens(node).or_else(|| {
-            catalog::model_on_provider(
-                &self.catalog,
-                route.target.provider.as_str(),
-                route.target.model.as_str(),
-            )
-            .and_then(|entry| entry.model.limits())
-            .map(|limits| u32::try_from(limits.max_output_tokens).unwrap_or(u32::MAX))
+            self.catalog
+                .enabled_provider(route.target.provider.as_str())
+                .and_then(|provider| provider.offering(route.target.model.as_str()))
+                .and_then(|entry| entry.model.limits())
+                .map(|limits| u32::try_from(limits.max_output_tokens).unwrap_or(u32::MAX))
         })
     }
 
@@ -1433,7 +1431,7 @@ impl AgentApiBackend {
                         .with_speed(route.controls.speed),
                     });
                 }
-                Err(error) if failover_eligible(&error) && plan.has_next() => {
+                Err(error) if error.failover_eligible() && plan.has_next() => {
                     let error_message = error.to_string();
                     plan.advance();
                     Self::emit_failover(node, emitter, stage_scope, plan, &error_message);
@@ -1444,7 +1442,7 @@ impl AgentApiBackend {
                         request.response_format().cloned(),
                     )?;
                 }
-                Err(error) => return Err(Error::Llm(LlmError::from(error))),
+                Err(error) => return Err(Error::from(error)),
             }
         }
     }
@@ -1453,7 +1451,7 @@ impl AgentApiBackend {
 /// Build the LLM client a stage session dispatches through.
 async fn build_llm_client(
     catalog: &Arc<Catalog>,
-    source: Arc<dyn CredentialSource>,
+    source: Arc<dyn CredentialProvider>,
 ) -> Result<Client, Error> {
     fabro_llm::build_client(Catalog::clone(catalog), source, ClientOptions::standard())
         .await
@@ -1904,14 +1902,16 @@ mod tests {
     use fabro_llm::{ErrorKind, ResponseStream, RetryClassification};
     use fabro_tool::FabroToolBackend;
     use fabro_types::{
-        ContentPart, EventEnvelope, FailureReason, Run, RunId, RunLifecycle, RunLinks, RunOrigin,
+        EventEnvelope, FailureReason, Run, RunId, RunLifecycle, RunLinks, RunOrigin,
         RunPairStatusResponse, RunProjection, RunStatus, RunTimestamps, SuccessReason, WorkflowRef,
-        provider_ids, test_support,
+        test_support,
     };
     use fabro_vault::{SecretType, Vault};
     use futures::stream;
     use httpmock::Method::POST;
     use httpmock::MockServer;
+    use lithos_llm::catalog::builtin;
+    use lithos_llm::types::ContentPart;
     use tokio::sync::RwLock as AsyncRwLock;
     use tokio_util::sync::CancellationToken;
 
@@ -1937,7 +1937,7 @@ mod tests {
         }
 
         fn provider_id(&self) -> ProviderId {
-            provider_ids::openai()
+            builtin::openai()
         }
 
         fn model(&self) -> &str {
@@ -2255,20 +2255,20 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     fn agent_backend_stores_config() {
         let backend = AgentApiBackend::new(
             "claude-opus-4-6".to_string(),
-            provider_ids::openai(),
+            builtin::openai(),
             ModelFallbackPolicy::default(),
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
         );
         assert_eq!(backend.model, "claude-opus-4-6");
-        assert_eq!(backend.provider_id, provider_ids::openai());
+        assert_eq!(backend.provider_id, builtin::openai());
     }
 
     #[test]
     fn agent_backend_initializes_empty_sessions() {
         let backend = AgentApiBackend::new(
             "claude-opus-4-6".to_string(),
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             ModelFallbackPolicy::default(),
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
@@ -2957,7 +2957,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     fn build_profile_can_register_subagent_tools() {
         let mut profile = AgentProfileBuilder::new(
             AgentProfileKind::Anthropic,
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             "claude-opus-4-6",
             Arc::new(test_catalog()),
         )
@@ -3135,7 +3135,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
             .resolve_provider_context("gpt-5.4", Some("openai"))
             .unwrap();
 
-        assert_eq!(provider.provider_id, provider_ids::openai());
+        assert_eq!(provider.provider_id, builtin::openai());
     }
 
     #[test]
@@ -3180,7 +3180,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     fn api_backend_selects_claude5_profile_for_sonnet5() {
         let backend = AgentApiBackend::new_with_catalog(
             "claude-sonnet-5".to_string(),
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             ModelFallbackPolicy::default(),
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
@@ -3191,7 +3191,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
             .resolve_provider_context("claude-sonnet-5", None)
             .unwrap();
 
-        assert_eq!(provider.provider_id, provider_ids::anthropic());
+        assert_eq!(provider.provider_id, builtin::anthropic());
         assert_eq!(provider.profile_kind, AgentProfileKind::Claude5);
     }
 
@@ -3219,7 +3219,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     fn run_model_controls_apply_when_node_omits_controls() {
         let backend = AgentApiBackend::new(
             "gpt-5.4".to_string(),
-            provider_ids::openai(),
+            builtin::openai(),
             ModelFallbackPolicy::default(),
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
@@ -3240,7 +3240,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     fn node_controls_override_run_model_controls() {
         let backend = AgentApiBackend::new(
             "gpt-5.4".to_string(),
-            provider_ids::openai(),
+            builtin::openai(),
             ModelFallbackPolicy::default(),
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
@@ -3269,7 +3269,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     fn omitted_reasoning_effort_stays_unset() {
         let backend = AgentApiBackend::new(
             "gpt-5.4".to_string(),
-            provider_ids::openai(),
+            builtin::openai(),
             ModelFallbackPolicy::default(),
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
@@ -3337,7 +3337,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         ]));
         let backend = AgentApiBackend::new_with_catalog(
             "claude-fable-5".to_string(),
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             policy,
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
@@ -3345,7 +3345,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         );
         let (mut plan, notices) = backend.fallback_plan(
             "claude-fable-5",
-            &provider_ids::anthropic(),
+            &builtin::anthropic(),
             EffectiveRequestControls::default(),
         );
 
@@ -3380,7 +3380,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
             .unwrap();
         let backend = AgentApiBackend::new(
             "claude-opus-4-6".to_string(),
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             ModelFallbackPolicy::default(),
             Arc::new(VaultCredentialSource::with_env_lookup(
                 Arc::new(AsyncRwLock::new(vault)),
@@ -3395,7 +3395,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
 
         assert_eq!(
             client.available_providers().iter().collect::<Vec<_>>(),
-            vec![&provider_ids::anthropic()]
+            vec![&builtin::anthropic()]
         );
     }
 
@@ -3408,7 +3408,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         )]));
         let backend = AgentApiBackend::new(
             "claude-fable-5".to_string(),
-            provider_ids::anthropic(),
+            builtin::anthropic(),
             fallback_policy,
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
@@ -3445,7 +3445,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
             .unwrap();
         let (mut fallback_plan, notices) = backend.fallback_plan(
             "claude-fable-5",
-            &provider_ids::anthropic(),
+            &builtin::anthropic(),
             EffectiveRequestControls::default(),
         );
         assert!(notices.is_empty());
@@ -3463,7 +3463,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
             .unwrap();
 
         assert_eq!(completion.response.text(), "fallback ok");
-        assert_eq!(completion.model.provider, provider_ids::openai());
+        assert_eq!(completion.model.provider, builtin::openai());
         assert_eq!(completion.model.model_id.as_str(), "gpt-5.5");
         let failover = emitted_failover
             .lock()
@@ -3912,7 +3912,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
     async fn api_backend_shutdown_closes_cached_sessions_once() {
         let backend = AgentApiBackend::new(
             "gpt-5.4".to_string(),
-            provider_ids::openai(),
+            builtin::openai(),
             ModelFallbackPolicy::default(),
             auth_test_support::vault_only_credential_source(),
             SteeringHub::for_tests(),
@@ -3945,7 +3945,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
         );
         let (fallback_plan, notices) = backend.fallback_plan(
             "gpt-5.4",
-            &provider_ids::openai(),
+            &builtin::openai(),
             EffectiveRequestControls::default(),
         );
         assert!(notices.is_empty());
@@ -4034,18 +4034,18 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
 
     // --- Bridge guard tests ---
 
-    fn failover_eligible_llm_error() -> LlmError {
-        LlmError::from(
+    fn failover_eligible_llm_error() -> ErrorData {
+        ErrorData::from(
             fabro_llm::Error::new(ErrorKind::Network, "boom")
-                .with_provider(provider_ids::openai())
+                .with_provider(builtin::openai())
                 .with_retry(RetryClassification::Safe),
         )
     }
 
-    fn non_failover_llm_error() -> LlmError {
-        LlmError::from(
+    fn non_failover_llm_error() -> ErrorData {
+        ErrorData::from(
             fabro_llm::Error::new(ErrorKind::InvalidRequest, "bad key")
-                .with_provider(provider_ids::openai())
+                .with_provider(builtin::openai())
                 .with_status(401),
         )
     }
@@ -4055,7 +4055,7 @@ capabilities = {{ text = true, tools = true, response_format = {{ json_object = 
             ErrorKind::ContentFilter,
             "claude-fable-5 refused the request",
         )
-        .with_provider(provider_ids::anthropic())
+        .with_provider(builtin::anthropic())
         .with_provider_code("refusal")
         .with_raw_data(serde_json::json!({
             "stop_reason": "refusal",
@@ -4272,7 +4272,7 @@ profile = "anthropic"
 
     #[test]
     fn classify_failover_eligible_llm_returns_failover_when_allowed() {
-        let err = fabro_agent::Error::Llm(failover_eligible_llm_error());
+        let err = fabro_agent::Error::from(failover_eligible_llm_error());
         assert!(matches!(
             classify_agent_error(err, true),
             AgentApiErrorDisposition::FailoverEligible(_)
@@ -4281,7 +4281,7 @@ profile = "anthropic"
 
     #[test]
     fn classify_failover_eligible_llm_returns_terminal_when_not_allowed() {
-        let err = fabro_agent::Error::Llm(failover_eligible_llm_error());
+        let err = fabro_agent::Error::from(failover_eligible_llm_error());
         match classify_agent_error(err, false) {
             AgentApiErrorDisposition::Terminal(Error::Llm(_)) => {}
             _ => panic!("expected Terminal(Error::Llm) when failover disallowed"),
@@ -4290,7 +4290,7 @@ profile = "anthropic"
 
     #[test]
     fn classify_non_failover_eligible_llm_is_terminal_llm() {
-        let err = fabro_agent::Error::Llm(non_failover_llm_error());
+        let err = fabro_agent::Error::from(non_failover_llm_error());
         match classify_agent_error(err, true) {
             AgentApiErrorDisposition::Terminal(Error::Llm(_)) => {}
             _ => panic!("expected Terminal(Error::Llm) for non-failover-eligible LLM error"),
@@ -4299,7 +4299,7 @@ profile = "anthropic"
 
     #[test]
     fn classify_refusal_llm_returns_failover_when_allowed() {
-        let err = fabro_agent::Error::Llm(LlmError::from(refusal_llm_error()));
+        let err = fabro_agent::Error::from(refusal_llm_error());
         assert!(matches!(
             classify_agent_error(err, true),
             AgentApiErrorDisposition::FailoverEligible(_)
@@ -4308,7 +4308,7 @@ profile = "anthropic"
 
     #[test]
     fn classify_refusal_llm_returns_terminal_when_not_allowed() {
-        let err = fabro_agent::Error::Llm(LlmError::from(refusal_llm_error()));
+        let err = fabro_agent::Error::from(refusal_llm_error());
         match classify_agent_error(err, false) {
             AgentApiErrorDisposition::Terminal(Error::Llm(llm_err)) => {
                 assert!(llm_err.to_string().contains("claude-fable-5 refused"));

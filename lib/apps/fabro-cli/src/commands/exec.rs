@@ -7,14 +7,14 @@ use fabro_agent::cli::{
     OutputFormat, diagnostic_client_options, run_with_args_and_client_and_catalog,
     run_with_args_and_source_and_catalog,
 };
+use fabro_llm::ErrorKind;
 use fabro_llm::gateway::{GatewayAdapter, GatewayError, GatewayTransport};
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_llm::{ErrorFacts, ErrorKind, catalog};
 use fabro_mcp::config::McpServerSettings;
-use fabro_types::ProviderId;
 use fabro_types::settings::cli::OutputFormat as SettingsOutputFormat;
 use fabro_types::settings::run::ResolvedMcpEntry;
 use fabro_util::exit::{self, ErrorExt, ExitClass};
+use lithos_llm::catalog::ProviderId;
 
 use crate::args::ExecArgs;
 use crate::command_context::CommandContext;
@@ -143,8 +143,10 @@ pub(crate) async fn execute(mut args: ExecArgs, ctx: &CommandContext) -> AnyResu
             .clone()
             .unwrap_or_else(|| "anthropic".to_string());
         let catalog = ctx.catalog()?;
-        let provider_id = catalog::canonical_provider_id(&catalog, &provider_name)
-            .unwrap_or_else(|| ProviderId::new(provider_name.as_str()));
+        let provider_id = catalog.enabled_provider(&provider_name).map_or_else(
+            || ProviderId::new(provider_name.as_str()),
+            |provider| provider.id().clone(),
+        );
         let server_client = server_client::connect_server_target(&target).await?;
         let adapter = Arc::new(GatewayAdapter::new(Box::new(
             ServerCompletionTransport::new(server_client),

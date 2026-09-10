@@ -45,6 +45,7 @@ fabro-telemetry = { path = "../../foundation/fabro-telemetry" }
 fabro-store = { path = "../../components/fabro-store" }
 fabro-vault = { path = "../../foundation/fabro-vault" }
 fabro-types = { path = "../../foundation/fabro-types", features = ["clap"] }
+lithos-llm = { workspace = true, features = ["runtime"] }
 fabro-redact.workspace = true
 fabro-util = { path = "../../foundation/fabro-util" }
 fabro-http.workspace = true

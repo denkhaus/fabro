@@ -6,7 +6,8 @@ use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use fabro_types::{AgentProfileKind, InterviewOption, QuestionType, ToolDefinition};
+use fabro_types::{AgentProfileKind, InterviewOption, QuestionType};
+use lithos_llm::types::ToolDefinition;
 use serde::Deserialize;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;

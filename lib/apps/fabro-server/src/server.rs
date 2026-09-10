@@ -48,7 +48,7 @@ pub use fabro_api::types::{
     SystemRepairRunsResponse, SystemResourcesResponse, SystemRunCounts, TimelineEntryResponse,
     UpdateVariableRequest, VariableListResponse, VncPreviewResponse, WriteBlobResponse,
 };
-use fabro_auth::{CredentialSource, SqlVaultCredentialSource, auth_issue_message};
+use fabro_auth::SqlVaultCredentialSource;
 use fabro_automation::{self, AutomationStore};
 use fabro_config::daemon::ServerDaemon;
 use fabro_config::{LlmLayer, RunLayer, Storage, WorkflowSettingsBuilder};
@@ -57,8 +57,9 @@ use fabro_environment::EnvironmentStore;
 use fabro_interview::{
     Answer, AnswerSubmission, ControlInterviewer, Interviewer, Question, WorkerControlEnvelope,
 };
+use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_llm::{ClientOptions, FabroClient, catalog};
+use fabro_llm::{ClientOptions, FabroClient};
 use fabro_mcp_store::McpServerStore;
 use fabro_redact::redact_jsonl_line;
 use fabro_sandbox::daytona::{self, DaytonaSandbox};
@@ -92,9 +93,8 @@ use fabro_types::settings::server::{
 use fabro_types::{
     AgentBackend, AskFabro, AskFabroUnavailableReason, BilledTokenCounts, BlobHash, EventBody,
     InterviewQuestionRecord, ModelRef, ModelTestMode, PairId, PairMessageId, PairTarget,
-    PendingReason, Principal, ProviderId, PullRequestLink, QuestionType, RunControlAction,
-    RunEvent, RunId, RunRunnableSource, RunStatusKind, SandboxProviderKind, ServerSettings,
-    SessionCapability,
+    PendingReason, Principal, PullRequestLink, QuestionType, RunControlAction, RunEvent, RunId,
+    RunRunnableSource, RunStatusKind, SandboxProviderKind, ServerSettings, SessionCapability,
 };
 use fabro_util::error::{
     SharedError, collect_causes, render_compact_with_causes, render_with_causes,
@@ -115,6 +115,7 @@ use fabro_workflow::run_lookup::{
 use fabro_workflow::run_status::{FailureReason, RunStatus, SuccessReason};
 use fabro_workflow::{Error as WorkflowError, operations, pull_request};
 use futures_util::future::join_all;
+use lithos_llm::catalog::ProviderId;
 use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 use tokio::fs;
@@ -1126,7 +1127,7 @@ pub struct AppState {
     parent_link_lock: AsyncMutex<()>,
 
     pub(super) server_secrets: ServerSecrets,
-    pub(crate) llm_source: Arc<dyn CredentialSource>,
+    pub(crate) llm_source: Arc<dyn CredentialProvider>,
     manifest_run_defaults: RwLock<Arc<RunLayer>>,
     manifest_run_settings: RwLock<std::result::Result<RunNamespace, SharedError>>,
     pub(crate) server_settings: RwLock<Arc<ServerSettings>>,
@@ -1401,7 +1402,7 @@ impl AppState {
 
     pub(crate) async fn configured_llm_provider_ids(&self) -> Vec<ProviderId> {
         let catalog = self.catalog();
-        self.llm_source.configured_providers(catalog.as_ref()).await
+        fabro_llm::configured_providers(catalog.as_ref(), self.llm_source.as_ref()).await
     }
 
     /// Resolve the LLM client once and derive the ready provider IDs from it,
@@ -1445,8 +1446,8 @@ impl AppState {
         let default_model = if provider_ids.is_empty() {
             None
         } else {
-            let ready = provider_ids.iter().cloned().collect::<HashSet<_>>();
-            catalog::default_for_ready(&self.catalog(), &ready)
+            self.catalog()
+                .default_offering_for(&provider_ids)
                 .map(|entry| entry.model.id().to_string())
         };
         AskFabroReadiness { default_model }
@@ -1679,7 +1680,7 @@ impl AppState {
 /// Builds the server's LLM client: retries and attachment inlining on, the
 /// server's HTTP client for provider requests when one is configured.
 async fn resolve_llm_client_from_source(
-    source: Arc<dyn CredentialSource>,
+    source: Arc<dyn CredentialProvider>,
     catalog: Arc<Catalog>,
     http_client: Option<fabro_http::HttpClient>,
 ) -> anyhow::Result<FabroClient> {
@@ -2455,7 +2456,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
     // Read vault secrets needed for synchronous setup before we wrap the vault in
     // an async lock for the rest of AppState.
     let daytona_api_key = vault.get(EnvVars::DAYTONA_API_KEY).map(str::to_string);
-    let llm_source: Arc<dyn CredentialSource> = Arc::new(SqlVaultCredentialSource::vault_only(
+    let llm_source: Arc<dyn CredentialProvider> = Arc::new(SqlVaultCredentialSource::vault_only(
         Arc::clone(&secret_store),
     ));
     let (global_event_tx, _) = broadcast::channel(4096);

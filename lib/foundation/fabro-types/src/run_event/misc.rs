@@ -1,9 +1,10 @@
+use lithos_llm::types::ReasoningEffort;
 use serde::{Deserialize, Serialize};
 
 use super::ExecOutputTail;
 use crate::{
-    CommandTermination, ParallelBranchResult, PullRequestCreationId, PullRequestLink,
-    ReasoningEffort, ReviewTarget, StageId, StageOutcome,
+    CommandTermination, ParallelBranchResult, PullRequestCreationId, PullRequestLink, ReviewTarget,
+    StageId, StageOutcome,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

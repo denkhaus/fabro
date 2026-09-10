@@ -1306,7 +1306,7 @@ mod tests {
             None,
             finalize_locations,
             tokio_util::sync::CancellationToken::new(),
-            fabro_types::provider_ids::anthropic(),
+            lithos_llm::catalog::builtin::anthropic(),
             "claude-sonnet-4-6".to_string(),
             auth_test_support::vault_only_credential_source(),
             Arc::new(fabro_llm::test_support::test_catalog()),

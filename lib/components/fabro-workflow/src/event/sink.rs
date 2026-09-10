@@ -296,8 +296,10 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use ::fabro_types::{Graph, ModelId, RunNoticeLevel, WorkflowSettings, fixtures};
+    use ::fabro_types::{Graph, RunNoticeLevel, WorkflowSettings, fixtures};
     use fabro_types::test_support;
+    use lithos_llm::catalog::ModelId;
+    use lithos_llm::types::{ReasoningOutput, TokenCounts};
     use tokio::sync::Mutex as AsyncMutex;
 
     use super::*;
@@ -390,14 +392,14 @@ mod tests {
             event:             fabro_agent::AgentEvent::AssistantMessage {
                 text:            String::new(),
                 model:           ::fabro_types::ModelRef::new(
-                    ::fabro_types::provider_ids::openai(),
+                    ::lithos_llm::catalog::builtin::openai(),
                     ModelId::new("gpt-5.4"),
                 ),
-                usage:           ::fabro_types::TokenCounts::default(),
+                usage:           TokenCounts::default(),
                 cost:            None,
                 tool_call_count: 1,
                 context_window:  None,
-                reasoning:       Some(::fabro_types::ReasoningOutput::new(
+                reasoning:       Some(ReasoningOutput::new(
                     "inspect the sink first",
                     "write the line, then read it back",
                 )),

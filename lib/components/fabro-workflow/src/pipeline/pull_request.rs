@@ -2,15 +2,17 @@ use std::collections::HashSet;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
-use fabro_auth::CredentialSource;
 use fabro_github::{self as github_app, ssh_url_to_https};
 use fabro_graphviz::parser;
+use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_llm::{Client, ClientOptions, Request, selection, structured};
+use fabro_llm::{Client, ClientOptions, Request, selection};
 use fabro_store::RunProjection;
+use fabro_types::PullRequestLink;
 use fabro_types::settings::run::MergeStrategy;
-use fabro_types::{ProviderId, PullRequestLink, Role};
 use fabro_util::text::strip_goal_decoration;
+use lithos_llm::catalog::ProviderId;
+use lithos_llm::types::{Message, Role};
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
 
@@ -333,7 +335,7 @@ pub async fn build_pr_content(
     goal: &str,
     model: &str,
     run_store: &RunStoreHandle,
-    llm_source: Arc<dyn CredentialSource>,
+    llm_source: Arc<dyn CredentialProvider>,
     catalog: Arc<Catalog>,
     conclusion: Option<&Conclusion>,
     run_state: Option<&RunProjection>,
@@ -405,13 +407,13 @@ async fn build_pr_content_with_client(
     let request = Request::builder()
         .model(model)
         .system(PR_BODY_SYSTEM_PROMPT)
-        .message(fabro_types::Message::text(Role::User, prompt))
+        .message(Message::text(Role::User, prompt))
         .build()
         .map_err(|e| format!("invalid PR content request: {e}"))?;
-    let completion =
-        structured::complete_object(&client, request, "pr_content", PR_CONTENT_SCHEMA.clone())
-            .await
-            .map_err(|e| format!("LLM generation failed: {e}"))?;
+    let completion = client
+        .complete_object(request, "pr_content", PR_CONTENT_SCHEMA.clone())
+        .await
+        .map_err(|e| format!("LLM generation failed: {e}"))?;
 
     let generated: PrContent = serde_json::from_value(completion.object)
         .map_err(|e| format!("Failed to deserialize PR content: {e}"))?;
@@ -462,7 +464,7 @@ pub struct OpenPullRequestRequest<'a> {
     pub draft:             bool,
     pub auto_merge:        Option<AutoMergeOptions>,
     pub run_store:         &'a RunStoreHandle,
-    pub llm_source:        Arc<dyn CredentialSource>,
+    pub llm_source:        Arc<dyn CredentialProvider>,
     pub catalog:           Arc<Catalog>,
     pub conclusion:        Option<&'a Conclusion>,
     pub run_state:         Option<&'a RunProjection>,
@@ -686,19 +688,21 @@ mod tests {
     use std::time::Duration;
 
     use chrono::Utc;
-    use fabro_auth::{CredentialSource, VaultCredentialSource};
+    use fabro_auth::VaultCredentialSource;
     use fabro_graphviz::graph::Graph;
     use fabro_llm::adapter::{ProviderAdapter, ResolvedCall};
+    use fabro_llm::credentials::CredentialProvider;
     use fabro_llm::lithos_catalog::AdapterId;
     use fabro_llm::{Response, ResponseStream};
     use fabro_store::Database;
     use fabro_types::{
-        BilledTokenCounts, ContentPart, RunProjection, RunSpec, SuccessReason, TokenCounts,
-        WorkflowSettings, first_event_seq, fixtures, test_support,
+        BilledTokenCounts, RunProjection, RunSpec, SuccessReason, WorkflowSettings,
+        first_event_seq, fixtures, test_support,
     };
     use fabro_vault::{SecretType, Vault};
     use httpmock::Method::{GET, POST};
     use httpmock::MockServer;
+    use lithos_llm::types::{ContentPart, TokenCounts};
     use object_store::memory::InMemory;
     use tokio::sync::RwLock as AsyncRwLock;
 
@@ -801,7 +805,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         let mut options = fabro_llm::ClientOptions::default();
         options
             .adapters
-            .push((fabro_types::ProviderId::new(provider_name), adapter));
+            .push((ProviderId::new(provider_name), adapter));
         Arc::new(
             fabro_llm::build_offline_client(mock_catalog(), options)
                 .expect("mock client should build")
@@ -1308,9 +1312,9 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
                 None,
             )
             .unwrap();
-        let llm_source: Arc<dyn CredentialSource> = Arc::new(VaultCredentialSource::new(Arc::new(
-            AsyncRwLock::new(vault),
-        )));
+        let llm_source: Arc<dyn CredentialProvider> = Arc::new(VaultCredentialSource::new(
+            Arc::new(AsyncRwLock::new(vault)),
+        ));
         // Use catalog settings to override base_url instead of env var
         let catalog = test_catalog_with_provider_base_url("openai", &server.url("/v1"));
 
@@ -1484,7 +1488,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         assert_eq!(
             truncation_caps(
                 "unknown-model",
-                &fabro_llm::catalog::enabled_provider_ids(&mock_catalog()),
+                &mock_catalog().enabled_provider_ids().into_iter().collect(),
                 &mock_catalog(),
             ),
             TruncationCaps {
@@ -1696,7 +1700,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         branch_mock_id:    usize,
         reconcile_mock_id: usize,
         github_mock_id:    usize,
-        llm_source:        Arc<dyn CredentialSource>,
+        llm_source:        Arc<dyn CredentialProvider>,
         catalog:           Arc<Catalog>,
         creds:             fabro_github::GitHubCredentials,
         run_store:         RunStoreHandle,
@@ -1804,9 +1808,9 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
                 None,
             )
             .unwrap();
-        let llm_source: Arc<dyn CredentialSource> = Arc::new(VaultCredentialSource::new(Arc::new(
-            AsyncRwLock::new(vault),
-        )));
+        let llm_source: Arc<dyn CredentialProvider> = Arc::new(VaultCredentialSource::new(
+            Arc::new(AsyncRwLock::new(vault)),
+        ));
         // Use catalog settings to override base_url instead of env var
         let catalog = test_catalog_with_provider_base_url("openai", &openai_server.url("/v1"));
 

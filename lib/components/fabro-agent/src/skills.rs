@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use fabro_types::ToolDefinition;
+use lithos_llm::types::ToolDefinition;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::{Error, InterruptReason};

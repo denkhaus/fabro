@@ -38,7 +38,7 @@ fn test_app_with_openai_agent_backend(openai_base_url: String, api_key: String) 
     ));
     let source_api_key = api_key.clone();
     let env_api_key = api_key.clone();
-    let llm_source: Arc<dyn fabro_auth::CredentialSource> =
+    let llm_source: Arc<dyn fabro_llm::credentials::CredentialProvider> =
         test_support::env_credential_source(move |name| match name {
             "OPENAI_API_KEY" => Some(source_api_key.clone()),
             _ => None,
@@ -57,7 +57,7 @@ fn test_app_with_openai_agent_backend(openai_base_url: String, api_key: String) 
                 Some(Box::new(
                     fabro_workflow::handler::llm::AgentApiBackend::new_with_catalog(
                         OPENAI_AGENT_MODEL.to_string(),
-                        fabro_types::provider_ids::openai(),
+                        lithos_llm::catalog::builtin::openai(),
                         fabro_workflow::model_fallback::ModelFallbackPolicy::default(),
                         Arc::clone(&llm_source),
                         Arc::clone(&steering_hub),

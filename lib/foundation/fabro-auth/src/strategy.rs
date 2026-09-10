@@ -1,6 +1,5 @@
 use async_trait::async_trait;
-use fabro_types::provider_ids;
-use lithos_llm::catalog::{Catalog, ProviderId};
+use lithos_llm::catalog::{Catalog, ProviderId, builtin};
 
 use crate::context::{AuthContextRequest, AuthContextResponse};
 use crate::credential::{OAuthConfig, OAuthCredential};
@@ -74,7 +73,7 @@ pub fn strategy_for(
             // forgets the constraint.
             assert_eq!(
                 provider_id.as_str(),
-                provider_ids::OPENAI,
+                builtin::ids::OPENAI,
                 "CodexDevice auth is only constructed by CLI code for the \
                  OpenAI provider; all existing call sites enforce this pairing: \
                  got provider_id={provider_id}"

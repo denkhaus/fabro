@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use fabro_api::types;
-use fabro_auth::auth_issue_message;
 use fabro_config::parse::SettingsSource;
 use fabro_config::{
     CliLayer, CliOutputLayer, EnvironmentLayer, MergeMap, RunLayer, SettingsLayer,
@@ -15,9 +14,9 @@ use fabro_config::{
 use fabro_github::token_source::{InstallationTokenSource, ResolvedToken, TokenSnapshot};
 use fabro_graphviz::graph::{Graph, is_llm_handler_type};
 use fabro_graphviz::render::apply_direction;
+use fabro_llm::FabroClient;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::probe::{self, ModelTestStatus};
-use fabro_llm::{FabroClient, catalog};
 use fabro_sandbox::daytona::DaytonaConfig;
 use fabro_sandbox::from_environment::{
     daytona_config_from_environment, docker_config_from_environment,
@@ -31,8 +30,7 @@ use fabro_types::settings::cli::OutputVerbosity;
 use fabro_types::settings::interp::InterpString;
 use fabro_types::settings::run::{EnvironmentProvider, McpServerSettings, RunGoal, RunNamespace};
 use fabro_types::{
-    ManifestPath, ProviderId, RunId, RunNoticeLevel, SandboxProviderKind, ServerSettings,
-    WorkflowSettings,
+    ManifestPath, RunId, RunNoticeLevel, SandboxProviderKind, ServerSettings, WorkflowSettings,
 };
 use fabro_util::check_report::{CheckDetail, CheckReport, CheckResult, CheckSection, CheckStatus};
 use fabro_validate::Severity;
@@ -45,6 +43,7 @@ use fabro_workflow::pipeline::Validated;
 use fabro_workflow::run_materialization::materialize_run_with_ready_providers;
 use fabro_workflow::workflow_bundle::{BundledWorkflow, ParsedWorkflowConfig, WorkflowBundle};
 use futures_util::stream::{self, StreamExt};
+use lithos_llm::catalog::ProviderId;
 use tokio::process::Command;
 use tokio::time;
 
@@ -1112,7 +1111,7 @@ async fn run_llm_check(
                         status:      CheckStatus::Warning,
                         summary:     model_id.clone(),
                         details:     vec![CheckDetail::new(format!("Provider: {provider_name}"))],
-                        remediation: Some(auth_issue_message(&provider_id, issue)),
+                        remediation: Some(issue.to_string()),
                     }));
                 } else if let Some(issue) = registration_issues
                     .iter()
@@ -1210,8 +1209,10 @@ async fn run_llm_check(
 }
 
 fn canonical_provider_id(catalog: &Catalog, provider_name: &str) -> ProviderId {
-    catalog::canonical_provider_id(catalog, provider_name)
-        .unwrap_or_else(|| ProviderId::new(provider_name))
+    catalog.enabled_provider(provider_name).map_or_else(
+        || ProviderId::new(provider_name),
+        |provider| provider.id().clone(),
+    )
 }
 
 async fn run_github_token_check(
@@ -1666,8 +1667,8 @@ fn report_to_api(report: &CheckReport) -> types::PreflightCheckReport {
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::ProviderId;
     use fabro_workflow::run_materialization::materialize_run;
+    use lithos_llm::catalog::ProviderId;
 
     use super::*;
 
@@ -2016,7 +2017,7 @@ enabled = {clone_enabled}
             prepared.settings.clone(),
             validated.graph(),
             test_catalog().as_ref(),
-            &[fabro_types::provider_ids::anthropic()],
+            &[lithos_llm::catalog::builtin::anthropic()],
         )
         .unwrap()
         .run;

@@ -4,15 +4,13 @@ use std::time::Duration;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use fabro_auth::auth_issue_message;
 use fabro_http::Response;
-use fabro_llm::lithos_catalog::Catalog;
+use fabro_llm::Client;
+use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_llm::probe::{self, ModelTestStatus};
-use fabro_llm::{Client, catalog};
 use fabro_redact::redact_string;
 use fabro_sandbox::{DockerSandboxProvider, daytona};
 use fabro_static::EnvVars;
-use fabro_types::ProviderId;
 use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::server::GithubIntegrationStrategy;
 use fabro_util::check_report::{CheckDetail, CheckResult, CheckSection, CheckStatus};
@@ -20,6 +18,7 @@ use fabro_util::dev_token::validate_dev_token_format;
 use fabro_util::session_secret;
 use fabro_util::version::FABRO_VERSION;
 use futures_util::future::join_all;
+use lithos_llm::catalog::ProviderId;
 use serde::Serialize;
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
@@ -219,7 +218,7 @@ pub(crate) async fn test_llm_providers(state: &AppState) -> anyhow::Result<Provi
             .auth_issues
             .iter()
             .find(|(issue_provider, _)| issue_provider == &provider)
-            .map(|(_, issue)| redact_string(&auth_issue_message(&provider, issue)));
+            .map(|(_, issue)| redact_string(&issue.to_string()));
         let registration_issue = result
             .build_issues
             .iter()
@@ -242,7 +241,7 @@ async fn probe_single_provider(
     registration_issue: Option<String>,
 ) -> ProviderProbeResult {
     if let Some(message) = auth_issue {
-        // `auth_issue_message` already embeds the provider's display name, so the
+        // The credential error already names the provider, so the
         // diagnostics detail uses the message as-is rather than re-prefixing.
         return provider_probe_error(provider, None, message.clone(), Some(message));
     }
@@ -250,7 +249,10 @@ async fn probe_single_provider(
         return provider_probe_error(provider, None, message, None);
     }
 
-    let Some(model) = catalog::probe_model(catalog, provider.as_str()) else {
+    let Some(model) = catalog
+        .enabled_provider(provider.as_str())
+        .and_then(CatalogProvider::probe_offering)
+    else {
         return provider_probe_error(
             provider,
             None,

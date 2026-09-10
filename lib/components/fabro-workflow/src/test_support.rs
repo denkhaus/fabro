@@ -5,16 +5,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use fabro_agent::Sandbox;
-use fabro_auth::{CredentialSource, test_support as auth_test_support};
+use fabro_auth::test_support as auth_test_support;
 use fabro_graphviz::graph::Graph as GvGraph;
 use fabro_interview::AutoApproveInterviewer;
-use fabro_llm::catalog;
+use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::test_support::test_catalog;
 use fabro_store::{ArtifactStore, RunProjection, test_support as store_test_support};
+use fabro_types::ModelRef;
 #[cfg(feature = "test-support")]
-use fabro_types::ProviderId;
-use fabro_types::{ModelId, ModelRef, provider_ids};
+use lithos_llm::catalog::ProviderId;
+use lithos_llm::catalog::{ModelId, builtin};
+use lithos_llm::types::TokenCounts;
 use object_store::local::LocalFileSystem;
 
 use crate::artifact_upload::ArtifactSink;
@@ -39,7 +41,7 @@ pub(crate) fn test_configured_provider_ids(
     assume_ready: bool,
 ) -> Vec<ProviderId> {
     if assume_ready {
-        catalog::enabled_provider_ids(catalog).into_iter().collect()
+        catalog.enabled_provider_ids().into_iter().collect()
     } else {
         configured_provider_ids
     }
@@ -89,11 +91,11 @@ pub fn test_usage(
     output_tokens: u64,
 ) -> fabro_types::BilledModelUsage {
     let mut usage = fabro_types::BilledModelUsage::new(
-        ModelRef::new(provider_ids::openai(), ModelId::new(model_id)),
-        fabro_types::TokenCounts {
+        ModelRef::new(builtin::openai(), ModelId::new(model_id)),
+        TokenCounts {
             input: input_tokens,
             output: output_tokens,
-            ..fabro_types::TokenCounts::default()
+            ..TokenCounts::default()
         },
         None,
     );
@@ -145,7 +147,7 @@ struct InitializedOptions {
     hook_runner: Option<Arc<fabro_hooks::HookRunner>>,
     env:         HashMap<String, String>,
     checkpoint:  Option<Checkpoint>,
-    llm_source:  Option<Arc<dyn CredentialSource>>,
+    llm_source:  Option<Arc<dyn CredentialProvider>>,
 }
 
 struct InitializedState {
@@ -269,7 +271,7 @@ async fn initialized(
                     options.hook_runner,
                     locations,
                     run_options.cancel_token.clone(),
-                    provider_ids::anthropic(),
+                    builtin::anthropic(),
                     "claude-sonnet-4-6".to_string(),
                     options
                         .llm_source
@@ -481,7 +483,7 @@ pub async fn run_graph_with_state_and_llm_source(
     sandbox: Arc<dyn Sandbox>,
     graph: &GvGraph,
     run_options: &RunOptions,
-    llm_source: Arc<dyn CredentialSource>,
+    llm_source: Arc<dyn CredentialProvider>,
 ) -> Result<(Outcome, RunProjection)> {
     let initialized = initialized(
         registry,
@@ -576,7 +578,7 @@ impl WorkflowRunner {
         &self,
         graph: &GvGraph,
         run_options: &RunOptions,
-        llm_source: Arc<dyn CredentialSource>,
+        llm_source: Arc<dyn CredentialProvider>,
     ) -> Result<(Outcome, RunProjection)> {
         let registry = self
             .registry

@@ -1,10 +1,11 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use fabro_llm::catalog::ModelEntry;
-use fabro_llm::lithos_catalog::Catalog;
-use fabro_llm::{FallbackTarget, ModelSelectionError, catalog, selection};
+use fabro_llm::lithos_catalog::{Catalog, Offering};
+use fabro_llm::{FallbackTarget, ModelSelectionError, selection};
 use fabro_types::settings::{ModelRef, ResolvedModelRef};
-use fabro_types::{ProviderId, ReasoningEffort, RunNoticeCode, RunNoticeLevel};
+use fabro_types::{RunNoticeCode, RunNoticeLevel};
+use lithos_llm::catalog::ProviderId;
+use lithos_llm::types::ReasoningEffort;
 
 use crate::Error;
 
@@ -31,7 +32,7 @@ impl ModelFallbackPolicy {
         provider: &ProviderId,
         model: &str,
     ) -> Option<&'a [FallbackTarget]> {
-        self.chain_for_canonical(&catalog::canonical_model_id(catalog, provider, model))
+        self.chain_for_canonical(&canonical_model_id(catalog, provider, model))
     }
 
     /// Look up a chain by an already-canonicalized requested model ID.
@@ -224,8 +225,9 @@ pub fn resolve_model_fallbacks(
         }
 
         let primary = FallbackTarget::new(&selected.provider, &requested_model);
-        let primary_model =
-            catalog::model_on_provider(catalog, selected.provider.as_str(), &requested_model);
+        let primary_model = catalog
+            .enabled_provider(selected.provider.as_str())
+            .and_then(|provider| provider.offering(&requested_model));
         let mut targets = Vec::new();
 
         for model_ref in references {
@@ -295,11 +297,23 @@ enum FallbackCandidate {
     Skipped(ModelFallbackNotice),
 }
 
+/// The catalog id for `selector` on `provider`, else anywhere; the selector
+/// itself for a passthrough model the catalog does not know.
+pub(crate) fn canonical_model_id(
+    catalog: &Catalog,
+    provider: &ProviderId,
+    selector: &str,
+) -> String {
+    catalog
+        .canonical_model_id(Some(provider), selector)
+        .map_or_else(|| selector.to_string(), ToString::to_string)
+}
+
 fn resolve_fallback_candidate(
     catalog: &Catalog,
     requested_model: &str,
     primary: &FallbackTarget,
-    primary_model: Option<&ModelEntry<'_>>,
+    primary_model: Option<&Offering<'_>>,
     eligible: &HashSet<ProviderId>,
     model_ref: &ModelRef,
 ) -> Result<FallbackCandidate, Error> {
@@ -326,7 +340,10 @@ fn resolve_fallback_candidate(
                     },
                 ));
             };
-            match catalog::closest_model(catalog, provider.as_str(), primary_model.model) {
+            match catalog
+                .enabled_provider(provider.as_str())
+                .and_then(|target| target.closest_offering(primary_model.model))
+            {
                 Some(entry) => {
                     FallbackCandidate::Target(FallbackTarget::new(provider, entry.model.id()))
                 }
@@ -392,7 +409,7 @@ mod tests {
     use fabro_llm::FallbackTarget;
     use fabro_llm::lithos_catalog::Catalog;
     use fabro_llm::test_support::test_catalog_with_overlay;
-    use fabro_types::ProviderId;
+    use lithos_llm::catalog::ProviderId;
 
     use super::{ModelFallbackNotice, resolve_model_fallbacks};
 

@@ -4,15 +4,14 @@ use std::time::Duration;
 
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::probe::{self, ApiKeyProbeError, ModelTestStatus};
-use fabro_llm::{ModelSelectionError, api, catalog, selection};
+use fabro_llm::{ModelSelectionError, api, selection};
 use fabro_redact::redact_string;
-use fabro_types::ReasoningEffort;
+use lithos_llm::types::ReasoningEffort;
 
 use super::super::{
     ApiError, AppState, FromStr, IntoResponse, Json, MAX_PAGE_OFFSET, ModelTestMode, Path,
     ProviderCredentialTestRequest, ProviderCredentialTestResponse, ProviderId, ProviderList, Query,
-    RequiredUser, Response, Router, State, StatusCode, auth_issue_message, default_page_limit,
-    error, get, post,
+    RequiredUser, Response, Router, State, StatusCode, default_page_limit, error, get, post,
 };
 use crate::diagnostics;
 
@@ -60,8 +59,10 @@ async fn list_models(
     let catalog = state.catalog();
     // An unknown provider filter matches nothing rather than erroring.
     let provider_id = params.provider.as_deref().map(|selector| {
-        catalog::canonical_provider_id(&catalog, selector)
-            .unwrap_or_else(|| ProviderId::new(selector))
+        catalog.enabled_provider(selector).map_or_else(
+            || ProviderId::new(selector),
+            |provider| provider.id().clone(),
+        )
     });
 
     let query = params.query.as_ref().map(|value| value.to_lowercase());
@@ -251,7 +252,7 @@ async fn test_model(
         .iter()
         .find(|(provider, _)| provider == &provider_id)
     {
-        return ApiError::bad_request(auth_issue_message(&provider_id, issue)).into_response();
+        return ApiError::bad_request(issue.to_string()).into_response();
     }
     if !llm_result.has_provider(&provider_id) {
         return Json(serde_json::json!({

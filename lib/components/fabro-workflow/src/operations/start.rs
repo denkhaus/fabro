@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use fabro_auth::{CredentialSource, VaultCredentialSource};
+use fabro_auth::VaultCredentialSource;
 use fabro_interview::{AutoApproveInterviewer, Interviewer};
+use fabro_llm::credentials::readiness;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_mcp::config::McpServerSettings;
 use fabro_sandbox::daytona::DaytonaConfig;
@@ -23,11 +24,12 @@ use fabro_types::settings::run::{
     RunPrepareSettings as ResolvedRunPrepareSettings,
 };
 use fabro_types::{
-    ManifestPath, ProviderId, RunId, RunRunnableSource, RunSpec, RunTarget, SandboxProviderKind,
+    ManifestPath, RunId, RunRunnableSource, RunSpec, RunTarget, SandboxProviderKind,
     TargetValidationError,
 };
 use fabro_util::error::collect_chain;
 use fabro_vault::Vault;
+use lithos_llm::catalog::ProviderId;
 use tokio::runtime::Handle;
 use tokio::sync::RwLock as AsyncRwLock;
 use tokio::{fs, time};
@@ -746,11 +748,8 @@ async fn configured_providers_for_start(
     vault: &Arc<AsyncRwLock<Vault>>,
     catalog: Arc<Catalog>,
 ) -> Vec<ProviderId> {
-    let source: Arc<dyn CredentialSource> = Arc::new(VaultCredentialSource::with_env_lookup(
-        Arc::clone(vault),
-        process_env_var,
-    ));
-    source.resolve_all(catalog.as_ref()).await.ready
+    let source = VaultCredentialSource::with_env_lookup(Arc::clone(vault), process_env_var);
+    readiness(catalog.enabled_providers(), &source).await.ready
 }
 
 fn git_checkpoint_options_from_start(
@@ -1312,9 +1311,10 @@ mod tests {
     };
     use fabro_types::{
         BilledModelUsage, GitContext, ManifestPath, RunTarget, StageTiming, WorkflowSettings,
-        fixtures, provider_ids, test_support,
+        fixtures, test_support,
     };
     use fabro_vault::SecretType;
+    use lithos_llm::catalog::builtin;
     use object_store::memory::InMemory;
 
     use super::*;
@@ -1437,7 +1437,8 @@ mod tests {
     }
 
     fn test_provider_ids() -> Vec<ProviderId> {
-        fabro_llm::catalog::enabled_provider_ids(&fabro_llm::test_support::test_catalog())
+        fabro_llm::test_support::test_catalog()
+            .enabled_provider_ids()
             .into_iter()
             .collect()
     }
@@ -1476,7 +1477,7 @@ mod tests {
             error,
             Error::ModelSelection(fabro_llm::ModelSelectionError::ProviderUnavailable {
                 provider
-            }) if provider == provider_ids::openai()
+            }) if provider == builtin::openai()
         ));
     }
 

@@ -74,7 +74,7 @@ fn is_task_reminder(content: &str) -> bool {
 mod tests {
     use std::time::SystemTime;
 
-    use fabro_types::{TokenCounts, ToolCall};
+    use lithos_llm::types::{TokenCounts, ToolCall};
 
     use super::*;
     fn assistant(tool_name: Option<&str>) -> Message {

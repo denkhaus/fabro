@@ -1,7 +1,7 @@
 use std::any::{TypeId, type_name};
 
 use fabro_api::types::{ModelHandle as ApiModelHandle, ProviderId as ApiProviderId};
-use fabro_types::{ModelHandle, ModelId, ProviderId, provider_ids};
+use lithos_llm::catalog::{ModelHandle, ModelId, ProviderId, builtin};
 use serde_json::json;
 
 #[test]
@@ -13,7 +13,7 @@ fn provider_id_and_model_handle_reuse_lithos_types() {
 #[test]
 fn provider_id_json_is_a_bare_string() {
     assert_eq!(
-        serde_json::to_value(provider_ids::anthropic()).unwrap(),
+        serde_json::to_value(builtin::anthropic()).unwrap(),
         json!("anthropic")
     );
     assert_eq!(
@@ -24,7 +24,7 @@ fn provider_id_json_is_a_bare_string() {
 
 #[test]
 fn model_handle_json_matches_openapi_shape() {
-    let handle = ModelHandle::new(provider_ids::openai(), ModelId::new("gpt-5.4"));
+    let handle = ModelHandle::new(builtin::openai(), ModelId::new("gpt-5.4"));
     let json = serde_json::to_value(&handle).unwrap();
     assert_eq!(json, json!({"provider": "openai", "model": "gpt-5.4"}));
     let round_trip: ApiModelHandle = serde_json::from_value(json).unwrap();

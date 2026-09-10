@@ -25,17 +25,21 @@ use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::run::{ApprovalMode, EnvironmentProvider};
 use fabro_types::{
     AgentBackend, AttrValue, AuthMethod, BlobHash, CommandTermination, FailureCategory,
-    FailureDetail, GitRunTarget, Graph, InterviewQuestionRecord, ModelId, ModelRef, Node, Outcome,
-    ParallelBranchId, QuestionType, ReasoningEffort, RunId, RunSpec, RunTarget,
-    SandboxProviderKind, Speed, StageContextWindowBreakdownItem, StageContextWindowCategory,
-    StageContextWindowCountMethod, StageContextWindowProjection, StageContextWindowStaleness,
-    StageContextWindowWarning, StageModelUsage, StageTiming, SuccessReason, SystemActorKind,
-    TokenCounts, WorkflowSettings, fixtures, test_support,
+    FailureDetail, GitRunTarget, Graph, InterviewQuestionRecord, ModelRef, Node, Outcome,
+    ParallelBranchId, QuestionType, RunId, RunSpec, RunTarget, SandboxProviderKind,
+    StageContextWindowBreakdownItem, StageContextWindowCategory, StageContextWindowCountMethod,
+    StageContextWindowProjection, StageContextWindowStaleness, StageContextWindowWarning,
+    StageModelUsage, StageTiming, SuccessReason, SystemActorKind, WorkflowSettings, fixtures,
+    test_support,
 };
 use fabro_util::check_report::CheckStatus;
 use fabro_workflow::records::CheckpointExt;
 use httpmock::Method::{GET, POST};
 use httpmock::MockServer;
+use lithos_llm::catalog::ModelId;
+use lithos_llm::types::{
+    ReasoningEffort, ReasoningOutput, Request as LlmRequest, Speed, TokenCounts,
+};
 use serde_json::json;
 use tokio::sync::Notify;
 use tokio_stream::StreamExt as _;
@@ -1787,7 +1791,7 @@ async fn resolve_llm_client_reads_openai_token_from_vault() {
     let llm_result = state.resolve_llm_client().await.unwrap();
 
     assert_eq!(llm_result.provider_ids(), vec![
-        fabro_types::provider_ids::openai()
+        lithos_llm::catalog::builtin::openai()
     ]);
     assert!(llm_result.auth_issues.is_empty());
 }
@@ -1813,22 +1817,18 @@ async fn resolve_llm_client_ignores_env_lookup_provider_tokens() {
 struct FailingCredentialSource;
 
 #[async_trait::async_trait]
-impl CredentialSource for FailingCredentialSource {
+impl CredentialProvider for FailingCredentialSource {
     async fn credentials(
         &self,
         provider: &fabro_llm::lithos_catalog::CatalogProvider,
-    ) -> Result<fabro_llm::credentials::Credentials, fabro_auth::ResolveError> {
-        Err(fabro_auth::ResolveError::NotConfigured(
-            provider.id().clone(),
-        ))
+    ) -> Result<fabro_llm::credentials::Credentials, fabro_llm::credentials::CredentialError> {
+        Err(fabro_llm::credentials::CredentialError::NotConfigured {
+            provider: provider.id().clone(),
+        })
     }
 
-    async fn configured_providers(
-        &self,
-        catalog: &fabro_llm::lithos_catalog::Catalog,
-    ) -> Vec<fabro_types::ProviderId> {
-        let _ = catalog;
-        Vec::new()
+    async fn is_configured(&self, _provider: &fabro_llm::lithos_catalog::CatalogProvider) -> bool {
+        false
     }
 }
 
@@ -1864,14 +1864,9 @@ async fn llm_source_configured_providers_reads_openai_token_from_vault() {
         .await
         .unwrap();
 
-    let catalog = state.catalog();
-    assert_eq!(
-        state
-            .llm_source
-            .configured_providers(catalog.as_ref())
-            .await,
-        vec![fabro_types::provider_ids::openai()]
-    );
+    assert_eq!(state.configured_llm_provider_ids().await, vec![
+        lithos_llm::catalog::builtin::openai()
+    ]);
 }
 
 #[tokio::test]
@@ -1912,7 +1907,7 @@ async fn resolve_llm_client_uses_vault_key_without_env_lookup_openai_settings() 
     let response = llm_result
         .client
         .complete(
-            fabro_types::Request::builder()
+            LlmRequest::builder()
                 .model("openai/gpt-5.4")
                 .user("Hello")
                 .build()
@@ -6130,7 +6125,7 @@ fn context_window_event(
         event: fabro_agent::AgentEvent::AssistantMessage {
             text:            "assistant response".to_string(),
             model:           ModelRef::new(
-                fabro_types::provider_ids::openai(),
+                lithos_llm::catalog::builtin::openai(),
                 ModelId::new("gpt-5.4"),
             ),
             usage:           TokenCounts::default(),
@@ -7210,7 +7205,10 @@ fn test_billed_usage(
     output_tokens: u64,
 ) -> fabro_types::BilledModelUsage {
     let mut usage = fabro_types::BilledModelUsage::new(
-        ModelRef::new(fabro_types::provider_ids::openai(), ModelId::new(model_id)),
+        ModelRef::new(
+            lithos_llm::catalog::builtin::openai(),
+            ModelId::new(model_id),
+        ),
         TokenCounts {
             input: input_tokens,
             output: output_tokens,
@@ -9331,16 +9329,17 @@ async fn list_providers_marks_configured_per_provider_and_omits_secrets() {
     // `model_count` and `default_model` must reflect the catalog truth for
     // this exact provider, not merely be populated.
     let catalog = state_test_catalog();
-    let expected_model_count = fabro_llm::catalog::provider_models(
-        fabro_llm::catalog::provider(&catalog, "anthropic").expect("anthropic should be listed"),
-    )
-    .len();
+    let anthropic_provider = catalog
+        .enabled_provider("anthropic")
+        .expect("anthropic should be listed");
+    let expected_model_count = anthropic_provider.offerings().len();
     assert_eq!(
         anthropic["model_count"].as_u64(),
         Some(expected_model_count as u64),
         "anthropic model_count should match the catalog"
     );
-    let expected_default = fabro_llm::catalog::default_model(&catalog, "anthropic")
+    let expected_default = anthropic_provider
+        .default_offering()
         .expect("anthropic should have a catalog default model");
     assert_eq!(
         anthropic["default_model"].as_str(),
@@ -11396,12 +11395,13 @@ async fn pull_request_creation_returns_the_active_durable_request() {
         .await
         .into_iter()
         .collect::<HashSet<_>>();
-    let expected_default_model =
-        fabro_llm::catalog::default_for_ready(&state.catalog(), &configured_provider_ids)
-            .expect("a ready provider should have a default model")
-            .model
-            .id()
-            .to_string();
+    let expected_default_model = state
+        .catalog()
+        .default_offering_for(&configured_provider_ids)
+        .expect("a ready provider should have a default model")
+        .model
+        .id()
+        .to_string();
     let request_body = json!({
         "force": false,
         "model": null
@@ -16775,7 +16775,7 @@ async fn get_aggregate_billing_returns_provider_model_speed_identity() {
         agg.total_runs = 1;
         agg.by_model.insert(
             ModelRef::new(
-                fabro_types::provider_ids::anthropic(),
+                lithos_llm::catalog::builtin::anthropic(),
                 ModelId::new("claude-opus-4-6"),
             ),
             ModelBillingTotals {
@@ -16793,7 +16793,7 @@ async fn get_aggregate_billing_returns_provider_model_speed_identity() {
         );
         agg.by_model.insert(
             ModelRef::new(
-                fabro_types::provider_ids::anthropic(),
+                lithos_llm::catalog::builtin::anthropic(),
                 ModelId::new("claude-opus-4-6"),
             )
             .with_speed(Some(Speed::Fast)),
@@ -16853,7 +16853,10 @@ async fn get_aggregate_billing_saturates_total_cost_across_models() {
             .expect("aggregate billing lock");
         for (model_id, total_usd_micros) in [("maximum", i64::MAX), ("one", 1)] {
             agg.by_model.insert(
-                ModelRef::new(fabro_types::provider_ids::openai(), ModelId::new(model_id)),
+                ModelRef::new(
+                    lithos_llm::catalog::builtin::openai(),
+                    ModelId::new(model_id),
+                ),
                 ModelBillingTotals {
                     stages:  1,
                     billing: BilledTokenCounts {
@@ -16898,7 +16901,7 @@ fn aggregate_billing_counts_projection_rollup_usage_visits() {
         by_model:           vec![
             fabro_workflow::ProjectionBillingByModel {
                 model:   ModelRef::new(
-                    fabro_types::provider_ids::openai(),
+                    lithos_llm::catalog::builtin::openai(),
                     ModelId::new("gpt-5.4"),
                 ),
                 stages:  1,
@@ -16914,7 +16917,7 @@ fn aggregate_billing_counts_projection_rollup_usage_visits() {
             },
             fabro_workflow::ProjectionBillingByModel {
                 model:   ModelRef::new(
-                    fabro_types::provider_ids::openai(),
+                    lithos_llm::catalog::builtin::openai(),
                     ModelId::new("gpt-5.4"),
                 )
                 .with_speed(Some(Speed::Fast)),
@@ -16940,21 +16943,25 @@ fn aggregate_billing_counts_projection_rollup_usage_visits() {
     assert_eq!(accumulator.total_timing.wall_time_ms, 2000);
     assert_eq!(accumulator.by_model.len(), 2);
     assert_eq!(
-        accumulator.by_model
-            [&ModelRef::new(fabro_types::provider_ids::openai(), ModelId::new("gpt-5.4"))]
+        accumulator.by_model[&ModelRef::new(
+            lithos_llm::catalog::builtin::openai(),
+            ModelId::new("gpt-5.4")
+        )]
             .stages,
         1
     );
     assert_eq!(
-        accumulator.by_model
-            [&ModelRef::new(fabro_types::provider_ids::openai(), ModelId::new("gpt-5.4"))]
+        accumulator.by_model[&ModelRef::new(
+            lithos_llm::catalog::builtin::openai(),
+            ModelId::new("gpt-5.4")
+        )]
             .billing
             .input_tokens,
         100
     );
     assert_eq!(
         accumulator.by_model[&ModelRef::new(
-            fabro_types::provider_ids::openai(),
+            lithos_llm::catalog::builtin::openai(),
             ModelId::new("gpt-5.4")
         )
         .with_speed(Some(Speed::Fast))]
@@ -16963,7 +16970,7 @@ fn aggregate_billing_counts_projection_rollup_usage_visits() {
     );
     assert_eq!(
         accumulator.by_model[&ModelRef::new(
-            fabro_types::provider_ids::openai(),
+            lithos_llm::catalog::builtin::openai(),
             ModelId::new("gpt-5.4")
         )
         .with_speed(Some(Speed::Fast))]
@@ -18307,14 +18314,14 @@ async fn attach_stream_replays_agent_message_reasoning() {
             event:             fabro_agent::AgentEvent::AssistantMessage {
                 text:            String::new(),
                 model:           ModelRef::new(
-                    fabro_types::provider_ids::openai(),
+                    lithos_llm::catalog::builtin::openai(),
                     ModelId::new("gpt-5.4"),
                 ),
                 usage:           TokenCounts::default(),
                 cost:            None,
                 tool_call_count: 1,
                 context_window:  None,
-                reasoning:       Some(fabro_types::ReasoningOutput::new(
+                reasoning:       Some(ReasoningOutput::new(
                     "inspect the sink first",
                     "read events.rs, then attach",
                 )),

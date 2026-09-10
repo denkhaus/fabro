@@ -221,7 +221,9 @@ mod tests {
 
     use fabro_graphviz::graph::AttrValue;
     use fabro_store::{Database, RunDatabase, StageId};
-    use fabro_types::{ReasoningEffort, Speed, fixtures, test_support};
+    use fabro_types::{fixtures, test_support};
+    use lithos_llm::catalog::ProviderId;
+    use lithos_llm::types::{ReasoningEffort, Speed};
     use object_store::memory::InMemory;
     use tempfile::TempDir;
 
@@ -722,7 +724,7 @@ mod tests {
             )))
             .with_catalog_context(
                 Arc::clone(&catalog),
-                fabro_types::ProviderId::new("acme"),
+                ProviderId::new("acme"),
                 "acme-claude".to_string(),
             );
 
@@ -796,7 +798,7 @@ mod tests {
             )))
             .with_catalog_context(
                 Arc::clone(&catalog),
-                fabro_types::ProviderId::new("acme"),
+                ProviderId::new("acme"),
                 "acme-claude".to_string(),
             );
 

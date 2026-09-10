@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::http::{HeaderValue, header};
-use fabro_llm::catalog;
 
 use super::super::{
     ApiError, AppState, CloseRunPullRequestResponse, CreateRunPullRequestRequest, IntoResponse,
@@ -344,12 +343,8 @@ async fn create_run_pull_request(
         model
     } else {
         let catalog = state.catalog();
-        let configured = state
-            .ready_llm_provider_ids()
-            .await
-            .into_iter()
-            .collect::<std::collections::HashSet<_>>();
-        match catalog::default_for_ready(&catalog, &configured) {
+        let configured = state.ready_llm_provider_ids().await;
+        match catalog.default_offering_for(&configured) {
             Some(entry) => entry.model.id().to_string(),
             None => {
                 return ApiError::bad_request("no LLM model is available for PR generation")

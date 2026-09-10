@@ -1,13 +1,15 @@
+use lithos_llm::types::{
+    CostSource, ReasoningEffort, ReasoningOutput, Speed, ToolCall, ToolResult,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use strum::{Display, EnumString, IntoStaticStr};
 
 use super::{BilledTokenCounts, ExecOutputTail};
-use crate::transcript::{ToolCall, ToolResult, TranscriptMessage};
+use crate::transcript::TranscriptMessage;
 use crate::{
-    CommandTermination, CostSource, MessageId, ModelRef, PairId, PairMessageId,
-    PairSystemMessageKind, PermissionLevel, ReasoningEffort, ReasoningOutput, Speed,
-    StageContextWindowProjection, TurnId,
+    CommandTermination, MessageId, ModelRef, PairId, PairMessageId, PairSystemMessageKind,
+    PermissionLevel, StageContextWindowProjection, TurnId,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -523,16 +525,15 @@ pub struct AgentSkillActivatedProps {
 
 #[cfg(test)]
 mod tests {
+    use lithos_llm::catalog::builtin;
+    use lithos_llm::types::ContentPart;
     use serde_json::json;
 
     use super::*;
-    use crate::provider_ids;
-    use crate::transcript::{
-        ContentPart, MessageKind, MessageSource, TranscriptMessage, tool_result_from_json,
-    };
+    use crate::transcript::{MessageKind, MessageSource, TranscriptMessage, tool_result_from_json};
 
     fn sample_model_ref() -> ModelRef {
-        ModelRef::new(provider_ids::openai(), "gpt-5".into())
+        ModelRef::new(builtin::openai(), "gpt-5".into())
     }
 
     #[test]

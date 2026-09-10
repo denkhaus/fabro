@@ -3,13 +3,13 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use fabro_types::SecretType;
 use fabro_vault::{SecretSnapshot, SecretStore, SecretStoreError, Vault};
-use lithos_llm::catalog::{Catalog, CatalogProvider, ProviderId};
-use lithos_llm::credentials::Credentials;
+use lithos_llm::catalog::{CatalogProvider, ProviderId};
+use lithos_llm::credentials::{CredentialError, CredentialProvider, Credentials};
 use tokio::sync::RwLock;
 use tracing::error;
 
-use crate::credential_source::CredentialSource;
-use crate::{EnvLookup, ResolveError, VaultCredentialSource};
+use crate::vault_source::unusable;
+use crate::{EnvLookup, VaultCredentialSource};
 
 /// Credentials backed by the SQL secret store.
 ///
@@ -90,11 +90,12 @@ impl SqlVaultCredentialSource {
         Ok(true)
     }
 
-    fn store_error(provider: &ProviderId, err: SecretStoreError) -> ResolveError {
-        ResolveError::RefreshFailed {
-            provider: provider.clone(),
-            source:   anyhow::Error::new(err),
-        }
+    fn store_error(provider: &ProviderId, err: SecretStoreError) -> CredentialError {
+        unusable(
+            provider,
+            format!("the secret store could not be read: {err}"),
+            Some(Box::new(err)),
+        )
     }
 }
 
@@ -106,8 +107,11 @@ impl std::fmt::Debug for SqlVaultCredentialSource {
 }
 
 #[async_trait]
-impl CredentialSource for SqlVaultCredentialSource {
-    async fn credentials(&self, provider: &CatalogProvider) -> Result<Credentials, ResolveError> {
+impl CredentialProvider for SqlVaultCredentialSource {
+    async fn credentials(
+        &self,
+        provider: &CatalogProvider,
+    ) -> Result<Credentials, CredentialError> {
         for _ in 0..2 {
             let before = self
                 .store
@@ -134,22 +138,23 @@ impl CredentialSource for SqlVaultCredentialSource {
                 return Ok(credentials);
             }
         }
-        Err(ResolveError::RefreshFailed {
-            provider: provider.id().clone(),
-            source:   anyhow::anyhow!("OAuth credential changed concurrently during refresh"),
-        })
+        Err(unusable(
+            provider.id(),
+            "the OAuth credential changed concurrently during refresh",
+            None,
+        ))
     }
 
-    async fn configured_providers(&self, catalog: &Catalog) -> Vec<ProviderId> {
+    async fn is_configured(&self, provider: &CatalogProvider) -> bool {
         let snapshot = match self.store.snapshot().await {
             Ok(snapshot) => snapshot,
             Err(err) => {
-                error!(error = ?err, "Failed to load configured providers from secret store");
-                return Vec::new();
+                error!(error = ?err, "Failed to read the secret store while checking a provider");
+                return false;
             }
         };
         self.source_for_snapshot(snapshot)
-            .configured_providers(catalog)
+            .is_configured(provider)
             .await
     }
 }

@@ -365,10 +365,11 @@ mod tests {
     use std::sync::Arc;
     use std::time::SystemTime;
 
-    use fabro_llm::catalog::model_on_provider;
-    use fabro_llm::lithos_catalog::Catalog;
+    use fabro_llm::catalog;
+    use fabro_llm::lithos_catalog::{Catalog, Offering};
     use fabro_llm::test_support::test_catalog;
-    use fabro_types::{TokenCounts, ToolCall, tool_result_from_json};
+    use fabro_types::tool_result_from_json;
+    use lithos_llm::types::{TokenCounts, ToolCall};
 
     use super::*;
     use crate::event::Emitter;
@@ -381,6 +382,14 @@ mod tests {
         test_catalog()
     }
 
+    fn model_on_provider<'a>(
+        catalog: &'a Catalog,
+        provider: &str,
+        id: &str,
+    ) -> Option<Offering<'a>> {
+        catalog.enabled_provider(provider)?.offering(id)
+    }
+
     fn builtin_summary_max_tokens(catalog: &Catalog, provider: &str, id: &str) -> u32 {
         let entry = model_on_provider(catalog, provider, id)
             .unwrap_or_else(|| panic!("{provider}/{id} missing from the catalog"));
@@ -388,7 +397,7 @@ mod tests {
             .model
             .limits()
             .map(|limits| u32::try_from(limits.max_output_tokens).unwrap_or(u32::MAX));
-        summary_max_tokens(entry.reasons_by_default(), max_output)
+        summary_max_tokens(catalog::reasons_by_default(&entry), max_output)
     }
 
     #[test]

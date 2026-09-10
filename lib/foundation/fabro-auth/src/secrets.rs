@@ -6,8 +6,7 @@
 //! vault under those same names, so the vault entry an operator creates and
 //! the environment variable a shell exports are spelled alike.
 
-use fabro_types::provider_ids;
-use lithos_llm::catalog::{AuthScheme, CatalogProvider, ProviderId};
+use lithos_llm::catalog::{AuthScheme, CatalogProvider, ProviderId, builtin};
 use lithos_llm::credentials::ConventionalCredentials;
 
 use crate::OPENAI_CODEX_VAULT_SECRET_NAME;
@@ -43,5 +42,5 @@ pub fn accepts_api_key(provider: &CatalogProvider) -> bool {
 /// The vault entry holding `provider`'s OAuth credential, for the providers
 /// Fabro can log into with a browser flow.
 pub(crate) fn oauth_secret_name(provider: &ProviderId) -> Option<&'static str> {
-    (provider.as_str() == provider_ids::OPENAI_CODEX).then_some(OPENAI_CODEX_VAULT_SECRET_NAME)
+    (provider.as_str() == builtin::ids::OPENAI_CODEX).then_some(OPENAI_CODEX_VAULT_SECRET_NAME)
 }

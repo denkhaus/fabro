@@ -16,10 +16,11 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_store::{BlobStore, Database};
 use fabro_template::TemplateContext;
 use fabro_types::{
-    AutomationRef, BlobHash, ForkSourceRef, GitContext, ManifestPath, ProviderId, RunId,
-    RunProvenance, RunTarget, WorkflowSettings, WorkflowVersionId,
+    AutomationRef, BlobHash, ForkSourceRef, GitContext, ManifestPath, RunId, RunProvenance,
+    RunTarget, WorkflowSettings, WorkflowVersionId,
 };
 use fabro_util::json::normalize_json_value;
+use lithos_llm::catalog::ProviderId;
 use tokio::task::spawn_blocking;
 
 use super::source::{ResolveWorkflowInput, WorkflowInput, resolve_workflow};
@@ -688,9 +689,10 @@ mod tests {
     use fabro_store::Database;
     use fabro_types::settings::InterpString;
     use fabro_types::settings::run::RunMode;
-    use fabro_types::{EventBody, WorkflowSettings, fixtures, provider_ids, test_support};
+    use fabro_types::{EventBody, WorkflowSettings, fixtures, test_support};
     use fabro_util::error::collect_chain;
     use fabro_validate::Severity;
+    use lithos_llm::catalog::builtin;
     use object_store::local::LocalFileSystem;
     use object_store::memory::InMemory;
 
@@ -753,7 +755,8 @@ mod tests {
     }
 
     fn test_provider_ids() -> Vec<ProviderId> {
-        fabro_llm::catalog::enabled_provider_ids(&fabro_llm::test_support::test_catalog())
+        fabro_llm::test_support::test_catalog()
+            .enabled_provider_ids()
             .into_iter()
             .collect()
     }
@@ -2027,19 +2030,19 @@ mod tests {
         }"#;
         let catalog = portable_model_catalog();
         let cases = [
-            (vec![provider_ids::openai()], None, provider_ids::openai()),
+            (vec![builtin::openai()], None, builtin::openai()),
             (
                 vec![ProviderId::new("openrouter")],
                 None,
                 ProviderId::new("openrouter"),
             ),
             (
-                vec![provider_ids::openai(), ProviderId::new("openrouter")],
+                vec![builtin::openai(), ProviderId::new("openrouter")],
                 None,
-                provider_ids::openai(),
+                builtin::openai(),
             ),
             (
-                vec![provider_ids::openai(), ProviderId::new("openrouter")],
+                vec![builtin::openai(), ProviderId::new("openrouter")],
                 Some("openrouter"),
                 ProviderId::new("openrouter"),
             ),

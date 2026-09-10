@@ -4,10 +4,11 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use fabro_agent::{Sandbox, ToolSecrets};
-use fabro_auth::{CredentialSource, ExtraHeadersCredentialSource, VaultCredentialSource};
+use fabro_auth::{ExtraHeadersCredentialSource, VaultCredentialSource};
 use fabro_github::token_source::InstallationTokenSource;
 use fabro_graphviz::graph;
 use fabro_hooks::{HookContext, HookDecision, HookEvent, HookExecutionContext, HookRunner};
+use fabro_llm::credentials::{CredentialProvider, readiness};
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_sandbox::{
     GitSetupIntent, SandboxEventCallback, SandboxSpec, reconnect_for_run_with_callback, shell_quote,
@@ -210,7 +211,7 @@ async fn build_registry(
     tool_env_provider: Arc<WorkflowToolEnvProvider>,
     github_token_refresh_managed: bool,
     graph: &graph::Graph,
-    llm_source: Arc<dyn CredentialSource>,
+    llm_source: Arc<dyn CredentialProvider>,
     catalog: Arc<Catalog>,
     tool_secrets: ToolSecrets,
     fabro_run_tools: Option<FabroRunToolServices>,
@@ -276,11 +277,17 @@ async fn build_registry(
         return Ok((build_llm_registry(), false));
     }
 
-    let result = llm_source.resolve_all(catalog.as_ref()).await;
+    let result = readiness(catalog.enabled_providers(), llm_source.as_ref()).await;
     if result.ready.is_empty() {
         if graph_needs_llm {
-            let detail =
-                (!result.auth_issues.is_empty()).then(|| result.issue_messages().join("; "));
+            let detail = (!result.issues.is_empty()).then(|| {
+                result
+                    .issues
+                    .iter()
+                    .map(|(_, issue)| issue.to_string())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            });
             let prefix = detail.map_or_else(
                 || "No LLM providers configured".to_string(),
                 |detail| format!("No usable LLM providers configured: {detail}"),
@@ -314,7 +321,7 @@ const SESSION_ID_HEADER: &str = "x-session-id";
 fn build_llm_source(
     vault: Arc<AsyncRwLock<Vault>>,
     run_id: fabro_types::RunId,
-) -> Arc<dyn CredentialSource> {
+) -> Arc<dyn CredentialProvider> {
     Arc::new(ExtraHeadersCredentialSource::new(
         Arc::new(VaultCredentialSource::new(vault)),
         HashMap::from([(SESSION_ID_HEADER.to_string(), run_id.to_string())]),
@@ -894,7 +901,7 @@ mod tests {
             sandbox: SandboxSpec::Local { working_directory },
             llm: LlmSpec {
                 model:          "test-model".to_string(),
-                provider_id:    fabro_types::provider_ids::anthropic(),
+                provider_id:    lithos_llm::catalog::builtin::anthropic(),
                 fallbacks:      ModelFallbackPolicy::default(),
                 mcp_servers:    Vec::new(),
                 model_controls: RunModelControls::default(),
@@ -1084,17 +1091,16 @@ mod tests {
         assert_eq!(initialized.model, "test-model");
         assert_eq!(
             initialized.engine.run.provider_id,
-            fabro_types::provider_ids::anthropic()
+            lithos_llm::catalog::builtin::anthropic()
         );
         assert!(
-            initialized
-                .engine
-                .run
-                .llm_source
-                .resolve_all(&initialized.engine.run.catalog)
-                .await
-                .ready
-                .is_empty()
+            readiness(
+                initialized.engine.run.catalog.enabled_providers(),
+                initialized.engine.run.llm_source.as_ref(),
+            )
+            .await
+            .ready
+            .is_empty()
         );
     }
 
@@ -1211,7 +1217,7 @@ mod tests {
         let (_registry, effective_dry_run) = build_registry(
             &LlmSpec {
                 model:          "claude-opus-4-6".to_string(),
-                provider_id:    fabro_types::provider_ids::anthropic(),
+                provider_id:    lithos_llm::catalog::builtin::anthropic(),
                 fallbacks:      ModelFallbackPolicy::default(),
                 mcp_servers:    Vec::new(),
                 model_controls: RunModelControls::default(),
@@ -1244,7 +1250,7 @@ mod tests {
 
         let source = build_llm_source(vault, run_id);
         let catalog = test_catalog();
-        let resolved = source.resolve_all(catalog.as_ref()).await;
+        let resolved = readiness(catalog.enabled_providers(), source.as_ref()).await;
 
         assert!(!resolved.ready.is_empty());
         for provider in &resolved.ready {
@@ -1338,7 +1344,7 @@ mod tests {
             },
             llm: LlmSpec {
                 model:          "fake-acp".to_string(),
-                provider_id:    fabro_types::provider_ids::openai(),
+                provider_id:    lithos_llm::catalog::builtin::openai(),
                 fallbacks:      ModelFallbackPolicy::default(),
                 mcp_servers:    Vec::new(),
                 model_controls: RunModelControls::default(),
@@ -1441,7 +1447,7 @@ mod tests {
             },
             llm:               LlmSpec {
                 model:          "test-model".to_string(),
-                provider_id:    fabro_types::provider_ids::anthropic(),
+                provider_id:    lithos_llm::catalog::builtin::anthropic(),
                 fallbacks:      ModelFallbackPolicy::default(),
                 mcp_servers:    Vec::new(),
                 model_controls: RunModelControls::default(),
@@ -1583,7 +1589,7 @@ mod tests {
             },
             llm: LlmSpec {
                 model:          "test-model".to_string(),
-                provider_id:    fabro_types::provider_ids::anthropic(),
+                provider_id:    lithos_llm::catalog::builtin::anthropic(),
                 fallbacks:      ModelFallbackPolicy::default(),
                 mcp_servers:    Vec::new(),
                 model_controls: RunModelControls::default(),

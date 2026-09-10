@@ -17,11 +17,11 @@ use fabro_server::install::{
     InstallAppState, InstallFinishHook, InstallFinishInfo, build_install_router,
 };
 use fabro_server::test_support::test_environment_from_storage_dir;
-use fabro_types::ProviderId;
 use fabro_util::Home;
 use fabro_vault::Vault;
 use httpmock::Method::GET;
 use httpmock::MockServer;
+use lithos_llm::catalog::ProviderId;
 use tokio::time::sleep;
 use tower::ServiceExt;
 use tracing::field::{Field, Visit};
@@ -1416,7 +1416,7 @@ async fn install_validation_endpoints_validate_credentials_and_github_token() {
     let app = build_install_router(
         InstallAppState::for_test("test-install-token")
             .with_provider_base_url(
-                fabro_types::provider_ids::anthropic(),
+                lithos_llm::catalog::builtin::anthropic(),
                 format!("{}/v1", llm_mock.url("")),
             )
             .with_github_api_base_url(github_mock.url("")),

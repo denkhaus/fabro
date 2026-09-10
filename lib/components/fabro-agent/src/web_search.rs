@@ -7,7 +7,7 @@ use std::fmt::Write;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use fabro_types::ToolDefinition;
+use lithos_llm::types::ToolDefinition;
 
 use crate::config::ToolSecrets;
 use crate::tool_registry::{RegisteredTool, ToolSource};

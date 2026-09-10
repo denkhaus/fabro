@@ -10,9 +10,9 @@ use fabro_llm::{
     Client, ClientOptions, Error as LlmError, FinishReason, Request, Response, ResponseStream,
 };
 pub use fabro_sandbox::test_support::{MockSandbox, MutableMockSandbox};
-use fabro_types::{
-    AgentProfileKind, ContentPart, ModelId, ProviderId, TokenCounts, ToolCall, provider_ids,
-};
+use fabro_types::AgentProfileKind;
+use lithos_llm::catalog::{ModelId, ProviderId, builtin};
+use lithos_llm::types::{ContentPart, TokenCounts, ToolCall};
 
 use crate::agent_profile::AgentProfile;
 use crate::config::SessionOptions;
@@ -24,7 +24,7 @@ use crate::skills::{Skill, format_skills_prompt_section};
 use crate::tool_registry::{RegisteredTool, ToolRegistry, ToolSource};
 
 /// The provider every test profile routes to.
-pub const TEST_PROVIDER: &str = provider_ids::ANTHROPIC;
+pub const TEST_PROVIDER: &str = builtin::ids::ANTHROPIC;
 /// The model every test profile requests. It is not in the catalog, so the
 /// provider's passthrough route serves it.
 pub const TEST_MODEL: &str = "mock-model";
@@ -65,7 +65,7 @@ impl AgentProfile for TestProfile {
     }
 
     fn provider_id(&self) -> ProviderId {
-        provider_ids::anthropic()
+        builtin::anthropic()
     }
 
     fn model(&self) -> &'static str {
@@ -271,7 +271,7 @@ pub async fn make_session_with_tools_and_config(
 }
 
 pub fn make_echo_tool() -> RegisteredTool {
-    use fabro_types::ToolDefinition;
+    use lithos_llm::types::ToolDefinition;
     RegisteredTool {
         definition: ToolDefinition::function(
             "echo",
@@ -292,7 +292,7 @@ pub fn make_echo_tool() -> RegisteredTool {
 }
 
 pub fn make_error_tool() -> RegisteredTool {
-    use fabro_types::ToolDefinition;
+    use lithos_llm::types::ToolDefinition;
     RegisteredTool {
         definition: ToolDefinition::function(
             "fail_tool",

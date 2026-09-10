@@ -2,33 +2,35 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use lithos_llm::catalog::{Catalog, CatalogProvider, ProviderId};
-use lithos_llm::credentials::{CredentialHeader, Credentials, SecretValue};
+use lithos_llm::catalog::CatalogProvider;
+use lithos_llm::credentials::{
+    CredentialError, CredentialHeader, CredentialProvider, Credentials, SecretValue,
+};
 
-use crate::ResolveError;
-use crate::credential_source::CredentialSource;
-
-/// Decorates another [`CredentialSource`] by appending fixed extra headers to
-/// every HTTP credential it resolves.
+/// Decorates another [`CredentialProvider`] by appending fixed extra headers
+/// to every HTTP credential it resolves.
 ///
 /// Headers already present on a credential (for example from explicit
 /// provider configuration) are left untouched. AWS-signed credentials carry
 /// no header list and pass through unchanged.
 pub struct ExtraHeadersCredentialSource {
-    inner:   Arc<dyn CredentialSource>,
+    inner:   Arc<dyn CredentialProvider>,
     headers: HashMap<String, String>,
 }
 
 impl ExtraHeadersCredentialSource {
     #[must_use]
-    pub fn new(inner: Arc<dyn CredentialSource>, headers: HashMap<String, String>) -> Self {
+    pub fn new(inner: Arc<dyn CredentialProvider>, headers: HashMap<String, String>) -> Self {
         Self { inner, headers }
     }
 }
 
 #[async_trait]
-impl CredentialSource for ExtraHeadersCredentialSource {
-    async fn credentials(&self, provider: &CatalogProvider) -> Result<Credentials, ResolveError> {
+impl CredentialProvider for ExtraHeadersCredentialSource {
+    async fn credentials(
+        &self,
+        provider: &CatalogProvider,
+    ) -> Result<Credentials, CredentialError> {
         let mut credentials = self.inner.credentials(provider).await?;
         if let Credentials::Http(http) = &mut credentials {
             for (name, value) in &self.headers {
@@ -48,8 +50,8 @@ impl CredentialSource for ExtraHeadersCredentialSource {
         Ok(credentials)
     }
 
-    async fn configured_providers(&self, catalog: &Catalog) -> Vec<ProviderId> {
-        self.inner.configured_providers(catalog).await
+    async fn is_configured(&self, provider: &CatalogProvider) -> bool {
+        self.inner.is_configured(provider).await
     }
 }
 
@@ -61,16 +63,16 @@ mod tests {
     use crate::test_support::test_catalog;
 
     struct StubSource {
-        configured_providers: Vec<ProviderId>,
-        existing_header:      Option<(String, String)>,
+        configured:      bool,
+        existing_header: Option<(String, String)>,
     }
 
     #[async_trait]
-    impl CredentialSource for StubSource {
+    impl CredentialProvider for StubSource {
         async fn credentials(
             &self,
             provider: &CatalogProvider,
-        ) -> Result<Credentials, ResolveError> {
+        ) -> Result<Credentials, CredentialError> {
             if provider.id().as_str() == "bedrock" {
                 return Ok(Credentials::AwsDefaultChain { region: None });
             }
@@ -86,8 +88,8 @@ mod tests {
             Ok(credentials)
         }
 
-        async fn configured_providers(&self, _catalog: &Catalog) -> Vec<ProviderId> {
-            self.configured_providers.clone()
+        async fn is_configured(&self, _provider: &CatalogProvider) -> bool {
+            self.configured
         }
     }
 
@@ -107,8 +109,8 @@ mod tests {
         let catalog = test_catalog();
         let source = ExtraHeadersCredentialSource::new(
             Arc::new(StubSource {
-                configured_providers: Vec::new(),
-                existing_header:      None,
+                configured:      false,
+                existing_header: None,
             }),
             HashMap::from([("x-session-id".to_string(), "run-123".to_string())]),
         );
@@ -133,8 +135,8 @@ mod tests {
         let catalog = test_catalog();
         let source = ExtraHeadersCredentialSource::new(
             Arc::new(StubSource {
-                configured_providers: vec![ProviderId::new("openai")],
-                existing_header:      Some(("X-Session-Id".to_string(), "configured".to_string())),
+                configured:      true,
+                existing_header: Some(("X-Session-Id".to_string(), "configured".to_string())),
             }),
             HashMap::from([("x-session-id".to_string(), "run-123".to_string())]),
         );
@@ -143,8 +145,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(header(&credentials, "x-session-id"), Some("configured"));
-        assert_eq!(source.configured_providers(&catalog).await, vec![
-            ProviderId::new("openai")
-        ]);
+        assert!(
+            source
+                .is_configured(catalog.provider("openai").unwrap())
+                .await
+        );
     }
 }

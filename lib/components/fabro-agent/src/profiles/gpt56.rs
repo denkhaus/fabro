@@ -17,7 +17,9 @@
 use std::sync::Arc;
 
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_types::{AgentProfileKind, ProviderId, ToolDefinition, provider_ids};
+use fabro_types::AgentProfileKind;
+use lithos_llm::catalog::{ProviderId, builtin};
+use lithos_llm::types::ToolDefinition;
 use serde_json::Value;
 
 use super::EnvContext;
@@ -69,7 +71,7 @@ impl Gpt56Profile {
         Self {
             base:                     BaseProfile {
                 profile_kind: AgentProfileKind::Gpt56,
-                provider_id: provider_ids::openai(),
+                provider_id: builtin::openai(),
                 model: model.into(),
                 catalog: None,
                 registry,
@@ -252,7 +254,7 @@ enabled = true
     fn gpt56_profile_identity() {
         let profile = Gpt56Profile::new("gpt-5.6-sol");
         assert_eq!(profile.profile_kind(), AgentProfileKind::Gpt56);
-        assert_eq!(profile.provider_id(), provider_ids::openai());
+        assert_eq!(profile.provider_id(), builtin::openai());
         assert_eq!(profile.model(), "gpt-5.6-sol");
     }
 
@@ -327,8 +329,7 @@ enabled = true
     /// it points 5.6 at a tool it was never given.
     #[test]
     fn shell_description_names_the_editor_actually_registered() {
-        let direct =
-            Gpt56Profile::new("gpt-5.6-sol").with_route(provider_ids::openai(), test_catalog());
+        let direct = Gpt56Profile::new("gpt-5.6-sol").with_route(builtin::openai(), test_catalog());
         let shell = direct.tool_registry().get("shell_command").unwrap();
         assert!(shell.definition.description.contains("`apply_patch`"));
         assert!(!shell.definition.description.contains("`edit_file`"));
@@ -349,8 +350,7 @@ enabled = true
         assert!(!rendered.contains("apply_patch"));
         assert!(!rendered.contains("*** Begin Patch"));
 
-        let direct =
-            Gpt56Profile::new("gpt-5.6-sol").with_route(provider_ids::openai(), test_catalog());
+        let direct = Gpt56Profile::new("gpt-5.6-sol").with_route(builtin::openai(), test_catalog());
         let rendered = prompt(&direct);
         assert!(rendered.contains("Use `apply_patch` for local file edits"));
         assert!(rendered.contains("*** Begin Patch"));
@@ -427,8 +427,7 @@ enabled = true
 
     #[test]
     fn provider_prompt_uses_catalog_display_name() {
-        let direct =
-            Gpt56Profile::new("gpt-5.6-sol").with_route(provider_ids::openai(), test_catalog());
+        let direct = Gpt56Profile::new("gpt-5.6-sol").with_route(builtin::openai(), test_catalog());
         assert!(prompt(&direct).contains("powered by OpenAI"));
 
         let gateway = Gpt56Profile::new("gpt-5.6-sol")
@@ -465,7 +464,7 @@ enabled = true
     #[test]
     fn catalog_reports_the_5_6_context_window() {
         let profile =
-            Gpt56Profile::new("gpt-5.6-sol").with_route(provider_ids::openai(), test_catalog());
+            Gpt56Profile::new("gpt-5.6-sol").with_route(builtin::openai(), test_catalog());
         assert_eq!(profile.context_window_size(), 1_050_000);
     }
 }

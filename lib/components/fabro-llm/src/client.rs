@@ -3,18 +3,14 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use fabro_auth::{CredentialSource, ResolveError, lithos_credentials};
-use fabro_types::ProviderId;
 use lithos_llm::adapter::ProviderAdapter;
-use lithos_llm::catalog::Catalog;
+use lithos_llm::catalog::{Catalog, ProviderId};
 use lithos_llm::client::{Client, ClientBuildError, ClientBuilder, ProviderBuildIssue};
+use lithos_llm::credentials::{CredentialError, CredentialProvider};
 use lithos_llm::middleware::{
-    Call, Middleware, Observer, RetryMiddleware, RetryPolicy, RetryStage,
+    Call, InlineLocalFiles, Middleware, Observer, RetryMiddleware, RetryPolicy, RetryStage,
 };
-use lithos_llm::types::Error;
-
-use crate::attachments::InlineLocalAttachments;
-use crate::error::LlmError;
+use lithos_llm::types::{Error, ErrorData};
 
 /// The application name lithos reports to providers that ask, such as the
 /// `originator` header on the OpenAI Codex deployment.
@@ -36,7 +32,7 @@ pub fn default_retry_policy() -> RetryPolicy {
 #[derive(Clone, Debug)]
 pub struct RetryNotice {
     /// The failure that ended the attempt.
-    pub error:   LlmError,
+    pub error:   ErrorData,
     /// The attempt that failed, counted from 1.
     pub attempt: u32,
     /// How long the middleware waits before the next attempt.
@@ -78,7 +74,7 @@ impl Observer for RetryNotifier {
     ) {
         if let Some(listener) = call.context().extensions().get::<RetryListener>() {
             listener.notify(RetryNotice {
-                error: LlmError::from(error),
+                error: ErrorData::from(error),
                 attempt,
                 delay,
                 stage,
@@ -150,7 +146,7 @@ impl ClientOptions {
             builder = builder.middleware(retry_middleware(policy));
         }
         if self.inline_attachments {
-            builder = builder.middleware(InlineLocalAttachments::new());
+            builder = builder.middleware(InlineLocalFiles::new());
         }
         for middleware in self.middleware {
             builder = builder.middleware_arc(middleware);
@@ -167,8 +163,9 @@ pub struct FabroClient {
     pub client:       Client,
     /// Enabled providers with working credentials, in catalog order.
     pub ready:        Vec<ProviderId>,
-    /// Enabled providers whose credential material could not be used.
-    pub auth_issues:  Vec<(ProviderId, ResolveError)>,
+    /// Enabled providers whose credential material could not be used. The
+    /// error's `Display` is the operator-facing line.
+    pub auth_issues:  Vec<(ProviderId, CredentialError)>,
     /// Ready providers lithos could not build an adapter for.
     pub build_issues: Vec<ProviderBuildIssue>,
 }
@@ -193,32 +190,40 @@ pub enum LlmSetupError {
     Build(#[from] ClientBuildError),
 }
 
-/// Builds a client whose ready providers are those the credential source can
-/// serve. Credentials are re-read from `source` on every provider attempt.
+/// Builds a client whose ready providers are those `credentials` can serve.
+/// Credentials are re-read on every provider attempt, so a refreshed OAuth
+/// token is picked up by the next retry.
 pub async fn build_client(
     catalog: Catalog,
-    source: Arc<dyn CredentialSource>,
+    credentials: Arc<dyn CredentialProvider>,
     options: ClientOptions,
 ) -> Result<FabroClient, LlmSetupError> {
-    let resolved = source.resolve_all(&catalog).await;
-    let mut ready = resolved.ready;
-    for provider in options.adapter_providers() {
-        if !ready.contains(provider) {
-            ready.push(provider.clone());
-        }
-    }
     let builder = Client::builder()
         .catalog(catalog)
         .application(APPLICATION_NAME)
-        .credentials_arc(lithos_credentials(source))
-        .enabled_providers(ready.iter().cloned());
-    let build = options.apply(builder).build()?;
+        .credentials_arc(credentials);
+    let build = options.apply(builder).build_ready().await?;
     Ok(FabroClient {
-        client: build.client,
-        ready,
-        auth_issues: resolved.auth_issues,
+        client:       build.client,
+        ready:        build.ready,
+        auth_issues:  build.credential_issues,
         build_issues: build.issues,
     })
+}
+
+/// The enabled providers `credentials` holds material for, in catalog order,
+/// without refreshing anything. Cheap enough for listings.
+pub async fn configured_providers(
+    catalog: &Catalog,
+    credentials: &dyn CredentialProvider,
+) -> Vec<ProviderId> {
+    let mut configured = Vec::new();
+    for provider in catalog.providers().filter(|provider| provider.is_enabled()) {
+        if credentials.is_configured(provider).await {
+            configured.push(provider.id().clone());
+        }
+    }
+    configured
 }
 
 /// Builds a client that needs no credentials: every available provider is

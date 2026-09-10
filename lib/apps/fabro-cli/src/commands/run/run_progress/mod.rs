@@ -460,11 +460,13 @@ mod tests {
     use fabro_agent::{AgentEvent, SandboxEvent};
     use fabro_types::run_event::CliEnsureCompletedProps;
     use fabro_types::{
-        MetadataSnapshotFailureKind, MetadataSnapshotPhase, ModelId, ModelRef, ParallelBranchId,
-        SandboxProviderKind, StageId, TokenCounts, fixtures, provider_ids,
+        MetadataSnapshotFailureKind, MetadataSnapshotPhase, ModelRef, ParallelBranchId,
+        SandboxProviderKind, StageId, fixtures,
     };
     use fabro_workflow::event::{Event, RunNoticeLevel, to_run_event, to_run_event_at};
     use fabro_workflow::outcome::billed_model_usage_from_llm;
+    use lithos_llm::catalog::{ModelId, builtin};
+    use lithos_llm::types::TokenCounts;
 
     use super::*;
     use crate::commands::run::run_progress::stage_display::ToolCallStatus;
@@ -570,7 +572,7 @@ mod tests {
     fn assistant_event(model: &str, text: &str) -> AgentEvent {
         AgentEvent::AssistantMessage {
             text:            text.into(),
-            model:           ModelRef::new(provider_ids::openai(), ModelId::new(model)),
+            model:           ModelRef::new(builtin::openai(), ModelId::new(model)),
             usage:           TokenCounts::default(),
             cost:            None,
             tool_call_count: 0,
@@ -589,7 +591,7 @@ mod tests {
 
     fn llm_request_started(stage: &str, model: &str) -> Event {
         agent_event(stage, AgentEvent::LlmRequestStarted {
-            requested_model: ModelRef::new(provider_ids::anthropic(), ModelId::new(model)),
+            requested_model: ModelRef::new(builtin::anthropic(), ModelId::new(model)),
         })
     }
 
@@ -605,7 +607,7 @@ mod tests {
             billing: Some(
                 billed_model_usage_from_llm(
                     &fabro_llm::test_support::test_catalog(),
-                    &ModelRef::new(provider_ids::openai(), ModelId::new("gpt-5.4")),
+                    &ModelRef::new(builtin::openai(), ModelId::new("gpt-5.4")),
                     TokenCounts {
                         input: 1200,
                         output: 300,
@@ -836,7 +838,7 @@ mod tests {
                 attempt:    1,
                 delay_secs: 0.1,
                 phase:      fabro_types::LlmRetryPhase::Consume,
-                error:      fabro_llm::LlmError::from(fabro_llm::Error::new(
+                error:      fabro_llm::ErrorData::from(fabro_llm::Error::new(
                     fabro_llm::ErrorKind::Configuration,
                     "retry",
                 )),
@@ -955,7 +957,7 @@ mod tests {
                 attempt:    2,
                 delay_secs: 1.5,
                 phase:      fabro_types::LlmRetryPhase::Open,
-                error:      fabro_llm::LlmError::from(fabro_llm::Error::new(
+                error:      fabro_llm::ErrorData::from(fabro_llm::Error::new(
                     fabro_llm::ErrorKind::Configuration,
                     "busy",
                 )),
@@ -1319,7 +1321,7 @@ mod tests {
                 attempt:    2,
                 delay_secs: 1.5,
                 phase:      fabro_types::LlmRetryPhase::Open,
-                error:      fabro_llm::LlmError::from(fabro_llm::Error::new(
+                error:      fabro_llm::ErrorData::from(fabro_llm::Error::new(
                     fabro_llm::ErrorKind::Configuration,
                     "busy",
                 )),

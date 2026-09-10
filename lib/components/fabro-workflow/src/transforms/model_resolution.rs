@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use fabro_graphviz::graph::{AttrValue, Graph};
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_llm::{catalog, selection};
-use fabro_types::ProviderId;
+use fabro_llm::selection;
+use lithos_llm::catalog::ProviderId;
 
 use super::Transform;
 use crate::error::Error;
@@ -21,7 +21,7 @@ pub struct ModelResolutionTransform {
 impl ModelResolutionTransform {
     #[must_use]
     pub fn new(catalog: Arc<Catalog>) -> Self {
-        let eligible_providers = catalog::enabled_provider_ids(&catalog);
+        let eligible_providers = catalog.enabled_provider_ids().into_iter().collect();
         Self {
             catalog,
             default_provider: None,

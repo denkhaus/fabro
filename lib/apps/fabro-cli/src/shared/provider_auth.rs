@@ -18,12 +18,11 @@ use fabro_auth::{
     AuthContextRequest, AuthContextResponse, AuthMethod, LoginResult, codex_oauth_config,
     strategy_for,
 };
-use fabro_llm::catalog;
 use fabro_llm::lithos_catalog::{Catalog, CatalogProvider};
 use fabro_llm::probe::{self, ApiKeyProbeError, ModelTestStatus};
-use fabro_types::{ProviderId, provider_ids};
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
+use lithos_llm::catalog::{ProviderId, builtin};
 use tokio::task::spawn_blocking;
 
 // ---------------------------------------------------------------------------
@@ -59,7 +58,7 @@ fn default_catalog_for_provider_auth() -> Arc<Catalog> {
 }
 
 pub(crate) fn provider_display_name(provider: &ProviderId, catalog: &Catalog) -> String {
-    catalog::provider(catalog, provider.as_str()).map_or_else(
+    catalog.enabled_provider(provider.as_str()).map_or_else(
         || provider.to_string(),
         |provider| provider.display_name().to_string(),
     )
@@ -69,7 +68,8 @@ fn api_key_catalog_provider<'a>(
     provider: &ProviderId,
     catalog: &'a Catalog,
 ) -> Result<&'a CatalogProvider> {
-    let provider = catalog::provider(catalog, provider.as_str())
+    let provider = catalog
+        .enabled_provider(provider.as_str())
         .with_context(|| format!("provider '{provider}' is not configured in the model catalog"))?;
     anyhow::ensure!(
         fabro_auth::accepts_api_key(provider),
@@ -184,7 +184,7 @@ async fn read_and_validate_api_key(
 }
 
 pub(crate) async fn pick_auth_method(provider: &ProviderId) -> Result<AuthMethod> {
-    if provider != &provider_ids::openai() {
+    if provider != &builtin::openai() {
         return Ok(AuthMethod::ApiKey);
     }
 
@@ -374,9 +374,9 @@ mod tests {
     fn builtin_api_key_providers_have_key_urls() {
         let catalog = fabro_llm::default_catalog();
         for provider in [
-            provider_ids::anthropic(),
-            provider_ids::openai(),
-            provider_ids::gemini(),
+            builtin::anthropic(),
+            builtin::openai(),
+            builtin::gemini(),
             ProviderId::new("moonshot"),
             ProviderId::new("zai"),
             ProviderId::new("minimax"),
@@ -408,7 +408,7 @@ mod tests {
     #[fabro_macros::e2e_test(live("ANTHROPIC_API_KEY"))]
     async fn validate_api_key_rejects_invalid_key() {
         let result = validate_api_key(
-            &provider_ids::anthropic(),
+            &builtin::anthropic(),
             "sk-invalid-key-12345",
             default_catalog_for_provider_auth(),
         )

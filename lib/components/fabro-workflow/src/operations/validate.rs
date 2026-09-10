@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use fabro_llm::lithos_catalog::Catalog;
-use fabro_types::{ProviderId, WorkflowSettings};
+use fabro_types::WorkflowSettings;
+use lithos_llm::catalog::ProviderId;
 
 use super::create::{configured_default_provider, preprocess_and_validate, template_context};
 use super::source::{ResolveWorkflowInput, WorkflowInput, resolve_workflow};

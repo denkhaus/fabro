@@ -36,11 +36,12 @@ use fabro_types::run_event::{
 };
 use fabro_types::settings::ModelRef as SettingsModelRef;
 use fabro_types::{
-    AgentProfileKind, EventBody, EventEnvelope, ProviderId, RunEvent, RunId, SessionDetail,
-    SessionId, ToolDefinition, TurnId,
+    AgentProfileKind, EventBody, EventEnvelope, RunEvent, RunId, SessionDetail, SessionId, TurnId,
 };
 use fabro_workflow::handler::llm::api::register_named_fabro_run_tools;
 use fabro_workflow::services::FabroRunToolServices;
+use lithos_llm::catalog::ProviderId;
+use lithos_llm::types::ToolDefinition;
 use serde_json::Value;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
@@ -829,7 +830,7 @@ fn canonical_session_model(
 ) -> Result<(ProviderId, String), ApiError> {
     let explicit_provider = explicit_provider
         .map(|provider| {
-            catalog::canonical_provider_id(catalog, provider.as_str()).ok_or_else(|| {
+            enabled_provider_id(catalog, provider.as_str()).ok_or_else(|| {
                 session_selection_error(&ModelSelectionError::UnknownProvider {
                     provider: provider.to_string(),
                 })
@@ -849,7 +850,10 @@ fn canonical_session_model(
     // An aggregator's wire id (`openai/gpt-5.6-sol` on OpenRouter) is matched
     // whole on a pinned provider before its prefix is read as a provider.
     if let Some(explicit) = explicit_provider.as_ref().filter(|p| eligible.contains(*p)) {
-        if let Some(entry) = catalog::model_on_provider(catalog, explicit.as_str(), requested) {
+        if let Some(entry) = catalog
+            .enabled_provider(explicit.as_str())
+            .and_then(|provider| provider.offering(requested))
+        {
             return Ok((explicit.clone(), entry.model.id().to_string()));
         }
     }
@@ -859,7 +863,7 @@ fn canonical_session_model(
         .qualify(catalog);
     let (qualified_provider, selector) = match model_ref {
         SettingsModelRef::Qualified { provider, selector } => {
-            let provider = catalog::canonical_provider_id(catalog, &provider).ok_or_else(|| {
+            let provider = enabled_provider_id(catalog, &provider).ok_or_else(|| {
                 session_selection_error(&ModelSelectionError::UnknownProvider { provider })
             })?;
             // When the prefixed provider is not ready, the whole string may
@@ -880,8 +884,8 @@ fn canonical_session_model(
             (Some(provider), selector)
         }
         SettingsModelRef::Bare(selector) => {
-            if explicit_provider.is_none() && catalog::is_provider_selector(catalog, &selector) {
-                let detail = if catalog::is_model_selector(catalog, &selector) {
+            if explicit_provider.is_none() && catalog.enabled_provider(&selector).is_some() {
+                let detail = if catalog.is_model_selector(&selector) {
                     format!(
                         "Session model reference '{selector}' is ambiguous between a provider and \
                          a model selector; supply `provider` or use `provider:model`."
@@ -908,15 +912,23 @@ fn api_model_on_eligible(
     api_model: &str,
     eligible: &std::collections::HashSet<ProviderId>,
 ) -> Option<(ProviderId, String)> {
-    catalog::enabled_providers(catalog)
+    catalog
+        .enabled_providers()
         .into_iter()
         .filter(|provider| eligible.contains(provider.id()))
         .find_map(|provider| {
-            catalog::provider_models(provider)
-                .into_iter()
+            provider
+                .offerings()
                 .find(|model| model.model.api_model() == api_model)
                 .map(|model| (provider.id().clone(), model.model.id().to_string()))
         })
+}
+
+/// The catalog id of an enabled provider named by id or alias.
+fn enabled_provider_id(catalog: &Catalog, selector: &str) -> Option<ProviderId> {
+    catalog
+        .enabled_provider(selector)
+        .map(|provider| provider.id().clone())
 }
 
 fn session_selection_error(error: &ModelSelectionError) -> ApiError {
@@ -1503,7 +1515,8 @@ mod tests {
 
     use fabro_agent::config::ToolAccess;
     use fabro_agent::tool_registry::{RegisteredTool, ToolContext, ToolRegistry, ToolSource};
-    use fabro_types::{ToolCall, ToolDefinition, test_support};
+    use fabro_types::test_support;
+    use lithos_llm::types::{ToolCall, ToolDefinition};
 
     use super::*;
 
@@ -1563,7 +1576,7 @@ enabled = true
     #[test]
     fn canonical_session_model_uses_readiness_priority_and_explicit_pins() {
         let catalog = portable_session_catalog();
-        let openai = fabro_types::provider_ids::openai();
+        let openai = lithos_llm::catalog::builtin::openai();
         let openrouter = ProviderId::new("openrouter");
 
         assert_eq!(
@@ -1610,7 +1623,7 @@ enabled = true
     #[test]
     fn canonical_session_model_preserves_unknown_passthrough_on_selected_provider() {
         let catalog = portable_session_catalog();
-        let openai = fabro_types::provider_ids::openai();
+        let openai = lithos_llm::catalog::builtin::openai();
         let openrouter = ProviderId::new("openrouter");
         let both = std::collections::HashSet::from([openai.clone(), openrouter.clone()]);
 
@@ -1630,7 +1643,7 @@ enabled = true
     #[test]
     fn canonical_session_model_passes_through_colon_bearing_model_ids() {
         let catalog = portable_session_catalog();
-        let openai = fabro_types::provider_ids::openai();
+        let openai = lithos_llm::catalog::builtin::openai();
         let openrouter = ProviderId::new("openrouter");
         let both = std::collections::HashSet::from([openai.clone(), openrouter.clone()]);
 
@@ -1655,7 +1668,7 @@ enabled = true
         let catalog = portable_session_catalog();
         let error = canonical_session_model(
             &catalog,
-            &std::collections::HashSet::from([fabro_types::provider_ids::openai()]),
+            &std::collections::HashSet::from([lithos_llm::catalog::builtin::openai()]),
             Some("gpt-56-sol"),
             Some(&ProviderId::new("openrouter")),
         )
@@ -1667,7 +1680,7 @@ enabled = true
     #[test]
     fn canonical_session_model_normalizes_legacy_builtin_selector_before_qualification() {
         let catalog = portable_session_catalog();
-        let openai = fabro_types::provider_ids::openai();
+        let openai = lithos_llm::catalog::builtin::openai();
         let openrouter = ProviderId::new("openrouter");
         let both = std::collections::HashSet::from([openai.clone(), openrouter.clone()]);
 
@@ -1705,7 +1718,7 @@ enabled = true
         assert_eq!(
             canonical_session_model(
                 &catalog,
-                &fabro_llm::catalog::enabled_provider_ids(&catalog),
+                &catalog.enabled_provider_ids().into_iter().collect(),
                 Some("openrouter:gpt-56-sol"),
                 None,
             )
@@ -1719,9 +1732,9 @@ enabled = true
         let catalog = portable_session_catalog();
         let error = canonical_session_model(
             &catalog,
-            &fabro_llm::catalog::enabled_provider_ids(&catalog),
+            &catalog.enabled_provider_ids().into_iter().collect(),
             Some("openrouter:gpt-56-sol"),
-            Some(&fabro_types::provider_ids::openai()),
+            Some(&lithos_llm::catalog::builtin::openai()),
         )
         .unwrap_err();
 
