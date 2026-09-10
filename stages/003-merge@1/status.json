@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "fabro_run_create rejected all attempts with 'Access denied' (3 tries, exact schema: workflow string + workflow_source repo/branch/workflow, environment toolchain, auto_approve). No child run was created, so no terminal or merged wait could be issued. Likely a permissions/environment grant issue for this stage's run-creation scope.",
+  "timestamp": "2026-09-10T18:32:04.362294712Z"
+}
