@@ -993,8 +993,24 @@ fn dry_run_persists_event_history_in_store() {
       "event": "sandbox.stop.completed",
       "id": "[EVENT_ID]",
       "properties": {
-        "duration_ms": "[DURATION_MS]",
-        "provider": "local"
+        "action": "stop",
+        "correlation_id": "[ULID]",
+        "duration": {
+          "nanos": "[NANOS]",
+          "secs": 0
+        },
+        "id": {
+          "sequence": 5,
+          "source_id": "[HEX]"
+        },
+        "occurred_at": "[TIMESTAMP]",
+        "operation_id": "[HEX]",
+        "provider": "host",
+        "subject": {
+          "id": "host-dir-[HEX]",
+          "type": "sandbox"
+        },
+        "type": "operation_completed"
       },
       "run_id": "[ULID]",
       "ts": "[TIMESTAMP]"
