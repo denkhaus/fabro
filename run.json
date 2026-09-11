@@ -709,7 +709,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-11T21:04:47.369697822Z",
-  "last_event_at": "2026-09-11T21:36:03.962557717Z",
+  "last_event_at": "2026-09-11T21:47:51.556066041Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -879,14 +879,200 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 737,
       "checkpoint": {
-        "timestamp": "2026-09-11T21:36:04.171120973Z",
+        "timestamp": "2026-09-11T21:36:08.536718821Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
           "planner",
           "implementer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "current_seed_brief": "Incident (2026-09-10): under a concurrent child-run event flood the run store surfaced SQLite 'database is locked' (SQLITE_BUSY, code 5); merge child 01M26HBHB8NR died mid-merge leaving its projection stuck in running; the host docker VM then went read-only after I/O errors (infra fallout, NOT code scope). NOTE: the seed body is empty — this brief derives from the title plus verified tree anchors. Acceptance criteria: (1) Lock-policy audit: enumerate every SQLite connection site and make journal_mode/busy_timeout consistent with one documented policy — production connect sets WAL + 5s busy_timeout at `lib/foundation/fabro-db/src/lib.rs` (~line 63-65), while `lib/apps/fabro-server/migrations/2026082301_sqlite_blob_activation.rs:681-682` and `lib/apps/fabro-server/migrations/2026082801_sqlite_run_history_activation.rs:453-454` use 50ms, and `lib/components/fabro-store/src/legacy_blob_import.rs:1842` sets WAL with NO busy_timeout — fix or justify each divergence in code comments. (2) BUSY resilience: the run-event write path must survive a concurrent-writer BUSY (code 5) via bounded retry/backoff (or pool-level write serialization) instead of surfacing 'database is locked' as a fatal error that kills a merge child. (3) Projection self-heal: a run whose projection is stuck non-terminal (running) because its writer died mid-merge must converge to a recoverable state — implement a deterministic heal in the projection layer (`lib/components/fabro-store/src/slate/run_store.rs`, see `apply_cached_projection_event` around line 413 and the `RunDatabase` API) such that restart or the next event apply detects the interrupted merge and recovers instead of parking forever. (4) Tests: a concurrency test reproducing parallel event writers (no BUSY fatality) and a test that a projection interrupted mid-merge converges after recovery; run only the touched crates' tests by name filter. (5) Verification order, cheapest first: `cargo check -p fabro-store -p fabro-db` then targeted `cargo nextest run -p <touched-crate> <test filter>`; fmt/clippy on the pinned nightly for touched crates only; gate green via the deterministic tester step. (6) Out of scope: docker VM read-only disk / host I/O errors — document any operational follow-up in the PR body, no code.",
+          "thread.start.current_node": "planner",
+          "internal.retry_count.implementer": 0,
+          "preferred_label": "Implemented",
+          "graph.preamble_budget_kb": "24",
+          "lesson_capture": "mx-a2c839",
+          "last_response": "Implementation complete. Summary of what was built and the per-criterion verification:\n\n**Files touched**\n- `lib/components/fabro-store/src/slate/run_store.rs` — BUSY-resilient, self-healing event c",
+          "graph.rankdir": "LR",
+          "thread.planner.current_node": "implementer",
+          "last_stage": "implementer",
+          "failure_class": "",
+          "internal.thread_id": "planner",
+          "internal.fidelity": "summary:high",
+          "graph.max_node_visits": "40",
+          "current_seed_id": "fabro-3ef7",
+          "graph.inspects": "develop",
+          "internal.seed_cycle_anchor": "fabro-3ef7",
+          "outcome": "succeeded",
+          "failure_signature": "",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5327,
+            "preview": "Implementation complete. Summary of what was built and the per-criterion verification:\n\n**Files touched**\n- `lib/components/fabro-store/src/slate/run_store.rs` — BUSY-resilient, self-healing event c"
+          },
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3698,
+            "preview": "Seed claimed. Brief drafted from the title (the seed body is empty — title-only legacy seed; basis verified against the tree: WAL store with diverging busy_timeout policies and a projection in `lib/"
+          },
+          "current_seed_title": "Engine: run store hit SQLite 'database is locked' (code 5) under concurrent child-run event flood — investigate WAL/lock policy + projection self-heal path",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Reproducing the incident nearly failed silently: fabro-store file-backed test pools ran SQLite's default rollback-journal mode, and two same-process pools with overlapping write transactions DEADLOCKED forever instead of returning code 5 — aligning test pools to WAL (the documented production policy) made the concurrent-writer test both deterministic and faithful. Also, sqlx DatabaseError::code() returns the EXTENDED code (e.g. 517), so busy classification must mask to the primary code (& 0xff == 5)."
+            ]
+          },
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "internal.retry_count.start": 0,
+          "implementation_summary": "BUSY-resilient, self-healing run-event write path in `lib/components/fabro-store/src/slate/run_store.rs` (bounded BUSY retry/backoff + head-mismatch heal that reloads the authoritative projection from SQLite), canonical WAL lock policy documented in `lib/foundation/fabro-db/src/lib.rs`, three test-only connection divergences justified inline, and file-backed test pools aligned to WAL in `test_support/mod.rs`; tests: parallel-writer convergence, interrupted-apply heal + restart, busy-code classification; lesson captured as mx-a2c839. Per-criterion: (1) PASS lock-policy audit — fabro-db connect doc + inline justifications at 2026082301:~676, 2026082801:~448, legacy_blob_import.rs:~1839; (2) PASS BUSY resilience — commit_event_transaction retry loop + is_sqlite_busy, run_store.rs; (3) PASS projection self-heal — heal_stale_projection_head + test interrupted_apply_projection_converges_on_next_append; (4) PASS tests — parallel_writers_on_one_sqlite_authority_converge + sqlite_busy_codes_and_messages_are_classified_for_retry, full fabro-store suite 294/294; (5) PASS verification — cargo check clean, nextest green, fmt+clippy -D warnings green on fabro-store/fabro-db/fabro-server (pinned nightly); (6) PASS out of scope — docker VM read-only disk documented for PR body, no code.",
+          "current_node": "implementer",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.planner": 0,
+          "internal.run_id": "01M294HH117ZMV11HCNCEQPCDJ"
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_response": "Seed claimed. Brief drafted from the title (the seed body is empty — title-only legacy seed; basis verified against the tree: WAL store with diverging busy_timeout policies and a projection in `lib/",
+              "current_seed_brief": "Incident (2026-09-10): under a concurrent child-run event flood the run store surfaced SQLite 'database is locked' (SQLITE_BUSY, code 5); merge child 01M26HBHB8NR died mid-merge leaving its projection stuck in running; the host docker VM then went read-only after I/O errors (infra fallout, NOT code scope). NOTE: the seed body is empty — this brief derives from the title plus verified tree anchors. Acceptance criteria: (1) Lock-policy audit: enumerate every SQLite connection site and make journal_mode/busy_timeout consistent with one documented policy — production connect sets WAL + 5s busy_timeout at `lib/foundation/fabro-db/src/lib.rs` (~line 63-65), while `lib/apps/fabro-server/migrations/2026082301_sqlite_blob_activation.rs:681-682` and `lib/apps/fabro-server/migrations/2026082801_sqlite_run_history_activation.rs:453-454` use 50ms, and `lib/components/fabro-store/src/legacy_blob_import.rs:1842` sets WAL with NO busy_timeout — fix or justify each divergence in code comments. (2) BUSY resilience: the run-event write path must survive a concurrent-writer BUSY (code 5) via bounded retry/backoff (or pool-level write serialization) instead of surfacing 'database is locked' as a fatal error that kills a merge child. (3) Projection self-heal: a run whose projection is stuck non-terminal (running) because its writer died mid-merge must converge to a recoverable state — implement a deterministic heal in the projection layer (`lib/components/fabro-store/src/slate/run_store.rs`, see `apply_cached_projection_event` around line 413 and the `RunDatabase` API) such that restart or the next event apply detects the interrupted merge and recovers instead of parking forever. (4) Tests: a concurrency test reproducing parallel event writers (no BUSY fatality) and a test that a projection interrupted mid-merge converges after recovery; run only the touched crates' tests by name filter. (5) Verification order, cheapest first: `cargo check -p fabro-store -p fabro-db` then targeted `cargo nextest run -p <touched-crate> <test filter>`; fmt/clippy on the pinned nightly for touched crates only; gate green via the deterministic tester step. (6) Out of scope: docker VM read-only disk / host I/O errors — document any operational follow-up in the PR body, no code.",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-3ef7 has an EMPTY description body (sd show --format json returns no description; plain/markdown show nothing under the header) — the full spec lives in the title only. Title-only seeds lose acceptance detail; revisor intake should require a body.",
+                  "In-flight check: no open develop PRs; the only non-terminal run 01M294HH117ZMV11HCNCEQPCDJ is this run itself (self-excluded, journal fallback not needed — its journal is this run's own). No exclusions applied.",
+                  "Basis verified against current tree: busy_timeout divergences confirmed at fabro-db/src/lib.rs (5s), two fabro-server migration files (50ms), legacy_blob_import.rs (none); no git commit references fabro-3ef7 — not already landed."
+                ]
+              },
+              "last_stage": "planner",
+              "current_seed_id": "fabro-3ef7",
+              "current_seed_title": "Engine: run store hit SQLite 'database is locked' (code 5) under concurrent child-run event flood — investigate WAL/lock policy + projection self-heal path",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3698,
+                "preview": "Seed claimed. Brief drafted from the title (the seed body is empty — title-only legacy seed; basis verified against the tree: WAL store with diverging busy_timeout policies and a projection in `lib/"
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "model": {
+                "provider": "zai",
+                "model_id": "glm-5.3"
+              },
+              "tokens": {
+                "input": 48582,
+                "output": 1757,
+                "reasoning": 1323,
+                "cache_read": 589184,
+                "cache_write": 0
+              },
+              "total_usd_micros": 234735
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 93084,
+              "tool_time_ms": 12825,
+              "active_time_ms": 105909
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_response": "Implementation complete. Summary of what was built and the per-criterion verification:\n\n**Files touched**\n- `lib/components/fabro-store/src/slate/run_store.rs` — BUSY-resilient, self-healing event c",
+              "lesson_capture": "mx-a2c839",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Reproducing the incident nearly failed silently: fabro-store file-backed test pools ran SQLite's default rollback-journal mode, and two same-process pools with overlapping write transactions DEADLOCKED forever instead of returning code 5 — aligning test pools to WAL (the documented production policy) made the concurrent-writer test both deterministic and faithful. Also, sqlx DatabaseError::code() returns the EXTENDED code (e.g. 517), so busy classification must mask to the primary code (& 0xff == 5)."
+                ]
+              },
+              "implementation_summary": "BUSY-resilient, self-healing run-event write path in `lib/components/fabro-store/src/slate/run_store.rs` (bounded BUSY retry/backoff + head-mismatch heal that reloads the authoritative projection from SQLite), canonical WAL lock policy documented in `lib/foundation/fabro-db/src/lib.rs`, three test-only connection divergences justified inline, and file-backed test pools aligned to WAL in `test_support/mod.rs`; tests: parallel-writer convergence, interrupted-apply heal + restart, busy-code classification; lesson captured as mx-a2c839. Per-criterion: (1) PASS lock-policy audit — fabro-db connect doc + inline justifications at 2026082301:~676, 2026082801:~448, legacy_blob_import.rs:~1839; (2) PASS BUSY resilience — commit_event_transaction retry loop + is_sqlite_busy, run_store.rs; (3) PASS projection self-heal — heal_stale_projection_head + test interrupted_apply_projection_converges_on_next_append; (4) PASS tests — parallel_writers_on_one_sqlite_authority_converge + sqlite_busy_codes_and_messages_are_classified_for_retry, full fabro-store suite 294/294; (5) PASS verification — cargo check clean, nextest green, fmt+clippy -D warnings green on fabro-store/fabro-db/fabro-server (pinned nightly); (6) PASS out of scope — docker VM read-only disk documented for PR body, no code.",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5327,
+                "preview": "Implementation complete. Summary of what was built and the per-criterion verification:\n\n**Files touched**\n- `lib/components/fabro-store/src/slate/run_store.rs` — BUSY-resilient, self-healing event c"
+              },
+              "last_stage": "implementer"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "model": {
+                "provider": "zai",
+                "model_id": "glm-5.3"
+              },
+              "tokens": {
+                "input": 94561,
+                "output": 17174,
+                "reasoning": 21780,
+                "cache_read": 6511872,
+                "cache_write": 0
+              },
+              "total_usd_micros": 1996738
+            },
+            "files_touched": [
+              "/workspace/fabro/lib/apps/fabro-server/migrations/2026082301_sqlite_blob_activation.rs",
+              "/workspace/fabro/lib/apps/fabro-server/migrations/2026082801_sqlite_run_history_activation.rs",
+              "/workspace/fabro/lib/components/fabro-store/src/legacy_blob_import.rs",
+              "/workspace/fabro/lib/components/fabro-store/src/slate/mod.rs",
+              "/workspace/fabro/lib/components/fabro-store/src/slate/run_store.rs",
+              "/workspace/fabro/lib/components/fabro-store/src/test_support/mod.rs",
+              "/workspace/fabro/lib/foundation/fabro-db/src/lib.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 803098,
+              "tool_time_ms": 803720,
+              "active_time_ms": 1606818
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "0f681c62190c4b9cd3b6ab97e4f2ea059142e18c",
+        "node_visits": {
+          "implementer": 1,
+          "planner": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M294HH117ZMV11HCNCEQPCDJ.jsonl b/.fabro/journal/01M294HH117ZMV11HCNCEQPCDJ.jsonl\nindex e0052986..96449b58 100644\n--- a/.fabro/journal/01M294HH117ZMV11HCNCEQPCDJ.jsonl\n+++ b/.fabro/journal/01M294HH117ZMV11HCNCEQPCDJ.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M294HH117ZMV11HCNCEQPCDJ\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T21:04:49Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M294HH117ZMV11HCNCEQPCDJ\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T21:06:44Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-3ef7 has an EMPTY description body (sd show --format json returns no description; plain/markdown show nothing under the header) — the full spec lives in the title only. Title-only seeds lose acceptance detail; revisor intake should require a body.\",\"In-flight check: no open develop PRs; the only non-terminal run 01M294HH117ZMV11HCNCEQPCDJ is this run itself (self-excluded, journal fallback not needed — its journal is this run's own). No exclusions applied.\",\"Basis verified against current tree: busy_timeout divergences confirmed at fabro-db/src/lib.rs (5s), two fabro-server migration files (50ms), legacy_blob_import.rs (none); no git commit references fabro-3ef7 — not already landed.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M294HH117ZMV11HCNCEQPCDJ\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T21:36:04Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Reproducing the incident nearly failed silently: fabro-store file-backed test pools ran SQLite's default rollback-journal mode, and two same-process pools with overlapping write transactions DEADLOCKED forever instead of returning code 5 — aligning test pools to WAL (the documented production policy) made the concurrent-writer test both deterministic and faithful. Also, sqlx DatabaseError::code() returns the EXTENDED code (e.g. 517), so busy classification must mask to the primary code (& 0xff == 5).\"]}}\ndiff --git a/.mulch/expertise/engine.jsonl b/.mulch/expertise/engine.jsonl\nindex d985080e..7c7201f8 100644\n--- a/.mulch/expertise/engine.jsonl\n+++ b/.mulch/expertise/engine.jsonl\n@@ -56,3 +56,4 @@\n {\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-10T14:43:40.831Z\",\"evidence\":{\"commit\":\"2a2f189a4cf44f95b03420280c488971156ae8b6\"},\"dir_anchors\":[\"lib/components/fabro-workflow/src/operations\"],\"name\":\"lifecycle-two-reducer-equivalence-via-shared-table\",\"description\":\"Proving server live fold and store RunProjectionReducer agree is done transitively (fabro-3fe4): one pure table fabro_types::apply_lifecycle_event consumed by BOTH, plus two thin equivalence tests (xorshift property test durable-reducer-vs-table in run_state.rs::lifecycle_equivalence, and live_lifecycle_status-vs-table step test in fabro-server server/tests.rs). Live-only guards (RunRunnable ingestion suppression) are documented deviations in the step test, not table arms. Historic pre-table stream shapes (Submitted->Starting jumps, fast-forwarded RunFailed) live in fabro_types::historic_skipped_statuses so the shim has one owner and the table stays strict.\",\"files\":[\"lib/apps/fabro-server/src/server.rs\",\"lib/apps/fabro-server/src/server/tests.rs\",\"lib/components/fabro-store/src/run_state.rs\",\"lib/components/fabro-workflow/src/operations/lifecycle_events.rs\",\"lib/components/fabro-workflow/src/operations/mod.rs\",\"lib/components/fabro-workflow/src/operations/resume.rs\",\"lib/components/fabro-workflow/src/operations/start.rs\",\"lib/components/fabro-workflow/src/test_support.rs\",\"lib/foundation/fabro-types/src/lib.rs\",\"lib/foundation/fabro-types/src/lifecycle.rs\"],\"id\":\"mx-840e1b\"}\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-10T14:54:14.516Z\",\"evidence\":{\"commit\":\"2a2f189a4cf44f95b03420280c488971156ae8b6\"},\"dir_anchors\":[\"lib/components/fabro-workflow/src/operations\"],\"description\":\"fabro-3fe4 reopen (runs 01M25K41V4NE, 01M25R832HP): making the live reducer strictly apply the shared lifecycle table stranded injected event sequences (submitted + worker-shaped run.starting, RunRunnable suppressed by the scheduling guard) at Submitted, so fabro rm no longer saw terminal runs as completed and failed dogfood-gate. Lesson: when two reducers share one strict table, any per-reducer guard (RunRunnable suppression) must be paired with the shared fast-forward path, or live/durable status drift breaks downstream terminality predicates like requires_force_to_delete.\",\"resolution\":\"Shared helper fabro_types::historic_skipped_statuses consumed by BOTH live_lifecycle_status (server.rs) and RunProjectionReducer (run_state.rs); rm completed-run tests pass on final tree.\",\"id\":\"mx-c555a3\"}\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-11T13:21:42.868Z\",\"evidence\":{\"commit\":\"52f7bbb340a7b973bf6db59a6305b137760c8a9b\"},\"description\":\"checkpoint.completed run event exceeds MAX_RUN_EVENT_BODY_BYTES (3MB) on big merge-upstream runs: worker loses canonical run store (HTTP 413) AFTER the merge commit exists, run is marked failed(workflow_error), conductor pass soft-stops, and the merge work is stranded in the sandbox (fabro/run/* pushes rejected by GitHub branch protection, nothing persisted remotely). Observed 2026-09-11 on runs 01M27V69 and 01M2837. Salvage: docker start the stopped run container, docker cp .git out, fetch into host repo, push under salvage/<name> (fabro/run/* blocked, salvage/* allowed).\",\"resolution\":\"Unresolved: needs code fix — bound checkpoint event payload size (blob-store large data like tool outputs already do via MAX_SERIALIZED_TOOL_OUTPUT_BYTES) or raise MAX_RUN_EVENT_BODY_BYTES; independently allow-list fabro/run/* pushes so finished work is persisted before sandbox teardown. Interim manual salvage procedure documented in description.\",\"id\":\"mx-82cf0d\"}\n+{\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-11T21:35:37.752Z\",\"evidence\":{\"seeds\":\"fabro-3ef7\",\"commit\":\"effe7ed628707be38cf71b9fd30200a369b4262d\"},\"name\":\"sqlite-busy-classification-and-wal-test-pools\",\"description\":\"SQLite BUSY resilience in fabro-store run-event writes (fabro-3ef7): sqlx surfaces the EXTENDED error code via DatabaseError::code() (e.g. 517 SQLITE_BUSY_SNAPSHOT), so busy classification must mask to the primary code (code & 0xff == 5) plus a 'database is locked' message fallback; and file-backed test pools must set journal_mode(Wal) to mirror the canonical fabro-db connect policy — rollback-journal test pools deadlocked forever (not code-5) when two same-process pools held overlapping write transactions, silently failing to reproduce the production incident.\",\"files\":[\"lib/apps/fabro-server/migrations/2026082301_sqlite_blob_activation.rs\",\"lib/apps/fabro-server/migrations/2026082801_sqlite_run_history_activation.rs\",\"lib/components/fabro-store/src/legacy_blob_import.rs\",\"lib/components/fabro-store/src/slate/mod.rs\",\"lib/components/fabro-store/src/slate/run_store.rs\",\"lib/components/fabro-store/src/test_support/mod.rs\",\"lib/foundation/fabro-db/src/lib.rs\"],\"id\":\"mx-a2c839\"}\ndiff --git a/lib/apps/fabro-server/migrations/2026082301_sqlite_blob_activation.rs b/lib/apps/fabro-server/migrations/2026082301_sqlite_blob_activation.rs\nindex 5bc18a47..21d1907d 100644\n--- a/lib/apps/fabro-server/migrations/2026082301_sqlite_blob_activation.rs\n+++ b/lib/apps/fabro-server/migrations/2026082301_sqlite_blob_activation.rs\n@@ -676,6 +676,11 @@ mod tests {\n \n         // A short busy timeout keeps the blocked truncate from stalling the\n         // test for the production pool's full five seconds.\n+        // Lock-policy divergence (fabro-3ef7): TEST-ONLY connection. The\n+        // canonical production policy (WAL + 5s busy_timeout, see\n+        // `fabro_db::Database::connect`) is deliberately shortened here so a\n+        // blocked truncate fails in milliseconds instead of stalling the\n+        // suite; production never connects through this site.\n         let checkpoint_options = SqliteConnectOptions::new()\n             .filename(&sqlite_path)\n             .journal_mode(SqliteJournalMode::Wal)\ndiff --git a/lib/apps/fabro-server/migrations/2026082801_sqlite_run_history_activation.rs b/lib/apps/fabro-server/migrations/2026082801_sqlite_run_history_activation.rs\nindex faf49f52..1f884611 100644\n--- a/lib/apps/fabro-server/migrations/2026082801_sqlite_run_history_activation.rs\n+++ b/lib/apps/fabro-server/migrations/2026082801_sqlite_run_history_activation.rs\n@@ -448,6 +448,11 @@ mod tests {\n             .fetch_one(&mut reader)\n             .await?;\n \n+        // Lock-policy divergence (fabro-3ef7): TEST-ONLY connection. The\n+        // canonical production policy (WAL + 5s busy_timeout, see\n+        // `fabro_db::Database::connect`) is deliberately shortened here so a\n+        // blocked final checkpoint fails in milliseconds instead of stalling\n+        // the suite; production never connects through this site.\n         let checkpoint_options = sqlx::sqlite::SqliteConnectOptions::new()\n             .filename(&context.sqlite_path)\n             .journal_mode(SqliteJournalMode::Wal)\ndiff --git a/lib/components/fabro-store/src/legacy_blob_import.rs b/lib/components/fabro-store/src/legacy_blob_import.rs\nindex 2894f12d..449ed75f 100644\n--- a/lib/components/fabro-store/src/legacy_blob_import.rs\n+++ b/lib/components/fabro-store/src/legacy_blob_import.rs\n@@ -1836,6 +1836,13 @@ mod tests {\n     #[tokio::test]\n     async fn cancellation_retires_a_connection_with_disabled_checkpointing() -> TestResult<()> {\n         let dir = tempfile::tempdir()?;\n+        // Lock-policy divergence (fabro-3ef7): TEST-ONLY connection. The\n+        // canonical production policy (WAL + 5s busy_timeout, see\n+        // `fabro_db::Database::connect`) intentionally omits busy_timeout\n+        // here because this fixture pool is the single connection to a\n+        // brand-new empty database — no concurrent writer can exist, so a\n+        // busy timeout would be dead configuration. Production never connects\n+        // through this site.\n         let options = SqliteConnectOptions::new()\n             .filename(dir.path().join(\"fabro.sqlite3\"))\n             .create_if_missing(true)\ndiff --git a/lib/components/fabro-store/src/slate/mod.rs b/lib/components/fabro-store/src/slate/mod.rs\nindex 663f72bc..c49d03c9 100644\n--- a/lib/components/fabro-store/src/slate/mod.rs\n+++ b/lib/components/fabro-store/src/slate/mod.rs\n@@ -127,7 +127,7 @@ impl Database {\n         payload: &EventPayload,\n     ) -> Result<RunDatabase> {\n         let (mut active_runs, run_store) = self.reserve_new_run(run_id).await?;\n-        let (envelope, projected) = run_store.commit_first_event(payload).await?;\n+        let (envelope, projected) = Box::pin(run_store.commit_first_event(payload)).await?;\n         run_store.install_in_memory_state(projected);\n         Self::cache_active_run(&mut active_runs, &run_store);\n         run_store.publish(&envelope);\ndiff --git a/lib/components/fabro-store/src/slate/run_store.rs b/lib/components/fabro-store/src/slate/run_store.rs\nindex e1a23fc2..2194af8e 100644\n--- a/lib/components/fabro-store/src/slate/run_store.rs\n+++ b/lib/components/fabro-store/src/slate/run_store.rs\n@@ -1,10 +1,13 @@\n use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};\n+use std::time::Duration;\n \n use bytes::Bytes;\n use fabro_types::{BlobHash, RunEvent, RunId, SessionId};\n use futures::Stream;\n use tokio::sync::{Mutex as AsyncMutex, broadcast, mpsc};\n+use tokio::time::sleep;\n use tokio_stream::wrappers::UnboundedReceiverStream;\n+use tracing::warn;\n \n use crate::run_state::{EventProjectionCache, ProjectedRun, RunProjectionReducer};\n use crate::{\n@@ -16,6 +19,23 @@ use crate::{\n /// from SQLite.\n const EVENT_BROADCAST_CAPACITY: usize = 1024;\n \n+/// Bounded retry budget for SQLite BUSY (code 5) on the run-event write path\n+/// (fabro-3ef7). The connection-level `busy_timeout` (5s in production via\n+/// `fabro_db::Database::connect`) absorbs short contention; this loop covers\n+/// the window past it where a concurrent writer still holds the database\n+/// write lock. 4 retries at 25ms base, doubling, add ~175ms of bounded\n+/// backoff on top of the timeout instead of surfacing \"database is locked\"\n+/// as a fatal error that kills the writing run.\n+const BUSY_RETRY_ATTEMPTS: usize = 4;\n+const BUSY_RETRY_BASE_DELAY: Duration = Duration::from_millis(25);\n+\n+/// Bounded retry budget for head-heal attempts when the in-memory projection\n+/// cache is behind the committed SQLite head (interrupted apply, or a writer\n+/// in another process sharing the database file). Each heal reloads the\n+/// authoritative projection, so the loop converges as soon as the reloaded\n+/// head stops advancing; the bound only guards pathological ping-pong.\n+const HEAD_HEAL_RETRY_LIMIT: usize = 16;\n+\n #[derive(Clone)]\n pub struct RunDatabase {\n     inner:     Arc<RunDatabaseInner>,\n@@ -163,7 +183,7 @@ impl RunDatabase {\n         if self.inner.lock_projection_cache().last_seq != 0 {\n             return Err(Error::RunAlreadyExists(self.inner.run_id.to_string()));\n         }\n-        self.commit_event_locked(payload, event).await\n+        Box::pin(self.commit_event_locked(payload, event)).await\n     }\n }\n \n@@ -217,7 +237,7 @@ impl RunDatabase {\n         payload: &EventPayload,\n         event: RunEvent,\n     ) -> Result<EventEnvelope> {\n-        let (envelope, projected) = self.commit_event_locked(payload, event).await?;\n+        let (envelope, projected) = Box::pin(self.commit_event_locked(payload, event)).await?;\n         // Keep post-commit propagation await-free: cancellation after SQLite\n         // commits must not leave in-memory state stale or omit the broadcast.\n         self.install_in_memory_state(projected);\n@@ -230,32 +250,126 @@ impl RunDatabase {\n         payload: &EventPayload,\n         event: RunEvent,\n     ) -> Result<(EventEnvelope, ProjectedRun)> {\n-        let (expected_last_seq, mut next_state) = {\n-            let cache = self.inner.lock_projection_cache();\n-            (cache.last_seq, cache.state.clone())\n-        };\n-        let seq = run_summary_store::next_event_seq_after(expected_last_seq)?;\n-        let prospective = EventEnvelope { seq, event };\n-        apply_cached_projection_event(&mut next_state, &prospective).map_err(event_rejected)?;\n-        let next_projection =\n-            next_state.expect(\"applying a valid event should always produce a projection\");\n-        let projected = ProjectedRun::new(self.inner.run_id, next_projection, seq);\n-\n-        let mut transaction = self.inner.run_summary_store.begin().await?;\n-        let envelope = if expected_last_seq == 0 {\n-            RunSummaryStore::insert_first_event_on_connection(&mut transaction, &projected, payload)\n-                .await?\n-        } else {\n-            RunSummaryStore::append_event_on_connection(\n-                &mut transaction,\n-                expected_last_seq,\n-                &projected,\n-                payload,\n-            )\n-            .await?\n-        };\n-        transaction.commit().await?;\n-        Ok((envelope, projected))\n+        let mut head_heals = 0usize;\n+        loop {\n+            let (expected_last_seq, mut next_state) = {\n+                let cache = self.inner.lock_projection_cache();\n+                (cache.last_seq, cache.state.clone())\n+            };\n+            let seq = run_summary_store::next_event_seq_after(expected_last_seq)?;\n+            let prospective = EventEnvelope {\n+                seq,\n+                event: event.clone(),\n+            };\n+            apply_cached_projection_event(&mut next_state, &prospective).map_err(event_rejected)?;\n+            let next_projection =\n+                next_state.expect(\"applying a valid event should always produce a projection\");\n+            let projected = ProjectedRun::new(self.inner.run_id, next_projection, seq);\n+\n+            let envelope = match self\n+                .commit_event_transaction(expected_last_seq, &projected, payload)\n+                .await\n+            {\n+                Ok(envelope) => envelope,\n+                Err(error) => {\n+                    if head_heals < HEAD_HEAL_RETRY_LIMIT\n+                        && self\n+                            .heal_stale_projection_head(expected_last_seq, &error)\n+                            .await?\n+                    {\n+                        head_heals += 1;\n+                        continue;\n+                    }\n+                    return Err(error);\n+                }\n+            };\n+            return Ok((envelope, projected));\n+        }\n+    }\n+\n+    /// Commits one event + summary-row transaction, retrying bounded\n+    /// SQLite BUSY (code 5) errors with exponential backoff (fabro-3ef7).\n+    /// A BUSY transaction never commits, so retrying the whole\n+    /// begin/insert/commit sequence is safe.\n+    async fn commit_event_transaction(\n+        &self,\n+        expected_last_seq: u32,\n+        projected: &ProjectedRun,\n+        payload: &EventPayload,\n+    ) -> Result<EventEnvelope> {\n+        let mut attempt = 0usize;\n+        loop {\n+            let result = async {\n+                let mut transaction = self.inner.run_summary_store.begin().await?;\n+                let envelope = if expected_last_seq == 0 {\n+                    RunSummaryStore::insert_first_event_on_connection(\n+                        &mut transaction,\n+                        projected,\n+                        payload,\n+                    )\n+                    .await?\n+                } else {\n+                    RunSummaryStore::append_event_on_connection(\n+                        &mut transaction,\n+                        expected_last_seq,\n+                        projected,\n+                        payload,\n+                    )\n+                    .await?\n+                };\n+                transaction.commit().await?;\n+                Ok(envelope)\n+            }\n+            .await;\n+\n+            match result {\n+                Ok(envelope) => return Ok(envelope),\n+                Err(error) if attempt < BUSY_RETRY_ATTEMPTS && is_sqlite_busy(&error) => {\n+                    let delay = BUSY_RETRY_BASE_DELAY * (1u32 << attempt);\n+                    warn!(\n+                        run_id = %self.inner.run_id,\n+                        attempt = attempt + 1,\n+                        delay_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX),\n+                        \"SQLite busy on run-event commit; retrying with backoff\"\n+                    );\n+                    sleep(delay).await;\n+                    attempt += 1;\n+                }\n+                Err(error) => return Err(error),\n+            }\n+        }\n+    }\n+\n+    /// Deterministic self-heal for an interrupted apply (fabro-3ef7): when the\n+    /// optimistic head guard reports a mismatch, the in-memory projection\n+    /// cache is behind the committed SQLite head — either this writer's task\n+    /// died between the SQL commit and the cache install in an earlier\n+    /// attempt, or another process appended to the same database file.\n+    /// Reloads the authoritative projection from SQLite and installs it into\n+    /// the cache so the retried append validates against the true head.\n+    ///\n+    /// Returns `Ok(true)` when the cache was healed and the caller should\n+    /// retry, `Ok(false)` when the mismatch is not healable (the SQL head did\n+    /// not advance, or the error is not a head mismatch) and the original\n+    /// error must surface.\n+    async fn heal_stale_projection_head(\n+        &self,\n+        expected_last_seq: u32,\n+        error: &Error,\n+    ) -> Result<bool> {\n+        if expected_last_seq == 0 || !matches!(error, Error::RunHeadMismatch { .. }) {\n+            return Ok(false);\n+        }\n+        let healed = self\n+            .inner\n+            .run_summary_store\n+            .load_projection(&self.inner.run_id)\n+            .await?;\n+        if healed.last_seq == expected_last_seq {\n+            return Ok(false);\n+        }\n+        self.install_in_memory_state(healed);\n+        Ok(true)\n     }\n \n     pub async fn list_events(&self) -> Result<Vec<EventEnvelope>> {\n@@ -410,6 +524,26 @@ fn event_rejected(error: Error) -> Error {\n     }\n }\n \n+/// SQLite primary result code 5 (`SQLITE_BUSY`, \"database is locked\") — the\n+/// concurrent-writer contention observed under a child-run event flood\n+/// (fabro-3ef7). sqlx surfaces the EXTENDED result code (e.g. 517 for\n+/// `SQLITE_BUSY_SNAPSHOT`), so the primary code is recovered by masking off\n+/// the extended bits; the message is a defensive fallback for drivers that\n+/// surface only the text.\n+fn is_sqlite_busy(error: &Error) -> bool {\n+    let Error::Sqlite(sqlx::Error::Database(database)) = error else {\n+        return false;\n+    };\n+    is_busy_code_and_message(database.code().as_deref(), database.message())\n+}\n+\n+fn is_busy_code_and_message(code: Option<&str>, message: &str) -> bool {\n+    let primary_busy = code\n+        .and_then(|code| code.parse::<i64>().ok())\n+        .is_some_and(|code| code & 0xff == 5);\n+    primary_busy || message.contains(\"database is locked\")\n+}\n+\n fn apply_cached_projection_event(\n     state: &mut Option<Arc<RunProjection>>,\n     event: &EventEnvelope,\n@@ -435,6 +569,7 @@ mod tests {\n     use serde_json::json;\n     use tokio::task;\n \n+    use crate::run_state::ProjectedRun;\n     use crate::{EventPayload, test_support as store_test_support};\n \n     fn run_created_payload(run_id: &RunId) -> EventPayload {\n@@ -603,4 +738,152 @@ mod tests {\n         write_task.await.unwrap().unwrap();\n         assert_eq!(run.list_events().await.unwrap().len(), 25);\n     }\n+\n+    /// fabro-3ef7: an interrupted apply (SQL commit landed, the in-memory\n+    /// projection install never ran) must not park the run forever — the next\n+    /// append detects the stale head, heals from SQLite, and converges.\n+    #[tokio::test]\n+    async fn interrupted_apply_projection_converges_on_next_append() {\n+        let directory = tempfile::tempdir().expect(\"tempdir\");\n+        let object_store: Arc<dyn object_store::ObjectStore> = Arc::new(InMemory::new());\n+        let store = store_test_support::test_database_at(\n+            Arc::clone(&object_store),\n+            \"run-store-heal-test\",\n+            Duration::from_millis(1),\n+            None,\n+            directory.path(),\n+        );\n+        let run_id: RunId = \"01JT56VE4Z5NZ814GZN2JZD65F\".parse().unwrap();\n+        let run = store\n+            .create_run_with_first_event(&run_id, &run_created_payload(&run_id))\n+            .await\n+            .unwrap();\n+\n+        // Capture the post-create (seq 1) projection, then commit event 2 and\n+        // roll the in-memory cache back to seq 1: the writer died mid-merge\n+        // after the durable commit but before the cache install.\n+        let stale_projection = Arc::new(run.state().await.unwrap());\n+        run.append_event(&stage_payload(&run_id, 2)).await.unwrap();\n+        run.install_in_memory_state(ProjectedRun::new(run_id, stale_projection, 1));\n+\n+        // The next append heals from the committed head instead of failing\n+        // with RunHeadMismatch forever.\n+        assert_eq!(\n+            run.append_event(&stage_payload(&run_id, 3)).await.unwrap(),\n+            3\n+        );\n+        let sequences: Vec<u32> = run\n+            .list_events()\n+            .await\n+            .unwrap()\n+            .iter()\n+            .map(|event| event.seq)\n+            .collect();\n+        assert_eq!(sequences, vec![1, 2, 3]);\n+\n+        // Restart path: a fresh handle over the same SQLite file rebuilds the\n+        // projection from the committed head and keeps appending.\n+        let reopened = store_test_support::test_database_at(\n+            object_store,\n+            \"run-store-heal-test-reopened\",\n+            Duration::from_millis(1),\n+            None,\n+            directory.path(),\n+        );\n+        let reopened_run = reopened.open_run(&run_id).await.unwrap();\n+        assert_eq!(\n+            reopened_run\n+                .append_event(&stage_payload(&run_id, 4))\n+                .await\n+                .unwrap(),\n+            4\n+        );\n+        let sequences: Vec<u32> = reopened_run\n+            .list_events()\n+            .await\n+            .unwrap()\n+            .iter()\n+            .map(|event| event.seq)\n+            .collect();\n+        assert_eq!(sequences, vec![1, 2, 3, 4]);\n+    }\n+\n+    /// fabro-3ef7: two independent writer handles over one SQLite authority\n+    /// (modeling a merge child and the server) appending in parallel must not\n+    /// surface database-locked or head-mismatch fatality — every event lands\n+    /// and the durable history stays contiguous.\n+    #[tokio::test]\n+    async fn parallel_writers_on_one_sqlite_authority_converge() {\n+        let directory = tempfile::tempdir().expect(\"tempdir\");\n+        let object_store: Arc<dyn object_store::ObjectStore> = Arc::new(InMemory::new());\n+        let left = store_test_support::test_database_at(\n+            Arc::clone(&object_store),\n+            \"run-store-parallel-left\",\n+            Duration::from_millis(1),\n+            None,\n+            directory.path(),\n+        );\n+        let right = store_test_support::test_database_at(\n+            object_store,\n+            \"run-store-parallel-right\",\n+            Duration::from_millis(1),\n+            None,\n+            directory.path(),\n+        );\n+        let run_id: RunId = \"01JT56VE4Z5NZ814GZN2JZD65G\".parse().unwrap();\n+        let left_run = left\n+            .create_run_with_first_event(&run_id, &run_created_payload(&run_id))\n+            .await\n+            .unwrap();\n+        let right_run = right.open_run(&run_id).await.unwrap();\n+\n+        let mut tasks = Vec::new();\n+        for index in 2..=9u32 {\n+            let writer = if index % 2 == 0 {\n+                left_run.clone()\n+            } else {\n+                right_run.clone()\n+            };\n+            tasks.push(tokio::spawn(async move {\n+                writer.append_event(&stage_payload(&run_id, index)).await\n+            }));\n+        }\n+        let mut sequences = Vec::new();\n+        for task in tasks {\n+            sequences.push(task.await.unwrap().unwrap());\n+        }\n+        sequences.sort_unstable();\n+        assert_eq!(sequences, (2..=9).collect::<Vec<_>>());\n+        let durable: Vec<u32> = left_run\n+            .list_events()\n+            .await\n+            .unwrap()\n+            .iter()\n+            .map(|event| event.seq)\n+            .collect();\n+        assert_eq!(durable, (1..=9).collect::<Vec<_>>());\n+    }\n+\n+    /// fabro-3ef7: SQLITE_BUSY classification must match the primary code 5\n+    /// (including sqlx's extended codes like 517 = SQLITE_BUSY_SNAPSHOT) and\n+    /// the canonical \"database is locked\" message, while rejecting adjacent\n+    /// codes (SQLITE_LOCKED 6 / shared-cache 262, constraint 1555) that must\n+    /// NOT be retried as busy.\n+    #[test]\n+    fn sqlite_busy_codes_and_messages_are_classified_for_retry() {\n+        use super::is_busy_code_and_message as classify;\n+\n+        assert!(classify(Some(\"5\"), \"database is locked\"));\n+        assert!(classify(Some(\"517\"), \"database is locked\"));\n+        assert!(classify(Some(\"261\"), \"database is locked\"));\n+        // Message fallback when the code is absent or unparseable.\n+        assert!(classify(None, \"database is locked\"));\n+        assert!(classify(Some(\"unparseable\"), \"database is locked\"));\n+        // Adjacent codes must not be classified as busy.\n+        assert!(!classify(Some(\"6\"), \"database table is locked\"));\n+        assert!(!classify(Some(\"262\"), \"database table is locked\"));\n+        assert!(!classify(Some(\"1555\"), \"UNIQUE constraint failed: runs.id\"));\n+        assert!(!classify(None, \"no such table: runs\"));\n+        assert!(!classify(Some(\"5x\"), \"unrelated\"));\n+    }\n }\ndiff --git a/lib/components/fabro-store/src/test_support/mod.rs b/lib/components/fabro-store/src/test_support/mod.rs\nindex 2ab33835..10ee026d 100644\n--- a/lib/components/fabro-store/src/test_support/mod.rs\n+++ b/lib/components/fabro-store/src/test_support/mod.rs\n@@ -4,7 +4,7 @@ use std::time::Duration;\n \n use fabro_types::{BlobHash, RunId};\n use object_store::ObjectStore;\n-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};\n+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};\n \n use crate::keys::SlateKey;\n #[cfg(test)]\n@@ -126,7 +126,12 @@ fn lazy_file_pool(\n     let options = SqliteConnectOptions::new()\n         .filename(path)\n         .create_if_missing(true)\n-        .foreign_keys(true);\n+        .foreign_keys(true)\n+        // Canonical SQLite lock policy (fabro-3ef7): file-backed test pools\n+        // must run the same WAL journal mode as production\n+        // (`fabro_db::Database::connect`) so reopen-style tests exercising\n+        // concurrent handles contend exactly like production writers.\n+        .journal_mode(SqliteJournalMode::Wal);\n     SqlitePoolOptions::new()\n         .max_connections(1)\n         .max_lifetime(None)\ndiff --git a/lib/foundation/fabro-db/src/lib.rs b/lib/foundation/fabro-db/src/lib.rs\nindex 71bbb91d..5d0eccae 100644\n--- a/lib/foundation/fabro-db/src/lib.rs\n+++ b/lib/foundation/fabro-db/src/lib.rs\n@@ -46,6 +46,19 @@ pub struct Database {\n }\n \n impl Database {\n+    /// Opens (creating if needed) the SQLite database at `path`.\n+    ///\n+    /// # Canonical SQLite lock policy (fabro-3ef7)\n+    ///\n+    /// This connection site defines the ONE production lock policy: WAL\n+    /// journal mode + `synchronous = NORMAL` + 5s `busy_timeout`. Every\n+    /// production connection must go through this constructor (or configure\n+    /// identical pragmas) so concurrent writers contend through the busy\n+    /// timeout instead of failing fast with SQLITE_BUSY (code 5). The only\n+    /// intentional divergences live in `#[cfg(test)]` modules, where fixture\n+    /// connections deliberately use shorter (or absent) busy timeouts to\n+    /// model blocked writers without stalling the test suite for the full\n+    /// production timeout; each such site documents its divergence inline.\n     pub async fn connect(path: impl AsRef<Path>) -> anyhow::Result<Self> {\n         let path = path.as_ref();\n         if let Some(parent) = path.parent() {\n",
+        "summary": {
+          "files_changed": 10,
+          "additions": 354,
+          "deletions": 32
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-11T21:47:51.760803502Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
         ],
         "node_retries": {},
         "context_values": {
@@ -914,6 +1100,7 @@
           "preferred_label": "Implemented",
           "internal.run_id": "01M294HH117ZMV11HCNCEQPCDJ",
           "internal.node_visit_count": 1,
+          "command.output": "blob://sha256/54a32320550bf41088fec263078698cd5715d7525939c67edc6710dc2b4b6ea4",
           "last_stage": "implementer",
           "current_seed_brief": "Incident (2026-09-10): under a concurrent child-run event flood the run store surfaced SQLite 'database is locked' (SQLITE_BUSY, code 5); merge child 01M26HBHB8NR died mid-merge leaving its projection stuck in running; the host docker VM then went read-only after I/O errors (infra fallout, NOT code scope). NOTE: the seed body is empty — this brief derives from the title plus verified tree anchors. Acceptance criteria: (1) Lock-policy audit: enumerate every SQLite connection site and make journal_mode/busy_timeout consistent with one documented policy — production connect sets WAL + 5s busy_timeout at `lib/foundation/fabro-db/src/lib.rs` (~line 63-65), while `lib/apps/fabro-server/migrations/2026082301_sqlite_blob_activation.rs:681-682` and `lib/apps/fabro-server/migrations/2026082801_sqlite_run_history_activation.rs:453-454` use 50ms, and `lib/components/fabro-store/src/legacy_blob_import.rs:1842` sets WAL with NO busy_timeout — fix or justify each divergence in code comments. (2) BUSY resilience: the run-event write path must survive a concurrent-writer BUSY (code 5) via bounded retry/backoff (or pool-level write serialization) instead of surfacing 'database is locked' as a fatal error that kills a merge child. (3) Projection self-heal: a run whose projection is stuck non-terminal (running) because its writer died mid-merge must converge to a recoverable state — implement a deterministic heal in the projection layer (`lib/components/fabro-store/src/slate/run_store.rs`, see `apply_cached_projection_event` around line 413 and the `RunDatabase` API) such that restart or the next event apply detects the interrupted merge and recovers instead of parking forever. (4) Tests: a concurrency test reproducing parallel event writers (no BUSY fatality) and a test that a projection interrupted mid-merge converges after recovery; run only the touched crates' tests by name filter. (5) Verification order, cheapest first: `cargo check -p fabro-store -p fabro-db` then targeted `cargo nextest run -p <touched-crate> <test filter>`; fmt/clippy on the pinned nightly for touched crates only; gate green via the deterministic tester step. (6) Out of scope: docker VM read-only disk / host I/O errors — document any operational follow-up in the PR body, no code.",
           "response.implementer": {
@@ -925,24 +1112,41 @@
           "graph.rankdir": "LR",
           "current_seed_id": "fabro-3ef7",
           "graph.inspects": "develop",
-          "internal.thread_id": "planner",
-          "current_node": "implementer",
+          "internal.thread_id": "implementer",
+          "current_node": "tester",
           "thread.planner.current_node": "implementer",
           "graph.preamble_budget_kb": "24",
           "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
           "last_response": "Implementation complete. Summary of what was built and the per-criterion verification:\n\n**Files touched**\n- `lib/components/fabro-store/src/slate/run_store.rs` — BUSY-resilient, self-healing event c",
           "internal.seed_cycle_anchor": "fabro-3ef7",
           "internal.work_dir": "/workspace/fabro",
-          "internal.fidelity": "summary:high",
+          "internal.fidelity": "compact",
           "internal.retry_count.start": 0,
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
           "implementation_summary": "BUSY-resilient, self-healing run-event write path in `lib/components/fabro-store/src/slate/run_store.rs` (bounded BUSY retry/backoff + head-mismatch heal that reloads the authoritative projection from SQLite), canonical WAL lock policy documented in `lib/foundation/fabro-db/src/lib.rs`, three test-only connection divergences justified inline, and file-backed test pools aligned to WAL in `test_support/mod.rs`; tests: parallel-writer convergence, interrupted-apply heal + restart, busy-code classification; lesson captured as mx-a2c839. Per-criterion: (1) PASS lock-policy audit — fabro-db connect doc + inline justifications at 2026082301:~676, 2026082801:~448, legacy_blob_import.rs:~1839; (2) PASS BUSY resilience — commit_event_transaction retry loop + is_sqlite_busy, run_store.rs; (3) PASS projection self-heal — heal_stale_projection_head + test interrupted_apply_projection_converges_on_next_append; (4) PASS tests — parallel_writers_on_one_sqlite_authority_converge + sqlite_busy_codes_and_messages_are_classified_for_retry, full fabro-store suite 294/294; (5) PASS verification — cargo check clean, nextest green, fmt+clippy -D warnings green on fabro-store/fabro-db/fabro-server (pinned nightly); (6) PASS out of scope — docker VM read-only disk documented for PR body, no code.",
-          "graph.max_node_visits": "40"
+          "thread.implementer.current_node": "tester",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.tester": 0
         },
         "node_outcomes": {
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/54a32320550bf41088fec263078698cd5715d7525939c67edc6710dc2b4b6ea4"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 643509,
+              "active_time_ms": 643509
+            }
+          },
           "implementer": {
             "status": "succeeded",
             "preferred_label": "Implemented",
@@ -1046,11 +1250,12 @@
             "usage": null
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
+          "tester": 1,
+          "planner": 1,
           "implementer": 1,
-          "start": 1,
-          "planner": 1
+          "start": 1
         }
       },
       "diff": {}
@@ -1083,6 +1288,271 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "tester@1": {
+      "first_event_seq": 740,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-09-11T21:47:51.556066041Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 1200000
+      },
+      "script_timing": {
+        "output": "blob://sha256/54a32320550bf41088fec263078698cd5715d7525939c67edc6710dc2b4b6ea4",
+        "exit_code": 0,
+        "duration_ms": 643509,
+        "termination": "exited",
+        "output_bytes": 460,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 460,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-11T21:36:08.552255716Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 643526,
+        "inference_time_ms": 0,
+        "tool_time_ms": 643509,
+        "active_time_ms": 643509
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "implementer@1": {
+      "first_event_seq": 126,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-09-11T21:36:03.962557717Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-11T21:06:49.245601317Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 1607474,
+        "inference_time_ms": 803098,
+        "tool_time_ms": 803720,
+        "active_time_ms": 1606818
+      },
+      "usage": {
+        "input_tokens": 94561,
+        "output_tokens": 17174,
+        "total_tokens": 6645387,
+        "reasoning_tokens": 21780,
+        "cache_read_tokens": 6511872,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 1996738
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 91321,
+        "usage_percent": 8.709049224853516,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-11T21:36:03.947805587Z",
+        "event_seq": 730,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1128,
+            "usage_percent": 0.107574462890625
+          },
+          {
+            "category": "tools",
+            "tokens": 1611,
+            "usage_percent": 0.15363693237304688
+          },
+          {
+            "category": "memory",
+            "tokens": 5808,
+            "usage_percent": 0.55389404296875
+          },
+          {
+            "category": "conversation",
+            "tokens": 82766,
+            "usage_percent": 7.893180847167969
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "planner@1": {
       "first_event_seq": 20,
       "prompt": null,
@@ -1299,220 +1769,6 @@
             "category": "other",
             "tokens": 10,
             "usage_percent": 0.00095367431640625
-          }
-        ],
-        "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "implementer@1": {
-      "first_event_seq": 126,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Stage completed: implementer",
-        "failure_reason": null,
-        "timestamp": "2026-09-11T21:36:03.962557717Z"
-      },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "low"
-      },
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-11T21:06:49.245601317Z",
-      "handler": "agent",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 1607474,
-        "inference_time_ms": 803098,
-        "tool_time_ms": 803720,
-        "active_time_ms": 1606818
-      },
-      "usage": {
-        "input_tokens": 94561,
-        "output_tokens": 17174,
-        "total_tokens": 6645387,
-        "reasoning_tokens": 21780,
-        "cache_read_tokens": 6511872,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 1996738
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": true
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": true
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": true
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 91321,
-        "usage_percent": 8.709049224853516,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-11T21:36:03.947805587Z",
-        "event_seq": 730,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1128,
-            "usage_percent": 0.107574462890625
-          },
-          {
-            "category": "tools",
-            "tokens": 1611,
-            "usage_percent": 0.15363693237304688
-          },
-          {
-            "category": "memory",
-            "tokens": 5808,
-            "usage_percent": 0.55389404296875
-          },
-          {
-            "category": "conversation",
-            "tokens": 82766,
-            "usage_percent": 7.893180847167969
-          },
-          {
-            "category": "other",
-            "tokens": 8,
-            "usage_percent": 0.000762939453125
           }
         ],
         "warnings": []
