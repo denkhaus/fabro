@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use fabro_server::workflow_version_tool::ServerWorkflowVersionPackager;
+use fabro_manifest::SuppliedWorkflowVersionPackager;
 use fabro_tool::fabro_client::ClientBackend;
 use fabro_tool::{self as run_tools, FabroToolBackend};
 use fabro_util::version::FABRO_VERSION;
@@ -277,7 +277,7 @@ impl FabroMcpServer {
                             ClientBackend::new(Arc::new(client))
                                 .with_manifest_builder(Arc::new(McpRunManifestBuilder))
                                 .with_workflow_version_packager(Arc::new(
-                                    ServerWorkflowVersionPackager,
+                                    SuppliedWorkflowVersionPackager,
                                 )),
                         ) as Arc<dyn FabroToolBackend>
                     })

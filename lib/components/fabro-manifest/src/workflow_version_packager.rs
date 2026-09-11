@@ -1,3 +1,6 @@
+//! Application adapter that packages caller-supplied workflow contents for
+//! the `fabro_workflow_version_create` tool.
+
 use async_trait::async_trait;
 use fabro_tool::{
     PackagedWorkflowVersions, ToolError, ValidatedWorkflowVersionCreate, WorkflowVersionPackager,
@@ -7,35 +10,34 @@ use tracing::warn;
 
 /// Packages supplied workflow contents for standalone MCP and capable run
 /// workers; the backend that owns the API client performs registration.
-pub struct ServerWorkflowVersionPackager;
+pub struct SuppliedWorkflowVersionPackager;
 
 const PACKAGING_FAILED: &str = "workflow source could not be packaged; check configuration, \
                                 syntax, local references, and package limits";
 
 #[async_trait]
-impl WorkflowVersionPackager for ServerWorkflowVersionPackager {
+impl WorkflowVersionPackager for SuppliedWorkflowVersionPackager {
     async fn package(
         &self,
         source: ValidatedWorkflowVersionCreate,
     ) -> anyhow::Result<PackagedWorkflowVersions> {
-        let closure = task::spawn_blocking(move || {
-            fabro_manifest::collect_supplied_workflow_versions(&source.entrypoint, &source.files)
+        task::spawn_blocking(move || {
+            let closure =
+                crate::collect_supplied_workflow_versions(&source.entrypoint, &source.files)
+                    .map_err(|err| {
+                        // Parser diagnostics may quote supplied source, so the
+                        // chain stays in the log and only a generic message
+                        // crosses the tool boundary.
+                        warn!(error = %format!("{err:#}"), "workflow version packaging failed");
+                        ToolError::message(PACKAGING_FAILED)
+                    })?;
+            Ok(PackagedWorkflowVersions {
+                root_id:  closure.root_id(),
+                versions: closure.into_versions(),
+            })
         })
         .await
         .map_err(|err| anyhow::anyhow!("workflow packaging task failed: {err}"))?
-        .map_err(|err| {
-            // Parser diagnostics may quote supplied source, so the chain stays
-            // in the log and only a generic message crosses the tool boundary.
-            warn!(error = %format!("{err:#}"), "workflow version packaging failed");
-            ToolError::message(PACKAGING_FAILED)
-        })?;
-        Ok(PackagedWorkflowVersions {
-            root_id:  closure.root_id(),
-            versions: closure
-                .versions()
-                .map(|(_, version)| version.version().clone())
-                .collect(),
-        })
     }
 }
 
@@ -70,7 +72,7 @@ mod tests {
 
     #[tokio::test]
     async fn packager_returns_dependencies_before_root() {
-        let packaged = ServerWorkflowVersionPackager
+        let packaged = SuppliedWorkflowVersionPackager
             .package(fixture())
             .await
             .unwrap();
@@ -112,7 +114,7 @@ mod tests {
                 "PRIVATE_CONTENT invalid source",
             )]),
         ] {
-            let error = ServerWorkflowVersionPackager
+            let error = SuppliedWorkflowVersionPackager
                 .package(input)
                 .await
                 .unwrap_err();
@@ -129,7 +131,7 @@ mod tests {
             .files
             .insert("Prompt.md".parse().unwrap(), prompt);
         assert!(
-            ServerWorkflowVersionPackager
+            SuppliedWorkflowVersionPackager
                 .package(wrong_case)
                 .await
                 .is_err(),

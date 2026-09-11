@@ -31,6 +31,16 @@ impl CollectedWorkflowClosure {
     ) -> impl Iterator<Item = (WorkflowVersionId, &ValidatedWorkflowVersion)> + '_ {
         self.versions.iter().map(|(id, version)| (*id, version))
     }
+
+    /// Consume the closure, yielding every version with dependencies before
+    /// parents, for callers that hand the versions on without cloning.
+    #[must_use]
+    pub fn into_versions(self) -> Vec<WorkflowVersion> {
+        self.versions
+            .into_iter()
+            .map(|(_, version)| version.into_version())
+            .collect()
+    }
 }
 
 #[derive(Debug, Error)]

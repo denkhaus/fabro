@@ -7,6 +7,7 @@ mod local_workflow_package;
 mod supplied_workflow;
 mod workflow_bundler;
 mod workflow_version_collector;
+mod workflow_version_packager;
 
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
@@ -41,6 +42,7 @@ pub use crate::workflow_version_collector::{
     CollectedWorkflowClosure, WorkflowVersionCollectError, collect_workflow_versions,
     collect_workflow_versions_at_location,
 };
+pub use crate::workflow_version_packager::SuppliedWorkflowVersionPackager;
 
 #[derive(Debug, Default)]
 pub struct ManifestBuildInput {

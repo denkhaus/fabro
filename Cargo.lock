@@ -2754,12 +2754,14 @@ name = "fabro-manifest"
 version = "0.354.0-nightly.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "fabro-api",
  "fabro-config",
  "fabro-github",
  "fabro-graphviz",
  "fabro-template",
  "fabro-test",
+ "fabro-tool",
  "fabro-types",
  "fabro-util",
  "fabro-workflow",
@@ -2770,7 +2772,9 @@ dependencies = [
  "temp-env",
  "tempfile",
  "thiserror 2.0.18",
+ "tokio",
  "toml 0.8.23",
+ "tracing",
 ]
 
 [[package]]
