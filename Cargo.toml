@@ -65,6 +65,8 @@ console = "0.15"
 dialoguer = "0.12"
 git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2", "vendored-openssl", "https"] }
 tracing = "0.1"
+unicase = "2"
+unicode-normalization = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 tracing-appender = "0.2"
 rmcp = { version = "1.4", default-features = false }

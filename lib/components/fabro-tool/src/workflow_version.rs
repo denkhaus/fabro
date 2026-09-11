@@ -5,10 +5,9 @@ use async_trait::async_trait;
 use fabro_api::types::CreateWorkflowVersionResponse;
 use fabro_types::{
     MAX_WORKFLOW_VERSION_BYTES, MAX_WORKFLOW_VERSION_FILE_BYTES, MAX_WORKFLOW_VERSION_FILES,
-    WorkflowPath, WorkflowVersionId,
+    WorkflowPath, WorkflowVersion, WorkflowVersionId,
 };
 use schemars::JsonSchema;
-use serde::de::{Error as _, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
 
 use crate::{FabroToolBackend, ToolError, ToolResult};
@@ -23,80 +22,83 @@ pub struct FabroWorkflowVersionCreateParams {
     pub entrypoint: WorkflowPath,
     /// All local dependencies, keyed by package-relative path. Values are text
     /// contents.
-    #[serde(deserialize_with = "deserialize_files")]
+    #[serde(deserialize_with = "fabro_types::deserialize_unique_map")]
     #[schemars(with = "BTreeMap<String, String>")]
     pub files:      BTreeMap<WorkflowPath, String>,
 }
 
-fn deserialize_files<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<BTreeMap<WorkflowPath, String>, D::Error> {
-    struct FilesVisitor;
-    impl<'de> Visitor<'de> for FilesVisitor {
-        type Value = BTreeMap<WorkflowPath, String>;
-        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str("workflow files with unique path keys and text contents")
-        }
-        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
-            let mut files = BTreeMap::new();
-            while let Some((path, content)) = map.next_entry()? {
-                if files.insert(path, content).is_some() {
-                    return Err(A::Error::custom("duplicate workflow file key"));
-                }
-            }
-            Ok(files)
-        }
-    }
-    deserializer.deserialize_map(FilesVisitor)
+/// A supplied source tree whose entrypoint, budgets, and portable path
+/// collisions have been checked, so it is safe to stage on a filesystem.
+#[derive(Clone, Debug)]
+pub struct ValidatedWorkflowVersionCreate {
+    pub entrypoint: WorkflowPath,
+    pub files:      BTreeMap<WorkflowPath, String>,
 }
 
-impl FabroWorkflowVersionCreateParams {
-    /// Validate the complete supplied tree before any filesystem writes.
-    pub fn validate(&self) -> ToolResult<()> {
-        if !self.files.contains_key(&self.entrypoint) {
+impl TryFrom<FabroWorkflowVersionCreateParams> for ValidatedWorkflowVersionCreate {
+    type Error = ToolError;
+
+    fn try_from(params: FabroWorkflowVersionCreateParams) -> Result<Self, Self::Error> {
+        let FabroWorkflowVersionCreateParams { entrypoint, files } = params;
+        if !files.contains_key(&entrypoint) {
             return Err(ToolError::message(
                 "entrypoint must be an exact supplied file key",
             ));
         }
-        if self.files.len() > MAX_WORKFLOW_VERSION_FILES {
-            return Err(ToolError::message("workflow source exceeds 512 files"));
+        if files.len() > MAX_WORKFLOW_VERSION_FILES {
+            return Err(ToolError::message(format!(
+                "workflow source exceeds {MAX_WORKFLOW_VERSION_FILES} files"
+            )));
         }
         let mut total = 0;
-        for content in self.files.values() {
+        for content in files.values() {
             if content.len() > MAX_WORKFLOW_VERSION_FILE_BYTES {
-                return Err(ToolError::message("workflow source file exceeds 512 KiB"));
+                return Err(ToolError::message(format!(
+                    "workflow source file exceeds {} KiB",
+                    MAX_WORKFLOW_VERSION_FILE_BYTES / 1024
+                )));
             }
             total += content.len();
         }
         if total > MAX_WORKFLOW_VERSION_BYTES {
-            return Err(ToolError::message("workflow source exceeds 2 MiB"));
+            return Err(ToolError::message(format!(
+                "workflow source exceeds {} MiB",
+                MAX_WORKFLOW_VERSION_BYTES / (1024 * 1024)
+            )));
         }
-        fabro_types::validate_workflow_source_paths(self.files.keys())
+        fabro_types::validate_workflow_source_paths(files.keys())
             .map_err(|_| ToolError::message("workflow source paths collide"))?;
-        Ok(())
+        Ok(Self { entrypoint, files })
     }
 }
 
-/// Application seam for packaging and registering content without a dependency
-/// cycle. Implementations must validate before staging, confine reads to
-/// supplied files, validate the entire closure before uploading, and register
-/// dependencies first.
+/// The complete validated closure for one supplied source tree.
+#[derive(Clone, Debug)]
+pub struct PackagedWorkflowVersions {
+    pub root_id:  WorkflowVersionId,
+    /// Every version in the closure, dependencies before the versions that
+    /// reference them, so callers can register them in this order.
+    pub versions: Vec<WorkflowVersion>,
+}
+
+/// Application seam for packaging supplied content. The manifest crates that
+/// own collection depend on this crate, so the packager is injected instead.
+/// Implementations confine reads to supplied files and validate the entire
+/// closure before returning.
 #[async_trait]
-pub trait WorkflowVersionCreateAdapter: Send + Sync {
-    async fn create_workflow_version(
+pub trait WorkflowVersionPackager: Send + Sync {
+    async fn package(
         &self,
-        params: FabroWorkflowVersionCreateParams,
-        client: &fabro_client::Client,
-    ) -> anyhow::Result<WorkflowVersionId>;
+        source: ValidatedWorkflowVersionCreate,
+    ) -> anyhow::Result<PackagedWorkflowVersions>;
 }
 
 pub async fn create_workflow_version(
     backend: Arc<dyn FabroToolBackend>,
-    params: FabroWorkflowVersionCreateParams,
+    source: ValidatedWorkflowVersionCreate,
 ) -> ToolResult<CreateWorkflowVersionResponse> {
-    params.validate()?;
     let workflow_version_id = backend
-        .create_workflow_version(params)
+        .create_workflow_version(source)
         .await
         .map_err(|err| ToolError::from_anyhow(&err))?;
     Ok(CreateWorkflowVersionResponse {
@@ -106,7 +108,7 @@ pub async fn create_workflow_version(
 
 #[must_use]
 pub fn workflow_version_create_text(result: &CreateWorkflowVersionResponse) -> String {
-    serde_json::to_string(result).expect("workflow version response should serialize")
+    format!("Registered workflow version {}", result.workflow_version_id)
 }
 
 #[cfg(test)]
@@ -116,12 +118,15 @@ mod tests {
     use super::*;
     use crate::fabro_client::ClientBackend;
 
+    fn validate(value: serde_json::Value) -> ToolResult<ValidatedWorkflowVersionCreate> {
+        let params: FabroWorkflowVersionCreateParams = serde_json::from_value(value).unwrap();
+        ValidatedWorkflowVersionCreate::try_from(params)
+    }
+
     #[test]
     fn workflow_version_request_rejects_unknown_fields_and_invalid_paths() {
         let valid = json!({"entrypoint": "workflow", "files": {"workflow": "digraph W {}"}});
-        let params: FabroWorkflowVersionCreateParams =
-            serde_json::from_value(valid.clone()).unwrap();
-        params.validate().unwrap();
+        validate(valid.clone()).unwrap();
         assert!(
             serde_json::from_str::<FabroWorkflowVersionCreateParams>(
                 r#"{"entrypoint":"workflow","files":{"workflow":"a","workflow":"b"}}"#
@@ -160,75 +165,75 @@ mod tests {
 
     #[test]
     fn workflow_version_source_enforces_presence_collisions_and_budgets() {
+        assert!(
+            validate(json!({"entrypoint":"missing","files":{"workflow":"digraph W {}"}})).is_err()
+        );
         for files in [
-            json!({}),
             json!({"A":"x","a":"y"}),
             json!({"A":"x","a/b.md":"y"}),
             json!({"a":"x","A/b.md":"y"}),
         ] {
             let mut files = files.as_object().unwrap().clone();
             files.insert("workflow".into(), json!("digraph W {}"));
-            let mut params: FabroWorkflowVersionCreateParams =
-                serde_json::from_value(json!({"entrypoint":"workflow","files":files})).unwrap();
-            if params.files.len() == 1 {
-                params.entrypoint = "missing".parse().unwrap();
-            }
-            assert!(params.validate().is_err());
+            assert!(validate(json!({"entrypoint":"workflow","files":files})).is_err());
         }
-        let mut params = FabroWorkflowVersionCreateParams {
+        let oversized_file = FabroWorkflowVersionCreateParams {
             entrypoint: "workflow".parse().unwrap(),
             files:      BTreeMap::from([(
                 "workflow".parse().unwrap(),
                 "x".repeat(MAX_WORKFLOW_VERSION_FILE_BYTES + 1),
             )]),
         };
-        assert!(params.validate().is_err());
-        params.files = (0..MAX_WORKFLOW_VERSION_FILES)
-            .map(|i| (format!("file{i}").parse().unwrap(), String::new()))
-            .collect();
-        params
+        assert!(ValidatedWorkflowVersionCreate::try_from(oversized_file).is_err());
+        let mut too_many_files = FabroWorkflowVersionCreateParams {
+            entrypoint: "workflow".parse().unwrap(),
+            files:      (0..MAX_WORKFLOW_VERSION_FILES)
+                .map(|i| (format!("file{i}").parse().unwrap(), String::new()))
+                .collect(),
+        };
+        too_many_files
             .files
-            .insert(params.entrypoint.clone(), String::new());
-        assert!(params.validate().is_err());
-        params.files = (0..5)
-            .map(|i| {
-                (
-                    format!("file{i}").parse().unwrap(),
-                    "x".repeat(MAX_WORKFLOW_VERSION_FILE_BYTES),
-                )
-            })
-            .collect();
-        params
+            .insert(too_many_files.entrypoint.clone(), String::new());
+        assert!(ValidatedWorkflowVersionCreate::try_from(too_many_files).is_err());
+        let mut oversized_total = FabroWorkflowVersionCreateParams {
+            entrypoint: "workflow".parse().unwrap(),
+            files:      (0..5)
+                .map(|i| {
+                    (
+                        format!("file{i}").parse().unwrap(),
+                        "x".repeat(MAX_WORKFLOW_VERSION_FILE_BYTES),
+                    )
+                })
+                .collect(),
+        };
+        oversized_total
             .files
-            .insert(params.entrypoint.clone(), String::new());
-        assert!(params.validate().is_err());
+            .insert(oversized_total.entrypoint.clone(), String::new());
+        assert!(ValidatedWorkflowVersionCreate::try_from(oversized_total).is_err());
     }
 
     #[tokio::test]
-    async fn workflow_version_same_run_backend_denies_before_adapter() {
+    async fn workflow_version_same_run_backend_denies_before_packaging() {
         let client = fabro_client::Client::new_no_proxy("http://127.0.0.1:1").unwrap();
         let backend = ClientBackend::new(Arc::new(client))
-            .with_workflow_version_create_adapter(Arc::new(UnreachableAdapter))
+            .with_workflow_version_packager(Arc::new(UnreachablePackager))
             .with_run_scope("01KRBZW4DW0000000000000002".parse().unwrap());
-        let params = serde_json::from_value(
-            json!({"entrypoint":"workflow","files":{"workflow":"digraph W {}"}}),
-        )
-        .unwrap();
-        let error = create_workflow_version(Arc::new(backend), params)
+        let source =
+            validate(json!({"entrypoint":"workflow","files":{"workflow":"digraph W {}"}})).unwrap();
+        let error = create_workflow_version(Arc::new(backend), source)
             .await
             .unwrap_err();
         assert!(error.as_str().contains("run scope"));
     }
 
-    struct UnreachableAdapter;
+    struct UnreachablePackager;
     #[async_trait]
-    impl WorkflowVersionCreateAdapter for UnreachableAdapter {
-        async fn create_workflow_version(
+    impl WorkflowVersionPackager for UnreachablePackager {
+        async fn package(
             &self,
-            _: FabroWorkflowVersionCreateParams,
-            _: &fabro_client::Client,
-        ) -> anyhow::Result<WorkflowVersionId> {
-            panic!("scoped backend must not invoke the adapter")
+            _: ValidatedWorkflowVersionCreate,
+        ) -> anyhow::Result<PackagedWorkflowVersions> {
+            panic!("scoped backend must not invoke the packager")
         }
     }
 }

@@ -143,28 +143,28 @@ impl<'a> WorkflowBundler<'a> {
     /// Relative workflow references with an extension are lexically
     /// normalized (`..` segments resolved without consulting the filesystem,
     /// `~` rejected) before resolution, so the file read matches the manifest
-    /// key. Returns the collected workflow's manifest key.
+    /// key. Workflow-version projection normalizes every reference and
+    /// resolves it as an exact path inside the package root, with no
+    /// workflow-name lookup. Returns the collected workflow's manifest key.
     fn collect_workflow_entry(&mut self, workflow: &Path, resolve_from: &Path) -> Result<String> {
-        let location = if self.workflow_version_projection {
-            let exact = normalize_absolute_path(resolve_from, &workflow.to_string_lossy())
-                .ok_or_else(|| anyhow!("unsupported workflow reference"))?;
-            // Check containment before location resolution can read a config.
-            manifest_path_from_absolute(&exact, self.package_root)?;
-            WorkflowLocation::from_exact_path(&exact, self.package_root)?
+        let normalize = self.workflow_version_projection
+            || (workflow.extension().is_some() && workflow.is_relative());
+        let normalized = if normalize {
+            normalize_absolute_path(resolve_from, &workflow.to_string_lossy()).ok_or_else(|| {
+                anyhow!(
+                    "unsupported manifest workflow reference: {}",
+                    workflow.display()
+                )
+            })?
         } else {
-            let normalized_workflow = if workflow.extension().is_some() && workflow.is_relative() {
-                normalize_absolute_path(resolve_from, &workflow.to_string_lossy()).ok_or_else(
-                    || {
-                        anyhow!(
-                            "unsupported manifest workflow reference: {}",
-                            workflow.display()
-                        )
-                    },
-                )?
-            } else {
-                workflow.to_path_buf()
-            };
-            WorkflowLocation::resolve(&normalized_workflow, resolve_from)?
+            workflow.to_path_buf()
+        };
+        let location = if self.workflow_version_projection {
+            // Check containment before location resolution can read a config.
+            manifest_path_from_absolute(&normalized, self.package_root)?;
+            WorkflowLocation::from_exact_path(&normalized, self.package_root)?
+        } else {
+            WorkflowLocation::resolve(&normalized, resolve_from)?
         };
         self.collect_workflow_location(&location)
     }

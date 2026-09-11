@@ -19743,7 +19743,11 @@ fn validate_github_slug_rejects_overlong() {
 async fn workflow_version_registration_requires_user_or_run_tools_capability() {
     let (state, app) = jwt_auth_app();
     let run_id = RunId::new();
-    let body = json!({"entrypoint":"workflow.fabro","files":{"workflow.fabro":"digraph W {}"},"workflow_dependencies":{}});
+    let body = json!({
+        "entrypoint": "workflow.fabro",
+        "files": {"workflow.fabro": "digraph W {}"},
+        "workflow_dependencies": {},
+    });
     for (token, expected) in [
         (issue_test_user_jwt(), StatusCode::CREATED),
         (

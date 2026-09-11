@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use fabro_server::workflow_version_tool::ServerWorkflowVersionCreateAdapter;
+use fabro_server::workflow_version_tool::ServerWorkflowVersionPackager;
 use fabro_tool::fabro_client::ClientBackend;
 use fabro_tool::{self as run_tools, FabroToolBackend};
 use fabro_util::version::FABRO_VERSION;
@@ -99,14 +99,15 @@ impl FabroMcpServer {
         &self,
         params: Parameters<run_tools::FabroWorkflowVersionCreateParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        if let Err(err) = params.0.validate() {
-            return Ok(error_result(&err));
-        }
+        let source = match run_tools::ValidatedWorkflowVersionCreate::try_from(params.0) {
+            Ok(source) => source,
+            Err(err) => return Ok(error_result(&err)),
+        };
         let backend = match self.backend().await {
             Ok(backend) => backend,
             Err(err) => return Ok(error_result(&err)),
         };
-        match run_tools::create_workflow_version(backend, params.0).await {
+        match run_tools::create_workflow_version(backend, source).await {
             Ok(result) => success_result(&result, run_tools::workflow_version_create_text(&result)),
             Err(err) => Ok(error_result(&err)),
         }
@@ -275,8 +276,8 @@ impl FabroMcpServer {
                         Arc::new(
                             ClientBackend::new(Arc::new(client))
                                 .with_manifest_builder(Arc::new(McpRunManifestBuilder))
-                                .with_workflow_version_create_adapter(Arc::new(
-                                    ServerWorkflowVersionCreateAdapter,
+                                .with_workflow_version_packager(Arc::new(
+                                    ServerWorkflowVersionPackager,
                                 )),
                         ) as Arc<dyn FabroToolBackend>
                     })
@@ -360,7 +361,12 @@ mod tests {
         actual.as_object_mut().unwrap().remove("$schema");
         assert_eq!(actual, expected);
         assert_eq!(tool.description.as_deref(), Some(definition.description));
-        let result = server.fabro_workflow_version_create(Parameters(serde_json::from_value(serde_json::json!({"entrypoint":"workflow","files":{"workflow":"digraph W {}"}})).unwrap())).await.unwrap();
+        let params =
+            serde_json::json!({"entrypoint":"workflow","files":{"workflow":"digraph W {}"}});
+        let result = server
+            .fabro_workflow_version_create(Parameters(serde_json::from_value(params).unwrap()))
+            .await
+            .unwrap();
         assert_eq!(
             result.structured_content,
             Some(serde_json::json!({"workflow_version_id":id}))

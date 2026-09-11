@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::marker::PhantomData;
@@ -153,33 +154,35 @@ impl WorkflowVersion {
     fn validate_path_collisions(&self) -> Result<(), WorkflowVersionShapeError> {
         validate_path_collisions(
             self.files.keys().chain(self.workflow_dependencies.keys()),
-            false,
+            Cow::Borrowed,
         )
     }
 }
 
 /// Reject file and directory aliases before materializing a portable source
 /// tree, including Unicode case folding and normalization. Canonical versions
-/// themselves retain their exact, case-sensitive
-/// semantics.
+/// themselves retain their exact, case-sensitive semantics.
 pub fn validate_workflow_source_paths<'a>(
     paths: impl IntoIterator<Item = &'a WorkflowPath>,
 ) -> Result<(), WorkflowVersionShapeError> {
-    validate_path_collisions(paths, true)
+    validate_path_collisions(paths, |text| {
+        if text.is_ascii() {
+            Cow::Owned(text.to_ascii_lowercase())
+        } else {
+            Cow::Owned(UniCase::unicode(text).to_folded_case().nfc().collect())
+        }
+    })
 }
 
+/// Detect colliding paths under a comparison key: identical keys, or a key
+/// that names an ancestor directory of another.
 fn validate_path_collisions<'a>(
     paths: impl IntoIterator<Item = &'a WorkflowPath>,
-    case_insensitive: bool,
+    key: impl Fn(&'a str) -> Cow<'a, str>,
 ) -> Result<(), WorkflowVersionShapeError> {
     let mut by_text = HashMap::new();
     for path in paths {
-        let text = if case_insensitive {
-            UniCase::new(path.as_str()).to_folded_case().nfc().collect()
-        } else {
-            path.as_str().to_owned()
-        };
-        if let Some(existing) = by_text.insert(text, path) {
+        if let Some(existing) = by_text.insert(key(path.as_str()), path) {
             return Err(WorkflowVersionShapeError::PathCollision {
                 first:  existing.clone(),
                 second: path.clone(),
@@ -216,6 +219,17 @@ impl<'de> Deserialize<'de> for WorkflowVersion {
         Self::new(wire.entrypoint, wire.files.0, wire.workflow_dependencies.0)
             .map_err(D::Error::custom)
     }
+}
+
+/// Deserialize a map while rejecting duplicate keys, which serde would
+/// otherwise silently collapse to the last value.
+pub fn deserialize_unique_map<'de, D, K, V>(deserializer: D) -> Result<BTreeMap<K, V>, D::Error>
+where
+    D: Deserializer<'de>,
+    K: Deserialize<'de> + Ord + fmt::Display,
+    V: Deserialize<'de>,
+{
+    UniqueBTreeMap::deserialize(deserializer).map(|map| map.0)
 }
 
 struct UniqueBTreeMap<K, V>(BTreeMap<K, V>);

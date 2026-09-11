@@ -50,9 +50,9 @@ pub type ToolResult<T> = Result<T, ToolError>;
 pub trait FabroToolBackend: Send + Sync {
     async fn create_workflow_version(
         &self,
-        _params: crate::FabroWorkflowVersionCreateParams,
+        _source: crate::ValidatedWorkflowVersionCreate,
     ) -> anyhow::Result<fabro_types::WorkflowVersionId> {
-        anyhow::bail!("fabro_workflow_version_create is not available")
+        Err(workflow_version_tool_unavailable_error())
     }
 
     async fn create_run_from_spec(
@@ -140,6 +140,13 @@ pub trait FabroToolBackend: Send + Sync {
 
 fn pair_tool_unavailable_error() -> anyhow::Error {
     ToolError::message(format!("{FABRO_RUN_PAIR_TOOL_NAME} is not available")).into()
+}
+
+pub(crate) fn workflow_version_tool_unavailable_error() -> anyhow::Error {
+    ToolError::message(format!(
+        "{FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME} is not available"
+    ))
+    .into()
 }
 
 pub trait RunManifestBuilder: Send + Sync {
@@ -350,7 +357,7 @@ mod tests {
     fn workflow_version_create_has_strict_content_schema() {
         let definition = tool_definitions()
             .iter()
-            .find(|definition| definition.name == "fabro_workflow_version_create")
+            .find(|definition| definition.name == FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME)
             .expect("workflow version creation should be in the shared catalog");
         let schema = &definition.parameters;
         assert_eq!(schema["additionalProperties"], false);

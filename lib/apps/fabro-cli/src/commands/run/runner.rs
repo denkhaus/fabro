@@ -16,7 +16,7 @@ use fabro_interview::{
     WorkerControlMessage,
 };
 use fabro_server::run_tool_manifest;
-use fabro_server::workflow_version_tool::ServerWorkflowVersionCreateAdapter;
+use fabro_server::workflow_version_tool::ServerWorkflowVersionPackager;
 use fabro_store::{EventEnvelope, RunProjection, RunProjectionReducer};
 use fabro_tool::fabro_client::ClientBackend;
 use fabro_types::settings::run::{RunMode, RunNamespace};
@@ -238,7 +238,7 @@ fn build_fabro_run_tool_services(
     }
     let backend = ClientBackend::new(Arc::new(client))
         .with_manifest_builder(Arc::new(WorkerRunManifestBuilder))
-        .with_workflow_version_create_adapter(Arc::new(ServerWorkflowVersionCreateAdapter));
+        .with_workflow_version_packager(Arc::new(ServerWorkflowVersionPackager));
     Some(FabroRunToolServices {
         backend: Arc::new(backend),
         current_run_id,
