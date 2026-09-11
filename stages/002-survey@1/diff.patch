@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M2834T4ZWY1K3RVPKPHN3MX6.jsonl b/.fabro/journal/01M2834T4ZWY1K3RVPKPHN3MX6.jsonl
+new file mode 100644
+index 000000000..a9ee0c119
+--- /dev/null
++++ b/.fabro/journal/01M2834T4ZWY1K3RVPKPHN3MX6.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M2834T4ZWY1K3RVPKPHN3MX6","node":"start","visit":1,"status":"succeeded","ts":"2026-09-11T11:20:34Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M2834T4ZWY1K3RVPKPHN3MX6","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-11T11:21:40Z","data":{"painpoints":[{"text":"git fetch (upstream+origin, prune) exceeded the default 10s shell timeout on first attempt (tag-heavy fetch, this surveyor pass, run 01M2834T4ZWY1K3RVPKPHN3MX6); surveyors must pass timeout_ms >= 60000 for fetches. Fix idea: add a timeout hint to the survey prompt or use `git fetch --no-tags` when tags are irrelevant to the count."}],"observations":["upstream count 25 (origin/denkhaus..upstream/main), >= 5 threshold -> Merge needed; newest upstream subject: 'Bump version to 0.353.0-nightly.0'","revisor backlog: 01M25R832HP615J291N72FHNCS (develop PR #123 succeeded 15:03Z, after newest revisor 01M25PC202TRD3GAB27G77Q120 completed 13:10Z; failed develop run 01M25VVK131JTQB3BRBPAV0DWR is not revisable)","note: revisor run parent_id points at the cycle/conductor parent, not the revised develop run id, so backlog mapping relied on timestamps — signal was clear here but is ambiguous in general"]}}
