@@ -20,7 +20,7 @@ use fabro_store::{EventEnvelope, RunProjection, RunProjectionReducer};
 use fabro_tool::fabro_client::ClientBackend;
 use fabro_types::settings::run::{EnvironmentProvider, RunMode, RunNamespace};
 use fabro_types::{
-    ArtifactUpload, BlobHash, EventBody, FailureReason, Principal, RunEvent, RunId, RunTarget,
+    ArtifactUpload, BlobHash, EventBody, FailureReason, Principal, RunEvent, RunId,
 };
 use fabro_vault::{SecretStore, Vault};
 use fabro_workflow::artifact_upload::{ArtifactSink, StageArtifactUploader};
@@ -104,7 +104,6 @@ pub(crate) async fn execute(
             client.clone_for_reuse(),
             run_id,
             run_spec.settings.run.environment.provider,
-            run_spec.target.clone(),
             run_spec.source_directory.as_deref(),
             &run_dir,
         )
@@ -234,16 +233,19 @@ fn build_fabro_run_tool_services(
     client: fabro_client::Client,
     current_run_id: RunId,
     provider: EnvironmentProvider,
-    inherited_target: Option<RunTarget>,
     source_directory: Option<&str>,
     run_dir: &Path,
 ) -> Option<FabroRunToolServices> {
     if worker_token.trim().is_empty() {
         return None;
     }
-    let backend = ClientBackend::new(Arc::new(client)).with_run_create_adapter(Arc::new(
-        ServerRunCreateAdapter::worker(provider, inherited_target, Some(default_workflows_dir())),
-    )).with_workflow_version_packager(Arc::new(SuppliedWorkflowVersionPackager));
+    let backend = ClientBackend::new(Arc::new(client))
+        .with_run_create_adapter(Arc::new(ServerRunCreateAdapter::worker(
+            provider,
+            current_run_id,
+            Some(default_workflows_dir()),
+        )))
+        .with_workflow_version_packager(Arc::new(SuppliedWorkflowVersionPackager));
     Some(FabroRunToolServices {
         backend: Arc::new(backend),
         current_run_id,
@@ -1263,7 +1265,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fabro_run_create_worker_adapter_uses_runtime_provider_and_canonical_target() {
+    async fn fabro_run_create_worker_adapter_preserves_explicit_target_without_host_reads() {
         use fabro_tool::{FabroRunCreateParams, RunCreateAdapter, ValidatedCreateRuns};
         use fabro_types::settings::run::EnvironmentProvider;
 
@@ -1276,7 +1278,8 @@ mod tests {
                 "workflow": {
                     "kind": "stored",
                     "workflow_version_id": workflow_version_id
-                }
+                },
+                "target": inherited
             }]
         }))
         .unwrap();
@@ -1286,7 +1289,7 @@ mod tests {
             .remove(0);
         let adapter = ServerRunCreateAdapter::worker(
             EnvironmentProvider::Docker,
-            Some(inherited.clone()),
+            fabro_types::RunId::new(),
             Some(temp.path().join("workflows")),
         );
         let client = fabro_client::Client::new_no_proxy("http://127.0.0.1:9").unwrap();

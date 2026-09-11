@@ -16,9 +16,9 @@ use crate::{
 
 #[derive(Clone)]
 pub struct ClientBackend {
-    client:             Arc<::fabro_client::Client>,
-    run_create_adapter: Option<Arc<dyn RunCreateAdapter>>,
-    run_scope:          Option<RunId>,
+    client:                    Arc<::fabro_client::Client>,
+    run_create_adapter:        Option<Arc<dyn RunCreateAdapter>>,
+    run_scope:                 Option<RunId>,
     workflow_version_packager: Option<Arc<dyn crate::WorkflowVersionPackager>>,
 }
 

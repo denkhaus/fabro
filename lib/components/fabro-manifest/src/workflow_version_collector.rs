@@ -206,7 +206,7 @@ pub fn collect_inline_workflow_versions(
             path: entrypoint.to_string(),
         });
     }
-    fabro_types::validate_workflow_path_collisions(files.keys()).map_err(|error| match error {
+    fabro_types::validate_workflow_source_paths(files.keys()).map_err(|error| match error {
         WorkflowVersionShapeError::PathCollision { second, .. } => {
             WorkflowVersionCollectError::PathCollision {
                 entrypoint: entrypoint.clone(),
@@ -248,7 +248,7 @@ pub fn collect_inline_workflow_versions(
             anyhow::Error::new(source).context("failed to canonicalize the inline workflow root"),
         )
     })?;
-    let location = WorkflowLocation::from_exact_path(package_root.join(entrypoint.as_str()))
+    let location = WorkflowLocation::from_exact_path(Path::new(entrypoint.as_str()), &package_root)
         .map_err(|source| collect_error(source.into()))?;
     let location = canonicalize_location(location, |path, source| {
         collect_error(anyhow::Error::new(source).context(format!(
@@ -516,16 +516,23 @@ dockerfile = { path = "Dockerfile" }
         let (_, root) = closure.versions().next().unwrap();
         assert_eq!(root.version().entrypoint().as_str(), "review");
 
-        let colliding = BTreeMap::from([
-            (WorkflowPath::new("a").unwrap(), "digraph A {}".to_string()),
-            (WorkflowPath::new("a/b.md").unwrap(), "b".to_string()),
-        ]);
-        let error = collect_inline_workflow_versions(&WorkflowPath::new("a").unwrap(), &colliding)
-            .unwrap_err();
-        assert!(
-            matches!(error, WorkflowVersionCollectError::PathCollision { .. }),
-            "unexpected error: {error:#}"
-        );
+        for (file, descendant) in [
+            ("a", "a/b.md"),
+            ("A", "a/b.md"),
+            ("dir/File", "DIR/file/child.md"),
+            ("Prompt.md", "prompt.md"),
+        ] {
+            let entrypoint = WorkflowPath::new(file).unwrap();
+            let colliding = BTreeMap::from([
+                (entrypoint.clone(), "digraph A {}".to_string()),
+                (WorkflowPath::new(descendant).unwrap(), "b".to_string()),
+            ]);
+            let error = collect_inline_workflow_versions(&entrypoint, &colliding).unwrap_err();
+            assert!(
+                matches!(error, WorkflowVersionCollectError::PathCollision { .. }),
+                "unexpected error: {error:#}"
+            );
+        }
     }
 
     #[test]

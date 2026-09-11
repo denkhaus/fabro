@@ -131,7 +131,7 @@ impl JsonSchema for CreateRunWorkflowSource {
 /// spelled out here and pinned by the serde parity test below.
 fn run_target_schema(_: &mut SchemaGenerator) -> Schema {
     json_schema!({
-        "description": "Canonical run workspace target. Worker calls inherit the parent target when omitted (a Git parent contributes its repository and branch, not its pinned commit or tag, so the child sees commits the parent has pushed); standalone calls derive it from the selected environment: Local environments target the working directory folder, and clone-based environments require an attached GitHub checkout whose exact local HEAD is available from the canonical origin. Folder targets require a standalone or Local-worker filesystem context.",
+        "description": "Canonical run workspace target. Worker calls inherit the parent target when omitted (a Git parent contributes its repository and current execution branch from run state, not its original input branch or pinned commit/tag; changes must be pushed before creating the child); standalone stored-ID calls require an explicit target; standalone selector and inline calls derive it from the selected environment: Local environments target the working directory folder, and clone-based environments require an attached GitHub checkout whose exact local HEAD is available from the canonical origin. Folder targets require a standalone or Local-worker filesystem context.",
         "anyOf": [
             { "type": "null" },
             {
@@ -490,9 +490,8 @@ fn validate_workflow_source(
                     source.entrypoint
                 )));
             }
-            fabro_types::validate_workflow_path_collisions(source.files.keys())
+            fabro_types::validate_workflow_source_paths(source.files.keys())
                 .map_err(|err| ToolError::message(format!("inline workflow {err}")))?;
-            validate_inline_paths_distinct_ignoring_case(&source.files)?;
             let mut total_bytes = 0usize;
             for (path, content) in &source.files {
                 let bytes = content.len();
@@ -516,24 +515,6 @@ fn validate_workflow_source(
         }
         stored @ CreateRunWorkflowSource::Stored { .. } => Ok(stored),
     }
-}
-
-/// Inline files are staged on, and later checked out to, filesystems that may
-/// be case-insensitive, so two paths that differ only by case would silently
-/// overwrite each other there. Reject them up front with a clear message
-/// instead of surfacing a platform-dependent I/O error later.
-fn validate_inline_paths_distinct_ignoring_case(
-    files: &BTreeMap<WorkflowPath, String>,
-) -> ToolResult<()> {
-    let mut seen: HashMap<String, &WorkflowPath> = HashMap::with_capacity(files.len());
-    for path in files.keys() {
-        if let Some(existing) = seen.insert(path.as_str().to_lowercase(), path) {
-            return Err(ToolError::message(format!(
-                "inline workflow files `{existing}` and `{path}` differ only by case; workflow files must stay distinct on case-insensitive filesystems"
-            )));
-        }
-    }
-    Ok(())
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
@@ -917,9 +898,14 @@ mod tests {
 
         for (files, expected) in [
             (json!({ "a": "x", "a/b.md": "y" }), "paths collide"),
+            (json!({ "A": "x", "a/b.md": "y" }), "paths collide"),
+            (
+                json!({ "dir/File": "x", "DIR/file/child.md": "y" }),
+                "paths collide",
+            ),
             (
                 json!({ "main.fabro": "digraph W {}", "Prompt.md": "x", "prompt.md": "y" }),
-                "differ only by case",
+                "paths collide",
             ),
         ] {
             let entrypoint = files

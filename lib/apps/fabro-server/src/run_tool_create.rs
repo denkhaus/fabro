@@ -11,8 +11,8 @@ use fabro_manifest::{
 use fabro_tool::{
     CreateRunWorkflowSource, PreparedRunCreate, RunCreateAdapter, ValidatedCreateRunSpec,
 };
-use fabro_types::RunTarget;
 use fabro_types::settings::run::EnvironmentProvider;
+use fabro_types::{RunId, RunProjection, RunTarget};
 use tokio::{fs, task};
 
 #[derive(Clone, Debug)]
@@ -27,7 +27,7 @@ enum RunCreateMode {
     },
     Worker {
         provider:            EnvironmentProvider,
-        inherited_target:    Option<RunTarget>,
+        parent_run_id:       RunId,
         user_workflows_root: Option<PathBuf>,
     },
 }
@@ -45,13 +45,13 @@ impl ServerRunCreateAdapter {
     #[must_use]
     pub fn worker(
         provider: EnvironmentProvider,
-        inherited_target: Option<RunTarget>,
+        parent_run_id: RunId,
         user_workflows_root: Option<PathBuf>,
     ) -> Self {
         Self {
             mode: RunCreateMode::Worker {
                 provider,
-                inherited_target,
+                parent_run_id,
                 user_workflows_root,
             },
         }
@@ -119,19 +119,16 @@ impl ServerRunCreateAdapter {
         }
 
         match &self.mode {
-            RunCreateMode::Worker {
-                inherited_target: Some(target),
-                ..
-            } => Ok(ResolvedTarget {
-                target:   inherit_parent_target(target),
-                warnings: Vec::new(),
-            }),
-            RunCreateMode::Worker {
-                inherited_target: None,
-                ..
-            } => bail!(
-                "the parent run has no canonical target; send an explicit target for this child run"
-            ),
+            RunCreateMode::Worker { parent_run_id, .. } => {
+                let parent = client
+                    .get_run_state(parent_run_id)
+                    .await
+                    .context("could not retrieve the parent run's current execution state")?;
+                Ok(ResolvedTarget {
+                    target:   inherit_parent_target(&parent)?,
+                    warnings: Vec::new(),
+                })
+            }
             RunCreateMode::Standalone { .. } => {
                 // Standalone callers derive the target the same way `fabro run`
                 // does: from the selected environment's provider. Local
@@ -225,8 +222,14 @@ impl RunCreateAdapter for ServerRunCreateAdapter {
             CreateRunWorkflowSource::Stored {
                 workflow_version_id,
             } => {
-                // A stored version's config is not available locally, so
-                // derivation uses the checkout's own origin.
+                // Stored configuration is not available through the client
+                // API. Never substitute the caller's checkout for a workflow's
+                // configured repository merely because it was supplied by ID.
+                if matches!(self.mode, RunCreateMode::Standalone { .. }) && spec.target.is_none() {
+                    bail!(
+                        "standalone stored workflow sources require an explicit target; the stored workflow's repository configuration is not available for target derivation"
+                    );
+                }
                 let resolved_target = self.resolve_target(client, spec, cwd, None).await?;
                 return Ok(PreparedRunCreate {
                     workflow_version_id: *workflow_version_id,
@@ -263,23 +266,32 @@ struct ResolvedTarget {
     warnings: Vec<String>,
 }
 
-/// The target a child inherits when it omits its own. A parent's Git target
-/// is pinned to the commit admitted for the parent, and clone-based providers
-/// never fall back to branch HEAD, so carrying that pin forward would hide
-/// every commit the parent has since pushed from a child meant to review or
-/// continue that work. The child follows the parent's branch instead; the
-/// pinned commit and tag stay on the parent only. Folder and none targets are
-/// inherited as-is.
-fn inherit_parent_target(parent: &RunTarget) -> RunTarget {
-    match parent {
-        RunTarget::Git(git) => RunTarget::Git(fabro_types::GitRunTarget {
-            repo:   git.repo.clone(),
-            branch: git.branch.clone(),
-            tag:    None,
-            sha:    None,
-        }),
-        RunTarget::None {} | RunTarget::Folder { .. } => parent.clone(),
-    }
+/// Follow the parent's execution branch, not the branch it originally cloned.
+/// A missing execution branch must not silently substitute unrelated source
+/// content. When run branches are disabled, execution stays on the input
+/// branch.
+fn inherit_parent_target(parent: &RunProjection) -> Result<RunTarget> {
+    let target = parent.spec.target.as_ref().context(
+        "the parent run has no canonical target; send an explicit target for this child run",
+    )?;
+    Ok(match target {
+        RunTarget::Git(git) => {
+            let branch = if parent.spec.settings.run.run_branch.enabled {
+                parent.start.as_ref().and_then(|start| start.run_branch.as_ref()).context(
+                    "the parent run has no execution branch yet; send an explicit target for this child run"
+                )?
+            } else {
+                &git.branch
+            };
+            RunTarget::Git(fabro_types::GitRunTarget {
+                repo:   git.repo.clone(),
+                branch: branch.clone(),
+                tag:    None,
+                sha:    None,
+            })
+        }
+        RunTarget::None {} | RunTarget::Folder { .. } => target.clone(),
+    })
 }
 
 /// Collect an inline workflow from its supplied bytes. The entrypoint is an
@@ -450,7 +462,8 @@ mod tests {
             "target": { "kind": "none" },
             "start": false
         }));
-        let adapter = ServerRunCreateAdapter::worker(EnvironmentProvider::Docker, None, None);
+        let adapter =
+            ServerRunCreateAdapter::worker(EnvironmentProvider::Docker, RunId::new(), None);
 
         let prepared = adapter
             .prepare(&client, &spec, Path::new("/host/that-must-not-be-read"))
@@ -504,7 +517,8 @@ mod tests {
             },
             "target": { "kind": "none" }
         }));
-        let adapter = ServerRunCreateAdapter::worker(EnvironmentProvider::Docker, None, None);
+        let adapter =
+            ServerRunCreateAdapter::worker(EnvironmentProvider::Docker, RunId::new(), None);
 
         let prepared = adapter
             .prepare(&client, &spec, Path::new("/host/that-must-not-be-read"))
@@ -517,45 +531,170 @@ mod tests {
         assert_eq!(registered[0].entrypoint().as_str(), "review");
     }
 
-    #[tokio::test]
-    async fn workflow_version_stored_create_skips_registration_and_inherits_worker_branch() {
-        let client = no_proxy_client("http://127.0.0.1:9");
-        let workflow_version_id: WorkflowVersionId = fabro_types::BlobHash::new(b"stored").into();
-        let inherited = RunTarget::Git(GitRunTarget {
-            repo:   "fabro-sh/fabro".to_string(),
-            branch: "main".to_string(),
-            tag:    Some("v1.0.0".to_string()),
-            sha:    Some("0123456789abcdef0123456789abcdef01234567".to_string()),
-        });
-        let spec = validated_spec(&json!({
-            "workflow": {
-                "kind": "stored",
-                "workflow_version_id": workflow_version_id
-            }
-        }));
-        let adapter = ServerRunCreateAdapter::worker(
-            EnvironmentProvider::Docker,
-            Some(inherited.clone()),
-            None,
-        );
+    fn test_parent(target: Option<RunTarget>) -> RunProjection {
+        let mut spec = fabro_types::test_support::test_run_spec();
+        spec.target = target;
+        RunProjection::new(String::new(), spec, chrono::Utc::now())
+    }
 
-        let prepared = adapter
-            .prepare(&client, &spec, Path::new("/ignored"))
+    async fn mock_parent<'a>(server: &'a MockServer, parent: &RunProjection) -> httpmock::Mock<'a> {
+        let path = format!("/api/v1/runs/{}/state", parent.spec.id());
+        let body = serde_json::to_value(parent).unwrap();
+        server
+            .mock_async(move |when, then| {
+                when.method(GET).path(path);
+                then.status(200).json_body(body);
+            })
+            .await
+    }
+
+    #[tokio::test]
+    async fn workflow_version_child_checkout_contains_the_parents_pushed_work() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("parent");
+        let origin = temp.path().join("origin.git");
+        fs::create_dir(&workspace).await.unwrap();
+        run_git(temp.path(), &[
+            "init",
+            "--bare",
+            "--quiet",
+            origin.to_str().unwrap(),
+        ]);
+        run_git(&workspace, &["init", "--quiet", "--initial-branch", "main"]);
+        run_git(&workspace, &["config", "user.name", "Fabro Test"]);
+        run_git(&workspace, &["config", "user.email", "fabro@example.com"]);
+        fs::write(workspace.join("result.txt"), "original")
             .await
             .unwrap();
-
-        assert_eq!(prepared.workflow_version_id, workflow_version_id);
-        // The child follows the parent's branch so commits the parent pushed
-        // are visible; the parent's pinned commit and tag are not inherited.
-        assert_eq!(
-            prepared.target,
-            RunTarget::Git(GitRunTarget {
-                repo:   "fabro-sh/fabro".to_string(),
-                branch: "main".to_string(),
-                tag:    None,
-                sha:    None,
+        run_git(&workspace, &["add", "."]);
+        run_git(&workspace, &["commit", "--quiet", "-m", "initial"]);
+        run_git(&workspace, &[
+            "remote",
+            "add",
+            "origin",
+            origin.to_str().unwrap(),
+        ]);
+        run_git(&workspace, &["push", "--quiet", "origin", "main"]);
+        let base_sha = fabro_workflow::git::head_sha(&workspace).unwrap();
+        let mut parent = test_parent(Some(RunTarget::Git(GitRunTarget {
+            repo:   "acme/widgets".to_owned(),
+            branch: "main".to_owned(),
+            tag:    Some("v1.0.0".to_owned()),
+            sha:    Some(base_sha),
+        })));
+        // Construct the adapter before execution starts, exactly as the worker does.
+        let adapter =
+            ServerRunCreateAdapter::worker(EnvironmentProvider::Docker, parent.spec.id(), None);
+        let sandbox = fabro_sandbox::LocalSandbox::new(workspace.clone());
+        // Docker and Daytona use this same setup operation to create the run branch.
+        let git =
+            fabro_sandbox::setup_git_via_exec(&sandbox, &fabro_sandbox::GitSetupIntent::NewRun {
+                run_id: parent.spec.id().to_string(),
             })
+            .await
+            .unwrap();
+        parent.start = Some(fabro_types::StartRecord {
+            start_time: chrono::Utc::now(),
+            run_branch: Some(git.run_branch.clone()),
+            base_sha:   Some(git.base_sha),
+        });
+        fs::write(workspace.join("result.txt"), "parent implementation")
+            .await
+            .unwrap();
+        run_git(&workspace, &["add", "."]);
+        run_git(&workspace, &["commit", "--quiet", "-m", "implement"]);
+        run_git(&workspace, &["push", "--quiet", "origin", &git.run_branch]);
+        let server = MockServer::start_async().await;
+        let state_request = mock_parent(&server, &parent).await;
+        let client = no_proxy_client(&server.url(""));
+        let workflow_version_id: WorkflowVersionId = fabro_types::BlobHash::new(b"stored").into();
+        let spec = validated_spec(
+            &json!({ "workflow": { "kind": "stored", "workflow_version_id": workflow_version_id } }),
         );
+        let prepared = adapter
+            .prepare(&client, &spec, Path::new("/must-not-be-read"))
+            .await
+            .unwrap();
+        state_request.assert_calls_async(1).await;
+        assert_eq!(prepared.workflow_version_id, workflow_version_id);
+        let RunTarget::Git(target) = prepared.target else {
+            panic!("child should have a Git target")
+        };
+        assert_eq!(target.repo, "acme/widgets");
+        assert_eq!(target.sha, None);
+        assert_eq!(target.tag, None);
+        let child = temp.path().join("child");
+        run_git(temp.path(), &[
+            "clone",
+            "--quiet",
+            "--branch",
+            &target.branch,
+            origin.to_str().unwrap(),
+            child.to_str().unwrap(),
+        ]);
+        assert_eq!(
+            fs::read_to_string(child.join("result.txt")).await.unwrap(),
+            "parent implementation"
+        );
+    }
+
+    #[test]
+    fn inherited_target_requires_execution_state_unless_run_branches_are_disabled() {
+        let mut parent = test_parent(Some(RunTarget::Git(GitRunTarget {
+            repo:   "acme/widgets".to_owned(),
+            branch: "main".to_owned(),
+            tag:    None,
+            sha:    None,
+        })));
+        assert!(
+            inherit_parent_target(&parent)
+                .unwrap_err()
+                .to_string()
+                .contains("no execution branch yet")
+        );
+        parent.spec.settings.run.run_branch.enabled = false;
+        assert_eq!(
+            inherit_parent_target(&parent).unwrap(),
+            parent.spec.target.clone().unwrap()
+        );
+        for target in [RunTarget::None {}, RunTarget::Folder {
+            path: "/shared/workspace".to_owned(),
+        }] {
+            parent.spec.target = Some(target.clone());
+            assert_eq!(inherit_parent_target(&parent).unwrap(), target);
+        }
+    }
+
+    #[tokio::test]
+    async fn workflow_version_standalone_stored_source_requires_target_without_reading_cwd() {
+        let client = no_proxy_client("http://127.0.0.1:9");
+        let adapter = ServerRunCreateAdapter::standalone(None);
+        let workflow_version_id: WorkflowVersionId =
+            fabro_types::BlobHash::new(b"stored with repository config").into();
+        let mut spec = validated_spec(
+            &json!({ "workflow": { "kind": "stored", "workflow_version_id": workflow_version_id } }),
+        );
+        let error = adapter
+            .prepare(&client, &spec, Path::new("/must-not-be-read"))
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("stored workflow sources require an explicit target")
+        );
+        spec.target = Some(RunTarget::Git(GitRunTarget {
+            repo:   "acme/upstream".to_owned(),
+            branch: "main".to_owned(),
+            tag:    None,
+            sha:    None,
+        }));
+        let prepared = adapter
+            .prepare(&client, &spec, Path::new("/must-not-be-read"))
+            .await
+            .unwrap();
+        assert_eq!(prepared.target, spec.target.unwrap());
+        assert_eq!(prepared.workflow_version_id, workflow_version_id);
     }
 
     #[tokio::test]
@@ -589,7 +728,8 @@ mod tests {
             "workflow": "demo",
             "target": { "kind": "none" }
         }));
-        let adapter = ServerRunCreateAdapter::worker(EnvironmentProvider::Local, None, None);
+        let adapter =
+            ServerRunCreateAdapter::worker(EnvironmentProvider::Local, RunId::new(), None);
 
         let prepared = adapter
             .prepare(&client, &spec, &operation_cwd)
@@ -622,7 +762,8 @@ mod tests {
         .await
         .unwrap();
         let client = no_proxy_client("http://127.0.0.1:9");
-        let adapter = ServerRunCreateAdapter::worker(EnvironmentProvider::Daytona, None, None);
+        let adapter =
+            ServerRunCreateAdapter::worker(EnvironmentProvider::Daytona, RunId::new(), None);
 
         let selector = validated_spec(&json!({
             "workflow": "same-name.fabro",
@@ -667,7 +808,7 @@ mod tests {
         }));
 
         for provider in [EnvironmentProvider::Docker, EnvironmentProvider::Daytona] {
-            let adapter = ServerRunCreateAdapter::worker(provider, None, None);
+            let adapter = ServerRunCreateAdapter::worker(provider, RunId::new(), None);
             let error = adapter
                 .prepare(&client, &spec, Path::new("/ignored"))
                 .await
@@ -696,7 +837,8 @@ mod tests {
             },
             "target": target
         }));
-        let adapter = ServerRunCreateAdapter::worker(EnvironmentProvider::Local, None, None);
+        let adapter =
+            ServerRunCreateAdapter::worker(EnvironmentProvider::Local, RunId::new(), None);
 
         let prepared = adapter
             .prepare(&client, &spec, Path::new("/ignored"))
@@ -721,7 +863,8 @@ mod tests {
             })
             .await;
         let client = Arc::new(no_proxy_client(&server.url("")));
-        let adapter = ServerRunCreateAdapter::worker(EnvironmentProvider::Docker, None, None);
+        let adapter =
+            ServerRunCreateAdapter::worker(EnvironmentProvider::Docker, RunId::new(), None);
         let backend =
             ClientBackend::new(Arc::clone(&client)).with_run_create_adapter(Arc::new(adapter));
         let spec = validated_spec(&json!({
@@ -758,8 +901,12 @@ mod tests {
 
     #[tokio::test]
     async fn workflow_version_target_failure_precedes_registration() {
-        let client = no_proxy_client("http://127.0.0.1:9");
-        let adapter = ServerRunCreateAdapter::worker(EnvironmentProvider::Docker, None, None);
+        let parent = test_parent(None);
+        let server = MockServer::start_async().await;
+        let state_request = mock_parent(&server, &parent).await;
+        let client = no_proxy_client(&server.url(""));
+        let adapter =
+            ServerRunCreateAdapter::worker(EnvironmentProvider::Docker, parent.spec.id(), None);
         let spec = validated_spec(&json!({
             "workflow": {
                 "kind": "inline",
@@ -775,6 +922,7 @@ mod tests {
             .await
             .expect_err("missing inherited target should fail before registration");
 
+        state_request.assert_calls_async(1).await;
         assert!(
             error
                 .to_string()
@@ -799,11 +947,8 @@ mod tests {
             "target": { "kind": "none" },
             "goal_file": "goal.md"
         }));
-        let inherited = RunTarget::Folder {
-            path: "/parent/workspace".to_string(),
-        };
         let adapter =
-            ServerRunCreateAdapter::worker(EnvironmentProvider::Local, Some(inherited), None);
+            ServerRunCreateAdapter::worker(EnvironmentProvider::Local, RunId::new(), None);
 
         let prepared = adapter.prepare(&client, &spec, temp.path()).await.unwrap();
 
@@ -922,22 +1067,25 @@ mod tests {
             .await
             .unwrap();
 
-        let workflow_version_id: WorkflowVersionId = fabro_types::BlobHash::new(b"stored").into();
         let spec = validated_spec(&json!({
             "workflow": {
-                "kind": "stored",
-                "workflow_version_id": workflow_version_id
+                "kind": "inline", "entrypoint": "main.fabro", "files": {
+                    "main.fabro": "digraph W { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }"
+                }
             },
             "environment": "sandbox"
         }));
         let server = MockServer::start_async().await;
         let environment = mock_environment(&server, "sandbox", "daytona").await;
+        let registration =
+            dynamic_version_registration_mock(&server, Arc::new(Mutex::new(Vec::new()))).await;
         let client = no_proxy_client(&server.url(""));
         let adapter = ServerRunCreateAdapter::standalone(None);
 
         let prepared = adapter.prepare(&client, &spec, &workspace).await.unwrap();
 
         environment.assert_calls_async(1).await;
+        registration.assert_calls_async(1).await;
         let RunTarget::Git(target) = prepared.target else {
             panic!("standalone attached Git checkout should derive a Git target");
         };
@@ -957,20 +1105,21 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let workspace = temp.path().join("plain");
         fs::create_dir(&workspace).await.unwrap();
-        let workflow_version_id: WorkflowVersionId = fabro_types::BlobHash::new(b"stored").into();
         let spec = validated_spec(&json!({
-            "workflow": {
-                "kind": "stored",
-                "workflow_version_id": workflow_version_id
-            },
+            "workflow": { "kind": "inline", "entrypoint": "main.fabro", "files": {
+                "main.fabro": "digraph W { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }"
+            }},
             "environment": "local"
         }));
         let server = MockServer::start_async().await;
         mock_environment(&server, "local", "local").await;
+        let registration =
+            dynamic_version_registration_mock(&server, Arc::new(Mutex::new(Vec::new()))).await;
         let client = no_proxy_client(&server.url(""));
         let adapter = ServerRunCreateAdapter::standalone(None);
 
         let prepared = adapter.prepare(&client, &spec, &workspace).await.unwrap();
+        registration.assert_calls_async(1).await;
 
         let expected = workspace.canonicalize().unwrap();
         assert_eq!(prepared.target, RunTarget::Folder {
@@ -984,19 +1133,22 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let workspace = temp.path().join("plain");
         fs::create_dir(&workspace).await.unwrap();
-        let workflow_version_id: WorkflowVersionId = fabro_types::BlobHash::new(b"stored").into();
         let spec = validated_spec(&json!({
             "workflow": {
-                "kind": "stored",
-                "workflow_version_id": workflow_version_id
+                "kind": "inline", "entrypoint": "main.fabro", "files": {
+                    "main.fabro": "digraph W { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }"
+                }
             }
         }));
         let server = MockServer::start_async().await;
         mock_environment(&server, "default", "docker").await;
+        let registration =
+            dynamic_version_registration_mock(&server, Arc::new(Mutex::new(Vec::new()))).await;
         let client = no_proxy_client(&server.url(""));
         let adapter = ServerRunCreateAdapter::standalone(None);
 
         let prepared = adapter.prepare(&client, &spec, &workspace).await.unwrap();
+        registration.assert_calls_async(1).await;
 
         assert_eq!(prepared.target, RunTarget::None {});
     }
