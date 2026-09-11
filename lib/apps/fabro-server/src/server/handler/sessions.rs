@@ -1960,3 +1960,288 @@ enabled = true
         assert!(input.ends_with("User question:\nWhy did it fail?"));
     }
 }
+
+/// Ask Fabro across turns and processes: a second turn resumes the stored
+/// pebble record, and a record whose cursor fell behind the run's event log
+/// (a crash between the two writes) is moved past the log before it answers.
+#[cfg(test)]
+mod resume_tests {
+    use std::sync::Arc;
+
+    use axum::body::{Body, to_bytes};
+    use axum::http::{Request, StatusCode};
+    use fabro_config::daemon::ServerDaemon;
+    use fabro_config::{RunEnvironmentLayer, RunLayer, Storage};
+    use fabro_static::EnvVars;
+    use fabro_test::{TwinScenario, TwinScenarios, twin_openai};
+    use fabro_types::{RunId, SessionId};
+    use tower::ServiceExt;
+
+    use crate::server::{AppState, spawn_scheduler};
+    use crate::test_support::{
+        TestAppStateBuilder, build_test_router, default_test_server_settings,
+        llm_overlay_with_provider_base_url,
+    };
+
+    const MODEL: &str = "gpt-5.4-mini";
+    const DOT: &str = r#"digraph Test {
+    graph [goal="Test"]
+    start [shape=Mdiamond]
+    exit  [shape=Msquare]
+    start -> exit
+}"#;
+
+    fn api(path: &str) -> String {
+        format!("/api/v1{path}")
+    }
+
+    async fn json_response(
+        app: &axum::Router,
+        request: Request<Body>,
+        expected: StatusCode,
+    ) -> serde_json::Value {
+        let response = app.clone().oneshot(request).await.unwrap();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(
+            status,
+            expected,
+            "unexpected status, body {}",
+            String::from_utf8_lossy(&bytes)
+        );
+        if bytes.is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::from_slice(&bytes).expect("response should be JSON")
+        }
+    }
+
+    fn post_json(path: &str, body: &serde_json::Value) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri(api(path))
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    }
+
+    /// A server whose `openai` provider is the twin under `namespace`, whose
+    /// runs execute in place, and whose own address Ask Fabro can resolve.
+    fn twin_backed_state(base_url: String, namespace: &str) -> Arc<AppState> {
+        let api_key = namespace.to_string();
+        let state = TestAppStateBuilder::new()
+            .runtime_settings(default_test_server_settings(), RunLayer {
+                environment: Some(RunEnvironmentLayer {
+                    id: Some("local".to_string()),
+                    ..RunEnvironmentLayer::default()
+                }),
+                ..RunLayer::default()
+            })
+            .max_concurrent_runs(2)
+            // A registry factory runs the dry run in this process, so no
+            // worker executable is needed.
+            .registry_factory(|interviewer| {
+                fabro_workflow::handler::default_registry(interviewer, || None)
+            })
+            .llm_overlay(llm_overlay_with_provider_base_url("openai", base_url))
+            .vault_entries([(EnvVars::OPENAI_API_KEY, namespace.to_string())])
+            .env_lookup(move |name| (name == EnvVars::OPENAI_API_KEY).then(|| api_key.clone()))
+            .build();
+        let runtime_directory = Storage::new(state.server_storage_dir()).runtime_directory();
+        ServerDaemon::new(
+            std::process::id(),
+            fabro_config::bind::Bind::Tcp("127.0.0.1:32277".parse().unwrap()),
+            runtime_directory.log_path(),
+        )
+        .write(&runtime_directory)
+        .expect("test server record should be written");
+        state
+    }
+
+    /// A completed local dry run, so the session has a sandbox to reconnect.
+    async fn completed_run(app: &axum::Router) -> RunId {
+        let manifest = serde_json::json!({
+            "version": 1,
+            "cwd": std::env::temp_dir().display().to_string(),
+            "args": { "dry_run": true },
+            "target": { "path": "workflow.fabro" },
+            "workflows": { "workflow.fabro": { "source": DOT, "files": {} } },
+        });
+        let created = json_response(app, post_json("/runs", &manifest), StatusCode::CREATED).await;
+        let run_id = created["id"].as_str().unwrap().to_string();
+        let start = Request::builder()
+            .method("POST")
+            .uri(api(&format!("/runs/{run_id}/start")))
+            .body(Body::empty())
+            .unwrap();
+        json_response(app, start, StatusCode::OK).await;
+        for _ in 0..500 {
+            let get = Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{run_id}")))
+                .body(Body::empty())
+                .unwrap();
+            let run = json_response(app, get, StatusCode::OK).await;
+            match run["lifecycle"]["status"]["kind"].as_str() {
+                Some("succeeded") => return run_id.parse().unwrap(),
+                Some("failed") => panic!("the dry run failed: {run}"),
+                _ => tokio::time::sleep(std::time::Duration::from_millis(10)).await,
+            }
+        }
+        panic!("run {run_id} did not complete");
+    }
+
+    /// Submits one turn and returns the streamed session events.
+    async fn turn(
+        app: &axum::Router,
+        session_id: SessionId,
+        input: &str,
+    ) -> Vec<serde_json::Value> {
+        let response = app
+            .clone()
+            .oneshot(post_json(
+                &format!("/sessions/{session_id}/turns"),
+                &serde_json::json!({ "input": input }),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        let events: Vec<serde_json::Value> = body
+            .lines()
+            .filter_map(|line| line.strip_prefix("data: "))
+            .map(|data| serde_json::from_str(data).unwrap())
+            .collect();
+        assert!(
+            events
+                .iter()
+                .any(|event| event["event"] == "run.session.turn.succeeded"),
+            "the turn should succeed: {events:#?}"
+        );
+        events
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_resumed_session_continues_its_conversation_past_the_event_log() {
+        let twin = twin_openai().await;
+        let namespace = format!("{}::{}", module_path!(), line!());
+        TwinScenarios::new(namespace.clone())
+            .scenario(
+                TwinScenario::responses(MODEL)
+                    .input_contains("First question")
+                    .text("First answer"),
+            )
+            .scenario(
+                TwinScenario::responses(MODEL)
+                    .input_contains("Second question")
+                    .text("Second answer"),
+            )
+            .load(twin)
+            .await;
+        let state = twin_backed_state(twin.base_url.clone(), &namespace);
+        spawn_scheduler(Arc::clone(&state));
+        let app = build_test_router(Arc::clone(&state));
+        let run_id = completed_run(&app).await;
+
+        let created = json_response(
+            &app,
+            post_json(
+                &format!("/runs/{run_id}/sessions"),
+                &serde_json::json!({ "title": "Ask Fabro", "model": MODEL }),
+            ),
+            StatusCode::CREATED,
+        )
+        .await;
+        let session_id: SessionId = created["id"].as_str().unwrap().parse().unwrap();
+
+        turn(&app, session_id, "First question").await;
+        let after_first = state
+            .stores
+            .session_records
+            .get(session_id)
+            .await
+            .unwrap()
+            .expect("the first turn persists the record");
+        assert!(
+            after_first.record.last_event_seq > 0,
+            "the record carries the committed event cursor"
+        );
+
+        // The crash: the run's events were written, the record's cursor was
+        // not. Drop the agent so the next turn resumes from the stale record
+        // the way a new process would.
+        let mut stale = after_first.record.clone();
+        stale.last_event_seq = 0;
+        state
+            .stores
+            .session_records
+            .put(session_id, run_id, &stale, chrono::Utc::now())
+            .await
+            .unwrap();
+        state
+            .session_runtimes()
+            .load_or_create_runtime(session_id)
+            .clear_agent()
+            .await;
+        let log_head_before_resume = state
+            .store_ref()
+            .open_run_reader(&run_id)
+            .await
+            .unwrap()
+            .last_event_seq()
+            .await
+            .unwrap()
+            .expect("the run has events");
+
+        turn(&app, session_id, "Second question").await;
+
+        let after_second = state
+            .stores
+            .session_records
+            .get(session_id)
+            .await
+            .unwrap()
+            .expect("the second turn persists the record");
+        assert!(
+            after_second.record.last_event_seq > u64::from(log_head_before_resume),
+            "the resumed session numbers past the log head {log_head_before_resume}, got {}",
+            after_second.record.last_event_seq
+        );
+        assert!(
+            after_second.record.last_event_seq > after_first.record.last_event_seq,
+            "the cursor only moves forward"
+        );
+        assert_eq!(
+            after_second.record.messages.len(),
+            2 * after_first.record.messages.len(),
+            "the record holds both turns"
+        );
+
+        // The run's title generator also calls the model; the turns are the
+        // streamed requests. The twin logs the user side of the input, so the
+        // resumed turn shows as carrying the first question ahead of the
+        // second.
+        let logs = twin.request_logs(&namespace).await;
+        let turns: Vec<&str> = logs["requests"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|request| request["stream"] == true)
+            .map(|request| request["input_text"].as_str().unwrap_or_default())
+            .collect();
+        assert_eq!(turns.len(), 2, "one model call per turn: {logs}");
+        assert!(
+            !turns[0].contains("Second question"),
+            "the first turn knows nothing of the second, got {}",
+            turns[0]
+        );
+        let first_at = turns[1]
+            .find("User question: First question")
+            .expect("the resumed turn replays the first question");
+        let second_at = turns[1]
+            .find("User question: Second question")
+            .expect("the resumed turn ends with the second question");
+        assert!(first_at < second_at, "got {}", turns[1]);
+    }
+}

@@ -2340,6 +2340,7 @@ pub struct TwinToolCall {
     name:          String,
     arguments:     Value,
     raw_arguments: Option<String>,
+    custom:        bool,
 }
 
 impl TwinToolCall {
@@ -2349,6 +2350,7 @@ impl TwinToolCall {
             name: name.into(),
             arguments,
             raw_arguments: None,
+            custom: false,
         }
     }
 
@@ -2362,6 +2364,7 @@ impl TwinToolCall {
             name: name.into(),
             arguments,
             raw_arguments: Some(raw_arguments.into()),
+            custom: false,
         }
     }
 
@@ -2417,6 +2420,19 @@ impl TwinToolCall {
         Self::new_raw_arguments("apply_patch", Value::Null, patch.into())
     }
 
+    /// A free-form `custom_tool_call` on the Responses API, carrying `input`
+    /// as text rather than JSON arguments. This is how the codex harness's
+    /// `apply_patch` reaches the model.
+    #[must_use]
+    pub fn custom(name: impl Into<String>, input: impl Into<String>) -> Self {
+        Self {
+            name:          name.into(),
+            arguments:     Value::String(input.into()),
+            raw_arguments: None,
+            custom:        true,
+        }
+    }
+
     fn into_json(self) -> Value {
         let mut value = json!({
             "name": self.name,
@@ -2424,6 +2440,9 @@ impl TwinToolCall {
         });
         if let Some(raw_arguments) = self.raw_arguments {
             value["raw_arguments"] = Value::String(raw_arguments);
+        }
+        if self.custom {
+            value["kind"] = Value::String("custom".to_string());
         }
         value
     }
