@@ -7,7 +7,7 @@ use std::fmt::Write;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use fabro_llm::types::ToolDefinition;
+use lithos_llm::types::ToolDefinition;
 
 use crate::config::ToolSecrets;
 use crate::tool_registry::{RegisteredTool, ToolSource};
@@ -269,10 +269,10 @@ fn max_results_arg(args: &serde_json::Value) -> u64 {
 #[must_use]
 pub(crate) fn make_web_search_tool(backend: SearchBackend) -> RegisteredTool {
     RegisteredTool {
-        definition: ToolDefinition {
-            name:        WEB_SEARCH_TOOL_NAME.into(),
-            description: "Search the web when current external information is needed. Returns result titles, URLs, and descriptions; use web_fetch for a specific URL.".into(),
-            parameters:  serde_json::json!({
+        definition: ToolDefinition::function(
+            WEB_SEARCH_TOOL_NAME,
+            "Search the web when current external information is needed. Returns result titles, URLs, and descriptions; use web_fetch for a specific URL.",
+            serde_json::json!({
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Search query"},
@@ -280,7 +280,7 @@ pub(crate) fn make_web_search_tool(backend: SearchBackend) -> RegisteredTool {
                 },
                 "required": ["query"]
             }),
-        },
+        ),
         executor:   std::sync::Arc::new(move |args, _ctx| {
             let backend = backend.clone();
             Box::pin(async move {
@@ -310,7 +310,7 @@ mod tests {
     use crate::config::ToolSecrets;
     use crate::sandbox::Sandbox;
     use crate::test_support::MockSandbox;
-    use crate::tool_registry::ToolContext;
+    use crate::tool_registry::{ToolContext, ToolDefinitionExt};
 
     fn secrets(brave: Option<&str>, venice: Option<&str>) -> ToolSecrets {
         ToolSecrets {
@@ -405,7 +405,10 @@ mod tests {
     fn brave_and_venice_use_the_same_tool_schema() {
         let brave = make_web_search_tool(SearchBackend::brave("key".into()));
         let venice = make_web_search_tool(SearchBackend::venice("key".into()));
-        assert_eq!(brave.definition.parameters, venice.definition.parameters);
+        assert_eq!(
+            brave.definition.parameters(),
+            venice.definition.parameters()
+        );
     }
 
     #[tokio::test]

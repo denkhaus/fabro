@@ -10,8 +10,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::time::Duration as StdDuration;
 
-use fabro_model::reasoning::ReasoningEffort;
 use fabro_util::shell;
+use lithos_llm::types::ReasoningEffort;
 use serde::de::{self, Deserializer};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};

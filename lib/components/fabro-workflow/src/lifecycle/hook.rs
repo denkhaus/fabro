@@ -191,7 +191,6 @@ mod tests {
     use fabro_graphviz::graph::{AttrValue, Graph, Node};
     use fabro_hooks::HookSettings;
     use fabro_hooks::config::HookDefinition;
-    use fabro_model::Catalog;
     use fabro_types::fixtures;
     use fabro_util::shell::shell_quote;
 
@@ -239,7 +238,7 @@ mod tests {
         let runner = HookRunner::new(
             HookSettings { hooks: vec![hook] },
             fabro_auth::test_support::vault_only_credential_source(),
-            Arc::new(Catalog::from_builtin().expect("default catalog should build")),
+            Arc::new(fabro_llm::default_catalog()),
         );
         HookLifecycle {
             hook_runner:            Some(Arc::new(runner)),

@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use fabro_model::reasoning::ReasoningEffort;
+use fabro_types::ReasoningEffort;
 use fabro_types::settings::run::{
     ApprovalMode, HookEvent, McpHttpProtocol, MergeStrategy, RunMode,
 };

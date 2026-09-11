@@ -314,6 +314,30 @@ async fn merged_wait_reports_blocked_when_gate_stuck() {
             .header("content-type", "application/json")
             .body(open_pr_body("blocked"));
     });
+    // Evidence-based verdicts (fabro-ee5d): a `blocked` mergeable_state
+    // alone is a YOUNG gate — required checks still queued/running report
+    // blocked too. The stuck verdict needs a failing check conclusion on
+    // the head ref.
+    let checks_mock = github.mock(|when, then| {
+        when.method("GET")
+            .path("/repos/acme/widgets/commits/fabro/run/child/check-runs")
+            .header("authorization", "Bearer ghu_test");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(
+                json!({
+                    "total_count": 1,
+                    "check_runs": [
+                        {
+                            "name": "dogfood-gate",
+                            "status": "completed",
+                            "conclusion": "failure"
+                        }
+                    ]
+                })
+                .to_string(),
+            );
+    });
     let (app, store) = github_wait_app(github.base_url());
     let run_id = RunId::new();
     append_running_run_with_pr(&store, &run_id).await;
@@ -336,8 +360,67 @@ async fn merged_wait_reports_blocked_when_gate_stuck() {
     assert_eq!(body["reached"].as_str(), Some("blocked"));
     assert_eq!(body["pull_request"]["owner"].as_str(), Some("acme"));
     assert_eq!(body["pull_request"]["number"].as_u64(), Some(42));
-    // The sustained window needs two consecutive blocked polls.
+    // The sustained window needs two consecutive blocked polls with
+    // failing-check evidence.
     assert!(pr_mock.calls_async().await >= 2);
+    assert!(checks_mock.calls_async().await >= 2);
+}
+
+/// fabro-ee5d: a `blocked` mergeable_state with checks still pending (no
+/// conclusion) is a YOUNG gate — the wait must NOT report `blocked`; it
+/// keeps polling and ends in the structured timeout (reached=timeout),
+/// which callers treat as re-wait.
+#[tokio::test]
+async fn merged_wait_treats_blocked_with_pending_checks_as_young() {
+    let github = MockServer::start();
+    github.mock(|when, then| {
+        when.method("GET")
+            .path("/repos/acme/widgets/pulls/42")
+            .header("authorization", "Bearer ghu_test");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(open_pr_body("blocked"));
+    });
+    github.mock(|when, then| {
+        when.method("GET")
+            .path("/repos/acme/widgets/commits/fabro/run/child/check-runs")
+            .header("authorization", "Bearer ghu_test");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(
+                json!({
+                    "total_count": 1,
+                    "check_runs": [
+                        {
+                            "name": "dogfood-gate",
+                            "status": "in_progress",
+                            "conclusion": null
+                        }
+                    ]
+                })
+                .to_string(),
+            );
+    });
+    let (app, store) = github_wait_app(github.base_url());
+    let run_id = RunId::new();
+    append_running_run_with_pr(&store, &run_id).await;
+
+    let req = Request::builder()
+        .method("GET")
+        .uri(api(&format!(
+            "/runs/{run_id}/wait?until=merged&timeout_ms=3000"
+        )))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    let body = response_json(
+        resp,
+        StatusCode::OK,
+        "GET /api/v1/runs/{id}/wait young blocked gate",
+    )
+    .await;
+
+    assert_eq!(body["reached"].as_str(), Some("timeout"));
 }
 
 /// A single transient blocked observation (GitHub still computing, then

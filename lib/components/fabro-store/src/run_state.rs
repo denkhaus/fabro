@@ -1504,8 +1504,8 @@ fn conclusion_from_completed(
     props: &RunCompletedProps,
     timestamp: DateTime<Utc>,
 ) -> Result<Conclusion> {
-    let (stages, total_retries) = billing_rollup::billing_rollup_from_projection(projection, None)
-        .conclusion_stages(projection);
+    let (stages, total_retries) =
+        billing_rollup::billing_rollup_from_projection(projection).conclusion_stages(projection);
     Ok(Conclusion {
         timestamp,
         status: StageOutcome::from_str(&props.status)
@@ -1529,8 +1529,8 @@ fn conclusion_from_failed(
     props: &RunFailedProps,
     timestamp: DateTime<Utc>,
 ) -> Conclusion {
-    let (stages, total_retries) = billing_rollup::billing_rollup_from_projection(projection, None)
-        .conclusion_stages(projection);
+    let (stages, total_retries) =
+        billing_rollup::billing_rollup_from_projection(projection).conclusion_stages(projection);
     Conclusion {
         timestamp,
         status: StageOutcome::Failed {
@@ -1702,14 +1702,15 @@ mod tests {
         BilledTokenCounts, BlobHash, BlockedReason, Checkpoint, CheckpointRecord,
         CommandTermination, EventBody, FailureCategory, FailureDetail, FailureReason, Graph,
         McpServerStatus, Node, Outcome, ParallelBranchId, PendingReason, PermissionLevel,
-        PullRequestCreationStatus, PullRequestLink, QuestionType, ReasoningEffort,
-        RunApprovalState, RunBillingSummary, RunControlAction, RunDiff, RunEvent, RunSize, RunSpec,
-        RunStatus, Speed, StageContextWindowBreakdownItem, StageContextWindowCategory,
-        StageContextWindowCountMethod, StageContextWindowProjection, StageContextWindowStaleness,
-        StageContextWindowWarning, StageHandler, StageModelUsage, StageOutcome, StageState,
-        StageTiming, SubAgentStatus, SuccessReason, WorkflowSettings, first_event_seq, fixtures,
-        test_support,
+        PullRequestCreationStatus, PullRequestLink, QuestionType, RunApprovalState,
+        RunBillingSummary, RunControlAction, RunDiff, RunEvent, RunSize, RunSpec, RunStatus,
+        StageContextWindowBreakdownItem, StageContextWindowCategory, StageContextWindowCountMethod,
+        StageContextWindowProjection, StageContextWindowStaleness, StageContextWindowWarning,
+        StageHandler, StageModelUsage, StageOutcome, StageState, StageTiming, SubAgentStatus,
+        SuccessReason, WorkflowSettings, first_event_seq, fixtures, test_support,
     };
+    use lithos_llm::catalog::{ModelId, ProviderId};
+    use lithos_llm::types::{ReasoningEffort, Speed};
     use serde_json::json;
 
     use super::{RunProjection, RunProjectionReducer, build_summary};
@@ -1724,9 +1725,8 @@ mod tests {
             AgentLlmFirstOutputProps, AgentLlmRetryProps, AgentLlmStartedProps,
             AgentToolCompletedProps, AgentToolStartedProps,
         };
-        use fabro_types::{
-            LlmOutputKind, LlmRetryPhase, ModelRef, Speed, StageOutcome, StageProjection,
-        };
+        use fabro_types::{LlmOutputKind, LlmRetryPhase, ModelRef, StageOutcome, StageProjection};
+        use lithos_llm::types::Speed;
 
         use super::*;
 
@@ -1754,11 +1754,11 @@ mod tests {
 
         fn llm_started() -> EventBody {
             EventBody::AgentLlmStarted(AgentLlmStartedProps {
-                requested_model: ModelRef {
-                    provider: "anthropic".parse().unwrap(),
-                    model_id: "claude-fable-5".into(),
-                    speed:    Some(Speed::Fast),
-                },
+                requested_model: ModelRef::new(
+                    ProviderId::new("anthropic"),
+                    ModelId::new("claude-fable-5"),
+                )
+                .with_speed(Some(Speed::Fast)),
                 visit:           1,
             })
         }
@@ -2266,18 +2266,10 @@ mod tests {
 
     fn test_usage(model_id: &str, input_tokens: i64, output_tokens: i64) -> BilledModelUsage {
         serde_json::from_value(json!({
-            "input": {
-                "usage": {
-                    "model": {
-                        "provider": "openai",
-                        "model_id": model_id
-                    },
-                    "tokens": {
-                        "input_tokens": input_tokens,
-                        "output_tokens": output_tokens
-                    }
-                },
-                "facts": { "algorithm": "openai" }
+            "model": { "provider": "openai", "model_id": model_id },
+            "tokens": {
+                "input": input_tokens,
+                "output": output_tokens
             },
             "total_usd_micros": input_tokens + output_tokens
         }))
@@ -5342,21 +5334,13 @@ mod tests {
 
     fn billed_usage() -> BilledModelUsage {
         serde_json::from_value(json!({
-            "input": {
-                "usage": {
-                    "model": {
-                        "provider": "openai",
-                        "model_id": "gpt-test"
-                    },
-                    "tokens": {
-                        "input_tokens": 10,
-                        "output_tokens": 5,
-                        "reasoning_tokens": 2,
-                        "cache_read_tokens": 3,
-                        "cache_write_tokens": 4
-                    }
-                },
-                "facts": { "algorithm": "openai" }
+            "model": { "provider": "openai", "model_id": "gpt-test" },
+            "tokens": {
+                "input": 10,
+                "output": 5,
+                "reasoning": 2,
+                "cache_read": 3,
+                "cache_write": 4
             },
             "total_usd_micros": 123
         }))
@@ -7535,9 +7519,8 @@ mod tests {
         use fabro_types::run_event::{
             AgentErrorProps, AgentLlmFirstOutputProps, AgentLlmRetryProps, AgentLlmStartedProps,
         };
-        use fabro_types::{
-            LlmOutputKind, LlmRetryPhase, ModelRef, Speed, StageInferenceProjection,
-        };
+        use fabro_types::{LlmOutputKind, LlmRetryPhase, ModelRef, StageInferenceProjection};
+        use lithos_llm::types::Speed;
 
         use super::*;
 
@@ -7576,11 +7559,11 @@ mod tests {
 
         fn started() -> EventBody {
             EventBody::AgentLlmStarted(AgentLlmStartedProps {
-                requested_model: ModelRef {
-                    provider: "anthropic".parse().unwrap(),
-                    model_id: "claude-fable-5".into(),
-                    speed:    Some(Speed::Fast),
-                },
+                requested_model: ModelRef::new(
+                    ProviderId::new("anthropic"),
+                    ModelId::new("claude-fable-5"),
+                )
+                .with_speed(Some(Speed::Fast)),
                 visit:           1,
             })
         }

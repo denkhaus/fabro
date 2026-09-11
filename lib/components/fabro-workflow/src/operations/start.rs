@@ -4,11 +4,12 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use fabro_auth::{CredentialSource, VaultCredentialSource};
+use fabro_auth::VaultCredentialSource;
 use fabro_interview::{AutoApproveInterviewer, Interviewer};
-use fabro_llm::client::Client as LlmClient;
+use fabro_llm::credentials::readiness;
+use fabro_llm::lithos_catalog::Catalog;
+use fabro_llm::selection::resolve_selection;
 use fabro_mcp::config::McpServerSettings;
-use fabro_model::{Catalog, ProviderId};
 use fabro_sandbox::daytona::DaytonaConfig;
 use fabro_sandbox::from_environment::{
     daytona_config_from_environment, docker_config_from_environment_with_secrets,
@@ -30,6 +31,7 @@ use fabro_types::{
 };
 use fabro_util::error::collect_chain;
 use fabro_vault::Vault;
+use lithos_llm::catalog::ProviderId;
 use tokio::runtime::Handle;
 use tokio::sync::RwLock as AsyncRwLock;
 use tokio::{fs, time};
@@ -748,19 +750,8 @@ async fn configured_providers_for_start(
     vault: &Arc<AsyncRwLock<Vault>>,
     catalog: Arc<Catalog>,
 ) -> Vec<ProviderId> {
-    let source: Arc<dyn CredentialSource> = Arc::new(VaultCredentialSource::with_env_lookup(
-        Arc::clone(vault),
-        process_env_var,
-    ));
-    match LlmClient::from_source_report(source.as_ref(), catalog).await {
-        Ok(report) => report
-            .client
-            .provider_names()
-            .into_iter()
-            .map(ProviderId::new)
-            .collect(),
-        Err(_) => Vec::new(),
-    }
+    let source = VaultCredentialSource::with_env_lookup(Arc::clone(vault), process_env_var);
+    readiness(catalog.enabled_providers(), &source).await.ready
 }
 
 fn git_checkpoint_options_from_start(
@@ -851,17 +842,14 @@ fn resolve_pr_model(
     };
     let eligible = configured.iter().cloned().collect::<HashSet<_>>();
     let resolved_model = match model_ref.resolve(catalog) {
-        Ok(ResolvedModelRef::Model { provider, selector }) => catalog
-            .resolve_selection(
-                Some(selector.as_str()),
-                provider
-                    .as_deref()
-                    .map(fabro_model::ProviderId::new)
-                    .as_ref(),
-                &eligible,
-            )
-            .ok()
-            .map(|selected| selected.model),
+        Ok(ResolvedModelRef::Model { provider, selector }) => resolve_selection(
+            catalog,
+            Some(selector.as_str()),
+            provider.as_deref().map(ProviderId::new).as_ref(),
+            &eligible,
+        )
+        .ok()
+        .map(|selected| selected.model),
         Ok(ResolvedModelRef::Provider(_)) | Err(_) => {
             // A bare provider token or an ambiguous ref is not a concrete PR
             // model; the run model is the deterministic fallback.
@@ -1377,6 +1365,7 @@ mod tests {
         fixtures, test_support,
     };
     use fabro_vault::SecretType;
+    use lithos_llm::catalog::builtin;
     use object_store::memory::InMemory;
 
     use super::*;
@@ -1495,73 +1484,32 @@ mod tests {
     }
 
     fn test_catalog() -> Arc<Catalog> {
-        Arc::new(Catalog::from_builtin().expect("default catalog should build"))
+        Arc::new(fabro_llm::test_support::test_catalog())
     }
 
     fn test_provider_ids() -> Vec<ProviderId> {
-        Catalog::builtin().all_provider_ids().into_iter().collect()
+        fabro_llm::test_support::test_catalog()
+            .enabled_provider_ids()
+            .into_iter()
+            .collect()
     }
 
+    /// OpenAI and OpenRouter both offering GPT-5.6 Sol as their default, so a
+    /// portable selector resolves to whichever provider is ready.
     fn portable_model_catalog() -> Catalog {
-        let settings: fabro_model::catalog::LlmCatalogSettings = toml::from_str(
+        fabro_llm::test_support::test_catalog_with_overlay(
             r#"
-[providers.openai]
-display_name = "OpenAI"
-adapter = "openai"
-agent_profile = "openai"
-priority = 90
-
-[providers.openai.models."gpt-5.6-sol"]
-display_name = "GPT-5.6 Sol"
-family = "gpt-5"
-aliases = ["gpt-56-sol"]
-default = true
-
-[providers.openai.models."gpt-5.6-sol".limits]
-context_window = 1000
-
-[providers.openai.models."gpt-5.6-sol".features]
-tools = true
-vision = false
-reasoning = false
-
-[providers.openai.models."gpt-5.4-mini"]
-display_name = "GPT-5.4 Mini"
-family = "gpt-5"
-aliases = ["mini"]
-
-[providers.openai.models."gpt-5.4-mini".limits]
-context_window = 1000
-
-[providers.openai.models."gpt-5.4-mini".features]
-tools = true
-vision = false
-reasoning = false
-
-[providers.openrouter]
-display_name = "OpenRouter"
-adapter = "openai_compatible"
-agent_profile = "openai"
-priority = 25
-
-[providers.openrouter.models."gpt-5.6-sol"]
-api_id = "openai/gpt-5.6-sol"
-display_name = "GPT-5.6 Sol (via OpenRouter)"
-family = "gpt-5"
-aliases = ["gpt-56-sol"]
-default = true
-
-[providers.openrouter.models."gpt-5.6-sol".limits]
-context_window = 1000
-
-[providers.openrouter.models."gpt-5.6-sol".features]
-tools = true
-vision = false
-reasoning = false
-"#,
+            [providers.openai]
+            priority = 90
+            default_model = "gpt-5.6-sol"
+            
+            [providers.openrouter]
+            priority = 25
+            default_model = "gpt-5.6-sol"
+            enabled = true
+            
+            "#,
         )
-        .unwrap();
-        Catalog::from_settings(&settings).unwrap()
     }
 
     #[test]
@@ -1578,40 +1526,39 @@ reasoning = false
 
         assert!(matches!(
             error,
-            Error::ModelSelection(fabro_model::ModelSelectionError::ProviderUnavailable {
+            Error::ModelSelection(fabro_llm::ModelSelectionError::ProviderUnavailable {
                 provider
-            }) if provider == ProviderId::openai()
+            }) if provider == builtin::openai()
         ));
     }
 
     #[test]
     fn resolve_start_llm_infers_provider_from_model_alias() {
-        let overrides: fabro_model::catalog::LlmCatalogSettings = toml::from_str(
+        let catalog = fabro_llm::test_support::test_catalog_with_overlay(
             r#"
-[providers.acme]
-adapter = "openai_compatible"
-agent_profile = "openai"
-base_url = "https://api.acme.test/v1"
-
-[models.acme-claude]
-provider = "acme"
-display_name = "Acme Claude"
-family = "claude"
-default = true
-agent_profile = "anthropic"
-aliases = ["ac"]
-
-[models.acme-claude.limits]
-context_window = 1000
-
-[models.acme-claude.features]
-tools = true
-vision = false
-reasoning = false
-"#,
-        )
-        .unwrap();
-        let catalog = Catalog::from_builtin_with_overrides(&overrides).unwrap();
+            [providers.acme]
+            display_name = "Acme"
+            adapter = "openai-compatible"
+            codec = "openai-chat"
+            base_url = "https://api.acme.test/v1"
+            auth = { type = "bearer" }
+            default_model = "acme-claude"
+            
+            [providers.acme.metadata.agent]
+            profile = "openai"
+            
+            [providers.acme.models.acme-claude]
+            display_name = "Acme Claude"
+            aliases = ["ac"]
+            api_model = "acme-claude"
+            limits = { context_tokens = 1000, max_output_tokens = 500 }
+            capabilities = { text = true, tools = true }
+            family = "claude"
+            
+            [providers.acme.models.acme-claude.metadata.agent]
+            profile = "anthropic"
+            "#,
+        );
         let mut settings = ResolvedRunSettings::default();
         settings.model.name = Some("ac".to_string());
 

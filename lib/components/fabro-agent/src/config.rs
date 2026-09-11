@@ -2,10 +2,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use fabro_llm::types::{ReasoningEffort, Speed};
+use fabro_llm::RetryPolicy;
+use fabro_llm::client::default_retry_policy;
 use fabro_mcp::config::McpServerSettings;
-use fabro_model::AgentProfileKind;
-use fabro_types::PermissionLevel;
+use fabro_types::{AgentProfileKind, PermissionLevel};
+use lithos_llm::types::{ReasoningEffort, Speed};
 
 use crate::question_tools::is_question_tool;
 use crate::sandbox::FsScope;
@@ -202,9 +203,10 @@ impl NativeToolOptions {
             AgentProfileKind::Kimi => 60_000,
             // Codex's `shell_command` documents a 10s default, which is
             // already fabro's, so GPT-5.6 budgets against the same number.
-            AgentProfileKind::OpenAi | AgentProfileKind::Gemini | AgentProfileKind::Gpt56 => {
-                defaults.default_command_timeout_ms
-            }
+            AgentProfileKind::OpenAi
+            | AgentProfileKind::Gemini
+            | AgentProfileKind::Gpt56
+            | AgentProfileKind::Gpt6 => defaults.default_command_timeout_ms,
         };
         Self {
             default_command_timeout_ms,
@@ -231,7 +233,11 @@ pub struct SessionOptions {
     pub tool_line_limits: HashMap<String, usize>,
     /// Override the provider's default max_tokens when set.
     /// Node-level attribute takes priority over the model catalog default.
-    pub max_tokens: Option<i64>,
+    pub max_tokens: Option<u32>,
+    /// Same-route retry policy for replaying a turn whose stream failed after
+    /// visible output was already shown. Retries before visible output are
+    /// the client's; this bounds the agent's own replays.
+    pub replay_retry_policy: RetryPolicy,
     pub enable_loop_detection: bool,
     pub loop_detection_window: usize,
     pub max_subagent_depth: usize,
@@ -270,6 +276,7 @@ impl std::fmt::Debug for SessionOptions {
         f.debug_struct("SessionOptions")
             .field("fs_scope", &self.fs_scope)
             .field("max_tokens", &self.max_tokens)
+            .field("replay_retry_policy", &self.replay_retry_policy)
             .field("reasoning_effort", &self.reasoning_effort)
             .field("speed", &self.speed)
             .field("tool_output_limits", &self.tool_output_limits)
@@ -307,6 +314,7 @@ impl Default for SessionOptions {
         Self {
             fs_scope: None,
             max_tokens: None,
+            replay_retry_policy: default_retry_policy(),
             reasoning_effort: None,
             speed: None,
             tool_output_limits: HashMap::new(),
