@@ -33,11 +33,12 @@ macOS note: if `cargo nextest run` fails with `Too many open files (os error 24)
 - Docker and Daytona are clone-based providers. When a run manifest has a GitHub origin, they clone it into the provider workspace. Present non-GitHub origins fail unless the provider has `skip_clone = true`; absent origins or `skip_clone = true` create an empty workspace without repository files. For an exact commit, the submitted branch names the working branch and the syntactically valid SHA is requested directly. No layer proves branch/SHA ancestry: a fetchable commit is checked out, an unavailable commit fails setup, and branch HEAD is never substituted.
 - The sandbox layer also accepts an optional exact commit for future admitted
   runs. An exact commit always requires a non-empty branch. The sandbox driver
-  performs the pin: Docker initializes an empty repository, fetches the SHA
-  directly at the requested depth, and attaches the admitted branch to it;
-  Daytona uses its official SDK clone with both `branch` and `commit_id` and
-  attaches the branch the same way, so the workspace reports the admitted
-  branch name. A successful clone has the pin checked out; the driver's
+  performs the pin the same way on every provider: it initializes an empty
+  repository, fetches the SHA directly at the requested depth, and attaches
+  the admitted branch to it, so the workspace reports the admitted branch
+  name. Daytona's native toolbox clone serves plain branch clones only; its
+  commit pin checks the branch head out first, so the driver does not use
+  it. A successful clone has the pin checked out; the driver's
   conformance suite verifies that on every provider, and fabro does not
   re-verify HEAD. Never fall back to a newer branch HEAD, and do not wire
   this capability directly from legacy `GitContext.sha`. The sandbox layer
