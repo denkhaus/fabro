@@ -236,17 +236,6 @@ impl<'de> Deserialize<'de> for WorkflowVersion {
     }
 }
 
-/// Deserialize a map while rejecting duplicate keys, which serde would
-/// otherwise silently collapse to the last value.
-pub fn deserialize_unique_map<'de, D, K, V>(deserializer: D) -> Result<BTreeMap<K, V>, D::Error>
-where
-    D: Deserializer<'de>,
-    K: Deserialize<'de> + Ord + fmt::Display,
-    V: Deserialize<'de>,
-{
-    UniqueBTreeMap::deserialize(deserializer).map(|map| map.0)
-}
-
 struct UniqueBTreeMap<K, V>(BTreeMap<K, V>);
 
 impl<'de, K, V> Deserialize<'de> for UniqueBTreeMap<K, V>

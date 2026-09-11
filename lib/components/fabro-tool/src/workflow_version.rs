@@ -21,8 +21,9 @@ pub struct FabroWorkflowVersionCreateParams {
     #[schemars(with = "String")]
     pub entrypoint: WorkflowPath,
     /// All local dependencies, keyed by package-relative path. Values are text
-    /// contents.
-    #[serde(deserialize_with = "fabro_types::deserialize_unique_map")]
+    /// contents. Tool arguments arrive as an already-parsed JSON value on
+    /// every production route, so duplicate keys have collapsed (last wins)
+    /// before this type sees them; there is no byte-level guard to add here.
     #[schemars(with = "BTreeMap<String, String>")]
     pub files:      BTreeMap<WorkflowPath, String>,
 }
@@ -127,12 +128,6 @@ mod tests {
     fn workflow_version_request_rejects_unknown_fields_and_invalid_paths() {
         let valid = json!({"entrypoint": "workflow", "files": {"workflow": "digraph W {}"}});
         validate(valid.clone()).unwrap();
-        assert!(
-            serde_json::from_str::<FabroWorkflowVersionCreateParams>(
-                r#"{"entrypoint":"workflow","files":{"workflow":"a","workflow":"b"}}"#
-            )
-            .is_err()
-        );
         for field in [
             "cwd",
             "url",
