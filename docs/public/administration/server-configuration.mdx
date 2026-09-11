@@ -181,9 +181,10 @@ The GitHub OAuth client ID still lives under `[server.integrations.github].clien
 
 ### `[server.sandbox.providers]` section
 
-Controls which sandbox providers the server may launch. Missing provider entries default to
-`enabled = true` for backward compatibility. Disabling a provider rejects new runs whose effective
-provider is disabled; dry-run Docker/Daytona runs use the local provider and are governed by
+Controls which sandbox providers the server may launch, keyed by provider kind. The bundled
+providers `local`, `docker`, and `daytona` run inside the server and default to `enabled = true`
+when their entry is missing. Disabling a provider rejects new runs whose effective provider is
+disabled; dry-run Docker/Daytona runs use the local provider and are governed by
 `server.sandbox.providers.local.enabled`.
 
 ```toml title="settings.toml"
@@ -196,6 +197,34 @@ enabled = true
 [server.sandbox.providers.daytona]
 enabled = true
 ```
+
+Any other key names a [sandbox-driver](https://github.com/lithoscomputer/sandbox-driver) plugin:
+an executable that speaks the sandbox-driver JSON-RPC protocol on stdin and stdout. The kind must
+be lowercase ASCII letters, digits, and interior hyphens. The plugin starts with a scrubbed
+environment: only `env` and the ambient variables listed in `inherit_env` reach it. Bundled
+providers reject these plugin keys.
+
+```toml title="settings.toml"
+[server.sandbox.providers.e2b]
+enabled = true
+path = "/opt/fabro/plugins/fabro-sandbox-e2b"   # default: `fabro-sandbox-<kind>` on PATH
+sha256 = "0123…cdef"                            # pin the executable; `dev = true` skips it
+args = []
+inherit_env = ["PATH"]
+
+[server.sandbox.providers.e2b.env]
+E2B_API_URL = "https://api.e2b.example"
+```
+
+| Key | Description | Default |
+|---|---|---|
+| `enabled` | Whether runs may select this provider | `true` |
+| `path` | Plugin executable path | `fabro-sandbox-<kind>` on `PATH` |
+| `sha256` | Pinned SHA-256 of the executable, hex | none |
+| `dev` | Allow launching without a checksum | `false` |
+| `args` | Arguments passed to the executable | `[]` |
+| `env` | Complete environment for the plugin, apart from `inherit_env` | `{}` |
+| `inherit_env` | Ambient variables forwarded from the server process | `[]` |
 
 ### `[server.slatedb]` section
 

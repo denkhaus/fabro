@@ -1,6 +1,3 @@
-#[cfg(feature = "docker")]
-pub mod docker_sandbox;
-
 pub mod agent_profile;
 pub mod apply_patch;
 pub mod cli;
@@ -38,14 +35,13 @@ pub use config::{
     NativeToolOptions, SessionOptions, ToolAccess, ToolAccessPolicy, ToolApprovalAdapter,
     ToolExposureMode, ToolHookCallback, ToolHookDecision, ToolSecrets,
 };
-#[cfg(feature = "docker")]
-pub use docker_sandbox::{DockerSandbox, DockerSandboxOptions};
 pub use error::{CompactionError, Error, InterruptReason, Result};
 pub use event::Emitter;
 pub use fabro_mcp::config::McpServerSettings;
+pub use fabro_sandbox::{CloneRequest, ProviderAccess, SandboxProviderKind, provider_sandbox};
 pub use fabro_types::SteeringMessage;
 pub use history::History;
-pub use local_sandbox::LocalSandbox;
+pub use local_sandbox::local_sandbox;
 pub use loop_detection::detect_loop;
 pub use memory::{MemoryDocument, discover_memory};
 pub use native_tool::{NativeTool, ToolVocabulary};
@@ -59,10 +55,10 @@ pub use question_tools::{
     OPENAI_REQUEST_USER_INPUT_TOOL, register_question_tools,
 };
 pub use sandbox::{
-    CommandOutputCallback, DirEntry, ExecResult, ExecStreamingRequest, ExecStreamingResult,
-    GrepOptions, OutputCaptureStats, RefreshOutcome, RemoteCredentialAction, Sandbox, SandboxEvent,
-    SandboxEventCallback, StderrCollector, StdioProcess, StdioProcessHandle, TokenProvenance,
-    TokenSnapshot, format_lines_numbered, shell_quote,
+    CaptureStats, DirEntry, DriverSpec, ExecControls, ExecResult, ExecResultExt, ExecSpec,
+    ExecStreamingResult, FileKind, GrepMatch, GrepOptions, OutputSink, OutputStream, RunSandbox,
+    SandboxFile, SandboxSource, StderrTail, StdioProcess, StdioProcessHandle, Termination,
+    TokenProvenance, TokenSnapshot, WalkOptions, command_termination, program_exit_code,
 };
 pub use session::{
     CompletionCoordinator, Session, SessionControlHandle, SessionInputTiming,
@@ -81,7 +77,9 @@ pub use tools::{
     WebFetchSummarizer, make_edit_file_tool, make_glob_tool, make_grep_tool, make_read_file_tool,
     make_shell_tool, make_shell_tool_with_options, make_write_file_tool, register_core_tools,
 };
-pub use truncation::{TruncationMode, truncate_lines, truncate_output, truncate_tool_output};
+pub use truncation::{
+    OutputCaptureStats, TruncationMode, truncate_lines, truncate_output, truncate_tool_output,
+};
 pub use types::{
     AgentEvent, McpToolSummary, MemoryFileSummary, Message, SessionEvent, SessionState,
     SkillActivationSource, SkillSummary,

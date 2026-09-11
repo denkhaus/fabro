@@ -10,7 +10,7 @@ use crate::config::NativeToolOptions;
 use crate::profiles::{
     self, BaseProfile, EmbeddedPrompt, ProfileDeps, impl_base_profile_accessors,
 };
-use crate::sandbox::Sandbox;
+use crate::sandbox::RunSandbox;
 use crate::skills::Skill;
 use crate::todo_tools::{
     make_task_create_tool, make_task_get_tool, make_task_list_tool, make_task_update_tool,
@@ -76,7 +76,7 @@ impl AgentProfile for AnthropicProfile {
 
     fn build_system_prompt(
         &self,
-        env: &dyn Sandbox,
+        env: &RunSandbox,
         env_context: &EnvContext,
         memory: &[String],
         user_instructions: Option<&str>,
@@ -139,7 +139,7 @@ mod tests {
     #[test]
     fn anthropic_system_prompt_contains_env_context() {
         let profile = AnthropicProfile::new("claude-sonnet-4-20250514");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains("You are Claude, an AI coding assistant made by Anthropic"));
         assert!(prompt.contains("<environment>"));
@@ -175,7 +175,7 @@ mod tests {
     #[test]
     fn anthropic_system_prompt_uses_claude_code_style_sections() {
         let profile = AnthropicProfile::new("claude-sonnet-4-20250514");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
 
         assert!(prompt.contains("# System"));
@@ -196,7 +196,7 @@ mod tests {
     #[test]
     fn anthropic_system_prompt_contains_communication_and_safety_guidance() {
         let profile = AnthropicProfile::new("claude-sonnet-4-20250514");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
 
         assert!(
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn anthropic_system_prompt_includes_subagent_guidance_only_when_registered() {
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let profile = AnthropicProfile::new("claude-sonnet-4-20250514");
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(!prompt.contains("Subagents are valuable for independent work"));
@@ -232,7 +232,7 @@ mod tests {
     #[test]
     fn anthropic_system_prompt_includes_memory() {
         let profile = AnthropicProfile::new("claude-sonnet-4-20250514");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let docs = vec!["# Project README".into(), "# CONTRIBUTING guide".into()];
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &docs, None, &[]);
         assert!(prompt.contains("# Project README"));
@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn anthropic_system_prompt_includes_env_context() {
         let profile = AnthropicProfile::new("claude-opus-4-6");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let ctx = EnvContext {
             git_branch:         Some("feature-branch".into()),
             is_git_repo:        true,
@@ -263,7 +263,7 @@ mod tests {
     #[test]
     fn anthropic_system_prompt_includes_user_instructions() {
         let profile = AnthropicProfile::new("claude-opus-4-6");
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let ctx = EnvContext::default();
         let prompt =
             profile.build_system_prompt(&env, &ctx, &[], Some("Always write tests first"), &[]);

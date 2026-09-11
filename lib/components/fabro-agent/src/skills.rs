@@ -5,7 +5,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::error::{Error, InterruptReason};
 use crate::native_tool::{NativeTool, ToolVocabulary};
-use crate::sandbox::Sandbox;
+use crate::sandbox::RunSandbox;
 use crate::tool_registry::{RegisteredTool, ToolSource};
 use crate::tools::required_str;
 use crate::types::{AgentEvent, SkillActivationSource};
@@ -299,7 +299,7 @@ pub fn default_skill_dirs(fabro_skills_dir: Option<&str>, git_root: Option<&str>
 }
 
 pub async fn discover_skills(
-    env: &dyn Sandbox,
+    env: &RunSandbox,
     dirs: &[String],
     cancel_token: &CancellationToken,
 ) -> Result<Vec<Skill>, Error> {
@@ -348,7 +348,6 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use super::*;
-    use crate::sandbox::Sandbox;
     use crate::test_support::MockSandbox;
     use crate::tool_registry::{ToolContext, ToolDefinitionExt};
 
@@ -542,9 +541,9 @@ name: trimmed
         );
         let env = MockSandbox {
             files,
-            glob_results: vec!["/skills/commit/SKILL.md".into()],
             ..Default::default()
-        };
+        }
+        .sandbox();
 
         let skills = discover_skills(&env, &["/skills".into()], &CancellationToken::new())
             .await
@@ -564,12 +563,9 @@ name: trimmed
         files.insert("/skills/bad/SKILL.md".into(), "no frontmatter here".into());
         let env = MockSandbox {
             files,
-            glob_results: vec![
-                "/skills/good/SKILL.md".into(),
-                "/skills/bad/SKILL.md".into(),
-            ],
             ..Default::default()
-        };
+        }
+        .sandbox();
 
         let skills = discover_skills(&env, &["/skills".into()], &CancellationToken::new())
             .await
@@ -580,7 +576,7 @@ name: trimmed
 
     #[tokio::test]
     async fn discover_empty_dirs() {
-        let env = MockSandbox::default();
+        let env = MockSandbox::default().sandbox();
         let skills = discover_skills(&env, &[], &CancellationToken::new())
             .await
             .unwrap();
@@ -604,12 +600,9 @@ name: trimmed
         // and glob returns both — the later dir overrides the earlier.
         let env = MockSandbox {
             files,
-            glob_results: vec![
-                "/global/commit/SKILL.md".into(),
-                "/project/commit/SKILL.md".into(),
-            ],
             ..Default::default()
-        };
+        }
+        .sandbox();
 
         // discover_skills iterates dirs in order; later dirs override earlier names
         let skills = discover_skills(
@@ -648,7 +641,7 @@ name: trimmed
         let skills = Arc::new(test_skills());
         let tool = make_use_skill_tool(skills);
 
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let args = serde_json::json!({"skill_name": "commit"});
         let ctx = ToolContext {
             env,
@@ -671,7 +664,7 @@ name: trimmed
         let skills = Arc::new(test_skills());
         let tool = make_use_skill_tool(skills);
 
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let args = serde_json::json!({"skill_name": "nonexistent"});
         let ctx = ToolContext {
             env,
@@ -692,7 +685,7 @@ name: trimmed
         let skills = Arc::new(test_skills());
         let tool = make_use_skill_tool(skills);
 
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let args = serde_json::json!({});
         let ctx = ToolContext {
             env,
@@ -712,7 +705,7 @@ name: trimmed
     async fn kimi_skill_schema_and_args_match_kimi_code() {
         let skills = Arc::new(test_skills());
         let tool = make_use_skill_tool_for_vocabulary(skills, ToolVocabulary::KimiCode);
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let ctx = ToolContext {
             env,
             cancel: CancellationToken::new(),
@@ -755,7 +748,7 @@ name: trimmed
         let result = (tool.executor)(
             serde_json::json!({"skill": "commit", "args": "only staged files"}),
             ToolContext {
-                env:                 Arc::new(MockSandbox::default()),
+                env:                 MockSandbox::default().sandbox(),
                 cancel:              CancellationToken::new(),
                 tool_env_provider:   None,
                 session_id:          None,

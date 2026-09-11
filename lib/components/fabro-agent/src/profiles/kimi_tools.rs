@@ -27,11 +27,12 @@ use serde_json::Value;
 use strum::EnumString;
 
 use crate::native_tool::NativeTool;
-use crate::sandbox::{GrepOptions, format_lines_numbered};
+use crate::sandbox::{ExecResultExt, GrepOptions, Termination};
 use crate::tool_registry::{RegisteredTool, ToolSource};
 use crate::tools::{
     DEFAULT_READ_LINES, emit_shell_process_completed, execute_grep, execute_shell_command,
-    grep_result_path, make_edit_file_tool, optional_usize_arg, required_str, retain_shell_output,
+    format_lines_numbered, grep_result_path, make_edit_file_tool, optional_usize_arg, required_str,
+    retain_shell_output,
 };
 
 const DEFAULT_GREP_RESULTS: usize = 250;
@@ -120,25 +121,27 @@ explicitly asked. Never run commands requiring superuser privileges unless expli
                 let result = &streaming.result;
 
                 let mut out = String::new();
-                if result.is_timed_out() {
-                    out.push_str("Command timed out.\n");
-                } else if result.is_cancelled() {
-                    out.push_str("Command cancelled.\n");
+                match result.termination {
+                    Termination::TimedOut => out.push_str("Command timed out.\n"),
+                    Termination::Cancelled | Termination::Killed => {
+                        out.push_str("Command cancelled.\n");
+                    }
+                    _ => {}
                 }
-                out.push_str(&result.stdout);
+                out.push_str(&result.stdout_lossy());
                 if !result.stderr.is_empty() {
                     if !out.is_empty() {
                         out.push('\n');
                     }
-                    out.push_str(&result.stderr);
+                    out.push_str(&result.stderr_lossy());
                 }
-                if let Some(code) = result.exit_code.filter(|c| *c != 0) {
+                if let Some(code) = result.program_exit_code().filter(|c| *c != 0) {
                     if !out.is_empty() {
                         out.push('\n');
                     }
                     let _ = write!(out, "Command failed with exit code: {code}");
                 }
-                let is_success = result.is_success();
+                let is_success = result.success();
                 let out = retain_shell_output(&ctx, &streaming, out);
                 emit_shell_process_completed(&ctx, streaming).await;
                 if is_success { Ok(out) } else { Err(out) }
@@ -228,9 +231,16 @@ depends on an exact file, API, or output shape, inspect the final result before 
                     Some(offset) => {
                         let start = usize::try_from(offset)
                             .map_err(|_| "line_offset must fit in usize".to_string())?;
-                        ctx.env.read_file(path, Some(start), Some(n_lines)).await
+                        ctx.env
+                            .read_file_text(path)
+                            .await
+                            .map(|text| format_lines_numbered(&text, Some(start), Some(n_lines)))
                     }
-                    None => ctx.env.read_file(path, None, Some(n_lines)).await,
+                    None => ctx
+                        .env
+                        .read_file_text(path)
+                        .await
+                        .map(|text| format_lines_numbered(&text, None, Some(n_lines))),
                 }
                 .map_err(|e| e.display_with_causes())?;
 
@@ -367,15 +377,17 @@ pub fn make_kimi_edit_tool(description: &str) -> RegisteredTool {
 mod tests {
     use std::collections::HashMap;
 
+    use fabro_sandbox::Termination;
+    use fabro_sandbox::test_support::exec_result;
     use serde_json::json;
     use tokio_util::sync::CancellationToken;
 
     use super::*;
-    use crate::sandbox::{ExecResult, Sandbox};
-    use crate::test_support::{MockSandbox, MutableMockSandbox};
+    use crate::sandbox::RunSandbox;
+    use crate::test_support::MockSandbox;
     use crate::tool_registry::{ToolContext, ToolDefinitionExt};
 
-    fn ctx(env: Arc<dyn Sandbox>) -> ToolContext {
+    fn ctx(env: Arc<RunSandbox>) -> ToolContext {
         ToolContext {
             env,
             cancel: CancellationToken::new(),
@@ -387,10 +399,14 @@ mod tests {
         }
     }
 
-    fn sandbox_with(path: &str, content: &str) -> Arc<MutableMockSandbox> {
+    fn sandbox_with(path: &str, content: &str) -> Arc<RunSandbox> {
         let mut files = HashMap::new();
         files.insert(path.to_string(), content.to_string());
-        Arc::new(MutableMockSandbox::new(files))
+        MockSandbox {
+            files,
+            ..Default::default()
+        }
+        .sandbox()
     }
 
     /// The reason Read is a separate tool: a negative `line_offset` means
@@ -492,7 +508,11 @@ mod tests {
 
     #[tokio::test]
     async fn write_append_propagates_a_missing_file_error() {
-        let env = Arc::new(MutableMockSandbox::new(HashMap::new()));
+        let env = MockSandbox {
+            files: HashMap::new(),
+            ..Default::default()
+        }
+        .sandbox();
         let tool = make_kimi_write_tool();
 
         let err = (tool.executor)(
@@ -552,10 +572,11 @@ mod tests {
     }
 
     async fn grep_with(args: serde_json::Value, lines: Vec<String>) -> Result<String, String> {
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             grep_results: lines,
             ..MockSandbox::default()
-        });
+        }
+        .sandbox();
         let tool = make_kimi_grep_tool();
         (tool.executor)(args, ctx(env)).await
     }
@@ -675,20 +696,12 @@ mod tests {
 
     #[tokio::test]
     async fn bash_reuses_session_env_cwd_and_timeout_rendering() {
-        use fabro_types::CommandTermination;
-
         let tool = make_kimi_bash_tool(60_000, 600_000);
-        let env = Arc::new(MockSandbox {
-            exec_result: ExecResult {
-                stdout:      String::new(),
-                stderr:      String::new(),
-                exit_code:   None,
-                termination: CommandTermination::TimedOut,
-                duration_ms: 7_000,
-            },
+        let env = MockSandbox {
+            exec_result: exec_result("", "", None, Termination::TimedOut, 7_000),
             ..MockSandbox::default()
-        });
-        let mut tool_ctx = ctx(env.clone());
+        };
+        let mut tool_ctx = ctx(env.sandbox());
         let tool_env = HashMap::from([("TOKEN".to_string(), "value".to_string())]);
         tool_ctx.tool_env_provider = Some(Arc::new(crate::StaticEnvProvider(tool_env.clone())));
 
@@ -700,15 +713,18 @@ mod tests {
         .expect_err("a timeout is a failed tool result");
 
         assert!(output.starts_with("Command timed out.\n"), "{output}");
-        assert_eq!(*env.captured_timeout.lock().unwrap(), Some(7_000));
-        assert_eq!(env.captured_working_dirs.lock().unwrap().as_slice(), &[
-            Some("/repo".to_string())
-        ]);
-        assert_eq!(*env.captured_env_vars.lock().unwrap(), Some(tool_env));
+        assert_eq!(env.captured_timeout(), Some(7_000));
         assert_eq!(
-            env.captured_command.lock().unwrap().as_deref(),
-            Some("echo $TOKEN")
+            env.driver()
+                .scripted_exec()
+                .recorded()
+                .iter()
+                .map(|spec| spec.working_dir.clone())
+                .collect::<Vec<_>>(),
+            vec![Some("/repo".to_string())]
         );
+        assert_eq!(env.captured_env_vars(), Some(tool_env));
+        assert_eq!(env.captured_command().as_deref(), Some("echo $TOKEN"));
     }
 }
 
@@ -806,19 +822,18 @@ page through a large result set.
                     ));
                 }
 
-                let options = GrepOptions {
-                    glob_filter:      args.get("glob").and_then(Value::as_str).map(str::to_string),
-                    case_insensitive: args.get("-i").and_then(Value::as_bool).unwrap_or(false),
-                    max_results:      match mode {
-                        GrepOutputMode::Content => Some(
-                            head_limit
-                                .saturating_add(offset)
-                                .min(MAX_GREP_MATCHES_SCANNED),
-                        ),
-                        GrepOutputMode::FilesWithMatches | GrepOutputMode::CountMatches => {
-                            Some(MAX_GREP_MATCHES_SCANNED)
-                        }
-                    },
+                let mut options = GrepOptions::default();
+                options.include = args.get("glob").and_then(Value::as_str).map(str::to_string);
+                options.case_insensitive = args.get("-i").and_then(Value::as_bool).unwrap_or(false);
+                options.max_matches = match mode {
+                    GrepOutputMode::Content => Some(
+                        head_limit
+                            .saturating_add(offset)
+                            .min(MAX_GREP_MATCHES_SCANNED),
+                    ),
+                    GrepOutputMode::FilesWithMatches | GrepOutputMode::CountMatches => {
+                        Some(MAX_GREP_MATCHES_SCANNED)
+                    }
                 };
 
                 let lines = execute_grep(&ctx, pattern, path, &options).await?;

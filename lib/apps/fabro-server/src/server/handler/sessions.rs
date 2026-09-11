@@ -23,7 +23,6 @@ use fabro_api::types::{
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{FabroClient, ModelSelectionError, catalog, selection};
 use fabro_sandbox::reconnect::reconnect_for_run;
-use fabro_static::EnvVars;
 use fabro_store::{
     EventPayload, ProjectedRunSession, RunDatabase, project_run_session, project_run_sessions,
 };
@@ -718,18 +717,18 @@ async fn build_agent_session(
     let sandbox_instance = sandbox_record.instance().ok_or_else(|| {
         AskFabroBuildError::SandboxUnavailable(anyhow::anyhow!("run sandbox was not created"))
     })?;
-    let daytona_api_key = state
-        .vault_secret(EnvVars::DAYTONA_API_KEY)
+    let access = state
+        .provider_access()
         .await
         .map_err(|err| AskFabroBuildError::Agent(anyhow::Error::new(err)))?;
-    let sandbox = reconnect_for_run(sandbox_instance, daytona_api_key, Some(run_id))
+    let sandbox = reconnect_for_run(sandbox_instance, &access, Some(run_id), None)
         .await
         .map_err(AskFabroBuildError::SandboxUnavailable)?;
     sandbox
         .activate()
         .await
         .map_err(|err| AskFabroBuildError::SandboxUnavailable(anyhow::Error::new(err)))?;
-    let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::from(sandbox);
+    let sandbox = Arc::new(sandbox);
     // No optional web-tool dependencies: `AskFabroToolAccessPolicy` denies
     // `web_search` and `web_fetch`, and both `tools()` and the prompt are
     // filtered through that policy.
@@ -976,7 +975,7 @@ fn render_ask_fabro_tool_guidance(
 }
 
 fn build_ask_fabro_system_prompt(
-    env: &dyn fabro_agent::Sandbox,
+    env: &fabro_agent::RunSandbox,
     env_context: &fabro_agent::EnvContext,
     _memory: &[String],
     user_instructions: Option<&str>,
@@ -1143,7 +1142,7 @@ impl AgentProfile for AskFabroProfile {
 
     fn build_system_prompt(
         &self,
-        env: &dyn fabro_agent::Sandbox,
+        env: &fabro_agent::RunSandbox,
         env_context: &fabro_agent::EnvContext,
         memory: &[String],
         user_instructions: Option<&str>,
@@ -1820,13 +1819,15 @@ enabled = true
         ]);
     }
 
-    #[test]
-    fn ask_fabro_prompt_lists_effective_tools_without_denied_tools() {
+    #[tokio::test]
+    async fn ask_fabro_prompt_lists_effective_tools_without_denied_tools() {
         let registry = ask_fabro_test_registry();
         let policy = build_ask_fabro_tool_access_policy();
 
         let prompt = build_ask_fabro_system_prompt(
-            &fabro_agent::LocalSandbox::new(std::env::current_dir().unwrap()),
+            &fabro_agent::local_sandbox(std::env::current_dir().unwrap())
+                .await
+                .unwrap(),
             &fabro_agent::EnvContext::default(),
             &[],
             None,
@@ -1870,8 +1871,8 @@ enabled = true
         assert!(prompt.contains("Use workspace file tools only when the question asks"));
     }
 
-    #[test]
-    fn ask_fabro_prompt_keeps_tool_descriptions_inert() {
+    #[tokio::test]
+    async fn ask_fabro_prompt_keeps_tool_descriptions_inert() {
         let mut registry = ToolRegistry::new();
         let mut tool = stub_tool("read_file");
         tool.definition.description = "{{ inputs.env_block }}".to_string();
@@ -1879,7 +1880,9 @@ enabled = true
         let policy = build_ask_fabro_tool_access_policy();
 
         let prompt = build_ask_fabro_system_prompt(
-            &fabro_agent::LocalSandbox::new(std::env::current_dir().unwrap()),
+            &fabro_agent::local_sandbox(std::env::current_dir().unwrap())
+                .await
+                .unwrap(),
             &fabro_agent::EnvContext::default(),
             &[],
             None,
@@ -2026,9 +2029,11 @@ enabled = true
             tool_exposure_mode: ToolExposureMode::AutoApprovedOnly,
             ..SessionOptions::default()
         };
-        let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(fabro_agent::LocalSandbox::new(
-            std::env::current_dir().unwrap(),
-        ));
+        let sandbox = Arc::new(
+            fabro_agent::local_sandbox(std::env::current_dir().unwrap())
+                .await
+                .unwrap(),
+        );
 
         for tool_name in denied_tools {
             let result = fabro_agent::tool_execution::execute_and_emit_one_tool(

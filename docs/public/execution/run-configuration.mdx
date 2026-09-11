@@ -428,8 +428,8 @@ commit_timeout = "30s"
 | Field | Description |
 |---|---|
 | `exclude_globs` | Glob patterns for files to exclude from checkpoint commits. Uses git pathspec `:(glob,exclude)` syntax. |
-| `skip_git_hooks` | When `true`, Fabro-managed run-branch checkpoint commits bypass local Git commit hooks (e.g. `pre-commit`, `commit-msg`). Defaults to `false`. Does not affect Fabro workflow `[[run.hooks]]` or metadata-branch snapshots. |
-| `commit_timeout` | Max duration for the per-node run-branch checkpoint commit (e.g. `"30s"`, `"10m"`). This commit runs repository commit hooks unless `skip_git_hooks` is `true`. Defaults to `"30s"`. |
+| `skip_git_hooks` | Accepted for compatibility. Fabro-managed run-branch checkpoint commits never run local Git commit hooks (e.g. `pre-commit`, `commit-msg`); the sandbox driver disables repository hooks on every git command it runs. Does not affect Fabro workflow `[[run.hooks]]`. |
+| `commit_timeout` | Accepted for compatibility. The per-node run-branch checkpoint commit runs under the sandbox driver's git command budget; no repository hook can prolong it. |
 
 `exclude_globs` replaces across layers — the higher-precedence layer wins wholesale. `skip_git_hooks` and `commit_timeout` use normal override semantics: the highest layer that sets the field wins.
 

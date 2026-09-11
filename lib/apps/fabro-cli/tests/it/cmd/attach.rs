@@ -1102,6 +1102,91 @@ fn attach_json_errors_without_prompting_for_human_input() {
           "kind": "worker",
           "run_id": "[ULID]"
         },
+        "event": "sandbox.create.started",
+        "id": "[EVENT_ID]",
+        "properties": {
+          "action": "create",
+          "correlation_id": "[ULID]",
+          "id": {
+            "sequence": 1,
+            "source_id": "[HEX]"
+          },
+          "occurred_at": "[TIMESTAMP]",
+          "operation_id": "[HEX]",
+          "provider": "host",
+          "subject": {
+            "id": "host-dir-[HEX]",
+            "type": "sandbox"
+          },
+          "type": "operation_started"
+        },
+        "run_id": "[ULID]",
+        "ts": "[TIMESTAMP]"
+      },
+      {
+        "actor": {
+          "kind": "worker",
+          "run_id": "[ULID]"
+        },
+        "event": "sandbox.create.progress",
+        "id": "[EVENT_ID]",
+        "properties": {
+          "action": "create",
+          "correlation_id": "[ULID]",
+          "id": {
+            "sequence": 2,
+            "source_id": "[HEX]"
+          },
+          "occurred_at": "[TIMESTAMP]",
+          "operation_id": "[HEX]",
+          "progress": {
+            "code": "sandbox.provision"
+          },
+          "provider": "host",
+          "subject": {
+            "id": "host-dir-[HEX]",
+            "type": "sandbox"
+          },
+          "type": "operation_progress"
+        },
+        "run_id": "[ULID]",
+        "ts": "[TIMESTAMP]"
+      },
+      {
+        "actor": {
+          "kind": "worker",
+          "run_id": "[ULID]"
+        },
+        "event": "sandbox.create.completed",
+        "id": "[EVENT_ID]",
+        "properties": {
+          "action": "create",
+          "correlation_id": "[ULID]",
+          "duration": {
+            "nanos": "[NANOS]",
+            "secs": 0
+          },
+          "id": {
+            "sequence": 3,
+            "source_id": "[HEX]"
+          },
+          "occurred_at": "[TIMESTAMP]",
+          "operation_id": "[HEX]",
+          "provider": "host",
+          "subject": {
+            "id": "host-dir-[HEX]",
+            "type": "sandbox"
+          },
+          "type": "operation_completed"
+        },
+        "run_id": "[ULID]",
+        "ts": "[TIMESTAMP]"
+      },
+      {
+        "actor": {
+          "kind": "worker",
+          "run_id": "[ULID]"
+        },
         "event": "sandbox.ready",
         "id": "[EVENT_ID]",
         "properties": {
@@ -1119,9 +1204,12 @@ fn attach_json_errors_without_prompting_for_human_input() {
         "event": "sandbox.initialized",
         "id": "[EVENT_ID]",
         "properties": {
-          "id": "local:[ULID]",
+          "id": "host-dir-[HEX]",
           "provider": "local",
-          "working_directory": "[TEMP_DIR]"
+          "repo_cloned": false,
+          "repos_root": "[TEMP_DIR]/.repos",
+          "working_directory": "[TEMP_DIR]",
+          "workspace_root": "[TEMP_DIR]"
         },
         "run_id": "[ULID]",
         "ts": "[TIMESTAMP]"

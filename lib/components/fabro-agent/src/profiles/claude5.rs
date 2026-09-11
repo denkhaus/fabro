@@ -13,7 +13,7 @@ use crate::native_tool::{NativeTool, ToolVocabulary};
 use crate::profiles::{
     self, BaseProfile, EmbeddedPrompt, ProfileDeps, claude5_tools, impl_base_profile_accessors,
 };
-use crate::sandbox::Sandbox;
+use crate::sandbox::RunSandbox;
 use crate::skills::Skill;
 use crate::subagent::{SessionFactory, SubAgentSupervisor};
 use crate::todo_tools::{
@@ -94,7 +94,7 @@ impl AgentProfile for Claude5Profile {
 
     fn build_system_prompt(
         &self,
-        env: &dyn Sandbox,
+        env: &RunSandbox,
         env_context: &EnvContext,
         memory: &[String],
         user_instructions: Option<&str>,
@@ -212,7 +212,7 @@ mod tests {
 
     #[test]
     fn prompt_conditionals_follow_registered_tools() {
-        let env = MockSandbox::linux();
+        let env = MockSandbox::linux().sandbox();
         let profile = Claude5Profile::new("claude-fable-5");
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(!prompt.contains("# Background agents"));

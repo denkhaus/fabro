@@ -51,8 +51,6 @@ pub(super) enum ProgressEvent {
         provider:    String,
         duration_ms: u64,
         name:        Option<String>,
-        cpu:         Option<f64>,
-        memory:      Option<f64>,
         url:         Option<String>,
     },
     SandboxFailed {
@@ -253,28 +251,13 @@ pub(super) fn from_run_event(stored: &RunEvent) -> Option<ProgressEvent> {
             provider:    props.provider.clone(),
             duration_ms: props.duration_ms,
             name:        props.name.clone(),
-            cpu:         props.cpu,
-            memory:      props.memory,
             url:         props.url.clone(),
         }),
         EventBody::SandboxFailed(props) => Some(ProgressEvent::SandboxFailed {
             provider: props.provider.clone(),
             error:    props.error.clone(),
         }),
-        EventBody::SnapshotPulling(props) => Some(ProgressEvent::SnapshotPulling {
-            name: props.name.clone(),
-        }),
-        EventBody::SnapshotCreating(props) => Some(ProgressEvent::SnapshotCreating {
-            name: props.name.clone(),
-        }),
-        EventBody::SnapshotReady(props) => Some(ProgressEvent::SnapshotReady {
-            name:        props.name.clone(),
-            duration_ms: props.duration_ms,
-        }),
-        EventBody::SnapshotFailed(props) => Some(ProgressEvent::SnapshotFailed {
-            name:  props.name.clone(),
-            error: props.error.clone(),
-        }),
+        EventBody::SandboxDriver { event, .. } => driver_progress_event(event),
         EventBody::SshAccessReady(props) => Some(ProgressEvent::SshAccessReady {
             ssh_command: props.ssh_command.clone(),
         }),
@@ -529,11 +512,70 @@ fn display_value(value: &Value) -> Option<String> {
     }
 }
 
+/// The setup progress a sandbox driver event stands for: the image pull
+/// inside the sandbox's create, or a snapshot build. Every other driver
+/// event is stored on the run but renders nothing here.
+fn driver_progress_event(event: &sandbox_driver::Event) -> Option<ProgressEvent> {
+    use sandbox_driver::{Action, EventBody as Body, EventSubject, ProgressCode};
+
+    match (&event.subject, &event.body) {
+        (
+            EventSubject::Sandbox { .. },
+            Body::OperationProgress {
+                action: Action::Create,
+                progress,
+            },
+        ) if progress.code.as_str() == ProgressCode::IMAGE_PULL => {
+            Some(ProgressEvent::SnapshotPulling {
+                name: pulled_image_name(progress.message.as_deref()),
+            })
+        }
+        (EventSubject::Snapshot { id, name }, body) => {
+            let name = name
+                .clone()
+                .or_else(|| id.as_ref().map(ToString::to_string))
+                .unwrap_or_default();
+            match body {
+                Body::OperationStarted {
+                    action: Action::Create,
+                } => Some(ProgressEvent::SnapshotCreating { name }),
+                Body::OperationCompleted {
+                    action: Action::Create,
+                    duration,
+                } => Some(ProgressEvent::SnapshotReady {
+                    name,
+                    duration_ms: u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
+                }),
+                Body::OperationFailed {
+                    action: Action::Create,
+                    error,
+                    ..
+                } => Some(ProgressEvent::SnapshotFailed {
+                    name,
+                    error: error.message.clone(),
+                }),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// The image an image pull progress report names. The Docker provider
+/// says `pulling image <reference>`; the reference alone reads better.
+fn pulled_image_name(message: Option<&str>) -> String {
+    let message = message.unwrap_or("image");
+    message
+        .strip_prefix("pulling image ")
+        .unwrap_or(message)
+        .to_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use fabro_agent::AgentEvent;
     use fabro_types::{MetadataSnapshotFailureKind, MetadataSnapshotPhase, fixtures};
-    use fabro_workflow::event::{Event, RunNoticeCode, to_run_event};
+    use fabro_workflow::event::{Event, RunNoticeCode, SandboxLifecycle, to_run_event};
 
     use super::*;
 
@@ -743,12 +785,10 @@ mod tests {
     #[test]
     fn round_trip_sandbox_ready() {
         let event = Event::Sandbox {
-            event: fabro_agent::SandboxEvent::Ready {
+            event: SandboxLifecycle::Ready {
                 provider:    "daytona".into(),
                 duration_ms: 2500,
                 name:        Some("sandbox-1".into()),
-                cpu:         Some(4.0),
-                memory:      Some(8.0),
                 url:         Some("https://example.test".into()),
             },
         };
@@ -769,7 +809,7 @@ mod tests {
     #[test]
     fn round_trip_sandbox_failed() {
         let event = Event::Sandbox {
-            event: fabro_agent::SandboxEvent::InitializeFailed {
+            event: SandboxLifecycle::InitializeFailed {
                 provider:    "docker".into(),
                 error:       "pull failed".into(),
                 causes:      Vec::new(),
@@ -786,32 +826,76 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn round_trip_snapshot_lifecycle_events() {
-        let pulling = to_run_event(&fixtures::RUN_1, &Event::Sandbox {
-            event: fabro_agent::SandboxEvent::SnapshotPulling {
-                name: "buildpack-deps:noble".into(),
-            },
-        });
-        let creating = to_run_event(&fixtures::RUN_1, &Event::Sandbox {
-            event: fabro_agent::SandboxEvent::SnapshotCreating {
-                name: "fabro-v9".into(),
-            },
-        });
-        let ready = to_run_event(&fixtures::RUN_1, &Event::Sandbox {
-            event: fabro_agent::SandboxEvent::SnapshotReady {
-                name:        "buildpack-deps:noble".into(),
-                duration_ms: 1200,
-            },
-        });
-        let failed = to_run_event(&fixtures::RUN_1, &Event::Sandbox {
-            event: fabro_agent::SandboxEvent::SnapshotFailed {
-                name:   "fabro-v9".into(),
-                error:  "build failed".into(),
-                causes: Vec::new(),
-            },
-        });
+    fn driver_event(value: serde_json::Value) -> Event {
+        Event::SandboxDriver {
+            event: serde_json::from_value(value).expect("a driver event"),
+        }
+    }
 
+    #[test]
+    fn round_trip_driver_events_that_render_setup_progress() {
+        let pulling = to_run_event(
+            &fixtures::RUN_1,
+            &driver_event(serde_json::json!({
+                "id": {"source_id": "test", "sequence": 1},
+                "occurred_at": "2026-01-01T00:00:00Z",
+                "provider": "docker",
+                "subject": {"type": "sandbox"},
+                "type": "operation_progress",
+                "action": "create",
+                "progress": {"code": "image.pull", "message": "pulling image buildpack-deps:noble"}
+            })),
+        );
+        let creating = to_run_event(
+            &fixtures::RUN_1,
+            &driver_event(serde_json::json!({
+                "id": {"source_id": "test", "sequence": 2},
+                "occurred_at": "2026-01-01T00:00:00Z",
+                "provider": "daytona",
+                "subject": {"type": "snapshot", "name": "fabro-v9"},
+                "type": "operation_started",
+                "action": "create"
+            })),
+        );
+        let ready = to_run_event(
+            &fixtures::RUN_1,
+            &driver_event(serde_json::json!({
+                "id": {"source_id": "test", "sequence": 3},
+                "occurred_at": "2026-01-01T00:00:01Z",
+                "provider": "daytona",
+                "subject": {"type": "snapshot", "name": "fabro-v9"},
+                "type": "operation_completed",
+                "action": "create",
+                "duration": {"secs": 1, "nanos": 200_000_000}
+            })),
+        );
+        let failed = to_run_event(
+            &fixtures::RUN_1,
+            &driver_event(serde_json::json!({
+                "id": {"source_id": "test", "sequence": 4},
+                "occurred_at": "2026-01-01T00:00:02Z",
+                "provider": "daytona",
+                "subject": {"type": "snapshot", "name": "fabro-v9"},
+                "type": "operation_failed",
+                "action": "create",
+                "duration": {"secs": 2, "nanos": 0},
+                "error": {"kind": "provider", "message": "build failed", "retryable": false, "causes": []}
+            })),
+        );
+        let stopped = to_run_event(
+            &fixtures::RUN_1,
+            &driver_event(serde_json::json!({
+                "id": {"source_id": "test", "sequence": 5},
+                "occurred_at": "2026-01-01T00:00:03Z",
+                "provider": "docker",
+                "subject": {"type": "sandbox", "id": "c1"},
+                "type": "operation_completed",
+                "action": "stop",
+                "duration": {"secs": 0, "nanos": 0}
+            })),
+        );
+
+        assert_eq!(pulling.event_name(), "sandbox.create.progress");
         assert!(matches!(
             from_run_event(&pulling).unwrap(),
             ProgressEvent::SnapshotPulling { name } if name == "buildpack-deps:noble"
@@ -823,13 +907,18 @@ mod tests {
         assert!(matches!(
             from_run_event(&ready).unwrap(),
             ProgressEvent::SnapshotReady { name, duration_ms }
-                if name == "buildpack-deps:noble" && duration_ms == 1200
+                if name == "fabro-v9" && duration_ms == 1200
         ));
         assert!(matches!(
             from_run_event(&failed).unwrap(),
             ProgressEvent::SnapshotFailed { name, error }
                 if name == "fabro-v9" && error == "build failed"
         ));
+        assert_eq!(stopped.event_name(), "sandbox.stop.completed");
+        assert!(
+            from_run_event(&stopped).is_none(),
+            "a stop is stored on the run but renders no setup progress"
+        );
     }
 
     #[test]

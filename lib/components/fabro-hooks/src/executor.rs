@@ -4,8 +4,8 @@ use std::sync::{Arc, LazyLock};
 use std::time::Instant;
 
 use async_trait::async_trait;
-use fabro_agent::Sandbox;
 use fabro_agent::tool_registry::ToolContext;
+use fabro_agent::{ExecResultExt, RunSandbox};
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{Client, ClientOptions, Request};
@@ -47,7 +47,7 @@ pub trait HookExecutor: Send + Sync {
         &self,
         definition: &HookDefinition,
         context: &HookContext,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         execution_context: &HookExecutionContext,
         llm_source: Arc<dyn CredentialProvider>,
         catalog: Arc<Catalog>,
@@ -128,7 +128,7 @@ impl HookExecutorImpl {
         definition: &HookDefinition,
         command: &InterpString,
         context: &HookContext,
-        sandbox: &Arc<dyn Sandbox>,
+        sandbox: &Arc<RunSandbox>,
         execution_context: &HookExecutionContext,
     ) -> HookDecision {
         let command = match resolve_interp(command) {
@@ -174,7 +174,10 @@ impl HookExecutorImpl {
                 )
                 .await
             {
-                Ok(result) => Self::parse_decision(result.exit_code.unwrap_or(-1), &result.stdout),
+                Ok(result) => Self::parse_decision(
+                    result.program_exit_code().unwrap_or(-1),
+                    &result.stdout_lossy(),
+                ),
                 Err(e) => HookDecision::Block {
                     reason: Some(format!("sandbox exec failed: {e}")),
                 },
@@ -357,7 +360,7 @@ impl HookExecutorImpl {
         model: Option<&InterpString>,
         max_tool_rounds: Option<u32>,
         context: &HookContext,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         llm_source: Arc<dyn CredentialProvider>,
         catalog: Arc<Catalog>,
     ) -> HookDecision {
@@ -657,7 +660,7 @@ impl HookExecutor for HookExecutorImpl {
         &self,
         definition: &HookDefinition,
         context: &HookContext,
-        sandbox: Arc<dyn Sandbox>,
+        sandbox: Arc<RunSandbox>,
         execution_context: &HookExecutionContext,
         llm_source: Arc<dyn CredentialProvider>,
         catalog: Arc<Catalog>,
@@ -771,10 +774,12 @@ mod tests {
         HookContext::new(HookEvent::StageStart, fixtures::RUN_1, "test-wf".into())
     }
 
-    fn make_sandbox() -> Arc<dyn Sandbox> {
-        Arc::new(fabro_agent::LocalSandbox::new(
-            std::env::current_dir().unwrap(),
-        ))
+    async fn make_sandbox() -> Arc<RunSandbox> {
+        Arc::new(
+            fabro_agent::local_sandbox(std::env::current_dir().unwrap())
+                .await
+                .unwrap(),
+        )
     }
 
     fn test_llm_source() -> Arc<dyn CredentialProvider> {
@@ -864,7 +869,7 @@ mod tests {
         let executor = HookExecutorImpl;
         let def = make_definition("exit 0");
         let ctx = make_context();
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let source = test_llm_source();
         let result = executor
             .execute(
@@ -885,7 +890,7 @@ mod tests {
         let executor = HookExecutorImpl;
         let def = make_definition("exit 1");
         let ctx = make_context();
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let source = test_llm_source();
         let result = executor
             .execute(
@@ -905,7 +910,7 @@ mod tests {
         let executor = HookExecutorImpl;
         let def = make_definition("exit 2");
         let ctx = make_context();
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let source = test_llm_source();
         let result = executor
             .execute(
@@ -925,7 +930,7 @@ mod tests {
         let executor = HookExecutorImpl;
         let def = make_definition(r#"echo '{"decision": "skip", "reason": "test skip"}'"#);
         let ctx = make_context();
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let source = test_llm_source();
         let result = executor
             .execute(
@@ -949,7 +954,7 @@ mod tests {
         let def = make_definition("echo $ARC_EVENT:$ARC_RUN_ID:$ARC_WORKFLOW");
         let mut ctx = make_context();
         ctx.node_id = Some("plan".into());
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let source = test_llm_source();
         let result = executor
             .execute(
@@ -978,7 +983,7 @@ mod tests {
             sandbox:    Some(false),
         };
         let ctx = make_context();
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let source = test_llm_source();
         let result = executor
             .execute(
@@ -1464,7 +1469,7 @@ mod tests {
             sandbox:    Some(false),
         };
         let ctx = make_context();
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let source = test_llm_source();
         let result = executor
             .execute(
@@ -1484,7 +1489,7 @@ mod tests {
 
     #[tokio::test]
     async fn command_hook_missing_env_blocks() {
-        let sandbox = make_sandbox();
+        let sandbox = make_sandbox().await;
         let decision = HookExecutorImpl::execute_command(
             &make_definition("echo {{ env.MISSING_HOOK_VALUE }}"),
             &interp("echo {{ env.MISSING_HOOK_VALUE }}"),
@@ -1533,7 +1538,7 @@ mod tests {
             None,
             Some(1),
             &make_context(),
-            make_sandbox(),
+            make_sandbox().await,
             test_llm_source(),
             test_catalog(),
         )

@@ -7,7 +7,7 @@ use fabro_types::run_event::{
     AgentLlmStartedProps, CheckpointCompletedProps, RunCompletedProps, RunFailedProps,
     StageCompletedProps, TodoCreatedProps, TodoDeletedProps, TodoUpdatedProps,
 };
-use fabro_types::settings::run::{EnvironmentProvider, RunEnvironmentSettings};
+use fabro_types::settings::run::RunEnvironmentSettings;
 use fabro_types::{
     ActivatedSkill, AgentControlState, AskFabro, BilledModelUsage, BilledTokenCounts, Checkpoint,
     CheckpointRecord, CommandTermination, Conclusion, EventBody, FailureCategory, FailureSignature,
@@ -355,7 +355,7 @@ impl RunProjectionReducer for RunProjection {
             EventBody::SandboxInitialized(props) => {
                 let plan = sandbox_plan_from_projection_or_settings(self);
                 self.sandbox = Some(RunSandbox::ready(plan, RunSandboxInstance {
-                    provider: props.provider,
+                    provider: props.provider.clone(),
                     image:    props.image.clone(),
                     snapshot: props.snapshot.clone(),
                     runtime:  RunSandboxRuntime {
@@ -1135,10 +1135,9 @@ fn sandbox_plan_from_projection_or_settings(state: &RunProjection) -> RunSandbox
 }
 
 fn sandbox_plan(settings: &RunEnvironmentSettings) -> RunSandboxPlan {
-    let provider = SandboxProviderKind::from(settings.provider);
     RunSandboxPlan {
-        provider,
-        image: (settings.provider == EnvironmentProvider::Docker)
+        provider: settings.provider.clone(),
+        image:    (settings.provider == SandboxProviderKind::DOCKER)
             .then(|| settings.image.docker.clone())
             .flatten()
             .filter(|image| !image.is_empty()),
@@ -1754,7 +1753,7 @@ mod tests {
         RunControlEffectProps, StageCompletedProps, StageFailedProps, StagePromptProps,
         StageRetryingProps, StageStartedProps,
     };
-    use fabro_types::settings::run::{DockerfileSource, EnvironmentProvider};
+    use fabro_types::settings::run::DockerfileSource;
     use fabro_types::{
         AgentBackend, AgentControlState, AttrValue, AutomationRef, BilledModelUsage,
         BilledTokenCounts, BlobHash, BlockedReason, Checkpoint, CheckpointRecord,
@@ -1762,10 +1761,11 @@ mod tests {
         McpServerStatus, Node, Outcome, ParallelBranchId, PendingReason, PermissionLevel,
         PullRequestCreationStatus, PullRequestLink, QuestionType, RunApprovalState,
         RunBillingSummary, RunControlAction, RunDiff, RunEvent, RunSize, RunSpec, RunStatus,
-        StageContextWindowBreakdownItem, StageContextWindowCategory, StageContextWindowCountMethod,
-        StageContextWindowProjection, StageContextWindowStaleness, StageContextWindowWarning,
-        StageHandler, StageModelUsage, StageOutcome, StageState, StageTiming, SubAgentStatus,
-        SuccessReason, WorkflowSettings, first_event_seq, fixtures, test_support,
+        SandboxProviderKind, StageContextWindowBreakdownItem, StageContextWindowCategory,
+        StageContextWindowCountMethod, StageContextWindowProjection, StageContextWindowStaleness,
+        StageContextWindowWarning, StageHandler, StageModelUsage, StageOutcome, StageState,
+        StageTiming, SubAgentStatus, SuccessReason, WorkflowSettings, first_event_seq, fixtures,
+        test_support,
     };
     use lithos_llm::catalog::{ModelId, ProviderId};
     use lithos_llm::types::{ReasoningEffort, Speed};
@@ -2379,7 +2379,7 @@ mod tests {
     #[test]
     fn planned_sandbox_uses_docker_image_and_hides_daytona_snapshot_until_init() {
         let mut docker = WorkflowSettings::default().run.environment;
-        docker.provider = EnvironmentProvider::Docker;
+        docker.provider = SandboxProviderKind::DOCKER;
         docker.image.docker = Some("ubuntu:24.04".to_string());
 
         let planned_docker = super::sandbox_plan(&docker);
@@ -2387,7 +2387,7 @@ mod tests {
         assert_eq!(planned_docker.snapshot, None);
 
         let mut daytona = WorkflowSettings::default().run.environment;
-        daytona.provider = EnvironmentProvider::Daytona;
+        daytona.provider = SandboxProviderKind::DAYTONA;
         daytona.image.dockerfile = Some(DockerfileSource::Inline("FROM ubuntu:24.04".to_string()));
 
         let planned_daytona = super::sandbox_plan(&daytona);

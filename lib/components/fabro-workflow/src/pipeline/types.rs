@@ -11,6 +11,7 @@ use fabro_template::TemplateContext;
 use fabro_types::settings::run::{
     PullRequestSettings, ResolvedGithubIntegration, RunModelControls,
 };
+use fabro_types::settings::server::ServerSandboxProvidersSettings;
 use fabro_types::{ManifestPath, RunId, RunProjection};
 use fabro_validate::{Diagnostic, Severity};
 use fabro_vault::Vault;
@@ -307,6 +308,9 @@ pub struct InitOptions {
     pub hooks:             fabro_hooks::HookSettings,
     pub sandbox_env:       SandboxEnvSpec,
     pub vault:             Arc<AsyncRwLock<Vault>>,
+    /// The server's sandbox provider settings, for reattaching a run's
+    /// sandbox on resume.
+    pub sandbox_providers: ServerSandboxProvidersSettings,
     pub git:               Option<GitCheckpointOptions>,
     pub registry_override: Option<Arc<HandlerRegistry>>,
     pub artifact_sink:     Option<ArtifactSink>,

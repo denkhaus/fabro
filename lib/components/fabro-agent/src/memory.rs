@@ -5,7 +5,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
 use crate::error::{Error, InterruptReason};
-use crate::sandbox::Sandbox;
+use crate::sandbox::RunSandbox;
 
 pub const BUDGET_BYTES: usize = 32768;
 
@@ -22,7 +22,7 @@ pub struct MemoryDocument {
 }
 
 pub async fn discover_memory(
-    env: &dyn Sandbox,
+    env: &RunSandbox,
     git_root: &str,
     working_dir: &str,
     profile_kind: AgentProfileKind,
@@ -151,22 +151,21 @@ fn truncate_to_budget(content: &str, budget: usize) -> String {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::sync::Arc;
 
     use tokio_util::sync::CancellationToken;
 
     use super::*;
-    use crate::sandbox::Sandbox;
     use crate::test_support::MockSandbox;
 
     #[tokio::test]
     async fn discovers_agents_md() {
         let mut files = HashMap::new();
         files.insert("/repo/AGENTS.md".into(), "Agent instructions".into());
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files,
             ..Default::default()
-        });
+        }
+        .sandbox();
         let docs = discover_memory(
             env.as_ref(),
             "/repo",
@@ -192,10 +191,11 @@ mod tests {
         files.insert("/repo/.codex/instructions.md".into(), "copilot".into());
         files.insert("/repo/GEMINI.md".into(), "gemini".into());
 
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files: files.clone(),
             ..Default::default()
-        });
+        }
+        .sandbox();
         let anthropic_docs = discover_memory(
             env.as_ref(),
             "/repo",
@@ -209,10 +209,11 @@ mod tests {
         assert_eq!(anthropic_docs[0].content, "agents");
         assert_eq!(anthropic_docs[1].content, "claude");
 
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files: files.clone(),
             ..Default::default()
-        });
+        }
+        .sandbox();
         let claude5_docs = discover_memory(
             env.as_ref(),
             "/repo",
@@ -226,10 +227,11 @@ mod tests {
         assert_eq!(claude5_docs[0].content, "agents");
         assert_eq!(claude5_docs[1].content, "claude");
 
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files: files.clone(),
             ..Default::default()
-        });
+        }
+        .sandbox();
         let openai_docs = discover_memory(
             env.as_ref(),
             "/repo",
@@ -243,10 +245,11 @@ mod tests {
         assert_eq!(openai_docs[0].content, "agents");
         assert_eq!(openai_docs[1].content, "copilot");
 
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files: files.clone(),
             ..Default::default()
-        });
+        }
+        .sandbox();
         let gpt56_docs = discover_memory(
             env.as_ref(),
             "/repo",
@@ -260,10 +263,11 @@ mod tests {
         assert_eq!(gpt56_docs[0].content, "agents");
         assert_eq!(gpt56_docs[1].content, "copilot");
 
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files: files.clone(),
             ..Default::default()
-        });
+        }
+        .sandbox();
         let gemini_docs = discover_memory(
             env.as_ref(),
             "/repo",
@@ -277,10 +281,11 @@ mod tests {
         assert_eq!(gemini_docs[0].content, "agents");
         assert_eq!(gemini_docs[1].content, "gemini");
 
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files,
             ..Default::default()
-        });
+        }
+        .sandbox();
         let kimi_docs = discover_memory(
             env.as_ref(),
             "/repo",
@@ -303,10 +308,11 @@ mod tests {
         files.insert("/repo/AGENTS.md".into(), large_content.clone());
         files.insert("/repo/CLAUDE.md".into(), second_content);
 
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files,
             ..Default::default()
-        });
+        }
+        .sandbox();
         let docs = discover_memory(
             env.as_ref(),
             "/repo",
@@ -336,10 +342,11 @@ mod tests {
         let mut files = HashMap::new();
         files.insert("/repo/AGENTS.md".into(), "shared instructions".into());
         files.insert("/repo/CLAUDE.md".into(), "shared instructions".into());
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files,
             ..Default::default()
-        });
+        }
+        .sandbox();
         let docs = discover_memory(
             env.as_ref(),
             "/repo",
@@ -358,10 +365,11 @@ mod tests {
         let mut files = HashMap::new();
         files.insert("/repo/AGENTS.md".into(), "shared instructions".into());
         files.insert("/repo/src/AGENTS.md".into(), "shared instructions".into());
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files,
             ..Default::default()
-        });
+        }
+        .sandbox();
         let docs = discover_memory(
             env.as_ref(),
             "/repo",
@@ -383,10 +391,11 @@ mod tests {
         let large_content = "x".repeat(BUDGET_BYTES + 1024);
         files.insert("/repo/AGENTS.md".into(), large_content.clone());
 
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files,
             ..Default::default()
-        });
+        }
+        .sandbox();
         let docs = discover_memory(
             env.as_ref(),
             "/repo",
@@ -410,10 +419,11 @@ mod tests {
         files.insert("/repo/src/AGENTS.md".into(), "src agents".into());
         files.insert("/repo/src/app/AGENTS.md".into(), "app agents".into());
 
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files,
             ..Default::default()
-        });
+        }
+        .sandbox();
         let docs = discover_memory(
             env.as_ref(),
             "/repo",

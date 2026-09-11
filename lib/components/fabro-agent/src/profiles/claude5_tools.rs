@@ -460,7 +460,6 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use super::*;
-    use crate::sandbox::Sandbox;
     use crate::test_support::{MockSandbox, make_session, text_response};
     use crate::todo_runtime::TodoRuntime;
     use crate::todo_tools::{
@@ -501,7 +500,7 @@ mod tests {
 
     fn context() -> ToolContext {
         ToolContext {
-            env:                 Arc::new(MockSandbox::default()) as Arc<dyn Sandbox>,
+            env:                 MockSandbox::default().sandbox(),
             cancel:              CancellationToken::new(),
             tool_env_provider:   None,
             session_id:          Some("root".to_string()),

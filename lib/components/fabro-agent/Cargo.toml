@@ -11,8 +11,6 @@ keywords = ["llm", "ai", "agent", "coding"]
 categories = ["api-bindings"]
 
 [features]
-default = ["docker"]
-docker = ["fabro-sandbox/docker"]
 quarantine = []
 
 [lib]
@@ -31,6 +29,7 @@ lithos-llm = { workspace = true, features = ["runtime"] }
 fabro-llm = { path = "../fabro-llm" }
 fabro-mcp = { path = "../fabro-mcp" }
 fabro-sandbox = { path = "../fabro-sandbox" }
+sandbox-driver.workspace = true
 fabro-static.workspace = true
 fabro-template = { path = "../../foundation/fabro-template" }
 fabro-util = { path = "../../foundation/fabro-util" }
@@ -67,6 +66,7 @@ tempfile = "3"
 paste = "1"
 shlex = "1"
 fabro-sandbox = { path = "../fabro-sandbox", features = ["test-support"] }
+sandbox-driver-testing.workspace = true
 fabro-macros = { path = "../../foundation/fabro-macros" }
 httpmock = "0.8"
 fabro-test = { workspace = true }

@@ -19,10 +19,7 @@ use fabro_server::run_tool_manifest;
 use fabro_store::{EventEnvelope, RunProjection, RunProjectionReducer};
 use fabro_tool::fabro_client::ClientBackend;
 use fabro_types::settings::run::{RunMode, RunNamespace};
-use fabro_types::{
-    ArtifactUpload, BlobHash, EventBody, FailureReason, Principal, RunEvent, RunId,
-    WorkflowSettings,
-};
+use fabro_types::{ArtifactUpload, BlobHash, EventBody, FailureReason, Principal, RunEvent, RunId};
 use fabro_vault::{SecretStore, Vault};
 use fabro_workflow::artifact_upload::{ArtifactSink, StageArtifactUploader};
 use fabro_workflow::event::{Emitter, RunEventSink};
@@ -135,8 +132,11 @@ pub(crate) async fn execute(
     let vault = load_worker_vault(&storage_dir).await?;
     let github_app = {
         let vault_guard = vault.read().await;
-        maybe_build_github_credentials(&run_spec.settings, &vault_guard)?
+        maybe_build_github_credentials(run_spec, &vault_guard)?
     };
+    let sandbox_providers = ServerSettingsBuilder::load_default()
+        .map(|settings| settings.server.sandbox.providers)
+        .unwrap_or_default();
     let services = StartServices {
         run_id,
         cancel_token: cancel_token.clone(),
@@ -165,6 +165,7 @@ pub(crate) async fn execute(
             .resolve_integration()
             .context("failed to resolve github integration")?,
         vault,
+        sandbox_providers,
         catalog,
         on_node: None,
         registry_override: None,
@@ -1001,7 +1002,9 @@ impl RunStoreBackend for HttpRunStore {
             async move { client.append_run_event(&run_id, &event).await }
         }))
         .await?;
-        self.apply_acknowledged_event(seq, event).await
+        // Both the sandbox lifecycle and the lithos event shapes grew this
+        // future past clippy's stack budget; box it once at the call.
+        Box::pin(self.apply_acknowledged_event(seq, event)).await
     }
 
     async fn write_blob(&self, data: &[u8]) -> Result<BlobHash> {
@@ -1096,10 +1099,13 @@ fn stamp_system_worker(mut event: RunEvent) -> RunEvent {
 }
 
 fn maybe_build_github_credentials(
-    settings: &WorkflowSettings,
+    run_spec: &fabro_types::RunSpec,
     vault: &fabro_vault::Vault,
 ) -> Result<Option<fabro_github::GitHubCredentials>> {
-    let resolved_run = &settings.run;
+    let resolved_run = &run_spec.settings.run;
+    let has_repo_origin = run_spec
+        .repo_origin_url()
+        .is_some_and(|origin| !origin.trim().is_empty());
     let resolved_server = ServerSettingsBuilder::load_default().ok();
     let server_ns = resolved_server.as_ref().map(|s| &s.server);
     let strategy = server_ns
@@ -1108,7 +1114,7 @@ fn maybe_build_github_credentials(
     let app_id = server_ns.and_then(|server| server.integrations.github.app_id.clone());
     let app_slug = server_ns.and_then(|server| server.integrations.github.slug.clone());
 
-    if requires_github_credentials(resolved_run) {
+    if requires_github_credentials(resolved_run, has_repo_origin) {
         return build_github_credentials(strategy, app_id.as_deref(), app_slug.as_deref(), vault);
     }
 
@@ -1129,14 +1135,17 @@ fn maybe_build_github_credentials(
 }
 
 /// Hard-gate for the CLI worker path: a run-level token is requested, or
-/// a clone-based sandbox in non-dry-run mode will need credentials to
-/// pull the repository. Pull-request-driven credential acquisition is
-/// handled separately by the caller as a soft fallback.
-fn requires_github_credentials(run: &RunNamespace) -> bool {
+/// a clone-based sandbox in non-dry-run mode will clone a repository and
+/// needs credentials to pull it. A run without a repository origin creates
+/// an empty workspace and needs none. Pull-request-driven credential
+/// acquisition is handled separately by the caller as a soft fallback.
+fn requires_github_credentials(run: &RunNamespace, has_repo_origin: bool) -> bool {
     if run.integrations.github.is_token_requested() {
         return true;
     }
-    run.execution.mode != RunMode::DryRun && run.environment.provider.is_clone_based()
+    run.execution.mode != RunMode::DryRun
+        && run.environment.provider.clones_workspace()
+        && has_repo_origin
 }
 
 fn install_signal_handlers(
@@ -1226,10 +1235,10 @@ mod tests {
 
     #[test]
     fn clone_sandbox_credentials_are_required_for_clone_based_providers() {
-        use fabro_types::settings::run::EnvironmentProvider;
-        assert!(EnvironmentProvider::Docker.is_clone_based());
-        assert!(EnvironmentProvider::Daytona.is_clone_based());
-        assert!(!EnvironmentProvider::Local.is_clone_based());
+        use fabro_types::SandboxProviderKind;
+        assert!(SandboxProviderKind::DOCKER.clones_workspace());
+        assert!(SandboxProviderKind::DAYTONA.clones_workspace());
+        assert!(!SandboxProviderKind::LOCAL.clones_workspace());
     }
 
     #[test]
@@ -1739,10 +1748,10 @@ mod tests {
 
         use std::collections::HashMap;
 
+        use fabro_types::SandboxProviderKind;
         use fabro_types::settings::InterpString;
         use fabro_types::settings::run::{
-            EnvironmentProvider, RunIntegrationsGithubSettings, RunIntegrationsSettings, RunMode,
-            RunNamespace,
+            RunIntegrationsGithubSettings, RunIntegrationsSettings, RunMode, RunNamespace,
         };
 
         use super::super::requires_github_credentials;
@@ -1755,7 +1764,7 @@ mod tests {
             let mut run = RunNamespace::default();
             run.execution.mode = mode;
             run.environment.provider = provider
-                .parse::<EnvironmentProvider>()
+                .parse::<SandboxProviderKind>()
                 .expect("test provider should parse");
             run.integrations = RunIntegrationsSettings {
                 github: RunIntegrationsGithubSettings {
@@ -1772,28 +1781,38 @@ mod tests {
             // Even with local sandbox + dry-run, non-empty permissions
             // force credential acquisition.
             let run = run_with(permissions, "local", RunMode::DryRun);
-            assert!(requires_github_credentials(&run));
+            assert!(requires_github_credentials(&run, false));
         }
 
         #[test]
-        fn requires_github_credentials_for_clone_based_provider() {
+        fn requires_github_credentials_for_clone_based_provider_with_an_origin() {
             let run = run_with(HashMap::new(), "docker", RunMode::Normal);
-            assert!(requires_github_credentials(&run));
+            assert!(requires_github_credentials(&run, true));
 
             let daytona = run_with(HashMap::new(), "daytona", RunMode::Normal);
-            assert!(requires_github_credentials(&daytona));
+            assert!(requires_github_credentials(&daytona, true));
+
+            let plugin = run_with(HashMap::new(), "host", RunMode::Normal);
+            assert!(requires_github_credentials(&plugin, true));
+        }
+
+        #[test]
+        fn does_not_require_github_credentials_without_a_repository_origin() {
+            // A `none` target creates an empty workspace; nothing is cloned.
+            let run = run_with(HashMap::new(), "docker", RunMode::Normal);
+            assert!(!requires_github_credentials(&run, false));
         }
 
         #[test]
         fn does_not_require_github_credentials_for_local_clean_run() {
             let run = run_with(HashMap::new(), "local", RunMode::Normal);
-            assert!(!requires_github_credentials(&run));
+            assert!(!requires_github_credentials(&run, true));
         }
 
         #[test]
         fn does_not_require_github_credentials_for_clone_provider_in_dry_run() {
             let run = run_with(HashMap::new(), "docker", RunMode::DryRun);
-            assert!(!requires_github_credentials(&run));
+            assert!(!requires_github_credentials(&run, true));
         }
     }
 }

@@ -545,8 +545,9 @@ fn finish_dense_result<T>(
 mod tests {
     use std::collections::HashMap;
 
+    use fabro_types::SandboxProviderKind;
     use fabro_types::settings::cli::OutputVerbosity;
-    use fabro_types::settings::run::{ApprovalMode, EnvironmentProvider, RunMode};
+    use fabro_types::settings::run::{ApprovalMode, RunMode};
 
     use super::{RunSettingsBuilder, WorkflowSettingsBuilder, server_runtime_settings_from_toml};
     use crate::{
@@ -649,7 +650,7 @@ provider = "local"
 
         assert_eq!(
             settings.run.environment.provider,
-            EnvironmentProvider::Local
+            SandboxProviderKind::LOCAL
         );
     }
 
@@ -674,7 +675,7 @@ provider = "docker"
 
         assert_eq!(
             settings.run.environment.provider,
-            EnvironmentProvider::Docker
+            SandboxProviderKind::DOCKER
         );
     }
 

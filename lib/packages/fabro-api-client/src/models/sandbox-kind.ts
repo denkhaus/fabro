@@ -15,15 +15,13 @@
 
 
 /**
- * Provider-neutral public-network policy for one direction.
+ * The kind of isolation a sandbox was provisioned with, as observed by the driver. Not an isolation guarantee.
  */
 
-export const SandboxNetworkPolicyMode = {
-    UNKNOWN: 'unknown',
-    OPEN: 'open',
-    BLOCKED: 'blocked',
-    CIDR_ALLOW_LIST: 'cidr_allow_list',
-    ESSENTIALS_ONLY: 'essentials_only'
+export const SandboxKind = {
+    CONTAINER: 'container',
+    VIRTUAL_MACHINE: 'virtual_machine',
+    UNKNOWN: 'unknown'
 } as const;
 
-export type SandboxNetworkPolicyMode = typeof SandboxNetworkPolicyMode[keyof typeof SandboxNetworkPolicyMode];
+export type SandboxKind = typeof SandboxKind[keyof typeof SandboxKind];

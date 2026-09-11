@@ -11,15 +11,39 @@ use lithos_llm::types::ToolDefinition;
 use tokio::task;
 
 use crate::config::NativeToolOptions;
-use crate::sandbox::{ExecStreamingResult, GrepOptions};
+use crate::sandbox::{
+    ExecControls, ExecResultExt, ExecSpec, ExecStreamingResult, FileKind, GrepOptions,
+    command_termination,
+};
 use crate::tool_registry::{RegisteredTool, ToolContext, ToolRegistry, ToolSource};
-use crate::truncation::{MAX_RETAINED_TOOL_OUTPUT_BYTES, retain_tool_output};
+use crate::truncation::{MAX_RETAINED_TOOL_OUTPUT_BYTES, OutputCaptureStats, retain_tool_output};
 use crate::types::AgentEvent;
 use crate::web_search::{SearchBackend, make_web_search_tool};
 
 const MAX_WEB_FETCH_BYTES: usize = 100 * 1024;
 const MAX_READ_MANY_FILES_CONCURRENCY: usize = 8;
 pub(crate) const DEFAULT_READ_LINES: usize = 2000;
+
+/// The Read tool's rendering of a file: each line prefixed with its 1-based
+/// number, right-aligned, from `offset` (1-based) for `limit` lines.
+#[must_use]
+pub(crate) fn format_lines_numbered(
+    content: &str,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> String {
+    let all_lines: Vec<&str> = content.lines().collect();
+    let skip = offset.unwrap_or(1).saturating_sub(1);
+    let take = limit.unwrap_or(all_lines.len());
+    let selected: Vec<&str> = all_lines.into_iter().skip(skip).take(take).collect();
+    let width = (skip + selected.len()).to_string().len().max(1);
+    let mut result = String::new();
+    for (i, line) in selected.iter().enumerate() {
+        let line_num = skip + i + 1;
+        let _ = writeln!(result, "{line_num:>width$} | {line}");
+    }
+    result
+}
 
 /// Configuration for the optional LLM-based summarizer used by `web_fetch`.
 #[derive(Clone)]
@@ -134,12 +158,12 @@ pub fn make_read_file_tool() -> RegisteredTool {
                 let offset_usize = optional_usize_arg(&args, "offset")?;
                 let limit_usize = optional_usize_arg(&args, "limit")?.or(Some(DEFAULT_READ_LINES));
 
-                let content = ctx
+                let text = ctx
                     .env
-                    .read_file(file_path, offset_usize, limit_usize)
+                    .read_file_text(file_path)
                     .await
                     .map_err(|e| e.display_with_causes())?;
-                Ok(content)
+                Ok(format_lines_numbered(&text, offset_usize, limit_usize))
             })
         }),
         source:     ToolSource::Native,
@@ -227,7 +251,7 @@ pub fn make_edit_file_tool() -> RegisteredTool {
                 };
 
                 ctx.env
-                    .write_existing_file(file_path, &new_content)
+                    .write_file(file_path, &new_content)
                     .await
                     .map_err(|e| e.display_with_causes())?;
                 Ok(format!("Successfully edited {file_path}"))
@@ -297,15 +321,20 @@ pub(crate) async fn execute_shell_command(
         env_var_count = tool_env.as_ref().map_or(0, std::collections::HashMap::len),
         "Injecting sandbox env vars into tool execution"
     );
+    let mut spec = ExecSpec::bash(command).timeout(std::time::Duration::from_millis(timeout_ms));
+    if let Some(cwd) = cwd {
+        spec = spec.working_dir(cwd);
+    }
+    for (key, value) in tool_env.iter().flatten() {
+        spec = spec.env_var(key, value);
+    }
+    let controls = ExecControls {
+        term: Some(ctx.cancel.clone()),
+        retained_output_limit: Some(MAX_RETAINED_TOOL_OUTPUT_BYTES),
+        ..ExecControls::default()
+    };
     ctx.env
-        .exec_command_streaming(crate::ExecStreamingRequest {
-            timeout_ms: Some(timeout_ms),
-            working_dir: cwd,
-            env_vars: tool_env.as_ref(),
-            cancel_token: Some(ctx.cancel.clone()),
-            stream_output_bytes_cap: Some(MAX_RETAINED_TOOL_OUTPUT_BYTES),
-            ..crate::ExecStreamingRequest::new(command)
-        })
+        .exec_command_streaming(spec, controls)
         .await
         .map_err(|e| format!("{SHELL_NO_PROCESS_RESULT}: {}", e.display_with_causes()))
 }
@@ -320,7 +349,7 @@ pub(crate) async fn run_shell_command(
 ) -> Result<String, String> {
     let streaming = execute_shell_command(ctx, command, timeout_ms, cwd).await?;
     let text = retain_shell_output(ctx, &streaming, render_shell_result(&streaming));
-    let is_success = streaming.result.is_success();
+    let is_success = streaming.result.success();
     emit_shell_process_completed(ctx, streaming).await;
 
     if is_success { Ok(text) } else { Err(text) }
@@ -336,7 +365,7 @@ pub(crate) fn retain_shell_output(
     let retained = retain_tool_output(
         output,
         MAX_RETAINED_TOOL_OUTPUT_BYTES,
-        streaming.output_capture().omitted_bytes,
+        OutputCaptureStats::from_streaming(streaming).omitted_bytes,
     );
     ctx.record_tool_output_stats(retained.stats);
     retained.output
@@ -353,11 +382,11 @@ pub(crate) async fn emit_shell_process_completed(
         return;
     }
 
-    let exit_code = streaming.result.exit_code;
-    let termination = streaming.result.termination;
-    let duration_ms = streaming.result.duration_ms;
+    let exit_code = streaming.result.program_exit_code();
+    let termination = command_termination(streaming.result.termination);
+    let duration_ms = streaming.result.duration_ms();
     let streams_separated = streaming.streams_separated;
-    let output_stats = streaming.output_capture();
+    let output_stats = OutputCaptureStats::from_streaming(&streaming);
     let result = streaming.result;
     let exec_output_tail =
         match task::spawn_blocking(move || result.default_redacted_output_tail()).await {
@@ -389,21 +418,23 @@ fn render_shell_result(streaming: &ExecStreamingResult) -> String {
     let result = &streaming.result;
     let mut output = format!(
         "Termination: {}\nExit code: {}\nDuration: {}ms\n",
-        result.termination.as_str(),
+        command_termination(result.termination).as_str(),
         result
-            .exit_code
+            .program_exit_code()
             .map_or_else(|| "none".to_string(), |code| code.to_string()),
-        result.duration_ms,
+        result.duration_ms(),
     );
+    let stdout = result.stdout_lossy();
+    let stderr = result.stderr_lossy();
     if streaming.streams_separated {
-        if !result.stdout.is_empty() {
-            let _ = write!(output, "stdout:\n{}\n", result.stdout);
+        if !stdout.is_empty() {
+            let _ = write!(output, "stdout:\n{stdout}\n");
         }
-        if !result.stderr.is_empty() {
-            let _ = write!(output, "stderr:\n{}\n", result.stderr);
+        if !stderr.is_empty() {
+            let _ = write!(output, "stderr:\n{stderr}\n");
         }
-    } else if !result.stdout.is_empty() {
-        let _ = write!(output, "output (combined):\n{}\n", result.stdout);
+    } else if !stdout.is_empty() {
+        let _ = write!(output, "output (combined):\n{stdout}\n");
     }
     output
 }
@@ -441,17 +472,16 @@ pub fn make_grep_tool() -> RegisteredTool {
                             .map_err(|_| format!("Parameter max_results is too large: {value}"))
                     })
                     .transpose()?;
-                let options = GrepOptions {
-                    glob_filter: args
-                        .get("glob_filter")
-                        .and_then(serde_json::Value::as_str)
-                        .map(String::from),
-                    case_insensitive: args
-                        .get("case_insensitive")
-                        .and_then(serde_json::Value::as_bool)
-                        .unwrap_or(false),
-                    max_results,
-                };
+                let mut options = GrepOptions::default();
+                options.include = args
+                    .get("glob_filter")
+                    .and_then(serde_json::Value::as_str)
+                    .map(String::from);
+                options.case_insensitive = args
+                    .get("case_insensitive")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                options.max_matches = max_results;
 
                 let results = execute_grep(&ctx, pattern, path, &options).await?;
                 Ok(results.join("\n"))
@@ -471,10 +501,15 @@ pub(crate) async fn execute_grep(
     path: &str,
     options: &GrepOptions,
 ) -> Result<Vec<String>, String> {
-    ctx.env
+    let matches = ctx
+        .env
         .grep(pattern, path, options)
         .await
-        .map_err(|e| e.display_with_causes())
+        .map_err(|e| e.display_with_causes())?;
+    Ok(matches
+        .into_iter()
+        .map(|found| format!("{}:{}:{}", found.path, found.line_number, found.line))
+        .collect())
 }
 
 /// Extract the file path from `<path>:<line>:<content>` grep output.
@@ -564,7 +599,10 @@ pub(crate) fn make_read_many_files_tool() -> RegisteredTool {
                     .map(|path| {
                         let env = Arc::clone(&ctx.env);
                         async move {
-                            let result = env.read_file(&path, None, None).await;
+                            let result = env
+                                .read_file_text(&path)
+                                .await
+                                .map(|text| format_lines_numbered(&text, None, None));
                             (path, result)
                         }
                     })
@@ -618,10 +656,10 @@ pub(crate) fn make_list_dir_tool() -> RegisteredTool {
                 let lines: Vec<String> = entries
                     .iter()
                     .map(|e| {
-                        if e.is_dir {
-                            format!("{}/", e.name)
+                        if e.kind == FileKind::Directory {
+                            format!("{}/", e.path)
                         } else {
-                            e.name.clone()
+                            e.path.clone()
                         }
                     })
                     .collect();
@@ -682,15 +720,15 @@ pub(crate) fn make_web_fetch_tool(summarizer: Option<WebFetchSummarizer>) -> Reg
                     .await
                     .map_err(|e| e.display_with_causes())?;
 
-                if !result.is_success() {
+                if !result.success() {
                     return Err(format!(
                         "curl failed (exit code {}): {}",
-                        result.display_exit_code(),
-                        result.stderr.trim()
+                        result.program_exit_code().unwrap_or(-1),
+                        result.stderr_lossy().trim()
                     ));
                 }
 
-                let mut content = html_to_markdown(&result.stdout);
+                let mut content = html_to_markdown(&result.stdout_lossy());
                 if content.len() > MAX_WEB_FETCH_BYTES {
                     content.truncate(MAX_WEB_FETCH_BYTES);
                     content.push_str("\n\n[Output truncated at 100KB]");
@@ -733,6 +771,8 @@ mod tests {
     use std::collections::HashMap;
 
     use fabro_llm::adapter::ProviderAdapter;
+    use fabro_sandbox::Termination;
+    use fabro_sandbox::test_support::exec_result;
     use fabro_types::CommandTermination;
     use lithos_llm::catalog::{ModelId, builtin};
     use tokio::sync::broadcast;
@@ -741,13 +781,24 @@ mod tests {
     use super::*;
     use crate::config::{NativeToolOptions, SessionOptions, ToolSecrets};
     use crate::event::{Emitter, SessionBoundEmitter};
-    use crate::local_sandbox::LocalSandbox;
     use crate::sandbox::*;
+
+    #[test]
+    fn format_lines_numbered_numbers_every_line() {
+        let result = format_lines_numbered("hello\nworld\nfoo", None, None);
+        assert_eq!(result, "1 | hello\n2 | world\n3 | foo\n");
+    }
+
+    #[test]
+    fn format_lines_numbered_honors_offset_and_limit() {
+        let result = format_lines_numbered("a\nb\nc\nd\ne", Some(2), Some(2));
+        assert_eq!(result, "2 | b\n3 | c\n");
+    }
     use crate::test_support::MockSandbox;
     use crate::tool_registry::{ToolContext, ToolDefinitionExt};
-    use crate::truncation;
     use crate::types::SessionEvent;
     use crate::web_search::make_web_search_tool_with_api_key;
+    use crate::{local_sandbox, truncation};
 
     #[test]
     fn core_tool_descriptions_include_actionable_guidance() {
@@ -834,10 +885,11 @@ mod tests {
         let tool = make_read_file_tool();
         let mut files = HashMap::new();
         files.insert("/test.txt".into(), "hello\nworld".into());
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files,
             ..Default::default()
-        });
+        }
+        .sandbox();
         let result = (tool.executor)(serde_json::json!({"file_path": "/test.txt"}), ToolContext {
             env,
             cancel: CancellationToken::new(),
@@ -858,10 +910,11 @@ mod tests {
             .map(|line| format!("line{line}"))
             .collect::<Vec<_>>()
             .join("\n");
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files: HashMap::from([("/test.txt".to_string(), content)]),
             ..Default::default()
-        });
+        }
+        .sandbox();
 
         let result = (tool.executor)(serde_json::json!({"file_path": "/test.txt"}), ToolContext {
             env,
@@ -884,10 +937,11 @@ mod tests {
         let tool = make_read_file_tool();
         let mut files = HashMap::new();
         files.insert("/test.txt".into(), "line1\nline2\nline3\nline4".into());
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files,
             ..Default::default()
-        });
+        }
+        .sandbox();
         let result = (tool.executor)(
             serde_json::json!({"file_path": "/test.txt", "offset": 2, "limit": 2}),
             ToolContext {
@@ -907,8 +961,8 @@ mod tests {
     #[tokio::test]
     async fn write_file_calls_env() {
         let tool = make_write_file_tool();
-        let env = Arc::new(MockSandbox::default());
-        let env_clone: Arc<dyn Sandbox> = env.clone();
+        let env = MockSandbox::default();
+        let env_clone = env.sandbox();
         let result = (tool.executor)(
             serde_json::json!({"file_path": "/out.txt", "content": "hello"}),
             ToolContext {
@@ -923,8 +977,7 @@ mod tests {
         )
         .await;
         assert_eq!(result.unwrap(), "Successfully wrote to /out.txt");
-        assert_eq!(env.existing_file_write_count(), 0);
-        let written = env.written_files.lock().unwrap();
+        let written = env.written_files();
         assert_eq!(written.len(), 1);
         assert_eq!(written[0].0, "/out.txt");
         assert_eq!(written[0].1, "hello");
@@ -935,11 +988,11 @@ mod tests {
         let tool = make_edit_file_tool();
         let mut files = HashMap::new();
         files.insert("/f.txt".into(), "hello world".into());
-        let env = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files,
             ..Default::default()
-        });
-        let env_clone: Arc<dyn Sandbox> = env.clone();
+        };
+        let env_clone = env.sandbox();
         let result = (tool.executor)(
             serde_json::json!({
                 "file_path": "/f.txt",
@@ -958,8 +1011,7 @@ mod tests {
         )
         .await;
         assert_eq!(result.unwrap(), "Successfully edited /f.txt");
-        assert_eq!(env.existing_file_write_count(), 1);
-        let written = env.written_files.lock().unwrap();
+        let written = env.written_files();
         assert_eq!(written.len(), 1);
         assert_eq!(written[0].1, "goodbye world");
     }
@@ -969,10 +1021,11 @@ mod tests {
         let tool = make_edit_file_tool();
         let mut files = HashMap::new();
         files.insert("/f.txt".into(), "hello world".into());
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files,
             ..Default::default()
-        });
+        }
+        .sandbox();
         let result = (tool.executor)(
             serde_json::json!({
                 "file_path": "/f.txt",
@@ -998,10 +1051,11 @@ mod tests {
         let tool = make_edit_file_tool();
         let mut files = HashMap::new();
         files.insert("/f.txt".into(), "aa bb aa".into());
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files,
             ..Default::default()
-        });
+        }
+        .sandbox();
         let result = (tool.executor)(
             serde_json::json!({
                 "file_path": "/f.txt",
@@ -1029,11 +1083,11 @@ mod tests {
         let tool = make_edit_file_tool();
         let mut files = HashMap::new();
         files.insert("/f.txt".into(), "aa bb aa".into());
-        let env = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files,
             ..Default::default()
-        });
-        let env_clone: Arc<dyn Sandbox> = env.clone();
+        };
+        let env_clone = env.sandbox();
         let result = (tool.executor)(
             serde_json::json!({
                 "file_path": "/f.txt",
@@ -1053,7 +1107,7 @@ mod tests {
         )
         .await;
         assert_eq!(result.unwrap(), "Successfully edited /f.txt");
-        let written = env.written_files.lock().unwrap();
+        let written = env.written_files();
         assert_eq!(written.len(), 1);
         assert_eq!(written[0].1, "cc bb cc");
     }
@@ -1063,11 +1117,11 @@ mod tests {
         let tool = make_edit_file_tool();
         let mut files = HashMap::new();
         files.insert("/f.txt".into(), "1 | keep this literal\nhello".into());
-        let env = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files,
             ..Default::default()
-        });
-        let env_clone: Arc<dyn Sandbox> = env.clone();
+        };
+        let env_clone = env.sandbox();
         let result = (tool.executor)(
             serde_json::json!({
                 "file_path": "/f.txt",
@@ -1086,12 +1140,12 @@ mod tests {
         )
         .await;
         assert_eq!(result.unwrap(), "Successfully edited /f.txt");
-        let written = env.written_files.lock().unwrap();
+        let written = env.written_files();
         assert_eq!(written.len(), 1);
         assert_eq!(written[0].1, "1 | keep this literal\ngoodbye");
     }
 
-    fn shell_context(env: Arc<dyn Sandbox>) -> ToolContext {
+    fn shell_context(env: Arc<RunSandbox>) -> ToolContext {
         ToolContext {
             env,
             cancel: CancellationToken::new(),
@@ -1103,7 +1157,7 @@ mod tests {
         }
     }
 
-    fn shell_context_with_emitter(env: Arc<dyn Sandbox>, emitter: &Emitter) -> ToolContext {
+    fn shell_context_with_emitter(env: Arc<RunSandbox>, emitter: &Emitter) -> ToolContext {
         ToolContext {
             session_id: Some("test-session".to_string()),
             root_session_id: Some("test-session".to_string()),
@@ -1128,23 +1182,24 @@ mod tests {
         event.event
     }
 
-    fn mock_sandbox_with(result: ExecResult) -> Arc<MockSandbox> {
-        Arc::new(MockSandbox {
+    fn mock_sandbox_with(result: ExecResult) -> MockSandbox {
+        MockSandbox {
             exec_result: result,
             ..Default::default()
-        })
+        }
     }
 
     #[tokio::test]
     async fn shell_success_returns_ok_with_metadata_and_separate_streams() {
         let tool = make_shell_tool();
-        let env: Arc<dyn Sandbox> = mock_sandbox_with(ExecResult {
-            stdout:      "hello".into(),
-            stderr:      "a warning".into(),
-            exit_code:   Some(0),
-            termination: CommandTermination::Exited,
-            duration_ms: 10,
-        });
+        let env = mock_sandbox_with(exec_result(
+            "hello",
+            "a warning",
+            Some(0),
+            Termination::Exited,
+            10,
+        ))
+        .sandbox();
         let output = (tool.executor)(
             serde_json::json!({"command": "echo hello"}),
             shell_context(env),
@@ -1162,32 +1217,22 @@ mod tests {
     #[tokio::test]
     async fn shell_forwards_command_without_stream_redirection_wrapper() {
         let tool = make_shell_tool();
-        let env = mock_sandbox_with(ExecResult {
-            stdout:      String::new(),
-            stderr:      String::new(),
-            exit_code:   Some(0),
-            termination: CommandTermination::Exited,
-            duration_ms: 1,
-        });
+        let env = mock_sandbox_with(exec_result("", "", Some(0), Termination::Exited, 1));
         let _ = (tool.executor)(
             serde_json::json!({"command": "make test"}),
-            shell_context(env.clone()),
+            shell_context(env.sandbox()),
         )
         .await;
 
-        let captured = env
-            .captured_command
-            .lock()
-            .expect("captured_command lock poisoned")
-            .clone();
+        let captured = env.captured_command();
         assert_eq!(captured.as_deref(), Some("make test"));
     }
 
     #[tokio::test]
     async fn shell_with_timeout() {
         let tool = make_shell_tool();
-        let env = Arc::new(MockSandbox::default());
-        let env_clone: Arc<dyn Sandbox> = env.clone();
+        let env = MockSandbox::default();
+        let env_clone = env.sandbox();
         let _result = (tool.executor)(
             serde_json::json!({"command": "sleep 1", "timeout_ms": 5000}),
             ToolContext {
@@ -1201,22 +1246,17 @@ mod tests {
             },
         )
         .await;
-        assert_eq!(*env.captured_timeout.lock().unwrap(), Some(5000));
+        assert_eq!(env.captured_timeout(), Some(5000));
     }
 
     #[tokio::test]
     async fn shell_nonzero_exit_code() {
         let tool = make_shell_tool();
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
-            exec_result: ExecResult {
-                stdout:      "error".into(),
-                stderr:      String::new(),
-                exit_code:   Some(1),
-                termination: CommandTermination::Exited,
-                duration_ms: 10,
-            },
+        let env = MockSandbox {
+            exec_result: exec_result("error", "", Some(1), Termination::Exited, 10),
             ..Default::default()
-        });
+        }
+        .sandbox();
         let output = (tool.executor)(serde_json::json!({"command": "false"}), shell_context(env))
             .await
             .expect_err("a nonzero exit is a failed tool result");
@@ -1229,13 +1269,14 @@ mod tests {
     #[tokio::test]
     async fn shell_timeout_returns_error_with_partial_output() {
         let tool = make_shell_tool();
-        let env: Arc<dyn Sandbox> = mock_sandbox_with(ExecResult {
-            stdout:      "partial".into(),
-            stderr:      String::new(),
-            exit_code:   None,
-            termination: CommandTermination::TimedOut,
-            duration_ms: 10000,
-        });
+        let env = mock_sandbox_with(exec_result(
+            "partial",
+            "",
+            None,
+            Termination::TimedOut,
+            10000,
+        ))
+        .sandbox();
         let output = (tool.executor)(
             serde_json::json!({"command": "sleep 100"}),
             shell_context(env),
@@ -1251,13 +1292,8 @@ mod tests {
     #[tokio::test]
     async fn shell_cancellation_returns_error_with_partial_output() {
         let tool = make_shell_tool();
-        let env: Arc<dyn Sandbox> = mock_sandbox_with(ExecResult {
-            stdout:      "partial".into(),
-            stderr:      String::new(),
-            exit_code:   None,
-            termination: CommandTermination::Cancelled,
-            duration_ms: 42,
-        });
+        let env = mock_sandbox_with(exec_result("partial", "", None, Termination::Cancelled, 42))
+            .sandbox();
         let output = (tool.executor)(
             serde_json::json!({"command": "sleep 100"}),
             shell_context(env),
@@ -1273,10 +1309,11 @@ mod tests {
     #[tokio::test]
     async fn shell_sandbox_failure_returns_error_without_a_process_outcome() {
         let tool = make_shell_tool();
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             exec_error: Some("sandbox transport is down".into()),
             ..Default::default()
-        });
+        }
+        .sandbox();
         let emitter = Emitter::new();
         let mut receiver = emitter.subscribe();
 
@@ -1305,13 +1342,14 @@ mod tests {
     #[tokio::test]
     async fn shell_emits_process_event_with_typed_outcome_and_redacted_tails() {
         let tool = make_shell_tool();
-        let env: Arc<dyn Sandbox> = mock_sandbox_with(ExecResult {
-            stdout:      "out".into(),
-            stderr:      "boom key=AKIAYRWQG5EJLPZLBYNP".into(),
-            exit_code:   Some(7),
-            termination: CommandTermination::Exited,
-            duration_ms: 12,
-        });
+        let env = mock_sandbox_with(exec_result(
+            "out",
+            "boom key=AKIAYRWQG5EJLPZLBYNP",
+            Some(7),
+            Termination::Exited,
+            12,
+        ))
+        .sandbox();
         let emitter = Emitter::new();
         let mut receiver = emitter.subscribe();
 
@@ -1351,17 +1389,12 @@ mod tests {
     #[tokio::test]
     async fn shell_renders_combined_output_when_streams_are_not_separated() {
         let tool = make_shell_tool();
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
-            exec_result: ExecResult {
-                stdout:      "interleaved".into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 5,
-            },
+        let env = MockSandbox {
+            exec_result: exec_result("interleaved", "", Some(0), Termination::Exited, 5),
             streams_separated: false,
             ..Default::default()
-        });
+        }
+        .sandbox();
         let emitter = Emitter::new();
         let mut receiver = emitter.subscribe();
 
@@ -1393,13 +1426,14 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(stdout.len() > 30_000);
-        let env: Arc<dyn Sandbox> = mock_sandbox_with(ExecResult {
-            stdout,
-            stderr: "the build failed".into(),
-            exit_code: Some(2),
-            termination: CommandTermination::Exited,
-            duration_ms: 900,
-        });
+        let env = mock_sandbox_with(exec_result(
+            &stdout,
+            "the build failed",
+            Some(2),
+            Termination::Exited,
+            900,
+        ))
+        .sandbox();
 
         let output = (tool.executor)(
             serde_json::json!({"command": "make build"}),
@@ -1425,9 +1459,11 @@ mod tests {
     #[tokio::test]
     async fn shell_reports_real_local_process_outcome() {
         let tool = make_shell_tool();
-        let env: Arc<dyn Sandbox> = Arc::new(LocalSandbox::new(
-            std::env::current_dir().expect("current dir"),
-        ));
+        let env: Arc<RunSandbox> = Arc::new(
+            local_sandbox(std::env::current_dir().expect("current dir"))
+                .await
+                .unwrap(),
+        );
         let emitter = Emitter::new();
         let mut receiver = emitter.subscribe();
 
@@ -1465,8 +1501,8 @@ mod tests {
     #[tokio::test]
     async fn shell_passes_tool_env_to_exec_command() {
         let tool = make_shell_tool();
-        let env = Arc::new(MockSandbox::default());
-        let env_clone: Arc<dyn Sandbox> = env.clone();
+        let env = MockSandbox::default();
+        let env_clone = env.sandbox();
         let mut tool_env = HashMap::new();
         tool_env.insert("MY_KEY".into(), "my_value".into());
         let _result = (tool.executor)(
@@ -1482,7 +1518,7 @@ mod tests {
             },
         )
         .await;
-        let captured = env.captured_env_vars.lock().unwrap().clone();
+        let captured = env.captured_env_vars();
         assert_eq!(captured, Some(tool_env));
     }
 
@@ -1509,7 +1545,8 @@ mod tests {
     #[tokio::test]
     async fn shell_resolves_tool_env_for_each_call() {
         let tool = make_shell_tool();
-        let env = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default();
+        let sandbox = env.sandbox();
         let provider = Arc::new(SequenceToolEnvProvider {
             values: std::sync::Mutex::new(vec![
                 HashMap::from([("GITHUB_TOKEN".to_string(), "t1".to_string())]),
@@ -1520,7 +1557,7 @@ mod tests {
         let _result = (tool.executor)(
             serde_json::json!({"command": "echo $GITHUB_TOKEN"}),
             ToolContext {
-                env:                 env.clone(),
+                env:                 sandbox.clone(),
                 cancel:              CancellationToken::new(),
                 tool_env_provider:   Some(provider.clone()),
                 session_id:          None,
@@ -1531,7 +1568,7 @@ mod tests {
         )
         .await;
         assert_eq!(
-            env.captured_env_vars.lock().unwrap().clone(),
+            env.captured_env_vars(),
             Some(HashMap::from([(
                 "GITHUB_TOKEN".to_string(),
                 "t1".to_string()
@@ -1541,7 +1578,7 @@ mod tests {
         let _result = (tool.executor)(
             serde_json::json!({"command": "echo $GITHUB_TOKEN"}),
             ToolContext {
-                env:                 env.clone(),
+                env:                 sandbox.clone(),
                 cancel:              CancellationToken::new(),
                 tool_env_provider:   Some(provider),
                 session_id:          None,
@@ -1552,7 +1589,7 @@ mod tests {
         )
         .await;
         assert_eq!(
-            env.captured_env_vars.lock().unwrap().clone(),
+            env.captured_env_vars(),
             Some(HashMap::from([(
                 "GITHUB_TOKEN".to_string(),
                 "t2".to_string()
@@ -1563,7 +1600,7 @@ mod tests {
     #[tokio::test]
     async fn shell_returns_provider_error_for_env_resolution_failure() {
         let tool = make_shell_tool();
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
 
         let result = (tool.executor)(
             serde_json::json!({"command": "echo $GITHUB_TOKEN"}),
@@ -1591,10 +1628,11 @@ mod tests {
         let tool = make_read_file_tool();
         let mut files = HashMap::new();
         files.insert("/test.txt".into(), "hello".into());
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             files,
             ..Default::default()
-        });
+        }
+        .sandbox();
 
         let result = (tool.executor)(serde_json::json!({"file_path": "/test.txt"}), ToolContext {
             env,
@@ -1611,10 +1649,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn shell_passes_none_env_when_tool_env_is_none() {
+    async fn shell_passes_no_env_when_tool_env_is_none() {
         let tool = make_shell_tool();
-        let env = Arc::new(MockSandbox::default());
-        let env_clone: Arc<dyn Sandbox> = env.clone();
+        let env = MockSandbox::default();
+        let env_clone = env.sandbox();
         let _result = (tool.executor)(serde_json::json!({"command": "echo hello"}), ToolContext {
             env:                 env_clone,
             cancel:              CancellationToken::new(),
@@ -1625,24 +1663,18 @@ mod tests {
             agent_event_emitter: None,
         })
         .await;
-        let captured = env.captured_env_vars.lock().unwrap().clone();
-        assert_eq!(captured, None);
+        let captured = env.captured_env_vars();
+        assert_eq!(captured, Some(HashMap::new()));
     }
 
     #[tokio::test]
     async fn web_fetch_passes_tool_env_to_exec_command() {
         let tool = make_web_fetch_tool(None);
-        let env = Arc::new(MockSandbox {
-            exec_result: ExecResult {
-                stdout:      "fetched content".into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 100,
-            },
+        let env = MockSandbox {
+            exec_result: exec_result("fetched content", "", Some(0), Termination::Exited, 100),
             ..Default::default()
-        });
-        let env_clone: Arc<dyn Sandbox> = env.clone();
+        };
+        let env_clone = env.sandbox();
         let mut tool_env = HashMap::new();
         tool_env.insert("API_KEY".into(), "secret".into());
         let _result = (tool.executor)(
@@ -1658,20 +1690,21 @@ mod tests {
             },
         )
         .await;
-        let captured = env.captured_env_vars.lock().unwrap().clone();
+        let captured = env.captured_env_vars();
         assert_eq!(captured, Some(tool_env));
     }
 
     #[tokio::test]
     async fn grep_basic() {
         let tool = make_grep_tool();
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
+        let env = MockSandbox {
             grep_results: vec![
                 "src/main.rs:10:fn main()".into(),
                 "src/lib.rs:5:pub fn".into(),
             ],
             ..Default::default()
-        });
+        }
+        .sandbox();
         let result = (tool.executor)(serde_json::json!({"pattern": "fn"}), ToolContext {
             env,
             cancel: CancellationToken::new(),
@@ -1690,10 +1723,14 @@ mod tests {
     #[tokio::test]
     async fn glob_basic() {
         let tool = make_glob_tool();
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
-            glob_results: vec!["src/main.rs".into(), "src/lib.rs".into()],
+        let env = MockSandbox {
+            files: HashMap::from([
+                ("src/main.rs".to_string(), String::new()),
+                ("src/lib.rs".to_string(), String::new()),
+            ]),
             ..Default::default()
-        });
+        }
+        .sandbox();
         let result = (tool.executor)(serde_json::json!({"pattern": "src/**/*.rs"}), ToolContext {
             env,
             cancel: CancellationToken::new(),
@@ -1721,7 +1758,7 @@ mod tests {
     #[tokio::test]
     async fn web_search_missing_query_returns_error() {
         let tool = make_web_search_tool_with_api_key("fake-key".into());
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let result = (tool.executor)(serde_json::json!({}), ToolContext {
             env,
             cancel: CancellationToken::new(),
@@ -1755,7 +1792,7 @@ mod tests {
         let tool = registry
             .get("web_search")
             .expect("web_search should be registered");
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let result = (tool.executor)(serde_json::json!({}), ToolContext {
             env,
             cancel: CancellationToken::new(),
@@ -1777,17 +1814,17 @@ mod tests {
     #[tokio::test]
     async fn web_fetch_builds_curl_command() {
         let tool = make_web_fetch_tool(None);
-        let env = Arc::new(MockSandbox {
-            exec_result: ExecResult {
-                stdout:      "<html><body><h1>hello</h1></body></html>".into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 100,
-            },
+        let env = MockSandbox {
+            exec_result: exec_result(
+                "<html><body><h1>hello</h1></body></html>",
+                "",
+                Some(0),
+                Termination::Exited,
+                100,
+            ),
             ..Default::default()
-        });
-        let env_clone: Arc<dyn Sandbox> = env.clone();
+        };
+        let env_clone = env.sandbox();
         let result = (tool.executor)(
             serde_json::json!({"url": "https://example.com"}),
             ToolContext {
@@ -1810,7 +1847,7 @@ mod tests {
             !output.contains("<html>"),
             "raw HTML tags should be removed, got: {output}"
         );
-        let cmd = env.captured_command.lock().unwrap().clone().unwrap();
+        let cmd = env.captured_command().unwrap();
         assert!(
             cmd.starts_with("curl -sL --max-time 30 "),
             "command should start with curl flags, got: {cmd}"
@@ -1828,7 +1865,7 @@ mod tests {
     #[tokio::test]
     async fn web_fetch_rejects_non_http_url() {
         let tool = make_web_fetch_tool(None);
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let result = (tool.executor)(
             serde_json::json!({"url": "ftp://example.com/file"}),
             ToolContext {
@@ -1852,8 +1889,8 @@ mod tests {
     #[tokio::test]
     async fn web_fetch_timeout_flows_through() {
         let tool = make_web_fetch_tool(None);
-        let env = Arc::new(MockSandbox::default());
-        let env_clone: Arc<dyn Sandbox> = env.clone();
+        let env = MockSandbox::default();
+        let env_clone = env.sandbox();
         let _result = (tool.executor)(
             serde_json::json!({"url": "https://example.com", "timeout_ms": 15000}),
             ToolContext {
@@ -1867,8 +1904,8 @@ mod tests {
             },
         )
         .await;
-        assert_eq!(*env.captured_timeout.lock().unwrap(), Some(15000));
-        let cmd = env.captured_command.lock().unwrap().clone().unwrap();
+        assert_eq!(env.captured_timeout(), Some(15000));
+        let cmd = env.captured_command().unwrap();
         assert!(
             cmd.contains("--max-time 15"),
             "curl timeout should be 15 seconds, got: {cmd}"
@@ -1878,8 +1915,8 @@ mod tests {
     #[tokio::test]
     async fn web_fetch_timeout_capped_at_60s() {
         let tool = make_web_fetch_tool(None);
-        let env = Arc::new(MockSandbox::default());
-        let env_clone: Arc<dyn Sandbox> = env.clone();
+        let env = MockSandbox::default();
+        let env_clone = env.sandbox();
         let _result = (tool.executor)(
             serde_json::json!({"url": "https://example.com", "timeout_ms": 120_000}),
             ToolContext {
@@ -1893,8 +1930,8 @@ mod tests {
             },
         )
         .await;
-        assert_eq!(*env.captured_timeout.lock().unwrap(), Some(60000));
-        let cmd = env.captured_command.lock().unwrap().clone().unwrap();
+        assert_eq!(env.captured_timeout(), Some(60000));
+        let cmd = env.captured_command().unwrap();
         assert!(
             cmd.contains("--max-time 60"),
             "curl timeout should be capped at 60 seconds, got: {cmd}"
@@ -1905,16 +1942,11 @@ mod tests {
     async fn web_fetch_truncates_large_output() {
         let large_content = "x".repeat(150 * 1024);
         let tool = make_web_fetch_tool(None);
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
-            exec_result: ExecResult {
-                stdout:      large_content,
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 100,
-            },
+        let env = MockSandbox {
+            exec_result: exec_result(&large_content, "", Some(0), Termination::Exited, 100),
             ..Default::default()
-        });
+        }
+        .sandbox();
         let result = (tool.executor)(
             serde_json::json!({"url": "https://example.com"}),
             ToolContext {
@@ -1936,16 +1968,17 @@ mod tests {
     #[tokio::test]
     async fn web_fetch_returns_error_on_nonzero_exit() {
         let tool = make_web_fetch_tool(None);
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
-            exec_result: ExecResult {
-                stdout:      String::new(),
-                stderr:      "curl: (6) Could not resolve host".into(),
-                exit_code:   Some(6),
-                termination: CommandTermination::Exited,
-                duration_ms: 100,
-            },
+        let env = MockSandbox {
+            exec_result: exec_result(
+                "",
+                "curl: (6) Could not resolve host",
+                Some(6),
+                Termination::Exited,
+                100,
+            ),
             ..Default::default()
-        });
+        }
+        .sandbox();
         let result = (tool.executor)(
             serde_json::json!({"url": "https://nonexistent.example.com"}),
             ToolContext {
@@ -1984,17 +2017,17 @@ mod tests {
         };
 
         let tool = make_web_fetch_tool(Some(summarizer));
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
-            exec_result: ExecResult {
-                stdout:      "<html><body><p>Lots of content about Rust...</p></body></html>"
-                    .into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 100,
-            },
+        let env = MockSandbox {
+            exec_result: exec_result(
+                "<html><body><p>Lots of content about Rust...</p></body></html>",
+                "",
+                Some(0),
+                Termination::Exited,
+                100,
+            ),
             ..Default::default()
-        });
+        }
+        .sandbox();
         let result = (tool.executor)(
             serde_json::json!({"url": "https://example.com", "prompt": "What is Rust?"}),
             ToolContext {
@@ -2018,18 +2051,17 @@ mod tests {
     #[tokio::test]
     async fn web_fetch_prompt_without_summarizer_returns_content_with_note() {
         let tool = make_web_fetch_tool(None);
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
-            exec_result: ExecResult {
-                stdout:
-                    "<html><body><p>Rust is a systems programming language.</p></body></html>"
-                        .into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 100,
-            },
+        let env = MockSandbox {
+            exec_result: exec_result(
+                "<html><body><p>Rust is a systems programming language.</p></body></html>",
+                "",
+                Some(0),
+                Termination::Exited,
+                100,
+            ),
             ..Default::default()
-        });
+        }
+        .sandbox();
         let result = (tool.executor)(
             serde_json::json!({"url": "https://example.com", "prompt": "What is Rust?"}),
             ToolContext {
@@ -2081,16 +2113,17 @@ mod tests {
         };
 
         let tool = make_web_fetch_tool(Some(summarizer));
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox {
-            exec_result: ExecResult {
-                stdout:      "<html><body><p>Page content</p></body></html>".into(),
-                stderr:      String::new(),
-                exit_code:   Some(0),
-                termination: CommandTermination::Exited,
-                duration_ms: 100,
-            },
+        let env = MockSandbox {
+            exec_result: exec_result(
+                "<html><body><p>Page content</p></body></html>",
+                "",
+                Some(0),
+                Termination::Exited,
+                100,
+            ),
             ..Default::default()
-        });
+        }
+        .sandbox();
         let result = (tool.executor)(
             serde_json::json!({"url": "https://example.com", "prompt": "Summarize this"}),
             ToolContext {
@@ -2148,7 +2181,7 @@ mod tests {
         let api_key = std::env::var(EnvVars::BRAVE_SEARCH_API_KEY)
             .expect("BRAVE_SEARCH_API_KEY must be set to run this test");
         let tool = make_web_search_tool_with_api_key(api_key);
-        let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
+        let env = MockSandbox::default().sandbox();
         let result = (tool.executor)(
             serde_json::json!({"query": "rust programming language"}),
             ToolContext {

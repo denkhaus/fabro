@@ -85,19 +85,19 @@ pub(crate) struct PushResult {
 /// checkpoint pushes (the next checkpoint re-pushes the same branch anyway),
 /// generous for the terminal publish push.
 pub(crate) async fn push_run_branch(
-    sandbox: &dyn fabro_sandbox::Sandbox,
+    sandbox: &fabro_sandbox::RunSandbox,
     branch: &str,
-    plan: &fabro_sandbox::RetryPlan,
+    policy: &fabro_sandbox::GitRetryPolicy,
 ) -> Result<fabro_sandbox::PushReport, fabro_sandbox::PushError> {
     sandbox
-        .git_push_ref(&format!("refs/heads/{branch}:refs/heads/{branch}"), plan)
+        .git_push_ref(&format!("refs/heads/{branch}:refs/heads/{branch}"), policy)
         .await
 }
 
 /// Sub-lifecycle responsible for git operations (checkpoint commits, pushes,
 /// diffs).
 pub(crate) struct GitLifecycle {
-    pub sandbox:               Arc<dyn fabro_sandbox::Sandbox>,
+    pub sandbox:               Arc<fabro_sandbox::RunSandbox>,
     pub emitter:               Arc<Emitter>,
     pub run_id:                RunId,
     pub run_store:             RunStoreHandle,
@@ -303,7 +303,7 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
         let git_author = self.run_options.git_author();
         let commit_result = checked_git_checkpoint(
             &self.sandbox_git,
-            &*self.sandbox,
+            &self.sandbox,
             &self.run_id.to_string(),
             node_id,
             &result.outcome.status.to_string(),
@@ -333,9 +333,9 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
                         .as_ref()
                         .and_then(|g| g.run_branch.as_ref())
                     {
-                        let plan = fabro_sandbox::RetryPlan::checkpoint_push();
+                        let policy = fabro_sandbox::checkpoint_push_policy();
                         let (push_ok, exec_output_tail, attempts) =
-                            match push_run_branch(self.sandbox.as_ref(), branch, &plan).await {
+                            match push_run_branch(self.sandbox.as_ref(), branch, &policy).await {
                                 Ok(report) => {
                                     self.sandbox_git.record_successful_push();
                                     (true, None, report.attempts)
@@ -388,10 +388,10 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
                         .as_ref()
                         .and_then(|git| git.base_sha.clone());
                     let (patch_result, numstat_result) =
-                        tokio::join!(git_diff(&*self.sandbox, &prev), async {
+                        tokio::join!(git_diff(&self.sandbox, &prev), async {
                             match summary_base.as_deref() {
                                 Some(base) if base != sha => {
-                                    Some(list_diff_numstat(&*self.sandbox, base, &sha).await)
+                                    Some(list_diff_numstat(&self.sandbox, base, &sha).await)
                                 }
                                 _ => None,
                             }
@@ -807,7 +807,7 @@ mod tests {
         events
     }
 
-    fn git_lifecycle(
+    async fn git_lifecycle(
         repo: &Path,
         emitter: Arc<Emitter>,
         run_store: RunStoreHandle,
@@ -827,9 +827,10 @@ mod tests {
             metadata_runtime,
             metadata_writer,
         )
+        .await
     }
 
-    fn git_lifecycle_with_writer(
+    async fn git_lifecycle_with_writer(
         repo: &Path,
         emitter: Arc<Emitter>,
         run_store: RunStoreHandle,
@@ -839,7 +840,11 @@ mod tests {
     ) -> GitLifecycle {
         GitLifecycle {
             stage_executions: StageExecutionTracker::default(),
-            sandbox: Arc::new(fabro_agent::LocalSandbox::new(repo.to_path_buf())),
+            sandbox: Arc::new(
+                fabro_agent::local_sandbox(repo.to_path_buf())
+                    .await
+                    .unwrap(),
+            ),
             emitter,
             run_id: fixtures::RUN_1,
             run_store,
@@ -878,7 +883,8 @@ mod tests {
             handle,
             run_options(repo_dir.path(), branch),
             Arc::new(RunMetadataRuntime::new()),
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let state = ExecutionState::new(&graph).unwrap();
 
@@ -915,7 +921,8 @@ mod tests {
             RunStoreHandle::new(Arc::new(FailingStateStore)),
             run_options(repo_dir.path(), branch),
             Arc::new(RunMetadataRuntime::new()),
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let state = ExecutionState::new(&graph).unwrap();
 
@@ -974,7 +981,8 @@ mod tests {
             run_options(repo_dir.path(), branch),
             Arc::clone(&runtime),
             Some(metadata_writer),
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let state = ExecutionState::new(&graph).unwrap();
 
@@ -1013,7 +1021,8 @@ mod tests {
             RunStoreHandle::new(Arc::new(FailingStateStore)),
             run_options(repo_dir.path(), branch),
             Arc::new(RunMetadataRuntime::new()),
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let node = graph.get_node("build").unwrap();
         let mut state = ExecutionState::new(&graph).unwrap();
@@ -1063,7 +1072,8 @@ mod tests {
             RunStoreHandle::local(run_store),
             run_options(repo_dir.path(), branch),
             Arc::new(RunMetadataRuntime::new()),
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let node = graph.get_node("build").unwrap();
         let mut state = ExecutionState::new(&graph).unwrap();
@@ -1131,7 +1141,8 @@ mod tests {
             Arc::new(options),
             Arc::new(RunMetadataRuntime::new()),
             None,
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let node = graph.get_node("build").unwrap();
         let mut state = ExecutionState::new(&graph).unwrap();
@@ -1205,7 +1216,8 @@ mod tests {
             Arc::new(options),
             Arc::new(RunMetadataRuntime::new()),
             None,
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let node = graph.get_node("build").unwrap();
         let mut state = ExecutionState::new(&graph).unwrap();
@@ -1248,7 +1260,8 @@ mod tests {
             RunStoreHandle::local(run_store(fixtures::RUN_1).await),
             run_options(repo_dir.path(), "fabro/metadata/run"),
             runtime,
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let state = ExecutionState::new(&graph).unwrap();
 
@@ -1270,7 +1283,8 @@ mod tests {
             RunStoreHandle::new(Arc::new(FailingStateStore)),
             run_options(repo_dir.path(), "fabro/metadata/run"),
             runtime,
-        );
+        )
+        .await;
         let graph = workflow_graph();
         let state = ExecutionState::new(&graph).unwrap();
 
@@ -1291,8 +1305,10 @@ mod tests {
             .on_checkpoint(&node, &result, Some("exit"), &checkpoint_state)
             .await
             .unwrap();
-        let finalize_sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(
-            fabro_agent::LocalSandbox::new(repo_dir.path().to_path_buf()),
+        let finalize_sandbox: Arc<fabro_agent::RunSandbox> = Arc::new(
+            fabro_agent::local_sandbox(repo_dir.path().to_path_buf())
+                .await
+                .unwrap(),
         );
         let finalize_locations = crate::services::RunLocations::for_sandbox(
             None,
