@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fmt::Write as _;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
@@ -751,7 +750,6 @@ async fn build_agent(
     let services = FabroRunToolServices {
         backend:        Arc::new(backend),
         current_run_id: run_id,
-        base_cwd:       PathBuf::new(),
     };
     let run_tools = register_named_fabro_run_tools(&services, ASK_FABRO_RUN_TOOL_NAMES);
     let selector = format!("{provider_id}/{model}");

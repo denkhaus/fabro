@@ -446,7 +446,6 @@ fn normalize_optional_text(value: Option<&str>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::path::Path;
     use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
@@ -742,12 +741,10 @@ mod tests {
 
     #[async_trait]
     impl FabroToolBackend for MockInteractBackend {
-        async fn create_run_from_spec(
+        async fn create_run_from_intent(
             &self,
-            _spec: &crate::ValidatedCreateRunSpec,
-            _cwd: &Path,
-            _parent_id: Option<RunId>,
-        ) -> anyhow::Result<crate::CreateRunSubmission> {
+            _intent: fabro_types::RunIntent,
+        ) -> anyhow::Result<RunId> {
             unreachable!()
         }
 

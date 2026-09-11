@@ -19927,3 +19927,57 @@ async fn workflow_version_registration_requires_user_or_run_tools_capability() {
             .is_none()
     );
 }
+
+#[tokio::test]
+async fn run_tools_worker_registers_contents_then_creates_by_version_id() {
+    let (state, app) = jwt_auth_app();
+    let parent_id = create_run_with_bearer(&app, &issue_test_user_jwt()).await;
+    let token = issue_test_run_tools_worker_token(&parent_id);
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::POST,
+            "/workflow-versions",
+            &token,
+            &json!({
+                "entrypoint": "child.fabro",
+                "files": {"child.fabro": MINIMAL_DOT},
+                "workflow_dependencies": {}
+            }),
+        ))
+        .await
+        .unwrap();
+    let registered = response_json!(response, StatusCode::CREATED).await;
+    let response = app
+        .oneshot(json_bearer_request(
+            Method::POST,
+            "/runs",
+            &token,
+            &json!({
+                "workflow_version_id": registered["workflow_version_id"],
+                "target": {"kind": "none"},
+                "args": {"dry_run": true},
+                "parent_id": parent_id,
+                "goal": "A child created from sandbox-supplied contents"
+            }),
+        ))
+        .await
+        .unwrap();
+    let child = response_json!(response, StatusCode::CREATED).await;
+    assert_eq!(child["parent_id"], parent_id.to_string());
+    assert_eq!(child["lifecycle"]["status"]["kind"], "submitted");
+    let child_id = child["id"].as_str().unwrap().parse::<RunId>().unwrap();
+    let projection = state
+        .stores
+        .runs
+        .load_run_projection(&child_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(projection.spec.workflow_version_id).unwrap(),
+        registered["workflow_version_id"]
+    );
+    assert_eq!(projection.spec.target, Some(RunTarget::None {}));
+    assert!(projection.start.is_none());
+}

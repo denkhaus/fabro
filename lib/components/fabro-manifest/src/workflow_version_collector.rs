@@ -186,79 +186,6 @@ pub fn collect_workflow_versions_at_location(
     VersionAssembler::new(collected).assemble()
 }
 
-/// Package a workflow whose bytes arrive by value. `entrypoint` is an exact
-/// key of `files`; unlike a checkout selector, an extensionless entrypoint
-/// is never rewritten to a `.fabro/workflows/<name>/workflow.toml` lookup.
-/// The files are staged in a private temporary root only for the duration of
-/// collection, so the resulting closure's paths are rooted at the file map.
-///
-/// # Errors
-///
-/// Returns a collision error before touching the filesystem when two paths
-/// cannot coexist on one filesystem; staging and collection failures are
-/// reported against the entrypoint.
-pub fn collect_inline_workflow_versions(
-    entrypoint: &WorkflowPath,
-    files: &BTreeMap<WorkflowPath, String>,
-) -> Result<CollectedWorkflowClosure, WorkflowVersionCollectError> {
-    if !files.contains_key(entrypoint) {
-        return Err(WorkflowVersionCollectError::MissingWorkflow {
-            path: entrypoint.to_string(),
-        });
-    }
-    fabro_types::validate_workflow_source_paths(files.keys()).map_err(|error| match error {
-        WorkflowVersionShapeError::PathCollision { second, .. } => {
-            WorkflowVersionCollectError::PathCollision {
-                entrypoint: entrypoint.clone(),
-                path:       second,
-            }
-        }
-        source => WorkflowVersionCollectError::InvalidShape {
-            entrypoint: entrypoint.clone(),
-            source,
-        },
-    })?;
-    let collect_error = |source: anyhow::Error| WorkflowVersionCollectError::Collect {
-        path: PathBuf::from(entrypoint.as_str()),
-        source,
-    };
-    let root = tempfile::tempdir().map_err(|source| {
-        collect_error(
-            anyhow::Error::new(source).context("failed to create private inline workflow root"),
-        )
-    })?;
-    for (path, content) in files {
-        let destination = root.path().join(path.as_str());
-        if let Some(parent) = destination.parent() {
-            std::fs::create_dir_all(parent).map_err(|source| {
-                collect_error(anyhow::Error::new(source).context(format!(
-                    "failed to create inline workflow directory for `{path}`"
-                )))
-            })?;
-        }
-        std::fs::write(&destination, content).map_err(|source| {
-            collect_error(
-                anyhow::Error::new(source)
-                    .context(format!("failed to write inline workflow file `{path}`")),
-            )
-        })?;
-    }
-    let package_root = root.path().canonicalize().map_err(|source| {
-        collect_error(
-            anyhow::Error::new(source).context("failed to canonicalize the inline workflow root"),
-        )
-    })?;
-    let location = WorkflowLocation::from_exact_path(Path::new(entrypoint.as_str()), &package_root)
-        .map_err(|source| collect_error(source.into()))?;
-    let location = canonicalize_location(location, |path, source| {
-        collect_error(anyhow::Error::new(source).context(format!(
-            "failed to canonicalize inline workflow path {}",
-            path.display()
-        )))
-    })?;
-    collect_workflow_versions_at_location(&location, &package_root, Path::new(entrypoint.as_str()))
-}
-
 fn repository_workflow_path(workflow: &Path) -> PathBuf {
     if workflow.is_relative() && workflow.extension().is_none() {
         Path::new(".fabro/workflows")
@@ -496,43 +423,6 @@ dockerfile = { path = "Dockerfile" }
             ".fabro/workflows/child/workflow.fabro",
             "digraph Child {}",
         );
-    }
-
-    #[test]
-    fn inline_collection_uses_the_exact_entrypoint_and_rejects_collisions_before_staging() {
-        let files = BTreeMap::from([
-            (
-                WorkflowPath::new("review").unwrap(),
-                "digraph Review {}".to_string(),
-            ),
-            (
-                WorkflowPath::new("notes/detail.md").unwrap(),
-                "detail".to_string(),
-            ),
-        ]);
-        let closure =
-            collect_inline_workflow_versions(&WorkflowPath::new("review").unwrap(), &files)
-                .unwrap();
-        let (_, root) = closure.versions().next().unwrap();
-        assert_eq!(root.version().entrypoint().as_str(), "review");
-
-        for (file, descendant) in [
-            ("a", "a/b.md"),
-            ("A", "a/b.md"),
-            ("dir/File", "DIR/file/child.md"),
-            ("Prompt.md", "prompt.md"),
-        ] {
-            let entrypoint = WorkflowPath::new(file).unwrap();
-            let colliding = BTreeMap::from([
-                (entrypoint.clone(), "digraph A {}".to_string()),
-                (WorkflowPath::new(descendant).unwrap(), "b".to_string()),
-            ]);
-            let error = collect_inline_workflow_versions(&entrypoint, &colliding).unwrap_err();
-            assert!(
-                matches!(error, WorkflowVersionCollectError::PathCollision { .. }),
-                "unexpected error: {error:#}"
-            );
-        }
     }
 
     #[test]

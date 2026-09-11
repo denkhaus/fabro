@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use fabro_types::RunId;
 use pebble_coding_agent::tools::{RegisteredTool, ToolError, ToolSource};
 use serde::de::DeserializeOwned;
 
@@ -77,13 +76,9 @@ pub(crate) async fn execute_fabro_run_tool(
         }
         fabro_tool::FABRO_RUN_CREATE_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroRunCreateParams>(name, args)?;
-            ensure_current_run_parent(&params, services.current_run_id)?;
-            let validated = fabro_tool::ValidatedCreateRuns::try_from(params)?;
             let result = fabro_tool::create_runs_with_options(
                 Arc::clone(&services.backend),
-                &services.base_cwd,
-                &services.user_settings_path,
-                validated,
+                params,
                 fabro_tool::CreateRunOptions {
                     forced_parent_id: Some(services.current_run_id),
                 },
@@ -168,34 +163,6 @@ where
         .map_err(|err| fabro_tool::ToolError::message(format!("invalid {name} arguments: {err}")))
 }
 
-fn ensure_current_run_parent(
-    params: &fabro_tool::FabroRunCreateParams,
-    current_run_id: RunId,
-) -> fabro_tool::ToolResult<()> {
-    let current_parent = current_run_id.to_string();
-    for run in &params.runs {
-        let parent_id = match run {
-            fabro_tool::CreateRunSpecInput::Workflow(_) => None,
-            fabro_tool::CreateRunSpecInput::Spec(spec) => spec.parent_id.as_deref().map(str::trim),
-        };
-        match parent_id {
-            None => {}
-            Some("") => {
-                return Err(fabro_tool::ToolError::message(
-                    "parent_id must be omitted or match the current run; blank parent_id is invalid",
-                ));
-            }
-            Some(parent_id) if parent_id == current_parent => {}
-            Some(parent_id) => {
-                return Err(fabro_tool::ToolError::message(format!(
-                    "parent_id must be omitted or match the current run {current_parent}; got {parent_id}"
-                )));
-            }
-        }
-    }
-    Ok(())
-}
-
 fn render_fabro_tool_result<T>(summary: &str, result: &T) -> fabro_tool::ToolResult<String>
 where
     T: serde::Serialize,
@@ -218,6 +185,57 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[tokio::test]
+    async fn native_run_create_submits_intent_and_enforces_current_parent() {
+        let server = httpmock::MockServer::start_async().await;
+        let parent_id = fabro_types::RunId::new();
+        let version_id: fabro_types::WorkflowVersionId =
+            fabro_types::BlobHash::new(b"registered workflow").into();
+        let create = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::POST)
+                    .path("/api/v1/runs")
+                    .json_body(json!({
+                        "workflow_version_id": version_id,
+                        "target": {"kind":"none"},
+                        "parent_id": parent_id,
+                        "args": {"auto_approve":false}
+                    }));
+                // Admission rejection proves the native dispatcher reached the
+                // canonical API without registering or looking up a workflow.
+                then.status(422).body("native admission rejection");
+            })
+            .await;
+        let state = server
+            .mock_async(|when, then| {
+                when.path(format!("/api/v1/runs/{parent_id}/state"));
+                then.status(500);
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: parent_id,
+        };
+        let name = fabro_tool::FABRO_RUN_CREATE_TOOL_NAME;
+        let mut args = json!({"runs":[{
+            "workflow_version_id":version_id,
+            "target":{"kind":"none"},
+            "args":{"auto_approve":false}
+        }]});
+        let error = execute_fabro_run_tool(name, args.clone(), &services)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("native admission rejection"));
+        args["runs"][0]["parent_id"] = json!(fabro_types::RunId::new());
+        let error = execute_fabro_run_tool(name, args, &services)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("match the current run"));
+        create.assert_calls_async(1).await;
+        state.assert_calls_async(0).await;
+    }
 
     struct SingleGraphPackager;
 
@@ -257,13 +275,11 @@ mod tests {
             .await;
         let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
         let services = FabroRunToolServices {
-            backend:            Arc::new(
+            backend:        Arc::new(
                 ClientBackend::new(Arc::new(client))
                     .with_workflow_version_packager(Arc::new(SingleGraphPackager)),
             ),
-            current_run_id:     "01KRBZW4DW0000000000000002".parse().unwrap(),
-            base_cwd:           "unused".into(),
-            user_settings_path: "unused".into(),
+            current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
         };
         let name = fabro_tool::FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME;
         assert_eq!(register_named_fabro_run_tools(&services, &[name]).len(), 1);

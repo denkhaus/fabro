@@ -77,7 +77,7 @@ pub(crate) async fn create_run(
         target,
         dirty_worktree,
     } = fabro_manifest::derive_run_target_for_provider(
-        environment.settings.provider,
+        &environment.settings.provider,
         &canonical_cwd,
         configured_repo_origin_url.as_deref(),
     )?;

@@ -23,8 +23,6 @@ pub type FabroClientFactory = Arc<dyn Fn() -> FabroClientFuture + Send + Sync>;
 #[derive(Clone)]
 pub struct FabroMcpServerSettings {
     pub client_factory: FabroClientFactory,
-    pub config_path:    PathBuf,
-    pub cwd:            PathBuf,
 }
 
 impl std::fmt::Debug for FabroMcpServerSettings {
@@ -32,8 +30,6 @@ impl std::fmt::Debug for FabroMcpServerSettings {
         formatter
             .debug_struct("FabroMcpServerSettings")
             .field("client_factory", &"<factory>")
-            .field("config_path", &self.config_path)
-            .field("cwd", &self.cwd)
             .finish()
     }
 }

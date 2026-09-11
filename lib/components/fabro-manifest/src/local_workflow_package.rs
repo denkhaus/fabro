@@ -66,11 +66,6 @@ impl ResolvedLocalWorkflowPackage {
     pub fn closure(&self) -> &CollectedWorkflowClosure {
         &self.closure
     }
-
-    #[must_use]
-    pub fn into_closure(self) -> CollectedWorkflowClosure {
-        self.closure
-    }
 }
 
 /// Resolve producer-readable workflow bytes under one stable local source

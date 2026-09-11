@@ -1,23 +1,17 @@
-use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use fabro_api::types;
 use fabro_types::{
     EventEnvelope, PairId, PairMessageRecord, PairMessageRequest, PairRecord,
-    PairTranscriptResponse, Run, RunId, RunIntent, RunIntentArgs, RunPairStatusResponse,
-    RunProjection, StageId,
+    PairTranscriptResponse, Run, RunId, RunIntent, RunPairStatusResponse, RunProjection, StageId,
 };
 
-use crate::{
-    CreateRunSubmission, FabroToolBackend, PreparedRunCreate, RunCreateAdapter, ToolError,
-    ValidatedCreateRunSpec, common,
-};
+use crate::{FabroToolBackend, common};
 
 #[derive(Clone)]
 pub struct ClientBackend {
     client:                    Arc<::fabro_client::Client>,
-    run_create_adapter:        Option<Arc<dyn RunCreateAdapter>>,
     run_scope:                 Option<RunId>,
     workflow_version_packager: Option<Arc<dyn crate::WorkflowVersionPackager>>,
 }
@@ -27,16 +21,9 @@ impl ClientBackend {
     pub fn new(client: Arc<::fabro_client::Client>) -> Self {
         Self {
             client,
-            run_create_adapter: None,
             run_scope: None,
             workflow_version_packager: None,
         }
-    }
-
-    #[must_use]
-    pub fn with_run_create_adapter(mut self, adapter: Arc<dyn RunCreateAdapter>) -> Self {
-        self.run_create_adapter = Some(adapter);
-        self
     }
 
     #[must_use]
@@ -68,41 +55,6 @@ impl ClientBackend {
     }
 }
 
-fn run_intent_from_spec(
-    spec: &ValidatedCreateRunSpec,
-    prepared: PreparedRunCreate,
-    parent_id: Option<RunId>,
-) -> (RunIntent, Vec<String>) {
-    let PreparedRunCreate {
-        workflow_version_id,
-        target,
-        goal,
-        warnings,
-    } = prepared;
-    let intent = RunIntent {
-        workflow_version_id,
-        target,
-        args: RunIntentArgs {
-            model:            spec.model.clone(),
-            provider:         spec.provider.clone(),
-            inputs:           spec
-                .inputs
-                .iter()
-                .map(|(key, value)| (key.clone(), value.json().clone()))
-                .collect(),
-            labels:           spec.labels.clone(),
-            dry_run:          spec.dry_run,
-            auto_approve:     spec.auto_approve,
-            preserve_sandbox: spec.preserve_sandbox,
-        },
-        environment_id: spec.environment.clone(),
-        parent_id,
-        title: None,
-        goal,
-    };
-    (intent, warnings)
-}
-
 #[async_trait]
 impl FabroToolBackend for ClientBackend {
     /// Package the supplied tree, then register dependencies before parents.
@@ -129,26 +81,12 @@ impl FabroToolBackend for ClientBackend {
         Ok(packaged.root_id())
     }
 
-    async fn create_run_from_spec(
-        &self,
-        spec: &crate::ValidatedCreateRunSpec,
-        cwd: &Path,
-        parent_id: Option<RunId>,
-    ) -> anyhow::Result<CreateRunSubmission> {
-        if let Some(parent_id) = parent_id.as_ref() {
-            self.ensure_run_scope(parent_id)?;
-        }
-        let Some(adapter) = self.run_create_adapter.as_ref() else {
-            return Err(ToolError::message(format!(
-                "{} is not available",
-                crate::FABRO_RUN_CREATE_TOOL_NAME
-            ))
-            .into());
-        };
-        let prepared = adapter.prepare(&self.client, spec, cwd).await?;
-        let (intent, warnings) = run_intent_from_spec(spec, prepared, parent_id);
-        let run_id = self.client.create_run_from_intent(intent).await?;
-        Ok(CreateRunSubmission { run_id, warnings })
+    async fn create_run_from_intent(&self, intent: RunIntent) -> anyhow::Result<RunId> {
+        anyhow::ensure!(
+            self.run_scope.is_none(),
+            "run creation is outside this tool session's run scope"
+        );
+        self.client.create_run_from_intent(intent).await
     }
 
     async fn resolve_run(&self, selector: &str) -> anyhow::Result<Run> {

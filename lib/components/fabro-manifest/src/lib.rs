@@ -31,12 +31,10 @@ use fabro_graphviz::parser;
 use fabro_template::validate_static_reference;
 use fabro_types::graph::ReferenceKind;
 use fabro_types::settings::interp::InterpString;
-use fabro_types::settings::run::{
-    ApprovalMode, EnvironmentProvider, ResolvedGoalSource, ResolvedRunGoal, RunMode,
-};
+use fabro_types::settings::run::{ApprovalMode, ResolvedGoalSource, ResolvedRunGoal, RunMode};
 use fabro_types::{
     DirtyStatus, GitContext, GitHubRepositorySlug, GitRunTarget, ManifestPath, RunTarget,
-    WorkflowSettings,
+    SandboxProviderKind, WorkflowSettings,
 };
 use fabro_workflow::git::{self, GitSyncStatus};
 pub use fabro_workflow_version::CollectedWorkflowClosure;
@@ -49,7 +47,6 @@ use crate::workflow_bundler::WorkflowBundler;
 pub use crate::workflow_version_collector::{
     MAX_WORKFLOW_VERSION_DEPTH, WorkflowVersionCollectError, collect_workflow_versions,
     collect_workflow_versions_at_location,
-    collect_inline_workflow_versions,
 };
 pub use crate::workflow_version_packager::SuppliedWorkflowVersionPackager;
 
@@ -418,7 +415,7 @@ pub enum RunTargetDerivationError {
     )]
     Unverified,
     #[error(
-        "the workflow configures a run.scm repository that is not the local checkout's origin; run from a checkout of the configured repository or pass an explicit target"
+        "the workflow configures a run.scm repository that is not the local checkout's origin; run from a checkout of the configured repository"
     )]
     ConfiguredOriginMismatch,
     #[error("failed to inspect caller working directory {} for Git metadata", path.display())]
@@ -462,13 +459,13 @@ pub enum RunTargetDerivationError {
 /// # Errors
 ///
 /// Returns the reason a clone-based target could not be derived; every
-/// variant's message is written for the caller of the run tool or CLI.
+/// variant's message is written for the CLI caller.
 pub fn derive_run_target_for_provider(
-    provider: EnvironmentProvider,
+    provider: &SandboxProviderKind,
     canonical_cwd: &Path,
     configured_repo_origin_url: Option<&str>,
 ) -> std::result::Result<DerivedRunTarget, RunTargetDerivationError> {
-    if !provider.is_clone_based() {
+    if !provider.clones_workspace() {
         let path = canonical_cwd
             .to_str()
             .ok_or_else(|| RunTargetDerivationError::NonUtf8Path {
@@ -540,21 +537,6 @@ fn none_target_for_unversioned_directory(
         Ok(_) => Err(RunTargetDerivationError::NoAttachedBranch),
     };
     outcome
-}
-
-/// The workflow's configured `run.scm` GitHub repository as a normalized
-/// origin URL, read from `workflow.toml` source text. `None` when the config
-/// names no GitHub repository.
-///
-/// # Errors
-///
-/// Returns an error when the source cannot be parsed or resolved.
-pub fn configured_repo_origin_url_from_workflow_toml(source: &str) -> Result<Option<String>> {
-    let run = parse_run_layer_from_settings_toml(source)
-        .context("failed to parse run settings from workflow.toml")?;
-    Ok(configured_repo_origin_url_from_scm_layer(
-        &run.scm.unwrap_or_default(),
-    ))
 }
 
 /// The configured `run.scm` GitHub repository for a resolved local workflow.
@@ -885,28 +867,6 @@ pub(crate) mod test_fixtures {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn configured_repo_origin_url_reads_run_scm_from_workflow_toml() {
-        let configured = super::configured_repo_origin_url_from_workflow_toml(
-            "_version = 1\n[run.scm]\nowner = \"acme\"\nrepository = \"widgets\"\n",
-        )
-        .unwrap();
-        assert_eq!(
-            configured.as_deref(),
-            Some("https://github.com/acme/widgets")
-        );
-
-        let unconfigured =
-            super::configured_repo_origin_url_from_workflow_toml("_version = 1\n").unwrap();
-        assert_eq!(unconfigured, None);
-
-        let other_provider = super::configured_repo_origin_url_from_workflow_toml(
-            "_version = 1\n[run.scm]\nprovider = \"gitlab\"\nowner = \"acme\"\nrepository = \"widgets\"\n",
-        )
-        .unwrap();
-        assert_eq!(other_provider, None);
-    }
-
     use fabro_workflow::git::head_sha;
 
     use super::*;
