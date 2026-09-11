@@ -700,14 +700,179 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M299PVMSE7Q53ZGPP67AHNMG",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-09-11T22:35:09.690058329Z",
+    "run_branch": "fabro/run/01M299PVMSE7Q53ZGPP67AHNMG",
+    "base_sha": "81f8cd3fa2236992ab13be6abf19d612e17d8d08"
   },
-  "status_updated_at": "2026-09-11T22:34:15.224459161Z",
-  "last_event_at": "2026-09-11T22:35:09.035342228Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-09-11T22:35:09.690211359Z",
+  "last_event_at": "2026-09-11T22:36:27.808682655Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 19,
+      "checkpoint": {
+        "timestamp": "2026-09-11T22:35:12.326007750Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.fidelity": "compact",
+          "internal.seed_cycle_anchor": "",
+          "internal.run_id": "01M299PVMSE7Q53ZGPP67AHNMG",
+          "graph.max_node_visits": "40",
+          "graph.preamble_budget_kb": "24",
+          "failure_signature": "",
+          "internal.work_dir": "/workspace/fabro",
+          "current_node": "start",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.thread_id": null,
+          "outcome": "succeeded",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "seed_cycles": {
+            "start": 1
+          },
+          "failure_class": "",
+          "graph.inspects": "develop",
+          "graph.rankdir": "LR",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.start": 0
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "planner",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-11T22:36:28.003376132Z",
+        "current_node": "planner",
+        "completed_nodes": [
+          "start",
+          "planner"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.retry_count.planner": 0,
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.start.current_node": "planner",
+          "last_stage": "planner",
+          "current_node": "planner",
+          "current_seed_title": "Long-window rate limits defeat count-based retries: honor provider reset times or park-and-resume",
+          "outcome": "succeeded",
+          "failure_signature": "",
+          "internal.node_visit_count": 1,
+          "current_seed_brief": "Count-based exponential backoff (fabro-llm default_retry_policy: 3 attempts, backoff capped 5s, `lib/components/fabro-llm/src/client.rs:23`) cannot bridge multi-hour provider usage windows (zai 429 'Usage limit reached for 5 hour. Your limit will reset at <ts>', retry_after=null — reset exists only in message text). Retry exhaustion then fails the run hard (workflow_error) with no recovery path. Scope this run to the LLM/agent layer fix plus fail-fast propagation; full scheduled wake-up automation is follow-up (fabro-7627 depends on this). Acceptance criteria:\n- Parse reset hints from BOTH sources in `lib/components/fabro-llm/src/gateway.rs`: the existing Retry-After header path AND a message-text extractor for provider reset timestamps (at minimum the zai/Anthropic-style 'Your limit will reset at YYYY-MM-DD HH:MM:SS' wording; tolerate timezone-naive forms as UTC) — unit-tested with real message samples from the seed.\n- Retry middleware honors the reset deadline: when a RateLimit error carries a reset/reset-after window longer than the policy's total backoff budget, do NOT burn remaining attempts — surface the error immediately with the parsed reset time attached (structured field, not just message text).\n- Error type carries the provider reset deadline (extend the existing `with_provider_retry_after`/retry_after plumbing in `lib/components/fabro-llm/src/error.rs` area as needed) so callers can distinguish short-window 429s (retry as today) from long-window ones (fail fast, deadline attached).\n- Workflow layer: a long-window rate-limit failure from an agent stage maps to the existing soft-exit/soft-stop path (`lib/components/fabro-workflow/src/pipeline/finalize.rs`) instead of hard workflow_error, leaving the run resumable via the existing resume primitive (`lib/components/fabro-workflow/src/operations/resume.rs`). Scheduled wake-up/automation is explicitly OUT of scope this run.\n- Verification cheapest-first: `python3 -m pytest`-style parse check n/a; run `cargo nextest run -p fabro-llm` for the parser/middleware tests, then `cargo nextest run -p fabro-workflow` for the soft-exit mapping test; fmt/clippy on touched crates via `cargo +nightly-2026-04-14 fmt -p <touched-crate>` and `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings`; gate green via the deterministic tester step.\n- No changes to loop assets (`justfile`, `scripts/`); engine-side scheduling work stays in fabro-7627/fabro-1f70.",
+          "graph.inspects": "develop",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Seed fabro-a3d8 raised P2→P1→P0 by user decision (2026-09-12 00:29 Berlin) to jump the queue; user ordering: fabro-a3d8 first, then fabro-7627 (dep edge exists). Claimed this run.",
+              "Seed's cited paths resolve but fabro-llm lives under `lib/components/` not `lib/foundation/` — paths in the seed body are abbreviated, no sd update needed.",
+              "fabro_runs_list showed no open PRs and no non-terminal develop runs besides this run itself (01M299PVMSE7Q53ZGPP67AHNMG, self-excluded) — no in-flight exclusions applied.",
+              "Scoped park-and-resume OUT of this run's brief (kept: fail-fast + soft-exit mapping + resumable state); scheduled wake-up belongs with fabro-7627/fabro-1f70 to keep one-seed-per-run tractable."
+            ]
+          },
+          "graph.preamble_budget_kb": "24",
+          "current_seed_id": "fabro-a3d8",
+          "graph.max_node_visits": "40",
+          "graph.goal": "Develop the project one seed per run: claim the next open seed, implement, gate, review, exit",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.start": 0,
+          "preferred_label": "Seed claimed",
+          "seed_cycles": {
+            "planner": 1
+          },
+          "internal.seed_cycle_anchor": "fabro-a3d8",
+          "failure_class": "",
+          "graph.rankdir": "LR",
+          "internal.run_id": "01M299PVMSE7Q53ZGPP67AHNMG",
+          "internal.thread_id": "start",
+          "last_response": "Claimed fabro-a3d8. The basis resolves against the current tree (retry policy at `lib/components/fabro-llm/src/client.rs:23`, Retry-After parsing at `lib/components/fabro-llm/src/gateway.rs:127-142`, ",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3983,
+            "preview": "Claimed fabro-a3d8. The basis resolves against the current tree (retry policy at `lib/components/fabro-llm/src/client.rs:23`, Retry-After parsing at `lib/components/fabro-llm/src/gateway.rs:127-142`, "
+          }
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_title": "Long-window rate limits defeat count-based retries: honor provider reset times or park-and-resume",
+              "last_response": "Claimed fabro-a3d8. The basis resolves against the current tree (retry policy at `lib/components/fabro-llm/src/client.rs:23`, Retry-After parsing at `lib/components/fabro-llm/src/gateway.rs:127-142`, ",
+              "current_seed_brief": "Count-based exponential backoff (fabro-llm default_retry_policy: 3 attempts, backoff capped 5s, `lib/components/fabro-llm/src/client.rs:23`) cannot bridge multi-hour provider usage windows (zai 429 'Usage limit reached for 5 hour. Your limit will reset at <ts>', retry_after=null — reset exists only in message text). Retry exhaustion then fails the run hard (workflow_error) with no recovery path. Scope this run to the LLM/agent layer fix plus fail-fast propagation; full scheduled wake-up automation is follow-up (fabro-7627 depends on this). Acceptance criteria:\n- Parse reset hints from BOTH sources in `lib/components/fabro-llm/src/gateway.rs`: the existing Retry-After header path AND a message-text extractor for provider reset timestamps (at minimum the zai/Anthropic-style 'Your limit will reset at YYYY-MM-DD HH:MM:SS' wording; tolerate timezone-naive forms as UTC) — unit-tested with real message samples from the seed.\n- Retry middleware honors the reset deadline: when a RateLimit error carries a reset/reset-after window longer than the policy's total backoff budget, do NOT burn remaining attempts — surface the error immediately with the parsed reset time attached (structured field, not just message text).\n- Error type carries the provider reset deadline (extend the existing `with_provider_retry_after`/retry_after plumbing in `lib/components/fabro-llm/src/error.rs` area as needed) so callers can distinguish short-window 429s (retry as today) from long-window ones (fail fast, deadline attached).\n- Workflow layer: a long-window rate-limit failure from an agent stage maps to the existing soft-exit/soft-stop path (`lib/components/fabro-workflow/src/pipeline/finalize.rs`) instead of hard workflow_error, leaving the run resumable via the existing resume primitive (`lib/components/fabro-workflow/src/operations/resume.rs`). Scheduled wake-up/automation is explicitly OUT of scope this run.\n- Verification cheapest-first: `python3 -m pytest`-style parse check n/a; run `cargo nextest run -p fabro-llm` for the parser/middleware tests, then `cargo nextest run -p fabro-workflow` for the soft-exit mapping test; fmt/clippy on touched crates via `cargo +nightly-2026-04-14 fmt -p <touched-crate>` and `cargo +nightly-2026-04-14 clippy -p <touched-crate> --all-targets -- -D warnings`; gate green via the deterministic tester step.\n- No changes to loop assets (`justfile`, `scripts/`); engine-side scheduling work stays in fabro-7627/fabro-1f70.",
+              "last_stage": "planner",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Seed fabro-a3d8 raised P2→P1→P0 by user decision (2026-09-12 00:29 Berlin) to jump the queue; user ordering: fabro-a3d8 first, then fabro-7627 (dep edge exists). Claimed this run.",
+                  "Seed's cited paths resolve but fabro-llm lives under `lib/components/` not `lib/foundation/` — paths in the seed body are abbreviated, no sd update needed.",
+                  "fabro_runs_list showed no open PRs and no non-terminal develop runs besides this run itself (01M299PVMSE7Q53ZGPP67AHNMG, self-excluded) — no in-flight exclusions applied.",
+                  "Scoped park-and-resume OUT of this run's brief (kept: fail-fast + soft-exit mapping + resumable state); scheduled wake-up belongs with fabro-7627/fabro-1f70 to keep one-seed-per-run tractable."
+                ]
+              },
+              "current_seed_id": "fabro-a3d8",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3983,
+                "preview": "Claimed fabro-a3d8. The basis resolves against the current tree (retry policy at `lib/components/fabro-llm/src/client.rs:23`, Retry-After parsing at `lib/components/fabro-llm/src/gateway.rs:127-142`, "
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "model": {
+                "provider": "zai",
+                "model_id": "glm-5.3"
+              },
+              "tokens": {
+                "input": 47589,
+                "output": 1823,
+                "reasoning": 753,
+                "cache_read": 311488,
+                "cache_write": 0
+              },
+              "total_usd_micros": 158934
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 55019,
+              "tool_time_ms": 14470,
+              "active_time_ms": 69489
+            }
+          }
+        },
+        "next_node_id": "implementer",
+        "node_visits": {
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -734,5 +899,265 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "planner@1": {
+      "first_event_seq": 20,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-09-11T22:36:27.808682655Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-11T22:35:12.340030378Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 70000,
+        "inference_time_ms": 55019,
+        "tool_time_ms": 14470,
+        "active_time_ms": 69489
+      },
+      "usage": {
+        "input_tokens": 47589,
+        "output_tokens": 1823,
+        "total_tokens": 361653,
+        "reasoning_tokens": 753,
+        "cache_read_tokens": 311488,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 158934
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 47246,
+        "usage_percent": 4.505729675292969,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-11T22:36:27.794491909Z",
+        "event_seq": 84,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1330,
+            "usage_percent": 0.12683868408203125
+          },
+          {
+            "category": "tools",
+            "tokens": 2113,
+            "usage_percent": 0.20151138305664062
+          },
+          {
+            "category": "memory",
+            "tokens": 7026,
+            "usage_percent": 0.6700515747070312
+          },
+          {
+            "category": "conversation",
+            "tokens": 36768,
+            "usage_percent": 3.5064697265625
+          },
+          {
+            "category": "other",
+            "tokens": 9,
+            "usage_percent": 0.000858306884765625
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-11T22:35:12.120881228Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-11T22:35:12.110265726Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
