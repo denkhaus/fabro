@@ -265,7 +265,7 @@ impl ExecResultExt for ExecResult {
             self.stderr,
         )
         .with_duration(self.duration);
-        crate::Error::driver_error(failure.into())
+        crate::Error::from(sandbox_driver::Error::from(failure))
     }
 
     fn into_result(self, label: impl Into<String>) -> crate::Result<ExecResult> {
@@ -631,7 +631,9 @@ mod tests {
             42,
         );
         let error = result.into_result("git push").unwrap_err();
-        let failure = error.exec_failure().expect("exec failure");
+        let Some(sandbox_driver::Error::Exec(failure)) = error.driver() else {
+            panic!("expected an exec failure, got {error:?}");
+        };
         assert_eq!(failure.label(), "git push");
         assert_eq!(failure.exit_code(), Some(128));
         assert_eq!(failure.duration(), Some(Duration::from_millis(42)));

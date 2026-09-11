@@ -1189,7 +1189,10 @@ mod tests {
             .read_file("nonexistent.txt", None, None)
             .await
             .unwrap_err();
-        assert!(read.is_not_found(), "{read}");
+        assert!(
+            matches!(read.driver(), Some(sandbox_driver::Error::NotFound { .. })),
+            "{read}"
+        );
     }
 
     #[tokio::test]

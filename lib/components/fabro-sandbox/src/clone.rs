@@ -118,7 +118,7 @@ pub(crate) async fn clone_github_repo(
     .await
     .map_err(|failure| {
         clone_failure_error(
-            crate::Error::driver_error(failure.error),
+            crate::Error::from(failure.error),
             CloneStep::Network,
             has_app,
         )
@@ -331,7 +331,7 @@ mod tests {
     }
 
     fn git_failure(exit_code: i32, stderr: &str) -> crate::Error {
-        crate::Error::driver_error(sandbox_driver::Error::Git(GitFailure::from_command(
+        crate::Error::from(sandbox_driver::Error::Git(GitFailure::from_command(
             "git clone",
             ExecFailure::new(
                 "git clone",

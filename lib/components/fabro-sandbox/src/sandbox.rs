@@ -387,9 +387,7 @@ fn push_attempts(
         .map(|(index, attempt)| {
             let is_last = index + 1 == last;
             let exec_output_tail = match (attempt.failure, &outcome) {
-                (Some(failure), _) => {
-                    crate::Error::driver_error(failure).default_redacted_output_tail()
-                }
+                (Some(failure), _) => crate::Error::from(failure).default_redacted_output_tail(),
                 (None, Err(error)) if is_last => error.default_redacted_output_tail(),
                 (None, _) => None,
             };

@@ -25,8 +25,8 @@ pub enum Error {
 
     /// A sandbox-driver failure: provider, transport, or an operation whose
     /// outcome is unknown. The driver's own variants stay reachable through
-    /// [`Error::driver`] so callers can act on `NotFound`, `Unsupported`,
-    /// `Transport`, and `Incomplete` without string matching.
+    /// [`Error::driver`] so callers can act on `Exec`, `Git`, and `NotFound`
+    /// without string matching.
     #[error(transparent)]
     Driver(Box<sandbox_driver::Error>),
 }
@@ -61,10 +61,6 @@ impl Error {
         collect_causes(self)
     }
 
-    pub fn driver_error(source: sandbox_driver::Error) -> Self {
-        Self::Driver(Box::new(source))
-    }
-
     /// The underlying sandbox-driver error, when this error carries one
     /// anywhere in its chain.
     pub fn driver(&self) -> Option<&sandbox_driver::Error> {
@@ -81,46 +77,6 @@ impl Error {
         None
     }
 
-    /// The command that ran and failed, when this error reports one: a
-    /// non-zero exit fabro turned into an error, or a driver operation whose
-    /// command failed underneath it.
-    pub fn exec_failure(&self) -> Option<&sandbox_driver::ExecFailure> {
-        match self.driver()? {
-            sandbox_driver::Error::Exec(failure) => Some(failure),
-            _ => None,
-        }
-    }
-
-    /// The facts established when a driver operation ended without a
-    /// complete outcome. A caller that sees `Some` must not replay the
-    /// operation: its effects may already have happened.
-    pub fn incomplete_operation(&self) -> Option<&sandbox_driver::IncompleteOperation> {
-        match self.driver()? {
-            sandbox_driver::Error::Incomplete(incomplete) => Some(incomplete),
-            _ => None,
-        }
-    }
-
-    /// True when communication with an out-of-process provider failed. The
-    /// operation may or may not have run; fabro rebuilds handles through
-    /// `attach` rather than retrying blind.
-    pub fn is_transport(&self) -> bool {
-        matches!(self.driver(), Some(sandbox_driver::Error::Transport(_)))
-    }
-
-    /// True when the driver reported the resource missing.
-    pub fn is_not_found(&self) -> bool {
-        matches!(self.driver(), Some(sandbox_driver::Error::NotFound { .. }))
-    }
-
-    /// True when the provider does not support the requested capability.
-    pub fn is_unsupported(&self) -> bool {
-        matches!(
-            self.driver(),
-            Some(sandbox_driver::Error::Unsupported { .. })
-        )
-    }
-
     pub fn display_with_causes(&self) -> String {
         render_with_causes(&self.to_string(), &self.causes())
     }
@@ -128,19 +84,7 @@ impl Error {
 
 impl From<sandbox_driver::Error> for Error {
     fn from(value: sandbox_driver::Error) -> Self {
-        Self::driver_error(value)
-    }
-}
-
-impl From<String> for Error {
-    fn from(value: String) -> Self {
-        Self::Message(value)
-    }
-}
-
-impl From<&str> for Error {
-    fn from(value: &str) -> Self {
-        Self::Message(value.to_string())
+        Self::Driver(Box::new(value))
     }
 }
 
@@ -259,14 +203,16 @@ mod tests {
     }
 
     #[test]
-    fn exec_failure_is_reachable_through_the_context_chain() {
+    fn the_driver_error_is_reachable_through_the_context_chain() {
         let error = Error::context("metadata push failed", failed_push("", "boom"));
 
-        let failure = error.exec_failure().expect("exec failure");
+        let Some(sandbox_driver::Error::Exec(failure)) = error.driver() else {
+            panic!("expected an exec failure, got {error:?}");
+        };
         assert_eq!(failure.label(), "git push origin refs/heads/run");
         assert_eq!(failure.exit_code(), Some(128));
         assert_eq!(failure.termination(), Termination::Exited);
-        assert!(Error::message("plain").exec_failure().is_none());
+        assert!(Error::message("plain").driver().is_none());
     }
 
     #[test]
