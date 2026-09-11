@@ -1,13 +1,15 @@
 //! Application adapter that packages caller-supplied workflow contents for
 //! the `fabro_workflow_version_create` tool.
 
+use anyhow::Context as _;
 use async_trait::async_trait;
 use fabro_tool::{
     PackagedWorkflowVersions, ToolError, ValidatedWorkflowVersionCreate, WorkflowVersionPackager,
 };
+use fabro_util::error::collect_chain;
 use fabro_workflow_version::WorkflowVersionError;
 use tokio::task;
-use tracing::warn;
+use tracing::debug;
 
 use crate::WorkflowVersionCollectError;
 
@@ -23,21 +25,36 @@ impl WorkflowVersionPackager for SuppliedWorkflowVersionPackager {
         &self,
         source: ValidatedWorkflowVersionCreate,
     ) -> anyhow::Result<PackagedWorkflowVersions> {
-        task::spawn_blocking(move || {
-            let closure =
-                crate::collect_supplied_workflow_versions(&source.entrypoint, &source.files)
-                    .map_err(|err| {
-                        warn!(error = %format!("{err:#}"), "workflow version packaging failed");
-                        ToolError::message(render_packaging_error(&err))
-                    })?;
-            Ok(PackagedWorkflowVersions {
-                root_id:  closure.root_id(),
-                versions: closure.into_versions(),
-            })
-        })
-        .await
-        .map_err(|err| anyhow::anyhow!("workflow packaging task failed: {err}"))?
+        let packaged = task::spawn_blocking(move || package_blocking(&source))
+            .await
+            .context("workflow packaging task failed")??;
+        Ok(packaged)
     }
+}
+
+/// Stage, collect, and validate on the calling thread.
+///
+/// Packaging failures are expected input errors, so they log at DEBUG. The
+/// event carries the collector error's own message only: parser and template
+/// diagnostics further down the chain quote supplied file contents, which
+/// must not reach the log at any level.
+fn package_blocking(
+    source: &ValidatedWorkflowVersionCreate,
+) -> Result<PackagedWorkflowVersions, ToolError> {
+    let closure = crate::collect_supplied_workflow_versions(&source.entrypoint, &source.files)
+        .map_err(|err| {
+            debug!(
+                entrypoint = %source.entrypoint,
+                file_count = source.files.len(),
+                error = %err,
+                "workflow version packaging failed"
+            );
+            ToolError::message(render_packaging_error(&err))
+        })?;
+    Ok(PackagedWorkflowVersions {
+        root_id:  closure.root_id(),
+        versions: closure.into_versions(),
+    })
 }
 
 /// Render a packaging failure for the tool caller. Every collector variant's
@@ -57,7 +74,7 @@ fn render_packaging_error(err: &WorkflowVersionCollectError) -> String {
         _ => false,
     };
     if !quotes_source {
-        return fabro_util::error::collect_chain(err).join(": ");
+        return collect_chain(err).join(": ");
     }
     let summary = match err {
         // `WorkflowVersionError` names the offending path; only its source
@@ -70,7 +87,36 @@ fn render_packaging_error(err: &WorkflowVersionCollectError) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[expect(
+        clippy::disallowed_types,
+        reason = "test log capture writes synchronously into memory"
+    )]
+    use std::io::Write;
+    use std::sync::{Arc, Mutex};
+
+    use tracing::{Level, subscriber};
+
     use super::*;
+
+    #[derive(Clone, Default)]
+    struct CapturedLog(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for CapturedLog {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl CapturedLog {
+        fn text(&self) -> String {
+            String::from_utf8(self.0.lock().unwrap().clone()).unwrap()
+        }
+    }
 
     fn source(entrypoint: &str, files: &[(&str, &str)]) -> ValidatedWorkflowVersionCreate {
         ValidatedWorkflowVersionCreate {
@@ -152,6 +198,41 @@ mod tests {
             let rendered = package_error(input).await;
             assert!(!rendered.contains("PRIVATE_CONTENT"), "{rendered}");
         }
+    }
+
+    #[test]
+    fn packaging_failure_log_never_carries_supplied_source() {
+        let log = CapturedLog::default();
+        let writer = log.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(Level::TRACE)
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish();
+        let inputs = [
+            source("workflow", &[(
+                "workflow",
+                "PRIVATE_CONTENT invalid source",
+            )]),
+            source("workflow.toml", &[(
+                "workflow.toml",
+                "_version = 1\nPRIVATE_CONTENT = [unterminated",
+            )]),
+        ];
+        // The guard is load-bearing: the full chain does quote the source.
+        let leaky =
+            crate::collect_supplied_workflow_versions(&inputs[0].entrypoint, &inputs[0].files)
+                .unwrap_err();
+        assert!(collect_chain(&leaky).join(": ").contains("PRIVATE_CONTENT"));
+        subscriber::with_default(subscriber, || {
+            for input in &inputs {
+                package_blocking(input).unwrap_err();
+            }
+        });
+        let text = log.text();
+        assert!(text.contains("workflow version packaging failed"), "{text}");
+        assert!(!text.contains("PRIVATE_CONTENT"), "{text}");
+        assert!(text.contains("DEBUG"), "{text}");
     }
 
     #[tokio::test]
