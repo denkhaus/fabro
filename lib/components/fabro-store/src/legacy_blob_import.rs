@@ -1836,6 +1836,13 @@ mod tests {
     #[tokio::test]
     async fn cancellation_retires_a_connection_with_disabled_checkpointing() -> TestResult<()> {
         let dir = tempfile::tempdir()?;
+        // Lock-policy divergence (fabro-3ef7): TEST-ONLY connection. The
+        // canonical production policy (WAL + 5s busy_timeout, see
+        // `fabro_db::Database::connect`) intentionally omits busy_timeout
+        // here because this fixture pool is the single connection to a
+        // brand-new empty database — no concurrent writer can exist, so a
+        // busy timeout would be dead configuration. Production never connects
+        // through this site.
         let options = SqliteConnectOptions::new()
             .filename(dir.path().join("fabro.sqlite3"))
             .create_if_missing(true)

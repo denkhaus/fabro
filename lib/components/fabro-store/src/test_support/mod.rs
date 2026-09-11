@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use fabro_types::{BlobHash, RunId};
 use object_store::ObjectStore;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 
 use crate::keys::SlateKey;
 #[cfg(test)]
@@ -126,7 +126,12 @@ fn lazy_file_pool(
     let options = SqliteConnectOptions::new()
         .filename(path)
         .create_if_missing(true)
-        .foreign_keys(true);
+        .foreign_keys(true)
+        // Canonical SQLite lock policy (fabro-3ef7): file-backed test pools
+        // must run the same WAL journal mode as production
+        // (`fabro_db::Database::connect`) so reopen-style tests exercising
+        // concurrent handles contend exactly like production writers.
+        .journal_mode(SqliteJournalMode::Wal);
     SqlitePoolOptions::new()
         .max_connections(1)
         .max_lifetime(None)

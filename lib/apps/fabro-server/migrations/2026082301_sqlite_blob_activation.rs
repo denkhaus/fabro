@@ -676,6 +676,11 @@ mod tests {
 
         // A short busy timeout keeps the blocked truncate from stalling the
         // test for the production pool's full five seconds.
+        // Lock-policy divergence (fabro-3ef7): TEST-ONLY connection. The
+        // canonical production policy (WAL + 5s busy_timeout, see
+        // `fabro_db::Database::connect`) is deliberately shortened here so a
+        // blocked truncate fails in milliseconds instead of stalling the
+        // suite; production never connects through this site.
         let checkpoint_options = SqliteConnectOptions::new()
             .filename(&sqlite_path)
             .journal_mode(SqliteJournalMode::Wal)
