@@ -1,0 +1,7 @@
+diff --git a/.fabro/journal/01M27YHSN8V4GGR7YKPWHRMX0D.jsonl b/.fabro/journal/01M27YHSN8V4GGR7YKPWHRMX0D.jsonl
+new file mode 100644
+index 000000000..fd9d42aa1
+--- /dev/null
++++ b/.fabro/journal/01M27YHSN8V4GGR7YKPWHRMX0D.jsonl
+@@ -0,0 +1 @@
++{"$schema":"fabro-journal-v1","run_id":"01M27YHSN8V4GGR7YKPWHRMX0D","node":"start","visit":1,"status":"succeeded","ts":"2026-09-11T10:00:19Z","data":{}}
