@@ -16,10 +16,14 @@
 //!   [`Termination::Cancelled`].
 //! - **exit**: the process ended on its own.
 //!
-//! Output is drained regardless of the retention cap, redacted only when a
-//! tail is rendered for events or logs ([`ExecResultExt`]), and delivered
-//! live through the caller's [`sandbox_driver::OutputSink`]. Explicit
-//! environment variables pass through a fail-closed secret filter under
+//! Output is drained regardless of the retention cap and delivered live
+//! through the caller's [`sandbox_driver::OutputSink`]. Fabro reads command
+//! output as text, so the policy asks the driver for
+//! [`OutputSanitization::StripAll`]: terminal escape sequences and stray
+//! control characters never reach a result, a sink chunk, or a tail. Secret
+//! redaction stays fabro's job and happens only when a tail is rendered for
+//! events or logs ([`ExecResultExt`]). Explicit environment variables pass
+//! through a fail-closed secret filter under
 //! [`ExplicitEnvPolicy::FilterSensitive`], matching what the Host provider
 //! already does for inherited variables.
 
@@ -29,8 +33,8 @@ use std::time::Duration;
 use fabro_static::EnvVars;
 use fabro_types::{CommandTermination, ExecOutputTail};
 use sandbox_driver::{
-    Exec, ExecControls, ExecFailure, ExecResult, ExecSpec, ExecStreamingResult, SpawnSpec,
-    StdioProcess, Termination,
+    Exec, ExecControls, ExecFailure, ExecResult, ExecSpec, ExecStreamingResult, OutputSanitization,
+    SpawnSpec, StdioProcess, Termination,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -161,9 +165,9 @@ impl<'a> SandboxExec<'a> {
     /// `controls.sink` as it arrives.
     ///
     /// The policy fills what the spec leaves open: the stop grace, the
-    /// working directory, and the explicit environment filter. The
-    /// caller's `controls.term` is the `term` stop; the provider runs the
-    /// grace and the `kill` itself. Output beyond
+    /// working directory, the text output policy, and the explicit
+    /// environment filter. The caller's `controls.term` is the `term` stop;
+    /// the provider runs the grace and the `kill` itself. Output beyond
     /// `controls.retained_output_limit` (fabro's default when unset) is
     /// drained and counted, not kept.
     pub async fn run_streaming(
@@ -200,12 +204,21 @@ impl<'a> SandboxExec<'a> {
         Ok(self.exec.spawn_stdio(&spec).await?)
     }
 
+    /// Fills what a spec leaves open. The output policy has no "unset"
+    /// state: the driver's default is raw, and fabro reads command output
+    /// as text, so a spec still at that default gets
+    /// [`OutputSanitization::StripAll`]; a caller that chose another policy
+    /// keeps it. Long-lived stdio processes ([`Self::spawn_stdio`]) and PTY
+    /// sessions stay raw, as the driver requires.
     fn apply_policy(&self, mut spec: ExecSpec) -> ExecSpec {
         if spec.stop_grace.is_none() {
             spec.stop_grace = Some(self.stop_grace);
         }
         if spec.working_dir.is_none() {
             spec.working_dir.clone_from(&self.working_dir);
+        }
+        if spec.output_sanitization == OutputSanitization::default() {
+            spec.output_sanitization = OutputSanitization::StripAll;
         }
         self.apply_env_policy(&mut spec.env);
         spec
@@ -258,8 +271,10 @@ pub trait ExecResultExt {
     /// [`program_exit_code`].
     fn program_exit_code(&self) -> Option<i32>;
 
-    /// Redacted, sanitized tails of both streams, each bounded to
-    /// `max_bytes_per_stream`. `None` when both streams are empty.
+    /// Redacted tails of both streams, each bounded to
+    /// `max_bytes_per_stream`. `None` when both streams are empty. Terminal
+    /// control sequences were already stripped by the driver under
+    /// [`SandboxExec`]'s output policy.
     fn redacted_output_tail(&self, max_bytes_per_stream: usize) -> Option<ExecOutputTail>;
 
     /// [`Self::redacted_output_tail`] at fabro's event budget.
@@ -732,22 +747,43 @@ mod tests {
         assert!(tail.stdout_truncated);
     }
 
-    #[test]
-    fn output_tail_sanitizes_terminal_control_sequences() {
-        let result = exec_result(
-            "\u{1b}[31mred\u{1b}[0m \u{1b}]0;window-title\u{7}shown \
-             \u{1b}(Bset \u{1b}Mtwo-byte \u{8}backspace",
-            "",
-            Some(1),
-            Termination::Exited,
-            1,
-        );
+    #[tokio::test]
+    async fn command_output_arrives_stripped_of_terminal_control_sequences() {
+        let fixture = HostFixture::new().await;
+        let result = run(
+            &fixture,
+            "printf '\\033[31mred\\033[0m \\033]0;window-title\\007shown \\033(Bset \\033Mtwo-byte \
+             \\bbackspace'",
+        )
+        .await;
+        assert!(result.success(), "{result:?}");
+        assert_eq!(result.stdout_lossy(), "red shown set two-byte backspace");
 
         let tail = result
             .redacted_output_tail(1024)
             .expect("redacted output tail");
-        let stdout = tail.stdout.expect("stdout tail");
-        assert_eq!(stdout, "red shown set two-byte backspace");
+        assert_eq!(
+            tail.stdout.as_deref(),
+            Some("red shown set two-byte backspace")
+        );
+    }
+
+    #[tokio::test]
+    async fn policy_strips_output_unless_the_caller_chose_another_policy() {
+        let fixture = HostFixture::new().await;
+        let exec = fixture.exec(ExplicitEnvPolicy::FilterSensitive);
+        assert_eq!(
+            exec.apply_policy(ExecSpec::bash("true"))
+                .output_sanitization,
+            OutputSanitization::StripAll
+        );
+        assert_eq!(
+            exec.apply_policy(
+                ExecSpec::bash("true").output_sanitization(OutputSanitization::StripAnsi)
+            )
+            .output_sanitization,
+            OutputSanitization::StripAnsi
+        );
     }
 
     #[test]

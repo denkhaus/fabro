@@ -69,9 +69,13 @@ pub fn format_lines_numbered(content: &str, offset: Option<usize>, limit: Option
     result
 }
 
-/// Build a redacted `ExecOutputTail` from raw stdout/stderr without
-/// fabricating a synthetic `ExecResult`. Pass `""` for either stream that
-/// isn't relevant. Returns `None` when both streams are empty.
+/// Build a redacted `ExecOutputTail` from stdout/stderr text without
+/// fabricating a synthetic `ExecResult`. Each stream is redacted, then
+/// capped to its newest `max_bytes_per_stream`. Terminal control sequences
+/// are not stripped here: command output reaches fabro with them already
+/// removed by the driver under [`crate::exec::SandboxExec`]'s output policy.
+/// Pass `""` for either stream that isn't relevant. Returns `None` when both
+/// streams are empty.
 #[must_use]
 pub fn redacted_output_tail(
     stdout: &str,
@@ -95,57 +99,14 @@ fn redacted_tail(text: &str, max_bytes: usize) -> (Option<String>, bool) {
     }
 
     let redacted = fabro_redact::redact_string(text);
-    let sanitized = sanitize_exec_output(&redacted);
-    let truncated = sanitized.len() > max_bytes;
+    let truncated = redacted.len() > max_bytes;
     let start = if truncated {
-        sanitized.floor_char_boundary(sanitized.len() - max_bytes)
+        redacted.floor_char_boundary(redacted.len() - max_bytes)
     } else {
         0
     };
-    let tail = sanitized[start..].to_string();
+    let tail = redacted[start..].to_string();
     ((!tail.is_empty()).then_some(tail), truncated)
-}
-
-fn sanitize_exec_output(text: &str) -> String {
-    let mut sanitized = String::with_capacity(text.len());
-    let mut chars = text.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '\u{1b}' {
-            match chars.peek().copied() {
-                Some('[') => {
-                    chars.next();
-                    for next in chars.by_ref() {
-                        if ('@'..='~').contains(&next) {
-                            break;
-                        }
-                    }
-                }
-                Some(']') => {
-                    chars.next();
-                    let mut saw_esc = false;
-                    for next in chars.by_ref() {
-                        if next == '\u{7}' || (saw_esc && next == '\\') {
-                            break;
-                        }
-                        saw_esc = next == '\u{1b}';
-                    }
-                }
-                Some('(' | ')' | '*' | '+' | '-' | '.' | '/') => {
-                    chars.next();
-                    chars.next();
-                }
-                Some('@'..='_') => {
-                    chars.next();
-                }
-                _ => {}
-            }
-            continue;
-        }
-        if ch == '\n' || ch == '\r' || ch == '\t' || !ch.is_control() {
-            sanitized.push(ch);
-        }
-    }
-    sanitized
 }
 
 /// A regular file discovered inside a sandbox.
