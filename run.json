@@ -370,14 +370,225 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M2837TP51DNK159MHVPTCVVK",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-09-11T11:22:07.504000748Z",
+    "run_branch": "fabro/run/01M2837TP51DNK159MHVPTCVVK",
+    "base_sha": "702c657b41fbb3051c984023fa5dcddbbd87444b"
   },
-  "status_updated_at": "2026-09-11T11:21:56.779439058Z",
-  "last_event_at": "2026-09-11T11:22:06.891186008Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-09-11T11:22:07.504050721Z",
+  "last_event_at": "2026-09-11T13:13:28.013717891Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 19,
+      "checkpoint": {
+        "timestamp": "2026-09-11T11:22:09.898478570Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.rankdir": "LR",
+          "graph.preamble_budget_kb": "12",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.max_node_visits": "6",
+          "internal.fidelity": "compact",
+          "failure_signature": "",
+          "graph.cycle_counter_reset_key": "merge_target_sha",
+          "internal.seed_cycle_anchor": "",
+          "internal.thread_id": null,
+          "internal.retry_count.start": 0,
+          "current_node": "start",
+          "internal.run_id": "01M2837TP51DNK159MHVPTCVVK",
+          "failure_class": "",
+          "outcome": "succeeded",
+          "seed_cycles": {
+            "start": 1
+          },
+          "internal.node_visit_count": 1,
+          "graph.goal": "Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; deploy is host-side"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "merge",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-11T13:13:28.256747751Z",
+        "current_node": "merge",
+        "completed_nodes": [
+          "start",
+          "merge"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "current_node": "merge",
+          "response.merge": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.merge",
+            "chars": 3123,
+            "preview": "{\"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"scripts/qualitygate.nu routes root-manifest/lock diffs to cargo-check-"
+          },
+          "internal.thread_id": "start",
+          "graph.rankdir": "LR",
+          "internal.retry_count.start": 0,
+          "internal.node_visit_count": 1,
+          "internal.work_dir": "/workspace/fabro",
+          "failure_signature": "",
+          "internal.run_id": "01M2837TP51DNK159MHVPTCVVK",
+          "last_response": "{\"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"scripts/qualitygate.nu routes root-manifest/lock diffs to cargo-check-",
+          "internal.retry_count.merge": 0,
+          "last_stage": "merge",
+          "thread.start.current_node": "merge",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "scripts/qualitygate.nu routes root-manifest/lock diffs to cargo-check-only (line ~68 'root manifest/lock changed -> workspace-wide gate (cargo check)'), which is exactly the wrong scope for upstream merges — the merge procedure demands near-full fmt+clippy+nextest and I had to run both manually. Fix idea: treat a merge commit (two-parent HEAD) or an env flag like FABRO_GATE_SCOPE=merge as full workspace clippy+nextest."
+              },
+              {
+                "text": "Interrupting a long `cargo nextest run` (my first full-suite run hit the tool timeout at ~10min) leaves the shared CLI test fixture corrupt: /tmp/fx/n-*/storage/db/fabro.sqlite3 keeps a stale WAL + defunct fabro daemons, and the NEXT run fails with 'environment seed thread should not panic' (fabro-test/src/lib.rs:698) — looks like a real regression. Fix idea: fabro-test should clear/recover a stale fixture dir on seed failure, or the merge procedure should document `rm -rf /tmp/fx` after any interrupted run."
+              },
+              {
+                "text": "Three agent_run_* tests in lib/components/fabro-workflow/src/handler/llm/api.rs were red at PRE-MERGE HEAD (duplicate-child guard commit landed without updating MockRunToolBackend::list_store_runs_by_parent) — proving pre-existence cost a full worktree rebuild (~6min). Recurrence of the 2026-09-06 'compile-only gate debt' class: seeds-sync/engine commits are landing without nextest. Fix idea: engine checkpoint commits should run at least nextest on crates whose tests reference the touched seed."
+              }
+            ],
+            "observations": [
+              "25 upstream commits (2f326a13c..290e0d7e6), newest subject 'Bump version to 0.353.0-nightly.0'; the lithos-llm migration dominated — fabro-llm rebuilt on lithos, fabro-model deleted, lithos types through API/server/CLI/web.",
+              "17 conflicted files: mostly import-block unions (take upstream, re-add fork-only names) plus two modify/delete classes — fabro-model and fabro-llm/generate.rs; conflict-policy covered every class, no manual escalation needed.",
+              "Fork glm catalog fixes (zai glm-5.3 default, glm-4.7 always-reasoning, alias moves) now live in lib/components/fabro-llm/src/fork-catalog-overlay.toml layered in fabro_llm::build_catalog between lithos builtins and the operator [llm] overlay — the next merger must look THERE, fabro-model no longer exists.",
+              "Gate duration ~6.5h total: workspace clippy ~1min/run, full nextest 2-6min/run under load; final state 7783/7787 with 4 triaged residuals (spa_refresh uid-0 permission trick, merged_wait red at pre-merge HEAD, two 6s-budget workflow tests that pass in isolation but flake under full-suite parallel load).",
+              "SSE fixtures needed lithos-codec conformance: chat-completions streams must carry finish_reason:stop (no synthesis from [DONE] alone), responses-codec terminal events need status+output array; mock paths are now /v1/chat/completions. Merge committed as f95a8e019 (two-parent merge of 702c657b4 + 290e0d7e6), report at .fabro/reports/merge-upstream/290e0d7e6.md; push and deploy left to the engine/host per hard rules."
+            ]
+          },
+          "graph.cycle_counter_reset_key": "merge_target_sha",
+          "internal.fidelity": "compact",
+          "failure_class": "",
+          "graph.preamble_budget_kb": "12",
+          "graph.goal": "Merge upstream/main into denkhaus per the conflict policy, gate the merged tree, and report; deploy is host-side",
+          "graph.max_node_visits": "6",
+          "outcome": "succeeded",
+          "internal.seed_cycle_anchor": "",
+          "seed_cycles": {
+            "start": 1,
+            "merge": 1
+          }
+        },
+        "node_outcomes": {
+          "merge": {
+            "status": "succeeded",
+            "context_updates": {
+              "last_stage": "merge",
+              "response.merge": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.merge",
+                "chars": 3123,
+                "preview": "{\"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"scripts/qualitygate.nu routes root-manifest/lock diffs to cargo-check-"
+              },
+              "last_response": "{\"outcome\": \"succeeded\", \"failure_reason\": \"\", \"suggested_next_ids\": [], \"context_updates\": {\"journal\": {\"painpoints\": [{\"text\": \"scripts/qualitygate.nu routes root-manifest/lock diffs to cargo-check-",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "scripts/qualitygate.nu routes root-manifest/lock diffs to cargo-check-only (line ~68 'root manifest/lock changed -> workspace-wide gate (cargo check)'), which is exactly the wrong scope for upstream merges — the merge procedure demands near-full fmt+clippy+nextest and I had to run both manually. Fix idea: treat a merge commit (two-parent HEAD) or an env flag like FABRO_GATE_SCOPE=merge as full workspace clippy+nextest."
+                  },
+                  {
+                    "text": "Interrupting a long `cargo nextest run` (my first full-suite run hit the tool timeout at ~10min) leaves the shared CLI test fixture corrupt: /tmp/fx/n-*/storage/db/fabro.sqlite3 keeps a stale WAL + defunct fabro daemons, and the NEXT run fails with 'environment seed thread should not panic' (fabro-test/src/lib.rs:698) — looks like a real regression. Fix idea: fabro-test should clear/recover a stale fixture dir on seed failure, or the merge procedure should document `rm -rf /tmp/fx` after any interrupted run."
+                  },
+                  {
+                    "text": "Three agent_run_* tests in lib/components/fabro-workflow/src/handler/llm/api.rs were red at PRE-MERGE HEAD (duplicate-child guard commit landed without updating MockRunToolBackend::list_store_runs_by_parent) — proving pre-existence cost a full worktree rebuild (~6min). Recurrence of the 2026-09-06 'compile-only gate debt' class: seeds-sync/engine commits are landing without nextest. Fix idea: engine checkpoint commits should run at least nextest on crates whose tests reference the touched seed."
+                  }
+                ],
+                "observations": [
+                  "25 upstream commits (2f326a13c..290e0d7e6), newest subject 'Bump version to 0.353.0-nightly.0'; the lithos-llm migration dominated — fabro-llm rebuilt on lithos, fabro-model deleted, lithos types through API/server/CLI/web.",
+                  "17 conflicted files: mostly import-block unions (take upstream, re-add fork-only names) plus two modify/delete classes — fabro-model and fabro-llm/generate.rs; conflict-policy covered every class, no manual escalation needed.",
+                  "Fork glm catalog fixes (zai glm-5.3 default, glm-4.7 always-reasoning, alias moves) now live in lib/components/fabro-llm/src/fork-catalog-overlay.toml layered in fabro_llm::build_catalog between lithos builtins and the operator [llm] overlay — the next merger must look THERE, fabro-model no longer exists.",
+                  "Gate duration ~6.5h total: workspace clippy ~1min/run, full nextest 2-6min/run under load; final state 7783/7787 with 4 triaged residuals (spa_refresh uid-0 permission trick, merged_wait red at pre-merge HEAD, two 6s-budget workflow tests that pass in isolation but flake under full-suite parallel load).",
+                  "SSE fixtures needed lithos-codec conformance: chat-completions streams must carry finish_reason:stop (no synthesis from [DONE] alone), responses-codec terminal events need status+output array; mock paths are now /v1/chat/completions. Merge committed as f95a8e019 (two-parent merge of 702c657b4 + 290e0d7e6), report at .fabro/reports/merge-upstream/290e0d7e6.md; push and deploy left to the engine/host per hard rules."
+                ]
+              }
+            },
+            "notes": "Stage completed: merge",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 314024,
+                    "output_tokens": 48236,
+                    "reasoning_tokens": 29551,
+                    "cache_read_tokens": 43997312,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 12220740
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reports/merge-upstream/290e0d7e6.md",
+              "/workspace/fabro/lib/apps/fabro-server/src/server.rs",
+              "/workspace/fabro/lib/apps/fabro-server/src/server/handler/sessions.rs",
+              "/workspace/fabro/lib/apps/fabro-server/src/server/tests.rs",
+              "/workspace/fabro/lib/apps/fabro-server/src/test_support.rs",
+              "/workspace/fabro/lib/components/fabro-agent/src/test_support.rs",
+              "/workspace/fabro/lib/components/fabro-agent/src/tools.rs",
+              "/workspace/fabro/lib/components/fabro-llm/src/catalog.rs",
+              "/workspace/fabro/lib/components/fabro-llm/src/fork-catalog-overlay.toml",
+              "/workspace/fabro/lib/components/fabro-validate/Cargo.toml",
+              "/workspace/fabro/lib/components/fabro-workflow/src/handler/llm/api.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/handler/llm/context_read.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/handler/structured_output.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/lifecycle/hook.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/operations/start.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/pipeline/publish.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/pipeline/pull_request.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/src/pipeline/types.rs",
+              "/workspace/fabro/lib/components/fabro-workflow/tests/it/integration.rs",
+              "/workspace/fabro/lib/foundation/fabro-api/src/lib.rs",
+              "/workspace/fabro/lib/foundation/fabro-config/src/layers/combine.rs",
+              "/workspace/fabro/lib/foundation/fabro-config/src/layers/run.rs",
+              "/workspace/fabro/lib/foundation/fabro-types/src/lib.rs",
+              "/workspace/fabro/lib/foundation/fabro-types/src/settings/run.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 2383260,
+              "tool_time_ms": 4290858,
+              "active_time_ms": 6674118
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "reviewer",
+        "node_visits": {
+          "merge": 1,
+          "start": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -403,5 +614,279 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "merge@1": {
+      "first_event_seq": 20,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: merge",
+        "failure_reason": null,
+        "timestamp": "2026-09-11T13:13:28.013717891Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "high"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-11T11:22:09.911487549Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 6677215,
+        "inference_time_ms": 2383260,
+        "tool_time_ms": 4290858,
+        "active_time_ms": 6674118
+      },
+      "usage": {
+        "input_tokens": 314024,
+        "output_tokens": 48236,
+        "total_tokens": 44389123,
+        "reasoning_tokens": 29551,
+        "cache_read_tokens": 43997312,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 12220740
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 207096,
+        "usage_percent": 19.750213623046875,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-11T13:13:27.987075875Z",
+        "event_seq": 2165,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 958,
+            "usage_percent": 0.09136199951171875
+          },
+          {
+            "category": "tools",
+            "tokens": 1338,
+            "usage_percent": 0.12760162353515625
+          },
+          {
+            "category": "skills",
+            "tokens": 181,
+            "usage_percent": 0.017261505126953125
+          },
+          {
+            "category": "memory",
+            "tokens": 4826,
+            "usage_percent": 0.46024322509765625
+          },
+          {
+            "category": "conversation",
+            "tokens": 199786,
+            "usage_percent": 19.053077697753906
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-11T11:22:09.596740058Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-11T11:22:09.587376097Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
