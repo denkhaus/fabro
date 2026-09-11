@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use async_trait::async_trait;
-use fabro_agent::{CommandOutputCallback, ExecStreamingRequest};
 use fabro_graphviz::graph::{ContextKeyAttr, Graph, Node};
+use fabro_sandbox::sandbox::{CommandOutputCallback, ExecStreamingRequest};
 use fabro_types::{CommandTermination, StageTiming};
 use fabro_util::shell::shell_quote;
 
@@ -842,7 +842,7 @@ mod tests {
     #[tokio::test]
     async fn command_invalid_output_schema_fails_before_execution() {
         let spy = MockSandbox {
-            exec_result: fabro_agent::sandbox::ExecResult {
+            exec_result: fabro_sandbox::sandbox::ExecResult {
                 stdout:      String::new(),
                 stderr:      String::new(),
                 exit_code:   Some(0),
@@ -1423,7 +1423,7 @@ mod tests {
         );
     }
 
-    fn make_sandbox_services(sandbox: std::sync::Arc<fabro_agent::RunSandbox>) -> EngineServices {
+    fn make_sandbox_services(sandbox: std::sync::Arc<fabro_sandbox::RunSandbox>) -> EngineServices {
         let mut services = make_services();
         services.run = services.run.with_sandbox(sandbox);
         services
@@ -1590,7 +1590,7 @@ mod tests {
     #[tokio::test]
     async fn executes_script_via_sandbox() {
         let spy = MockSandbox {
-            exec_result: fabro_agent::sandbox::ExecResult {
+            exec_result: fabro_sandbox::sandbox::ExecResult {
                 stdout:      "SANDBOX_MARKER\n".into(),
                 stderr:      String::new(),
                 exit_code:   Some(0),
@@ -1633,7 +1633,7 @@ mod tests {
     #[tokio::test]
     async fn executes_python_script_via_sandbox() {
         let spy = MockSandbox {
-            exec_result: fabro_agent::sandbox::ExecResult {
+            exec_result: fabro_sandbox::sandbox::ExecResult {
                 stdout:      "PYTHON_SANDBOX\n".into(),
                 stderr:      String::new(),
                 exit_code:   Some(0),
@@ -1679,7 +1679,7 @@ mod tests {
     #[tokio::test]
     async fn passes_env_vars_to_sandbox() {
         let spy = MockSandbox {
-            exec_result: fabro_agent::sandbox::ExecResult {
+            exec_result: fabro_sandbox::sandbox::ExecResult {
                 stdout:      String::new(),
                 stderr:      String::new(),
                 exit_code:   Some(0),
@@ -1717,7 +1717,7 @@ mod tests {
     #[tokio::test]
     async fn refreshes_github_token_for_each_command_stage_when_near_expiry() {
         let spy = MockSandbox {
-            exec_result: fabro_agent::sandbox::ExecResult {
+            exec_result: fabro_sandbox::sandbox::ExecResult {
                 stdout:      String::new(),
                 stderr:      String::new(),
                 exit_code:   Some(0),
@@ -1772,7 +1772,7 @@ mod tests {
     #[tokio::test]
     async fn passes_run_cancellation_to_sandbox() {
         let spy = MockSandbox {
-            exec_result: fabro_agent::sandbox::ExecResult {
+            exec_result: fabro_sandbox::sandbox::ExecResult {
                 stdout:      String::new(),
                 stderr:      String::new(),
                 exit_code:   Some(0),
@@ -1806,7 +1806,7 @@ mod tests {
     #[tokio::test]
     async fn script_handler_timeout_error_includes_output_tails() {
         let spy = MockSandbox {
-            exec_result: fabro_agent::sandbox::ExecResult {
+            exec_result: fabro_sandbox::sandbox::ExecResult {
                 stdout:      "partial stdout\n".into(),
                 stderr:      "partial stderr\n".into(),
                 exit_code:   None,

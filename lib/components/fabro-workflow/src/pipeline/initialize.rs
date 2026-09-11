@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use fabro_agent::{RunSandbox, ToolSecrets};
 use fabro_auth::{ExtraHeadersCredentialSource, VaultCredentialSource};
 use fabro_github::token_source::InstallationTokenSource;
 use fabro_graphviz::graph;
@@ -11,8 +10,8 @@ use fabro_hooks::{HookContext, HookDecision, HookEvent, HookExecutionContext, Ho
 use fabro_llm::credentials::{CredentialProvider, readiness};
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_sandbox::{
-    DaytonaCredentials, GitSetupIntent, ProviderAccess, SandboxSpec, reconnect_for_run_with_events,
-    shell_quote,
+    DaytonaCredentials, GitSetupIntent, ProviderAccess, RunSandbox, SandboxSpec,
+    reconnect_for_run_with_events, shell_quote,
 };
 use fabro_static::EnvVars;
 use fabro_types::RunSandboxKind;
@@ -27,7 +26,7 @@ use crate::error::Error;
 use crate::event::{Event, RunNoticeCode, RunNoticeLevel, SandboxEventBridge, SandboxLifecycle};
 use crate::git::GitAuthor;
 use crate::git_bridge;
-use crate::handler::llm::{AgentAcpBackend, AgentApiBackend, BackendRouter, routing};
+use crate::handler::llm::{AgentAcpBackend, BackendRouter, PebbleBackend, routing};
 use crate::handler::{HandlerRegistry, default_registry};
 #[cfg(test)]
 use crate::model_fallback::ModelFallbackPolicy;
@@ -39,6 +38,7 @@ use crate::services::{
 };
 use crate::stage_execution::{StageExecutionSeed, StageExecutionTracker};
 use crate::steering_hub::SteeringHub;
+use crate::web_search::SearchSecrets;
 
 struct BuiltSandboxEnv {
     env:           HashMap<String, String>,
@@ -216,7 +216,7 @@ async fn build_registry(
     graph: &graph::Graph,
     llm_source: Arc<dyn CredentialProvider>,
     catalog: Arc<Catalog>,
-    tool_secrets: ToolSecrets,
+    search_secrets: SearchSecrets,
     fabro_run_tools: Option<FabroRunToolServices>,
 ) -> Result<(Arc<HandlerRegistry>, bool), Error> {
     let no_backend_interviewer = Arc::clone(&interviewer);
@@ -246,7 +246,7 @@ async fn build_registry(
         let fallbacks = spec.fallbacks.clone();
         let mcp_servers = spec.mcp_servers.clone();
         let model_controls = spec.model_controls.clone();
-        let tool_secrets_for_api = tool_secrets.clone();
+        let search_secrets_for_api = search_secrets.clone();
         let llm_source_for_api = Arc::clone(&llm_source);
         let catalog_for_api = Arc::clone(&catalog);
         let steering_hub_for_api = Arc::clone(&steering_hub);
@@ -254,7 +254,7 @@ async fn build_registry(
         let fabro_run_tools_for_api = fabro_run_tools.clone();
         Arc::new(default_registry(interviewer, move || {
             let tool_env_provider = Arc::clone(&tool_env_provider_for_backend);
-            let mut api = AgentApiBackend::new_with_catalog(
+            let mut api = PebbleBackend::new_with_catalog(
                 model.clone(),
                 provider_id.clone(),
                 fallbacks.clone(),
@@ -264,7 +264,7 @@ async fn build_registry(
             )
             .with_run_model_controls(model_controls.clone())
             .with_tool_env_provider(tool_env_provider.clone())
-            .with_tool_secrets(tool_secrets_for_api.clone())
+            .with_search_secrets(search_secrets_for_api.clone())
             .with_mcp_servers(mcp_servers.clone());
             if let Some(services) = fabro_run_tools_for_api.clone() {
                 api = api.with_fabro_run_tools(services);
@@ -304,9 +304,9 @@ async fn build_registry(
     Ok((build_llm_registry(), false))
 }
 
-async fn tool_secrets_from_configured_sources(vault: &Arc<AsyncRwLock<Vault>>) -> ToolSecrets {
+async fn search_secrets_from_configured_sources(vault: &Arc<AsyncRwLock<Vault>>) -> SearchSecrets {
     let vault = vault.read().await;
-    ToolSecrets {
+    SearchSecrets {
         brave_search_api_key: vault.get(EnvVars::BRAVE_SEARCH_API_KEY).map(str::to_string),
         venice_api_key:       vault.get(EnvVars::VENICE_API_KEY).map(str::to_string),
     }
@@ -349,7 +349,7 @@ pub async fn initialize(
     options.run_options.git = options.git.clone();
 
     let llm_source = build_llm_source(options.vault.clone(), options.run_options.run_id);
-    let tool_secrets = tool_secrets_from_configured_sources(&options.vault).await;
+    let search_secrets = search_secrets_from_configured_sources(&options.vault).await;
     let catalog = Arc::clone(&options.catalog);
     let sandbox_git = Arc::new(SandboxGitRuntime::new());
     let metadata_runtime = Arc::new(RunMetadataRuntime::new());
@@ -572,7 +572,7 @@ pub async fn initialize(
             &graph,
             Arc::clone(&llm_source),
             Arc::clone(&catalog),
-            tool_secrets.clone(),
+            search_secrets.clone(),
             options.fabro_run_tools.clone(),
         )
         .await?
@@ -1276,7 +1276,7 @@ mod tests {
             &graph,
             Arc::new(VaultCredentialSource::new(Arc::clone(&vault))),
             test_catalog(),
-            ToolSecrets::default(),
+            SearchSecrets::default(),
             None,
         )
         .await

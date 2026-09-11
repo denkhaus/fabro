@@ -366,9 +366,11 @@ impl MockSandbox {
 /// The driver result fabro's exec policy reads back as `result`.
 fn driver_result(result: &ExecResult) -> sandbox_driver::ExecResult {
     let termination = match result.termination {
-        CommandTermination::Exited => Termination::Exited,
         CommandTermination::TimedOut => Termination::TimedOut,
         CommandTermination::Cancelled => Termination::Cancelled,
+        // `CommandTermination` is non-exhaustive; `Exited` and anything newer
+        // read back as a plain exit.
+        _ => Termination::Exited,
     };
     let mut driver = sandbox_driver::ExecResult::new(
         termination,

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use fabro_agent::{RunSandbox, shell_quote};
+use fabro_sandbox::{RunSandbox, shell_quote};
 
 const DIFF_MARKER: &str = "__FABRO_CHANGED_FILES_DIFF__";
 const UNTRACKED_MARKER: &str = "__FABRO_CHANGED_FILES_UNTRACKED__";

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use pebble_coding_agent::tools::{RegisteredTool, ToolError, ToolSource};
 use rmcp::model::{CallToolResult, RawContent};
 use tracing::{error, info};
 
@@ -173,6 +174,42 @@ impl McpConnectionManager {
             .collect();
         summaries.sort_by(|a, b| a.0.cmp(&b.0));
         summaries
+    }
+
+    /// Every connected server's tools as coding-agent tools, each carrying
+    /// its MCP origin. Sorted by qualified name so registration order is
+    /// deterministic.
+    #[must_use]
+    pub fn tools(self: &Arc<Self>) -> Vec<RegisteredTool> {
+        let mut tools: Vec<(&String, &ToolInfo)> = self.tools.iter().collect();
+        tools.sort_by(|left, right| left.0.cmp(right.0));
+        tools
+            .into_iter()
+            .map(|(qualified_name, info)| {
+                let manager = Arc::clone(self);
+                let name = qualified_name.clone();
+                RegisteredTool::function(
+                    qualified_name.clone(),
+                    info.description.clone(),
+                    info.input_schema.clone(),
+                    move |_context, arguments| {
+                        let manager = Arc::clone(&manager);
+                        let name = name.clone();
+                        async move {
+                            let result = manager
+                                .call_tool(&name, arguments)
+                                .await
+                                .map_err(|error| ToolError::execution(error.to_string()))?;
+                            call_result_to_string(&result).map_err(ToolError::execution)
+                        }
+                    },
+                )
+                .with_source(ToolSource::Mcp {
+                    server_name:   info.server_name.clone(),
+                    original_name: info.original_tool_name.clone(),
+                })
+            })
+            .collect()
     }
 
     /// Call a tool by its qualified name.

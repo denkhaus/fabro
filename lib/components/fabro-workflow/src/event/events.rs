@@ -9,8 +9,8 @@ use ::fabro_types::{
     RunTiming, SandboxProviderKind, StageId, StageOutcome, StageTiming, SuccessReason,
     WorkflowVersionId, run_event as fabro_types,
 };
-use fabro_agent::AgentEvent;
 use lithos_llm::types::{ReasoningEffort, Speed};
+use pebble_coding_agent::events::CodingAgentEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, run_failure_from_error};
@@ -495,17 +495,13 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         billing:  Option<BilledModelUsage>,
     },
-    /// Forwarded from an agent session, tagged with the workflow stage.
+    /// One coding-agent event, tagged with the workflow stage that produced
+    /// it. Pebble's envelope is kept whole: `seq`, `stream_id`, session ids,
+    /// `tool_call_id`, and `timestamp`.
     Agent {
-        stage:             String,
-        visit:             u32,
-        event:             AgentEvent,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        session_id:        Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        parent_session_id: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        tool_call_id:      Option<String>,
+        stage: String,
+        visit: u32,
+        event: CodingAgentEvent,
     },
     SubgraphStarted {
         node_id:    String,
@@ -609,16 +605,6 @@ pub enum Event {
         output_bytes:   u64,
         live_streaming: bool,
     },
-    /// A top-level agent session object started its lifecycle.
-    AgentSessionStarted {
-        session_id:        String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        parent_session_id: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        provider:          Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        model:             Option<String>,
-    },
     /// A stage has a currently steerable live session binding.
     AgentSessionActivated {
         node_id:          String,
@@ -644,7 +630,7 @@ pub enum Event {
         node_id:    String,
         visit:      u32,
         session_id: String,
-        tools:      Vec<fabro_types::AgentToolSummary>,
+        tools:      Vec<::fabro_types::ToolSummary>,
     },
     /// A stage's steerable live session binding ended.
     AgentSessionDeactivated {
@@ -652,11 +638,20 @@ pub enum Event {
         visit:      u32,
         session_id: String,
     },
-    /// A top-level agent session object ended its lifecycle.
-    AgentSessionEnded {
-        session_id:        String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        parent_session_id: Option<String>,
+    /// An MCP server configured for a stage connected and listed its tools.
+    AgentMcpReady {
+        node_id:     String,
+        visit:       u32,
+        server_name: String,
+        tool_count:  usize,
+        tools:       Vec<fabro_types::AgentMcpToolSummary>,
+    },
+    /// An MCP server configured for a stage failed to start or connect.
+    AgentMcpFailed {
+        node_id:     String,
+        visit:       u32,
+        server_name: String,
+        error:       String,
     },
     /// A run-level interrupt was delivered to a concrete steerable agent
     /// session/stage.
@@ -1487,7 +1482,7 @@ impl Event {
             } => {
                 debug!(node_id, model, provider, "Prompt completed");
             }
-            Self::Agent { .. } => {}
+            Self::Agent { event, .. } => event.event.trace(&event.session_id),
             Self::Sandbox { event } => event.trace(),
             Self::SandboxInitialized {
                 working_directory,
@@ -1619,14 +1614,6 @@ impl Event {
                     "Command completed"
                 );
             }
-            Self::AgentSessionStarted {
-                session_id,
-                provider,
-                model,
-                ..
-            } => {
-                debug!(session_id, ?provider, ?model, "Agent session started");
-            }
             Self::AgentSessionActivated {
                 node_id,
                 visit,
@@ -1656,8 +1643,22 @@ impl Event {
             } => {
                 debug!(node_id, visit, session_id, "Agent session deactivated");
             }
-            Self::AgentSessionEnded { session_id, .. } => {
-                debug!(session_id, "Agent session ended");
+            Self::AgentMcpReady {
+                node_id,
+                visit,
+                server_name,
+                tool_count,
+                ..
+            } => {
+                debug!(node_id, visit, server_name, tool_count, "MCP server ready");
+            }
+            Self::AgentMcpFailed {
+                node_id,
+                visit,
+                server_name,
+                error,
+            } => {
+                warn!(node_id, visit, server_name, error, "MCP server failed");
             }
             Self::AgentInterruptInjected {
                 node_id,

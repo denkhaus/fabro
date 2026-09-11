@@ -4,18 +4,19 @@ use std::sync::{Arc, LazyLock};
 use std::time::Instant;
 
 use async_trait::async_trait;
-use fabro_agent::RunSandbox;
-use fabro_agent::tool_registry::ToolContext;
 use fabro_llm::credentials::CredentialProvider;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{Client, ClientOptions, Request};
 use fabro_redact::redacted_url_for_log;
+use fabro_sandbox::RunSandbox;
+use fabro_types::PermissionLevel;
 use fabro_types::settings::{InterpString, ResolveCtx, ResolveError};
-use fabro_types::{tool_call_arguments, tool_result_from_json};
-use lithos_llm::types::{ContentPart, Message, Role, ToolCall};
+use pebble_coding_agent::extensions::{
+    SystemPromptContext, SystemPromptDecision, SystemPromptTransform,
+};
+use pebble_coding_agent::{CodingAgent, CodingAgentOptions, ShutdownReason};
 use tokio::process::Command as TokioCommand;
 use tokio::time::timeout as tokio_timeout;
-use tokio_util::sync::CancellationToken;
 
 use crate::config::{HookDefinition, HookType, TlsMode};
 use crate::types::{
@@ -35,6 +36,17 @@ static HOOK_RESPONSE_SCHEMA: LazyLock<serde_json::Value> = LazyLock::new(|| {
         "additionalProperties": false
     })
 });
+
+/// Replaces the profile's system prompt with the hook evaluator's. An agent
+/// hook is not a coding session: no memory, no skills, no environment
+/// preamble, just the evaluation contract.
+struct HookEvaluatorPrompt;
+
+impl SystemPromptTransform for HookEvaluatorPrompt {
+    fn transform(&self, _context: SystemPromptContext<'_>) -> SystemPromptDecision {
+        SystemPromptDecision::Replace(HOOK_EVALUATOR_SYSTEM_PROMPT.to_owned())
+    }
+}
 
 fn duration_ms(duration: std::time::Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
@@ -346,11 +358,14 @@ impl HookExecutorImpl {
         .await
     }
 
-    /// Execute an agent hook: multi-turn LLM call with sandbox tool access.
+    /// Execute an agent hook: a coding agent evaluates the condition with the
+    /// sandbox's tools and answers with the same `{ok, reason}` object as a
+    /// prompt hook.
     ///
-    /// Reuses the core `ToolRegistry` from `fabro_agent` so the agent hook has
-    /// the same tools (read_file, write_file, shell, grep, glob, etc.) as
-    /// a normal agent session.
+    /// The agent runs pebble's full tool set at `PermissionLevel::Full`, with
+    /// no memory or skills, the evaluator system prompt in place of the
+    /// profile's, and `max_tool_rounds` as its turn budget. Exhausting the
+    /// budget, an LLM failure, or a timeout all fail open.
     async fn execute_agent(
         definition: &HookDefinition,
         prompt: &InterpString,
@@ -383,88 +398,37 @@ impl HookExecutorImpl {
                 }
             };
 
-            let options = fabro_agent::NativeToolOptions::default();
-            let mut registry = fabro_agent::ToolRegistry::new();
-            fabro_agent::register_core_tools(&mut registry, &options, None);
-            let tool_defs = registry.definitions();
-
-            let mut messages = vec![
-                Message::text(Role::System, HOOK_EVALUATOR_SYSTEM_PROMPT),
-                Message::text(Role::User, user_msg),
-            ];
-
-            let rounds = max_tool_rounds.unwrap_or(50);
-            let cancel = CancellationToken::new();
-
-            for _ in 0..rounds {
-                let mut builder = Request::builder().model(&resolved_model);
-                for message in &messages {
-                    builder = builder.message(message.clone());
+            let max_turns = usize::try_from(max_tool_rounds.unwrap_or(50).max(1)).unwrap_or(50);
+            let options = CodingAgentOptions::default()
+                .with_context_compaction(false)
+                .with_max_turns(max_turns);
+            let mut agent = match CodingAgent::builder(client, sandbox)
+                .model(resolved_model)
+                .permission_level(PermissionLevel::Full)
+                .system_prompt_transform(Arc::new(HookEvaluatorPrompt))
+                .options(options)
+                .build()
+                .await
+            {
+                Ok(agent) => agent,
+                Err(e) => {
+                    tracing::warn!(error = %e, "agent hook agent build failed, proceeding");
+                    return HookDecision::Proceed;
                 }
-                for tool in &tool_defs {
-                    builder = builder.tool(tool.clone());
+            };
+
+            let report = agent.prompt(user_msg).await;
+            let decision = match report.result {
+                Ok(output) => Self::parse_prompt_response(output.text.as_deref().unwrap_or("")),
+                Err(e) => {
+                    tracing::warn!(error = %e, "agent hook did not complete, proceeding");
+                    HookDecision::Proceed
                 }
-                let request = match builder.build() {
-                    Ok(request) => request,
-                    Err(e) => {
-                        tracing::warn!(error = %e, "agent hook request invalid, proceeding");
-                        return HookDecision::Proceed;
-                    }
-                };
-
-                let response = match client.complete(request).await {
-                    Ok(r) => r,
-                    Err(e) => {
-                        tracing::warn!(error = %e, "agent hook LLM call failed, proceeding");
-                        return HookDecision::Proceed;
-                    }
-                };
-
-                let tool_calls: Vec<ToolCall> = response.tool_calls().cloned().collect();
-                if tool_calls.is_empty() {
-                    return Self::parse_prompt_response(&response.text());
-                }
-
-                messages.push(response.into_message());
-
-                let mut results = Vec::with_capacity(tool_calls.len());
-                for tc in &tool_calls {
-                    let tool = registry.get(&tc.name).cloned();
-                    let ctx = ToolContext {
-                        env:                 sandbox.clone(),
-                        cancel:              cancel.child_token(),
-                        tool_env_provider:   None,
-                        session_id:          None,
-                        root_session_id:     None,
-                        tool_call_id:        Some(tc.id.clone()),
-                        agent_event_emitter: None,
-                    };
-                    let result = match tool {
-                        Some(t) => match (t.executor)(tool_call_arguments(tc), ctx).await {
-                            Ok(output) => tool_result_from_json(
-                                tc.id.clone(),
-                                serde_json::Value::String(output),
-                                false,
-                            ),
-                            Err(err) => tool_result_from_json(
-                                tc.id.clone(),
-                                serde_json::Value::String(err),
-                                true,
-                            ),
-                        },
-                        None => tool_result_from_json(
-                            tc.id.clone(),
-                            serde_json::Value::String(format!("Unknown tool: {}", tc.name)),
-                            true,
-                        ),
-                    };
-                    results.push(ContentPart::ToolResult(result));
-                }
-                messages.push(Message::new(Role::Tool, results));
+            };
+            if let Err(e) = agent.shutdown(ShutdownReason::Completed).await {
+                tracing::debug!(error = %e, "agent hook session did not shut down cleanly");
             }
-
-            tracing::warn!("agent hook exhausted max tool rounds, proceeding");
-            HookDecision::Proceed
+            decision
         })
         .await
     }
@@ -773,7 +737,7 @@ mod tests {
 
     async fn make_sandbox() -> Arc<RunSandbox> {
         Arc::new(
-            fabro_agent::local_sandbox(std::env::current_dir().unwrap())
+            fabro_sandbox::local_sandbox(std::env::current_dir().unwrap())
                 .await
                 .unwrap(),
         )

@@ -1034,9 +1034,11 @@ mod push_tests {
     /// result the push tests script.
     fn driver_result(result: ExecResult) -> sandbox_driver::ExecResult {
         let termination = match result.termination {
-            CommandTermination::Exited => sandbox_driver::Termination::Exited,
             CommandTermination::TimedOut => sandbox_driver::Termination::TimedOut,
             CommandTermination::Cancelled => sandbox_driver::Termination::Cancelled,
+            // `CommandTermination` is non-exhaustive; `Exited` and anything
+            // newer read back as a plain exit.
+            _ => sandbox_driver::Termination::Exited,
         };
         let mut driver = sandbox_driver::ExecResult::new(
             termination,

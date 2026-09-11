@@ -522,3 +522,21 @@ fn sandbox_mcp_http_url_preserves_query_and_path_without_trailing_slash() {
 
     assert_eq!(url, "https://preview.example.com/proxy/3100/sse?token=abc");
 }
+
+#[tokio::test]
+async fn connection_manager_exposes_tools_as_coding_agent_tools() {
+    use pebble_coding_agent::tools::ToolSource;
+
+    let mut mgr = McpConnectionManager::new();
+    mgr.start_servers(&[test_server_config()]).await;
+    let mgr = std::sync::Arc::new(mgr);
+
+    let tools = mgr.tools();
+    assert_eq!(tools.len(), 1);
+    let tool = &tools[0];
+    assert_eq!(tool.definition().name, "mcp__test_echo__echo");
+    assert_eq!(tool.source(), &ToolSource::Mcp {
+        server_name:   "test-echo".to_string(),
+        original_name: "echo".to_string(),
+    });
+}

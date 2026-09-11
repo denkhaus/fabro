@@ -22,10 +22,10 @@ use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::sync::Arc;
 
-use fabro_agent::RunSandbox;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_sandbox::{
-    DaytonaCredentials, ProviderAccess, SandboxOptions, SandboxProviderKind, provider_sandbox,
+    DaytonaCredentials, ProviderAccess, RunSandbox, SandboxOptions, SandboxProviderKind,
+    provider_sandbox,
 };
 use fabro_static::EnvVars;
 use fabro_store::{ArtifactKey, ArtifactStore};

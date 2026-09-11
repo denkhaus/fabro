@@ -20,14 +20,54 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, RwLock};
 
 use chrono::Utc;
-use fabro_agent::{SessionControlHandle, SteeringItem};
 use fabro_types::run_event::AgentSteerDroppedReason;
 use fabro_types::{
     PairId, PairMessageId, PairMessageRecord, PairRecord, PairStatus, PairSystemMessageKind,
-    PairTarget, Principal, RunId, RunPairEndedReason, StageId,
+    PairTarget, Principal, RunId, RunPairEndedReason, StageId, SteeringMessage,
 };
 
 use crate::event::{Emitter, Event};
+
+/// One message the control plane hands a live session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SteeringItem {
+    /// Guidance from a steer: a user-role message that stays visibly
+    /// distinct from a paired user's message.
+    Steering {
+        text:  String,
+        actor: Option<Principal>,
+    },
+    /// A paired human's own message.
+    User { text: String },
+    /// A system notice, such as a human joining or leaving a pair.
+    System { text: String },
+}
+
+impl SteeringItem {
+    #[must_use]
+    pub fn actor(&self) -> Option<&Principal> {
+        match self {
+            Self::Steering { actor, .. } => actor.as_ref(),
+            Self::User { .. } | Self::System { .. } => None,
+        }
+    }
+
+    #[must_use]
+    pub fn text(&self) -> &str {
+        match self {
+            Self::Steering { text, .. } | Self::User { text } | Self::System { text } => text,
+        }
+    }
+}
+
+impl From<SteeringMessage> for SteeringItem {
+    fn from(message: SteeringMessage) -> Self {
+        Self::Steering {
+            text:  message.text,
+            actor: message.actor,
+        }
+    }
+}
 
 /// Cap on the steering queue length kept per active session. Overflow
 /// evicts the oldest entry (FIFO) and emits `agent.steer.dropped`.
@@ -38,6 +78,8 @@ pub const PER_SESSION_QUEUE_CAP: usize = 32;
 pub const PER_RUN_PENDING_CAP: usize = 32;
 
 pub trait ActiveControlHandle: Send + Sync {
+    /// Queue `item`, evicting and returning the oldest queued item when the
+    /// queue is at `cap`.
     fn enqueue_bounded(&self, item: SteeringItem, cap: usize) -> Option<SteeringItem>;
     fn interrupt(&self, actor: Option<Principal>);
     fn interrupt_then_enqueue_bounded(
@@ -45,48 +87,26 @@ pub trait ActiveControlHandle: Send + Sync {
         item: SteeringItem,
         cap: usize,
     ) -> Option<SteeringItem>;
-    fn park_for_steer(&self) {}
-    fn pair_handle(&self) -> Option<SessionControlHandle> {
-        None
+    /// Queue `item` only when the queue is below `cap`, keeping every queued
+    /// item. Returns whether it was accepted.
+    fn try_enqueue_bounded(&self, item: SteeringItem, cap: usize) -> bool {
+        self.enqueue_bounded(item, cap).is_none()
     }
+    /// Whether a human can pair with this session.
+    fn supports_pairing(&self) -> bool {
+        false
+    }
+    /// A pair started on this session: natural completion must wait for the
+    /// human until [`pair_ended`](Self::pair_ended).
+    fn pair_started(&self) {}
+    fn pair_ended(&self) {}
     fn has_pending_control_work(&self) -> bool;
-}
-
-impl ActiveControlHandle for SessionControlHandle {
-    fn enqueue_bounded(&self, item: SteeringItem, cap: usize) -> Option<SteeringItem> {
-        Self::enqueue_bounded(self, item, cap)
-    }
-
-    fn interrupt(&self, actor: Option<Principal>) {
-        Self::interrupt(self, actor);
-    }
-
-    fn interrupt_then_enqueue_bounded(
-        &self,
-        item: SteeringItem,
-        cap: usize,
-    ) -> Option<SteeringItem> {
-        Self::interrupt_then_enqueue_bounded(self, item, cap)
-    }
-
-    fn park_for_steer(&self) {
-        Self::park_for_steer(self);
-    }
-
-    fn pair_handle(&self) -> Option<SessionControlHandle> {
-        Some(self.clone())
-    }
-
-    fn has_pending_control_work(&self) -> bool {
-        Self::has_pending_control_work(self)
-    }
 }
 
 #[derive(Clone)]
 struct ActiveEntry {
-    handle:      Arc<dyn ActiveControlHandle>,
-    pair_handle: Option<SessionControlHandle>,
-    session_id:  String,
+    handle:     Arc<dyn ActiveControlHandle>,
+    session_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -160,45 +180,16 @@ impl SteeringHub {
         session_id: &str,
         handle: Arc<dyn ActiveControlHandle>,
     ) -> bool {
-        self.attach_entry(stage_id, session_id, handle, None)
-    }
-
-    /// Attach a native API session as steerable and pairable for this stage.
-    pub fn attach_pairable_handle(
-        &self,
-        stage_id: &StageId,
-        session_id: &str,
-        handle: SessionControlHandle,
-    ) -> bool {
-        self.attach_entry(
-            stage_id,
-            session_id,
-            Arc::new(handle.clone()) as Arc<dyn ActiveControlHandle>,
-            Some(handle),
-        )
-    }
-
-    fn attach_entry(
-        &self,
-        stage_id: &StageId,
-        session_id: &str,
-        handle: Arc<dyn ActiveControlHandle>,
-        pair_handle: Option<SessionControlHandle>,
-    ) -> bool {
         let mut active = self.active.write().expect("active lock poisoned");
         match active.get_mut(stage_id) {
             Some(entry) if entry.session_id != session_id => false,
             Some(entry) => {
                 entry.handle = handle;
-                if pair_handle.is_some() {
-                    entry.pair_handle = pair_handle;
-                }
                 true
             }
             None => {
                 active.insert(stage_id.clone(), ActiveEntry {
                     handle,
-                    pair_handle,
                     session_id: session_id.to_string(),
                 });
                 true
@@ -409,12 +400,12 @@ impl SteeringHub {
         let Some(entry) = active.get(&target.stage_id) else {
             return Err(PairControlError::TargetNotActive);
         };
-        let Some(pair_handle) = entry.pair_handle.as_ref() else {
+        if !entry.handle.supports_pairing() {
             return Err(PairControlError::TargetNotActive);
-        };
+        }
         let session_id = entry.session_id.clone();
         let interrupt_handle = Arc::clone(&entry.handle);
-        let pair_handle = pair_handle.clone();
+        let pair_handle = Arc::clone(&entry.handle);
         drop(active);
 
         let mut active_pair = self.active_pair.lock().expect("active pair lock poisoned");
@@ -447,6 +438,7 @@ impl SteeringHub {
             actor: actor.clone(),
         });
 
+        pair_handle.pair_started();
         interrupt_handle.interrupt(actor);
         self.emitter.emit(&Event::AgentPairSystemMessage {
             node_id: record.target.stage_id.node_id().to_string(),
@@ -488,12 +480,10 @@ impl SteeringHub {
         let Some(entry) = active.get(&target.stage_id) else {
             return Err(PairControlError::TargetNotActive);
         };
-        if entry.session_id != session_id {
+        if entry.session_id != session_id || !entry.handle.supports_pairing() {
             return Err(PairControlError::TargetNotActive);
         }
-        let Some(pair_handle) = entry.pair_handle.as_ref() else {
-            return Err(PairControlError::TargetNotActive);
-        };
+        let pair_handle = &entry.handle;
 
         if !pair_handle.try_enqueue_bounded(
             SteeringItem::User { text: text.clone() },
@@ -548,9 +538,10 @@ impl SteeringHub {
             .get(&target.stage_id)
             .filter(|entry| entry.session_id == session_id)
         {
-            let Some(pair_handle) = entry.pair_handle.as_ref() else {
+            if !entry.handle.supports_pairing() {
                 return Err(PairControlError::TargetNotActive);
-            };
+            }
+            let pair_handle = &entry.handle;
             if !pair_handle.try_enqueue_bounded(
                 SteeringItem::System {
                     text: text.to_string(),
@@ -567,6 +558,7 @@ impl SteeringHub {
                 kind: PairSystemMessageKind::HumanLeft,
                 text: text.to_string(),
             });
+            entry.handle.pair_ended();
         }
 
         pair.record.status = PairStatus::Ended;
@@ -615,6 +607,15 @@ impl SteeringHub {
             *active_pair = None;
             pair_id
         };
+        if let Some(entry) = self
+            .active
+            .read()
+            .expect("active lock poisoned")
+            .get(stage_id)
+            .filter(|entry| entry.session_id == session_id)
+        {
+            entry.handle.pair_ended();
+        }
         self.emitter.emit(&Event::RunPairEnded {
             pair_id,
             reason,
@@ -678,12 +679,71 @@ pub fn human_left_text() -> &'static str {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use fabro_agent::{SessionControlHandle, SteeringItem};
     use fabro_types::{
         PairId, PairMessageId, PairTarget, Principal, RunEvent, RunId, StageId, SystemActorKind,
     };
 
-    use super::{ActiveControlHandle, PairControlError, SteeringHub};
+    use super::{ActiveControlHandle, PairControlError, SteeringHub, SteeringItem};
+
+    /// A steerable, pairable session with a bounded FIFO queue, standing in
+    /// for the pebble control handle.
+    #[derive(Clone, Default)]
+    struct SessionControlHandle {
+        queue:       Arc<Mutex<Vec<SteeringItem>>>,
+        interrupted: Arc<Mutex<usize>>,
+    }
+
+    impl SessionControlHandle {
+        fn new() -> Self {
+            Self::default()
+        }
+
+        fn queue_len(&self) -> usize {
+            self.queue.lock().unwrap().len()
+        }
+
+        fn interrupt_count(&self) -> usize {
+            *self.interrupted.lock().unwrap()
+        }
+
+        /// An interrupted session with nothing queued parks until a steer
+        /// arrives, as pebble's does.
+        fn is_waiting_for_steer(&self) -> bool {
+            self.interrupt_count() > 0 && self.queue_len() == 0
+        }
+    }
+
+    impl ActiveControlHandle for SessionControlHandle {
+        fn enqueue_bounded(&self, item: SteeringItem, cap: usize) -> Option<SteeringItem> {
+            let mut queue = self.queue.lock().unwrap();
+            queue.push(item);
+            if queue.len() > cap {
+                return Some(queue.remove(0));
+            }
+            None
+        }
+
+        fn interrupt(&self, _actor: Option<Principal>) {
+            *self.interrupted.lock().unwrap() += 1;
+        }
+
+        fn interrupt_then_enqueue_bounded(
+            &self,
+            item: SteeringItem,
+            cap: usize,
+        ) -> Option<SteeringItem> {
+            self.interrupt(None);
+            self.enqueue_bounded(item, cap)
+        }
+
+        fn supports_pairing(&self) -> bool {
+            true
+        }
+
+        fn has_pending_control_work(&self) -> bool {
+            !self.queue.lock().unwrap().is_empty()
+        }
+    }
     use crate::event::Emitter;
 
     fn hub_with_event_names() -> (Arc<SteeringHub>, Arc<Mutex<Vec<String>>>) {
@@ -966,7 +1026,7 @@ mod tests {
         let (hub, events) = hub_with_events();
         let stage_id = StageId::new("code", 1);
         let handle = SessionControlHandle::new();
-        assert!(hub.attach_pairable_handle(&stage_id, "ses_01", handle.clone()));
+        assert!(hub.attach_handle(&stage_id, "ses_01", control_handle(&handle)));
         let pair_id = PairId::new();
 
         let started = hub
@@ -1018,7 +1078,7 @@ mod tests {
         let hub = SteeringHub::for_tests();
         let stage_id = StageId::new("code", 1);
         let handle = SessionControlHandle::new();
-        assert!(hub.attach_pairable_handle(&stage_id, "ses_01", handle.clone()));
+        assert!(hub.attach_handle(&stage_id, "ses_01", control_handle(&handle)));
 
         let missing_stage = StageId::new("other", 1);
         let result = hub.start_pair(
@@ -1035,7 +1095,7 @@ mod tests {
         let (hub, events) = hub_with_events();
         let stage_id = StageId::new("code", 1);
         let handle = SessionControlHandle::new();
-        assert!(hub.attach_pairable_handle(&stage_id, "ses_01", handle.clone()));
+        assert!(hub.attach_handle(&stage_id, "ses_01", control_handle(&handle)));
         let pair_id = PairId::new();
         hub.start_pair(
             RunId::new(),

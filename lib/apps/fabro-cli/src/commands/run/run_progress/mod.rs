@@ -453,7 +453,6 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use chrono::{DateTime, Utc};
-    use fabro_agent::AgentEvent;
     use fabro_types::run_event::CliEnsureCompletedProps;
     use fabro_types::{
         MetadataSnapshotFailureKind, MetadataSnapshotPhase, ModelRef, ParallelBranchId,
@@ -465,6 +464,10 @@ mod tests {
     use fabro_workflow::outcome::billed_model_usage_from_llm;
     use lithos_llm::catalog::{ModelId, builtin};
     use lithos_llm::types::TokenCounts;
+    use pebble_coding_agent::events::{
+        CodingAgentEvent, CodingEvent, CompactionReason, ErrorData as AgentErrorData,
+        ErrorKind as AgentErrorKind, TokenUsage,
+    };
 
     use super::*;
     use crate::commands::run::run_progress::stage_display::ToolCallStatus;
@@ -532,25 +535,20 @@ mod tests {
         });
     }
 
-    fn agent_event(stage: &str, event: AgentEvent) -> Event {
+    fn agent_event(stage: &str, event: CodingEvent) -> Event {
         Event::Agent {
             stage: stage.into(),
             visit: 1,
-            event,
-            session_id: None,
-            parent_session_id: None,
-            tool_call_id: None,
+            event: CodingAgentEvent::new("ses_root", event, std::time::SystemTime::UNIX_EPOCH),
         }
     }
 
-    fn child_agent_event(stage: &str, event: AgentEvent) -> Event {
+    fn child_agent_event(stage: &str, event: CodingEvent) -> Event {
         Event::Agent {
             stage: stage.into(),
             visit: 1,
-            event,
-            session_id: Some("ses_child".into()),
-            parent_session_id: Some("ses_root".into()),
-            tool_call_id: None,
+            event: CodingAgentEvent::new("ses_child", event, std::time::SystemTime::UNIX_EPOCH)
+                .with_parent_session_id("ses_root"),
         }
     }
 
@@ -567,12 +565,13 @@ mod tests {
         }
     }
 
-    fn assistant_event(model: &str, text: &str) -> AgentEvent {
-        AgentEvent::AssistantMessage {
+    fn assistant_event(model: &str, text: &str) -> CodingEvent {
+        CodingEvent::AssistantMessage {
             text:            text.into(),
-            model:           ModelRef::new(builtin::openai(), ModelId::new(model)),
-            usage:           TokenCounts::default(),
-            cost:            None,
+            model:           model.into(),
+            usage:           TokenUsage::default(),
+            cost_usd_micros: None,
+            cost_source:     None,
             tool_call_count: 0,
             context_window:  None,
             reasoning:       None,
@@ -588,8 +587,8 @@ mod tests {
     }
 
     fn llm_request_started(stage: &str, model: &str) -> Event {
-        agent_event(stage, AgentEvent::LlmRequestStarted {
-            requested_model: ModelRef::new(builtin::anthropic(), ModelId::new(model)),
+        agent_event(stage, CodingEvent::LlmRequestStarted {
+            requested_model: model.into(),
         })
     }
 
@@ -714,9 +713,10 @@ mod tests {
 
         emit(
             &mut ui,
-            agent_event("s1", AgentEvent::CompactionStarted {
+            agent_event("s1", CodingEvent::CompactionStarted {
                 estimated_tokens:    5000,
                 context_window_size: 8000,
+                reason:              CompactionReason::Threshold,
             }),
         );
         assert!(ui.stage.active_stages["s1"].compaction_bar.is_some());
@@ -725,11 +725,12 @@ mod tests {
 
         emit(
             &mut ui,
-            agent_event("s1", AgentEvent::CompactionCompleted {
+            agent_event("s1", CodingEvent::CompactionCompleted {
                 original_turn_count:    20,
                 preserved_turn_count:   6,
                 summary_token_estimate: 500,
                 tracked_file_count:     3,
+                reason:                 CompactionReason::Threshold,
             }),
         );
         assert!(ui.stage.active_stages["s1"].compaction_bar.is_none());
@@ -742,19 +743,22 @@ mod tests {
         emit(&mut ui, stage_started("s1", "Build"));
         emit(
             &mut ui,
-            agent_event("s1", AgentEvent::CompactionStarted {
+            agent_event("s1", CodingEvent::CompactionStarted {
                 estimated_tokens:    5000,
                 context_window_size: 8000,
+                reason:              CompactionReason::Threshold,
             }),
         );
         assert!(ui.stage.active_stages["s1"].compaction_bar.is_some());
 
         emit(
             &mut ui,
-            agent_event("s1", AgentEvent::Error {
-                error: fabro_agent::Error::Compaction(fabro_agent::CompactionError::EmptySummary {
-                    summarized_turn_count: 14,
-                }),
+            agent_event("s1", CodingEvent::Error {
+                error: AgentErrorData::new(
+                    AgentErrorKind::Compaction,
+                    "generated summary was empty after trimming; refused to replace 14 turns and \
+                     left history intact",
+                ),
             }),
         );
 
@@ -768,10 +772,12 @@ mod tests {
 
         emit(
             &mut ui,
-            agent_event("s1", AgentEvent::Error {
-                error: fabro_agent::Error::Compaction(fabro_agent::CompactionError::EmptySummary {
-                    summarized_turn_count: 14,
-                }),
+            agent_event("s1", CodingEvent::Error {
+                error: AgentErrorData::new(
+                    AgentErrorKind::Compaction,
+                    "generated summary was empty after trimming; refused to replace 14 turns and \
+                     left history intact",
+                ),
             }),
         );
 
@@ -798,7 +804,7 @@ mod tests {
 
         emit(
             &mut ui,
-            agent_event("s1", AgentEvent::LlmFirstOutput {
+            agent_event("s1", CodingEvent::LlmFirstOutput {
                 kind: fabro_types::LlmOutputKind::ToolCall,
             }),
         );
@@ -824,22 +830,19 @@ mod tests {
         emit(&mut ui, llm_request_started("s1", "claude-fable-5"));
         emit(
             &mut ui,
-            agent_event("s1", AgentEvent::LlmFirstOutput {
+            agent_event("s1", CodingEvent::LlmFirstOutput {
                 kind: fabro_types::LlmOutputKind::Text,
             }),
         );
         emit(
             &mut ui,
-            agent_event("s1", AgentEvent::LlmRetry {
+            agent_event("s1", CodingEvent::LlmRetry {
                 provider:   "anthropic".into(),
                 model:      "claude-fable-5".into(),
                 attempt:    1,
                 delay_secs: 0.1,
                 phase:      fabro_types::LlmRetryPhase::Consume,
-                error:      fabro_llm::ErrorData::from(fabro_llm::Error::new(
-                    fabro_llm::ErrorKind::Configuration,
-                    "retry",
-                )),
+                error:      AgentErrorData::new(AgentErrorKind::Llm, "retry"),
             }),
         );
 
@@ -859,7 +862,7 @@ mod tests {
         emit(&mut ui, llm_request_started("s1", "claude-fable-5"));
         emit(
             &mut ui,
-            agent_event("s1", AgentEvent::RoundInterrupted { generation: 1 }),
+            agent_event("s1", CodingEvent::RoundInterrupted { generation: 1 }),
         );
 
         assert!(ui.stage.active_stages["s1"].inference_bar.is_none());
@@ -873,7 +876,7 @@ mod tests {
         emit(&mut ui, llm_request_started("s1", "claude-fable-5"));
         emit(
             &mut ui,
-            child_agent_event("s1", AgentEvent::LlmFirstOutput {
+            child_agent_event("s1", CodingEvent::LlmFirstOutput {
                 kind: fabro_types::LlmOutputKind::ToolCall,
             }),
         );
@@ -917,7 +920,7 @@ mod tests {
                 image:             None,
                 snapshot:          None,
             },
-            agent_event("code", AgentEvent::ToolCallStarted {
+            agent_event("code", CodingEvent::ToolCallStarted {
                 tool_name:    "read_file".into(),
                 tool_call_id: "tc1".into(),
                 arguments:    serde_json::json!({
@@ -944,29 +947,26 @@ mod tests {
                 max_attempts: 3,
                 delay_ms:     1500,
             },
-            agent_event("code", AgentEvent::Warning {
+            agent_event("code", CodingEvent::Warning {
                 kind:    "context_window".into(),
                 message: "high usage".into(),
                 details: serde_json::json!({"usage_percent": 92}),
             }),
-            agent_event("code", AgentEvent::LlmRetry {
+            agent_event("code", CodingEvent::LlmRetry {
                 provider:   "openai".into(),
                 model:      "gpt-5-mini".into(),
                 attempt:    2,
                 delay_secs: 1.5,
                 phase:      fabro_types::LlmRetryPhase::Open,
-                error:      fabro_llm::ErrorData::from(fabro_llm::Error::new(
-                    fabro_llm::ErrorKind::Configuration,
-                    "busy",
-                )),
+                error:      AgentErrorData::new(AgentErrorKind::Llm, "busy"),
             }),
-            agent_event("code", AgentEvent::SubAgentSpawned {
+            agent_event("code", CodingEvent::SubAgentSpawned {
                 agent_id:   "a1".into(),
                 depth:      1,
                 task:       "review recent changes".into(),
                 generation: 1,
             }),
-            agent_event("code", AgentEvent::SubAgentCompleted {
+            agent_event("code", CodingEvent::SubAgentCompleted {
                 agent_id:   "a1".into(),
                 depth:      1,
                 generation: 1,
@@ -1005,7 +1005,7 @@ mod tests {
         emit(&mut ui, assistant_message("plan", "gpt-5-mini"));
         emit(
             &mut ui,
-            agent_event("plan", AgentEvent::ToolCallStarted {
+            agent_event("plan", CodingEvent::ToolCallStarted {
                 tool_name:    "read_file".into(),
                 tool_call_id: "tc1".into(),
                 arguments:    serde_json::json!({"path": "src/main.rs"}),
@@ -1013,10 +1013,12 @@ mod tests {
         );
         emit(
             &mut ui,
-            agent_event("plan", AgentEvent::ToolCallCompleted {
+            agent_event("plan", CodingEvent::ToolCallCompleted {
                 tool_name:             "read_file".into(),
                 tool_call_id:          "tc1".into(),
                 output:                serde_json::json!({"ok": true}),
+                metadata:              pebble_agent::ToolOutputMetadata::default(),
+                error_kind:            None,
                 is_error:              false,
                 output_bytes_observed: 11,
                 output_bytes_retained: 11,
@@ -1265,7 +1267,7 @@ mod tests {
         });
         emit(
             &mut ui,
-            agent_event("code", AgentEvent::ToolCallStarted {
+            agent_event("code", CodingEvent::ToolCallStarted {
                 tool_name:    "read_file".into(),
                 tool_call_id: "tc1".into(),
                 arguments:    serde_json::json!({
@@ -1295,7 +1297,7 @@ mod tests {
         });
         emit(
             &mut ui,
-            agent_event("code", AgentEvent::Warning {
+            agent_event("code", CodingEvent::Warning {
                 kind:    "context_window".into(),
                 message: "high usage".into(),
                 details: serde_json::json!({"usage_percent": 92}),
@@ -1303,21 +1305,18 @@ mod tests {
         );
         emit(
             &mut ui,
-            agent_event("code", AgentEvent::LlmRetry {
+            agent_event("code", CodingEvent::LlmRetry {
                 provider:   "openai".into(),
                 model:      "gpt-5-mini".into(),
                 attempt:    2,
                 delay_secs: 1.5,
                 phase:      fabro_types::LlmRetryPhase::Open,
-                error:      fabro_llm::ErrorData::from(fabro_llm::Error::new(
-                    fabro_llm::ErrorKind::Configuration,
-                    "busy",
-                )),
+                error:      AgentErrorData::new(AgentErrorKind::Llm, "busy"),
             }),
         );
         emit(
             &mut ui,
-            agent_event("code", AgentEvent::SubAgentSpawned {
+            agent_event("code", CodingEvent::SubAgentSpawned {
                 agent_id:   "a1".into(),
                 depth:      1,
                 task:       "review recent changes".into(),
@@ -1326,7 +1325,7 @@ mod tests {
         );
         emit(
             &mut ui,
-            agent_event("code", AgentEvent::SubAgentCompleted {
+            agent_event("code", CodingEvent::SubAgentCompleted {
                 agent_id:   "a1".into(),
                 depth:      1,
                 generation: 1,
@@ -1336,7 +1335,7 @@ mod tests {
         );
         emit(
             &mut ui,
-            agent_event("code", AgentEvent::SubAgentTurnStarted {
+            agent_event("code", CodingEvent::SubAgentTurnStarted {
                 agent_id:   "a1".into(),
                 depth:      1,
                 task:       "fix the review findings".into(),
@@ -1345,7 +1344,7 @@ mod tests {
         );
         emit(
             &mut ui,
-            agent_event("code", AgentEvent::SubAgentCompleted {
+            agent_event("code", CodingEvent::SubAgentCompleted {
                 agent_id:   "a1".into(),
                 depth:      1,
                 generation: 2,
@@ -1536,7 +1535,7 @@ mod tests {
         .unwrap();
         let tool_started = serde_json::to_string(&to_run_event_at(
             &fixtures::RUN_1,
-            &agent_event("code", AgentEvent::ToolCallStarted {
+            &agent_event("code", CodingEvent::ToolCallStarted {
                 tool_name:    "read_file".into(),
                 tool_call_id: "tc1".into(),
                 arguments:    serde_json::json!({"path": "src/main.rs"}),
@@ -1547,10 +1546,12 @@ mod tests {
         .unwrap();
         let tool_completed = serde_json::to_string(&to_run_event_at(
             &fixtures::RUN_1,
-            &agent_event("code", AgentEvent::ToolCallCompleted {
+            &agent_event("code", CodingEvent::ToolCallCompleted {
                 tool_name:             "read_file".into(),
                 tool_call_id:          "tc1".into(),
                 output:                serde_json::json!({"ok": true}),
+                metadata:              pebble_agent::ToolOutputMetadata::default(),
+                error_kind:            None,
                 is_error:              false,
                 output_bytes_observed: 11,
                 output_bytes_retained: 11,

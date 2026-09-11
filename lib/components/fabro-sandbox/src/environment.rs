@@ -15,13 +15,12 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use fabro_types::{CommandOutputStream, CommandTermination};
+use fabro_types::CommandOutputStream;
 use fabro_util::workspace_glob::WorkspaceGlob;
 use pebble_coding_agent::environment::{
     DirEntry, EnvResult, Environment, EnvironmentError, EnvironmentErrorKind, ExecOutcome,
     ExecOutputSink, ExecOutputStream, ExecRequest, ExecResult, GrepOptions,
 };
-use pebble_coding_agent::events::CommandTermination as PebbleTermination;
 use pebble_coding_agent::tools::OutputCaptureStats as PebbleCaptureStats;
 use sandbox_driver::FileKind;
 
@@ -223,7 +222,7 @@ impl Environment for RunSandbox {
                 stdout:      streaming.result.stdout,
                 stderr:      streaming.result.stderr,
                 exit_code:   streaming.result.exit_code,
-                termination: pebble_termination(streaming.result.termination),
+                termination: streaming.result.termination,
                 duration_ms: streaming.result.duration_ms,
             },
             streams_separated: streaming.streams_separated,
@@ -313,14 +312,6 @@ fn adapt_output_sink(sink: ExecOutputSink) -> CommandOutputCallback {
         sink(stream, &chunk);
         Box::pin(async { Ok(()) })
     })
-}
-
-fn pebble_termination(termination: CommandTermination) -> PebbleTermination {
-    match termination {
-        CommandTermination::Exited => PebbleTermination::Exited,
-        CommandTermination::TimedOut => PebbleTermination::TimedOut,
-        CommandTermination::Cancelled => PebbleTermination::Cancelled,
-    }
 }
 
 fn capture_stats(stats: sandbox::OutputCaptureStats) -> PebbleCaptureStats {

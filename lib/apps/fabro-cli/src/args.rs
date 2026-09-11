@@ -3,10 +3,10 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use fabro_agent::cli::AgentArgs;
 use fabro_config::{CliLayer, CliLoggingLayer, CliOutputLayer, CliUpdatesLayer};
 use fabro_server::serve::DEFAULT_TCP_PORT;
 use fabro_static::EnvVars;
+use fabro_types::PermissionLevel;
 use fabro_types::settings::cli::{OutputFormat, OutputVerbosity};
 use fabro_types::settings::run::MergeStrategy;
 use fabro_util::printer::Printer;
@@ -1115,6 +1115,111 @@ pub(crate) struct ExecArgs {
 
     #[command(flatten)]
     pub(crate) agent: AgentArgs,
+}
+
+/// Agent tool permission level, as the `--permissions` flag spells it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub(crate) enum PermissionsArg {
+    ReadOnly,
+    ReadWrite,
+    Full,
+}
+
+impl From<PermissionsArg> for PermissionLevel {
+    fn from(value: PermissionsArg) -> Self {
+        match value {
+            PermissionsArg::ReadOnly => Self::ReadOnly,
+            PermissionsArg::ReadWrite => Self::ReadWrite,
+            PermissionsArg::Full => Self::Full,
+        }
+    }
+}
+
+/// Output format for `fabro exec`: human-readable assistant output on stdout
+/// with progress on stderr, or one coding agent event per line as JSON.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub(crate) enum ExecOutputFormat {
+    Text,
+    Json,
+}
+
+/// Arguments for the agentic `fabro exec` session.
+#[derive(Args)]
+pub(crate) struct AgentArgs {
+    /// Task prompt
+    pub(crate) prompt: String,
+
+    /// LLM provider (built-in or configured provider ID)
+    #[arg(long)]
+    pub(crate) provider: Option<String>,
+
+    /// Model name (defaults per provider)
+    #[arg(long)]
+    pub(crate) model: Option<String>,
+
+    /// Permission level for tool execution
+    #[arg(long, value_enum)]
+    pub(crate) permissions: Option<PermissionsArg>,
+
+    /// Skip interactive prompts; deny tools outside permission level
+    #[arg(long)]
+    pub(crate) auto_approve: bool,
+
+    /// Print LLM request/response debug info to stderr
+    #[arg(long)]
+    pub(crate) debug: bool,
+
+    /// Print full LLM request/response JSON to stderr
+    #[arg(long)]
+    pub(crate) verbose: bool,
+
+    /// Directory containing skill files (overrides default discovery)
+    #[arg(long)]
+    pub(crate) skills_dir: Option<String>,
+
+    /// Output format (text for human-readable, json for NDJSON event stream)
+    #[arg(long, value_enum)]
+    pub(crate) output_format: Option<ExecOutputFormat>,
+}
+
+impl AgentArgs {
+    /// Fill `None` fields from settings.toml values, then hardcoded defaults.
+    pub(crate) fn apply_cli_defaults(
+        &mut self,
+        provider: Option<&str>,
+        model: Option<&str>,
+        permissions: Option<PermissionLevel>,
+        output_format: Option<ExecOutputFormat>,
+    ) {
+        self.provider = self
+            .provider
+            .take()
+            .or_else(|| provider.map(String::from))
+            .or_else(|| Some("anthropic".to_string()));
+        self.model = self.model.take().or_else(|| model.map(String::from));
+        self.permissions = self
+            .permissions
+            .or_else(|| permissions.map(permissions_arg))
+            .or(Some(PermissionsArg::ReadWrite));
+        self.output_format = self
+            .output_format
+            .or(output_format)
+            .or(Some(ExecOutputFormat::Text));
+    }
+
+    /// The permission level after defaults are applied.
+    pub(crate) fn permission_level(&self) -> PermissionLevel {
+        self.permissions
+            .map_or(PermissionLevel::ReadWrite, PermissionLevel::from)
+    }
+}
+
+fn permissions_arg(level: PermissionLevel) -> PermissionsArg {
+    match level {
+        PermissionLevel::ReadOnly => PermissionsArg::ReadOnly,
+        PermissionLevel::ReadWrite => PermissionsArg::ReadWrite,
+        PermissionLevel::Full => PermissionsArg::Full,
+    }
 }
 
 #[derive(Args)]

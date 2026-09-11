@@ -104,7 +104,10 @@ async fn run_bound_session_is_created_as_run_event_and_resolves_by_flat_id() {
     assert_eq!(fetched["id"], session_id);
     assert_eq!(fetched["run_id"], run_id);
     assert_session_metadata_only(&fetched);
-    assert_eq!(fetched["messages"].as_array().unwrap().len(), 0);
+    assert!(
+        fetched.get("messages").is_none(),
+        "the conversation is held by the server's session record, not the API"
+    );
     assert!(fetched["active_turn"].is_null());
 
     let events_request = Request::builder()

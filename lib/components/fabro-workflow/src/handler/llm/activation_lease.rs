@@ -35,15 +35,10 @@ impl ActivationLease {
         options: ActivationLeaseOptions,
         handle: &Arc<dyn ActiveControlHandle>,
     ) -> Result<Arc<Self>, Error> {
-        let attached = if let Some(pair_handle) = handle.pair_handle() {
+        let attached =
             options
                 .hub
-                .attach_pairable_handle(&options.stage_id, &options.session_id, pair_handle)
-        } else {
-            options
-                .hub
-                .attach_handle(&options.stage_id, &options.session_id, Arc::clone(handle))
-        };
+                .attach_handle(&options.stage_id, &options.session_id, Arc::clone(handle));
         if !attached {
             return Err(Error::Precondition(format!(
                 "stage {} already has a different active agent session",
@@ -131,10 +126,46 @@ impl Drop for ActivationLease {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use fabro_agent::SessionControlHandle;
-    use fabro_types::RunId;
+    use fabro_types::{Principal, RunId};
 
     use super::*;
+    use crate::steering_hub::SteeringItem;
+
+    #[derive(Clone, Default)]
+    struct SessionControlHandle {
+        queue: Arc<Mutex<Vec<SteeringItem>>>,
+    }
+
+    impl SessionControlHandle {
+        fn new() -> Self {
+            Self::default()
+        }
+
+        fn queue_len(&self) -> usize {
+            self.queue.lock().unwrap().len()
+        }
+    }
+
+    impl ActiveControlHandle for SessionControlHandle {
+        fn enqueue_bounded(&self, item: SteeringItem, _cap: usize) -> Option<SteeringItem> {
+            self.queue.lock().unwrap().push(item);
+            None
+        }
+
+        fn interrupt(&self, _actor: Option<Principal>) {}
+
+        fn interrupt_then_enqueue_bounded(
+            &self,
+            item: SteeringItem,
+            cap: usize,
+        ) -> Option<SteeringItem> {
+            self.enqueue_bounded(item, cap)
+        }
+
+        fn has_pending_control_work(&self) -> bool {
+            !self.queue.lock().unwrap().is_empty()
+        }
+    }
 
     fn collect_event_names(emitter: &Arc<Emitter>) -> Arc<Mutex<Vec<String>>> {
         let names = Arc::new(Mutex::new(Vec::new()));

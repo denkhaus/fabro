@@ -14,8 +14,8 @@ use fabro_types::settings::run::MergeStrategy;
 use fabro_types::{
     ArtifactUpload, BlobHash, EventEnvelope, Model, ModelTestMode, PairId, PairMessageRecord,
     PairMessageRequest, PairRecord, PairStartRequest, PairTranscriptResponse, Run, RunEvent,
-    RunEventDetailResponse, RunId, RunPairStatusResponse, RunProjection, SessionId, SessionRecord,
-    StageId, WorkflowVersion, WorkflowVersionId,
+    RunEventDetailResponse, RunId, RunPairStatusResponse, RunProjection, RunSessionMetadata,
+    SessionId, StageId, WorkflowVersion, WorkflowVersionId,
 };
 use fabro_util::exit::{ErrorExt, ExitClass};
 use futures::future::BoxFuture;
@@ -642,7 +642,7 @@ impl Client {
         &self,
         run_id: RunId,
         body: types::CreateRunSessionRequest,
-    ) -> Result<SessionRecord> {
+    ) -> Result<RunSessionMetadata> {
         let response = self
             .send_api(|client| {
                 let body = body.clone();

@@ -523,7 +523,7 @@ async fn docker_sandbox_satisfies_pebbles_environment_contract() {
         .expect("docker sandbox should initialize");
 
     let contract = EnvironmentContract::new(&sandbox, "pebble-contract")
-        .with_operation_timeout(std::time::Duration::from_secs(60));
+        .with_operation_timeout(std::time::Duration::from_mins(1));
     let outcome = async {
         contract.verify_files().await?;
         contract.verify_search().await?;

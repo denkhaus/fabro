@@ -24,13 +24,12 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::run::ApprovalMode;
 use fabro_types::{
-    AgentBackend, AttrValue, AuthMethod, BlobHash, CommandTermination, FailureCategory,
-    FailureDetail, GitRunTarget, Graph, InterviewQuestionRecord, ModelRef, Node, Outcome,
-    ParallelBranchId, QuestionType, RunId, RunSpec, RunTarget, SandboxProviderKind,
-    StageContextWindowBreakdownItem, StageContextWindowCategory, StageContextWindowCountMethod,
-    StageContextWindowProjection, StageContextWindowStaleness, StageContextWindowWarning,
-    StageModelUsage, StageTiming, SuccessReason, SystemActorKind, WorkflowSettings, fixtures,
-    test_support,
+    AgentBackend, AttrValue, AuthMethod, BlobHash, CommandTermination, ContextWindowBreakdownItem,
+    ContextWindowCategory, ContextWindowCountMethod, ContextWindowSnapshot, ContextWindowStaleness,
+    ContextWindowWarning, FailureCategory, FailureDetail, GitRunTarget, Graph,
+    InterviewQuestionRecord, ModelRef, Node, Outcome, ParallelBranchId, QuestionType, RunId,
+    RunSpec, RunTarget, SandboxProviderKind, StageModelUsage, StageTiming, SuccessReason,
+    SystemActorKind, WorkflowSettings, fixtures, test_support,
 };
 use fabro_util::check_report::CheckStatus;
 use fabro_workflow::records::CheckpointExt;
@@ -40,6 +39,7 @@ use lithos_llm::catalog::ModelId;
 use lithos_llm::types::{
     ReasoningEffort, ReasoningOutput, Request as LlmRequest, Speed, TokenCounts,
 };
+use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, TokenUsage};
 use serde_json::json;
 use tokio::sync::Notify;
 use tokio_stream::StreamExt as _;
@@ -6116,48 +6116,65 @@ fn stage_completed_event(node_id: &str) -> workflow_event::Event {
     }
 }
 
-fn context_window_event(
+fn agent_message_event(
     stage: &str,
     visit: u32,
-    context_window: StageContextWindowProjection,
+    session_id: &str,
+    text: &str,
+    context_window: Option<ContextWindowSnapshot>,
+    reasoning: Option<ReasoningOutput>,
 ) -> workflow_event::Event {
     workflow_event::Event::Agent {
         stage: stage.to_string(),
         visit,
-        event: fabro_agent::AgentEvent::AssistantMessage {
-            text:            "assistant response".to_string(),
-            model:           ModelRef::new(
-                lithos_llm::catalog::builtin::openai(),
-                ModelId::new("gpt-5.4"),
-            ),
-            usage:           TokenCounts::default(),
-            cost:            None,
-            tool_call_count: 0,
-            context_window:  Some(context_window),
-            reasoning:       None,
-        },
-        session_id: Some("session-1".to_string()),
-        parent_session_id: None,
-        tool_call_id: None,
+        event: CodingAgentEvent::new(
+            session_id,
+            CodingEvent::AssistantMessage {
+                text: text.to_string(),
+                model: "gpt-5.4".to_string(),
+                usage: TokenUsage::default(),
+                cost_usd_micros: None,
+                cost_source: None,
+                tool_call_count: 0,
+                context_window,
+                reasoning,
+            },
+            std::time::SystemTime::now(),
+        ),
     }
+}
+
+fn context_window_event(
+    stage: &str,
+    visit: u32,
+    context_window: ContextWindowSnapshot,
+) -> workflow_event::Event {
+    agent_message_event(
+        stage,
+        visit,
+        "session-1",
+        "assistant response",
+        Some(context_window),
+        None,
+    )
 }
 
 fn context_window_snapshot(
     input_tokens: u64,
-    warnings: Vec<StageContextWindowWarning>,
-) -> StageContextWindowProjection {
-    StageContextWindowProjection {
+    warnings: Vec<ContextWindowWarning>,
+) -> ContextWindowSnapshot {
+    ContextWindowSnapshot {
         provider: "openai".to_string(),
         model: "gpt-5.4".to_string(),
         context_window_tokens: 400_000,
         input_tokens,
         usage_percent: input_tokens as f64 * 100.0 / 400_000.0,
-        count_method: StageContextWindowCountMethod::ResponseUsageScaledBreakdown,
-        staleness: StageContextWindowStaleness::Live,
-        generated_at: Utc::now(),
+        count_method: ContextWindowCountMethod::ResponseUsageScaledBreakdown,
+        staleness: ContextWindowStaleness::Live,
+        generated_at: std::time::SystemTime::now(),
         event_seq: None,
-        breakdown: vec![StageContextWindowBreakdownItem {
-            category:      StageContextWindowCategory::Conversation,
+        breakdown: vec![ContextWindowBreakdownItem {
+            category:      ContextWindowCategory::Conversation,
             tokens:        input_tokens,
             usage_percent: input_tokens as f64 * 100.0 / 400_000.0,
         }],
@@ -10907,7 +10924,7 @@ async fn get_run_stage_context_window_returns_projected_warnings() {
         context_window_event(
             "agent_node",
             1,
-            context_window_snapshot(100, vec![StageContextWindowWarning {
+            context_window_snapshot(100, vec![ContextWindowWarning {
                 code:    "provider_token_count_failed".to_string(),
                 message: "provider input token counting failed; returned local estimate"
                     .to_string(),
@@ -12675,11 +12692,21 @@ async fn append_run_event_accepts_a_body_larger_than_two_mib() {
         "run_id": run_id,
         "event": "agent.tool.completed",
         "properties": {
-            "tool_name": "shell",
-            "tool_call_id": "call-large",
-            "output": "x".repeat(2 * 1024 * 1024),
-            "is_error": false,
-            "visit": 1
+            "stage": "code",
+            "visit": 1,
+            "session_id": "ses_large",
+            "timestamp": "2026-08-24T12:00:00.000Z",
+            "event": {
+                "ToolCallCompleted": {
+                    "tool_name": "shell",
+                    "tool_call_id": "call-large",
+                    "output": "x".repeat(2 * 1024 * 1024),
+                    "is_error": false,
+                    "output_bytes_observed": 2 * 1024 * 1024,
+                    "output_bytes_retained": 2 * 1024 * 1024,
+                    "output_bytes_omitted": 0
+                }
+            }
         }
     })
     .to_string();
@@ -18310,28 +18337,17 @@ async fn attach_stream_replays_agent_message_reasoning() {
 
     create_durable_run_with_events(&state, run_id, &[
         stage_started_event("code", "agent"),
-        workflow_event::Event::Agent {
-            stage:             "code".to_string(),
-            visit:             1,
-            event:             fabro_agent::AgentEvent::AssistantMessage {
-                text:            String::new(),
-                model:           ModelRef::new(
-                    lithos_llm::catalog::builtin::openai(),
-                    ModelId::new("gpt-5.4"),
-                ),
-                usage:           TokenCounts::default(),
-                cost:            None,
-                tool_call_count: 1,
-                context_window:  None,
-                reasoning:       Some(ReasoningOutput::new(
-                    "inspect the sink first",
-                    "read events.rs, then attach",
-                )),
-            },
-            session_id:        Some("session-1".to_string()),
-            parent_session_id: None,
-            tool_call_id:      None,
-        },
+        agent_message_event(
+            "code",
+            1,
+            "session-1",
+            "",
+            None,
+            Some(ReasoningOutput::new(
+                "inspect the sink first",
+                "read events.rs, then attach",
+            )),
+        ),
         workflow_event::Event::WorkflowRunCompleted {
             timing:               fabro_types::RunTiming::wall_only(1000),
             artifact_count:       0,
@@ -18361,14 +18377,9 @@ async fn attach_stream_replays_agent_message_reasoning() {
         .filter_map(|data| serde_json::from_str::<serde_json::Value>(data).ok())
         .find(|value| value["event"] == "agent.message")
         .expect("attach stream should replay the agent message");
-    assert_eq!(
-        message["properties"]["reasoning"]["summary"],
-        "inspect the sink first"
-    );
-    assert_eq!(
-        message["properties"]["reasoning"]["trace"],
-        "read events.rs, then attach"
-    );
+    let reasoning = &message["properties"]["event"]["AssistantMessage"]["reasoning"];
+    assert_eq!(reasoning["summary"], "inspect the sink first");
+    assert_eq!(reasoning["trace"], "read events.rs, then attach");
 }
 
 #[tokio::test]

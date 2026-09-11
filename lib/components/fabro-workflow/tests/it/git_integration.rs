@@ -8,8 +8,8 @@ use std::path::Path;
 use std::process::{Command, Output};
 use std::sync::Arc;
 
-use fabro_agent::RunSandbox;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
+use fabro_sandbox::RunSandbox;
 use fabro_types::{RunEvent, WorkflowSettings, fixtures};
 use fabro_workflow::event::Emitter;
 use fabro_workflow::git;
@@ -119,7 +119,7 @@ fn list_branch(repo_dir: &Path, branch: &str) -> String {
 
 async fn local_env(repo: &Path) -> Arc<RunSandbox> {
     Arc::new(
-        fabro_agent::local_sandbox(repo.to_path_buf())
+        fabro_sandbox::local_sandbox(repo.to_path_buf())
             .await
             .expect("local sandbox should be created"),
     )
@@ -501,7 +501,7 @@ async fn remote_prompt_demotion_stays_outside_checkout_and_survives_checkpoint()
     let run_dir = dir.path().join("run");
     std::fs::create_dir_all(&run_dir).unwrap();
 
-    let local = fabro_agent::local_sandbox(repo_dir.clone())
+    let local = fabro_sandbox::local_sandbox(repo_dir.clone())
         .await
         .expect("local sandbox should be created");
     let sandbox = RunSandbox::new(

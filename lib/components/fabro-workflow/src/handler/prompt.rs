@@ -11,6 +11,7 @@ use super::agent::{
 };
 use super::llm::routing;
 use super::{EngineServices, Handler, structured_output};
+use crate::agent_memory;
 use crate::context::{Context, WorkflowContext, keys};
 use crate::error::Error;
 use crate::event::{Emitter, Event};
@@ -74,32 +75,13 @@ impl Handler for PromptHandler {
                 node,
             )?
             .profile_kind;
-            let docs = match fabro_agent::discover_memory(
+            agent_memory::load_memory_text(
                 &services.run.sandbox,
-                working_dir,
                 working_dir,
                 profile_kind,
                 &services.run.cancel_token(),
             )
-            .await
-            {
-                Ok(docs) => docs,
-                Err(fabro_agent::Error::Interrupted(fabro_agent::InterruptReason::Cancelled)) => {
-                    return Err(Error::Cancelled);
-                }
-                Err(_) => Vec::new(),
-            };
-
-            if docs.is_empty() {
-                None
-            } else {
-                Some(
-                    docs.into_iter()
-                        .map(|doc| doc.content)
-                        .collect::<Vec<_>>()
-                        .join("\n\n"),
-                )
-            }
+            .await?
         } else {
             None
         };
@@ -355,8 +337,8 @@ mod tests {
             fn effective_request_controls(
                 &self,
                 _node: &Node,
-            ) -> Result<crate::handler::llm::api::EffectiveRequestControls, Error> {
-                Ok(crate::handler::llm::api::EffectiveRequestControls {
+            ) -> Result<crate::handler::llm::EffectiveRequestControls, Error> {
+                Ok(crate::handler::llm::EffectiveRequestControls {
                     reasoning_effort: Some(ReasoningEffort::High),
                     speed:            Some(Speed::Fast),
                 })
@@ -549,8 +531,8 @@ mod tests {
             fn effective_request_controls(
                 &self,
                 _node: &Node,
-            ) -> Result<crate::handler::llm::api::EffectiveRequestControls, Error> {
-                Ok(crate::handler::llm::api::EffectiveRequestControls {
+            ) -> Result<crate::handler::llm::EffectiveRequestControls, Error> {
+                Ok(crate::handler::llm::EffectiveRequestControls {
                     reasoning_effort: Some(ReasoningEffort::High),
                     speed:            Some(Speed::Fast),
                 })
@@ -720,7 +702,7 @@ mod tests {
         services.run = services
             .run
             .with_sandbox(Arc::new(
-                fabro_agent::local_sandbox(workspace.path().to_path_buf())
+                fabro_sandbox::local_sandbox(workspace.path().to_path_buf())
                     .await
                     .unwrap(),
             ))
@@ -796,7 +778,7 @@ mod tests {
         services.run = services
             .run
             .with_sandbox(Arc::new(
-                fabro_agent::local_sandbox(workspace.path().to_path_buf())
+                fabro_sandbox::local_sandbox(workspace.path().to_path_buf())
                     .await
                     .unwrap(),
             ))

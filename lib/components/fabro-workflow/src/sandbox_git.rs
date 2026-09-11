@@ -1,9 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use fabro_agent::RunSandbox;
 use fabro_checkpoint::trailer as trailerlink;
 use fabro_checkpoint::trailer::Trailer;
-use fabro_sandbox::shell_quote;
+use fabro_sandbox::{RunSandbox, shell_quote};
 use fabro_types::settings::run::RunCheckpointSettings;
 use fabro_util::error::SharedError;
 
@@ -812,7 +811,7 @@ mod tests {
         reason = "These unit tests use the real git CLI to construct sandbox-git fixture repositories and sync-write fixtures to disk."
     )]
 
-    use fabro_agent::ExecResult;
+    use fabro_sandbox::sandbox::ExecResult;
     use fabro_sandbox::test_support::MockSandbox;
     use fabro_types::CommandTermination;
 
@@ -1168,7 +1167,7 @@ mod tests {
         std::fs::create_dir_all(repo.join(".venv/lib")).unwrap();
         std::fs::write(repo.join(".venv/lib/site.py"), "venv").unwrap();
 
-        let sandbox = fabro_agent::local_sandbox(repo.to_path_buf())
+        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
             .await
             .unwrap();
         let author = crate::git::GitAuthor::default();
@@ -1269,7 +1268,7 @@ mod tests {
         std::fs::remove_file(repo.join("drop.txt")).unwrap();
         let head = git_commit_all(repo, "change");
 
-        let sandbox = fabro_agent::local_sandbox(repo.to_path_buf())
+        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
             .await
             .unwrap();
         let entries = list_changed_files_raw(&sandbox, &base, &head)
@@ -1310,7 +1309,7 @@ mod tests {
         std::fs::write(repo.join("new.txt"), &content).unwrap();
         let head = git_commit_all(repo, "rename");
 
-        let sandbox = fabro_agent::local_sandbox(repo.to_path_buf())
+        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
             .await
             .unwrap();
         let entries = list_changed_files_raw(&sandbox, &base, &head)
@@ -1356,7 +1355,7 @@ mod tests {
         std::fs::write(repo.join("logo.png"), png).unwrap();
         let head = git_commit_all(repo, "change");
 
-        let sandbox = fabro_agent::local_sandbox(repo.to_path_buf())
+        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
             .await
             .unwrap();
         let stats = list_diff_numstat(&sandbox, &base, &head).await.unwrap();
@@ -1402,7 +1401,7 @@ mod tests {
             sha_by_name.insert(path.to_string(), sha.to_string());
         }
 
-        let sandbox = fabro_agent::local_sandbox(repo.to_path_buf())
+        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
             .await
             .unwrap();
         let shas = vec![sha_by_name["a.txt"].clone(), sha_by_name["b.txt"].clone()];
@@ -1440,7 +1439,7 @@ mod tests {
             sha_by_name.insert(path.to_string(), sha.to_string());
         }
 
-        let sandbox = fabro_agent::local_sandbox(repo.to_path_buf())
+        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
             .await
             .unwrap();
         let shas = vec![sha_by_name["a.txt"].clone(), sha_by_name["big.txt"].clone()];
@@ -1460,7 +1459,7 @@ mod tests {
         std::fs::write(repo.join("x"), "x").unwrap();
         git_commit_all(repo, "seed");
 
-        let sandbox = fabro_agent::local_sandbox(repo.to_path_buf())
+        let sandbox = fabro_sandbox::local_sandbox(repo.to_path_buf())
             .await
             .unwrap();
         let err =

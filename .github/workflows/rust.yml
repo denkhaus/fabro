@@ -131,7 +131,7 @@ jobs:
       # in twin mode; widen as the remaining suites are fixed up for CI.
       # Must not use the e2e nextest profile here: NEXTEST_PROFILE=e2e implies
       # strict mode, which fails (rather than skips) live tests without keys.
-      - run: cargo nextest run --locked --workspace --status-level slow --profile ci --run-ignored only -E 'package(fabro-agent) + package(fabro-llm)'
+      - run: cargo nextest run --locked --workspace --status-level slow --profile ci --run-ignored only -E 'package(fabro-llm)'
 
   sandbox-plugins:
     name: Sandbox plugins (stdio)
@@ -171,7 +171,6 @@ jobs:
       # integration tests.
       - run: cargo nextest run --locked --profile ci --status-level slow -p fabro-sandbox --test plugin_provider
       - run: cargo nextest run --locked --profile ci --status-level slow --run-ignored only -p fabro-sandbox --test docker_streaming
-      - run: cargo nextest run --locked --profile ci --status-level slow --run-ignored only -p fabro-agent --test it -E 'test(docker_shell)'
       - run: cargo nextest run --locked --profile ci --status-level slow --run-ignored only -p fabro-workflow --test it -E 'test(asset_collection_docker_sandbox)'
 
   test-macos:

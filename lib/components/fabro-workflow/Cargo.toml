@@ -23,7 +23,6 @@ workspace = true
 anyhow.workspace = true
 fabro-auth = { path = "../../foundation/fabro-auth" }
 fabro-acp = { path = "../fabro-acp" }
-fabro-agent = { path = "../fabro-agent" }
 fabro-config = { path = "../../foundation/fabro-config" }
 fabro-graphviz = { path = "../fabro-graphviz" }
 fabro-hooks = { path = "../fabro-hooks" }
@@ -32,6 +31,8 @@ fabro-dump = { path = "../fabro-dump" }
 fabro-sandbox = { path = "../fabro-sandbox" }
 sandbox-driver.workspace = true
 fabro-mcp = { path = "../fabro-mcp" }
+pebble-agent.workspace = true
+pebble-coding-agent.workspace = true
 fabro-github = { path = "../fabro-github" }
 fabro-interview = { path = "../fabro-interview" }
 fabro-template = { path = "../../foundation/fabro-template" }

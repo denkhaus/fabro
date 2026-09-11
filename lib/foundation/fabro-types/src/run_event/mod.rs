@@ -4,12 +4,12 @@ pub mod misc;
 pub mod run;
 pub mod session;
 pub mod stage;
-pub mod todo;
 
 pub use agent::*;
 use chrono::{DateTime, Utc};
 pub use infra::*;
 pub use misc::*;
+pub use pebble_coding_agent::events::{ExecOutputTail, ExecOutputTailTrace};
 pub use run::*;
 use serde::de::Error as DeError;
 use serde::ser::Error as SerError;
@@ -17,7 +17,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value, json};
 pub use session::*;
 pub use stage::*;
-pub use todo::*;
 
 use crate::{BilledTokenCounts, ParallelBranchId, Principal, RunId, StageId};
 
@@ -195,38 +194,19 @@ pub enum EventBody {
     StagePrompt(StagePromptProps),
     #[serde(rename = "prompt.completed")]
     PromptCompleted(PromptCompletedProps),
-    #[serde(rename = "agent.session.started")]
-    AgentSessionStarted(AgentSessionStartedProps),
+    /// One pebble coding-agent event. The wire name is derived from the
+    /// inner `CodingEvent` variant (`agent.message`, `todo.created`, ...);
+    /// see [`AgentEventProps::event_name`]. The derive's own tag is only a
+    /// fallback for direct `EventBody` serialization; `RunEvent` writes and
+    /// reads the derived name.
+    #[serde(rename = "agent.event")]
+    Agent(AgentEventProps),
     #[serde(rename = "agent.session.activated")]
     AgentSessionActivated(AgentSessionActivatedProps),
     #[serde(rename = "agent.tools.available")]
     AgentToolsAvailable(AgentToolsAvailableProps),
     #[serde(rename = "agent.session.deactivated")]
     AgentSessionDeactivated(AgentSessionDeactivatedProps),
-    #[serde(rename = "agent.session.ended")]
-    AgentSessionEnded(AgentSessionEndedProps),
-    #[serde(rename = "agent.processing.end")]
-    AgentProcessingEnd(AgentProcessingEndProps),
-    #[serde(rename = "agent.input")]
-    AgentInput(AgentInputProps),
-    #[serde(rename = "agent.message")]
-    AgentMessage(AgentMessageProps),
-    #[serde(rename = "agent.tool.started")]
-    AgentToolStarted(AgentToolStartedProps),
-    #[serde(rename = "agent.tool.completed")]
-    AgentToolCompleted(AgentToolCompletedProps),
-    #[serde(rename = "agent.tool.process.completed")]
-    AgentToolProcessCompleted(AgentToolProcessCompletedProps),
-    #[serde(rename = "agent.error")]
-    AgentError(AgentErrorProps),
-    #[serde(rename = "agent.warning")]
-    AgentWarning(AgentWarningProps),
-    #[serde(rename = "agent.loop.detected")]
-    AgentLoopDetected(AgentLoopDetectedProps),
-    #[serde(rename = "agent.steering.injected")]
-    AgentSteeringInjected(AgentSteeringInjectedProps),
-    #[serde(rename = "agent.round.interrupted")]
-    AgentRoundInterrupted(AgentRoundInterruptedProps),
     #[serde(rename = "agent.pair.user_message")]
     AgentPairUserMessage(AgentPairUserMessageProps),
     #[serde(rename = "agent.pair.system_message")]
@@ -237,42 +217,10 @@ pub enum EventBody {
     AgentSteerBuffered(AgentSteerBufferedProps),
     #[serde(rename = "agent.steer.dropped")]
     AgentSteerDropped(AgentSteerDroppedProps),
-    #[serde(rename = "agent.compaction.started")]
-    AgentCompactionStarted(AgentCompactionStartedProps),
-    #[serde(rename = "agent.compaction.completed")]
-    AgentCompactionCompleted(AgentCompactionCompletedProps),
-    #[serde(rename = "agent.llm.started")]
-    AgentLlmStarted(AgentLlmStartedProps),
-    #[serde(rename = "agent.llm.first_output")]
-    AgentLlmFirstOutput(AgentLlmFirstOutputProps),
-    #[serde(rename = "agent.llm.retry")]
-    AgentLlmRetry(AgentLlmRetryProps),
-    #[serde(rename = "agent.sub.spawned")]
-    AgentSubSpawned(AgentSubSpawnedProps),
-    #[serde(rename = "agent.sub.turn.started")]
-    AgentSubTurnStarted(AgentSubTurnStartedProps),
-    #[serde(rename = "agent.sub.completed")]
-    AgentSubCompleted(AgentSubCompletedProps),
-    #[serde(rename = "agent.sub.failed")]
-    AgentSubFailed(AgentSubFailedProps),
-    #[serde(rename = "agent.sub.closed")]
-    AgentSubClosed(AgentSubClosedProps),
     #[serde(rename = "agent.mcp.ready")]
     AgentMcpReady(AgentMcpReadyProps),
     #[serde(rename = "agent.mcp.failed")]
     AgentMcpFailed(AgentMcpFailedProps),
-    #[serde(rename = "agent.memory.loaded")]
-    AgentMemoryLoaded(AgentMemoryLoadedProps),
-    #[serde(rename = "agent.skills.discovered")]
-    AgentSkillsDiscovered(AgentSkillsDiscoveredProps),
-    #[serde(rename = "agent.skill.activated")]
-    AgentSkillActivated(AgentSkillActivatedProps),
-    #[serde(rename = "todo.created")]
-    TodoCreated(TodoCreatedProps),
-    #[serde(rename = "todo.updated")]
-    TodoUpdated(TodoUpdatedProps),
-    #[serde(rename = "todo.deleted")]
-    TodoDeleted(TodoDeletedProps),
     #[serde(rename = "subgraph.started")]
     SubgraphStarted(SubgraphStartedProps),
     #[serde(rename = "subgraph.completed")]
@@ -482,45 +430,17 @@ impl EventBody {
             Self::LoopRestart(_) => "loop.restart",
             Self::StagePrompt(_) => "stage.prompt",
             Self::PromptCompleted(_) => "prompt.completed",
-            Self::AgentSessionStarted(_) => "agent.session.started",
+            Self::Agent(props) => props.event_name(),
             Self::AgentSessionActivated(_) => "agent.session.activated",
             Self::AgentToolsAvailable(_) => "agent.tools.available",
             Self::AgentSessionDeactivated(_) => "agent.session.deactivated",
-            Self::AgentSessionEnded(_) => "agent.session.ended",
-            Self::AgentProcessingEnd(_) => "agent.processing.end",
-            Self::AgentInput(_) => "agent.input",
-            Self::AgentMessage(_) => "agent.message",
-            Self::AgentToolStarted(_) => "agent.tool.started",
-            Self::AgentToolCompleted(_) => "agent.tool.completed",
-            Self::AgentToolProcessCompleted(_) => "agent.tool.process.completed",
-            Self::AgentError(_) => "agent.error",
-            Self::AgentWarning(_) => "agent.warning",
-            Self::AgentLoopDetected(_) => "agent.loop.detected",
-            Self::AgentSteeringInjected(_) => "agent.steering.injected",
-            Self::AgentRoundInterrupted(_) => "agent.round.interrupted",
             Self::AgentPairUserMessage(_) => "agent.pair.user_message",
             Self::AgentPairSystemMessage(_) => "agent.pair.system_message",
             Self::AgentInterruptInjected(_) => "agent.interrupt.injected",
             Self::AgentSteerBuffered(_) => "agent.steer.buffered",
             Self::AgentSteerDropped(_) => "agent.steer.dropped",
-            Self::AgentCompactionStarted(_) => "agent.compaction.started",
-            Self::AgentCompactionCompleted(_) => "agent.compaction.completed",
-            Self::AgentLlmStarted(_) => "agent.llm.started",
-            Self::AgentLlmFirstOutput(_) => "agent.llm.first_output",
-            Self::AgentLlmRetry(_) => "agent.llm.retry",
-            Self::AgentSubSpawned(_) => "agent.sub.spawned",
-            Self::AgentSubTurnStarted(_) => "agent.sub.turn.started",
-            Self::AgentSubCompleted(_) => "agent.sub.completed",
-            Self::AgentSubFailed(_) => "agent.sub.failed",
-            Self::AgentSubClosed(_) => "agent.sub.closed",
             Self::AgentMcpReady(_) => "agent.mcp.ready",
             Self::AgentMcpFailed(_) => "agent.mcp.failed",
-            Self::AgentMemoryLoaded(_) => "agent.memory.loaded",
-            Self::AgentSkillsDiscovered(_) => "agent.skills.discovered",
-            Self::AgentSkillActivated(_) => "agent.skill.activated",
-            Self::TodoCreated(_) => "todo.created",
-            Self::TodoUpdated(_) => "todo.updated",
-            Self::TodoDeleted(_) => "todo.deleted",
             Self::SubgraphStarted(_) => "subgraph.started",
             Self::SubgraphCompleted(_) => "subgraph.completed",
             Self::SandboxInitializing(_) => "sandbox.initializing",
@@ -572,8 +492,10 @@ impl EventBody {
     }
 
     fn properties_value(&self) -> serde_json::Result<Value> {
-        if let Self::Unknown { properties, .. } = self {
-            return Ok(properties.clone());
+        match self {
+            Self::Unknown { properties, .. } => return Ok(properties.clone()),
+            Self::Agent(props) => return serde_json::to_value(props),
+            _ => {}
         }
 
         match serde_json::to_value(self)? {
@@ -586,157 +508,129 @@ impl EventBody {
 }
 
 fn is_known_event_name(event: &str) -> bool {
-    matches!(
-        event,
-        "run.created"
-            | "run.started"
-            | "run.submitted"
-            | "run.start_requested"
-            | "run.pending"
-            | "run.approved"
-            | "run.denied"
-            | "run.runnable"
-            | "run.starting"
-            | "run.running"
-            | "run.interrupt"
-            | "run.steer"
-            | "run.pair.started"
-            | "run.pair.ended"
-            | "run.pair.failed"
-            | "run.blocked"
-            | "run.unblocked"
-            | "run.removing"
-            | "run.superseded_by"
-            | "run.archived"
-            | "run.unarchived"
-            | "run.title.updated"
-            | "run.session.created"
-            | "run.session.turn.started"
-            | "run.session.user_message"
-            | "run.session.assistant_delta"
-            | "run.session.assistant_message"
-            | "run.session.tool_call.started"
-            | "run.session.tool_call.completed"
-            | "run.session.turn.succeeded"
-            | "run.session.turn.failed"
-            | "run.session.turn.interrupted"
-            | "run.parent.linked"
-            | "run.parent.unlinked"
-            | "run.completed"
-            | "run.failed"
-            | "run.notice"
-            | "metadata.snapshot.started"
-            | "metadata.snapshot.completed"
-            | "metadata.snapshot.failed"
-            | "stage.started"
-            | "stage.completed"
-            | "stage.failed"
-            | "stage.retrying"
-            | "parallel.started"
-            | "parallel.branch.started"
-            | "parallel.branch.completed"
-            | "parallel.completed"
-            | "interview.started"
-            | "interview.completed"
-            | "interview.timeout"
-            | "interview.interrupted"
-            | "checkpoint.completed"
-            | "checkpoint.failed"
-            | "git.commit"
-            | "git.push"
-            | "git.fetch"
-            | "git.reset"
-            | "edge.selected"
-            | "loop.restart"
-            | "stage.prompt"
-            | "prompt.completed"
-            | "agent.session.started"
-            | "agent.session.activated"
-            | "agent.tools.available"
-            | "agent.session.deactivated"
-            | "agent.session.ended"
-            | "agent.processing.end"
-            | "agent.input"
-            | "agent.message"
-            | "agent.tool.started"
-            | "agent.tool.completed"
-            | "agent.tool.process.completed"
-            | "agent.error"
-            | "agent.warning"
-            | "agent.loop.detected"
-            | "agent.steering.injected"
-            | "agent.round.interrupted"
-            | "agent.pair.user_message"
-            | "agent.pair.system_message"
-            | "agent.interrupt.injected"
-            | "agent.steer.buffered"
-            | "agent.steer.dropped"
-            | "agent.compaction.started"
-            | "agent.compaction.completed"
-            | "agent.llm.started"
-            | "agent.llm.first_output"
-            | "agent.llm.retry"
-            | "agent.sub.spawned"
-            | "agent.sub.turn.started"
-            | "agent.sub.completed"
-            | "agent.sub.failed"
-            | "agent.sub.closed"
-            | "agent.mcp.ready"
-            | "agent.mcp.failed"
-            | "agent.memory.loaded"
-            | "agent.skills.discovered"
-            | "agent.skill.activated"
-            | "todo.created"
-            | "todo.updated"
-            | "todo.deleted"
-            | "subgraph.started"
-            | "subgraph.completed"
-            | "sandbox.initializing"
-            | "sandbox.ready"
-            | "sandbox.failed"
-            | "sandbox.cleanup.started"
-            | "sandbox.cleanup.completed"
-            | "sandbox.cleanup.failed"
-            | "sandbox.start.started"
-            | "sandbox.start.completed"
-            | "sandbox.start.failed"
-            | "sandbox.stop.started"
-            | "sandbox.stop.completed"
-            | "sandbox.stop.failed"
-            | "sandbox.delete.started"
-            | "sandbox.delete.completed"
-            | "sandbox.delete.failed"
-            | "sandbox.snapshot.pulling"
-            | "sandbox.snapshot.creating"
-            | "sandbox.snapshot.ready"
-            | "sandbox.snapshot.failed"
-            | "sandbox.git.started"
-            | "sandbox.git.completed"
-            | "sandbox.git.failed"
-            | "sandbox.initialized"
-            | "setup.started"
-            | "setup.command.started"
-            | "setup.command.completed"
-            | "setup.completed"
-            | "setup.failed"
-            | "watchdog.timeout"
-            | "artifact.captured"
-            | "ssh.ready"
-            | "agent.failover"
-            | "cli.ensure.started"
-            | "cli.ensure.completed"
-            | "cli.ensure.failed"
-            | "command.started"
-            | "command.completed"
-            | "agent.acp.started"
-            | "agent.acp.completed"
-            | "agent.acp.cancelled"
-            | "agent.acp.timed_out"
-            | "pull_request.created"
-            | "pull_request.linked"
-            | "pull_request.unlinked"
-            | "pull_request.failed"
-    )
+    is_coding_event_name(event)
+        || matches!(
+            event,
+            "run.created"
+                | "run.started"
+                | "run.submitted"
+                | "run.start_requested"
+                | "run.pending"
+                | "run.approved"
+                | "run.denied"
+                | "run.runnable"
+                | "run.starting"
+                | "run.running"
+                | "run.interrupt"
+                | "run.steer"
+                | "run.pair.started"
+                | "run.pair.ended"
+                | "run.pair.failed"
+                | "run.blocked"
+                | "run.unblocked"
+                | "run.removing"
+                | "run.superseded_by"
+                | "run.archived"
+                | "run.unarchived"
+                | "run.title.updated"
+                | "run.session.created"
+                | "run.session.turn.started"
+                | "run.session.user_message"
+                | "run.session.assistant_delta"
+                | "run.session.assistant_message"
+                | "run.session.tool_call.started"
+                | "run.session.tool_call.completed"
+                | "run.session.turn.succeeded"
+                | "run.session.turn.failed"
+                | "run.session.turn.interrupted"
+                | "run.parent.linked"
+                | "run.parent.unlinked"
+                | "run.completed"
+                | "run.failed"
+                | "run.notice"
+                | "metadata.snapshot.started"
+                | "metadata.snapshot.completed"
+                | "metadata.snapshot.failed"
+                | "stage.started"
+                | "stage.completed"
+                | "stage.failed"
+                | "stage.retrying"
+                | "parallel.started"
+                | "parallel.branch.started"
+                | "parallel.branch.completed"
+                | "parallel.completed"
+                | "interview.started"
+                | "interview.completed"
+                | "interview.timeout"
+                | "interview.interrupted"
+                | "checkpoint.completed"
+                | "checkpoint.failed"
+                | "git.commit"
+                | "git.push"
+                | "git.fetch"
+                | "git.reset"
+                | "edge.selected"
+                | "loop.restart"
+                | "stage.prompt"
+                | "prompt.completed"
+                | "agent.session.activated"
+                | "agent.tools.available"
+                | "agent.session.deactivated"
+                | "agent.pair.user_message"
+                | "agent.pair.system_message"
+                | "agent.interrupt.injected"
+                | "agent.steer.buffered"
+                | "agent.steer.dropped"
+                | "agent.mcp.ready"
+                | "agent.mcp.failed"
+                | "subgraph.started"
+                | "subgraph.completed"
+                | "sandbox.initializing"
+                | "sandbox.ready"
+                | "sandbox.failed"
+                | "sandbox.cleanup.started"
+                | "sandbox.cleanup.completed"
+                | "sandbox.cleanup.failed"
+                | "sandbox.start.started"
+                | "sandbox.start.completed"
+                | "sandbox.start.failed"
+                | "sandbox.stop.started"
+                | "sandbox.stop.completed"
+                | "sandbox.stop.failed"
+                | "sandbox.delete.started"
+                | "sandbox.delete.completed"
+                | "sandbox.delete.failed"
+                | "sandbox.snapshot.pulling"
+                | "sandbox.snapshot.creating"
+                | "sandbox.snapshot.ready"
+                | "sandbox.snapshot.failed"
+                | "sandbox.git.started"
+                | "sandbox.git.completed"
+                | "sandbox.git.failed"
+                | "sandbox.initialized"
+                | "setup.started"
+                | "setup.command.started"
+                | "setup.command.completed"
+                | "setup.completed"
+                | "setup.failed"
+                | "watchdog.timeout"
+                | "artifact.captured"
+                | "ssh.ready"
+                | "agent.failover"
+                | "cli.ensure.started"
+                | "cli.ensure.completed"
+                | "cli.ensure.failed"
+                | "command.started"
+                | "command.completed"
+                | "agent.acp.started"
+                | "agent.acp.completed"
+                | "agent.acp.cancelled"
+                | "agent.acp.timed_out"
+                | "pull_request.created"
+                | "pull_request.linked"
+                | "pull_request.unlinked"
+                | "pull_request.failed"
+        )
 }
 
 impl RunEvent {
@@ -814,17 +708,21 @@ impl RunEvent {
     }
 
     fn from_parts(parts: RunEventParts<'_>) -> serde_json::Result<Self> {
-        let body_payload = json!({
-            "event": parts.event,
-            "properties": parts.properties,
-        });
-        let body: EventBody = match serde_json::from_value(body_payload) {
-            Ok(body) => body,
-            Err(err) if is_known_event_name(parts.event) => return Err(err),
-            Err(_) => EventBody::Unknown {
-                name:       parts.event.to_string(),
-                properties: parts.properties.clone(),
-            },
+        let body: EventBody = if is_coding_event_name(parts.event) {
+            EventBody::Agent(serde_json::from_value(parts.properties.clone())?)
+        } else {
+            let body_payload = json!({
+                "event": parts.event,
+                "properties": parts.properties,
+            });
+            match serde_json::from_value(body_payload) {
+                Ok(body) => body,
+                Err(err) if is_known_event_name(parts.event) => return Err(err),
+                Err(_) => EventBody::Unknown {
+                    name:       parts.event.to_string(),
+                    properties: parts.properties.clone(),
+                },
+            }
         };
         Ok(Self {
             id: parts.id,
@@ -1018,15 +916,160 @@ impl<'de> Deserialize<'de> for RunEvent {
 
 #[cfg(test)]
 mod tests {
-    use lithos_llm::catalog::builtin;
-    use lithos_llm::types::ReasoningOutput;
+    use std::time::{Duration, UNIX_EPOCH};
+
+    use pebble_coding_agent::events::{
+        CodingAgentEvent, CodingEvent, TodoCreatedProps, TodoListKind, TodoStatus, TokenUsage,
+        ToolCategory, ToolSource, ToolSummary,
+    };
     use serde_json::json;
 
     use super::*;
     use crate::{
-        AuthMethod, BlobHash, CommandTermination, Edge, Graph, IdpIdentity, ModelRef, Node,
-        PendingReason, WorkflowSettings, fixtures, test_support,
+        AuthMethod, BlobHash, Edge, Graph, IdpIdentity, Node, PendingReason, WorkflowSettings,
+        fixtures, test_support,
     };
+
+    fn coding_event(stage: &str, visit: u32, event: CodingEvent) -> AgentEventProps {
+        AgentEventProps::new(
+            stage,
+            visit,
+            CodingAgentEvent::new(
+                "ses_1",
+                event,
+                UNIX_EPOCH + Duration::from_secs(1_700_000_000),
+            )
+            .with_seq(3),
+        )
+    }
+
+    #[test]
+    fn agent_events_store_under_their_derived_name_and_read_back() {
+        let body = EventBody::Agent(coding_event("code", 2, CodingEvent::RoundInterrupted {
+            generation: 3,
+        }));
+        let event = RunEvent {
+            id: "evt_round_interrupted".to_string(),
+            ts: DateTime::parse_from_rfc3339("2026-04-04T12:00:00.000Z")
+                .unwrap()
+                .with_timezone(&Utc),
+            run_id: fixtures::RUN_1,
+            node_id: Some("code".to_string()),
+            node_label: Some("code".to_string()),
+            stage_id: Some(StageId::new("code", 2)),
+            parallel_group_id: None,
+            parallel_branch_id: None,
+            session_id: Some("ses_1".to_string()),
+            parent_session_id: None,
+            tool_call_id: None,
+            actor: None,
+            body,
+        };
+
+        let value = event.to_value().unwrap();
+        assert_eq!(value["event"], "agent.round.interrupted");
+        assert_eq!(value["properties"]["stage"], "code");
+        assert_eq!(value["properties"]["visit"], 2);
+        assert_eq!(value["properties"]["seq"], 3);
+        assert_eq!(value["properties"]["session_id"], "ses_1");
+        assert_eq!(
+            value["properties"]["event"],
+            json!({"RoundInterrupted": {"generation": 3}})
+        );
+
+        let parsed = RunEvent::from_value(value).unwrap();
+        assert_eq!(parsed, event);
+        assert_eq!(parsed.event_name(), "agent.round.interrupted");
+    }
+
+    #[test]
+    fn todo_events_store_under_todo_names() {
+        let body = EventBody::Agent(coding_event(
+            "code",
+            1,
+            CodingEvent::TodoCreated(TodoCreatedProps {
+                list_id:     "openai_plan:ses_1".to_string(),
+                list_kind:   TodoListKind::OpenAiPlan,
+                todo_id:     "todo_1".to_string(),
+                status:      TodoStatus::Pending,
+                order:       0,
+                subject:     "do the thing".to_string(),
+                description: String::new(),
+                active_form: None,
+                owner:       None,
+                blocks:      Vec::new(),
+                blocked_by:  Vec::new(),
+                metadata:    std::collections::BTreeMap::new(),
+            }),
+        ));
+        assert_eq!(body.event_name(), "todo.created");
+        assert!(is_known_event_name("todo.created"));
+        assert!(is_known_event_name("agent.message"));
+        assert!(is_known_event_name("agent.compaction.failed"));
+    }
+
+    #[test]
+    fn bare_agent_events_serialize_as_their_variant_name() {
+        let body = EventBody::Agent(coding_event("code", 1, CodingEvent::SessionEnded));
+        let value = RunEvent {
+            id: "evt_session_ended".to_string(),
+            ts: Utc::now(),
+            run_id: fixtures::RUN_1,
+            node_id: None,
+            node_label: None,
+            stage_id: None,
+            parallel_group_id: None,
+            parallel_branch_id: None,
+            session_id: Some("ses_1".to_string()),
+            parent_session_id: None,
+            tool_call_id: None,
+            actor: None,
+            body,
+        }
+        .to_value()
+        .unwrap();
+        assert_eq!(value["event"], "agent.session.ended");
+        assert_eq!(value["properties"]["event"], "SessionEnded");
+    }
+
+    #[test]
+    fn a_malformed_agent_event_is_rejected_not_demoted_to_unknown() {
+        let value = json!({
+            "id": "evt_bad",
+            "ts": "2026-04-04T12:00:00.000Z",
+            "run_id": fixtures::RUN_1,
+            "event": "agent.message",
+            "properties": {"stage": "code", "visit": 1}
+        });
+        assert!(RunEvent::from_value(value).is_err());
+    }
+
+    #[test]
+    fn agent_message_carries_pebbles_usage_shape() {
+        let body = EventBody::Agent(coding_event("code", 1, CodingEvent::AssistantMessage {
+            text:            "ok".to_string(),
+            model:           "gpt-5.4".to_string(),
+            usage:           TokenUsage {
+                input: 10,
+                output: 5,
+                ..TokenUsage::default()
+            },
+            cost_usd_micros: Some(42),
+            cost_source:     None,
+            tool_call_count: 0,
+            context_window:  None,
+            reasoning:       None,
+        }));
+        let value = serde_json::to_value(&body).unwrap();
+        assert_eq!(
+            value["properties"]["event"]["AssistantMessage"]["usage"],
+            json!({"input": 10, "output": 5, "reasoning": 0, "cache_read": 0, "cache_write": 0})
+        );
+        assert_eq!(
+            value["properties"]["event"]["AssistantMessage"]["cost_usd_micros"],
+            42
+        );
+    }
 
     fn user_principal(login: &str) -> Principal {
         Principal::user(
@@ -1378,29 +1421,6 @@ mod tests {
     }
 
     #[test]
-    fn agent_round_interrupted_round_trips_with_generation_and_stage() {
-        let line = json!({
-            "id": "evt_round_interrupted",
-            "ts": "2026-04-04T12:00:00Z",
-            "run_id": fixtures::RUN_1,
-            "event": "agent.round.interrupted",
-            "node_id": "code",
-            "node_label": "code",
-            "stage_id": "code@2",
-            "session_id": "ses_1",
-            "properties": { "generation": 3, "visit": 2 }
-        });
-
-        let parsed = RunEvent::from_value(line.clone()).unwrap();
-        assert!(matches!(
-            &parsed.body,
-            EventBody::AgentRoundInterrupted(props)
-                if props.generation == 3 && props.visit == 2
-        ));
-        assert_eq!(parsed.to_value().unwrap(), line);
-    }
-
-    #[test]
     fn run_interrupt_then_steer_is_not_a_known_persisted_event() {
         let line = json!({
             "id": "evt_combined",
@@ -1591,11 +1611,22 @@ mod tests {
                 "model": "claude-sonnet"
             },
             "properties": {
-                "tool_name": "read_file",
+                "stage": "code",
+                "visit": 1,
+                "seq": 9,
+                "stream_id": "ses_parent",
+                "session_id": "ses_child",
+                "parent_session_id": "ses_parent",
                 "tool_call_id": "call_1",
-                "output": {"summary": "read"},
-                "is_error": false,
-                "visit": 1
+                "timestamp": "2026-04-08T16:21:11.106Z",
+                "event": {
+                    "ToolCallCompleted": {
+                        "tool_name": "read_file",
+                        "tool_call_id": "call_1",
+                        "output": {"summary": "read"},
+                        "is_error": false
+                    }
+                }
             }
         });
 
@@ -1623,35 +1654,6 @@ mod tests {
         );
         assert_eq!(serialized["tool_call_id"], value["tool_call_id"]);
         assert_eq!(serialized["actor"], value["actor"]);
-    }
-
-    #[test]
-    fn agent_session_ended_serializes_empty_properties() {
-        let event = RunEvent {
-            id:                 "evt_session_ended".to_string(),
-            ts:                 DateTime::parse_from_rfc3339("2026-04-04T12:00:00.000Z")
-                .unwrap()
-                .with_timezone(&Utc),
-            run_id:             fixtures::RUN_1,
-            node_id:            None,
-            node_label:         None,
-            stage_id:           None,
-            parallel_group_id:  None,
-            parallel_branch_id: None,
-            session_id:         Some("ses_abc".to_string()),
-            parent_session_id:  None,
-            tool_call_id:       None,
-            actor:              None,
-            body:               EventBody::AgentSessionEnded(AgentSessionEndedProps {}),
-        };
-
-        let serialized = event.to_value().unwrap();
-
-        assert_eq!(serialized["event"], "agent.session.ended");
-        assert_eq!(serialized["session_id"], "ses_abc");
-        assert_eq!(serialized["properties"], json!({}));
-        assert!(serialized.get("node_id").is_none());
-        assert!(serialized.get("stage_id").is_none());
     }
 
     #[test]
@@ -2172,346 +2174,6 @@ mod tests {
     }
 
     #[test]
-    fn todo_event_names_are_known() {
-        for name in ["todo.created", "todo.updated", "todo.deleted"] {
-            assert!(is_known_event_name(name), "{name} should be a known event");
-        }
-    }
-
-    #[test]
-    fn todo_created_serializes_with_canonical_name() {
-        let body = EventBody::TodoCreated(TodoCreatedProps {
-            list_id:     "openai_plan:ses_1".to_string(),
-            list_kind:   crate::TodoListKind::OpenAiPlan,
-            todo_id:     "todo_1".to_string(),
-            status:      crate::TodoStatus::Pending,
-            order:       0,
-            subject:     "do the thing".to_string(),
-            description: String::new(),
-            active_form: None,
-            owner:       None,
-            blocks:      Vec::new(),
-            blocked_by:  Vec::new(),
-            metadata:    std::collections::BTreeMap::new(),
-        });
-
-        let value = serde_json::to_value(&body).unwrap();
-        assert_eq!(value["event"], "todo.created");
-        assert_eq!(value["properties"]["list_id"], "openai_plan:ses_1");
-        assert_eq!(value["properties"]["todo_id"], "todo_1");
-        assert_eq!(value["properties"]["status"], "pending");
-        assert_eq!(value["properties"]["subject"], "do the thing");
-        // Optional fields are omitted.
-        let props = value["properties"].as_object().unwrap();
-        assert!(!props.contains_key("description"));
-        assert!(!props.contains_key("active_form"));
-        assert!(!props.contains_key("metadata"));
-    }
-
-    #[test]
-    fn todo_envelope_includes_session_metadata() {
-        let event = RunEvent {
-            id:                 "evt_todo".to_string(),
-            ts:                 DateTime::parse_from_rfc3339("2026-05-22T12:00:00.000Z")
-                .unwrap()
-                .with_timezone(&Utc),
-            run_id:             fixtures::RUN_1,
-            node_id:            Some("code".to_string()),
-            node_label:         None,
-            stage_id:           None,
-            parallel_group_id:  None,
-            parallel_branch_id: None,
-            session_id:         Some("ses_child".to_string()),
-            parent_session_id:  Some("ses_parent".to_string()),
-            tool_call_id:       Some("call_xyz".to_string()),
-            actor:              None,
-            body:               EventBody::TodoUpdated(TodoUpdatedProps {
-                list_id:        "anthropic_tasks:ses_root".to_string(),
-                list_kind:      crate::TodoListKind::AnthropicTasks,
-                todo_id:        "42".to_string(),
-                status:         Some(crate::TodoStatus::InProgress),
-                order:          None,
-                subject:        None,
-                description:    None,
-                active_form:    None,
-                owner:          None,
-                add_blocks:     None,
-                add_blocked_by: None,
-                metadata_patch: std::collections::BTreeMap::new(),
-            }),
-        };
-
-        let value = event.to_value().unwrap();
-        assert_eq!(value["event"], "todo.updated");
-        assert_eq!(value["session_id"], "ses_child");
-        assert_eq!(value["parent_session_id"], "ses_parent");
-        assert_eq!(value["tool_call_id"], "call_xyz");
-        assert_eq!(value["properties"]["list_id"], "anthropic_tasks:ses_root");
-        assert_eq!(value["properties"]["status"], "in_progress");
-
-        let parsed = RunEvent::from_value(value).unwrap();
-        match &parsed.body {
-            EventBody::TodoUpdated(props) => {
-                assert_eq!(props.status, Some(crate::TodoStatus::InProgress));
-            }
-            other => panic!("expected TodoUpdated body, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn todo_deleted_round_trips() {
-        let body = EventBody::TodoDeleted(TodoDeletedProps {
-            list_id:   "openai_plan:ses_1".to_string(),
-            list_kind: crate::TodoListKind::OpenAiPlan,
-            todo_id:   "todo_x".to_string(),
-        });
-
-        let value = serde_json::to_value(&body).unwrap();
-        assert_eq!(value["event"], "todo.deleted");
-        assert_eq!(value["properties"]["todo_id"], "todo_x");
-
-        let parsed: EventBody = serde_json::from_value(value).unwrap();
-        match parsed {
-            EventBody::TodoDeleted(props) => assert_eq!(props.todo_id, "todo_x"),
-            other => panic!("expected TodoDeleted, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn agent_memory_loaded_serializes_with_canonical_name() {
-        let body = EventBody::AgentMemoryLoaded(AgentMemoryLoadedProps {
-            provider_profile:   "anthropic".to_string(),
-            files:              vec![AgentMemoryFileProps {
-                path:         "/repo/AGENTS.md".to_string(),
-                byte_count:   100,
-                loaded_bytes: 100,
-                truncated:    false,
-            }],
-            total_loaded_bytes: 100,
-            budget_bytes:       32768,
-            visit:              1,
-        });
-        let value = serde_json::to_value(&body).unwrap();
-        assert_eq!(value["event"], "agent.memory.loaded");
-        assert_eq!(value["properties"]["provider_profile"], "anthropic");
-        assert_eq!(value["properties"]["files"][0]["path"], "/repo/AGENTS.md");
-        assert_eq!(value["properties"]["budget_bytes"], 32768);
-        assert!(
-            value["properties"]
-                .as_object()
-                .unwrap()
-                .get("content")
-                .is_none(),
-            "memory event must not include file content"
-        );
-        let _ = serde_json::from_value::<EventBody>(value).unwrap();
-    }
-
-    #[test]
-    fn agent_skills_discovered_serializes_with_canonical_name() {
-        let body = EventBody::AgentSkillsDiscovered(AgentSkillsDiscoveredProps {
-            provider_profile: "openai".to_string(),
-            source_dirs:      vec!["/repo/.fabro/skills".to_string()],
-            skills:           vec![AgentSkillSummary {
-                name:        "commit".to_string(),
-                description: "Create a commit".to_string(),
-            }],
-            visit:            2,
-        });
-        let value = serde_json::to_value(&body).unwrap();
-        assert_eq!(value["event"], "agent.skills.discovered");
-        assert_eq!(value["properties"]["skills"][0]["name"], "commit");
-        let _: EventBody = serde_json::from_value(value).unwrap();
-    }
-
-    #[test]
-    fn agent_skill_activated_serializes_source_variants() {
-        let slash = EventBody::AgentSkillActivated(AgentSkillActivatedProps {
-            skill_name: "commit".to_string(),
-            source:     AgentSkillActivationSource::Slash,
-            visit:      3,
-        });
-        let value = serde_json::to_value(&slash).unwrap();
-        assert_eq!(value["event"], "agent.skill.activated");
-        assert_eq!(value["properties"]["source"], "slash");
-
-        let tool = EventBody::AgentSkillActivated(AgentSkillActivatedProps {
-            skill_name: "commit".to_string(),
-            source:     AgentSkillActivationSource::Tool,
-            visit:      4,
-        });
-        let value = serde_json::to_value(&tool).unwrap();
-        assert_eq!(value["properties"]["source"], "tool");
-    }
-
-    #[test]
-    fn agent_message_omits_context_window_when_absent() {
-        let body = EventBody::AgentMessage(AgentMessageProps {
-            text:            "ok".to_string(),
-            model:           ModelRef::new(builtin::openai(), "gpt-5.4".into()),
-            billing:         BilledTokenCounts::default(),
-            cost_source:     None,
-            tool_call_count: 0,
-            visit:           1,
-            message:         None,
-            context_window:  None,
-            reasoning:       None,
-        });
-
-        let value = serde_json::to_value(&body).unwrap();
-        assert_eq!(value["event"], "agent.message");
-        assert!(
-            value["properties"]
-                .as_object()
-                .unwrap()
-                .get("context_window")
-                .is_none()
-        );
-        let parsed: EventBody = serde_json::from_value(value).unwrap();
-        assert_eq!(parsed.event_name(), "agent.message");
-    }
-
-    #[test]
-    fn agent_message_omits_reasoning_when_absent() {
-        let body = EventBody::AgentMessage(AgentMessageProps {
-            text:            "ok".to_string(),
-            model:           ModelRef::new(builtin::openai(), "gpt-5.4".into()),
-            billing:         BilledTokenCounts::default(),
-            cost_source:     None,
-            tool_call_count: 0,
-            visit:           1,
-            message:         None,
-            context_window:  None,
-            reasoning:       None,
-        });
-
-        let value = serde_json::to_value(&body).unwrap();
-        assert!(
-            value["properties"]
-                .as_object()
-                .unwrap()
-                .get("reasoning")
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn agent_message_carries_reasoning_through_canonical_json() {
-        let body = EventBody::AgentMessage(AgentMessageProps {
-            text:            String::new(),
-            model:           ModelRef::new(builtin::openai(), "gpt-5.4".into()),
-            billing:         BilledTokenCounts::default(),
-            cost_source:     None,
-            tool_call_count: 1,
-            visit:           1,
-            message:         None,
-            context_window:  None,
-            reasoning:       Some(ReasoningOutput::new(
-                "inspect the implementation first",
-                "read convert.rs, then the sink",
-            )),
-        });
-
-        let value = serde_json::to_value(&body).unwrap();
-        assert_eq!(value["event"], "agent.message");
-        assert_eq!(
-            value["properties"]["reasoning"],
-            serde_json::json!({
-                "summary": "inspect the implementation first",
-                "trace": "read convert.rs, then the sink",
-            })
-        );
-        let parsed: EventBody = serde_json::from_value(value).unwrap();
-        assert_eq!(parsed, body);
-    }
-
-    #[test]
-    fn agent_message_round_trips_optional_context_window() {
-        let context_window = crate::StageContextWindowProjection {
-            provider:              "openai".to_string(),
-            model:                 "gpt-5.4".to_string(),
-            context_window_tokens: 400_000,
-            input_tokens:          123_456,
-            usage_percent:         30.864,
-            count_method:
-                crate::StageContextWindowCountMethod::ResponseUsageScaledBreakdown,
-            staleness:             crate::StageContextWindowStaleness::Live,
-            generated_at:          DateTime::parse_from_rfc3339("2026-05-23T12:34:56Z")
-                .unwrap()
-                .with_timezone(&Utc),
-            event_seq:             None,
-            breakdown:             vec![crate::StageContextWindowBreakdownItem {
-                category:      crate::StageContextWindowCategory::SystemPrompt,
-                tokens:        30_000,
-                usage_percent: 7.5,
-            }],
-            warnings:              vec![crate::StageContextWindowWarning {
-                code:    "local_token_estimate".to_string(),
-                message: "input token count is a local estimate".to_string(),
-            }],
-        };
-        let body = EventBody::AgentMessage(AgentMessageProps {
-            text:            "ok".to_string(),
-            model:           ModelRef::new(builtin::openai(), "gpt-5.4".into()),
-            billing:         BilledTokenCounts::default(),
-            cost_source:     None,
-            tool_call_count: 0,
-            visit:           1,
-            message:         None,
-            context_window:  Some(context_window),
-            reasoning:       None,
-        });
-
-        let value = serde_json::to_value(&body).unwrap();
-        assert_eq!(value["event"], "agent.message");
-        assert_eq!(
-            value["properties"]["context_window"]["breakdown"][0]["category"],
-            "system_prompt"
-        );
-        assert_eq!(
-            value["properties"]["context_window"]["count_method"],
-            "response_usage_scaled_breakdown"
-        );
-        let parsed: EventBody = serde_json::from_value(value).unwrap();
-        match parsed {
-            EventBody::AgentMessage(props) => {
-                let context_window = props.context_window.expect("context window present");
-                assert_eq!(context_window.input_tokens, 123_456);
-                assert_eq!(
-                    context_window.count_method,
-                    crate::StageContextWindowCountMethod::ResponseUsageScaledBreakdown
-                );
-            }
-            other => panic!("expected AgentMessage body, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn agent_mcp_ready_deserializes_legacy_payload_without_tools() {
-        let value = json!({
-            "id": "evt_mcp_ready",
-            "ts": "2026-05-22T12:00:00.000Z",
-            "run_id": fixtures::RUN_1,
-            "event": "agent.mcp.ready",
-            "properties": {
-                "server_name": "github",
-                "tool_count": 2,
-                "visit": 1
-            }
-        });
-        let parsed = RunEvent::from_value(value).unwrap();
-        match parsed.body {
-            EventBody::AgentMcpReady(props) => {
-                assert_eq!(props.server_name, "github");
-                assert_eq!(props.tool_count, 2);
-                assert!(props.tools.is_empty());
-                assert_eq!(props.visit, 1);
-            }
-            other => panic!("expected AgentMcpReady body, got {other:?}"),
-        }
-    }
-
-    #[test]
     fn agent_mcp_ready_serializes_with_tool_summaries() {
         let body = EventBody::AgentMcpReady(AgentMcpReadyProps {
             server_name: "github".to_string(),
@@ -2557,21 +2219,21 @@ mod tests {
     fn agent_tools_available_round_trips_without_parameter_schemas() {
         let body = EventBody::AgentToolsAvailable(AgentToolsAvailableProps {
             tools: vec![
-                AgentToolSummary {
+                ToolSummary {
                     name:        "apply_patch".to_string(),
                     description: "Apply a unified diff patch".to_string(),
-                    source:      AgentToolSource::Native,
-                    category:    AgentToolCategory::Write,
+                    source:      ToolSource::Native,
+                    category:    ToolCategory::Write,
                     invoked:     false,
                 },
-                AgentToolSummary {
+                ToolSummary {
                     name:        "mcp__filesystem__read_file".to_string(),
                     description: "Read a file through the filesystem MCP server".to_string(),
-                    source:      AgentToolSource::Mcp {
+                    source:      ToolSource::Mcp {
                         server_name:   "filesystem".to_string(),
                         original_name: "read_file".to_string(),
                     },
-                    category:    AgentToolCategory::Other,
+                    category:    ToolCategory::Other,
                     invoked:     false,
                 },
             ],
@@ -2595,138 +2257,5 @@ mod tests {
 
         let parsed: EventBody = serde_json::from_value(value).unwrap();
         assert_eq!(parsed, body);
-    }
-
-    #[test]
-    fn agent_tool_process_completed_round_trips_as_a_known_typed_event() {
-        let value = json!({
-            "id": "evt_process",
-            "ts": "2026-04-08T16:21:11.106Z",
-            "run_id": fixtures::RUN_1,
-            "event": "agent.tool.process.completed",
-            "node_id": "code",
-            "session_id": "ses_child",
-            "tool_call_id": "call_1",
-            "properties": {
-                "exit_code": 7,
-                "termination": "exited",
-                "duration_ms": 12,
-                "streams_separated": true,
-                "exec_output_tail": {"stdout": "out", "stderr": "err"},
-                "output_bytes_observed": 150,
-                "output_bytes_retained": 100,
-                "output_bytes_omitted": 50,
-                "visit": 1
-            }
-        });
-
-        let parsed = RunEvent::from_value(value.clone()).unwrap();
-        assert_eq!(parsed.event_name(), "agent.tool.process.completed");
-        assert_eq!(parsed.tool_call_id.as_deref(), Some("call_1"));
-        let EventBody::AgentToolProcessCompleted(props) = &parsed.body else {
-            panic!("expected a typed process event, got {:?}", parsed.body);
-        };
-        assert_eq!(props.exit_code, Some(7));
-        assert_eq!(props.termination, CommandTermination::Exited);
-        assert_eq!(props.duration_ms, 12);
-        assert!(props.streams_separated);
-        assert_eq!(props.output_bytes_observed, Some(150));
-        assert_eq!(props.output_bytes_retained, Some(100));
-        assert_eq!(props.output_bytes_omitted, Some(50));
-        assert_eq!(
-            props.exec_output_tail.as_ref().unwrap().stdout.as_deref(),
-            Some("out")
-        );
-
-        assert_eq!(parsed.to_value().unwrap(), value);
-    }
-
-    #[test]
-    fn agent_tool_process_completed_omits_absent_exit_code_and_output_tail() {
-        let body = EventBody::AgentToolProcessCompleted(AgentToolProcessCompletedProps {
-            exit_code:             None,
-            termination:           CommandTermination::TimedOut,
-            duration_ms:           10_000,
-            streams_separated:     false,
-            exec_output_tail:      None,
-            output_bytes_observed: None,
-            output_bytes_retained: None,
-            output_bytes_omitted:  None,
-            visit:                 1,
-        });
-
-        let value = serde_json::to_value(&body).unwrap();
-
-        assert_eq!(value["event"], "agent.tool.process.completed");
-        assert_eq!(value["properties"]["termination"], "timed_out");
-        assert_eq!(value["properties"]["streams_separated"], false);
-        let properties = value["properties"].as_object().unwrap();
-        assert!(!properties.contains_key("exit_code"));
-        assert!(!properties.contains_key("exec_output_tail"));
-        assert!(!properties.contains_key("output_bytes_observed"));
-        assert!(!properties.contains_key("output_bytes_retained"));
-        assert!(!properties.contains_key("output_bytes_omitted"));
-
-        let parsed: EventBody = serde_json::from_value(value).unwrap();
-        assert_eq!(parsed, body);
-    }
-
-    #[test]
-    fn subagent_generations_are_typed_and_legacy_events_default_to_one() {
-        let started = EventBody::AgentSubTurnStarted(AgentSubTurnStartedProps {
-            agent_id:   "sub-1".to_string(),
-            depth:      1,
-            task:       "fix the review findings".to_string(),
-            generation: 2,
-            visit:      1,
-        });
-        let value = serde_json::to_value(&started).unwrap();
-        assert_eq!(value["event"], "agent.sub.turn.started");
-        assert_eq!(value["properties"]["generation"], 2);
-        assert_eq!(serde_json::from_value::<EventBody>(value).unwrap(), started);
-
-        let legacy: EventBody = serde_json::from_value(json!({
-            "event": "agent.sub.completed",
-            "properties": {
-                "agent_id": "sub-1",
-                "depth": 1,
-                "success": true,
-                "turns_used": 3,
-                "visit": 1
-            }
-        }))
-        .unwrap();
-        let EventBody::AgentSubCompleted(props) = legacy else {
-            panic!("expected subagent completion");
-        };
-        assert_eq!(props.generation, 1);
-    }
-
-    #[test]
-    fn agent_tool_source_and_category_use_public_json_shape() {
-        assert_eq!(
-            serde_json::to_value(AgentToolCategory::Read).unwrap(),
-            json!("read")
-        );
-        assert_eq!(
-            serde_json::to_value(AgentToolCategory::Subagent).unwrap(),
-            json!("subagent")
-        );
-        assert_eq!(
-            serde_json::to_value(AgentToolSource::Skill).unwrap(),
-            json!({ "kind": "skill" })
-        );
-        assert_eq!(
-            serde_json::to_value(AgentToolSource::Mcp {
-                server_name:   "github".to_string(),
-                original_name: "create_issue".to_string(),
-            })
-            .unwrap(),
-            json!({
-                "kind": "mcp",
-                "server_name": "github",
-                "original_name": "create_issue"
-            })
-        );
     }
 }

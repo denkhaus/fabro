@@ -295,10 +295,11 @@ fn map_termination(termination: Termination) -> CommandTermination {
 /// stopped command may still report the shell's `128 + signal` (143 for a
 /// trapped `TERM`), which callers must not mistake for a program result.
 fn exit_code_for(termination: CommandTermination, exit_code: Option<i32>) -> Option<i32> {
-    match termination {
-        CommandTermination::Exited => exit_code,
-        CommandTermination::TimedOut | CommandTermination::Cancelled => None,
-    }
+    // `CommandTermination` is non-exhaustive: only a command that exited on
+    // its own owns its exit code.
+    matches!(termination, CommandTermination::Exited)
+        .then_some(exit_code)
+        .flatten()
 }
 
 fn capture_stats(stats: CaptureStats) -> OutputCaptureStats {
