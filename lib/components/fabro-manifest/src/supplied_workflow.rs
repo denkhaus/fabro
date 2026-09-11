@@ -255,6 +255,46 @@ mod tests {
     }
 
     #[test]
+    fn config_entrypoint_must_be_workflow_toml_beside_its_graph() {
+        let config = "_version = 1\n[workflow]\ngraph = \"g.fabro\"\n[run]\ngoal = \"hello\"\n";
+        let accepted = supplied("sub/workflow.toml", &[
+            ("sub/workflow.toml", config),
+            ("sub/g.fabro", "digraph W {}"),
+        ]);
+        let root = collect(&accepted)
+            .versions()
+            .last()
+            .unwrap()
+            .1
+            .version()
+            .clone();
+        assert!(root.files().contains_key(&root.config_path()));
+
+        // Same tree under another config name: runtime would never read it.
+        let renamed = supplied("sub/run.toml", &[
+            ("sub/run.toml", config),
+            ("sub/g.fabro", "digraph W {}"),
+        ]);
+        let error =
+            collect_supplied_workflow_versions(&renamed.entrypoint, &renamed.files).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("must be `sub/workflow.toml`"),
+            "{error:#}"
+        );
+        // A config that selects a graph in another directory is not its sibling.
+        let elsewhere = supplied("sub/workflow.toml", &[
+            (
+                "sub/workflow.toml",
+                "_version = 1\n[workflow]\ngraph = \"../g.fabro\"\n",
+            ),
+            ("g.fabro", "digraph W {}"),
+        ]);
+        assert!(
+            collect_supplied_workflow_versions(&elsewhere.entrypoint, &elsewhere.files).is_err()
+        );
+    }
+
+    #[test]
     fn preserves_literal_scripts_without_executing() {
         let directory = tempfile::tempdir().unwrap();
         let marker = directory.path().join("must-not-exist");

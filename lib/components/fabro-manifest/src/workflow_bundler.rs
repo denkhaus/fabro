@@ -97,9 +97,22 @@ impl<'a> WorkflowBundler<'a> {
 
         let source = self.read_package_file(&location.graph)?;
         let config = if let Some(workflow_toml_path) = location.toml.as_ref() {
+            let config_path = manifest_path_from_absolute(workflow_toml_path, self.package_root)?;
+            if self.workflow_version_projection {
+                // A version's config is read at run time from the fixed
+                // sibling path only, so a config file under any other name
+                // would be registered and then silently ignored.
+                let expected = dot_path.parent_or_dot().join("workflow.toml");
+                if config_path.as_path() != expected {
+                    bail!(
+                        "workflow configuration `{config_path}` must be `{}` beside its graph \
+                         `{dot_path}`",
+                        expected.display()
+                    );
+                }
+            }
             Some(types::ManifestWorkflowConfig {
-                path:   manifest_path_from_absolute(workflow_toml_path, self.package_root)?
-                    .to_string(),
+                path:   config_path.to_string(),
                 source: self.read_package_file(workflow_toml_path)?,
             })
         } else {
