@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M294AA2FVVAF8KD95J84WQ0Q.jsonl b/.fabro/journal/01M294AA2FVVAF8KD95J84WQ0Q.jsonl
+new file mode 100644
+index 000000000..3aeefaba6
+--- /dev/null
++++ b/.fabro/journal/01M294AA2FVVAF8KD95J84WQ0Q.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M294AA2FVVAF8KD95J84WQ0Q","node":"start","visit":1,"status":"succeeded","ts":"2026-09-11T21:02:14Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M294AA2FVVAF8KD95J84WQ0Q","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-11T21:03:38Z","data":{"painpoints":[],"observations":["upstream drift: 0 commits ahead of origin/denkhaus (newest upstream/main subject: 'Bump version to 0.353.0-nightly.0'); far below MIN threshold of 5, route Work","revisor backlog: 01M292T3YZ3B3YXXPT1R7F82XK — develop PR #128 merged 2026-09-11T20:35 but its revisor run 01M29305HYN6144K9FSKZ8TGRC failed at 20:47, so the run has no completed revision; the next revisor pass should burn this down newest-first","fetch succeeded for both upstream and origin; upstream remote was already configured at https://github.com/fabro-sh/fabro"]}}

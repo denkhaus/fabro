@@ -570,7 +570,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-11T21:02:11.727162022Z",
-  "last_event_at": "2026-09-11T21:03:38.489491098Z",
+  "last_event_at": "2026-09-11T22:08:42.373261293Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -618,9 +618,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 58,
       "checkpoint": {
-        "timestamp": "2026-09-11T21:03:38.694866765Z",
+        "timestamp": "2026-09-11T21:03:43.560188303Z",
         "current_node": "survey",
         "completed_nodes": [
           "start",
@@ -628,37 +628,12 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.thread_id": "start",
-          "internal.run_id": "01M294AA2FVVAF8KD95J84WQ0Q",
-          "graph.inspects": "develop,merge-upstream,revisor",
-          "preferred_label": "Work",
-          "response.survey": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.survey",
-            "chars": 654,
-            "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream drift: 0 commits ahead of origin/denkhaus (newest upstream/main subject: 'B"
-          },
-          "internal.fidelity": "compact",
-          "internal.retry_count.survey": 0,
-          "seed_cycles": {
-            "start": 1,
-            "survey": 1
-          },
-          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-          "outcome": "succeeded",
-          "current_node": "survey",
-          "failure_signature": "",
-          "last_response": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream drift: 0 commits ahead of origin/denkhaus (newest upstream/main subject: 'B",
-          "internal.node_visit_count": 1,
           "internal.seed_cycle_anchor": "",
-          "failure_class": "",
-          "last_stage": "survey",
-          "internal.retry_count.start": 0,
+          "internal.thread_id": "start",
           "graph.rankdir": "LR",
-          "internal.work_dir": "/workspace/fabro",
-          "graph.cycle_counter_reset_key": "pass_id",
-          "thread.start.current_node": "survey",
-          "graph.preamble_budget_kb": "12",
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "internal.fidelity": "compact",
+          "graph.inspects": "develop,merge-upstream,revisor",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -667,7 +642,32 @@
               "fetch succeeded for both upstream and origin; upstream remote was already configured at https://github.com/fabro-sh/fabro"
             ]
           },
-          "graph.max_node_visits": "12"
+          "failure_class": "",
+          "preferred_label": "Work",
+          "thread.start.current_node": "survey",
+          "current_node": "survey",
+          "graph.preamble_budget_kb": "12",
+          "internal.run_id": "01M294AA2FVVAF8KD95J84WQ0Q",
+          "internal.work_dir": "/workspace/fabro",
+          "last_response": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream drift: 0 commits ahead of origin/denkhaus (newest upstream/main subject: 'B",
+          "last_stage": "survey",
+          "outcome": "succeeded",
+          "response.survey": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.survey",
+            "chars": 654,
+            "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream drift: 0 commits ahead of origin/denkhaus (newest upstream/main subject: 'B"
+          },
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1
+          },
+          "internal.retry_count.start": 0,
+          "internal.node_visit_count": 1,
+          "graph.max_node_visits": "12",
+          "internal.retry_count.survey": 0,
+          "graph.cycle_counter_reset_key": "pass_id",
+          "failure_signature": ""
         },
         "node_outcomes": {
           "survey": {
@@ -719,7 +719,179 @@
           }
         },
         "next_node_id": "develop",
+        "git_commit_sha": "c66063a18810587fcb91e5f5c065d63b73f406ad",
         "node_visits": {
+          "survey": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M294AA2FVVAF8KD95J84WQ0Q.jsonl b/.fabro/journal/01M294AA2FVVAF8KD95J84WQ0Q.jsonl\nnew file mode 100644\nindex 000000000..3aeefaba6\n--- /dev/null\n+++ b/.fabro/journal/01M294AA2FVVAF8KD95J84WQ0Q.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M294AA2FVVAF8KD95J84WQ0Q\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T21:02:14Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M294AA2FVVAF8KD95J84WQ0Q\",\"node\":\"survey\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T21:03:38Z\",\"data\":{\"painpoints\":[],\"observations\":[\"upstream drift: 0 commits ahead of origin/denkhaus (newest upstream/main subject: 'Bump version to 0.353.0-nightly.0'); far below MIN threshold of 5, route Work\",\"revisor backlog: 01M292T3YZ3B3YXXPT1R7F82XK — develop PR #128 merged 2026-09-11T20:35 but its revisor run 01M29305HYN6144K9FSKZ8TGRC failed at 20:47, so the run has no completed revision; the next revisor pass should burn this down newest-first\",\"fetch succeeded for both upstream and origin; upstream remote was already configured at https://github.com/fabro-sh/fabro\"]}}\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 2,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-11T22:08:42.575028537Z",
+        "current_node": "develop",
+        "completed_nodes": [
+          "start",
+          "survey",
+          "develop"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.thread_id": "survey",
+          "internal.run_id": "01M294AA2FVVAF8KD95J84WQ0Q",
+          "graph.inspects": "develop,merge-upstream,revisor",
+          "preferred_label": "Develop integrated",
+          "response.survey": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.survey",
+            "chars": 654,
+            "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream drift: 0 commits ahead of origin/denkhaus (newest upstream/main subject: 'B"
+          },
+          "internal.retry_count.develop": 0,
+          "internal.fidelity": "compact",
+          "internal.retry_count.survey": 0,
+          "seed_cycles": {
+            "start": 1,
+            "survey": 1,
+            "develop": 1
+          },
+          "response.develop": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.develop",
+            "chars": 995,
+            "preview": "PR #129 merged. Routing \"Develop integrated\"; `child_run_id` stays in context for the revisor leg.\n\n```json\n{\n  \"preferred_next_label\": \"Develop integrated\",\n  \"outcome\": \"succeeded\",\n  \"suggested_nex"
+          },
+          "graph.goal": "Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
+          "outcome": "succeeded",
+          "child_run_id": "01M294HH117ZMV11HCNCEQPCDJ",
+          "current_node": "develop",
+          "failure_signature": "",
+          "last_response": "PR #129 merged. Routing \"Develop integrated\"; `child_run_id` stays in context for the revisor leg.\n\n```json\n{\n  \"preferred_next_label\": \"Develop integrated\",\n  \"outcome\": \"succeeded\",\n  \"suggested_nex",
+          "thread.survey.current_node": "develop",
+          "internal.node_visit_count": 1,
+          "internal.seed_cycle_anchor": "",
+          "failure_class": "",
+          "last_stage": "develop",
+          "internal.retry_count.start": 0,
+          "graph.rankdir": "LR",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.cycle_counter_reset_key": "pass_id",
+          "thread.start.current_node": "survey",
+          "graph.preamble_budget_kb": "12",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Child 01M294HH117ZMV11HCNCEQPCDJ (seed fabro-3ef7, 'SQLite database is locked / WAL-lock policy + projection self-heal') succeeded in ~46 min: planner→implementer→gate green→evidence→reviewer approved first pass→closeout closed the seed. Gate wait outcome: merged (PR #129, first wait, no blocked/timeout). Revisor leg: this run needs a revisor pass; the older backlog entry (01M292T3YZ3B3YXXPT1R7F82XK, develop PR #128 merged 2026-09-11T20:35, revisor 01M29305HYN failed) still has no completed revision — burn down newest-first means 01M294HH goes first, then 01M292T3."
+            ]
+          },
+          "graph.max_node_visits": "12"
+        },
+        "node_outcomes": {
+          "survey": {
+            "status": "succeeded",
+            "preferred_label": "Work",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "upstream drift: 0 commits ahead of origin/denkhaus (newest upstream/main subject: 'Bump version to 0.353.0-nightly.0'); far below MIN threshold of 5, route Work",
+                  "revisor backlog: 01M292T3YZ3B3YXXPT1R7F82XK — develop PR #128 merged 2026-09-11T20:35 but its revisor run 01M29305HYN6144K9FSKZ8TGRC failed at 20:47, so the run has no completed revision; the next revisor pass should burn this down newest-first",
+                  "fetch succeeded for both upstream and origin; upstream remote was already configured at https://github.com/fabro-sh/fabro"
+                ]
+              },
+              "response.survey": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.survey",
+                "chars": 654,
+                "preview": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream drift: 0 commits ahead of origin/denkhaus (newest upstream/main subject: 'B"
+              },
+              "last_stage": "survey",
+              "last_response": "{\"preferred_next_label\":\"Work\",\"outcome\":\"succeeded\",\"context_updates\":{\"journal\":{\"painpoints\":[],\"observations\":[\"upstream drift: 0 commits ahead of origin/denkhaus (newest upstream/main subject: 'B"
+            },
+            "notes": "Stage completed: survey",
+            "usage": {
+              "model": {
+                "provider": "zai",
+                "model_id": "glm-5.3"
+              },
+              "tokens": {
+                "input": 42187,
+                "output": 785,
+                "reasoning": 265,
+                "cache_read": 83584,
+                "cache_write": 0
+              },
+              "total_usd_micros": 85411
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 27999,
+              "tool_time_ms": 47168,
+              "active_time_ms": 75167
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "develop": {
+            "status": "succeeded",
+            "preferred_label": "Develop integrated",
+            "suggested_next_ids": [
+              "01M294HH117ZMV11HCNCEQPCDJ"
+            ],
+            "context_updates": {
+              "response.develop": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.develop",
+                "chars": 995,
+                "preview": "PR #129 merged. Routing \"Develop integrated\"; `child_run_id` stays in context for the revisor leg.\n\n```json\n{\n  \"preferred_next_label\": \"Develop integrated\",\n  \"outcome\": \"succeeded\",\n  \"suggested_nex"
+              },
+              "last_response": "PR #129 merged. Routing \"Develop integrated\"; `child_run_id` stays in context for the revisor leg.\n\n```json\n{\n  \"preferred_next_label\": \"Develop integrated\",\n  \"outcome\": \"succeeded\",\n  \"suggested_nex",
+              "last_stage": "develop",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Child 01M294HH117ZMV11HCNCEQPCDJ (seed fabro-3ef7, 'SQLite database is locked / WAL-lock policy + projection self-heal') succeeded in ~46 min: planner→implementer→gate green→evidence→reviewer approved first pass→closeout closed the seed. Gate wait outcome: merged (PR #129, first wait, no blocked/timeout). Revisor leg: this run needs a revisor pass; the older backlog entry (01M292T3YZ3B3YXXPT1R7F82XK, develop PR #128 merged 2026-09-11T20:35, revisor 01M29305HYN failed) still has no completed revision — burn down newest-first means 01M294HH goes first, then 01M292T3."
+                ]
+              },
+              "child_run_id": "01M294HH117ZMV11HCNCEQPCDJ"
+            },
+            "notes": "Stage completed: develop",
+            "usage": {
+              "model": {
+                "provider": "zai",
+                "model_id": "glm-5.3"
+              },
+              "tokens": {
+                "input": 133301,
+                "output": 564,
+                "reasoning": 123,
+                "cache_read": 169600,
+                "cache_write": 0
+              },
+              "total_usd_micros": 233736
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 35513,
+              "tool_time_ms": 3538826,
+              "active_time_ms": 3574339
+            }
+          }
+        },
+        "next_node_id": "revise",
+        "node_visits": {
+          "develop": 1,
           "start": 1,
           "survey": 1
         }
@@ -1032,6 +1204,279 @@
         "reasoning_tokens": 0,
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "develop@1": {
+      "first_event_seq": 61,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: develop",
+        "failure_reason": null,
+        "timestamp": "2026-09-11T22:08:42.373261293Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-11T21:03:43.574974632Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 3574843,
+        "inference_time_ms": 35513,
+        "tool_time_ms": 3538826,
+        "active_time_ms": 3574339
+      },
+      "usage": {
+        "input_tokens": 133301,
+        "output_tokens": 564,
+        "total_tokens": 303588,
+        "reasoning_tokens": 123,
+        "cache_read_tokens": 169600,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 233736
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_create",
+          "description": "Create one or more Fabro workflow runs, optionally under a parent run, starting them by default.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "fabro_run_get",
+          "description": "Read-only inspection of a Fabro run: returns its summary, projection, and pending questions without mutating state.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "fabro_run_wait",
+          "description": "Block until ONE Fabro run reaches a terminal state (until=terminal) or its pull request merges (until=merged). Server-side long-poll, one call up to 3600000ms; a timeout returns reached=timeout with the current status so callers can re-wait. For multi-run fan-in with short bounds use fabro_run_gather instead (ADR-0016).",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": false
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 133196,
+        "usage_percent": 12.702560424804688,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-11T22:08:42.358977790Z",
+        "event_seq": 92,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1191,
+            "usage_percent": 0.11358261108398438
+          },
+          {
+            "category": "tools",
+            "tokens": 2847,
+            "usage_percent": 0.2715110778808594
+          },
+          {
+            "category": "skills",
+            "tokens": 230,
+            "usage_percent": 0.02193450927734375
+          },
+          {
+            "category": "memory",
+            "tokens": 6126,
+            "usage_percent": 0.5842208862304688
+          },
+          {
+            "category": "conversation",
+            "tokens": 122793,
+            "usage_percent": 11.710453033447266
+          },
+          {
+            "category": "other",
+            "tokens": 9,
+            "usage_percent": 0.000858306884765625
+          }
+        ],
+        "warnings": []
       },
       "agent_control": "running",
       "state": "succeeded"
