@@ -16,16 +16,12 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use fabro_static::EnvVars;
 use fabro_types::settings::server::{
     SandboxPluginSettings, ServerSandboxProviderSettings, ServerSandboxProvidersSettings,
 };
 use fabro_types::{BundledProvider, SandboxProviderKind};
-use sandbox_driver::{
-    Capabilities, EventContext, ProviderHealth, ProviderKind, Sandbox, SandboxFilter, SandboxId,
-    SandboxProvider, SandboxSpec, SandboxStatus, SnapshotProvider, VolumeProvider,
-};
+use sandbox_driver::{ProviderKind, SandboxProvider};
 use sandbox_driver_daytona::{DaytonaConfig, DaytonaProvider};
 use sandbox_driver_docker::DockerProvider;
 use sandbox_driver_host::HostProvider;
@@ -190,8 +186,10 @@ pub enum ConnectError {
 /// Connects the provider behind `kind`.
 ///
 /// Bundled kinds return the in-process driver provider. Any other kind
-/// launches the plugin named by `settings.plugin` and returns a supervised
-/// handle that relaunches it after a crash for new work only. The
+/// launches the plugin named by `settings.plugin` and returns the driver's
+/// supervisor, which relaunches the executable after a crash for new work
+/// only; handles from an earlier generation stay bound to it, and callers
+/// rebuild them through `attach` with the persisted sandbox id. The
 /// configured kind is fabro's name for whatever the executable serves; the
 /// kind the plugin declares is not compared against it. Disabled entries
 /// are refused here so no caller has to remember the policy check.
@@ -233,61 +231,26 @@ pub async fn connect_provider(
                 .plugin
                 .as_ref()
                 .ok_or_else(|| ConnectError::MissingPluginSettings { kind: kind.clone() })?;
-            Arc::new(PluginBackedProvider::launch(kind, plugin).await?)
+            let driver_kind = ProviderKind::try_new(kind.as_str()).map_err(|source| {
+                ConnectError::InvalidKind {
+                    kind: kind.clone(),
+                    source,
+                }
+            })?;
+            // The supervisor is the provider: it launches the executable now,
+            // so a misconfigured plugin fails at connect time, and relaunches
+            // it after a crash for new work only.
+            Arc::new(
+                PluginSupervisor::launch(PLUGIN_BINARY_PREFIX, plugin_config(driver_kind, plugin))
+                    .await
+                    .map_err(driver)?,
+            )
         }
     };
     Ok(ConnectedProvider {
         kind: kind.clone(),
         provider,
     })
-}
-
-/// A plugin provider that survives its executable crashing.
-///
-/// Wraps a [`PluginSupervisor`]: every call obtains the current plugin
-/// generation, and a closed transport is replaced with a fresh launch before
-/// the call. A failed call is never replayed, and handles obtained from an
-/// earlier generation stay bound to it; callers rebuild them through
-/// [`SandboxProvider::attach`] with the persisted sandbox id.
-pub struct PluginBackedProvider {
-    kind:         ProviderKind,
-    capabilities: Capabilities,
-    supervisor:   PluginSupervisor,
-}
-
-impl PluginBackedProvider {
-    async fn launch(
-        kind: &SandboxProviderKind,
-        settings: &SandboxPluginSettings,
-    ) -> Result<Self, ConnectError> {
-        let driver_kind =
-            ProviderKind::try_new(kind.as_str()).map_err(|source| ConnectError::InvalidKind {
-                kind: kind.clone(),
-                source,
-            })?;
-        // Launch once now so a misconfigured plugin fails at connect time and
-        // the declared capabilities are known for preflight.
-        let supervisor = PluginSupervisor::launch(
-            PLUGIN_BINARY_PREFIX,
-            plugin_config(driver_kind.clone(), settings),
-        )
-        .await
-        .map_err(|source| ConnectError::Driver {
-            kind: kind.clone(),
-            source,
-        })?;
-        let capabilities = SandboxProvider::capabilities(&supervisor).clone();
-        Ok(Self {
-            kind: driver_kind,
-            capabilities,
-            supervisor,
-        })
-    }
-
-    /// Asks the current plugin generation to exit and reaps it.
-    pub async fn shutdown(&self) -> sandbox_driver::Result<()> {
-        self.supervisor.shutdown().await
-    }
 }
 
 fn plugin_config(kind: ProviderKind, settings: &SandboxPluginSettings) -> PluginConfig {
@@ -303,69 +266,6 @@ fn plugin_config(kind: ProviderKind, settings: &SandboxPluginSettings) -> Plugin
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect::<BTreeMap<_, _>>(),
         inherit_env: settings.inherit_env.clone(),
-    }
-}
-
-#[async_trait]
-impl SandboxProvider for PluginBackedProvider {
-    fn kind(&self) -> &ProviderKind {
-        &self.kind
-    }
-
-    fn capabilities(&self) -> &Capabilities {
-        &self.capabilities
-    }
-
-    async fn create(
-        &self,
-        spec: &SandboxSpec,
-        events: Option<EventContext>,
-    ) -> sandbox_driver::Result<Arc<dyn Sandbox>> {
-        self.supervisor.current().await?.create(spec, events).await
-    }
-
-    async fn attach(
-        &self,
-        id: &SandboxId,
-        events: Option<EventContext>,
-    ) -> sandbox_driver::Result<Arc<dyn Sandbox>> {
-        self.supervisor.current().await?.attach(id, events).await
-    }
-
-    async fn undelete(
-        &self,
-        id: &SandboxId,
-        events: Option<EventContext>,
-    ) -> sandbox_driver::Result<Arc<dyn Sandbox>> {
-        self.supervisor.current().await?.undelete(id, events).await
-    }
-
-    async fn delete(
-        &self,
-        id: &SandboxId,
-        events: Option<EventContext>,
-    ) -> sandbox_driver::Result<()> {
-        self.supervisor.current().await?.delete(id, events).await
-    }
-
-    async fn list(&self, filter: &SandboxFilter) -> sandbox_driver::Result<Vec<SandboxStatus>> {
-        self.supervisor.current().await?.list(filter).await
-    }
-
-    async fn health(&self) -> sandbox_driver::Result<ProviderHealth> {
-        self.supervisor.current().await?.health().await
-    }
-
-    /// Snapshot and volume management cross the wire per plugin generation,
-    /// which these borrowing accessors cannot express. Fabro drives
-    /// snapshots on the bundled Daytona provider only, so a plugin reports
-    /// none until a generation-aware accessor exists.
-    fn snapshots(&self) -> Option<&dyn SnapshotProvider> {
-        None
-    }
-
-    fn volumes(&self) -> Option<&dyn VolumeProvider> {
-        None
     }
 }
 
