@@ -1,5 +1,6 @@
 use ::fabro_types::{
-    EventBody, RunControlAction, RunEvent, RunId, StageOutcome, UsdMicros, run_event as fabro_types,
+    EventBody, RunControlAction, RunEvent, RunId, StageOutcome, UsdMicros, bound_run_event,
+    run_event as fabro_types,
 };
 use chrono::Utc;
 use fabro_agent::{AgentEvent, SandboxEvent, SkillActivationSource};
@@ -1448,7 +1449,7 @@ pub fn to_run_event_at(
 ) -> RunEvent {
     let fields = stored_event_fields(event, scope);
     let body = event_body_from_event(event);
-    RunEvent {
+    let mut run_event = RunEvent {
         id: Uuid::now_v7().to_string(),
         ts,
         run_id: *run_id,
@@ -1462,7 +1463,21 @@ pub fn to_run_event_at(
         tool_call_id: fields.tool_call_id,
         actor: fields.actor,
         body,
+    };
+
+    // The canonical event feeds every sink, including the run-store append
+    // with its hard body limit. Bound oversized payloads here so all sinks
+    // observe the same bounded envelope (fabro-a723).
+    if let Some(bound) = bound_run_event(&mut run_event) {
+        tracing::warn!(
+            run_id = %run_event.run_id,
+            event = run_event.body.event_name(),
+            original_bytes = bound.original_bytes,
+            bounded_bytes = bound.bounded_bytes,
+            "run event body exceeded the append budget; truncated to protect the run store"
+        );
     }
+    run_event
 }
 
 #[cfg(test)]
@@ -3050,6 +3065,44 @@ mod tests {
                 assert_eq!(props.tools[1].name, "mcp__github__list_issues");
             }
             other => panic!("expected AgentMcpReady body, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn checkpoint_completed_with_oversized_diff_is_bounded_to_the_append_budget() {
+        let huge_diff = "diff --git a/x b/x\n+".to_string() + &"x".repeat(4 * 1024 * 1024);
+        let stored = to_run_event(&fixtures::RUN_1, &Event::CheckpointCompleted {
+            node_id: "merge".to_string(),
+            status: "succeeded".to_string(),
+            current_node: "merge".to_string(),
+            completed_nodes: Vec::new(),
+            node_retries: BTreeMap::new(),
+            context_values: BTreeMap::new(),
+            node_outcomes: BTreeMap::new(),
+            next_node_id: None,
+            git_commit_sha: Some("f95a8e019".to_string()),
+            loop_failure_signatures: BTreeMap::new(),
+            restart_failure_signatures: BTreeMap::new(),
+            node_visits: BTreeMap::new(),
+            diff: Some(huge_diff),
+            diff_summary: None,
+            graph_visit: None,
+            resumed_from_stage_id: None,
+        });
+
+        let serialized = serde_json::to_vec(&stored).expect("run event serializes");
+        assert!(
+            serialized.len() <= fabro_types::run_event_body_budget(),
+            "canonical run event must fit the append budget, got {}",
+            serialized.len()
+        );
+        match stored.body {
+            EventBody::CheckpointCompleted(props) => {
+                let diff = props.diff.as_deref().expect("diff retained after bounding");
+                assert!(diff.contains("[... fabro truncated"));
+                assert_eq!(props.git_commit_sha.as_deref(), Some("f95a8e019"));
+            }
+            other => panic!("expected CheckpointCompleted body, got {other:?}"),
         }
     }
 }
