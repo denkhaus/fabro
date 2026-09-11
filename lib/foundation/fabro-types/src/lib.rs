@@ -133,9 +133,11 @@ pub use run_event::{
     AgentMcpToolSummary, AgentMemoryFileProps, AgentSkillActivationSource, AgentSkillSummary,
     AgentToolCategory, AgentToolSource, AgentToolSummary, AgentToolsAvailableProps, EventBody,
     ExecOutputTail, FailoverProps, INITIAL_SUBAGENT_GENERATION, InterviewOption, LlmOutputKind,
-    LlmRetryPhase, MetadataSnapshotFailureKind, MetadataSnapshotPhase, RunEvent, RunNoticeCode,
-    RunNoticeLevel, RunPairEndedReason, RunPairFailedReason, RunRunnableSource, SessionCapability,
-    TodoCreatedProps, TodoDeletedProps, TodoUpdatedProps, initial_subagent_generation,
+    LlmRetryPhase, MetadataSnapshotFailureKind, MetadataSnapshotPhase,
+    RUN_EVENT_BODY_HEADROOM_BYTES, RunEvent, RunEventBodyBound, RunNoticeCode, RunNoticeLevel,
+    RunPairEndedReason, RunPairFailedReason, RunRunnableSource, SessionCapability,
+    TodoCreatedProps, TodoDeletedProps, TodoUpdatedProps, bound_run_event,
+    bound_run_event_with_budget, initial_subagent_generation, run_event_body_budget,
 };
 pub use run_failure::RunFailure;
 pub use run_id::{RunId, fixtures};

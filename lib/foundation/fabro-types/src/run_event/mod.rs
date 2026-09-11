@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod bound;
 pub mod infra;
 pub mod misc;
 pub mod run;
@@ -7,6 +8,7 @@ pub mod stage;
 pub mod todo;
 
 pub use agent::*;
+pub use bound::*;
 use chrono::{DateTime, Utc};
 pub use infra::*;
 pub use misc::*;
@@ -26,7 +28,8 @@ use crate::{BilledTokenCounts, ParallelBranchId, Principal, RunId, StageId};
 /// Producers that embed large payloads in an event (serialized tool output in
 /// particular) must budget against this limit, leaving headroom for the rest
 /// of the event envelope. The agent layer reserves half of it for serialized
-/// tool output.
+/// tool output; the workflow side bounds every canonical event with
+/// [`bound_run_event`] (see `run_event::bound`).
 pub const MAX_RUN_EVENT_BODY_BYTES: usize = 3 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
