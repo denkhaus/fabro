@@ -174,6 +174,17 @@ mod tests {
         )
         .unwrap();
         std::fs::write(parent.path().join("child.fabro"), "digraph Host {}").unwrap();
+        // Malformed on purpose: a parser that reaches this file would quote it.
+        std::fs::write(
+            parent.path().join("secret.toml"),
+            "HOST_SECRET = [unterminated",
+        )
+        .unwrap();
+        std::fs::write(
+            parent.path().join("workflow.toml"),
+            "HOST_SECRET = [unterminated",
+        )
+        .unwrap();
         for (index, input) in [
             supplied("workflow.fabro", &[
                 ("workflow.fabro", r#"digraph W { p [prompt="@prompt.md"] }"#),
@@ -205,6 +216,14 @@ mod tests {
             )]),
             supplied("workflow.fabro", &[(
                 "workflow.fabro",
+                r#"digraph W { p [stack.child_workflow="../secret.toml"] }"#,
+            )]),
+            supplied("workflow.fabro", &[(
+                "workflow.fabro",
+                r#"digraph W { p [stack.child_workflow="../graph.fabro"] }"#,
+            )]),
+            supplied("workflow.fabro", &[(
+                "workflow.fabro",
                 r#"digraph W { p [stack.child_workflow="missing"] }"#,
             )]),
             supplied("workflow.toml", &[(
@@ -221,9 +240,15 @@ mod tests {
         {
             let staging = tempfile::tempdir_in(parent.path()).unwrap();
             let path = staging.path().to_owned();
+            let error = collect_with_staging(&input, staging)
+                .err()
+                .unwrap_or_else(|| panic!("accepted invalid fixture {index}"));
+            let rendered = format!("{error:#}");
+            // Escaping references must fail before any host file is opened,
+            // so no host diagnostic (parse error, exists-vs-missing) leaks.
             assert!(
-                collect_with_staging(&input, staging).is_err(),
-                "accepted invalid fixture {index}"
+                !rendered.contains("HOST_SECRET") && !rendered.contains("secret.toml:"),
+                "fixture {index} read a host file: {rendered}"
             );
             assert!(!path.exists());
         }

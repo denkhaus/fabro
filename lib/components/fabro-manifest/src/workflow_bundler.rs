@@ -160,8 +160,17 @@ impl<'a> WorkflowBundler<'a> {
             workflow.to_path_buf()
         };
         let location = if self.workflow_version_projection {
-            // Check containment before location resolution can read a config.
-            manifest_path_from_absolute(&normalized, self.package_root)?;
+            // Location resolution probes and parses config files, so reject
+            // references that leave the package root before it can touch a
+            // host file. `ManifestPath::from_absolute` accepts `..`-prefixed
+            // results and is not a containment check.
+            if !normalized.starts_with(self.package_root) {
+                bail!(
+                    "workflow reference `{}` escapes source root `{}`",
+                    workflow.display(),
+                    self.package_root.display()
+                );
+            }
             WorkflowLocation::from_exact_path(&normalized, self.package_root)?
         } else {
             WorkflowLocation::resolve(&normalized, resolve_from)?
