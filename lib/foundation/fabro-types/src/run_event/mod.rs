@@ -961,7 +961,7 @@ fn normalize_legacy_billing(event: &str, value: &mut Value) {
         return;
     };
     for (key, item) in map.iter_mut() {
-        if key != "billing" {
+        if key != "billing" && key != "usage" {
             normalize_legacy_billing(event, item);
             continue;
         }
@@ -1027,10 +1027,15 @@ fn normalize_legacy_billing(event: &str, value: &mut Value) {
                     tokens_map.insert(to.to_string(), value);
                 }
             }
+            // A usage entry without an extractable model cannot satisfy
+            // BilledModelUsage's required ModelRef; null keeps the enclosing
+            // Option field valid instead of failing deserialization.
+            let Some(model_ref) = model_ref else {
+                *item = Value::Null;
+                continue;
+            };
             let mut usage_out = serde_json::Map::new();
-            if let Some(model_ref) = model_ref {
-                usage_out.insert("model".to_string(), model_ref);
-            }
+            usage_out.insert("model".to_string(), model_ref);
             usage_out.insert("tokens".to_string(), Value::Object(tokens_map));
             if let Some(total) = total_usd_micros {
                 usage_out.insert("total_usd_micros".to_string(), total);
@@ -3034,5 +3039,48 @@ mod tests {
         let totals = &value["properties"]["usage"]["totals"];
         assert_eq!(totals[0]["source"], json!("catalog"));
         assert_eq!(totals[1]["source"], json!("provider"));
+    }
+
+    #[test]
+    fn legacy_usage_wrapper_in_checkpoint_node_outcomes_normalizes() {
+        // Exact stored-row shape (run 01M2837TP51, 2026-09-11 crash-loop):
+        // legacy node_outcomes[].usage carries the lithos wrapper
+        // {input: {usage: {model, tokens}, facts}, total_usd_micros} that the
+        // billing normalizer must reshape into BilledModelUsage.
+        let raw = r#"{"id":"00000000-0000-0000-0000-000000000002","ts":"2026-09-11T13:21:56.000Z","run_id":"01M2837TP51DNK159MHVPTCVVK","event":"checkpoint.completed","properties":{"status":"succeeded","current_node":"survey","node_outcomes":{"survey":{"status":"succeeded","usage":{"input":{"usage":{"model":{"provider":"zai","model_id":"glm-5.3"},"tokens":{"input_tokens":22308,"output_tokens":681,"reasoning_tokens":73,"cache_read_tokens":41344,"cache_write_tokens":0}},"facts":{"algorithm":"openai"}},"total_usd_micros":45294}}}}}"#;
+        let event = RunEvent::from_value(
+            serde_json::from_str::<serde_json::Value>(raw).expect("fixture should be valid JSON"),
+        )
+        .expect("legacy checkpoint usage wrapper should normalize and parse");
+        match event.body {
+            EventBody::CheckpointCompleted(props) => {
+                let outcome = &props.node_outcomes["survey"];
+                let usage = outcome
+                    .usage
+                    .as_ref()
+                    .expect("usage survives normalization");
+                assert_eq!(usage.model.provider.to_string(), "zai");
+                assert_eq!(usage.model.model_id.to_string(), "glm-5.3");
+                assert_eq!(usage.tokens.input, 22308);
+                assert_eq!(usage.tokens.cache_read, 41344);
+                assert_eq!(usage.total_usd_micros, Some(45294));
+            }
+            other => panic!("expected CheckpointCompleted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn usage_wrapper_without_model_nulls_instead_of_failing() {
+        let raw = r#"{"id":"00000000-0000-0000-0000-000000000003","ts":"2026-09-11T13:21:56.000Z","run_id":"01M2837TP51DNK159MHVPTCVVK","event":"checkpoint.completed","properties":{"status":"succeeded","current_node":"survey","node_outcomes":{"survey":{"status":"succeeded","usage":{"input":{"usage":{"tokens":{"input_tokens":10}}},"total_usd_micros":1}}}}}"#;
+        let event = RunEvent::from_value(
+            serde_json::from_str::<serde_json::Value>(raw).expect("fixture should be valid JSON"),
+        )
+        .expect("model-less usage wrapper should null out and parse");
+        match event.body {
+            EventBody::CheckpointCompleted(props) => {
+                assert!(props.node_outcomes["survey"].usage.is_none());
+            }
+            other => panic!("expected CheckpointCompleted, got {other:?}"),
+        }
     }
 }
