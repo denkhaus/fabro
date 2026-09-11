@@ -127,7 +127,7 @@ impl Database {
         payload: &EventPayload,
     ) -> Result<RunDatabase> {
         let (mut active_runs, run_store) = self.reserve_new_run(run_id).await?;
-        let (envelope, projected) = run_store.commit_first_event(payload).await?;
+        let (envelope, projected) = Box::pin(run_store.commit_first_event(payload)).await?;
         run_store.install_in_memory_state(projected);
         Self::cache_active_run(&mut active_runs, &run_store);
         run_store.publish(&envelope);

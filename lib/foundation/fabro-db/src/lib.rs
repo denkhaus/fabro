@@ -46,6 +46,19 @@ pub struct Database {
 }
 
 impl Database {
+    /// Opens (creating if needed) the SQLite database at `path`.
+    ///
+    /// # Canonical SQLite lock policy (fabro-3ef7)
+    ///
+    /// This connection site defines the ONE production lock policy: WAL
+    /// journal mode + `synchronous = NORMAL` + 5s `busy_timeout`. Every
+    /// production connection must go through this constructor (or configure
+    /// identical pragmas) so concurrent writers contend through the busy
+    /// timeout instead of failing fast with SQLITE_BUSY (code 5). The only
+    /// intentional divergences live in `#[cfg(test)]` modules, where fixture
+    /// connections deliberately use shorter (or absent) busy timeouts to
+    /// model blocked writers without stalling the test suite for the full
+    /// production timeout; each such site documents its divergence inline.
     pub async fn connect(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let path = path.as_ref();
         if let Some(parent) = path.parent() {
