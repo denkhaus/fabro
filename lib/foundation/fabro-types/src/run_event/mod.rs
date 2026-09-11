@@ -943,7 +943,107 @@ fn normalize_legacy_event(value: &mut Value) {
     normalize_legacy_event_properties(&event, properties);
 }
 
+/// Rewrite the legacy lithos billing wrapper stored before v0.353:
+///
+/// ```json
+/// {"input": {"usage": {"model": {"provider": "zai", "model_id": "glm-5.3"},
+///                       "tokens": {"input_tokens": 1, ...}, "facts": ...}},
+///  "total_usd_micros": 45294}
+/// ```
+///
+/// into the shapes the current billing types expect: a `provider:model`
+/// ModelRef string plus flat token counts. Run-history activation replays
+/// every stored event; one legacy wrapper aborts server startup
+/// (2026-09-11, v0.353.0 upgrade, fabro-7893 follow-up). Delete together
+/// with the other legacy normalizers once no pre-v0.353 store can be read.
+fn normalize_legacy_billing(event: &str, value: &mut Value) {
+    let Some(map) = value.as_object_mut() else {
+        return;
+    };
+    for (key, item) in map.iter_mut() {
+        if key != "billing" {
+            normalize_legacy_billing(event, item);
+            continue;
+        }
+        let Some(wrapper) = item.as_object_mut() else {
+            continue;
+        };
+        let Some(usage) = wrapper
+            .get_mut("input")
+            .and_then(|input| input.get_mut("usage"))
+            .and_then(|usage| usage.as_object_mut())
+        else {
+            continue;
+        };
+        // billing::ModelRef (the struct) already matches the stored
+        // {provider, model_id} object - keep it verbatim.
+        let model_ref = usage.get("model").cloned();
+        let tokens = usage.get("tokens").cloned();
+        let total_usd_micros = wrapper.get("total_usd_micros").cloned();
+        let Some(tokens) = tokens else {
+            continue;
+        };
+        if event == "agent.message" {
+            // AgentMessageProps.billing is BilledTokenCounts: flat token
+            // buckets (legacy names already match) plus the required
+            // `total_tokens` sum and the optional cost total.
+            let mut counts = tokens;
+            if let (Some(counts_map), true) = (counts.as_object_mut(), total_usd_micros.is_some()) {
+                let sum = [
+                    "input_tokens",
+                    "output_tokens",
+                    "reasoning_tokens",
+                    "cache_read_tokens",
+                    "cache_write_tokens",
+                ]
+                .iter()
+                .filter_map(|key| counts_map.get(*key))
+                .filter_map(Value::as_i64)
+                .sum::<i64>();
+                counts_map.insert("total_tokens".to_string(), Value::from(sum));
+                if let Some(total) = total_usd_micros {
+                    counts_map.insert("total_usd_micros".to_string(), total);
+                }
+            }
+            *item = counts;
+        } else {
+            // BilledModelUsage: ModelRef string plus lithos TokenCounts,
+            // whose field names dropped the `_tokens` suffix.
+            let mut tokens_map = match tokens {
+                Value::Object(map) => map,
+                other => {
+                    *item = other;
+                    continue;
+                }
+            };
+            for (from, to) in [
+                ("input_tokens", "input"),
+                ("output_tokens", "output"),
+                ("reasoning_tokens", "reasoning"),
+                ("cache_read_tokens", "cache_read"),
+                ("cache_write_tokens", "cache_write"),
+            ] {
+                if let Some(value) = tokens_map.remove(from) {
+                    tokens_map.insert(to.to_string(), value);
+                }
+            }
+            let mut usage_out = serde_json::Map::new();
+            if let Some(model_ref) = model_ref {
+                usage_out.insert("model".to_string(), model_ref);
+            }
+            usage_out.insert("tokens".to_string(), Value::Object(tokens_map));
+            if let Some(total) = total_usd_micros {
+                usage_out.insert("total_usd_micros".to_string(), total);
+            }
+            *item = Value::Object(usage_out);
+        }
+    }
+}
+
 fn normalize_legacy_event_properties(event: &str, properties: &mut Value) {
+    // Billing wrapper normalization runs before the cost-source pass: it
+    // reshapes the legacy usage envelope the cost fields live in.
+    normalize_legacy_billing(event, properties);
     // Cost source normalization is event-agnostic: `cost_source` and nested
     // cost `source` fields appear on agent, stage, and run-level events.
     normalize_legacy_cost_source(properties);
@@ -1082,6 +1182,49 @@ impl<'de> Deserialize<'de> for RunEvent {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn legacy_billing_wrapper_parses_through_prompt_completed() {
+        // Exact stored row (run 01M20DMYEK, 2026-09-11 crash-loop incident):
+        // the legacy lithos billing wrapper must normalize into
+        // BilledModelUsage (ModelRef string + token counts).
+        let raw = r#"{"id":"01a080e1-d4fa-7d82-afc5-b53695397b4c","ts":"2026-09-08T08:00:00Z","run_id":"01M20DMYEK5B3GDQAYFR83DNGN","event":"prompt.completed","properties":{"response":"{\"preferred_next_label\":\"Merge needed\"}","model":"glm-5.3","provider":"zai","billing":{"input":{"usage":{"model":{"provider":"zai","model_id":"glm-5.3"},"tokens":{"input_tokens":22308,"output_tokens":681,"reasoning_tokens":73,"cache_read_tokens":41344,"cache_write_tokens":0}}},"total_usd_micros":45294}}}"#;
+        let event = RunEvent::from_value(
+            serde_json::from_str::<serde_json::Value>(raw).expect("fixture should be valid JSON"),
+        )
+        .expect("legacy billing wrapper should normalize and parse");
+        match event.body {
+            EventBody::PromptCompleted(props) => {
+                let billing = props.billing.expect("billing should survive normalization");
+                assert_eq!(billing.model.provider.to_string(), "zai");
+                assert_eq!(billing.model.model_id.to_string(), "glm-5.3");
+                assert_eq!(billing.tokens.input, 22308);
+                assert_eq!(billing.total_usd_micros, Some(45294));
+            }
+            other => panic!("expected PromptCompleted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn legacy_billing_normalizer_leaves_current_agent_message_untouched() {
+        // Stored agent.message rows already use the current shapes (struct
+        // ModelRef + flat BilledTokenCounts): the normalizer must be a no-op
+        // on them (exact row shape from the same store).
+        let raw = r#"{"id":"00000000-0000-0000-0000-000000000001","ts":"2026-09-08T08:00:00Z","run_id":"01M20DMYEK5B3GDQAYFR83DNGN","event":"agent.message","properties":{"text":"ok","model":{"provider":"zai","model_id":"glm-5.3"},"billing":{"input_tokens":10,"output_tokens":2,"total_tokens":12,"reasoning_tokens":0,"cache_read_tokens":0,"cache_write_tokens":0,"total_usd_micros":7},"tool_call_count":0,"visit":1}}"#;
+        let event = RunEvent::from_value(
+            serde_json::from_str::<serde_json::Value>(raw).expect("fixture should be valid JSON"),
+        )
+        .expect("current agent.message shapes should parse unchanged");
+        match event.body {
+            EventBody::AgentMessage(props) => {
+                assert_eq!(props.billing.input_tokens, 10);
+                assert_eq!(props.billing.output_tokens, 2);
+                assert_eq!(props.billing.total_usd_micros, Some(7));
+            }
+            other => panic!("expected AgentMessage, got {other:?}"),
+        }
+    }
+
     use lithos_llm::catalog::builtin;
     use lithos_llm::types::{CostSource, ReasoningOutput};
     use serde_json::json;
