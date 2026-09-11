@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M27V3Y12QDV77VCM4JH4AE9D.jsonl b/.fabro/journal/01M27V3Y12QDV77VCM4JH4AE9D.jsonl
+new file mode 100644
+index 000000000..477773e52
+--- /dev/null
++++ b/.fabro/journal/01M27V3Y12QDV77VCM4JH4AE9D.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M27V3Y12QDV77VCM4JH4AE9D","node":"start","visit":1,"status":"succeeded","ts":"2026-09-11T09:00:21Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M27V3Y12QDV77VCM4JH4AE9D","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-11T09:01:03Z","data":{"painpoints":[],"observations":["upstream count 24 (>= 5 MIN threshold); newest upstream subject: 'Merge pull request #848 from fabro-sh/rust-boundary' — route Merge needed, infra-only upstream merge","revisor backlog: 01M25R832HP615J291N72FHNCS (develop succeeded, PR #123, completed 2026-09-10T15:03Z, newer than newest revisor run 01M25PC202TRD3GAB27G77Q120 completed 13:10Z); next revisor pass should burn this down","develop run 01M25VVK131JTQB3BRBPAV0DWR (14:34Z) failed and is archived — no revisor signal expected for it; next surveyor should not mistake it for backlog"]}}
