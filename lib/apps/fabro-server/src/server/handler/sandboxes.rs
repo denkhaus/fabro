@@ -148,9 +148,9 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
         let body = body_json(response).await;
-        assert_eq!(body["data"][0]["id"], "docker-native-id");
+        assert_eq!(body["data"][0]["status"]["id"], "docker-native-id");
         assert_eq!(body["data"][0]["provider"], "docker");
-        assert_eq!(body["data"][0]["state"], "running");
+        assert_eq!(body["data"][0]["status"]["state"], "running");
         assert_eq!(body["meta"]["provider_errors"], json!([]));
     }
 
@@ -169,7 +169,7 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
         let body = body_json(response).await;
-        assert_eq!(body["id"], "native-id");
+        assert_eq!(body["status"]["id"], "native-id");
         assert_eq!(body["provider"], "daytona");
     }
 

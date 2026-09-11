@@ -26,7 +26,7 @@ use sandbox_driver::{
 use tokio::sync::OnceCell;
 
 use crate::driver::{ConnectedProvider, ProviderConnectOptions, connect_provider};
-use crate::{details, managed_labels};
+use crate::managed_labels;
 
 /// The sandboxes fabro manages, by provider.
 #[derive(Clone, Default)]
@@ -206,8 +206,11 @@ impl InventoryEntry {
                 crate::Error::context(format!("Failed to list {} sandboxes", self.kind), error)
             })?;
         Ok(statuses
-            .iter()
-            .map(|status| details::info_from_status(&self.kind, status))
+            .into_iter()
+            .map(|status| SandboxInfo {
+                provider: self.kind.clone(),
+                status,
+            })
             .collect())
     }
 
@@ -240,7 +243,10 @@ impl InventoryEntry {
         if status.state == SandboxState::Deleted {
             return Ok(None);
         }
-        Ok(Some(details::info_from_status(&self.kind, &status)))
+        Ok(Some(SandboxInfo {
+            provider: self.kind.clone(),
+            status,
+        }))
     }
 }
 
@@ -330,7 +336,7 @@ mod tests {
 
         let response = inventory.list_managed().await;
 
-        let mut ids: Vec<_> = response.data.iter().map(|s| s.id.as_str()).collect();
+        let mut ids: Vec<_> = response.data.iter().map(|s| s.status.id.as_str()).collect();
         ids.sort_unstable();
         assert_eq!(ids, ["daytona-1", "docker-1"]);
         assert!(response.meta.provider_errors.is_empty());
@@ -375,7 +381,7 @@ mod tests {
             .await
             .expect("one provider matches");
 
-        assert_eq!(sandbox.id, "native-id");
+        assert_eq!(sandbox.status.id.as_str(), "native-id");
         assert_eq!(sandbox.provider, SandboxProviderKind::DAYTONA);
     }
 

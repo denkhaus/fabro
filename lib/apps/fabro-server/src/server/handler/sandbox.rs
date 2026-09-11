@@ -1326,6 +1326,17 @@ mod retrieve_sandbox_tests {
         run_id: &RunId,
         provider: &str,
     ) {
+        append_sandbox_initialized_in(run_store, run_id, provider, "/workspace").await;
+    }
+
+    /// A local sandbox reconnects by attaching to its working directory, so
+    /// a test that reaches one records a directory that exists.
+    async fn append_sandbox_initialized_in(
+        run_store: &fabro_store::RunDatabase,
+        run_id: &RunId,
+        provider: &str,
+        working_directory: &str,
+    ) {
         let payload = fabro_store::EventPayload::new(
             json!({
                 "id": "evt-sandbox-init",
@@ -1335,7 +1346,7 @@ mod retrieve_sandbox_tests {
                 "properties": {
                     "provider": provider,
                     "id": format!("{provider}:sandbox-id"),
-                    "working_directory": "/workspace",
+                    "working_directory": working_directory,
                 },
             }),
             run_id,
@@ -1469,7 +1480,11 @@ mod retrieve_sandbox_tests {
             .await
             .expect("test run should be creatable");
         append_run_created(&run_store, &run_id).await;
-        append_sandbox_initialized(&run_store, &run_id, "local").await;
+        // A record written before local sandboxes had directory-derived
+        // ids: the id is recomputed from the directory on reconnect.
+        let workspace = tempfile::tempdir().expect("scratch directory");
+        let working_directory = workspace.path().to_str().expect("utf-8").to_owned();
+        append_sandbox_initialized_in(&run_store, &run_id, "local", &working_directory).await;
 
         let response = app
             .oneshot(req_get(&format!("/api/v1/runs/{run_id}/sandbox")))
@@ -1481,15 +1496,19 @@ mod retrieve_sandbox_tests {
         assert_eq!(body["sandbox"]["runtime"]["id"], "local:sandbox-id");
         assert_eq!(
             body["sandbox"]["runtime"]["working_directory"],
-            "/workspace"
+            working_directory
         );
-        assert_eq!(body["state"], "running");
-        assert!(body.get("name").is_none());
+        assert_eq!(body["status"]["state"], "running");
+        assert_eq!(body["status"]["workspace_ownership"], "designated");
+        assert!(
+            body["status"]["id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("host-dir-")),
+            "{}",
+            body["status"]["id"]
+        );
+        assert!(body.get("state").is_none(), "the status is not flattened");
         assert!(body.get("identifier").is_none());
-        assert!(body["resources"].is_object());
-        assert_eq!(body["network"]["egress"]["mode"], "unknown");
-        assert_eq!(body["network"]["ingress"]["mode"], "unknown");
-        assert!(body["timestamps"].is_object());
     }
 
     #[tokio::test]
@@ -1503,7 +1522,14 @@ mod retrieve_sandbox_tests {
             .await
             .expect("test run should be creatable");
         append_run_created(&run_store, &run_id).await;
-        append_sandbox_initialized(&run_store, &run_id, "local").await;
+        let workspace = tempfile::tempdir().expect("scratch directory");
+        append_sandbox_initialized_in(
+            &run_store,
+            &run_id,
+            "local",
+            workspace.path().to_str().expect("utf-8"),
+        )
+        .await;
 
         let response = app
             .oneshot(req_post(&format!("/api/v1/runs/{run_id}/sandbox/vnc")))

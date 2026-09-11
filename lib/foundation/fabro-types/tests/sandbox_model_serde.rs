@@ -1,10 +1,8 @@
-use std::collections::BTreeMap;
-
-use chrono::{TimeZone, Utc};
 use fabro_types::{
     RunSandbox, RunSandboxInstance, RunSandboxPlan, RunSandboxRuntime, SandboxDetails,
-    SandboxNetwork, SandboxProviderKind, SandboxResources, SandboxState, SandboxTimestamps,
+    SandboxProviderKind,
 };
+use sandbox_driver::{SandboxId, SandboxState, SandboxStatus};
 use serde_json::json;
 
 #[test]
@@ -72,9 +70,19 @@ fn run_sandbox_ready_requires_instance() {
 }
 
 #[test]
-fn sandbox_details_requires_canonical_id_and_working_directory() {
+fn sandbox_details_keep_the_record_beside_the_status() {
+    let mut status = SandboxStatus::new(
+        SandboxId::try_new("daytona-sandbox-name").unwrap(),
+        SandboxState::Running,
+    );
+    status.provider_state = "started".to_string();
+    status.region = Some("us".to_string());
+    status.web_url = Some(
+        "https://app.daytona.io/dashboard/sandboxes?sandboxId=ad65029a-2d01-421e-8936-49451653fcd9"
+            .to_string(),
+    );
     let details = SandboxDetails {
-        sandbox:      RunSandboxInstance {
+        sandbox: RunSandboxInstance {
             provider: SandboxProviderKind::DAYTONA,
             image:    Some("ubuntu:24.04".to_string()),
             snapshot: None,
@@ -90,24 +98,7 @@ fn sandbox_details_requires_canonical_id_and_working_directory() {
                 primary_repo_link: None,
             },
         },
-        state:        SandboxState::Running,
-        native_state: Some("started".to_string()),
-        region:       Some("us".to_string()),
-        web_url:      Some(
-            "https://app.daytona.io/dashboard/sandboxes?sandboxId=ad65029a-2d01-421e-8936-49451653fcd9"
-                .to_string(),
-        ),
-        resources:    SandboxResources {
-            cpu_cores:    Some(2.0),
-            memory_bytes: Some(4 * 1024 * 1024 * 1024),
-            disk_bytes:   None,
-        },
-        network:      SandboxNetwork::unknown(),
-        labels:       BTreeMap::from([("run".to_string(), "abc".to_string())]),
-        timestamps:   SandboxTimestamps {
-            created_at:       Some(Utc.with_ymd_and_hms(2026, 5, 9, 12, 0, 0).unwrap()),
-            last_activity_at: None,
-        },
+        status,
     };
 
     let value = serde_json::to_value(&details).unwrap();
@@ -127,12 +118,11 @@ fn sandbox_details_requires_canonical_id_and_working_directory() {
         "/home/daytona/repos"
     );
     assert_eq!(
-        value["web_url"],
+        value["status"]["web_url"],
         "https://app.daytona.io/dashboard/sandboxes?sandboxId=ad65029a-2d01-421e-8936-49451653fcd9"
     );
-    assert_eq!(value["network"]["egress"]["mode"], "unknown");
-    assert_eq!(value["network"]["ingress"]["mode"], "unknown");
-    assert!(value.get("name").is_none());
+    assert_eq!(value["status"]["provider_state"], "started");
+    assert_eq!(value["status"]["network"], serde_json::Value::Null);
     assert!(value.get("identifier").is_none());
 }
 

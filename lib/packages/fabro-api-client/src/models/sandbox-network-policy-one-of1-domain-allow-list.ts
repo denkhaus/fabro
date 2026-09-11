@@ -14,12 +14,6 @@
 
 
 
-/**
- * Compute resources of a sandbox, in the units the field names give. A field is null when the provider does not report a value or applies its default.
- */
-export interface SandboxResources {
-    'cpu_cores'?: number | null;
-    'memory_mb'?: number | null;
-    'disk_mb'?: number | null;
-    'gpus'?: number | null;
+export interface SandboxNetworkPolicyOneOf1DomainAllowList {
+    'domains': Array<string>;
 }

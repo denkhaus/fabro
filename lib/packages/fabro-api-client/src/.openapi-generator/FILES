@@ -432,11 +432,14 @@ models/sandbox-details.ts
 models/sandbox-file-entry.ts
 models/sandbox-file-list-response.ts
 models/sandbox-info.ts
+models/sandbox-kind.ts
 models/sandbox-list-meta.ts
 models/sandbox-list-response.ts
-models/sandbox-network-policy-mode.ts
+models/sandbox-network-policy-one-of-cidr-allow-list.ts
+models/sandbox-network-policy-one-of.ts
+models/sandbox-network-policy-one-of1-domain-allow-list.ts
+models/sandbox-network-policy-one-of1.ts
 models/sandbox-network-policy.ts
-models/sandbox-network.ts
 models/sandbox-plugin-settings.ts
 models/sandbox-provider-lookup-error.ts
 models/sandbox-resources.ts
@@ -445,7 +448,8 @@ models/sandbox-service-list-meta.ts
 models/sandbox-service-list-response.ts
 models/sandbox-service.ts
 models/sandbox-state.ts
-models/sandbox-timestamps.ts
+models/sandbox-status.ts
+models/sandbox-workspace-ownership.ts
 models/save-query-request.ts
 models/saved-query.ts
 models/secret-list-response.ts

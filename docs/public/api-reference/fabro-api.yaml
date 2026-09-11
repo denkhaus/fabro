@@ -3907,7 +3907,7 @@ paths:
       operationId: retrieveRunSandbox
       tags: [Human-in-the-Loop]
       summary: Retrieve Run Sandbox Details
-      description: Returns provider-neutral details about the sandbox owned by this run, including identity, normalized state, image/snapshot, resources, labels, and timestamps.
+      description: Returns the sandbox owned by this run as fabro's record of it plus the sandbox driver's status (identity, state, image or snapshot, resources, network policy, labels, and timestamps).
       parameters:
         - $ref: "#/components/parameters/RunId"
       responses:
@@ -13875,179 +13875,182 @@ components:
           example: docker exec -it fabro-run-01HY0000000000000000000000 sh -lc 'cd /workspace/fabro && exec sh -l'
 
     SandboxState:
-      description: Normalized sandbox lifecycle state used by the control plane and UI. The original provider-specific state string is preserved in `native_state`.
+      description: The sandbox driver's lifecycle state for a sandbox. The provider's own state string is preserved in `SandboxStatus.provider_state`. A reader must treat a value it does not know as `unknown`.
       type: string
       enum:
-        - unknown
-        - provisioning
+        - creating
         - starting
         - running
         - stopping
         - stopped
+        - pausing
         - paused
-        - deleting
-        - deleted
+        - resuming
+        - archiving
         - archived
         - restoring
         - resizing
+        - forking
+        - snapshotting
+        - deleting
+        - deleted
         - error
+        - unknown
+
+    SandboxKind:
+      description: The kind of isolation a sandbox was provisioned with, as observed by the driver. Not an isolation guarantee.
+      type: string
+      enum:
+        - container
+        - virtual_machine
+        - unknown
+
+    SandboxWorkspaceOwnership:
+      description: Who owns a local sandbox's workspace directory. `designated` is a caller-owned directory that deleting the sandbox never touches; `managed` is a directory the driver created and removes.
+      type: string
+      enum:
+        - designated
+        - managed
 
     SandboxResources:
-      description: Resource configuration for a sandbox. Fields are nullable when the provider does not surface a value or no limit is configured.
+      description: Compute resources of a sandbox, in the units the field names give. A field is null when the provider does not report a value or applies its default.
       type: object
       properties:
         cpu_cores:
-          type: number
-          format: double
-          description: Configured CPU cores. Null when unavailable.
-        memory_bytes:
-          type: integer
+          type: ["integer", "null"]
           format: int64
           minimum: 0
-          description: Memory limit in bytes. Null when unavailable or unlimited.
-        disk_bytes:
-          type: integer
+        memory_mb:
+          type: ["integer", "null"]
           format: int64
           minimum: 0
-          description: Disk size in bytes. Null when unavailable.
-
-    SandboxNetworkPolicyMode:
-      description: Provider-neutral public-network policy for one direction.
-      type: string
-      enum:
-        - unknown
-        - open
-        - blocked
-        - cidr_allow_list
-        - essentials_only
+        disk_mb:
+          type: ["integer", "null"]
+          format: int64
+          minimum: 0
+        gpus:
+          type: ["integer", "null"]
+          format: int64
+          minimum: 0
 
     SandboxNetworkPolicy:
-      description: Public-network policy for one direction.
+      description: The network policy in force for a sandbox. A policy without parameters is its name; an allow list carries its entries.
+      oneOf:
+        - type: string
+          enum:
+            - provider_default
+            - allow_all
+            - block
+        - type: object
+          required: [cidr_allow_list]
+          properties:
+            cidr_allow_list:
+              type: object
+              required: [cidrs]
+              properties:
+                cidrs:
+                  type: array
+                  items:
+                    type: string
+        - type: object
+          required: [domain_allow_list]
+          properties:
+            domain_allow_list:
+              type: object
+              required: [domains]
+              properties:
+                domains:
+                  type: array
+                  items:
+                    type: string
+
+    SandboxStatus:
+      description: What the sandbox driver reports about a sandbox. Only `id` and `state` are always present; every other field is null or empty when the provider does not report it.
       type: object
       required:
-        - mode
-        - cidrs
+        - id
+        - state
       properties:
-        mode:
-          $ref: "#/components/schemas/SandboxNetworkPolicyMode"
-        cidrs:
-          type: array
-          items:
+        id:
+          type: string
+          description: The provider's stable identifier for the sandbox.
+        name:
+          type: ["string", "null"]
+          description: The provider's display name, which is not the stable identifier.
+        state:
+          $ref: "#/components/schemas/SandboxState"
+        provider_state:
+          type: string
+          default: ""
+          description: The provider's own state string, for display and debugging.
+        error_reason:
+          type: ["string", "null"]
+        resources:
+          oneOf:
+            - $ref: "#/components/schemas/SandboxResources"
+            - type: "null"
+        sandbox_kind:
+          oneOf:
+            - $ref: "#/components/schemas/SandboxKind"
+            - type: "null"
+        region:
+          type: ["string", "null"]
+          description: The provider region or target the sandbox runs in.
+        labels:
+          type: object
+          additionalProperties:
             type: string
-          description: CIDR entries when `mode` is `cidr_allow_list`; empty for other modes.
-
-    SandboxNetwork:
-      description: Provider-neutral public-network policy for sandbox egress and ingress.
-      type: object
-      required:
-        - egress
-        - ingress
-      properties:
-        egress:
-          $ref: "#/components/schemas/SandboxNetworkPolicy"
-        ingress:
-          $ref: "#/components/schemas/SandboxNetworkPolicy"
-
-    SandboxTimestamps:
-      description: Lifecycle timestamps for a sandbox. Fields are nullable when the provider does not surface a value.
-      type: object
-      properties:
+          description: Provider-stored labels, including fabro's ownership labels.
+        image:
+          type: ["string", "null"]
+          description: The image the sandbox runs, when the provider knows it (a Docker container's image reference).
+        snapshot:
+          type: ["string", "null"]
+          description: The snapshot the sandbox was created from, when the provider knows it (a Daytona snapshot name).
+        network:
+          oneOf:
+            - $ref: "#/components/schemas/SandboxNetworkPolicy"
+            - type: "null"
+          description: The network policy in force, when the provider can read it back.
+        workspace_ownership:
+          oneOf:
+            - $ref: "#/components/schemas/SandboxWorkspaceOwnership"
+            - type: "null"
+          description: Local sandboxes only.
+        web_url:
+          type: ["string", "null"]
+          description: The provider's console page for the sandbox, when it has one.
         created_at:
-          type: string
+          type: ["string", "null"]
           format: date-time
-          description: When the sandbox was created.
-        last_activity_at:
-          type: string
+        updated_at:
+          type: ["string", "null"]
           format: date-time
-          description: Most recent activity timestamp reported by the provider.
+          description: The provider's most recent activity or update timestamp for the sandbox.
 
     SandboxDetails:
-      description: Provider-neutral details about the sandbox owned by a run.
+      description: The sandbox owned by a run, as fabro's record of it and the sandbox driver's status.
       type: object
       required:
         - sandbox
-        - state
-        - resources
-        - network
-        - labels
-        - timestamps
+        - status
       properties:
         sandbox:
           $ref: "#/components/schemas/RunSandboxInstance"
-        state:
-          $ref: "#/components/schemas/SandboxState"
-        native_state:
-          type: ["string", "null"]
-          description: Original provider state string before normalization. Display/debugging only; UI behavior keys off `state`.
-        region:
-          type: ["string", "null"]
-          description: Provider region or target. Null for local-style providers.
-        web_url:
-          type: ["string", "null"]
-          description: Provider dashboard URL for this sandbox when available.
-        resources:
-          $ref: "#/components/schemas/SandboxResources"
-        network:
-          $ref: "#/components/schemas/SandboxNetwork"
-        labels:
-          type: object
-          additionalProperties:
-            type: string
-          description: Provider-reported labels.
-        timestamps:
-          $ref: "#/components/schemas/SandboxTimestamps"
+        status:
+          $ref: "#/components/schemas/SandboxStatus"
 
     SandboxInfo:
-      description: Provider-backed inventory record for a Fabro-managed sandbox.
+      description: One sandbox of fabro's provider-backed inventory, as the provider fabro connected it through and the sandbox driver's status.
       type: object
       required:
         - provider
-        - id
-        - state
-        - resources
-        - network
-        - labels
-        - timestamps
+        - status
       properties:
         provider:
           $ref: "#/components/schemas/SandboxProviderKind"
-        id:
-          type: string
-          description: Provider-native sandbox id.
-        display_name:
-          type: ["string", "null"]
-          description: Provider display name when distinct from the native id.
-        state:
-          $ref: "#/components/schemas/SandboxState"
-        native_state:
-          type: ["string", "null"]
-          description: Original provider state string before normalization. Display/debugging only; UI behavior keys off `state`.
-        image:
-          type: ["string", "null"]
-          description: Provider image when surfaced by the sandbox provider.
-        snapshot:
-          type: ["string", "null"]
-          description: Provider snapshot when surfaced by the sandbox provider.
-        region:
-          type: ["string", "null"]
-          description: Provider region or target. Null for local-style providers.
-        web_url:
-          type: ["string", "null"]
-          description: Provider dashboard URL for this sandbox when available.
-        working_directory:
-          type: ["string", "null"]
-          description: Provider-reported or Fabro-default working directory when available.
-        resources:
-          $ref: "#/components/schemas/SandboxResources"
-        network:
-          $ref: "#/components/schemas/SandboxNetwork"
-        labels:
-          type: object
-          additionalProperties:
-            type: string
-          description: Provider-reported labels.
-        timestamps:
-          $ref: "#/components/schemas/SandboxTimestamps"
+        status:
+          $ref: "#/components/schemas/SandboxStatus"
 
     SandboxProviderLookupError:
       description: Provider error captured during fail-soft sandbox inventory lookup.

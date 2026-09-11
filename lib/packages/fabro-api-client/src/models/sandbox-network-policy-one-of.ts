@@ -15,15 +15,8 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { RunSandboxInstance } from './run-sandbox-instance';
-// May contain unused imports in some cases
-// @ts-ignore
-import type { SandboxStatus } from './sandbox-status';
+import type { SandboxNetworkPolicyOneOfCidrAllowList } from './sandbox-network-policy-one-of-cidr-allow-list';
 
-/**
- * The sandbox owned by a run, as fabro\'s record of it and the sandbox driver\'s status.
- */
-export interface SandboxDetails {
-    'sandbox': RunSandboxInstance;
-    'status': SandboxStatus;
+export interface SandboxNetworkPolicyOneOf {
+    'cidr_allow_list': SandboxNetworkPolicyOneOfCidrAllowList;
 }
