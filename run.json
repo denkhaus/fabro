@@ -482,7 +482,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-11T20:37:53.831691799Z",
-  "last_event_at": "2026-09-11T20:47:50.653131018Z",
+  "last_event_at": "2026-09-11T20:47:54.943454053Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -654,9 +654,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 149,
       "checkpoint": {
-        "timestamp": "2026-09-11T20:47:50.667523391Z",
+        "timestamp": "2026-09-11T20:47:54.942832216Z",
         "current_node": "analyze",
         "completed_nodes": [
           "start",
@@ -665,15 +665,12 @@
         ],
         "node_retries": {},
         "context_values": {
-          "thread.start.current_node": "select",
           "outcome": "failed",
-          "last_response": "Run selected: develop run `01M292T3YZ3B3YXXPT1R7F82XK` — it is the newest terminal run overall (created 2026-09-11T20:33), unrevised (no marker in `.fabro/revisions/`), `sandbox_available: true`, su",
-          "response.select": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.select",
-            "chars": 1436,
-            "preview": "Run selected: develop run `01M292T3YZ3B3YXXPT1R7F82XK` — it is the newest terminal run overall (created 2026-09-11T20:33), unrevised (no marker in `.fabro/revisions/`), `sandbox_available: true`, su"
-          },
+          "revisor_target_status": "succeeded",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.start": 0,
+          "failure_signature": "analyze|deterministic|output schema validation failed after <n> repair attempt(s)",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -681,39 +678,50 @@
               "82 runs listed total; 81 blocked (81 stale-evidence via version drift or absent version, 0 additionally no live sandbox) — merge-upstream candidate 01M26HBHB8NRCK4C9CMESX7MZ9 is fresh but older, stays unrevised for the next pass"
             ]
           },
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "failure_signature": "analyze|deterministic|output schema validation failed after <n> repair attempt(s)",
-          "internal.seed_cycle_anchor": "01M292T3YZ3B3YXXPT1R7F82XK",
-          "last_stage": "select",
-          "revisor_target_wall": "1.3 min",
-          "graph.goal": "Improve the develop workflow from run evidence: inspect the freshest unrevised run via Ask-Fabro (ADR-0015: one revision per invocation, newest-first, stale-evidence runs skipped), distill actionable seeds with a basis line, file them for develop to implement",
-          "internal.thread_id": "select",
-          "internal.work_dir": "/workspace/fabro",
-          "graph.max_node_visits": "30",
-          "thread.select.current_node": "analyze",
-          "internal.fidelity": "compact",
-          "current_node": "analyze",
-          "internal.run_id": "01M29305HYN6144K9FSKZ8TGRC",
+          "internal.exit_kind": "soft",
           "internal.retry_count.analyze": 0,
-          "graph.inspects": "develop,merge-upstream",
+          "preferred_label": "Run selected",
+          "graph.rankdir": "LR",
           "seed_cycles": {
             "select": 1,
             "analyze": 1
           },
-          "internal.retry_count.select": 0,
-          "revisor_target_workflow_version": "e825d8c827ce15defe0aa57d3586b0f369cab48cc7fe711d526776762f442aa1",
-          "revisor_target_run_id": "01M292T3YZ3B3YXXPT1R7F82XK",
-          "preferred_label": "Run selected",
+          "internal.fidelity": "compact",
+          "thread.select.current_node": "analyze",
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 1436,
+            "preview": "Run selected: develop run `01M292T3YZ3B3YXXPT1R7F82XK` — it is the newest terminal run overall (created 2026-09-11T20:33), unrevised (no marker in `.fabro/revisions/`), `sandbox_available: true`, su"
+          },
+          "last_stage": "select",
+          "current_node": "analyze",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "graph.inspects": "develop,merge-upstream",
+          "graph.max_node_visits": "30",
+          "internal.seed_cycle_anchor": "01M292T3YZ3B3YXXPT1R7F82XK",
+          "thread.start.current_node": "select",
           "revisor_target_title": "Develop one seed per run (PR #128 merged)",
-          "graph.preamble_budget_kb": "24",
-          "internal.retry_count.start": 0,
-          "internal.exit_kind": "soft",
-          "internal.node_visit_count": 1,
+          "internal.retry_count.select": 0,
+          "revisor_target_run_id": "01M292T3YZ3B3YXXPT1R7F82XK",
           "failure_class": "deterministic",
-          "revisor_target_status": "succeeded",
-          "graph.rankdir": "LR"
+          "revisor_target_workflow_version": "e825d8c827ce15defe0aa57d3586b0f369cab48cc7fe711d526776762f442aa1",
+          "internal.thread_id": "select",
+          "last_response": "Run selected: develop run `01M292T3YZ3B3YXXPT1R7F82XK` — it is the newest terminal run overall (created 2026-09-11T20:33), unrevised (no marker in `.fabro/revisions/`), `sandbox_available: true`, su",
+          "internal.work_dir": "/workspace/fabro",
+          "revisor_target_wall": "1.3 min",
+          "graph.preamble_budget_kb": "24",
+          "internal.run_id": "01M29305HYN6144K9FSKZ8TGRC"
         },
         "node_outcomes": {
+          "analyze": {
+            "status": "failed",
+            "failure": {
+              "message": "output schema validation failed after 2 repair attempt(s)",
+              "category": "deterministic"
+            },
+            "usage": null
+          },
           "select": {
             "status": "succeeded",
             "preferred_label": "Run selected",
@@ -761,30 +769,106 @@
               "active_time_ms": 34340
             }
           },
-          "analyze": {
-            "status": "failed",
-            "failure": {
-              "message": "output schema validation failed after 2 repair attempt(s)",
-              "category": "deterministic"
-            },
-            "usage": null
-          },
           "start": {
             "status": "succeeded",
             "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "f8395b216381c7db3dc5c4286fb605cb01ec88a4",
+        "loop_failure_signatures": {
+          "analyze|deterministic|output schema validation failed after <n> repair attempt(s)": 1
+        },
         "node_visits": {
           "start": 1,
           "analyze": 1,
           "select": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/reviews/develop/01M292T3YZ3B3YXXPT1R7F82XK.md b/.fabro/reviews/develop/01M292T3YZ3B3YXXPT1R7F82XK.md\nnew file mode 100644\nindex 00000000..6bd5c460\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M292T3YZ3B3YXXPT1R7F82XK.md\n@@ -0,0 +1,51 @@\n+# Improve review — run 01M292T3YZ3B3YXXPT1R7F82XK\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (1.3 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-11 20:39+0000 by revisor `fabro_ask`\n+\n+---\n+\n+All evidence below is from this run's event stream (`fabro_run_events`, seq numbers cited), the run projection, and the worker log. Context: this was a **bookkeeping-only run** — the planner found top seed fabro-7893 already fixed in base (65d17645, PRs #126/#127), superseded-closed it, and exited via \"Already landed\" without ever running implementer/tester/reviewer. Total: 56 s active wall, 35 s inference, $0.114, 47,396 input / 911 output tokens, diff = 2 loop files (journal + `.seeds/issues.jsonl`), 3 insertions.\n+\n+What already worked and should be kept: the `planner -> exit [label=\"Already landed\"]` edge plus the superseded-close exception (fabro-d183) saved an entire implement/gate/review cycle here, and the planner batched tool calls in parallel every turn (seq 31–32, 39–40, 48–49). No change needed there.\n+\n+## Recommendations, by expected impact\n+\n+**1. Bound the planner's two recon firehoses — `prompts/planner.md` steps 1 and 4**\n+- What happened: `sd ready --assignee fabro --limit 200` returned **28,211 bytes / 200 seeds with `stdout_truncated: true`** (seq 33), and `fabro_runs_list` returned **76 full run JSON records** (seq 35). The next LLM turn's input jumped 14,338 → 43,559 tokens (conversation category 5,411 → 32,964) and cost $0.047 — **41% of the entire run's cost in one turn** — to answer two questions that needed ~30 lines (\"top few candidates\" and \"any open PR / non-terminal sibling\").\n+- Change: in `planner.md`, render `sd ready` through a top-N projection (id, priority, title only; widen only on priority ties), and mandate `fabro_runs_list` with a `created_since` window (the tool already accepts it) plus self-exclusion instead of enumerating all history.\n+- Effect: ~40–50% input-token cut per planner pass on every develop run (~$0.05 here), faster first turns. This is live evidence for already-filed seeds fabro-c3b4 and fabro-6b58 — prioritize them.\n+\n+**2. Fast-path bookkeeping-only runs through publish — engine postlude / `workflow.fabro` exit**\n+- What happened: the run's entire product is a 3-line JSONL edit, yet a full PR #128 was opened (seq 75) with `auto_merge=true` under settings that route PRs through the project gate — a gate the tester node's own comment prices at **~15 min worst-case cold at 8 CPU** for a Rust build/clippy/test run that cannot be affected by a `.seeds` line edit.\n+- Change: when the run diff intersects only loop-asset paths (`.fabro/`, `.seeds/`), mark the PR `publish-eligible` with a gate-skipping label (or merge immediately without checks). Keep the PR itself — it is the delivery vehicle for the tracker close.\n+- Effect: saves up to ~15 min of CI per bookkeeping run and keeps the PR queue clean of no-code entries. Cleanest evidence case yet for filed seed fabro-9f97.\n+\n+**3. Trim the planner's fixed prompt + memory overhead — `prompts/planner.md` restructure (fabro-a08a), per-node memory scoping (fabro-9588)**\n+- What happened: the planner prompt is ~13 KB and was re-sent on all 5 LLM turns (seq 21, 28, 36, 45, 53); AGENTS.md memory added another ~7,000 tokens per turn (breakdown: memory 6,996). Net: **47k input tokens for 911 output tokens**. The memory also injected instructions the planner then silently skipped (turn-1 reasoning planned `sd prime`/`ml prime` per AGENTS.md; neither ran, no journal note).\n+- Change: split `planner.md` into a short decision ladder (goal names seed? → ready → in-flight → landed → claim) with the exception catalog (sd flag footguns, fs_hide, journal contract) as branch-triggered sections; scope memory per node so the planner doesn't carry implementer-oriented AGENTS.md content.\n+- Effect: fewer tokens per turn and fewer contradictions; bookkeeping passes like this one plausibly drop from 5 turns/35 s inference to 3 turns/~20 s.\n+\n+**4. Deduplicate prompt storage in the event stream — engine `run_event` emission (fabro-types/fabro-workflow)**\n+- What happened: the ~13 KB planner prompt is stored **three times** in this run's canonical events (graph definition inside `run.created` seq 1, `stage.prompt` seq 21, `agent.input` seq 27), and seq 1 additionally embeds the full prompts of nodes that never ran (implementer, reviewer — tens of KB). This is exactly the payload class that produced the 413/replay incidents (fabro-5082, and fabro-7893 itself was about replaying 70,628 stored events).\n+- Change: emit prompts by content hash/blob reference in `run.created`/`stage.prompt`, keep one rendered copy per stage.\n+- Effect: materially smaller canonical store, faster run-history activation replay, less 413 pressure — directly on the failure mode this repo spent today fighting.\n+\n+**5. Auto-stamp a painpoint when a tool output arrives truncated — engine tool-execution layer (fabro-7613 pattern)**\n+- What happened: `sd ready` came back `stdout_truncated: true` (seq 33) — textbook friction — yet the planner's journal reported `painpoints: []` (seq 62). The improve loop went blind at the exact moment friction occurred; the two relevant seeds (fabro-c3b4, fabro-6b58) had to be discovered by other means.\n+- Change: when the engine truncates a tool output observed by an agent stage, auto-append a journal painpoint line (or a run notice) naming the tool and byte count.\n+- Effect: the improve workflow gets systematic, non-voluntary friction data instead of depending on the model noticing its own discomfort.\n+\n+**6. Attack fixed startup overhead — engine sandbox clone cache + snapshot economy (fabro-c2ca, fabro-652d)**\n+- What happened: git clone took **42.8 s** (seq 8–9, before `run.started`), and three metadata snapshots cost 2.2 + 1.9 + 1.9 s (seq 15, 68, 77). On a 79 s created→completed run, **~49 s was fixed overhead** against 48 s of active work.\n+- Change: reuse a warm mirror of `denkhaus` between back-to-back develop runs (they run ~hourly per the runs list) and skip init/finalize snapshots for runs whose diff is loop-asset-only.\n+- Effect: roughly halve end-to-end latency for short runs; the conductor's throughput on trivial passes doubles.\n+\n+**7. Harden the PR-body generation contract — `pipeline::pull_request` (worker log)**\n+- What happened: the only warning in the whole run: `PR content structured generation failed; retrying once without strict JSON output` at 20:35:38 — the PR-title/body model (`zai:glm-4.7`) didn't return JSON on the strict first attempt; the fallback retry rescued it 14 s later.\n+- Change: since the retry-without-strict-JSON path already works, make it the default for PR content (it's prose, not routing), or validate-and-degrade in one step instead of a guaranteed-to-fail strict pass first.\n+- Effect: removes a guaranteed extra LLM round-trip (~10–15 s and a wasted call) on every run that opens a PR.\n+\n+One caveat on scope: stages implementer, tester, gatebounce, evidence, reviewer, and closeout never executed in this run, so nothing here measures their behavior — recommendations 1–4 and 6–7 are grounded in the planner stage, event stream, publish path, and timings only.\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 53,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-11T20:47:54.987816054Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 552633,
+      "inference_time_ms": 22147,
+      "tool_time_ms": 12193,
+      "active_time_ms": 34340
+    },
+    "failure": {
+      "reason": "soft_stop",
+      "detail": {
+        "message": "run parked at a soft exit (kind=\"soft\") — infrastructure could not finish; the next run re-enters autonomously",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "f8395b216381c7db3dc5c4286fb605cb01ec88a4",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "select",
+        "stage_label": "select",
+        "timing": {
+          "wall_time_ms": 34849,
+          "inference_time_ms": 22147,
+          "tool_time_ms": 12193,
+          "active_time_ms": 34340
+        },
+        "billing_usd_micros": 66279,
+        "retries": 0
+      },
+      {
+        "stage_id": "analyze",
+        "stage_label": "analyze",
+        "timing": {
+          "wall_time_ms": 505903,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "billing_usd_micros": 296339,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 90690,
+      "output_tokens": 10882,
+      "total_tokens": 402767,
+      "reasoning_tokens": 26443,
+      "cache_read_tokens": 274752,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 362618
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M29305HYN6144K9FSKZ8TGRC.jsonl b/.fabro/journal/01M29305HYN6144K9FSKZ8TGRC.jsonl\nnew file mode 100644\nindex 00000000..4ec08dab\n--- /dev/null\n+++ b/.fabro/journal/01M29305HYN6144K9FSKZ8TGRC.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M29305HYN6144K9FSKZ8TGRC\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T20:37:56Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M29305HYN6144K9FSKZ8TGRC\",\"node\":\"select\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-11T20:38:34Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected develop run 01M292T3YZ3B3YXXPT1R7F82XK (newest, fresh baseline e825d8c8, live sandbox, unrevised)\",\"82 runs listed total; 81 blocked (81 stale-evidence via version drift or absent version, 0 additionally no live sandbox) — merge-upstream candidate 01M26HBHB8NRCK4C9CMESX7MZ9 is fresh but older, stays unrevised for the next pass\"]}}\ndiff --git a/.fabro/reviews/develop/01M292T3YZ3B3YXXPT1R7F82XK.md b/.fabro/reviews/develop/01M292T3YZ3B3YXXPT1R7F82XK.md\nnew file mode 100644\nindex 00000000..6bd5c460\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M292T3YZ3B3YXXPT1R7F82XK.md\n@@ -0,0 +1,51 @@\n+# Improve review — run 01M292T3YZ3B3YXXPT1R7F82XK\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: succeeded (1.3 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-11 20:39+0000 by revisor `fabro_ask`\n+\n+---\n+\n+All evidence below is from this run's event stream (`fabro_run_events`, seq numbers cited), the run projection, and the worker log. Context: this was a **bookkeeping-only run** — the planner found top seed fabro-7893 already fixed in base (65d17645, PRs #126/#127), superseded-closed it, and exited via \"Already landed\" without ever running implementer/tester/reviewer. Total: 56 s active wall, 35 s inference, $0.114, 47,396 input / 911 output tokens, diff = 2 loop files (journal + `.seeds/issues.jsonl`), 3 insertions.\n+\n+What already worked and should be kept: the `planner -> exit [label=\"Already landed\"]` edge plus the superseded-close exception (fabro-d183) saved an entire implement/gate/review cycle here, and the planner batched tool calls in parallel every turn (seq 31–32, 39–40, 48–49). No change needed there.\n+\n+## Recommendations, by expected impact\n+\n+**1. Bound the planner's two recon firehoses — `prompts/planner.md` steps 1 and 4**\n+- What happened: `sd ready --assignee fabro --limit 200` returned **28,211 bytes / 200 seeds with `stdout_truncated: true`** (seq 33), and `fabro_runs_list` returned **76 full run JSON records** (seq 35). The next LLM turn's input jumped 14,338 → 43,559 tokens (conversation category 5,411 → 32,964) and cost $0.047 — **41% of the entire run's cost in one turn** — to answer two questions that needed ~30 lines (\"top few candidates\" and \"any open PR / non-terminal sibling\").\n+- Change: in `planner.md`, render `sd ready` through a top-N projection (id, priority, title only; widen only on priority ties), and mandate `fabro_runs_list` with a `created_since` window (the tool already accepts it) plus self-exclusion instead of enumerating all history.\n+- Effect: ~40–50% input-token cut per planner pass on every develop run (~$0.05 here), faster first turns. This is live evidence for already-filed seeds fabro-c3b4 and fabro-6b58 — prioritize them.\n+\n+**2. Fast-path bookkeeping-only runs through publish — engine postlude / `workflow.fabro` exit**\n+- What happened: the run's entire product is a 3-line JSONL edit, yet a full PR #128 was opened (seq 75) with `auto_merge=true` under settings that route PRs through the project gate — a gate the tester node's own comment prices at **~15 min worst-case cold at 8 CPU** for a Rust build/clippy/test run that cannot be affected by a `.seeds` line edit.\n+- Change: when the run diff intersects only loop-asset paths (`.fabro/`, `.seeds/`), mark the PR `publish-eligible` with a gate-skipping label (or merge immediately without checks). Keep the PR itself — it is the delivery vehicle for the tracker close.\n+- Effect: saves up to ~15 min of CI per bookkeeping run and keeps the PR queue clean of no-code entries. Cleanest evidence case yet for filed seed fabro-9f97.\n+\n+**3. Trim the planner's fixed prompt + memory overhead — `prompts/planner.md` restructure (fabro-a08a), per-node memory scoping (fabro-9588)**\n+- What happened: the planner prompt is ~13 KB and was re-sent on all 5 LLM turns (seq 21, 28, 36, 45, 53); AGENTS.md memory added another ~7,000 tokens per turn (breakdown: memory 6,996). Net: **47k input tokens for 911 output tokens**. The memory also injected instructions the planner then silently skipped (turn-1 reasoning planned `sd prime`/`ml prime` per AGENTS.md; neither ran, no journal note).\n+- Change: split `planner.md` into a short decision ladder (goal names seed? → ready → in-flight → landed → claim) with the exception catalog (sd flag footguns, fs_hide, journal contract) as branch-triggered sections; scope memory per node so the planner doesn't carry implementer-oriented AGENTS.md content.\n+- Effect: fewer tokens per turn and fewer contradictions; bookkeeping passes like this one plausibly drop from 5 turns/35 s inference to 3 turns/~20 s.\n+\n+**4. Deduplicate prompt storage in the event stream — engine `run_event` emission (fabro-types/fabro-workflow)**\n+- What happened: the ~13 KB planner prompt is stored **three times** in this run's canonical events (graph definition inside `run.created` seq 1, `stage.prompt` seq 21, `agent.input` seq 27), and seq 1 additionally embeds the full prompts of nodes that never ran (implementer, reviewer — tens of KB). This is exactly the payload class that produced the 413/replay incidents (fabro-5082, and fabro-7893 itself was about replaying 70,628 stored events).\n+- Change: emit prompts by content hash/blob reference in `run.created`/`stage.prompt`, keep one rendered copy per stage.\n+- Effect: materially smaller canonical store, faster run-history activation replay, less 413 pressure — directly on the failure mode this repo spent today fighting.\n+\n+**5. Auto-stamp a painpoint when a tool output arrives truncated — engine tool-execution layer (fabro-7613 pattern)**\n+- What happened: `sd ready` came back `stdout_truncated: true` (seq 33) — textbook friction — yet the planner's journal reported `painpoints: []` (seq 62). The improve loop went blind at the exact moment friction occurred; the two relevant seeds (fabro-c3b4, fabro-6b58) had to be discovered by other means.\n+- Change: when the engine truncates a tool output observed by an agent stage, auto-append a journal painpoint line (or a run notice) naming the tool and byte count.\n+- Effect: the improve workflow gets systematic, non-voluntary friction data instead of depending on the model noticing its own discomfort.\n+\n+**6. Attack fixed startup overhead — engine sandbox clone cache + snapshot economy (fabro-c2ca, fabro-652d)**\n+- What happened: git clone took **42.8 s** (seq 8–9, before `run.started`), and three metadata snapshots cost 2.2 + 1.9 + 1.9 s (seq 15, 68, 77). On a 79 s created→completed run, **~49 s was fixed overhead** against 48 s of active work.\n+- Change: reuse a warm mirror of `denkhaus` between back-to-back develop runs (they run ~hourly per the runs list) and skip init/finalize snapshots for runs whose diff is loop-asset-only.\n+- Effect: roughly halve end-to-end latency for short runs; the conductor's throughput on trivial passes doubles.\n+\n+**7. Harden the PR-body generation contract — `pipeline::pull_request` (worker log)**\n+- What happened: the only warning in the whole run: `PR content structured generation failed; retrying once without strict JSON output` at 20:35:38 — the PR-title/body model (`zai:glm-4.7`) didn't return JSON on the strict first attempt; the fallback retry rescued it 14 s later.\n+- Change: since the retry-without-strict-JSON path already works, make it the default for PR content (it's prose, not routing), or validate-and-degrade in one step instead of a guaranteed-to-fail strict pass first.\n+- Effect: removes a guaranteed extra LLM round-trip (~10–15 s and a wasted call) on every run that opens a PR.\n+\n+One caveat on scope: stages implementer, tester, gatebounce, evidence, reviewer, and closeout never executed in this run, so nothing here measures their behavior — recommendations 1–4 and 6–7 are grounded in the planner stage, event stream, publish path, and timings only.\n",
+      "summary": {
+        "files_changed": 2,
+        "additions": 53,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "soft"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -811,42 +895,6 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
-    "start@1": {
-      "first_event_seq": 16,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": null,
-        "failure_reason": null,
-        "timestamp": "2026-09-11T20:37:56.056657667Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-11T20:37:56.045441842Z",
-      "handler": "start",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 0,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "select@1": {
       "first_event_seq": 20,
       "prompt": null,
@@ -1097,7 +1145,12 @@
       "first_event_seq": 54,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "failed",
+        "notes": null,
+        "failure_reason": "output schema validation failed after 2 repair attempt(s)",
+        "timestamp": "2026-09-11T20:47:50.667088900Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -1112,8 +1165,12 @@
       "started_at": "2026-09-11T20:38:38.997811501Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 438792,
-      "live_tool_ms": 112287,
+      "timing": {
+        "wall_time_ms": 505903,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
       "usage": {
         "input_tokens": 54816,
         "output_tokens": 10350,
@@ -1328,7 +1385,79 @@
         "warnings": []
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "failed"
+    },
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-11T20:37:56.056657667Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-11T20:37:56.045441842Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 152,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-11T20:47:54.943454053Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-11T20:47:54.943340963Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
     }
   }
 }
