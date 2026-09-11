@@ -1,0 +1,8 @@
+diff --git a/.fabro/journal/01M292KC8C278M4B5EM9655K5B.jsonl b/.fabro/journal/01M292KC8C278M4B5EM9655K5B.jsonl
+new file mode 100644
+index 000000000..9c046b035
+--- /dev/null
++++ b/.fabro/journal/01M292KC8C278M4B5EM9655K5B.jsonl
+@@ -0,0 +1,2 @@
++{"$schema":"fabro-journal-v1","run_id":"01M292KC8C278M4B5EM9655K5B","node":"start","visit":1,"status":"succeeded","ts":"2026-09-11T20:32:07Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M292KC8C278M4B5EM9655K5B","node":"survey","visit":1,"status":"succeeded","ts":"2026-09-11T20:33:24Z","data":{"painpoints":[],"observations":["upstream count 0 (origin/denkhaus..upstream/main), newest upstream subject: 'Bump version to 0.353.0-nightly.0' — below MIN threshold 5, drift stays visible at 0","revisor backlog: none — every completed develop run has a paired revisor child sharing its parent id (newest pair: develop 01M21BG1TG9SNM4QAS2A33W6GF revised by 01M21E5PRBNZGDTSEC6RBTMT0X on 2026-09-08)","next surveyor: fork is fully in sync with upstream/main; route was Work purely by threshold, not by merge debt"]}}
