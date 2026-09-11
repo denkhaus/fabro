@@ -6,11 +6,10 @@
 //! through the handle itself. Nothing here knows which provider is behind
 //! the handle or whether it runs in-process or over the plugin wire.
 //!
-//! What stays fabro's: the exec ladder, the credential filter on explicit
-//! environment variables, and the run-facing conventions (`platform` names,
-//! grep line format, walk results relative to a caller-declared base). The
-//! driver reports lifecycle events itself, through the [`EventContext`] a
-//! sandbox is created or attached with.
+//! What stays fabro's: the exec ladder and the run-facing conventions
+//! (`platform` names, grep line format, walk results relative to a
+//! caller-declared base). The driver reports lifecycle events itself,
+//! through the [`EventContext`] a sandbox is created or attached with.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -70,7 +69,7 @@ pub async fn local_sandbox_with_events(
     sandbox.learn_platform().await?;
     Ok(sandbox)
 }
-use crate::exec::{ExplicitEnvPolicy, SandboxExec};
+use crate::exec::SandboxExec;
 use crate::sandbox::{self, PushError, PushReport, SandboxFile, SandboxWorkspaceLayout};
 
 /// Where a clone-based provider puts its files: the run works under
@@ -281,28 +280,25 @@ struct PendingCreate {
 
 /// A fabro sandbox backed by a sandbox-driver handle.
 pub struct RunSandbox {
-    kind:       SandboxProviderKind,
+    kind:      SandboxProviderKind,
     /// Set at construction for an existing sandbox, at `initialize` for a
     /// pending one.
-    handle:     OnceCell<Arc<dyn DriverHandle>>,
-    pending:    Option<PendingCreate>,
-    workspace:  Option<RepoWorkspace>,
-    env_policy: ExplicitEnvPolicy,
+    handle:    OnceCell<Arc<dyn DriverHandle>>,
+    pending:   Option<PendingCreate>,
+    workspace: Option<RepoWorkspace>,
     /// Where the driver reports the lifecycle of a sandbox this creates.
     /// Set before `initialize` on a pending sandbox; an existing handle
     /// already carries the context it was created or attached with.
-    events:     Option<EventContext>,
+    events:    Option<EventContext>,
     /// `(platform, os_version)` learned from the sandbox at initialize or
     /// start; unknown until then.
-    platform:   OnceLock<(String, String)>,
+    platform:  OnceLock<(String, String)>,
     /// The provider snapshot the sandbox was created from, when known.
-    snapshot:   OnceLock<String>,
+    snapshot:  OnceLock<String>,
 }
 
 impl RunSandbox {
-    /// Wraps a driver handle. `local` runs on the worker host, so explicit
-    /// environment variables pass the credential filter; every other kind
-    /// is isolated and takes the caller's environment as composed.
+    /// Wraps an existing driver handle as a sandbox of `kind`.
     #[must_use]
     pub fn new(kind: SandboxProviderKind, handle: Arc<dyn DriverHandle>) -> Self {
         let sandbox = Self::empty(kind);
@@ -357,17 +353,11 @@ impl RunSandbox {
     }
 
     fn empty(kind: SandboxProviderKind) -> Self {
-        let env_policy = if kind.is_local() {
-            ExplicitEnvPolicy::FilterSensitive
-        } else {
-            ExplicitEnvPolicy::TrustCaller
-        };
         Self {
             kind,
             handle: OnceCell::new(),
             pending: None,
             workspace: None,
-            env_policy,
             events: None,
             platform: OnceLock::new(),
             snapshot: OnceLock::new(),
@@ -402,7 +392,7 @@ impl RunSandbox {
     /// Fabro's exec policy over the driver's exec facet, working in the
     /// run's directory. Absent until a pending sandbox is initialized.
     pub fn exec(&self) -> crate::Result<SandboxExec<'_>> {
-        let mut exec = SandboxExec::new(self.handle()?.exec(), self.env_policy);
+        let mut exec = SandboxExec::new(self.handle()?.exec());
         if let Some(workspace) = &self.workspace {
             if let Some(dir) = workspace.execution_directory.get() {
                 exec = exec.with_working_dir(dir.clone());
@@ -540,7 +530,7 @@ impl RunSandbox {
                 let handle = self.handle()?;
                 // The clone names every directory it touches, so it runs
                 // without fabro's working-directory override.
-                let exec = SandboxExec::new(handle.exec(), self.env_policy);
+                let exec = SandboxExec::new(handle.exec());
                 let outcome = clone::clone_github_repo(
                     &self.kind,
                     handle.as_ref(),

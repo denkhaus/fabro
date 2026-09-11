@@ -202,7 +202,6 @@ mod tests {
     use sandbox_driver_testing::ScriptedSandbox;
 
     use super::*;
-    use crate::exec::ExplicitEnvPolicy;
 
     const ORIGIN: &str = "https://github.com/acme/widgets";
 
@@ -238,7 +237,7 @@ mod tests {
     }
 
     async fn clone_with(handle: &ScriptedSandbox, credentials: &RepoCredentials) -> CloneOutcome {
-        let exec = SandboxExec::new(handle.exec(), ExplicitEnvPolicy::TrustCaller);
+        let exec = SandboxExec::new(handle.exec());
         clone_github_repo(
             &SandboxProviderKind::DOCKER,
             handle,

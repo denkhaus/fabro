@@ -5,8 +5,8 @@
 //! module adds fabro's policy on the way in and fabro's reading of a result
 //! on the way out.
 //!
-//! A command runs as Bash source under `bash -c` with `BASH_ENV` blanked,
-//! and ends in one of three ways:
+//! A command runs as Bash source under `bash -c` with `BASH_ENV` blanked by
+//! the driver whatever the caller passed, and ends in one of three ways:
 //!
 //! - **timeout**: the spec's timeout fires and the provider runs the stop
 //!   ladder fabro asks for — `TERM`, then `KILL` after
@@ -22,15 +22,15 @@
 //! [`OutputSanitization::StripAll`]: terminal escape sequences and stray
 //! control characters never reach a result, a sink chunk, or a tail. Secret
 //! redaction stays fabro's job and happens only when a tail is rendered for
-//! events or logs ([`ExecResultExt`]). Explicit environment variables pass
-//! through a fail-closed secret filter under
-//! [`ExplicitEnvPolicy::FilterSensitive`], matching what the Host provider
-//! already does for inherited variables.
+//! events or logs ([`ExecResultExt`]). The explicit environment reaches the
+//! provider as the caller composed it: the driver filters credential-shaped
+//! names out of the *inherited* host environment itself and treats the
+//! spec's own variables as the deliberate channel for secrets, so fabro adds
+//! no filter of its own.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::time::Duration;
 
-use fabro_static::EnvVars;
 use fabro_types::{CommandTermination, ExecOutputTail};
 use sandbox_driver::{
     Exec, ExecControls, ExecFailure, ExecResult, ExecSpec, ExecStreamingResult, OutputSanitization,
@@ -47,50 +47,9 @@ pub const DEFAULT_STOP_GRACE: Duration = Duration::from_secs(2);
 /// renders, bounded so a runaway command cannot exhaust memory.
 pub const DEFAULT_RETAINED_OUTPUT_BYTES: usize = sandbox_driver::DEFAULT_BUFFER_BYTES;
 
-/// How explicit per-command environment variables are treated.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExplicitEnvPolicy {
-    /// Drop variables whose names look like credentials unless safelisted.
-    /// Used where the command runs on the worker host and the caller's env
-    /// may carry worker secrets.
-    FilterSensitive,
-    /// Pass every variable through. Used for isolated providers, where the
-    /// caller composed the environment deliberately.
-    TrustCaller,
-}
-
-/// Variables that look like credentials but are needed by ordinary tools.
-const ENV_SAFELIST: &[&str] = &[
-    EnvVars::PATH,
-    EnvVars::HOME,
-    EnvVars::USER,
-    EnvVars::SHELL,
-    EnvVars::LANG,
-    EnvVars::TERM,
-    EnvVars::TMPDIR,
-    EnvVars::GOPATH,
-    EnvVars::CARGO_HOME,
-    EnvVars::NVM_DIR,
-];
-
-/// Whether an environment variable name looks like a credential.
-#[must_use]
-pub fn is_sensitive_env_var(key: &str) -> bool {
-    if ENV_SAFELIST.contains(&key) {
-        return false;
-    }
-    let lower = key.to_lowercase();
-    lower.ends_with("_api_key")
-        || lower.ends_with("_secret")
-        || lower.ends_with("_token")
-        || lower.ends_with("_password")
-        || lower.ends_with("_credential")
-}
-
 /// Fabro's exec policy bound to one driver [`Exec`] facet.
 pub struct SandboxExec<'a> {
     exec:        &'a dyn Exec,
-    env_policy:  ExplicitEnvPolicy,
     stop_grace:  Duration,
     /// Where a command runs when the caller names no directory. `None`
     /// leaves the choice to the provider's own working directory.
@@ -99,10 +58,9 @@ pub struct SandboxExec<'a> {
 
 impl<'a> SandboxExec<'a> {
     #[must_use]
-    pub fn new(exec: &'a dyn Exec, env_policy: ExplicitEnvPolicy) -> Self {
+    pub fn new(exec: &'a dyn Exec) -> Self {
         Self {
             exec,
-            env_policy,
             stop_grace: DEFAULT_STOP_GRACE,
             working_dir: None,
         }
@@ -165,11 +123,11 @@ impl<'a> SandboxExec<'a> {
     /// `controls.sink` as it arrives.
     ///
     /// The policy fills what the spec leaves open: the stop grace, the
-    /// working directory, the text output policy, and the explicit
-    /// environment filter. The caller's `controls.term` is the `term` stop;
-    /// the provider runs the grace and the `kill` itself. Output beyond
-    /// `controls.retained_output_limit` (fabro's default when unset) is
-    /// drained and counted, not kept.
+    /// working directory, and the text output policy. The spec's environment
+    /// goes to the provider as the caller composed it. The caller's
+    /// `controls.term` is the `term` stop; the provider runs the grace and
+    /// the `kill` itself. Output beyond `controls.retained_output_limit`
+    /// (fabro's default when unset) is drained and counted, not kept.
     pub async fn run_streaming(
         &self,
         spec: ExecSpec,
@@ -200,7 +158,6 @@ impl<'a> SandboxExec<'a> {
         for (key, value) in env_vars.into_iter().flatten() {
             spec = spec.env_var(key, value);
         }
-        self.apply_env_policy(&mut spec.env);
         Ok(self.exec.spawn_stdio(&spec).await?)
     }
 
@@ -220,18 +177,7 @@ impl<'a> SandboxExec<'a> {
         if spec.output_sanitization == OutputSanitization::default() {
             spec.output_sanitization = OutputSanitization::StripAll;
         }
-        self.apply_env_policy(&mut spec.env);
         spec
-    }
-
-    /// The explicit environment after policy: credential-shaped names pass
-    /// only under `TrustCaller`. The driver's Bash helper blanks `BASH_ENV`
-    /// at launch whatever the caller passed, so a worker's startup file
-    /// never runs inside a sandboxed `bash -c`.
-    fn apply_env_policy(&self, env: &mut BTreeMap<String, String>) {
-        if self.env_policy == ExplicitEnvPolicy::FilterSensitive {
-            env.retain(|key, _| !is_sensitive_env_var(key));
-        }
     }
 }
 
@@ -371,15 +317,15 @@ mod tests {
             }
         }
 
-        fn exec(&self, policy: ExplicitEnvPolicy) -> SandboxExec<'_> {
+        fn exec(&self) -> SandboxExec<'_> {
             let _ = &self.provider;
-            SandboxExec::new(self.sandbox.exec(), policy)
+            SandboxExec::new(self.sandbox.exec())
         }
     }
 
     async fn run(fixture: &HostFixture, command: &str) -> ExecResult {
         fixture
-            .exec(ExplicitEnvPolicy::FilterSensitive)
+            .exec()
             .run(command, Some(Duration::from_secs(10)), None, None, None)
             .await
             .unwrap()
@@ -432,7 +378,7 @@ mod tests {
             .unwrap();
         let env = HashMap::from([(BASH_ENV_VAR.to_string(), startup.display().to_string())]);
         let result = fixture
-            .exec(ExplicitEnvPolicy::TrustCaller)
+            .exec()
             .run(
                 "echo body",
                 Some(Duration::from_secs(10)),
@@ -446,45 +392,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn filter_sensitive_drops_credential_shaped_explicit_variables() {
+    async fn explicit_variables_reach_the_command_as_composed() {
         let fixture = HostFixture::new().await;
         let env = HashMap::from([
-            ("FABRO_WORKER_TOKEN".to_string(), "leaked".to_string()),
+            ("FABRO_WORKER_TOKEN".to_string(), "deliberate".to_string()),
             ("MY_VAR".to_string(), "ok".to_string()),
         ]);
-        let filtered = fixture
-            .exec(ExplicitEnvPolicy::FilterSensitive)
+        let stdout = fixture
+            .exec()
             .run("env", Some(Duration::from_secs(10)), None, Some(&env), None)
             .await
             .unwrap()
             .stdout_lossy();
-        assert!(!filtered.contains("FABRO_WORKER_TOKEN=leaked"));
-        assert!(filtered.contains("MY_VAR=ok"));
-
-        let trusted = fixture
-            .exec(ExplicitEnvPolicy::TrustCaller)
-            .run("env", Some(Duration::from_secs(10)), None, Some(&env), None)
-            .await
-            .unwrap()
-            .stdout_lossy();
-        assert!(trusted.contains("FABRO_WORKER_TOKEN=leaked"));
-    }
-
-    #[test]
-    fn sensitive_name_classification_matches_the_worker_policy() {
-        for key in [
-            "OPENAI_API_KEY",
-            "DB_PASSWORD",
-            "AWS_SECRET",
-            "AUTH_TOKEN",
-            "MY_CREDENTIAL",
-            "FABRO_WORKER_TOKEN",
-        ] {
-            assert!(is_sensitive_env_var(key), "{key}");
-        }
-        for key in ["PATH", "HOME", "MY_VAR", "GITHUB_ACTOR"] {
-            assert!(!is_sensitive_env_var(key), "{key}");
-        }
+        assert!(stdout.contains("FABRO_WORKER_TOKEN=deliberate"), "{stdout}");
+        assert!(stdout.contains("MY_VAR=ok"), "{stdout}");
     }
 
     #[tokio::test]
@@ -492,7 +413,7 @@ mod tests {
         let fixture = HostFixture::new().await;
         let started = Instant::now();
         let result = fixture
-            .exec(ExplicitEnvPolicy::FilterSensitive)
+            .exec()
             .run(
                 "sleep 10",
                 Some(Duration::from_millis(200)),
@@ -515,7 +436,7 @@ mod tests {
         let fixture = HostFixture::new().await;
         let started = Instant::now();
         let result = fixture
-            .exec(ExplicitEnvPolicy::FilterSensitive)
+            .exec()
             .with_stop_grace(Duration::from_millis(300))
             .run(
                 "trap '' TERM; sleep 10",
@@ -542,7 +463,7 @@ mod tests {
             cancel.cancel();
         });
         let result = fixture
-            .exec(ExplicitEnvPolicy::FilterSensitive)
+            .exec()
             .run(
                 "sleep 10",
                 Some(Duration::from_secs(30)),
@@ -570,7 +491,7 @@ mod tests {
             })
         });
         let streaming = fixture
-            .exec(ExplicitEnvPolicy::FilterSensitive)
+            .exec()
             .run_streaming(
                 ExecSpec::bash("for i in $(seq 1 200); do echo line-$i; done")
                     .timeout(Duration::from_secs(10)),
@@ -598,7 +519,7 @@ mod tests {
         let fixture = HostFixture::new().await;
         let stdin = b"first line\n$(touch must-not-run)\nlast line".to_vec();
         let streaming = fixture
-            .exec(ExplicitEnvPolicy::FilterSensitive)
+            .exec()
             .run_streaming(
                 ExecSpec::bash("cat; test -e must-not-run && echo RAN")
                     .timeout(Duration::from_secs(10))
@@ -621,7 +542,7 @@ mod tests {
             })
         });
         let error = fixture
-            .exec(ExplicitEnvPolicy::FilterSensitive)
+            .exec()
             .run_streaming(
                 ExecSpec::bash("echo hello; sleep 5").timeout(Duration::from_secs(10)),
                 ExecControls {
@@ -642,11 +563,7 @@ mod tests {
     #[tokio::test]
     async fn stdio_process_round_trips_lines_and_reports_exit() {
         let fixture = HostFixture::new().await;
-        let process = fixture
-            .exec(ExplicitEnvPolicy::FilterSensitive)
-            .spawn_stdio("cat", None, None)
-            .await
-            .unwrap();
+        let process = fixture.exec().spawn_stdio("cat", None, None).await.unwrap();
         let mut stdin = process.stdin;
         let mut stdout = BufReader::new(process.stdout);
         stdin.write_all(b"ping\n").await.unwrap();
@@ -663,7 +580,7 @@ mod tests {
     async fn stdio_process_terminates_on_request_and_keeps_a_stderr_tail() {
         let fixture = HostFixture::new().await;
         let process = fixture
-            .exec(ExplicitEnvPolicy::FilterSensitive)
+            .exec()
             .spawn_stdio("sh -c 'echo diag >&2; sleep 30'", None, None)
             .await
             .unwrap();
@@ -771,7 +688,7 @@ mod tests {
     #[tokio::test]
     async fn policy_strips_output_unless_the_caller_chose_another_policy() {
         let fixture = HostFixture::new().await;
-        let exec = fixture.exec(ExplicitEnvPolicy::FilterSensitive);
+        let exec = fixture.exec();
         assert_eq!(
             exec.apply_policy(ExecSpec::bash("true"))
                 .output_sanitization,

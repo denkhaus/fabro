@@ -37,8 +37,8 @@ pub use driver_sandbox::{RunSandbox, local_sandbox};
 pub use environment::{CloneRequest, sandbox_spec_for_environment};
 pub use error::{Error, Result, default_redacted_output_tail, display_for_log};
 pub use exec::{
-    DEFAULT_RETAINED_OUTPUT_BYTES, DEFAULT_STOP_GRACE, ExecResultExt, ExplicitEnvPolicy,
-    SandboxExec, command_termination, is_sensitive_env_var, program_exit_code,
+    DEFAULT_RETAINED_OUTPUT_BYTES, DEFAULT_STOP_GRACE, ExecResultExt, SandboxExec,
+    command_termination, program_exit_code,
 };
 pub use fabro_github::token_source::{
     InstallationTokenSource, ResolvedToken, TokenProvenance, TokenSnapshot,

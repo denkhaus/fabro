@@ -176,8 +176,8 @@ impl MockSandbox {
     fn built(&self) -> &Built {
         self.built.get_or_init(|| {
             let driver = Arc::new(self.build_driver());
-            // An isolated provider: explicit environment passes as the
-            // caller composed it, as it does for Docker and Daytona runs.
+            // The kind is nominal for exec: the explicit environment reaches
+            // the scripted driver as the caller composed it on every provider.
             let run = RunSandbox::new_with_platform(
                 SandboxProviderKind::DOCKER,
                 Arc::clone(&driver) as Arc<dyn sandbox_driver::Sandbox>,
