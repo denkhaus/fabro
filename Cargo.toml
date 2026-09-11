@@ -106,6 +106,14 @@ futures-util = "0.3"
 # git failures, stop grace, snapshot ensure, ownership scope, testing doubles), to
 # move to main on merge. The CI plugin job installs the driver executables at the
 # same rev, read from this file.
+# pebble: the coding agent loop fabro runs its agent stages, Ask Fabro
+# sessions, hook evaluators, and `fabro exec` on. Pinned by rev to the pebble
+# branch that added the live exec output sink and `max_turns`
+# (`fabro-exec-sink-max-turns`); re-pin to the merge commit once it lands.
+# Pebble pins the same lithos-llm rev as fabro, and its lockfile policy is
+# that every shared crate resolves to the version lithos-llm locks.
+pebble-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "09b17c1b9e6cf7b2f82657d2080f82c73a0064ef" }
+pebble-coding-agent = { git = "https://github.com/lithoscomputer/pebble", rev = "09b17c1b9e6cf7b2f82657d2080f82c73a0064ef" }
 sandbox-driver = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
 sandbox-driver-protocol = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }
 sandbox-driver-host = { git = "https://github.com/lithoscomputer/sandbox-driver", rev = "23062b6ad62ff4665cbbcb7dce037ec9c4c34318" }

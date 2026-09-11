@@ -383,7 +383,7 @@ async fn daytona_file_round_trip() {
     assert!(env.file_exists(test_path).await.unwrap());
 
     // Read
-    let read_back = env.read_file(test_path, None, None).await.unwrap();
+    let read_back = env.read_file_text(test_path).await.unwrap();
     assert!(read_back.contains(content));
 
     // Delete
@@ -500,7 +500,7 @@ async fn daytona_artifact_sync_uploads_and_rewrites_pointer() {
         "artifact file should exist in Daytona sandbox at {remote_path}"
     );
 
-    let remote_content = env.read_file(remote_path, None, None).await.unwrap();
+    let remote_content = env.read_file_text(remote_path).await.unwrap();
     assert!(
         remote_content.len() > 100 * 1024,
         "remote artifact should be >100KB, got {} bytes",
@@ -1602,10 +1602,7 @@ async fn daytona_cp_upload_download_round_trip() {
         env.file_exists("cp_test_upload.txt").await.unwrap(),
         "uploaded file should exist in the sandbox"
     );
-    let remote_content = env
-        .read_file("cp_test_upload.txt", None, None)
-        .await
-        .unwrap();
+    let remote_content = env.read_file_text("cp_test_upload.txt").await.unwrap();
     assert!(
         remote_content.contains("hello from fabro cp e2e test"),
         "expected uploaded content in sandbox, got: {remote_content}"

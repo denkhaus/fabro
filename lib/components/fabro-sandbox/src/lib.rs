@@ -18,6 +18,7 @@ pub mod details;
 
 pub mod driver;
 pub mod driver_sandbox;
+pub mod environment;
 
 pub mod exec;
 

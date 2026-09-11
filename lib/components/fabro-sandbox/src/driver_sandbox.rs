@@ -713,6 +713,9 @@ impl RunSandbox {
     }
 
     /// A file's text with line numbers, from `offset` for `limit` lines.
+    ///
+    /// Kept only for `fabro-agent`, which is being deleted; pebble's
+    /// `Environment::read_file` is the numbered read from then on.
     pub async fn read_file(
         &self,
         path: &str,
@@ -1242,7 +1245,7 @@ mod tests {
         assert!(missing.to_string().contains("does not exist"), "{missing}");
         let read = f
             .sandbox
-            .read_file("nonexistent.txt", None, None)
+            .read_file_text("nonexistent.txt")
             .await
             .unwrap_err();
         assert!(read.is_not_found(), "{read}");
