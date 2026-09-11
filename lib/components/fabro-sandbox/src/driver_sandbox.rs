@@ -17,7 +17,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
-use async_trait::async_trait;
 use fabro_github::GitHubCredentials;
 use fabro_github::token_source::{InstallationTokenSource, TokenSnapshot};
 use fabro_types::SandboxProviderKind;
@@ -273,38 +272,11 @@ impl LayoutSource {
     }
 }
 
-/// What a create needs once its inputs are settled.
-#[derive(Clone)]
-pub(crate) struct PreparedCreate {
-    pub(crate) spec:     DriverSpec,
-    /// The provider snapshot the sandbox is created from, when the provider
-    /// has that concept; recorded on the run.
-    pub(crate) snapshot: Option<String>,
-}
-
-/// Settles a create's inputs right before the provider call. A plan may
-/// build provider resources first (a Daytona snapshot); the driver reports
-/// that work through `events`.
-#[async_trait]
-pub(crate) trait CreatePlan: Send + Sync {
-    async fn prepare(&self, events: Option<EventContext>) -> crate::Result<PreparedCreate>;
-}
-
-/// A create whose spec is known up front.
-struct SpecPlan(PreparedCreate);
-
-#[async_trait]
-impl CreatePlan for SpecPlan {
-    async fn prepare(&self, _events: Option<EventContext>) -> crate::Result<PreparedCreate> {
-        Ok(self.0.clone())
-    }
-}
-
 /// A sandbox that does not exist yet: `initialize` creates it on the
-/// provider from the plan's spec.
+/// provider from `spec`.
 struct PendingCreate {
     provider: Arc<dyn DriverProvider>,
-    plan:     Box<dyn CreatePlan>,
+    spec:     DriverSpec,
 }
 
 /// A fabro sandbox backed by a sandbox-driver handle.
@@ -360,27 +332,8 @@ impl RunSandbox {
         spec: DriverSpec,
         workspace: RepoWorkspace,
     ) -> Self {
-        Self::pending_with_plan(
-            kind,
-            provider,
-            Box::new(SpecPlan(PreparedCreate {
-                spec,
-                snapshot: None,
-            })),
-            workspace,
-        )
-    }
-
-    /// A sandbox `initialize` will create on `provider` once `plan` has
-    /// settled its spec, then prepare per `workspace`.
-    pub(crate) fn pending_with_plan(
-        kind: SandboxProviderKind,
-        provider: Arc<dyn DriverProvider>,
-        plan: Box<dyn CreatePlan>,
-        workspace: RepoWorkspace,
-    ) -> Self {
         let mut sandbox = Self::empty(kind);
-        sandbox.pending = Some(PendingCreate { provider, plan });
+        sandbox.pending = Some(PendingCreate { provider, spec });
         sandbox.workspace = Some(workspace);
         sandbox
     }
@@ -502,17 +455,21 @@ impl RunSandbox {
         let Some(pending) = &self.pending else {
             return self.handle().map(|_| ());
         };
-        let prepared = pending.plan.prepare(self.events.clone()).await?;
-        if let Some(snapshot) = prepared.snapshot {
-            let _ = self.snapshot.set(snapshot);
-        }
         let handle = pending
             .provider
-            .create(&prepared.spec, self.events.clone())
+            .create(&pending.spec, self.events.clone())
             .await
             .map_err(|error| {
                 crate::Error::context(format!("Failed to create {} sandbox", self.kind), error)
             })?;
+        // The provider may have created the sandbox from a snapshot it
+        // built or chose (Daytona caches images as snapshots); the run
+        // record names it.
+        if let Ok(status) = handle.describe().await {
+            if let Some(snapshot) = status.snapshot {
+                let _ = self.snapshot.set(snapshot);
+            }
+        }
         let _ = self.handle.set(handle);
         Ok(())
     }
@@ -1174,6 +1131,7 @@ fn elapsed_ms(started: Instant) -> u64 {
 mod tests {
     use std::sync::Mutex;
 
+    use async_trait::async_trait;
     use sandbox_driver::{SandboxProvider as _, SandboxSource, SandboxSpec, Termination};
     use sandbox_driver_host::HostProvider;
     use tokio::fs;

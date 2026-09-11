@@ -1,29 +1,28 @@
 //! The `daytona` provider kind: what fabro adds to a run's spec for the
 //! sandbox-driver Daytona provider.
 //!
-//! The environment's options build the spec once; Daytona's overlay creates
-//! sandboxes from a snapshot (built from the environment's image or
-//! Dockerfile and named by an HMAC of its inputs, or Daytona's default when
-//! the environment names neither), fixes the working directory, and sets
-//! the lifecycle timers. The run works in `/home/daytona/workspace`, with a
-//! cloned repository checked out under `/home/daytona/repos` and linked
-//! into the workspace.
+//! The environment's options build the spec once; Daytona's overlay fixes
+//! the working directory, names the run, sets the lifecycle timers, and
+//! falls back to Daytona's default snapshot when the environment names no
+//! image or Dockerfile. An image or Dockerfile goes to the driver as is:
+//! the Daytona provider builds it into a snapshot named by its inputs under
+//! the API key and reuses that snapshot for the same inputs. The run works
+//! in `/home/daytona/workspace`, with a cloned repository checked out under
+//! `/home/daytona/repos` and linked into the workspace.
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_trait::async_trait;
 use fabro_types::settings::server::ServerSandboxProviderSettings;
 use fabro_types::{RunId, SandboxProviderKind};
 use sandbox_driver::{
-    EventContext, HealthStatus, Resources, SandboxProvider, SandboxSource,
-    SandboxSpec as DriverSpec, SnapshotId, SnapshotSource, SnapshotSpec,
+    HealthStatus, Resources, SandboxProvider, SandboxSource, SandboxSpec as DriverSpec, SnapshotId,
 };
 use tokio::time;
 
 pub use crate::driver::DaytonaCredentials;
 use crate::driver::{ProviderConnectOptions, connect_provider};
-use crate::driver_sandbox::{CreatePlan, PreparedCreate, WorkspaceLayout};
+use crate::driver_sandbox::WorkspaceLayout;
 
 pub(crate) const WORKING_DIRECTORY: &str = "/home/daytona/workspace";
 pub(crate) const REPOS_ROOT: &str = "/home/daytona/repos";
@@ -31,135 +30,12 @@ const DEFAULT_SNAPSHOT: &str = "daytona-medium";
 pub const DEFAULT_DAYTONA_API_URL: &str = "https://app.daytona.io/api";
 /// Budget for the credential probe `fabro doctor` and the install flow run.
 pub const DAYTONA_CREDENTIAL_PROBE_TIMEOUT: Duration = Duration::from_secs(20);
-/// Budget for a custom snapshot to reach Daytona's active state.
-const DAYTONA_SNAPSHOT_ACTIVE_TIMEOUT: Duration = Duration::from_mins(30);
 /// Auto-stop applied when `lifecycle.auto_stop` is unset. Omitting the timer
 /// would inherit Daytona's server-side default of 15 idle minutes, which is
 /// shorter than a single long inference call and stops the sandbox mid-run;
 /// 120 minutes clears any realistic call while still reclaiming sandboxes
 /// leaked by a dead worker. An explicit zero disables auto-stop entirely.
 const DEFAULT_AUTO_STOP: Duration = Duration::from_hours(2);
-
-/// What a custom snapshot is built from: the environment's image or
-/// Dockerfile and its resources in whole gigabytes, the units Daytona
-/// sizes snapshots in and the values the snapshot's name is derived from.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SnapshotInputs<'a> {
-    pub source:    SnapshotInput<'a>,
-    pub cpu:       Option<i32>,
-    pub memory_gb: Option<i32>,
-    pub disk_gb:   Option<i32>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SnapshotInput<'a> {
-    /// A pullable image reference such as `ubuntu:24.04`.
-    Image(&'a str),
-    /// A Dockerfile Daytona builds into the snapshot.
-    Dockerfile(&'a str),
-}
-
-/// The snapshot `spec` asks for, or `None` when the environment names no
-/// image or Dockerfile and the sandbox comes from Daytona's default.
-pub fn snapshot_inputs(spec: &DriverSpec) -> Option<SnapshotInputs<'_>> {
-    let source = match &spec.source {
-        SandboxSource::Image { reference } => SnapshotInput::Image(reference),
-        SandboxSource::Dockerfile { content } => SnapshotInput::Dockerfile(content),
-        _ => return None,
-    };
-    Some(SnapshotInputs {
-        source,
-        cpu: spec
-            .resources
-            .cpu_cores
-            .and_then(|cpu| i32::try_from(cpu).ok()),
-        memory_gb: spec.resources.memory_mb.map(gigabytes),
-        disk_gb: spec.resources.disk_mb.map(gigabytes),
-    })
-}
-
-/// Whole gibibytes, rounded up and never zero: the unit Daytona sizes
-/// snapshots in, computed as the driver's Daytona provider does so the
-/// snapshot's name and its provisioned size agree.
-fn gigabytes(mb: u64) -> i32 {
-    i32::try_from(mb.div_ceil(1024)).unwrap_or(i32::MAX).max(1)
-}
-
-pub mod snapshot_identity {
-    use hmac::{Hmac, Mac};
-    use serde::Serialize;
-    use sha2::{Digest, Sha256};
-    use uuid::Uuid;
-
-    use super::{SnapshotInput, SnapshotInputs};
-
-    const IDENTITY_VERSION: u8 = 1;
-    const PROVIDER: &str = "daytona";
-    const TENANT: &str = "single-tenant";
-
-    type HmacSha256 = Hmac<Sha256>;
-
-    /// The snapshot source as it appears in the identity manifest. Each
-    /// variant flattens into a single `"<key>": "<value>"` entry.
-    #[derive(Serialize)]
-    #[serde(rename_all = "snake_case")]
-    enum SourceManifest<'a> {
-        DockerfileSha256(String),
-        Image(&'a str),
-    }
-
-    #[derive(Serialize)]
-    struct SnapshotManifest<'a> {
-        identity_version: u8,
-        provider:         &'static str,
-        tenant:           &'static str,
-        #[serde(flatten)]
-        source:           SourceManifest<'a>,
-        cpu:              Option<i32>,
-        memory_gb:        Option<i32>,
-        disk_gb:          Option<i32>,
-        /// Nothing sets an entrypoint yet. The field stays because removing
-        /// it would rename every existing snapshot under `IDENTITY_VERSION` 1.
-        entrypoint:       Option<&'static str>,
-    }
-
-    /// The name of the snapshot built from `inputs`: a UUIDv8 derived from an
-    /// HMAC of the build inputs keyed by the API key, so the same inputs reuse
-    /// the same snapshot and a rotated key never collides with another
-    /// tenant's.
-    pub fn snapshot_name(api_key: &str, inputs: &SnapshotInputs<'_>) -> crate::Result<String> {
-        let manifest = canonical_manifest(inputs)?;
-        let mut mac = HmacSha256::new_from_slice(api_key.as_bytes())
-            .expect("HMAC-SHA256 accepts keys of any length");
-        mac.update(&manifest);
-        let digest = mac.finalize().into_bytes();
-        let mut bytes = [0_u8; 16];
-        bytes.copy_from_slice(&digest[..16]);
-        Ok(format!("fabro-{}", Uuid::new_v8(bytes)))
-    }
-
-    fn canonical_manifest(inputs: &SnapshotInputs<'_>) -> crate::Result<Vec<u8>> {
-        let source = match inputs.source {
-            SnapshotInput::Image(image) => SourceManifest::Image(image),
-            SnapshotInput::Dockerfile(text) => {
-                SourceManifest::DockerfileSha256(hex::encode(Sha256::digest(text.as_bytes())))
-            }
-        };
-        let manifest = SnapshotManifest {
-            identity_version: IDENTITY_VERSION,
-            provider: PROVIDER,
-            tenant: TENANT,
-            source,
-            cpu: inputs.cpu,
-            memory_gb: inputs.memory_gb,
-            disk_gb: inputs.disk_gb,
-            entrypoint: None,
-        };
-        serde_json::to_vec(&manifest).map_err(|err| {
-            crate::Error::context("Failed to serialize Daytona snapshot identity", err)
-        })
-    }
-}
 
 /// Outcome of probing a Daytona credential through the provider's health
 /// check. The provider owns the list of scopes it needs and the order it
@@ -285,21 +161,25 @@ pub(crate) fn layout() -> WorkspaceLayout {
     }
 }
 
-/// Daytona's additions to the environment's spec: the snapshot the sandbox
-/// is created from, the fixed working directory, the run's Daytona name,
-/// and the lifecycle timers. The snapshot carries the resources; Daytona
-/// refuses them on a sandbox created from one.
-pub(crate) fn overlay(
-    spec: DriverSpec,
-    run_id: Option<&RunId>,
-    snapshot: &SnapshotId,
-) -> DriverSpec {
+/// Daytona's additions to the environment's spec: the fixed working
+/// directory, the run's Daytona name, the lifecycle timers, and Daytona's
+/// default snapshot when the environment names no image or Dockerfile. An
+/// image or Dockerfile stays as it is: the driver builds it into a cached
+/// snapshot sized by the spec's resources. A create from the default
+/// snapshot carries no resources, which Daytona refuses on a sandbox
+/// created from a snapshot.
+pub(crate) fn overlay(spec: DriverSpec, run_id: Option<&RunId>) -> DriverSpec {
     let mut spec = spec.working_directory(WORKING_DIRECTORY);
-    spec.source = SandboxSource::Snapshot {
-        id: snapshot.clone(),
-    };
+    if !matches!(
+        spec.source,
+        SandboxSource::Image { .. } | SandboxSource::Dockerfile { .. }
+    ) {
+        spec.source = SandboxSource::Snapshot {
+            id: SnapshotId::try_new(DEFAULT_SNAPSHOT).expect("the default snapshot name is valid"),
+        };
+        spec.resources = Resources::default();
+    }
     spec.name = run_id.map(|run_id| format!("fabro-{run_id}"));
-    spec.resources = Resources::default();
     let mut timers = spec.timers;
     // An explicit zero disables auto-stop; the driver encodes
     // `Duration::ZERO` as that wire value.
@@ -308,99 +188,6 @@ pub(crate) fn overlay(
     // them again on resume, and `fabro system prune` reclaims them.
     timers.auto_delete_after_stop = Some(Duration::ZERO);
     spec.timers(timers)
-}
-
-/// Ensures the snapshot `inputs` describe exists and is active, building
-/// it when Daytona does not have it. Returns the snapshot to create
-/// sandboxes from.
-async fn ensure_snapshot(
-    provider: &dyn SandboxProvider,
-    api_key: &str,
-    inputs: &SnapshotInputs<'_>,
-    events: Option<EventContext>,
-) -> crate::Result<(SnapshotId, String)> {
-    let name = snapshot_identity::snapshot_name(api_key, inputs)?;
-    let snapshots = provider.snapshots().ok_or_else(|| {
-        crate::Error::message("The Daytona provider does not expose snapshot management")
-    })?;
-    let id = snapshots
-        .ensure(
-            &snapshot_spec(&name, inputs),
-            DAYTONA_SNAPSHOT_ACTIVE_TIMEOUT,
-            events,
-        )
-        .await
-        .map_err(|error| {
-            crate::Error::context(format!("Failed to ensure snapshot '{name}'"), error)
-        })?;
-    Ok((id, name))
-}
-
-fn snapshot_spec(name: &str, inputs: &SnapshotInputs<'_>) -> SnapshotSpec {
-    let source = match inputs.source {
-        SnapshotInput::Image(image) => SnapshotSource::Image {
-            reference: image.to_string(),
-        },
-        SnapshotInput::Dockerfile(content) => SnapshotSource::Dockerfile {
-            content: content.to_string(),
-        },
-    };
-    let mut resources = Resources::default();
-    resources.cpu_cores = inputs.cpu.and_then(|cpu| u32::try_from(cpu).ok());
-    resources.memory_mb = inputs
-        .memory_gb
-        .and_then(|gb| u64::try_from(gb).ok())
-        .map(|gb| gb * 1024);
-    resources.disk_mb = inputs
-        .disk_gb
-        .and_then(|gb| u64::try_from(gb).ok())
-        .map(|gb| gb * 1024);
-    SnapshotSpec::new(source).name(name).resources(resources)
-}
-
-/// Prepares a Daytona create: the snapshot first, then the spec naming it.
-pub(crate) struct DaytonaCreatePlan {
-    provider: Arc<dyn SandboxProvider>,
-    api_key:  String,
-    base:     DriverSpec,
-    run_id:   Option<RunId>,
-}
-
-/// The create plan for a run on Daytona: `base` is the environment's spec,
-/// which the plan completes with the snapshot once it exists.
-pub(crate) fn create_plan(
-    provider: Arc<dyn SandboxProvider>,
-    api_key: String,
-    base: DriverSpec,
-    run_id: Option<RunId>,
-) -> DaytonaCreatePlan {
-    DaytonaCreatePlan {
-        provider,
-        api_key,
-        base,
-        run_id,
-    }
-}
-
-#[async_trait]
-impl CreatePlan for DaytonaCreatePlan {
-    async fn prepare(&self, events: Option<EventContext>) -> crate::Result<PreparedCreate> {
-        let (snapshot_id, snapshot_name) = match snapshot_inputs(&self.base) {
-            // The driver finds, activates, builds, or waits for the snapshot
-            // as needed, and reports that work through `events`.
-            Some(inputs) => {
-                ensure_snapshot(self.provider.as_ref(), &self.api_key, &inputs, events).await?
-            }
-            None => (
-                SnapshotId::try_new(DEFAULT_SNAPSHOT).expect("the default snapshot name is valid"),
-                DEFAULT_SNAPSHOT.to_string(),
-            ),
-        };
-        Ok(PreparedCreate {
-            spec:     overlay(self.base.clone(), self.run_id.as_ref(), &snapshot_id),
-            snapshot: Some(snapshot_name),
-        })
-    }
 }
 
 #[cfg(test)]
@@ -413,51 +200,6 @@ mod tests {
         "01HY0000000000000000000000".parse().unwrap()
     }
 
-    fn dockerfile_inputs(dockerfile: &str) -> SnapshotInputs<'_> {
-        SnapshotInputs {
-            source:    SnapshotInput::Dockerfile(dockerfile),
-            cpu:       Some(2),
-            memory_gb: Some(4),
-            disk_gb:   Some(10),
-        }
-    }
-
-    #[test]
-    fn snapshot_inputs_come_from_the_image_or_dockerfile_in_whole_gigabytes() {
-        assert!(snapshot_inputs(&DriverSpec::new(SandboxSource::HostDirectory)).is_none());
-
-        // 4 GB and 10.5 GB of memory and disk, as the environment mapping
-        // sizes them in mebibytes.
-        let mut resources = Resources::default();
-        resources.cpu_cores = Some(2);
-        resources.memory_mb = Some(3815);
-        resources.disk_mb = Some(10_014);
-        let spec = DriverSpec::new(SandboxSource::Image {
-            reference: "ubuntu:24.04".to_string(),
-        })
-        .resources(resources);
-        assert_eq!(
-            snapshot_inputs(&spec),
-            Some(SnapshotInputs {
-                source:    SnapshotInput::Image("ubuntu:24.04"),
-                cpu:       Some(2),
-                memory_gb: Some(4),
-                disk_gb:   Some(10),
-            })
-        );
-
-        let spec = DriverSpec::new(SandboxSource::Dockerfile {
-            content: "FROM ubuntu".to_string(),
-        });
-        assert_eq!(
-            snapshot_inputs(&spec).map(|inputs| inputs.source),
-            Some(SnapshotInput::Dockerfile("FROM ubuntu"))
-        );
-        assert_eq!(gigabytes(1), 1, "a snapshot is never sized at zero");
-        assert_eq!(gigabytes(1024), 1);
-        assert_eq!(gigabytes(1025), 2);
-    }
-
     #[test]
     fn overlay_names_the_run_and_carries_fabro_labels_and_timers() {
         let mut resources = Resources::default();
@@ -468,10 +210,12 @@ mod tests {
                 cidrs: vec!["10.0.0.0/8".to_string()],
             })
             .resources(resources);
-        let snapshot = SnapshotId::try_new("snap-1").unwrap();
-        let spec = overlay(base, Some(&run_id()), &snapshot);
+        let spec = overlay(base, Some(&run_id()));
 
-        assert!(matches!(&spec.source, SandboxSource::Snapshot { id } if id == &snapshot));
+        assert!(
+            matches!(&spec.source, SandboxSource::Snapshot { id } if id.as_str() == DEFAULT_SNAPSHOT),
+            "a spec without an image comes from Daytona's default snapshot"
+        );
         assert_eq!(
             spec.name.as_deref(),
             Some("fabro-01HY0000000000000000000000")
@@ -497,20 +241,50 @@ mod tests {
         assert_eq!(
             spec.resources,
             Resources::default(),
-            "the snapshot carries the resources; Daytona refuses them on the sandbox"
+            "the default snapshot carries the resources; Daytona refuses them on the sandbox"
         );
         assert!(!spec.ephemeral);
     }
 
     #[test]
+    fn overlay_leaves_an_image_and_its_resources_for_the_driver_to_cache() {
+        let mut resources = Resources::default();
+        resources.cpu_cores = Some(2);
+        resources.memory_mb = Some(4096);
+        let base = DriverSpec::new(SandboxSource::Image {
+            reference: "ubuntu:24.04".to_string(),
+        })
+        .resources(resources);
+        let spec = overlay(base, None);
+        assert!(
+            matches!(&spec.source, SandboxSource::Image { reference } if reference == "ubuntu:24.04")
+        );
+        assert_eq!(
+            spec.resources, resources,
+            "the resources size the cached snapshot"
+        );
+        assert_eq!(spec.working_directory.as_deref(), Some(WORKING_DIRECTORY));
+
+        let dockerfile = overlay(
+            DriverSpec::new(SandboxSource::Dockerfile {
+                content: "FROM ubuntu".to_string(),
+            }),
+            None,
+        );
+        assert!(matches!(
+            dockerfile.source,
+            SandboxSource::Dockerfile { .. }
+        ));
+    }
+
+    #[test]
     fn overlay_passes_explicit_auto_stop_through_and_zero_disables() {
-        let snapshot = SnapshotId::try_new(DEFAULT_SNAPSHOT).unwrap();
         let mut timers = LifecycleTimers::default();
         timers.auto_stop_after_idle = Some(Duration::from_mins(45));
         let base = DriverSpec::new(SandboxSource::HostDirectory)
             .network(NetworkPolicy::Block)
             .timers(timers);
-        let explicit = overlay(base, None, &snapshot);
+        let explicit = overlay(base, None);
         assert_eq!(
             explicit.timers.auto_stop_after_idle,
             Some(Duration::from_mins(45))
@@ -523,124 +297,8 @@ mod tests {
         let disabled = overlay(
             DriverSpec::new(SandboxSource::HostDirectory).timers(timers),
             None,
-            &snapshot,
         );
         assert_eq!(disabled.timers.auto_stop_after_idle, Some(Duration::ZERO));
-    }
-
-    #[test]
-    fn snapshot_spec_maps_sources_and_gigabyte_resources() {
-        let inputs = SnapshotInputs {
-            source:    SnapshotInput::Image("ubuntu:24.04"),
-            cpu:       Some(2),
-            memory_gb: Some(4),
-            disk_gb:   Some(10),
-        };
-        let spec = snapshot_spec("fabro-x", &inputs);
-        assert_eq!(spec.name.as_deref(), Some("fabro-x"));
-        assert!(matches!(
-            &spec.source,
-            SnapshotSource::Image { reference } if reference == "ubuntu:24.04"
-        ));
-        assert_eq!(spec.resources.cpu_cores, Some(2));
-        assert_eq!(spec.resources.memory_mb, Some(4096));
-        assert_eq!(spec.resources.disk_mb, Some(10_240));
-
-        let dockerfile = snapshot_spec("fabro-y", &SnapshotInputs {
-            source: SnapshotInput::Dockerfile("FROM ubuntu"),
-            ..inputs
-        });
-        assert!(matches!(
-            &dockerfile.source,
-            SnapshotSource::Dockerfile { content } if content == "FROM ubuntu"
-        ));
-    }
-
-    #[test]
-    fn computed_snapshot_identity_is_deterministic_and_keyed() {
-        let inputs = dockerfile_inputs("FROM ubuntu:24.04\nRUN apt-get update");
-
-        let first = snapshot_identity::snapshot_name("dtn_secret", &inputs).unwrap();
-        let second = snapshot_identity::snapshot_name("dtn_secret", &inputs).unwrap();
-        let rotated_key = snapshot_identity::snapshot_name("dtn_rotated", &inputs).unwrap();
-
-        assert_eq!(first, second);
-        assert_eq!(first, "fabro-e607185f-c7ab-88c9-bf9d-d70addba9298");
-        assert_ne!(first, rotated_key);
-        let uuid = first
-            .strip_prefix("fabro-")
-            .and_then(|raw| uuid::Uuid::parse_str(raw).ok())
-            .expect("snapshot name should be fabro-<uuid>");
-        assert_eq!(uuid.get_version_num(), 8);
-        assert_eq!(uuid.get_variant(), uuid::Variant::RFC4122);
-    }
-
-    #[test]
-    fn computed_snapshot_identity_changes_for_generation_inputs() {
-        let base = dockerfile_inputs("FROM ubuntu:24.04");
-        let base_name = snapshot_identity::snapshot_name("dtn_secret", &base).unwrap();
-
-        let cases = [
-            SnapshotInputs {
-                source: SnapshotInput::Dockerfile("FROM ubuntu:24.04\n# roll cache"),
-                ..base.clone()
-            },
-            SnapshotInputs {
-                cpu: Some(4),
-                ..base.clone()
-            },
-            SnapshotInputs {
-                memory_gb: Some(8),
-                ..base.clone()
-            },
-            SnapshotInputs {
-                disk_gb: Some(20),
-                ..base.clone()
-            },
-        ];
-
-        for changed in cases {
-            let changed_name = snapshot_identity::snapshot_name("dtn_secret", &changed).unwrap();
-            assert_ne!(base_name, changed_name);
-        }
-    }
-
-    #[test]
-    fn computed_snapshot_identity_excludes_raw_dockerfile_and_key_material() {
-        let inputs = SnapshotInputs {
-            source:    SnapshotInput::Dockerfile(
-                "FROM private.example.com/secret-image\nRUN echo raw-secret",
-            ),
-            cpu:       None,
-            memory_gb: None,
-            disk_gb:   None,
-        };
-
-        let name = snapshot_identity::snapshot_name("dtn_super_secret_key", &inputs).unwrap();
-
-        assert!(name.starts_with("fabro-"));
-        assert!(!name.contains("private.example.com"));
-        assert!(!name.contains("raw-secret"));
-        assert!(!name.contains("dtn_super_secret_key"));
-    }
-
-    #[test]
-    fn computed_snapshot_identity_changes_for_image_reference() {
-        let inputs = SnapshotInputs {
-            source:    SnapshotInput::Image("ubuntu:24.04"),
-            cpu:       Some(2),
-            memory_gb: Some(4),
-            disk_gb:   Some(10),
-        };
-        let first = snapshot_identity::snapshot_name("dtn_secret", &inputs).unwrap();
-        let changed = snapshot_identity::snapshot_name("dtn_secret", &SnapshotInputs {
-            source: SnapshotInput::Image("ubuntu:24.10"),
-            ..inputs
-        })
-        .unwrap();
-
-        assert_eq!(first, "fabro-5d23a023-d7ff-8d68-b3ca-e6286f4211d9");
-        assert_ne!(first, changed);
     }
 
     #[test]
@@ -743,12 +401,8 @@ mod wire_gate {
             None,
         )
         .expect("clone plan");
-        let snapshot = SnapshotId::try_new(DEFAULT_SNAPSHOT).expect("snapshot id");
-        let spec = overlay(
-            DriverSpec::new(SandboxSource::HostDirectory),
-            None,
-            &snapshot,
-        );
+        // No image: the overlay creates from Daytona's default snapshot.
+        let spec = overlay(DriverSpec::new(SandboxSource::HostDirectory), None);
         let sandbox = RunSandbox::pending(SandboxProviderKind::DAYTONA, remote, spec, workspace);
         sandbox
             .initialize()

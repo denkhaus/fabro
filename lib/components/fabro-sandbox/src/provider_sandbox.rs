@@ -5,9 +5,9 @@
 //! [`crate::environment`]), the provider is connected through the single
 //! construction function, and a bundled provider adds only what its
 //! backend needs on top: Docker its fixed working directory and default
-//! image, Daytona the snapshot it creates sandboxes from and its lifecycle
-//! timers. A plugin gets the spec as is, trimmed to what it can honor, laid
-//! out inside the working directory the provider chooses.
+//! image, Daytona its fixed working directory, default snapshot, and
+//! lifecycle timers. A plugin gets the spec as is, trimmed to what it can
+//! honor, laid out inside the working directory the provider chooses.
 
 use std::sync::Arc;
 
@@ -45,19 +45,12 @@ pub async fn provider_sandbox(
         Some(BundledProvider::Docker) => {
             RunSandbox::pending(kind, provider, docker::overlay(spec), workspace)
         }
-        Some(BundledProvider::Daytona) => {
-            let credentials = access
-                .daytona
-                .as_ref()
-                .ok_or_else(|| crate::Error::message(MISSING_DAYTONA_CREDENTIALS))?;
-            let plan = daytona::create_plan(
-                Arc::clone(&provider),
-                credentials.api_key().to_string(),
-                spec,
-                run_id,
-            );
-            RunSandbox::pending_with_plan(kind, provider, Box::new(plan), workspace)
-        }
+        Some(BundledProvider::Daytona) => RunSandbox::pending(
+            kind,
+            provider,
+            daytona::overlay(spec, run_id.as_ref()),
+            workspace,
+        ),
         Some(BundledProvider::Local) => {
             return Err(crate::Error::message(
                 "local sandboxes are built from a working directory, not a provider spec",
@@ -106,11 +99,9 @@ pub async fn attach_provider_sandbox(
         working_directory,
         clone_origin_url,
     );
-    let sandbox = RunSandbox::attached(kind.clone(), handle, workspace);
-    if kind.bundled() == Some(BundledProvider::Daytona) {
-        if let Some(snapshot) = status.snapshot {
-            sandbox.set_snapshot(snapshot);
-        }
+    let sandbox = RunSandbox::attached(kind, handle, workspace);
+    if let Some(snapshot) = status.snapshot {
+        sandbox.set_snapshot(snapshot);
     }
     Ok(sandbox)
 }
