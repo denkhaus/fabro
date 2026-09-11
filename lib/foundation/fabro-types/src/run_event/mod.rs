@@ -944,6 +944,9 @@ fn normalize_legacy_event(value: &mut Value) {
 }
 
 fn normalize_legacy_event_properties(event: &str, properties: &mut Value) {
+    // Cost source normalization is event-agnostic: `cost_source` and nested
+    // cost `source` fields appear on agent, stage, and run-level events.
+    normalize_legacy_cost_source(properties);
     let Some(object) = properties.as_object_mut() else {
         return;
     };
@@ -956,6 +959,43 @@ fn normalize_legacy_event_properties(event: &str, properties: &mut Value) {
         "stage.completed" => normalize_legacy_timing(object, true),
         "sandbox.initialized" => normalize_legacy_sandbox_id(object),
         _ => {}
+    }
+}
+
+/// Rewrite the removed `CostSource::Estimated` variant (`estimated`) to
+/// `catalog`.
+///
+/// lithos-llm replaced `estimated` with `catalog`/`provider`/`application`
+/// semantics; legacy events priced by Fabro from the model catalog carry
+/// `estimated`, which the current deserializer rejects. Run-history
+/// activation replays every stored event through the current types, so one
+/// legacy value aborts server startup (2026-09-11, v0.353.0 upgrade).
+/// Catalog pricing is the correct mapping for estimated costs.
+///
+/// Delete together with the other legacy normalizers once no pre-v0.353
+/// event sources can be read anymore.
+const LEGACY_COST_SOURCE: &str = "estimated";
+const LEGACY_COST_SOURCE_REPLACEMENT: &str = "catalog";
+
+fn normalize_legacy_cost_source(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            for (key, item) in map.iter_mut() {
+                if (key == "cost_source" || key == "source")
+                    && item.as_str() == Some(LEGACY_COST_SOURCE)
+                {
+                    *item = Value::String(LEGACY_COST_SOURCE_REPLACEMENT.to_string());
+                } else {
+                    normalize_legacy_cost_source(item);
+                }
+            }
+        }
+        Value::Array(items) => {
+            for item in items.iter_mut() {
+                normalize_legacy_cost_source(item);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
     }
 }
 
@@ -1043,7 +1083,7 @@ impl<'de> Deserialize<'de> for RunEvent {
 #[cfg(test)]
 mod tests {
     use lithos_llm::catalog::builtin;
-    use lithos_llm::types::ReasoningOutput;
+    use lithos_llm::types::{CostSource, ReasoningOutput};
     use serde_json::json;
 
     use super::*;
@@ -2791,5 +2831,65 @@ mod tests {
                 "original_name": "create_issue"
             })
         );
+    }
+
+    #[test]
+    fn legacy_estimated_cost_source_normalizes_to_catalog() {
+        let value = json!({
+            "id": "evt_agent_message_legacy_cost",
+            "ts": "2026-09-11T10:00:00.000Z",
+            "run_id": fixtures::RUN_1,
+            "event": "agent.message",
+            "properties": {
+                "text": "",
+                "model": {"provider": "zai", "model_id": "glm-5.3"},
+                "billing": {
+                    "input_tokens": 100,
+                    "output_tokens": 5,
+                    "reasoning_tokens": 0,
+                    "cache_read_tokens": 0,
+                    "cache_write_tokens": 0,
+                    "total_tokens": 105,
+                    "total_usd_micros": 42
+                },
+                "cost_source": "estimated",
+                "tool_call_count": 1,
+                "visit": 1
+            }
+        });
+        let parsed = RunEvent::from_value(value).expect("legacy event deserializes");
+        match parsed.body {
+            EventBody::AgentMessage(props) => {
+                assert_eq!(props.cost_source, Some(CostSource::Catalog));
+            }
+            other => panic!("expected AgentMessage body, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn legacy_estimated_cost_source_in_nested_cost_objects_normalizes() {
+        let mut value = json!({
+            "event": "stage.completed",
+            "properties": {
+                "usage": {
+                    "models": [{
+                        "cost": {"usd_micros": 42, "source": "estimated"},
+                        "cost_source": "estimated",
+                        "notes": "unchanged",
+                        "origin": "upstream"
+                    }],
+                    "totals": [{"source": "estimated"}, {"source": "provider"}]
+                }
+            }
+        });
+        normalize_legacy_event(&mut value);
+        let models = &value["properties"]["usage"]["models"][0];
+        assert_eq!(models["cost"]["source"], json!("catalog"));
+        assert_eq!(models["cost_source"], json!("catalog"));
+        assert_eq!(models["origin"], json!("upstream"));
+        assert_eq!(models["notes"], json!("unchanged"));
+        let totals = &value["properties"]["usage"]["totals"];
+        assert_eq!(totals[0]["source"], json!("catalog"));
+        assert_eq!(totals[1]["source"], json!("provider"));
     }
 }
