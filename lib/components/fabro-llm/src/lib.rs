@@ -33,7 +33,7 @@ pub use client::{
     ClientOptions, FabroClient, LlmSetupError, RetryListener, RetryNotice, build_client,
     build_offline_client, configured_providers,
 };
-pub use error::failure_signature_hint;
+pub use error::{LONG_RATE_LIMIT_WINDOW, failure_signature_hint, long_rate_limit_window};
 pub use lithos_llm::client::{Client, ClientBuild};
 pub use lithos_llm::middleware::{CallContext, CancellationToken, RetryPolicy, RetryStage};
 pub use lithos_llm::resolver::ModelSelectionError as RouteSelectionError;

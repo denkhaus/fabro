@@ -10,9 +10,10 @@
 //! through [`GatewayTransport`], so this crate does not depend on the CLI's
 //! server client.
 
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
+use chrono::NaiveDateTime;
 use fabro_http::HeaderMap;
 use futures::{StreamExt as _, stream};
 use lithos_llm::adapter::{ProviderAdapter, ResolvedCall};
@@ -117,14 +118,26 @@ fn gateway_error(err: GatewayError, provider: &ProviderId) -> Error {
                 500..=599 => ErrorKind::Server,
                 _ => ErrorKind::Provider,
             };
-            let mut error = Error::new(kind.clone(), message)
+            let mut error = Error::new(kind.clone(), message.clone())
                 .with_provider(provider.clone())
                 .with_status(status);
             if let Some(code) = code {
                 error = error.with_provider_code(code);
             }
             match kind {
-                ErrorKind::RateLimit | ErrorKind::Server | ErrorKind::Timeout => {
+                ErrorKind::RateLimit => {
+                    error = error.with_retry(RetryClassification::Safe);
+                    // The header wins when the provider sent one; otherwise
+                    // the reset deadline may still live in the message prose.
+                    let after =
+                        retry_after(&headers).or_else(|| reset_window(&message, SystemTime::now()));
+                    if let Some(after) = after {
+                        error = error
+                            .with_retry(RetryClassification::after(after))
+                            .with_provider_retry_after(after);
+                    }
+                }
+                ErrorKind::Server | ErrorKind::Timeout => {
                     error = error.with_retry(RetryClassification::Safe);
                     if let Some(after) = retry_after(&headers) {
                         error = error
@@ -145,6 +158,39 @@ fn retry_after(headers: &HeaderMap) -> Option<Duration> {
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.parse::<f64>().ok())
         .map(Duration::from_secs_f64)
+}
+
+/// The timestamp format providers embed in usage-window reset prose.
+const RESET_TIMESTAMP_LEN: usize = "YYYY-MM-DD HH:MM:SS".len();
+
+/// Parses a provider usage-window reset deadline out of error message text.
+///
+/// Some providers (zai and Anthropic-style 429 bodies) say when a usage
+/// window reopens only in prose: "Usage limit reached for 5 hour. Your limit
+/// will reset at 2026-09-03 05:35:16". The timestamp is timezone-naive and
+/// is read as UTC (fabro-a3d8).
+#[must_use]
+pub fn parse_reset_deadline(message: &str) -> Option<NaiveDateTime> {
+    let marker = "will reset at ";
+    let start = message.find(marker)? + marker.len();
+    let timestamp = message.get(start..)?.get(..RESET_TIMESTAMP_LEN)?;
+    NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S").ok()
+}
+
+/// The wait until the reset deadline parsed from `message`, when one exists
+/// and lies in the future at `now`.
+///
+/// A deadline already reached advises nothing — the window has reopened, so
+/// ordinary short-window retry behavior applies.
+#[must_use]
+pub fn reset_window(message: &str, now: SystemTime) -> Option<Duration> {
+    let deadline = parse_reset_deadline(message)?;
+    let now = chrono::DateTime::<chrono::Utc>::from(now).naive_utc();
+    deadline
+        .signed_duration_since(now)
+        .to_std()
+        .ok()
+        .filter(|window| !window.is_zero())
 }
 
 /// Reads the Fabro API error envelope (`errors[0].detail` / `code`), falling
@@ -255,7 +301,75 @@ struct SseState {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, SystemTime};
+
+    use chrono::{TimeZone, Utc};
+
     use super::*;
+    use crate::client::default_retry_policy;
+
+    /// The zai 429 body from the fabro-a3d8 incident: `retry_after=null`,
+    /// the reset deadline only in message prose.
+    const ZAI_USAGE_LIMIT: &str =
+        "Usage limit reached for 5 hour. Your limit will reset at 2026-09-03 05:35:16";
+
+    fn utc(
+        year: i32,
+        month: u32,
+        day: u32,
+        hour: u32,
+        minute: u32,
+        second: u32,
+    ) -> chrono::DateTime<Utc> {
+        Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
+            .single()
+            .expect("valid test timestamp")
+    }
+
+    #[test]
+    fn reset_deadline_is_parsed_from_zai_usage_prose() {
+        assert_eq!(
+            parse_reset_deadline(ZAI_USAGE_LIMIT).map(|deadline| deadline.and_utc()),
+            Some(utc(2026, 9, 3, 5, 35, 16))
+        );
+        // The Anthropic-style wording without the window sentence parses too.
+        assert_eq!(
+            parse_reset_deadline("Your limit will reset at 2026-09-03 05:35:16")
+                .map(|deadline| deadline.and_utc()),
+            Some(utc(2026, 9, 3, 5, 35, 16))
+        );
+    }
+
+    #[test]
+    fn reset_prose_without_a_timestamp_yields_none() {
+        assert!(parse_reset_deadline("rate limit exceeded, slow down").is_none());
+        assert!(parse_reset_deadline("Your limit will reset at soon").is_none());
+        assert!(parse_reset_deadline("").is_none());
+    }
+
+    #[test]
+    fn reset_window_measures_from_now_and_drops_past_deadlines() {
+        let now = utc(2026, 9, 3, 1, 35, 16);
+        assert_eq!(
+            reset_window(ZAI_USAGE_LIMIT, SystemTime::from(now)),
+            Some(Duration::from_hours(4))
+        );
+        // At or past the deadline there is nothing left to wait for.
+        let later = utc(2026, 9, 3, 5, 35, 16);
+        assert_eq!(reset_window(ZAI_USAGE_LIMIT, SystemTime::from(later)), None);
+        let much_later = utc(2026, 9, 4, 0, 0, 0);
+        assert_eq!(
+            reset_window(ZAI_USAGE_LIMIT, SystemTime::from(much_later)),
+            None
+        );
+    }
+
+    /// A reset deadline safely in the future for any test run date.
+    fn far_future_reset() -> String {
+        let future =
+            chrono::DateTime::<chrono::Utc>::from(SystemTime::now()) + chrono::Duration::hours(3);
+        future.format("%Y-%m-%d %H:%M:%S").to_string()
+    }
 
     #[test]
     fn server_error_envelope_is_parsed() {
@@ -302,5 +416,52 @@ mod tests {
         );
         assert_eq!(error.kind(), ErrorKind::Authentication);
         assert_eq!(error.retry_classification(), RetryClassification::Never);
+    }
+
+    #[test]
+    fn rate_limit_prose_attaches_the_reset_window() {
+        let provider = ProviderId::new("zai");
+        // The incident wording with a deadline still in the future so the
+        // measured window is hours, not empty.
+        let message = format!(
+            "Usage limit reached for 5 hour. Your limit will reset at {}",
+            far_future_reset()
+        );
+        let body =
+            serde_json::json!({ "errors": [{ "status": "429", "detail": message }] }).to_string();
+        let error = gateway_error(
+            GatewayError::Status {
+                status: 429,
+                headers: HeaderMap::new(),
+                body,
+            },
+            &provider,
+        );
+        let window = error.provider_retry_after().expect("parsed reset window");
+        assert!(
+            window >= Duration::from_hours(1),
+            "a five-hour usage window must parse as hours, got {window:?}"
+        );
+        assert_eq!(error.retry_after(), Some(window));
+        // A multi-hour window is beyond any count-based backoff budget: the
+        // default policy must refuse the next attempt and surface the error
+        // immediately rather than burning the remaining attempts.
+        assert_eq!(default_retry_policy().next_delay(1, &error), None);
+    }
+
+    #[test]
+    fn retry_after_header_wins_over_message_prose() {
+        let provider = ProviderId::new("zai");
+        let mut headers = HeaderMap::new();
+        headers.insert("retry-after", "3".parse().unwrap());
+        let error = gateway_error(
+            GatewayError::Status {
+                status: 429,
+                headers,
+                body: serde_json::json!({ "detail": ZAI_USAGE_LIMIT }).to_string(),
+            },
+            &provider,
+        );
+        assert_eq!(error.retry_after(), Some(Duration::from_secs(3)));
     }
 }

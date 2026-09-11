@@ -1,8 +1,10 @@
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 use fabro_dump::RunDump;
 use fabro_hooks::{HookContext, HookEvent};
+use fabro_llm::LONG_RATE_LIMIT_WINDOW;
+use fabro_llm::gateway::reset_window;
 use fabro_types::run_event::{MetadataSnapshotFailureKind, MetadataSnapshotPhase};
 use fabro_types::{BilledTokenCounts, DiffSummary, EventBody, RunFailure, RunProjection};
 use fabro_util::error::collect_causes;
@@ -13,7 +15,7 @@ use crate::billing_rollup;
 use crate::context::keys;
 use crate::error::{Error, run_failure_from_error, run_failure_from_outcome_failure};
 use crate::event::{Event, RunNoticeCode, RunNoticeLevel};
-use crate::outcome::{Outcome, StageOutcome};
+use crate::outcome::{FailureDetail, Outcome, StageOutcome};
 use crate::records::Conclusion;
 use crate::run_metadata::{MetadataSnapshot, metadata_push_failure_is_transient};
 use crate::run_options::RunOptions;
@@ -22,15 +24,35 @@ use crate::runtime_store::RunStoreHandle;
 use crate::sandbox_git::{git_diff_with_timeout, list_diff_numstat, summarize_diff_numstat};
 use crate::services::RunServices;
 
+/// The failure reason a failed outcome's detail parks under (fabro-a3d8).
+///
+/// A provider usage-window reset hours away arrives only as message prose.
+/// Count-based retries cannot bridge it, so the run parks as a soft stop —
+/// infrastructure could not finish, the run stays resumable and the next
+/// pass re-enters after the window reopens — instead of a hard
+/// `workflow_error`. Failures without a long reset window keep today's
+/// hard-error mapping.
+fn soft_stop_failure_reason(failure: &FailureDetail) -> FailureReason {
+    match reset_window(&failure.message, SystemTime::now()) {
+        Some(window) if window > LONG_RATE_LIMIT_WINDOW => FailureReason::SoftStop,
+        _ => FailureReason::WorkflowError,
+    }
+}
+
 pub fn classify_engine_result(
     engine_result: &Result<Outcome, Error>,
 ) -> (StageOutcome, Option<RunFailure>, RunStatus) {
     match engine_result {
         Ok(outcome) => {
             let status = outcome.status;
-            let failure = outcome.failure.as_ref().map(|failure| {
-                run_failure_from_outcome_failure(failure, FailureReason::WorkflowError)
-            });
+            let failure_reason = outcome
+                .failure
+                .as_ref()
+                .map_or(FailureReason::WorkflowError, soft_stop_failure_reason);
+            let failure = outcome
+                .failure
+                .as_ref()
+                .map(|failure| run_failure_from_outcome_failure(failure, failure_reason));
             let run_status = match status {
                 StageOutcome::Succeeded | StageOutcome::Skipped => RunStatus::Succeeded {
                     reason: SuccessReason::Completed,
@@ -39,7 +61,7 @@ pub fn classify_engine_result(
                     reason: SuccessReason::PartialSuccess,
                 },
                 StageOutcome::Failed { .. } => RunStatus::Failed {
-                    reason: FailureReason::WorkflowError,
+                    reason: failure_reason,
                 },
             };
             (status, failure, run_status)
@@ -507,7 +529,12 @@ pub(crate) fn build_terminal_event(
             }
         }
         Ok(outcome) => {
-            let fallback_reason = exit_reason.unwrap_or(FailureReason::WorkflowError);
+            let fallback_reason = exit_reason.unwrap_or_else(|| {
+                outcome
+                    .failure
+                    .as_ref()
+                    .map_or(FailureReason::WorkflowError, soft_stop_failure_reason)
+            });
             if let Some(failure) = outcome.failure.as_ref() {
                 run_failure_from_outcome_failure(failure, fallback_reason)
             } else {
@@ -1101,6 +1128,62 @@ mod tests {
             apply_soft_exit_downgrade(Err(Error::engine("boom")), "deadlock");
         assert!(outcome.is_err());
         assert!(soft_exit_failure.is_none());
+    }
+
+    /// fabro-a3d8: a long-window provider rate limit — the reset deadline
+    /// hours away, carried only in the failure message prose — parks the run
+    /// as a soft stop instead of a hard `workflow_error`, so the existing
+    /// resume primitive (which rejects only succeeded runs) can re-enter it
+    /// after the usage window reopens.
+    #[test]
+    fn long_window_rate_limit_failure_parks_as_soft_stop() {
+        let future = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())
+            + chrono::Duration::hours(5);
+        let message = format!(
+            "Usage limit reached for 5 hour. Your limit will reset at {}",
+            future.format("%Y-%m-%d %H:%M:%S")
+        );
+        let mut outcome = Outcome::success();
+        outcome.status = StageOutcome::Failed {
+            retry_requested: false,
+        };
+        outcome.failure = Some(FailureDetail::new(
+            message,
+            crate::error::FailureCategory::TransientInfra,
+        ));
+
+        let (status, failure, run_status) = classify_engine_result(&Ok(outcome));
+
+        assert!(matches!(status, StageOutcome::Failed { .. }));
+        let failure = failure.expect("failed outcome carries a failure");
+        assert_eq!(failure.reason, FailureReason::SoftStop);
+        assert!(matches!(run_status, RunStatus::Failed {
+            reason: FailureReason::SoftStop,
+        }));
+    }
+
+    /// The same shape without a long reset window keeps the hard-error
+    /// mapping: short 429s are ordinary transient failures.
+    #[test]
+    fn short_window_rate_limit_failure_stays_a_hard_error() {
+        let mut outcome = Outcome::success();
+        outcome.status = StageOutcome::Failed {
+            retry_requested: false,
+        };
+        outcome.failure = Some(FailureDetail::new(
+            "rate limit exceeded, retry shortly",
+            crate::error::FailureCategory::TransientInfra,
+        ));
+
+        let (_, failure, run_status) = classify_engine_result(&Ok(outcome));
+
+        assert_eq!(
+            failure.expect("failed outcome carries a failure").reason,
+            FailureReason::WorkflowError
+        );
+        assert!(matches!(run_status, RunStatus::Failed {
+            reason: FailureReason::WorkflowError,
+        }));
     }
 
     /// fabro-18a5 end to end: a green exit stage reached through a
