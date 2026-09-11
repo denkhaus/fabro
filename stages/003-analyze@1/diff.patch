@@ -1,0 +1,57 @@
+diff --git a/.fabro/journal/01M29DJXWY2XY3Z05C0JGM6GF5.jsonl b/.fabro/journal/01M29DJXWY2XY3Z05C0JGM6GF5.jsonl
+index 905a14db..c832fdb9 100644
+--- a/.fabro/journal/01M29DJXWY2XY3Z05C0JGM6GF5.jsonl
++++ b/.fabro/journal/01M29DJXWY2XY3Z05C0JGM6GF5.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M29DJXWY2XY3Z05C0JGM6GF5","node":"start","visit":1,"status":"succeeded","ts":"2026-09-11T23:42:49Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M29DJXWY2XY3Z05C0JGM6GF5","node":"select","visit":1,"status":"succeeded","ts":"2026-09-11T23:43:23Z","data":{"painpoints":[],"observations":["Selected newest unrevised terminal live-sandbox run 01M299PVMSE7Q53ZGPP67AHNMG; ~50 runs blocked (stale-evidence version drift or removed sandboxes); merge-upstream run 01M26HBHB8NRCK4C9CMESX7MZ9 is freshest unrevised for its workflow but older than the selected develop run; develop run 01M292T3YZ3B3YXXPT1R7F82XK is a fresh unrevised backlog item for a future pass"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M29DJXWY2XY3Z05C0JGM6GF5","node":"analyze","visit":1,"status":"succeeded","ts":"2026-09-11T23:49:34Z","data":{"painpoints":[{"text":"`sd list --format compact` silently caps at its default `--limit 50` while the tracker holds more open seeds — fabro-fe15, fabro-8d2c, fabro-0586, and fabro-80b3 were all cut from the Step-3 snapshot, and only the mandated per-theme `sd search` surfaced the duplicates. Fix idea: revisor intake should pass `--limit 200` (or sd should flag truncation), else a pass that skims the list instead of searching would file duplicates."},{"text":"Known-bug recurrence: fabro-189d (evidence node `stdin_source=current_seed_id`, filed 2026-09-11 from run 01M294HH) is still open/unimplemented and the identical mislabel fired again in this run — the capture quoted fabro-5082 instead of the claimed fabro-a3d8. Recurred failure classes deserve a priority bump or planner preference (open fabro-11d3 already proposes the preference)."}],"observations":["Not a duplicate run: the target claimed fabro-a3d8; `git log --all --grep='a3d8'` returns nothing and `origin/main` (200 commits) has no sibling merge naming it — the seed was closed by this run's own PR #131 (25c65027), so the run passes review as healthy.","Dropped duplicates: analyst rec #1 (evidence stdin current_seed_id) = duplicate_of fabro-189d; rec #2 (cargo registry/target cache priming in the toolchain image) = duplicate_of fabro-fe15, which already names the shared-cache mount alternative and carries the ADR-0019 needs-user label; rec #5's fd-not-installed half = duplicate_of fabro-0586.","fabro-8d2c (raise preamble budget 24→32 KB) confirmed still open and re-confirmed by this run's 94,873-byte capture; the surviving loop-churn cap finding complements rather than replaces it.","Review persisted verbatim to `.fabro/reviews/develop/01M299PVMSE7Q53ZGPP67AHNMG.md` (6,619 bytes) via shell heredoc — `.fabro/` paths are fs_hide-bound for file tools."]}}
+diff --git a/.fabro/reviews/develop/01M299PVMSE7Q53ZGPP67AHNMG.md b/.fabro/reviews/develop/01M299PVMSE7Q53ZGPP67AHNMG.md
+new file mode 100644
+index 00000000..ff83fda8
+--- /dev/null
++++ b/.fabro/reviews/develop/01M299PVMSE7Q53ZGPP67AHNMG.md
+@@ -0,0 +1,43 @@
++# Improve review — run 01M299PVMSE7Q53ZGPP67AHNMG
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: succeeded (46.9 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-11 23:45+0000 by revisor `fabro_ask`
++
++---
++
++All evidence gathered — run events (stage conclusions, per-tool-call transcripts), the stage journal, and the workspace script files. Here are the recommendations, ordered by expected impact.
++
++**Run baseline for sizing** (from run events / conclusion): 46m53s wall, $2.52 total. Implementer alone: 37.4 min / $2.27 (90% of cost, 25.6 min of it tool time). Everything below attacks that concentration plus one correctness bug that actually fired.
++
++---
++
++**1. `evidence.nu` picked the wrong seed — feed it `current_seed_id` instead of letting it scan the tracker** *(correctness bug, fired this run)*
++- **What happened**: The capture header and "in-progress seed spec" section named **fabro-5082**, not this run's seed fabro-a3d8 (reviewer journal painpoint, 23:21; the evidence preview in the reviewer prompt confirms `seed=fabro-5082`). Root cause is in the workspace file `.fabro/workflows/develop/scripts/evidence.nu:171-172` — `def in-progress-seed []` runs `sd list --status in_progress --format json` and picks from that list; two seeds were in_progress concurrently, and it took the other one. The reviewer had to notice and disambiguate against the context keys; a less careful pass verifies against the wrong spec.
++- **Change**: Add `stdin_source="current_seed_id"` to the `evidence` node in `.fabro/workflows/develop/workflow.fabro` (the exact mechanism `closeout` already uses — proven in this run: closeout closed precisely fabro-a3d8) and make `in-progress-seed` prefer the stdin id, falling back to the scan only when stdin is empty.
++- **Expected effect**: Eliminates the mislabeled-capture failure class entirely; the reviewer never has to adjudicate a spec/tracker mismatch again.
++
++**2. Prime the cargo registry/target cache in the run sandbox** *(~9–11 min per Rust seed)*
++- **What happened**: The implementer's first ~9 minutes were pure cold-cache work: `cargo fetch` took ~3 min (tool call at seq 147, 22:37:14 → next call 22:40:19) and the first `cargo build -p fabro-llm -p fabro-workflow` ~5.5 min (seq 494, 22:48:29 → seq 500, 22:53:58). The container image `fabro-toolchain:noble` (run settings) ships no cargo cache. This is dead time on every develop run touching Rust.
++- **Change**: Bake a primed `$CARGO_HOME` registry + a cargo-chef-style `target` layer into `.fabro/Dockerfile.toolchain` (or mount a persistent cargo cache into the sandbox plan). Note: this touches an agent-reachable surface, so it's ADR-0019 capability-affecting and needs the explicit user-approval note — same category as open seed fabro-9bf4.
++- **Expected effect**: ~8–10 min less wall time per Rust seed (~20% of this run's total), and the tester gate's first compile goes warm too.
++
++**3. Quarantine the known-flaky `e2e_stall_watchdog_with_explicit_timeout_override` test** *(~8–9 min this run, plus gate-red bounce risk)*
++- **What happened**: Chasing that flake, the implementer ran the full fabro-workflow suite **four times** plus two single-test runs (tool calls at seq 540→546→552→558→564→570→576, spanning 22:57–23:07 ≈ 10 min, including two stash-verified clean-tree runs proving the flake pre-exists — its journal painpoint says it fails identically on clean trees, 2–9 timeouts per run). The tester gate got lucky this time; the implementer prompt itself cites a prior ~22-min gate-red bounce from exactly this class.
++- **Change**: In the repo's test config, mark that test flaky — `#[ignore = "flaky under parallel load, tracked in <seed>"]` or a nextest `retries = 1`/profile override for it — and file the seed the implementer's journal asked for.
++- **Expected effect**: Implementer verification drops to one suite run; removes a standing ~22-min tail risk on every gate pass over fabro-workflow.
++
++**4. Cap the loop-churn section of the evidence capture** *(kills the 95 KB blob detour)*
++- **What happened**: The evidence capture was **94,873 bytes** (evidence stage output_bytes), so it reached the reviewer as a blob-ref marker despite `preamble_inline_max_kb=16` and a 24 KB graph budget — forcing the reviewer's tool round-trip to page the blob (its 2.9% context-window usage shows the 1M window was never the constraint; the byte budget is). The bloat is the anomaly section's *full* diffs of changed loop files — the `.seeds/issues.jsonl` hunks alone embed multi-KB seed bodies (visible in the closeout diff).
++- **Change**: In `evidence.nu`, render loop-churn/anomaly files as numstat + the first ~30 changed lines each (full diffs stay for seed-work files only), keeping the "adjudicate every loop file" contract via the file list.
++- **Expected effect**: Typical capture lands under the reviewer's 16 KB inline ceiling — no blob detour, one shorter reviewer visit per cycle (this reviewer: 68.8s incl. blob read). Complements, not replaces, open seeds fabro-8d2c/fabro-9837.
++
++**5. One line in PROJECT_FACTS to stop the planner's wrong-path probing** *(~3 tool calls + LLM round trips per claim)*
++- **What happened**: The planner first probed `lib/foundation/fabro-llm/src/...` — a path that doesn't exist — because PROJECT_FACTS' "Primary code areas" names `lib/foundation/` while fabro-llm lives under `lib/components/` (events 45–59: two failed `rg` probes, a `fd: command not found`, then a symbol search that found it). Its own journal observed the mismatch but changed nothing, so the next planner repeats it.
++- **Change**: Add one line to `.fabro/workflows/develop/prompts/project-facts.md`: "Crates live under both `lib/components/` and `lib/foundation/` — resolve a seed's abbreviated paths by symbol search (`rg -ln <symbol>`), never by guessing the area prefix; `fd` is not installed."
++- **Expected effect**: ~3 fewer tool calls and 2–3 fewer model turns per fresh claim (~30–45 s and a few cents each run); removes a recurring probe pattern the journal already flagged twice.
++
++---
++
++Not worth separate recommendations but noted from this run: the open seeds fabro-8d2c (budget 24→32 KB) and fabro-9837 (blob marker byte size) both re-confirmed here — rec #4 addresses the same symptom from the supply side. What I could not inspect: the toolchain Dockerfile contents and any host-side cache-mount capability (engine internals), so rec #2's mechanism is inferred from the run settings and measured timings, not from reading the image build.
