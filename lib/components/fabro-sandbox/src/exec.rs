@@ -29,8 +29,8 @@ use std::time::Duration;
 use fabro_static::EnvVars;
 use fabro_types::{CommandTermination, ExecOutputTail};
 use sandbox_driver::{
-    BASH_ENV_VAR, Exec, ExecControls, ExecFailure, ExecResult, ExecSpec, ExecStreamingResult,
-    SpawnSpec, StdioProcess, Termination,
+    Exec, ExecControls, ExecFailure, ExecResult, ExecSpec, ExecStreamingResult, SpawnSpec,
+    StdioProcess, Termination,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -212,14 +212,13 @@ impl<'a> SandboxExec<'a> {
     }
 
     /// The explicit environment after policy: credential-shaped names pass
-    /// only under `TrustCaller`, and the Bash helper's `BASH_ENV` blank
-    /// wins over any caller value, so a worker's startup file never runs
-    /// inside a sandboxed `bash -c`.
+    /// only under `TrustCaller`. The driver's Bash helper blanks `BASH_ENV`
+    /// at launch whatever the caller passed, so a worker's startup file
+    /// never runs inside a sandboxed `bash -c`.
     fn apply_env_policy(&self, env: &mut BTreeMap<String, String>) {
         if self.env_policy == ExplicitEnvPolicy::FilterSensitive {
             env.retain(|key, _| !is_sensitive_env_var(key));
         }
-        env.insert(BASH_ENV_VAR.to_string(), String::new());
     }
 }
 
@@ -323,7 +322,8 @@ mod tests {
     use std::time::Instant;
 
     use sandbox_driver::{
-        OutputSink, OutputStream, SandboxProvider as _, SandboxSource, SandboxSpec, TransportError,
+        BASH_ENV_VAR, OutputSink, OutputStream, SandboxProvider as _, SandboxSource, SandboxSpec,
+        TransportError,
     };
     use sandbox_driver_host::HostProvider;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};

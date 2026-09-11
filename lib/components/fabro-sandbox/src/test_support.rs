@@ -280,12 +280,10 @@ impl MockSandbox {
     }
 
     /// The explicit variables of the last command as the caller passed them.
-    /// The exec policy's own `BASH_ENV` blank is not the caller's.
     pub fn captured_env_vars(&self) -> Option<HashMap<String, String>> {
         self.recorded().last().map(|spec| {
             spec.env
                 .iter()
-                .filter(|(key, _)| key.as_str() != sandbox_driver::BASH_ENV_VAR)
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect()
         })
