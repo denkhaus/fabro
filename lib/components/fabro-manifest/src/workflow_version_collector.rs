@@ -265,12 +265,6 @@ fn workflow_files(
     for (path, file) in workflow.files {
         insert_file(&mut files, entrypoint, workflow_path(&path)?, file.content)?;
     }
-    fabro_types::validate_workflow_source_paths(files.keys()).map_err(|source| {
-        WorkflowVersionCollectError::InvalidShape {
-            entrypoint: entrypoint.clone(),
-            source,
-        }
-    })?;
     Ok(files)
 }
 
