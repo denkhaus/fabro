@@ -40,15 +40,6 @@ const DAYTONA_SNAPSHOT_ACTIVE_TIMEOUT: Duration = Duration::from_mins(30);
 /// leaked by a dead worker. An explicit zero disables auto-stop entirely.
 const DEFAULT_AUTO_STOP: Duration = Duration::from_hours(2);
 
-/// Scopes a Daytona API key needs for fabro's snapshot and sandbox flow, in
-/// the order the remediation text lists them.
-pub const REQUIRED_DAYTONA_SCOPES: &[&str] = &[
-    "write:snapshots",
-    "delete:snapshots",
-    "write:sandboxes",
-    "delete:sandboxes",
-];
-
 /// What a custom snapshot is built from: the environment's image or
 /// Dockerfile and its resources in whole gigabytes, the units Daytona
 /// sizes snapshots in and the values the snapshot's name is derived from.
@@ -171,11 +162,14 @@ pub mod snapshot_identity {
 }
 
 /// Outcome of probing a Daytona credential through the provider's health
-/// check.
+/// check. The provider owns the list of scopes it needs and the order it
+/// reports them in; fabro only renders them.
 #[derive(Debug)]
 pub struct DaytonaKeyCheck {
     /// Scopes the key lacks, in Daytona's wire names.
-    pub missing: Vec<String>,
+    pub missing:  Vec<String>,
+    /// Every scope the provider requires, for the remediation text.
+    pub required: Vec<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -215,11 +209,12 @@ impl DaytonaKeyCheck {
             self.missing_display()
         )
     }
-}
 
-#[must_use]
-pub fn required_perms_display() -> String {
-    REQUIRED_DAYTONA_SCOPES.join(", ")
+    /// Every scope the provider requires, comma separated, for remediation.
+    #[must_use]
+    pub fn required_display(&self) -> String {
+        self.required.join(", ")
+    }
 }
 
 /// Whether `credentials` reach Daytona, are accepted, and carry the scopes
@@ -237,11 +232,13 @@ pub async fn check_daytona_api_key(
             .map_err(|error| anyhow::Error::new(error).context("Daytona health check failed"))?;
         match health.status {
             HealthStatus::Ok | HealthStatus::Unknown => Ok(DaytonaKeyCheck {
-                missing: Vec::new(),
+                missing:  Vec::new(),
+                required: health.required_permissions,
             }),
             HealthStatus::Unauthorized if !health.missing_permissions.is_empty() => {
                 Ok(DaytonaKeyCheck {
-                    missing: ordered_scopes(&health.missing_permissions),
+                    missing:  health.missing_permissions,
+                    required: health.required_permissions,
                 })
             }
             HealthStatus::Unauthorized => Err(anyhow::anyhow!(
@@ -264,22 +261,6 @@ pub async fn check_daytona_api_key(
             probe_timeout,
         ))),
     }
-}
-
-/// The scopes fabro requires, in fabro's documented order, followed by any
-/// other scope the provider reported missing.
-fn ordered_scopes(missing: &[String]) -> Vec<String> {
-    let mut ordered: Vec<String> = REQUIRED_DAYTONA_SCOPES
-        .iter()
-        .filter(|scope| missing.iter().any(|reported| reported == *scope))
-        .map(|scope| (*scope).to_string())
-        .collect();
-    for scope in missing {
-        if !ordered.contains(scope) {
-            ordered.push(scope.clone());
-        }
-    }
-    ordered
 }
 
 async fn connect(credentials: &DaytonaCredentials) -> anyhow::Result<Arc<dyn SandboxProvider>> {
@@ -663,26 +644,25 @@ mod tests {
     }
 
     #[test]
-    fn missing_scopes_render_in_documented_order() {
+    fn missing_scopes_render_as_the_provider_reports_them() {
         let check = DaytonaKeyCheck {
-            missing: ordered_scopes(&[
-                "write:sandboxes".to_string(),
+            missing:  vec!["write:snapshots".to_string(), "write:sandboxes".to_string()],
+            required: vec![
                 "write:snapshots".to_string(),
-                "manage:secrets".to_string(),
-            ]),
+                "delete:snapshots".to_string(),
+                "write:sandboxes".to_string(),
+                "delete:sandboxes".to_string(),
+            ],
         };
         assert!(!check.ok());
-        assert_eq!(
-            check.missing_display(),
-            "write:snapshots, write:sandboxes, manage:secrets"
-        );
+        assert_eq!(check.missing_display(), "write:snapshots, write:sandboxes");
         assert_eq!(
             check.missing_message(),
-            "Daytona API key is missing required scopes: write:snapshots, write:sandboxes, \
-             manage:secrets. Regenerate the key with all snapshot and sandbox scopes."
+            "Daytona API key is missing required scopes: write:snapshots, write:sandboxes. \
+             Regenerate the key with all snapshot and sandbox scopes."
         );
         assert_eq!(
-            required_perms_display(),
+            check.required_display(),
             "write:snapshots, delete:snapshots, write:sandboxes, delete:sandboxes"
         );
     }
