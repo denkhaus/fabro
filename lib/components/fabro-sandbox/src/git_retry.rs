@@ -104,7 +104,8 @@ pub(crate) fn decide(kind: GitFailureKind, cred: CredentialContext) -> GitMessag
         },
         GitFailureKind::AccessDenied
         | GitFailureKind::RefNotFound
-        | GitFailureKind::TargetExists => GitMessageClass::Permanent,
+        | GitFailureKind::TargetExists
+        | GitFailureKind::GitUnavailable => GitMessageClass::Permanent,
         _ => GitMessageClass::Unknown,
     }
 }

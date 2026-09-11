@@ -15,7 +15,7 @@ use fabro_github::token_source::ResolvedToken;
 use fabro_redact::DisplaySafeUrl;
 use fabro_types::SandboxProviderKind;
 use sandbox_driver::{
-    ExecResult, Git as _, GitCloneOptions, GitCredentials, Sandbox as DriverHandle,
+    ExecResult, Git as _, GitCloneOptions, GitCredentials, GitFailureKind, Sandbox as DriverHandle,
 };
 use tokio::time;
 
@@ -29,6 +29,12 @@ use crate::sandbox::shell_quote;
 /// Whole-clone budget, shared by every network and local step.
 pub(crate) const GIT_CLONE_TIMEOUT: Duration = Duration::from_mins(5);
 const STEP_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// What the operator hears when the image has no `git`: the driver classifies
+/// the failing command, and fabro names the fix.
+const GIT_UNAVAILABLE_MESSAGE: &str = "The sandbox image must include git for repository \
+                                       clone and git lifecycle operations. Use an image with \
+                                       bash and git, such as buildpack-deps:noble.";
 
 /// A GitHub clone fabro decided to perform.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -71,7 +77,6 @@ pub(crate) async fn clone_github_repo(
     repos_root: &str,
     credentials: &PushCredentialState,
 ) -> crate::Result<CloneOutcome> {
-    verify_git_available(exec).await?;
     let layout = clone_source::github_repo_layout(&plan.origin_url, workspace_root, repos_root)?;
     // The clone mints its own token (never a warm-cache reuse) and seeds the
     // shared source, so the first refresh compares against the clone token
@@ -174,19 +179,6 @@ pub(crate) async fn clone_github_repo(
     Ok(CloneOutcome { layout })
 }
 
-async fn verify_git_available(exec: &SandboxExec<'_>) -> crate::Result<()> {
-    let result = exec
-        .run("git --version", Some(STEP_TIMEOUT), Some("/"), None, None)
-        .await?;
-    if !result.success() {
-        return Err(crate::Error::message(
-            "The sandbox image must include git for repository clone and git lifecycle \
-             operations. Use an image with bash and git, such as buildpack-deps:noble.",
-        ));
-    }
-    Ok(())
-}
-
 /// Run a local (non-network) step under the shared clone deadline.
 ///
 /// Materializing a large working tree takes far longer than the short fixed
@@ -221,6 +213,9 @@ async fn run_local_step(
 }
 
 fn clone_failure_error(error: crate::Error, step: CloneStep, has_app: bool) -> crate::Error {
+    if git_unavailable(&error) {
+        return crate::Error::context(GIT_UNAVAILABLE_MESSAGE, error);
+    }
     let message = match step {
         CloneStep::Network if !has_app => {
             "Git clone failed. If this is a private repository, configure a GitHub App with \
@@ -278,5 +273,69 @@ async fn embed_origin_credentials(
                 "Failed to set sandbox push credentials on origin; git push from this sandbox will fail"
             );
         }
+    }
+}
+
+/// Whether the driver found no usable `git` in the sandbox.
+fn git_unavailable(error: &crate::Error) -> bool {
+    matches!(
+        error.driver(),
+        Some(sandbox_driver::Error::Git(failure))
+            if failure.kind() == GitFailureKind::GitUnavailable
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use sandbox_driver::{ExecFailure, GitFailure, Termination};
+
+    use super::*;
+
+    fn git_failure(exit_code: i32, stderr: &str) -> crate::Error {
+        crate::Error::driver_error(sandbox_driver::Error::Git(GitFailure::from_command(
+            "git clone",
+            ExecFailure::new(
+                "git clone",
+                Termination::Exited,
+                Some(exit_code),
+                Vec::new(),
+                stderr.as_bytes().to_vec(),
+            ),
+        )))
+    }
+
+    #[test]
+    fn a_missing_git_executable_names_the_image_requirement() {
+        let error = clone_failure_error(
+            git_failure(127, "bash: line 1: git: command not found"),
+            CloneStep::Network,
+            true,
+        );
+        assert!(
+            error.to_string().contains("image must include git"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn other_network_failures_keep_the_credential_guidance() {
+        let without_app = clone_failure_error(
+            git_failure(128, "remote: Repository not found."),
+            CloneStep::Network,
+            false,
+        );
+        assert!(without_app.to_string().contains("fabro install"));
+        let with_app = clone_failure_error(
+            git_failure(128, "remote: Repository not found."),
+            CloneStep::Network,
+            true,
+        );
+        assert!(
+            with_app
+                .to_string()
+                .contains("Failed to clone repository into the sandbox")
+        );
+        let local = clone_failure_error(git_failure(1, "ln: failed"), CloneStep::Local, true);
+        assert!(local.to_string().contains("prepare the cloned repository"));
     }
 }
