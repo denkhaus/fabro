@@ -4,12 +4,13 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use anyhow::Result;
 use fabro_config::project::WorkflowLocation;
 use fabro_types::WorkflowPath;
 use tempfile::TempDir;
 
-use crate::CollectedWorkflowClosure;
+use crate::{CollectedWorkflowClosure, WorkflowVersionCollectError};
+
+type Result<T> = std::result::Result<T, WorkflowVersionCollectError>;
 
 /// Stage `files` in a private temporary directory and collect the workflow
 /// closure rooted at `entrypoint` with the same collector used for checkouts.
@@ -22,8 +23,13 @@ pub fn collect_supplied_workflow_versions(
 ) -> Result<CollectedWorkflowClosure> {
     let staging = tempfile::Builder::new()
         .prefix("fabro-workflow-version-")
-        .tempdir()?;
+        .tempdir()
+        .map_err(stage_error)?;
     collect_in_staging(entrypoint, files, &staging)
+}
+
+fn stage_error(source: std::io::Error) -> WorkflowVersionCollectError {
+    WorkflowVersionCollectError::Stage { source }
 }
 
 fn collect_in_staging(
@@ -31,25 +37,35 @@ fn collect_in_staging(
     files: &BTreeMap<WorkflowPath, String>,
     staging: &TempDir,
 ) -> Result<CollectedWorkflowClosure> {
-    let root = staging.path().canonicalize()?;
+    let root = staging.path().canonicalize().map_err(stage_error)?;
     for (path, contents) in files {
         let destination = root.join(path.as_str());
         if let Some(parent) = destination.parent() {
-            std::fs::create_dir_all(parent)?;
+            std::fs::create_dir_all(parent).map_err(stage_error)?;
         }
-        std::fs::write(destination, contents)?;
+        std::fs::write(destination, contents).map_err(stage_error)?;
     }
     let entrypoint = Path::new(entrypoint.as_str());
-    let location = WorkflowLocation::from_exact_path(entrypoint, &root)?;
+    let location =
+        WorkflowLocation::from_exact_path(entrypoint, &root).map_err(|source| match source {
+            fabro_config::Error::WorkflowNotFound(_) => {
+                WorkflowVersionCollectError::WorkflowNotFound {
+                    path: entrypoint.to_path_buf(),
+                }
+            }
+            source => WorkflowVersionCollectError::Collect {
+                path:   entrypoint.to_path_buf(),
+                source: source.into(),
+            },
+        })?;
     let closure = crate::collect_workflow_versions_at_location(&location, &root, entrypoint)?;
     // A case-insensitive host must not satisfy a reference that is missing
     // from the supplied tree under its exact key.
     for (_, version) in closure.versions() {
         for path in version.version().files().keys() {
-            anyhow::ensure!(
-                files.contains_key(path),
-                "collected file `{path}` was not supplied"
-            );
+            if !files.contains_key(path) {
+                return Err(WorkflowVersionCollectError::NotSupplied { path: path.clone() });
+            }
         }
     }
     Ok(closure)
@@ -58,6 +74,8 @@ fn collect_in_staging(
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+
+    use fabro_util::error::collect_chain;
 
     use super::*;
 
@@ -243,7 +261,7 @@ mod tests {
             let error = collect_with_staging(&input, staging)
                 .err()
                 .unwrap_or_else(|| panic!("accepted invalid fixture {index}"));
-            let rendered = format!("{error:#}");
+            let rendered = collect_chain(&error).join(": ");
             // Escaping references must fail before any host file is opened,
             // so no host diagnostic (parse error, exists-vs-missing) leaks.
             assert!(
@@ -277,9 +295,10 @@ mod tests {
         ]);
         let error =
             collect_supplied_workflow_versions(&renamed.entrypoint, &renamed.files).unwrap_err();
+        let rendered = collect_chain(&error).join(": ");
         assert!(
-            format!("{error:#}").contains("must be `sub/workflow.toml`"),
-            "{error:#}"
+            rendered.contains("must be `sub/workflow.toml`"),
+            "{rendered}"
         );
         // A config that selects a graph in another directory is not its sibling.
         let elsewhere = supplied("sub/workflow.toml", &[

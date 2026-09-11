@@ -38,6 +38,15 @@ pub(super) struct CollectedWorkflowSource {
     pub(super) dependency_keys: BTreeSet<String>,
 }
 
+/// A referenced file that does not exist under the package root, reported
+/// with its package-relative path so callers can surface it without the
+/// staging directory or any file content.
+#[derive(Debug, thiserror::Error)]
+#[error("workflow package file `{path}` is missing")]
+pub(super) struct MissingPackageFile {
+    pub(super) path: String,
+}
+
 impl<'a> WorkflowBundler<'a> {
     pub(super) fn new(package_root: &'a Path, inputs: &'a HashMap<String, toml::Value>) -> Self {
         Self {
@@ -512,11 +521,16 @@ impl<'a> WorkflowBundler<'a> {
             return std::fs::read_to_string(path)
                 .with_context(|| format!("Failed to read {}", path.display()));
         }
-        let canonical = path.canonicalize().with_context(|| {
-            format!(
+        let canonical = path.canonicalize().map_err(|source| {
+            if source.kind() == std::io::ErrorKind::NotFound {
+                let path = ManifestPath::from_absolute(path, self.package_root)
+                    .map_or_else(|| path.display().to_string(), |path| path.to_string());
+                return anyhow::Error::new(MissingPackageFile { path });
+            }
+            anyhow::Error::new(source).context(format!(
                 "failed to canonicalize workflow package file `{}`",
                 path.display()
-            )
+            ))
         })?;
         if !canonical.starts_with(self.package_root) {
             bail!(

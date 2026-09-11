@@ -22,6 +22,7 @@ fabro-graphviz = { path = "../fabro-graphviz" }
 fabro-template = { path = "../../foundation/fabro-template" }
 fabro-tool = { path = "../fabro-tool" }
 fabro-types = { path = "../../foundation/fabro-types" }
+fabro-util = { path = "../../foundation/fabro-util" }
 fabro-workflow = { path = "../fabro-workflow" }
 fabro-workflow-version = { path = "../fabro-workflow-version" }
 git2.workspace = true
@@ -33,7 +34,6 @@ tracing.workspace = true
 
 [dev-dependencies]
 fabro-test.workspace = true
-fabro-util = { path = "../../foundation/fabro-util" }
 insta.workspace = true
 serde_json.workspace = true
 temp-env = "0.3"

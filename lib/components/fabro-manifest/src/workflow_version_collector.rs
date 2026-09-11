@@ -10,7 +10,9 @@ use fabro_types::{
 use fabro_workflow_version::{ValidatedWorkflowVersion, WorkflowVersionError};
 use thiserror::Error;
 
-use crate::workflow_bundler::{CollectedWorkflowSource, CollectedWorkflowSources, WorkflowBundler};
+use crate::workflow_bundler::{
+    CollectedWorkflowSource, CollectedWorkflowSources, MissingPackageFile, WorkflowBundler,
+};
 
 /// One locally packaged workflow-version closure in dependency-first order.
 #[derive(Debug)]
@@ -80,6 +82,20 @@ pub enum WorkflowVersionCollectError {
     DependencyCycle { path: WorkflowPath },
     #[error("collected workflow dependency `{path}` is missing")]
     MissingWorkflow { path: String },
+    /// A referenced file is absent from the package root. Surfaced separately
+    /// from [`Self::Collect`] because the path is the whole message.
+    #[error("referenced file `{path}` is missing from the workflow source")]
+    MissingPackageFile { path: String },
+    /// Supplied-content packaging: the collector read a file whose exact key
+    /// the caller did not supply (a case-insensitive host satisfied a
+    /// reference that differs from the supplied key).
+    #[error("collected file `{path}` was not supplied")]
+    NotSupplied { path: WorkflowPath },
+    #[error("failed to stage supplied workflow files")]
+    Stage {
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 /// Package one workflow and every separately runnable dependency from a local
@@ -157,9 +173,19 @@ pub fn collect_workflow_versions_at_location(
     let inputs = HashMap::new();
     let collected = WorkflowBundler::new(package_root, &inputs)
         .collect_versions(location)
-        .map_err(|source| WorkflowVersionCollectError::Collect {
-            path: workflow.to_path_buf(),
-            source,
+        .map_err(|source| {
+            let missing = source
+                .chain()
+                .find_map(|cause| cause.downcast_ref::<MissingPackageFile>());
+            match missing {
+                Some(missing) => WorkflowVersionCollectError::MissingPackageFile {
+                    path: missing.path.clone(),
+                },
+                None => WorkflowVersionCollectError::Collect {
+                    path: workflow.to_path_buf(),
+                    source,
+                },
+            }
         })?;
     VersionAssembler::new(collected).assemble()
 }
