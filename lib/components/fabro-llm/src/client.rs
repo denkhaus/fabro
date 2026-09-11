@@ -1,16 +1,19 @@
 //! Client construction from Fabro configuration and credentials.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use lithos_llm::adapter::ProviderAdapter;
 use lithos_llm::catalog::{Catalog, ProviderId};
 use lithos_llm::client::{Client, ClientBuildError, ClientBuilder, ProviderBuildIssue};
 use lithos_llm::credentials::{CredentialError, CredentialProvider};
 use lithos_llm::middleware::{
-    Call, InlineLocalFiles, Middleware, Observer, RetryMiddleware, RetryPolicy, RetryStage,
+    Call, InlineLocalFiles, Middleware, Next, Observer, Output, RetryMiddleware, RetryPolicy,
+    RetryStage,
 };
-use lithos_llm::types::{Error, ErrorData};
+use lithos_llm::types::{Error, ErrorData, ErrorKind, RetryClassification};
+
+use crate::gateway::reset_window;
 
 /// The application name lithos reports to providers that ask, such as the
 /// `originator` header on the OpenAI Codex deployment.
@@ -89,6 +92,46 @@ pub fn retry_middleware(policy: RetryPolicy) -> RetryMiddleware {
     RetryMiddleware::new(policy).observer(RetryNotifier)
 }
 
+/// Attaches provider reset windows parsed from RateLimit message prose.
+///
+/// Direct provider adapters surface a long usage-window 429 (zai and
+/// Anthropic-style bodies) only as message text — `retry_after=null`, the
+/// reset deadline in prose. This middleware records the parsed window as the
+/// provider-advised wait so the retry middleware above it stops immediately
+/// instead of burning attempts against a window hours away, and callers see
+/// the deadline as a structured field (fabro-a3d8).
+#[derive(Debug, Default)]
+struct RateLimitReset;
+
+/// Enriches a RateLimit error with the reset window parsed from its message.
+///
+/// Errors that already carry an advised wait — a `Retry-After` header the
+/// adapter honored — keep it; so does every non-rate-limit error.
+fn enrich_rate_limit_reset(error: Error) -> Error {
+    if error.kind() != ErrorKind::RateLimit
+        || error.retry_after().is_some()
+        || error.provider_retry_after().is_some()
+    {
+        return error;
+    }
+    match reset_window(error.message(), SystemTime::now()) {
+        Some(window) => error
+            .with_retry(RetryClassification::after(window))
+            .with_provider_retry_after(window),
+        None => error,
+    }
+}
+
+#[async_trait::async_trait]
+impl Middleware for RateLimitReset {
+    async fn handle(&self, call: Call, next: Next) -> Result<Output, Error> {
+        match next.run(call).await {
+            Err(error) => Err(enrich_rate_limit_reset(error)),
+            output => output,
+        }
+    }
+}
+
 /// Options for [`build_client`] and [`build_offline_client`].
 #[derive(Default)]
 pub struct ClientOptions {
@@ -145,6 +188,9 @@ impl ClientOptions {
         if let Some(policy) = self.retry {
             builder = builder.middleware(retry_middleware(policy));
         }
+        // Inside the retry layer, so retries see the enriched wait and a
+        // multi-hour usage window fails fast on the first attempt.
+        builder = builder.middleware(RateLimitReset);
         if self.inline_attachments {
             builder = builder.middleware(InlineLocalFiles::new());
         }
@@ -249,10 +295,66 @@ pub fn build_offline_client(
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use fabro_auth::test_support::env_credential_source;
 
     use super::*;
     use crate::test_support::test_catalog;
+
+    #[test]
+    fn rate_limit_prose_attaches_the_reset_window_and_fails_fast() {
+        let future = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())
+            + chrono::Duration::hours(4);
+        let message = format!(
+            "Usage limit reached for 5 hour. Your limit will reset at {}",
+            future.format("%Y-%m-%d %H:%M:%S")
+        );
+        let error = enrich_rate_limit_reset(
+            Error::new(ErrorKind::RateLimit, message).with_retry(RetryClassification::Safe),
+        );
+        let window = error.provider_retry_after().expect("parsed reset window");
+        assert!(window >= Duration::from_hours(3), "got {window:?}");
+        assert_eq!(error.retry_after(), Some(window));
+        // A multi-hour window is beyond the policy's backoff budget: the
+        // middleware must surface the error instead of retrying.
+        assert_eq!(default_retry_policy().next_delay(1, &error), None);
+    }
+
+    #[test]
+    fn enrichment_leaves_advised_waits_and_other_errors_alone() {
+        let advised = Error::new(ErrorKind::RateLimit, "slow down")
+            .with_retry(RetryClassification::after(Duration::from_secs(20)))
+            .with_provider_retry_after(Duration::from_secs(20));
+        let enriched = enrich_rate_limit_reset(advised);
+        assert_eq!(
+            enriched.provider_retry_after(),
+            Some(Duration::from_secs(20))
+        );
+        let short = enrich_rate_limit_reset(
+            Error::new(ErrorKind::RateLimit, "Your limit will reset at soon")
+                .with_retry(RetryClassification::Safe),
+        );
+        assert!(short.provider_retry_after().is_none());
+        let other = enrich_rate_limit_reset(
+            Error::new(ErrorKind::Server, "boom").with_retry(RetryClassification::Safe),
+        );
+        assert!(other.provider_retry_after().is_none());
+        // A short parsed window within the retry-after cap is honored exactly.
+        let future = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())
+            + chrono::Duration::seconds(30);
+        let message = format!(
+            "Your limit will reset at {}",
+            future.format("%Y-%m-%d %H:%M:%S")
+        );
+        let short_window = enrich_rate_limit_reset(
+            Error::new(ErrorKind::RateLimit, message).with_retry(RetryClassification::Safe),
+        );
+        assert_eq!(
+            default_retry_policy().next_delay(1, &short_window),
+            short_window.provider_retry_after()
+        );
+    }
 
     #[tokio::test]
     async fn ready_providers_follow_credentials_and_policy() {

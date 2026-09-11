@@ -574,6 +574,12 @@ impl Error {
                 stage: ErrorStage::Publish,
                 ..
             } => FailureReason::PublishFailed,
+            // A multi-hour provider usage window cannot be bridged by
+            // retries: park the run as a soft stop so it stays resumable
+            // instead of failing hard (fabro-a3d8).
+            Self::Llm(err) if fabro_llm::long_rate_limit_window(err).is_some() => {
+                FailureReason::SoftStop
+            }
             _ => FailureReason::WorkflowError,
         }
     }
@@ -1169,6 +1175,33 @@ mod tests {
 
         let non_retryable = Error::from(sdk_error(ErrorKind::Configuration, "bad config"));
         assert!(!non_retryable.is_retryable());
+    }
+
+    /// fabro-a3d8: a rate limit whose provider-advised reset window is
+    /// longer than the retry budget parks as a soft stop (resumable);
+    /// short-window 429s keep the hard workflow-error mapping.
+    #[test]
+    fn long_window_rate_limit_maps_to_soft_stop() {
+        let with_window = |millis| {
+            ErrorData::from(
+                fabro_llm::Error::new(
+                    ErrorKind::RateLimit,
+                    "Usage limit reached for 5 hour. Your limit will reset at 2026-09-03 \
+                     05:35:16",
+                )
+                .with_provider(lithos_llm::catalog::builtin::openai())
+                .with_retry(RetryClassification::Safe)
+                .with_provider_retry_after(std::time::Duration::from_millis(millis)),
+            )
+        };
+        assert_eq!(
+            Error::from(with_window(5 * 3600 * 1000)).failure_reason(),
+            FailureReason::SoftStop
+        );
+        assert_eq!(
+            Error::from(with_window(2_000)).failure_reason(),
+            FailureReason::WorkflowError
+        );
     }
 
     #[test]
